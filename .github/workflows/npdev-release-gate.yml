@@ -17,7 +17,7 @@ jobs:
   release-gate:
     name: NPDev release gate
     runs-on: windows-latest
-    timeout-minutes: 180
+    timeout-minutes: 120
 
     defaults:
       run:
@@ -26,6 +26,8 @@ jobs:
     env:
       NPDEV_WORKSPACE: ${{ github.workspace }}
       NPDEV_STATE_ZIP_OUT: ${{ github.workspace }}\_state-zips
+      CI: true
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
 
     steps:
       - name: Checkout
@@ -60,12 +62,17 @@ jobs:
           $gradleProperties = Join-Path $gradleUserHome "gradle.properties"
 
           @(
+            "org.gradle.daemon=false",
+            "org.gradle.console=plain",
+            "org.gradle.workers.max=2",
+            "org.gradle.vfs.watch=false",
             "org.gradle.java.installations.auto-detect=true",
             "org.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64"
           ) | Set-Content -LiteralPath $gradleProperties -Encoding UTF8
 
-          Write-Host "Gradle toolchain discovery properties:"
+          Write-Host "Gradle CI properties:"
           Get-Content $gradleProperties
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -94,6 +101,7 @@ jobs:
 
       - name: Install Playwright Chromium
         working-directory: NPDevEditor/ui-react
+        timeout-minutes: 10
         run: |
           npm ci
           npm exec playwright install chromium
@@ -129,8 +137,16 @@ jobs:
 
             Get-Content (Join-Path $projectRoot "gradle\wrapper\gradle-wrapper.properties")
           }
+
+      - name: Preflight NPDevGenerator gate
+        timeout-minutes: 20
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass `
+            -File "$env:NPDEV_WORKSPACE\scripts\quality\run-generator-gate.ps1" `
+            -WorkspaceRoot "$env:NPDEV_WORKSPACE"
+
       - name: Run beta release gate with GitHub traceability
-        timeout-minutes: 90
+        timeout-minutes: 80
         run: |
           $dirty = $false
           $status = git status --porcelain
@@ -139,8 +155,10 @@ jobs:
           }
 
           & pwsh -NoProfile -ExecutionPolicy Bypass `
-            -File "$env:NPDEV_WORKSPACE\scripts\quality\run-beta-release-gate.ps1" `
+            -File "$env:NPDEV_WORKSPACE\scripts\release\invoke-ci-beta-release-gate-with-heartbeat.ps1" `
             -WorkspaceRoot "$env:NPDEV_WORKSPACE" `
+            -IdleTimeoutMinutes 12 `
+            -TotalTimeoutMinutes 75 `
             -SourceCommitSha "${{ github.sha }}" `
             -SourceBranch "${{ github.ref_name }}" `
             -SourceDirty $dirty `
@@ -150,6 +168,7 @@ jobs:
             -SourceWorkflow "${{ github.workflow }}"
 
       - name: Validate release traceability
+        timeout-minutes: 10
         run: |
           & pwsh -NoProfile -ExecutionPolicy Bypass `
             -File "$env:NPDEV_WORKSPACE\scripts\tests\Test-ReleaseTraceability.ps1" `
@@ -157,6 +176,7 @@ jobs:
             -RequireOfficialEligibility
 
       - name: Generate release-ready state zip
+        timeout-minutes: 20
         run: |
           New-Item -ItemType Directory -Force -Path "$env:NPDEV_STATE_ZIP_OUT" | Out-Null
 
@@ -168,12 +188,14 @@ jobs:
             -ExistingEvidenceRoot last
 
       - name: Fix visible state zip timestamps
+        timeout-minutes: 5
         run: |
           & pwsh -NoProfile -ExecutionPolicy Bypass `
             -File "$env:NPDEV_WORKSPACE\scripts\quality\fix-statezip-visible-timestamps.ps1" `
             -ZipRoot "$env:NPDEV_STATE_ZIP_OUT"
 
       - name: Validate CI release evidence freshness
+        timeout-minutes: 10
         run: |
           & pwsh -NoProfile -ExecutionPolicy Bypass `
             -File "$env:NPDEV_WORKSPACE\scripts\tests\Test-CiReleaseEvidenceFreshness.ps1" `
@@ -190,5 +212,3 @@ jobs:
             _state-zips
           if-no-files-found: error
           retention-days: 30
-
-
