@@ -56,10 +56,7 @@ $runtimeSurfaceEvidenceAuxiliaryPaths = @()
 
 $runtimeHostOrchestrationPattern = '^scripts\\quality\\run-runtimehost-batch\d+-verification\.ps1$|^scripts\\quality\\run-runtimehost-convergence-batch\.ps1$|^scripts\\quality\\run-runtimehost-convergence-check\.ps1$'
 
-$qualityHelperScriptExclusions = @(
-    "scripts\quality\run-explicit-traceable-release-and-statezip.ps1",
-    "scripts\quality\run-pack-k-diagnostic-validation.ps1"
-)
+$qualityHelperScriptExclusions = @()
 
 $structuredReportExclusions = @($detectorAuxiliaryPaths + $runtimeSurfaceEvidenceAuxiliaryPaths + $qualityHelperScriptExclusions)
 
