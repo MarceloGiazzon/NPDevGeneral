@@ -1,0 +1,106 @@
+{
+  "namespace": "npdev.specialization",
+  "dslVersion": "1.0.0",
+  "version": "v2",
+  "concepts": [
+    {
+      "name": "Invoice",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "code", "type": "string", "required": true },
+        { "name": "total", "type": "long", "required": true }
+      ],
+      "invariants": [
+        { "name": "codeUnique", "type": "unique", "fields": ["code"] },
+        { "name": "positiveTotal", "type": "expression", "expression": "total > 0" }
+      ]
+    },
+    {
+      "name": "MedicalInvoice",
+      "specializes": "Invoice",
+      "fields": [
+        { "name": "doctorId", "type": "uuid", "required": true }
+      ],
+      "invariants": [
+        {
+          "name": "positiveTotal",
+          "specializes": "positiveTotal",
+          "override": true,
+          "type": "expression",
+          "expression": "total > 10"
+        }
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        { "name": "save", "input": { "type": "object", "properties": { "entity": { "type": "object", "properties": {} } }, "required": ["entity"] }, "output": { "type": "object", "properties": { "entity": { "type": "object", "properties": {} } }, "required": ["entity"] } }
+      ]
+    },
+    {
+      "name": "medicalPersistence",
+      "specializes": "persistence",
+      "operations": [
+        { "name": "saveMedical", "input": { "type": "object", "properties": { "entity": { "type": "object", "properties": {} } }, "required": ["entity"] }, "output": { "type": "object", "properties": { "entity": { "type": "object", "properties": {} } }, "required": ["entity"] } }
+      ]
+    }
+  ],
+  "bindings": [
+    { "capability": "persistence", "adapter": "inproc" },
+    { "capability": "medicalPersistence", "adapter": "inproc" }
+  ],
+  "events": [
+    {
+      "name": "InvoiceCreated",
+      "version": "1.0",
+      "payload": [
+        { "name": "code", "type": "string" },
+        { "name": "total", "type": "long" }
+      ]
+    },
+    {
+      "name": "MedicalInvoiceCreated",
+      "specializes": "InvoiceCreated",
+      "version": "2.0",
+      "payload": [
+        { "name": "code", "type": "string" },
+        { "name": "total", "type": "long" },
+        { "name": "doctorId", "type": "uuid" }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "SubmitInvoice",
+      "concept": "Invoice",
+      "steps": [
+        { "name": "pre-check", "type": "invariant", "scope": "Invoice" },
+        { "name": "return-base", "type": "return", "value": "$input" }
+      ]
+    },
+    {
+      "name": "SubmitMedicalInvoice",
+      "specializes": "SubmitInvoice",
+      "hooks": [
+        {
+          "position": "before",
+          "targetStep": "return-base",
+          "steps": [
+            {
+              "name": "emit-medical",
+              "type": "event",
+              "event": "MedicalInvoiceCreated",
+              "payload": "$input"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+
+
+

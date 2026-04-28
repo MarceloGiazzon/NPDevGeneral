@@ -1,0 +1,37 @@
+{
+  "$schema": "../../schemas/config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "ai-authoring-workitems",
+    "description": "Domain-neutral AI authoring bundle for scripts and CLI clients.",
+    "outputRoot": "./Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": {
+    "root": "../../../NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "./Output/ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "./Output/App",
+    "deleteBeforeMount": true
+  },
+  "runtime": {
+    "springProfile": "dev,step0,trial",
+    "serverPort": 8092,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  }
+}

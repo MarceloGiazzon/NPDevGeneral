@@ -1,0 +1,8 @@
+{
+  "processId": 15508,
+  "stamp": "20260422_235324",
+  "stdout": "D:\\WorkSpace\\NPDev_General\\scripts\\reports\\background\\statezip-release-ready-20260422_235324.stdout.log",
+  "stderr": "D:\\WorkSpace\\NPDev_General\\scripts\\reports\\background\\statezip-release-ready-20260422_235324.stderr.log",
+  "metadata": "D:\\WorkSpace\\NPDev_General\\scripts\\reports\\background\\statezip-release-ready-20260422_235324.json",
+  "expectedZip": "D:\\WorkSpace\\NPDev_General__OutsideRepo\\state-zips\\NPDev_General_State_ALL_20260422_235324.zip"
+}

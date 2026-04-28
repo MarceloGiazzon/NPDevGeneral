@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "releaseKinds": [
+    "canonical-demo",
+    "official-sample",
+    "tenant-sample"
+  ],
+  "excludedKinds": [
+    "test-model"
+  ],
+  "requiredReleaseCoveragePercent": 100.0,
+  "minimumReleaseSampleCount": 5,
+  "minimumReleaseSamplesByKind": {
+    "canonical-demo": 1,
+    "official-sample": 3,
+    "tenant-sample": 1
+  },
+  "partialMatrixRequiresAllowPartialSwitch": true
+}

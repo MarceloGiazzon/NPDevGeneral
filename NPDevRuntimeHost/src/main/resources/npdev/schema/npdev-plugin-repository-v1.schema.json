@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NPDev Plugin Repository Descriptor v1",
+  "type": "object",
+  "required": [
+    "repositoryId",
+    "displayName",
+    "repositoryType",
+    "endpoint",
+    "trustMode",
+    "signatureRequired"
+  ],
+  "properties": {
+    "repositoryId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repositoryType": {
+      "type": "string",
+      "enum": [
+        "http-json",
+        "filesystem-mirror",
+        "signed-catalog"
+      ]
+    },
+    "endpoint": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trustMode": {
+      "type": "string",
+      "enum": [
+        "declared",
+        "pinned",
+        "verified"
+      ]
+    },
+    "signatureRequired": {
+      "type": "boolean"
+    },
+    "packageIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": true
+}

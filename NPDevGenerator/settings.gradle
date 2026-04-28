@@ -1,0 +1,35 @@
+rootProject.name = 'npdev-generator'
+
+include 'generator'
+include 'npdev-migrations'
+include 'tools:npdev-cli'
+
+// Generator build dependencies are explicit sibling contracts, not an NPDev_General root build.
+include 'core'
+project(':core').projectDir = file('../NPDevKernel/core')
+include 'kernel'
+project(':kernel').projectDir = file('../NPDevKernel/kernel')
+include 'dsl'
+project(':dsl').projectDir = file('../NPDevContract/dsl')
+include 'adapters:bulkhead-inproc'
+project(':adapters:bulkhead-inproc').projectDir = file('../NPDevKernel/adapters/bulkhead-inproc')
+include 'adapters:circuit-inproc'
+project(':adapters:circuit-inproc').projectDir = file('../NPDevKernel/adapters/circuit-inproc')
+include 'adapters:events-inproc'
+project(':adapters:events-inproc').projectDir = file('../NPDevKernel/adapters/events-inproc')
+include 'adapters:expression-cel'
+project(':adapters:expression-cel').projectDir = file('../NPDevKernel/adapters/expression-cel')
+include 'adapters:flow-compiled'
+project(':adapters:flow-compiled').projectDir = file('../NPDevKernel/adapters/flow-compiled')
+include 'adapters:flowinstance-inproc'
+project(':adapters:flowinstance-inproc').projectDir = file('../NPDevKernel/adapters/flowinstance-inproc')
+include 'adapters:idempotency-inproc'
+project(':adapters:idempotency-inproc').projectDir = file('../NPDevKernel/adapters/idempotency-inproc')
+include 'adapters:json-jackson'
+project(':adapters:json-jackson').projectDir = file('../NPDevKernel/adapters/json-jackson')
+include 'adapters:persistence-postgres'
+project(':adapters:persistence-postgres').projectDir = file('../NPDevKernel/adapters/persistence-postgres')
+include 'adapters:schema-validator-default'
+project(':adapters:schema-validator-default').projectDir = file('../NPDevKernel/adapters/schema-validator-default')
+include 'adapters:tracing-inproc'
+project(':adapters:tracing-inproc').projectDir = file('../NPDevKernel/adapters/tracing-inproc')

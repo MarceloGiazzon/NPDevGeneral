@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NPDev Operator UI</title>
+  <link rel="stylesheet" href="/npdev-ui/style.css">
+</head>
+<body>
+<div class="bg-shape bg-shape-a"></div>
+<div class="bg-shape bg-shape-b"></div>
+
+<main class="shell">
+  <header class="topbar">
+    <div>
+      <h1>NPDev Operator UI</h1>
+      <p class="subtitle">Current canonical operator UI: {{canonicalUiRoute}}. Alternate surface: {{alternateUiRoute}}.</p>
+      <div class="actions">
+        <button type="button" onclick="window.location.href='{{alternateUiRoute}}'">Open alternate UI surface</button>
+      </div>
+      <p class="hint" style="margin-top:12px;">
+        This runtime-served UI is <code>/npdev-ui/</code>. Canonical selection is controlled by <code>canonical-ui-selection.json</code>.
+      </p>
+    </div>
+    <form class="identity" onsubmit="return false">
+      <label for="apiKey">API Key</label>
+      <input id="apiKey" type="password" placeholder="api-dev">
+      <label for="apiBase">API Base</label>
+      <input id="apiBase" type="text" placeholder="(empty = same origin)">
+    </form>
+  </header>
+
+  <div id="statusBanner" class="status hidden"></div>
+
+  <nav class="tabs">
+    <button class="tab active" data-view="flows">Flows</button>
+    <button class="tab" data-view="execute">Execute</button>
+    <button class="tab" data-view="executions">Executions</button>
+    <button class="tab" data-view="traces">Traces</button>
+    <button class="tab" data-view="events">Events</button>
+    <button class="tab" data-view="correlation">Correlation</button>
+    <button id="adminTab" class="tab hidden" data-view="admin">Admin</button>
+  </nav>
+
+  <section id="view-flows" class="view active">
+    <h2>Flows</h2>
+    <p class="hint"><code>GET /api/v1/flows</code></p>
+    <button id="reloadFlows" class="primary">Load Flows</button>
+    <ul id="flowsList" class="list"></ul>
+  </section>
+
+  <section id="view-execute" class="view">
+    <h2>Execute Flow</h2>
+    <div class="grid">
+      <label for="executeFlowName">Flow Name</label>
+      <select id="executeFlowName"></select>
+      <label>Typed Input</label>
+      <div id="executeTypedContainer" class="light-panel"></div>
+      <label for="executeUseAdvanced">Advanced JSON Mode</label>
+      <div class="inline-row">
+        <input id="executeUseAdvanced" type="checkbox">
+        <span class="hint">Use raw JSON payload instead of typed fields.</span>
+      </div>
+      <label for="executePayload">Payload (JSON)</label>
+      <textarea id="executePayload" rows="11">{}</textarea>
+      <button id="executeButton" class="primary">Execute</button>
+    </div>
+    <h3>Input Validation Errors</h3>
+    <div id="executeValidationErrors" class="light-panel"></div>
+    <h3>Result</h3>
+    <details>
+      <summary>Raw Response JSON</summary>
+      <pre id="executeResult" class="panel"></pre>
+    </details>
+    <div id="executeLinks" class="actions"></div>
+  </section>
+
+  <section id="view-executions" class="view">
+    <h2>Executions</h2>
+    <div class="controls wide">
+      <label for="executionsLimit">Limit</label>
+      <input id="executionsLimit" type="number" min="1" value="50">
+      <label for="executionsOffset">Offset</label>
+      <input id="executionsOffset" type="number" min="0" value="0">
+      <label for="staleOlderThanMinutes">Stale Minutes</label>
+      <input id="staleOlderThanMinutes" type="number" min="1" value="60">
+      <label for="executionsStatusFilter">Status</label>
+      <select id="executionsStatusFilter">
+        <option value="">(any)</option>
+        <option value="RUNNING">RUNNING</option>
+        <option value="WAITING_EVENT">WAITING_EVENT</option>
+        <option value="COMPLETED">COMPLETED</option>
+        <option value="FAILED">FAILED</option>
+        <option value="FAILED_PERMANENT">FAILED_PERMANENT</option>
+        <option value="STUCK">STUCK</option>
+      </select>
+      <button id="loadExecutionsRecent" class="primary">Recent</button>
+      <button id="loadExecutionsWaiting">Waiting</button>
+      <button id="loadExecutionsStale">Stale</button>
+      <button id="executionsPrev">Prev</button>
+      <button id="executionsNext">Next</button>
+    </div>
+    <div class="table-wrap">
+      <table id="executionsTable">
+        <thead>
+        <tr>
+          <th>ExecutionId</th>
+          <th>Status</th>
+          <th>Flow</th>
+          <th>Correlation</th>
+          <th>Waiting Event</th>
+          <th>Resume Attempts</th>
+          <th>Next Eligible</th>
+          <th>Last Resume Error</th>
+          <th>Last Error Code</th>
+          <th>Failed At</th>
+          <th>Updated</th>
+          <th>Action</th>
+        </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <h3>Execution Status</h3>
+    <div id="executionStatusBlock" class="light-panel status-block"></div>
+    <h3>Execution Details</h3>
+    <pre id="executionDetails" class="panel"></pre>
+    <h3>Publish Awaited Event</h3>
+    <div class="grid">
+      <label for="executionAwaitedEventName">Event Name</label>
+      <input id="executionAwaitedEventName" type="text">
+      <label for="executionCorrelationId">CorrelationId</label>
+      <input id="executionCorrelationId" type="text">
+      <label for="executionEventPayload">Payload (JSON)</label>
+      <textarea id="executionEventPayload" rows="6">{}</textarea>
+      <button id="executionPublishEventButton" class="primary">Publish Event</button>
+    </div>
+    <pre id="executionPublishResult" class="panel"></pre>
+  </section>
+
+  <section id="view-traces" class="view">
+    <h2>Traces</h2>
+    <div class="controls wide">
+      <label for="traceFilterFlowName">Flow</label>
+      <input id="traceFilterFlowName" type="text">
+      <label for="traceFilterStatus">Status</label>
+      <select id="traceFilterStatus">
+        <option value="">(any)</option>
+        <option value="COMPLETED">COMPLETED</option>
+        <option value="FAILED">FAILED</option>
+        <option value="INVARIANT_FAILED">INVARIANT_FAILED</option>
+      </select>
+      <label for="traceFilterFrom">From</label>
+      <input id="traceFilterFrom" type="text" placeholder="ISO timestamp">
+      <label for="traceFilterTo">To</label>
+      <input id="traceFilterTo" type="text" placeholder="ISO timestamp">
+      <label for="traceLimit">Limit</label>
+      <input id="traceLimit" type="number" min="1" value="50">
+      <label for="traceOffset">Offset</label>
+      <input id="traceOffset" type="number" min="0" value="0">
+      <button id="searchTraces" class="primary">Search</button>
+      <button id="tracePrev">Prev</button>
+      <button id="traceNext">Next</button>
+    </div>
+    <div class="table-wrap">
+      <table id="traceSearchTable">
+        <thead>
+        <tr>
+          <th>ExecutionId</th>
+          <th>Flow</th>
+          <th>Outcome</th>
+          <th>Started</th>
+          <th>Correlation</th>
+        </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <h3>Trace Detail</h3>
+    <div class="controls wide">
+      <label for="traceExecutionId">ExecutionId</label>
+      <input id="traceExecutionId" type="text">
+      <button id="loadTrace" class="primary">Load Trace</button>
+      <button id="copyTraceExecutionId">Copy ExecutionId</button>
+      <button id="copyTraceCorrelationId">Copy CorrelationId</button>
+      <button id="copyTraceSummary">Copy Trace Summary</button>
+      <button id="copyTraceJson">Copy Trace JSON</button>
+    </div>
+    <div id="traceSummary" class="light-panel"></div>
+    <pre id="traceDetails" class="panel"></pre>
+  </section>
+
+  <section id="view-events" class="view">
+    <h2>Events</h2>
+    <div class="grid">
+      <label for="publishEventName">Event Name</label>
+      <input id="publishEventName" type="text">
+      <label for="publishCorrelationId">CorrelationId</label>
+      <input id="publishCorrelationId" type="text">
+      <label for="publishPayload">Payload (JSON)</label>
+      <textarea id="publishPayload" rows="8">{}</textarea>
+      <button id="publishEventButton" class="primary">Publish Event</button>
+    </div>
+    <pre id="publishResult" class="panel"></pre>
+  </section>
+
+  <section id="view-correlation" class="view">
+    <h2>Correlation</h2>
+    <div class="controls wide">
+      <label for="timelineCorrelationId">CorrelationId</label>
+      <input id="timelineCorrelationId" type="text">
+      <label for="timelineLimit">Limit</label>
+      <input id="timelineLimit" type="number" min="1" value="50">
+      <label for="timelineOffset">Offset</label>
+      <input id="timelineOffset" type="number" min="0" value="0">
+      <button id="loadTimeline" class="primary">Load Timeline</button>
+      <button id="timelinePrev">Prev</button>
+      <button id="timelineNext">Next</button>
+    </div>
+    <pre id="timelineDetails" class="panel"></pre>
+  </section>
+
+  <section id="view-admin" class="view">
+    <h2>Admin</h2>
+    <div class="controls wide">
+      <label for="adminLimit">Limit</label>
+      <input id="adminLimit" type="number" min="1" value="50">
+      <label for="adminOffset">Offset</label>
+      <input id="adminOffset" type="number" min="0" value="0">
+      <button id="adminSectionFailures" class="primary">Failures</button>
+      <button id="adminSectionStuck">Stuck</button>
+      <button id="loadAdminFailures">Load Failures</button>
+      <button id="loadAdminStuck">Load Stuck</button>
+    </div>
+    <div id="adminFailuresPanel">
+      <h3>Recent Failures</h3>
+      <div class="table-wrap">
+        <table id="adminFailuresTable">
+          <thead>
+          <tr>
+            <th>Flow</th>
+            <th>ExecutionId</th>
+            <th>Correlation</th>
+            <th>Error</th>
+            <th>Failed At</th>
+            <th>Action</th>
+          </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <pre id="adminFailuresResult" class="panel"></pre>
+    </div>
+    <div id="adminStuckPanel" class="hidden">
+      <h3>Recent Stuck Executions</h3>
+      <div class="table-wrap">
+        <table id="adminStuckTable">
+          <thead>
+          <tr>
+            <th>Flow</th>
+            <th>ExecutionId</th>
+            <th>Correlation</th>
+            <th>Attempts</th>
+            <th>Last Error</th>
+            <th>Last Progress</th>
+            <th>Next Eligible</th>
+            <th>Action</th>
+          </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <pre id="adminResumeResult" class="panel"></pre>
+    </div>
+    <h3>Circuits</h3>
+    <div class="controls wide">
+      <label for="adminCircuitCapability">Capability</label>
+      <input id="adminCircuitCapability" type="text">
+      <label for="adminCircuitOperation">Operation</label>
+      <input id="adminCircuitOperation" type="text">
+      <label for="adminCircuitLimit">Limit</label>
+      <input id="adminCircuitLimit" type="number" min="1" value="50">
+      <label for="adminCircuitOffset">Offset</label>
+      <input id="adminCircuitOffset" type="number" min="0" value="0">
+      <button id="loadAdminCircuits">Load Circuits</button>
+    </div>
+    <pre id="adminCircuitsResult" class="panel"></pre>
+    <h3>Idempotency</h3>
+    <div class="controls wide">
+      <label for="adminIdempotencyKey">Key</label>
+      <input id="adminIdempotencyKey" type="text">
+      <label for="adminIdempotencyCapability">Capability</label>
+      <input id="adminIdempotencyCapability" type="text">
+      <label for="adminIdempotencyOperation">Operation</label>
+      <input id="adminIdempotencyOperation" type="text">
+      <button id="loadAdminIdempotency">Load Idempotency</button>
+    </div>
+    <pre id="adminIdempotencyResult" class="panel"></pre>
+  </section>
+
+  <footer id="buildInfoFooter" class="hint"></footer>
+</main>
+<script src="/npdev-ui/app.js"></script>
+</body>
+</html>

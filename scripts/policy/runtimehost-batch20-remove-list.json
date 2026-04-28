@@ -1,0 +1,15 @@
+{
+  "batch": "runtimehost-batch20",
+  "description": "Remove a small internal review/publication controller slice.",
+  "rationale": [
+    "Keep the slice small and thematic to reduce risk.",
+    "Controllers only, no service removals.",
+    "No supported-core removals."
+  ],
+  "files": [
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/ApprovalReadinessController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/PublicationReadinessController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/ReviewChecklistController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/ReviewDispositionWorkspaceController.java"
+  ]
+}

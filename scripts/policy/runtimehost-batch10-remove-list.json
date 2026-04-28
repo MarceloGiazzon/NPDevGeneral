@@ -1,0 +1,16 @@
+{
+  "batch": "runtimehost-batch10",
+  "description": "Fifth RuntimeHost reduction slice. Remove a small set of zero-reference internal advisory/read-only controllers focused on end-user readiness, recovery, and explanation support surfaces.",
+  "rationale": [
+    "Keep the slice small and thematic to reduce risk.",
+    "Controllers only, no service removals in this batch.",
+    "No supported-core removals; this remains inside the zero-reference internal-controller cleanup path."
+  ],
+  "files": [
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/EndUserLaunchChecklistController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/EndUserRealSystemOutcomeController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/ErrorRecoveryAssistantController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/FriendlyExplanationCatalogController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/HumanReadableAuditExportController.java"
+  ]
+}

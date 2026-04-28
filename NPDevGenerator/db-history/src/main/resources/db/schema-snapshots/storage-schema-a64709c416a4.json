@@ -1,0 +1,27 @@
+{
+  "modelVersion" : "compiled-model",
+  "tables" : [ {
+    "name" : "workitems",
+    "columns" : [ {
+      "name" : "id",
+      "sqlType" : "UUID",
+      "required" : true,
+      "unique" : true
+    }, {
+      "name" : "owner",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : false
+    }, {
+      "name" : "status",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : false
+    }, {
+      "name" : "title",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : false
+    } ]
+  } ]
+}

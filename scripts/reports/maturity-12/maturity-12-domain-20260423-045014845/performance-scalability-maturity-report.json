@@ -1,0 +1,187 @@
+{
+  "generatedAt": "2026-04-23T04:50:40.3961344-03:00",
+  "runId": "maturity-12-domain-20260423-045014845",
+  "scriptPath": "scripts\\maturity_adv\\check-10-performance-scalability-maturity.ps1",
+  "workspaceRoot": "D:\\WorkSpace\\NPDev_General",
+  "maturityItem": "performance-scalability-maturity",
+  "overallStatus": "failed",
+  "checks": [
+    {
+      "conditionId": "PSM-001",
+      "name": "PSM-001",
+      "status": "failed",
+      "conditionText": "Performance baseline established for: concept read, concept list, event query, audit query",
+      "expectation": "Performance baseline established for: concept read, concept list, event query, audit query",
+      "summary": "No explicit evidence was found for all required concept/event/audit baseline scenarios.",
+      "data": {
+        "hits": null
+      },
+      "checkedAt": "2026-04-23T04:50:40.3823223-03:00"
+    },
+    {
+      "conditionId": "PSM-002",
+      "name": "PSM-002",
+      "status": "failed",
+      "conditionText": "Regression test fails if query time >2x baseline",
+      "expectation": "Regression test fails if query time >2x baseline",
+      "summary": "No explicit regression-to-baseline comparison evidence was found.",
+      "data": {
+        "hits": null
+      },
+      "checkedAt": "2026-04-23T04:50:40.3833895-03:00"
+    },
+    {
+      "conditionId": "PSM-003",
+      "name": "PSM-003",
+      "status": "failed",
+      "conditionText": "Index usage validated with EXPLAIN ANALYZE in tests",
+      "expectation": "Index usage validated with EXPLAIN ANALYZE in tests",
+      "summary": "No EXPLAIN ANALYZE evidence was found in performance test sources.",
+      "data": {
+        "hits": null
+      },
+      "checkedAt": "2026-04-23T04:50:40.3841112-03:00"
+    },
+    {
+      "conditionId": "PSM-004",
+      "name": "PSM-004",
+      "status": "failed",
+      "conditionText": "Load test: 1000 concurrent concept operations, p95 latency <100ms",
+      "expectation": "Load test: 1000 concurrent concept operations, p95 latency <100ms",
+      "summary": "No explicit 1000-concurrent / p95 / 100ms evidence was found.",
+      "data": {
+        "hits": null
+      },
+      "checkedAt": "2026-04-23T04:50:40.3846978-03:00"
+    },
+    {
+      "conditionId": "PSM-005",
+      "name": "PSM-005",
+      "status": "failed",
+      "conditionText": "Performance report generated per release, stored in evidence bundle",
+      "expectation": "Performance report generated per release, stored in evidence bundle",
+      "summary": "The current release evidence bundle does not include performance-related files.",
+      "data": {
+        "releasePerformanceFiles": null
+      },
+      "checkedAt": "2026-04-23T04:50:40.3849321-03:00"
+    },
+    {
+      "conditionId": "PSM-006",
+      "name": "PSM-006",
+      "status": "failed",
+      "conditionText": "Throughput test: 10,000 events/second sustained for 1 minute",
+      "expectation": "Throughput test: 10,000 events/second sustained for 1 minute",
+      "summary": "No explicit 10,000 events/second target evidence was found for the event store.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevKernel\\adapters\\resume-bootstrap-spring\\src\\main\\java\\com\\npdev\\adapters\\resumebootstrap\\spring\\ResumeBootstrapRunner.java",
+            "lineNumber": 10,
+            "line": "* Startup-only recovery hook:"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\resume-bootstrap-spring\\src\\main\\java\\com\\npdev\\adapters\\resumebootstrap\\spring\\ResumeSchedulerRunner.java",
+            "lineNumber": 12,
+            "line": "* Continuous recovery loop:"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T04:50:40.3875860-03:00"
+    },
+    {
+      "conditionId": "PSM-007",
+      "name": "PSM-007",
+      "status": "failed",
+      "conditionText": "Latency test: p99 event write latency <10ms",
+      "expectation": "Latency test: p99 event write latency <10ms",
+      "summary": "No explicit p99 latency / 10ms target evidence was found for the event store.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevKernel\\adapters\\resume-bootstrap-spring\\src\\main\\java\\com\\npdev\\adapters\\resumebootstrap\\spring\\ResumeBootstrapRunner.java",
+            "lineNumber": 10,
+            "line": "* Startup-only recovery hook:"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\resume-bootstrap-spring\\src\\main\\java\\com\\npdev\\adapters\\resumebootstrap\\spring\\ResumeSchedulerRunner.java",
+            "lineNumber": 12,
+            "line": "* Continuous recovery loop:"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T04:50:40.3891405-03:00"
+    },
+    {
+      "conditionId": "PSM-008",
+      "name": "PSM-008",
+      "status": "passed",
+      "conditionText": "Recovery test: event store recovers from crash without data loss",
+      "expectation": "Recovery test: event store recovers from crash without data loss",
+      "summary": "Event store sources reference crash/recovery scenarios.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevKernel\\adapters\\resume-bootstrap-spring\\src\\main\\java\\com\\npdev\\adapters\\resumebootstrap\\spring\\ResumeBootstrapRunner.java",
+            "lineNumber": 10,
+            "line": "* Startup-only recovery hook:"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\resume-bootstrap-spring\\src\\main\\java\\com\\npdev\\adapters\\resumebootstrap\\spring\\ResumeSchedulerRunner.java",
+            "lineNumber": 12,
+            "line": "* Continuous recovery loop:"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T04:50:40.3907857-03:00"
+    },
+    {
+      "conditionId": "PSM-009",
+      "name": "PSM-009",
+      "status": "failed",
+      "conditionText": "Compaction test: old events archived without impacting active queries",
+      "expectation": "Compaction test: old events archived without impacting active queries",
+      "summary": "No explicit compaction/archive evidence was found for the event store.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevKernel\\adapters\\resume-bootstrap-spring\\src\\main\\java\\com\\npdev\\adapters\\resumebootstrap\\spring\\ResumeBootstrapRunner.java",
+            "lineNumber": 10,
+            "line": "* Startup-only recovery hook:"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\resume-bootstrap-spring\\src\\main\\java\\com\\npdev\\adapters\\resumebootstrap\\spring\\ResumeSchedulerRunner.java",
+            "lineNumber": 12,
+            "line": "* Continuous recovery loop:"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T04:50:40.3926722-03:00"
+    },
+    {
+      "conditionId": "PSM-010",
+      "name": "PSM-010",
+      "status": "passed",
+      "conditionText": "Performance report included in release evidence",
+      "expectation": "Performance report included in release evidence",
+      "summary": "Performance-related report files were found in current workspace or release evidence.",
+      "data": {
+        "workspaceReports": [
+          "performance-scalability-maturity-report.json"
+        ],
+        "releasePerformanceFiles": null
+      },
+      "checkedAt": "2026-04-23T04:50:40.3942653-03:00"
+    }
+  ],
+  "summary": {
+    "failed": 8,
+    "warnings": 0,
+    "passed": 2,
+    "total": 10
+  },
+  "extra": {
+    "perfIndexPresent": true,
+    "conditionCount": 10
+  }
+}

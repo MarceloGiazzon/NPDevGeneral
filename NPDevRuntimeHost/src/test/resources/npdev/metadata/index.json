@@ -1,0 +1,51 @@
+{
+  "metadataManifestVersion" : "1.0.0",
+  "metadataVersion" : "1.0.0",
+  "generatedFrom" : "npdev/compiled-metadata.json",
+  "catalogs" : [ {
+    "name" : "concepts",
+    "sourceCatalog" : "concepts",
+    "path" : "npdev/metadata/concepts.manifest.json",
+    "count" : 4
+  }, {
+    "name" : "procedures",
+    "sourceCatalog" : "procedures",
+    "path" : "npdev/metadata/procedures.manifest.json",
+    "count" : 0
+  }, {
+    "name" : "panels",
+    "sourceCatalog" : "panels",
+    "path" : "npdev/metadata/panels.manifest.json",
+    "count" : 0
+  }, {
+    "name" : "fields",
+    "sourceCatalog" : "fields",
+    "path" : "npdev/metadata/fields.manifest.json",
+    "count" : 36
+  }, {
+    "name" : "enums",
+    "sourceCatalog" : "enums",
+    "path" : "npdev/metadata/enums.manifest.json",
+    "count" : 9
+  }, {
+    "name" : "references",
+    "sourceCatalog" : "references",
+    "path" : "npdev/metadata/references.manifest.json",
+    "count" : 5
+  }, {
+    "name" : "actions",
+    "sourceCatalog" : "actions",
+    "path" : "npdev/metadata/actions.manifest.json",
+    "count" : 9
+  }, {
+    "name" : "layout",
+    "sourceCatalog" : "layout",
+    "path" : "npdev/metadata/layout.manifest.json",
+    "count" : 35
+  }, {
+    "name" : "validationHints",
+    "sourceCatalog" : "validation",
+    "path" : "npdev/metadata/validation-hints.manifest.json",
+    "count" : 34
+  } ]
+}

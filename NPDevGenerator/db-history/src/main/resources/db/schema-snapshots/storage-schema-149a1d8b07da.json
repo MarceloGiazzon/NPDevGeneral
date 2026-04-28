@@ -1,0 +1,32 @@
+{
+  "modelVersion" : "compiled-model",
+  "tables" : [ {
+    "name" : "expenserequests",
+    "columns" : [ {
+      "name" : "amount",
+      "sqlType" : "INTEGER",
+      "required" : true,
+      "unique" : false
+    }, {
+      "name" : "employee_email",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : false
+    }, {
+      "name" : "id",
+      "sqlType" : "UUID",
+      "required" : true,
+      "unique" : true
+    }, {
+      "name" : "needs_manager_approval",
+      "sqlType" : "BOOLEAN",
+      "required" : true,
+      "unique" : false
+    }, {
+      "name" : "status",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : false
+    } ]
+  } ]
+}

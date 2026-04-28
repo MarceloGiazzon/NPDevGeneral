@@ -1,0 +1,68 @@
+package {{dtoPackage}};
+
+import com.npdev.kernel.exec.ExecutionSummary;
+import com.npdev.kernel.execution.FlowInstance;
+
+public record ExecutionSummaryResponse(
+        String executionId,
+        String correlationId,
+        String flowName,
+        String status,
+        Integer currentStepIndex,
+        String waitingForEventName,
+        long updatedAtEpochMs,
+        Integer resumeAttemptCount,
+        Long lastResumeAtEpochMs,
+        String lastResumeErrorCode,
+        Long nextEligibleResumeAtEpochMs,
+        Long lastProgressAtEpochMs,
+        String lastErrorKind,
+        String lastErrorCode,
+        Long failedAtEpochMs
+) {
+    public static ExecutionSummaryResponse from(FlowInstance instance) {
+        if (instance == null) {
+            return null;
+        }
+        return new ExecutionSummaryResponse(
+                instance.executionId(),
+                instance.correlationId(),
+                instance.flowName(),
+                instance.status() == null ? null : instance.status().name(),
+                instance.currentStepIndex(),
+                instance.waitingForEventName(),
+                instance.updatedAtEpochMs(),
+                instance.resumeAttemptCount(),
+                instance.lastResumeAtEpochMs(),
+                instance.lastResumeErrorCode(),
+                instance.nextEligibleResumeAtEpochMs(),
+                instance.lastProgressAtEpochMs(),
+                instance.lastErrorKind(),
+                instance.lastErrorCode(),
+                instance.failedAtEpochMs()
+        );
+    }
+
+    public static ExecutionSummaryResponse from(ExecutionSummary summary) {
+        if (summary == null) {
+            return null;
+        }
+        return new ExecutionSummaryResponse(
+                summary.executionId(),
+                summary.correlationId(),
+                summary.flowName(),
+                summary.status(),
+                summary.currentStepIndex(),
+                summary.waitingForEventName(),
+                summary.updatedAtMs(),
+                summary.resumeAttemptCount(),
+                summary.lastResumeAtEpochMs(),
+                summary.lastResumeErrorCode(),
+                summary.nextEligibleResumeAtEpochMs(),
+                summary.lastProgressAtEpochMs(),
+                summary.lastErrorKind(),
+                summary.lastErrorCode(),
+                summary.failedAtEpochMs()
+        );
+    }
+}

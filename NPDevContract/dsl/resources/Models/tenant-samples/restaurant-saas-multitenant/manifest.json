@@ -1,0 +1,26 @@
+{
+  "id": "restaurant-saas-multitenant",
+  "title": "Restaurant SaaS Multi-Tenant",
+  "complexity": "tenant",
+  "mainFlow": "",
+  "purpose": "Tenant-oriented sample showing one generated restaurant app shared by multiple restaurants through explicit tenant references.",
+  "businessStory": "Pizza House, Sushi Bar, and Vegan Bistro share one generated app while tenant-owned concepts keep their data scoped by tenant reference fields.",
+  "features": [
+    "concept",
+    "reference",
+    "tenant",
+    "query",
+    "trace"
+  ],
+  "inputFiles": [],
+  "walkthrough": [
+    "Generate and run the sample app.",
+    "Populate the tenant seed data for the three restaurants.",
+    "Verify that tenant-shaped records remain distinguishable through tenant references and runtime evidence."
+  ],
+  "expectedOutcomes": [
+    "Tenant-shaped concepts are generated with explicit tenant references.",
+    "Seeded tenant data can be populated and verified.",
+    "The sample demonstrates modeled tenancy without over-claiming authenticated tenant isolation."
+  ]
+}

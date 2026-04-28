@@ -1,0 +1,16 @@
+{
+  "batch": "runtimehost-batch12",
+  "description": "Seventh RuntimeHost reduction slice. Remove a small set of zero-reference internal controllers focused on publication/recovery/advisory support surfaces.",
+  "rationale": [
+    "Keep the slice small and thematic to reduce risk.",
+    "Controllers only, no service removals in this batch.",
+    "No supported-core removals; this remains inside the zero-reference internal-controller cleanup path."
+  ],
+  "files": [
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/PublicationExplainabilityBundleController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/PublicationFailureRecoveryController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/RegulatoryAnnotationController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/ReliabilityPostureController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/RoleWorkspaceController.java"
+  ]
+}

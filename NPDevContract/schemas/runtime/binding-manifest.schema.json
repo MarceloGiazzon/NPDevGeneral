@@ -1,0 +1,25 @@
+﻿{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "$id":  "https://npdev.local/contracts/binding-manifest.schema.json",
+    "title":  "NPDev Runtime Binding Manifest",
+    "type":  "object",
+    "additionalProperties":  true,
+    "properties":  {
+                       "contractVersion":  {
+                                               "description":  "Runtime binding contract version.",
+                                               "type":  "string"
+                                           },
+                       "bindings":  {
+                                        "type":  "array",
+                                        "description":  "Concept, flow, plugin, and adapter bindings available at runtime.",
+                                        "items":  {
+                                                      "type":  "object",
+                                                      "additionalProperties":  true
+                                                  }
+                                    }
+                   },
+    "required":  [
+                     "contractVersion",
+                     "bindings"
+                 ]
+}

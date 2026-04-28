@@ -1,0 +1,28 @@
+package {{dtoPackage}};
+
+import com.npdev.kernel.capability.IdempotencyRecord;
+
+public record AdminIdempotencyResponse(
+        String tenantId,
+        String capabilityName,
+        String operationName,
+        String idempotencyKey,
+        String status,
+        long createdAtMs,
+        String errorCode
+) {
+    public static AdminIdempotencyResponse from(IdempotencyRecord record) {
+        if (record == null) {
+            return null;
+        }
+        return new AdminIdempotencyResponse(
+                record.tenantId(),
+                record.capabilityName(),
+                record.operationName(),
+                record.idempotencyKey(),
+                record.status(),
+                record.createdAtMs(),
+                record.errorCode()
+        );
+    }
+}

@@ -1,0 +1,25 @@
+﻿{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "$id":  "https://npdev.local/contracts/permission-manifest.schema.json",
+    "title":  "NPDev Permission Manifest",
+    "type":  "object",
+    "additionalProperties":  true,
+    "properties":  {
+                       "contractVersion":  {
+                                               "description":  "Permission manifest contract version.",
+                                               "type":  "string"
+                                           },
+                       "permissions":  {
+                                           "type":  "array",
+                                           "description":  "Generated permission entries derived from the current model.",
+                                           "items":  {
+                                                         "type":  "object",
+                                                         "additionalProperties":  true
+                                                     }
+                                       }
+                   },
+    "required":  [
+                     "contractVersion",
+                     "permissions"
+                 ]
+}

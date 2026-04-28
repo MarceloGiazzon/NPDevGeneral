@@ -1,0 +1,2776 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/npdev-model-1.0.0.schema.json",
+  "title": "NPDev DSL 1.0.0 Model",
+  "type": "object",
+  "required": [
+    "dslVersion",
+    "version"
+  ],
+  "allOf": [
+    {
+      "oneOf": [
+        {
+          "required": [
+            "namespace"
+          ]
+        },
+        {
+          "required": [
+            "model"
+          ]
+        }
+      ]
+    },
+    {
+      "required": [
+        "concepts"
+      ]
+    }
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "dslVersion": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "namespace": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+
+    "concepts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/concept"
+      }
+    },
+    "domainTypes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/domainType"
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/capability"
+      }
+    },
+    "customCapabilities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/capability"
+      }
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/binding"
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    },
+    "flows": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/flow"
+      }
+    },
+    "orchestrationRules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/orchestrationRule"
+      }
+    },
+    "orchestrations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/orchestrationRule"
+      }
+    },
+    "queries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/query"
+      }
+    },
+    "ruleProfiles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ruleProfile"
+      }
+    },
+    "procedures": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/procedure"
+      }
+    },
+    "panels": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/panel"
+      }
+    },
+    "metadata": {
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "concept": {
+      "type": "object",
+      "required": [
+        "name",
+        "fields"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "extends": {
+          "type": "string",
+          "minLength": 1
+        },
+        "specializes": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/field"
+          }
+        },
+        "invariants": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/invariant"
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/event"
+          }
+        },
+        "lifecycle": {
+          "$ref": "#/$defs/lifecycle"
+        },
+        "ui": {
+          "$ref": "#/$defs/presentationMetadata"
+        }
+      },
+      "additionalProperties": false
+    },
+    "lifecycle": {
+      "type": "object",
+      "required": [
+        "transitions"
+      ],
+      "properties": {
+        "statusField": {
+          "type": "string",
+          "minLength": 1
+        },
+        "states": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/lifecycleState"
+          }
+        },
+        "transitions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/lifecycleTransition"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "lifecycleState": {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "initial": {
+          "type": "boolean"
+        },
+        "terminal": {
+          "type": "boolean"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "lifecycleTransition": {
+      "type": "object",
+      "required": [
+        "from",
+        "to"
+      ],
+      "properties": {
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1
+        },
+        "event": {
+          "type": "string",
+          "minLength": 1
+        },
+        "guard": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actionLabel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "$ref": "#/$defs/actionMetadata"
+        },
+        "requiredPayload": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "requires": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "field": {
+      "type": "object",
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "uuid",
+            "int",
+            "integer",
+            "long",
+            "boolean",
+            "date",
+            "datetime",
+            "enum",
+            "reference",
+            "object",
+            "array"
+          ]
+        },
+        "id": {
+          "type": "boolean",
+          "default": false
+        },
+        "required": {
+          "oneOf": [
+            {
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          ]
+        },
+        "unique": {
+          "type": "boolean",
+          "default": false
+        },
+        "enumValues": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "$ref": "#/$defs/enumOption"
+              }
+            ]
+          }
+        },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "$ref": "#/$defs/enumOption"
+              }
+            ]
+          }
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reference": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "$ref": "#/$defs/referenceDefinition"
+            }
+          ]
+        },
+        "domainType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "default": {},
+        "defaultExpression": {
+          "type": "string",
+          "minLength": 1
+        },
+        "derivedExpression": {
+          "type": "string",
+          "minLength": 1
+        },
+        "minLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minItems": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxItems": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "uniqueItems": {
+          "type": "boolean"
+        },
+        "itemIdentityField": {
+          "type": "string",
+          "minLength": 1
+        },
+        "duplicationPolicy": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "deny"
+          ]
+        },
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/schemaObject"
+          }
+        },
+        "items": {
+          "$ref": "#/$defs/schemaObject"
+        },
+        "ui": {
+          "$ref": "#/$defs/uiField"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "enum"
+              }
+            }
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "enumValues"
+                ]
+              },
+              {
+                "required": [
+                  "values"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "object"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "properties"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "array"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "items"
+            ],
+            "properties": {
+              "items": {
+                "properties": {
+                  "type": {
+                    "const": "object"
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "reference"
+              }
+            }
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "ref"
+                ]
+              },
+              {
+                "required": [
+                  "reference"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "domainType": {
+      "type": "object",
+      "required": [
+        "name",
+        "baseType"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseType": {
+          "type": "string",
+          "enum": [
+            "string",
+            "uuid",
+            "int",
+            "integer",
+            "long",
+            "boolean",
+            "date",
+            "datetime"
+          ]
+        },
+        "validation": {
+          "$ref": "#/$defs/schemaObject"
+        },
+        "normalization": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "format": {
+          "type": "string",
+          "minLength": 1
+        },
+        "examples": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "ui": {
+          "$ref": "#/$defs/uiField"
+        }
+      },
+      "additionalProperties": false
+    },
+    "enumOption": {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "displayLabel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "group": {
+          "type": "string",
+          "minLength": 1
+        },
+        "default": {
+          "type": "boolean"
+        },
+        "deprecated": {
+          "type": "boolean"
+        },
+        "icon": {
+          "type": "string",
+          "minLength": 1
+        },
+        "iconHint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "badge": {
+          "type": "string",
+          "minLength": 1
+        },
+        "badgeHint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "help": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "referenceDefinition": {
+      "type": "object",
+      "required": [
+        "target"
+      ],
+      "properties": {
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "multiple": {
+          "type": "boolean"
+        },
+        "displayField": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lookupFields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "searchFields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "previewFields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "displayTemplate": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pickerColumns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "previewCardTemplate": {
+          "type": "string",
+          "minLength": 1
+        },
+        "defaultFilter": {
+          "type": "string",
+          "minLength": 1
+        },
+        "defaultFilterBehavior": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inlineCreate": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "deny"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "presentationMetadata": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "shortLabel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "placeholder": {
+          "type": "string",
+          "minLength": 1
+        },
+        "helpText": {
+          "type": "string",
+          "minLength": 1
+        },
+        "order": {
+          "type": "integer"
+        },
+        "widget": {
+          "type": "string",
+          "minLength": 1
+        },
+        "group": {
+          "type": "string",
+          "minLength": 1
+        },
+        "section": {
+          "type": "string",
+          "minLength": 1
+        },
+        "advanced": {
+          "type": "boolean"
+        },
+        "deprecated": {
+          "type": "boolean"
+        },
+        "examples": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "visibleWhen": {
+          "type": "string",
+          "minLength": 1
+        },
+        "enabledWhen": {
+          "type": "string",
+          "minLength": 1
+        },
+        "readonlyWhen": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requiredWhen": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pickerType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "allowInlineCreate": {
+          "type": "boolean"
+        },
+        "searchFields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "filterPreset": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tab": {
+          "type": "string",
+          "minLength": 1
+        },
+        "column": {
+          "type": "integer"
+        },
+        "columnSpan": {
+          "type": "integer"
+        },
+        "width": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summaryCard": {
+          "type": "boolean"
+        },
+        "listColumn": {
+          "type": "boolean"
+        },
+        "listColumnOrder": {
+          "type": "integer"
+        },
+        "formColumns": {
+          "type": "integer"
+        },
+        "displayMode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "defaultSort": {
+          "type": "string",
+          "minLength": 1
+        },
+        "defaultGroup": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "uiField": {
+      "$ref": "#/$defs/presentationMetadata"
+    },
+    "actionMetadata": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "confirmationText": {
+          "type": "string",
+          "minLength": 1
+        },
+        "successMessage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failureHint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dangerLevel": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "visibleWhen": {
+          "type": "string",
+          "minLength": 1
+        },
+        "permissionHint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputFormHint": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "invariant": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "unique",
+            "expression"
+          ]
+        },
+        "specializes": {
+          "type": "string",
+          "minLength": 1
+        },
+        "override": {
+          "type": "boolean"
+        },
+        "rule": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expr": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expression": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "required": [
+            "rule"
+          ]
+        },
+        {
+          "required": [
+            "expr"
+          ]
+        },
+        {
+          "required": [
+            "expression"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "capability": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "specializes": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "$ref": "#/$defs/capabilityOperation"
+              }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "capabilityOperation": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input": {
+          "oneOf": [
+
+            {
+              "$ref": "#/$defs/capabilityContractSchemaRef"
+            },
+            {
+              "$ref": "#/$defs/schemaObject"
+            }
+          ]
+        },
+        "output": {
+          "oneOf": [
+
+            {
+              "$ref": "#/$defs/capabilityContractSchemaRef"
+            },
+            {
+              "$ref": "#/$defs/schemaObject"
+            }
+          ]
+        },
+        "policy": {
+          "$ref": "#/$defs/capabilityPolicy"
+        }
+      },
+      "additionalProperties": false
+    },
+    "capabilityContractSchemaRef": {
+      "type": "object",
+      "properties": {
+        "schemaRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "conceptRef": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "schemaRef"
+          ]
+        },
+        {
+          "required": [
+            "conceptRef"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "event": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "specializes": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payloadSchemaRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "$ref": "#/$defs/eventPayloadField"
+              }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "eventPayloadField": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "uuid",
+            "int",
+            "integer",
+            "long",
+            "boolean",
+            "date",
+            "datetime"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "binding": {
+      "type": "object",
+      "required": [
+        "capability",
+        "adapter"
+      ],
+      "properties": {
+        "capability": {
+          "type": "string",
+          "minLength": 1
+        },
+        "adapter": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "flow": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "concept": {
+          "type": "string",
+          "minLength": 1
+        },
+        "specializes": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input": {
+          "$ref": "#/$defs/flowInput"
+        },
+        "inputSchema": {
+          "$ref": "#/$defs/schemaObject"
+        },
+        "outputSchema": {
+          "$ref": "#/$defs/schemaObject"
+        },
+        "action": {
+          "$ref": "#/$defs/actionMetadata"
+        },
+        "hooks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/flowHook"
+          }
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/flowStep"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "specializes"
+            ]
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "hooks"
+                ]
+              },
+              {
+                "required": [
+                  "steps"
+                ]
+              }
+            ]
+          },
+          "else": {
+            "required": [
+              "steps"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "input"
+            ]
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "specializes"
+                ]
+              },
+              {
+                "required": [
+                  "steps"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "orchestrationRule": {
+      "type": "object",
+      "required": [
+        "name",
+        "trigger"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "condition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trigger": {
+          "$ref": "#/$defs/orchestrationTrigger"
+        },
+        "action": {
+          "$ref": "#/$defs/orchestrationAction"
+        },
+        "actions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/orchestrationAction"
+          }
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "required": [
+            "actions"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "orchestrationTrigger": {
+      "type": "object",
+      "required": [
+        "type",
+        "event"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "event"
+          ]
+        },
+        "event": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "orchestrationAction": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "create",
+            "callCapability",
+            "scheduleEvent"
+          ]
+        },
+        "concept": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetConcept": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capability": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capabilityName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op": {
+          "type": "string",
+          "minLength": 1
+        },
+        "event": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "delaySeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "delayMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "delayMinutes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "action": {
+          "$ref": "#/$defs/actionMetadata"
+        },
+        "map": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "fieldMap": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "map"
+          ]
+        },
+        {
+          "required": [
+            "fieldMap"
+          ]
+        }
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "create"
+              }
+            }
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "concept"
+                ]
+              },
+              {
+                "required": [
+                  "targetConcept"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "callCapability"
+              }
+            }
+          },
+          "then": {
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "capability"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "capabilityName"
+                    ]
+                  }
+                ]
+              },
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "operation"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "op"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "scheduleEvent"
+              }
+            }
+          },
+          "then": {
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "event"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "eventName"
+                    ]
+                  }
+                ]
+              },
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "delaySeconds"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "delayMs"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "delayMinutes"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "flowHook": {
+      "type": "object",
+      "required": [
+        "steps"
+      ],
+      "properties": {
+        "position": {
+          "type": "string",
+          "enum": [
+            "before",
+            "after"
+          ]
+        },
+        "at": {
+          "type": "string",
+          "enum": [
+            "before",
+            "after"
+          ]
+        },
+        "targetStep": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/flowStep"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "anyOf": [
+            {
+              "required": [
+                "position"
+              ]
+            },
+            {
+              "required": [
+                "at"
+              ]
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "required": [
+                "targetStep"
+              ]
+            },
+            {
+              "required": [
+                "target"
+              ]
+            }
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "flowStep": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "validate",
+            "invariant",
+            "enforceInvariants",
+            "capability",
+            "capabilityCall",
+            "callCapability",
+            "event",
+            "emitEvent",
+            "scheduleEvent",
+            "return",
+            "branch",
+            "if",
+            "await",
+            "awaitEvent",
+            "waitForEvent",
+            "createConcept",
+            "updateConcept",
+            "assign",
+            "evaluateInvariant"
+          ]
+        },
+        "checkpoint": {
+          "type": "string",
+          "enum": [
+            "pre",
+            "post"
+          ]
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "pre",
+            "post"
+          ]
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "invariants": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "capability": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cap": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input": {
+          "type": "string",
+          "minLength": 1
+        },
+        "output": {
+          "type": "string",
+          "minLength": 1
+        },
+        "out": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "policy": {
+          "$ref": "#/$defs/capabilityPolicy"
+        },
+        "event": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "type": "string",
+          "minLength": 1
+        },
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "condition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "$ref": "#/$defs/actionMetadata"
+        },
+        "then": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/flowStep"
+          }
+        },
+        "else": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/flowStep"
+          }
+        },
+        "awaitEvent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "awaitRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "as": {
+          "type": "string",
+          "minLength": 1
+        },
+        "match": {
+          "$ref": "#/$defs/awaitMatch"
+        },
+        "delaySeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "delayMinutes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "delayMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "validate",
+                  "invariant",
+                  "enforceInvariants"
+                ]
+              }
+            }
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "invariants"
+                ]
+              },
+              {
+                "required": [
+                  "scope"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "capability",
+                  "capabilityCall",
+                  "callCapability"
+                ]
+              }
+            }
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "capability",
+                  "operation"
+                ]
+              },
+              {
+                "required": [
+                  "cap",
+                  "op"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "event",
+                  "emitEvent",
+                  "scheduleEvent"
+                ]
+              }
+            }
+          },
+          "then": {
+            "allOf": [
+              {
+                "required": [
+                  "event"
+                ]
+              },
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "payload"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "from"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "data"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "branch",
+                  "if"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "condition",
+              "then"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "scheduleEvent"
+              }
+            }
+          },
+          "then": {
+            "allOf": [
+              {
+                "required": [
+                  "event"
+                ]
+              },
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "payload"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "from"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "data"
+                    ]
+                  }
+                ]
+              },
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "delaySeconds"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "delayMinutes"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "delayMs"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "await",
+                  "awaitEvent",
+                  "waitForEvent"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "awaitEvent"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "return"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "flowInput": {
+      "type": "object",
+      "required": [
+        "concept"
+      ],
+      "properties": {
+        "concept": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "create",
+            "update",
+            "delete",
+            "query"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "query": {
+      "type": "object",
+      "required": [
+        "name",
+        "concept"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "concept": {
+          "type": "string",
+          "minLength": 1
+        },
+        "where": {
+          "type": "string",
+          "minLength": 1
+        },
+        "orderBy": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/procedureParameter"
+          }
+        },
+        "permissionRequirements": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "tracePolicy": {
+          "type": "string",
+          "enum": [
+            "none",
+            "summary",
+            "detailed"
+          ]
+        },
+        "auditPolicy": {
+          "type": "string",
+          "enum": [
+            "none",
+            "read",
+            "write"
+          ]
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ruleProfile": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": [
+            "always",
+            "interactive",
+            "interactiveOnly",
+            "headless",
+            "headlessOnly",
+            "beforeCommit",
+            "afterCommit",
+            "query"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "appliesTo": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "procedure": {
+      "type": "object",
+      "required": [
+        "name",
+        "steps"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/procedureParameter"
+          }
+        },
+        "locals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/procedureVariable"
+          }
+        },
+        "variables": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/procedureVariable"
+          }
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/procedureStep"
+          }
+        },
+        "returns": {
+          "$ref": "#/$defs/schemaObject"
+        },
+        "permissionRequirements": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "tracePolicy": {
+          "type": "string",
+          "enum": [
+            "none",
+            "summary",
+            "detailed"
+          ]
+        },
+        "auditPolicy": {
+          "type": "string",
+          "enum": [
+            "none",
+            "read",
+            "write"
+          ]
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "procedureParameter": {
+      "type": "object",
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "schema": {
+          "$ref": "#/$defs/schemaObject"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "procedureVariable": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schema": {
+          "$ref": "#/$defs/schemaObject"
+        },
+        "initialValue": {}
+      },
+      "additionalProperties": false
+    },
+    "procedureStep": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "assign",
+            "mapValue",
+            "condition",
+            "if",
+            "loop",
+            "forEach",
+            "conceptQuery",
+            "readConcept",
+            "listConcepts",
+            "runQuery",
+            "conceptCreate",
+            "conceptUpdate",
+            "saveConcept",
+            "conceptDelete",
+            "deleteConcept",
+            "procedureCall",
+            "callProcedure",
+            "capabilityCall",
+            "callCapability",
+            "eventPublish",
+            "publishEvent",
+            "return"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {},
+        "condition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "as": {
+          "type": "string",
+          "minLength": 1
+        },
+        "concept": {
+          "type": "string",
+          "minLength": 1
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "data": {
+          "type": "object"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "procedure": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capability": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "event": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "object"
+        },
+        "then": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/procedureStep"
+          }
+        },
+        "else": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/procedureStep"
+          }
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/procedureStep"
+          }
+        },
+        "trace": {
+          "type": "boolean"
+        },
+        "audit": {
+          "type": "boolean"
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "panel": {
+      "type": "object",
+      "required": [
+        "name",
+        "route"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "route": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dataSources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/panelDataSource"
+          }
+        },
+        "layout": {
+          "$ref": "#/$defs/panelLayout"
+        },
+        "fieldBindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/panelFieldBinding"
+          }
+        },
+        "visibility": {
+          "type": "string",
+          "minLength": 1
+        },
+        "enabledWhen": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/panelAction"
+          }
+        },
+        "explainability": {
+          "type": "object"
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "panelDataSource": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "concept": {
+          "type": "string",
+          "minLength": 1
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "procedure": {
+          "type": "string",
+          "minLength": 1
+        },
+        "params": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "panelLayout": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "form",
+            "table",
+            "detail",
+            "dashboard",
+            "stack",
+            "grid"
+          ]
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/panelLayout"
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "panelFieldBinding": {
+      "type": "object",
+      "required": [
+        "field"
+      ],
+      "properties": {
+        "field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "visibleWhen": {
+          "type": "string",
+          "minLength": 1
+        },
+        "enabledWhen": {
+          "type": "string",
+          "minLength": 1
+        },
+        "readonlyWhen": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ui": {
+          "$ref": "#/$defs/presentationMetadata"
+        }
+      },
+      "additionalProperties": false
+    },
+    "panelAction": {
+      "type": "object",
+      "required": [
+        "name",
+        "binding"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "binding": {
+          "type": "string",
+          "enum": [
+            "conceptQuery",
+            "conceptMutation",
+            "procedure",
+            "flow"
+          ]
+        },
+        "concept": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "query",
+            "create",
+            "update",
+            "delete"
+          ]
+        },
+        "procedure": {
+          "type": "string",
+          "minLength": 1
+        },
+        "flow": {
+          "type": "string",
+          "minLength": 1
+        },
+        "visibleWhen": {
+          "type": "string",
+          "minLength": 1
+        },
+        "enabledWhen": {
+          "type": "string",
+          "minLength": 1
+        },
+        "permissionRequirements": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "explainability": {
+          "type": "object"
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "schemaObject": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "object",
+            "array",
+            "string",
+            "uuid",
+            "int",
+            "integer",
+            "long",
+            "boolean",
+            "date",
+            "datetime",
+            "enum",
+            "reference"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "minLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minItems": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxItems": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "uniqueItems": {
+          "type": "boolean"
+        },
+        "itemIdentityField": {
+          "type": "string",
+          "minLength": 1
+        },
+        "duplicationPolicy": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "deny"
+          ]
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "regex": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pattern": {
+          "type": "string",
+          "minLength": 1
+        },
+        "enumValues": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "enum": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/schemaObject"
+          }
+        },
+        "items": {
+          "$ref": "#/$defs/schemaObject"
+        },
+        "default": {},
+        "defaultExpression": {
+          "type": "string",
+          "minLength": 1
+        },
+        "derivedExpression": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "array"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "items"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "object"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "properties"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "enumValues"
+            ]
+          },
+          "then": {
+            "properties": {
+              "type": {
+                "const": "enum"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "values"
+            ]
+          },
+          "then": {
+            "properties": {
+              "type": {
+                "const": "enum"
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "awaitMatch": {
+      "type": "object",
+      "properties": {
+        "correlation": {
+          "type": "boolean"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "capabilityPolicy": {
+      "type": "object",
+      "properties": {
+        "retryCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "retryDelayMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "circuitOpenAfterFailures": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "circuitOpenMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bulkheadMaxConcurrent": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "idempotencyKeyField": {
+          "type": "string",
+          "minLength": 1
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failureClassification": {
+          "type": "string",
+          "enum": [
+            "TRANSIENT",
+            "PERMANENT",
+            "CONTRACT",
+            "transient",
+            "permanent",
+            "contract"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
+
+
+

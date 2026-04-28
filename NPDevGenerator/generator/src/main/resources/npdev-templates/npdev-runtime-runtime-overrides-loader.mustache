@@ -1,0 +1,52 @@
+package {{configPackage}};
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.kernel.capabilities.RuntimeOverridesManifest;
+
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+public final class GeneratedRuntimeOverridesLoader {
+
+    private GeneratedRuntimeOverridesLoader() {
+    }
+
+    public static RuntimeOverridesManifest load(ObjectMapper objectMapper) {
+        try (InputStream inputStream = GeneratedRuntimeOverridesLoader.class.getClassLoader()
+                .getResourceAsStream("npdev/runtime/dev.runtime.json")) {
+            if (inputStream == null) {
+                return RuntimeOverridesManifest.empty();
+            }
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> json = objectMapper.readValue(inputStream, Map.class);
+            Object overridesNode = json.get("capabilityOverrides");
+            if (!(overridesNode instanceof List<?> rawOverrides)) {
+                return RuntimeOverridesManifest.empty();
+            }
+
+            List<RuntimeOverridesManifest.CapabilityOverride> overrides = new ArrayList<>();
+            for (Object rawOverride : rawOverrides) {
+                if (!(rawOverride instanceof Map<?, ?> overrideMap)) {
+                    continue;
+                }
+                overrides.add(new RuntimeOverridesManifest.CapabilityOverride(
+                        asString(overrideMap.get("capability")),
+                        asString(overrideMap.get("capabilityType")),
+                        asString(overrideMap.get("tenantId")),
+                        asString(overrideMap.get("environment")),
+                        asString(overrideMap.get("useAdapterId"))
+                ));
+            }
+            return new RuntimeOverridesManifest(overrides);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Unable to load generated runtime overrides manifest", exception);
+        }
+    }
+
+    private static String asString(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+}

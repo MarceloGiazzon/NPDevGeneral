@@ -1,0 +1,12 @@
+{
+  "version": "1.0",
+  "determinism": {
+    "requiredReport": "scripts\\reports\\out\\deterministic-generation-report.json",
+    "requiredSampleId": "simple-contact-intake"
+  },
+  "migrationRisk": {
+    "canonicalRelativePath": "src\\main\\resources\\npdev\\support\\migration-risk-report.json",
+    "baselineFileName": "model-diff-baseline.json"
+  },
+  "exclusions": []
+}

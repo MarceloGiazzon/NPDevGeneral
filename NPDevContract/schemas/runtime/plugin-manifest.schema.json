@@ -1,0 +1,38 @@
+﻿{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "$id":  "https://npdev.local/contracts/plugin-manifest.schema.json",
+    "title":  "NPDev Plugin Manifest",
+    "type":  "object",
+    "additionalProperties":  true,
+    "properties":  {
+                       "contractVersion":  {
+                                               "description":  "Plugin manifest contract version.",
+                                               "type":  "string"
+                                           },
+                       "pluginId":  {
+                                        "description":  "Stable plugin identifier.",
+                                        "type":  "string"
+                                    },
+                       "capabilities":  {
+                                            "type":  "array",
+                                            "description":  "Capabilities exposed by the plugin to a generated app.",
+                                            "items":  {
+                                                          "type":  "object",
+                                                          "additionalProperties":  true
+                                                      }
+                                        },
+                       "permissions":  {
+                                           "type":  "array",
+                                           "description":  "Permissions requested by the plugin.",
+                                           "items":  {
+                                                         "type":  "object",
+                                                         "additionalProperties":  true
+                                                     }
+                                       }
+                   },
+    "required":  [
+                     "contractVersion",
+                     "pluginId",
+                     "capabilities"
+                 ]
+}

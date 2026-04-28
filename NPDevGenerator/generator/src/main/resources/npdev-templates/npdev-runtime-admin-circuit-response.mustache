@@ -1,0 +1,32 @@
+package {{dtoPackage}};
+
+import com.npdev.kernel.capability.CircuitBreakerStateSummary;
+
+public record AdminCircuitResponse(
+        String tenantId,
+        String capabilityName,
+        String operationName,
+        String state,
+        int consecutiveFailures,
+        long openedAtMs,
+        long lastFailureAtMs,
+        long halfOpenAllowedAtMs,
+        int halfOpenTrialCount
+) {
+    public static AdminCircuitResponse from(CircuitBreakerStateSummary summary) {
+        if (summary == null) {
+            return null;
+        }
+        return new AdminCircuitResponse(
+                summary.tenantId(),
+                summary.capabilityName(),
+                summary.operationName(),
+                summary.state() == null ? null : summary.state().name(),
+                summary.consecutiveFailures(),
+                summary.openedAtMs(),
+                summary.lastFailureAtMs(),
+                summary.halfOpenAllowedAtMs(),
+                summary.halfOpenTrialCount()
+        );
+    }
+}

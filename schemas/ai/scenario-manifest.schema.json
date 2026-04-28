@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/scenario-manifest.schema.json",
+  "title": "NPDev AI Scenario Manifest",
+  "type": "object",
+  "required": ["schemaVersion", "scenarioId", "kind", "files", "runtime", "expectedOutcome"],
+  "properties": {
+    "schemaVersion": { "const": "ai-scenario.v1" },
+    "scenarioId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "kind": { "type": "string" },
+    "files": {
+      "type": "object",
+      "required": ["model", "config", "expectedBehavior"],
+      "properties": {
+        "model": { "type": "string" },
+        "config": { "type": "string" },
+        "expectedBehavior": { "type": "string" },
+        "customProcedure": { "type": "string" },
+        "expectedProcedureBehavior": { "type": "string" },
+        "customPanel": { "type": "string" },
+        "expectedPanelBehavior": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "runtime": {
+      "type": "object",
+      "required": ["strictExecution", "surfaceProfile"],
+      "properties": {
+        "strictExecution": { "const": true },
+        "surfaceProfile": { "const": "supported-core" }
+      },
+      "additionalProperties": true
+    },
+    "requestedSurfaces": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": ["supported-core"]
+    },
+    "operations": {
+      "type": "array",
+      "items": { "type": "object" },
+      "default": []
+    },
+    "expectedOutcome": {
+      "type": "object",
+      "required": ["class"],
+      "properties": {
+        "class": { "type": "string" },
+        "mustPass": { "type": "boolean", "default": true }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

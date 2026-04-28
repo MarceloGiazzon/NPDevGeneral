@@ -1,0 +1,41 @@
+package {{dtoPackage}};
+
+import com.npdev.kernel.trace.FlowTrace;
+import com.npdev.kernel.trace.TraceSummary;
+
+public record TraceSummaryResponse(
+        String executionId,
+        String correlationId,
+        String flowName,
+        String outcome,
+        long startedAtEpochMs,
+        long endedAtEpochMs
+) {
+    public static TraceSummaryResponse from(FlowTrace trace) {
+        if (trace == null || trace.meta() == null) {
+            return null;
+        }
+        return new TraceSummaryResponse(
+                trace.meta().executionId(),
+                trace.meta().correlationId(),
+                trace.meta().flowName(),
+                trace.outcome() == null ? null : trace.outcome().name(),
+                trace.startedAtEpochMs(),
+                trace.endedAtEpochMs()
+        );
+    }
+
+    public static TraceSummaryResponse from(TraceSummary summary) {
+        if (summary == null) {
+            return null;
+        }
+        return new TraceSummaryResponse(
+                summary.executionId(),
+                summary.correlationId(),
+                summary.flowName(),
+                summary.outcome(),
+                summary.startedAtMs(),
+                summary.endedAtMs()
+        );
+    }
+}

@@ -1,0 +1,24 @@
+package {{dtoPackage}};
+
+import {{servicePackage}}.KernelFacade;
+
+import java.util.List;
+
+public record CorrelationTimelineResponse(
+        String correlationId,
+        List<ExecutionSummaryResponse> executions,
+        List<EventMetaSummaryResponse> events,
+        List<String> traceExecutionIds
+) {
+    public static CorrelationTimelineResponse from(KernelFacade.CorrelationTimeline timeline) {
+        if (timeline == null) {
+            return new CorrelationTimelineResponse(null, List.of(), List.of(), List.of());
+        }
+        return new CorrelationTimelineResponse(
+                timeline.correlationId(),
+                timeline.executions().stream().map(ExecutionSummaryResponse::from).toList(),
+                timeline.events().stream().map(EventMetaSummaryResponse::from).toList(),
+                timeline.traceExecutionIds()
+        );
+    }
+}

@@ -1,0 +1,191 @@
+{
+  "$schema": "../../schemas/authoring/model.schema.json",
+  "dslVersion": "1.0.0",
+  "namespace": "examples.ai.workitems",
+  "version": "1.0.0",
+  "metadata": {
+    "purpose": "Domain-neutral AI authoring bundle with governed concepts, procedures, and panels."
+  },
+  "concepts": [
+    {
+      "name": "WorkItem",
+      "ui": {
+        "label": "Work item",
+        "group": "Operations",
+        "order": 10
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Title",
+            "listColumn": true,
+            "summaryCard": true
+          }
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "enumValues": [
+            "Draft",
+            "Ready",
+            "Done"
+          ],
+          "required": true,
+          "default": "Draft",
+          "ui": {
+            "label": "Status",
+            "listColumn": true
+          }
+        },
+        {
+          "name": "owner",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Owner"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "WorkItemTitleRequired",
+          "expr": "title != null && title != ''"
+        }
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "notification",
+      "type": "NotificationCapability",
+      "operations": [
+        "send"
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "notification",
+      "adapter": "notification-inproc"
+    }
+  ],
+  "queries": [
+    {
+      "name": "ReadyWorkItems",
+      "concept": "WorkItem",
+      "where": "status == 'Ready'",
+      "orderBy": [
+        "title"
+      ],
+      "tracePolicy": "summary"
+    }
+  ],
+  "ruleProfiles": [
+    {
+      "name": "always",
+      "description": "Shared WorkItem invariant and permission profile for AI-authored bundles.",
+      "appliesTo": [
+        "WorkItem"
+      ],
+      "enabled": true,
+      "metadata": {
+        "invariants": [
+          "WorkItemTitleRequired"
+        ],
+        "permissions": [
+          "concept.read",
+          "concept.write"
+        ]
+      }
+    }
+  ],
+  "procedures": [
+    {
+      "name": "MarkWorkItemReady",
+      "description": "Sets a work item to Ready through governed concept access.",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true
+        }
+      ],
+      "steps": [
+        {
+          "name": "load-work-item",
+          "type": "readConcept",
+          "concept": "WorkItem",
+          "id": "$parameters.id",
+          "target": "workItem"
+        },
+        {
+          "name": "save-ready-work-item",
+          "type": "saveConcept",
+          "concept": "WorkItem",
+          "id": "$parameters.id",
+          "data": {
+            "input": "$workItem"
+          },
+          "target": "savedWorkItem"
+        },
+        {
+          "name": "return-saved-work-item",
+          "type": "return",
+          "value": "$savedWorkItem"
+        }
+      ]
+    }
+  ],
+  "panels": [
+    {
+      "name": "WorkItemPanel",
+      "route": "/work-items",
+      "title": "Ready work items",
+      "dataSources": [
+        {
+          "name": "readyItems",
+          "query": "ReadyWorkItems"
+        }
+      ],
+      "layout": {
+        "type": "table",
+        "fields": [
+          "title",
+          "status",
+          "owner"
+        ]
+      },
+      "fieldBindings": [
+        {
+          "field": "title",
+          "source": "readyItems.title"
+        },
+        {
+          "field": "status",
+          "source": "readyItems.status"
+        },
+        {
+          "field": "owner",
+          "source": "readyItems.owner"
+        }
+      ],
+      "actions": [
+        {
+          "name": "MarkReady",
+          "binding": "procedure",
+          "procedure": "MarkWorkItemReady",
+          "label": "Mark ready"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,91 @@
+{
+  "generatedAt": "2026-04-23T05:49:08.6043622-03:00",
+  "runId": "maturity-adv-20260423-054907433",
+  "scriptPath": "scripts\\maturity_adv\\run-maturity-adv-suite.ps1",
+  "workspaceRoot": "D:\\WorkSpace\\NPDev_General",
+  "overallStatus": "passed",
+  "narrative": "All maturity dimensions, including the reporting controls themselves, currently satisfy the scripted expectations.",
+  "summary": {
+    "failed": 0,
+    "warnings": 0,
+    "passed": 5,
+    "total": 5
+  },
+  "conditionSummary": {
+    "failed": 0.0,
+    "warnings": 0.0,
+    "passed": 32.0,
+    "total": 32.0
+  },
+  "dimensions": [
+    {
+      "id": "architecture",
+      "reportPath": "scripts\\reports\\out\\architecture-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 6,
+        "total": 6
+      },
+      "generatedAt": "2026-04-23T05:49:07.6411234-03:00",
+      "runId": "maturity-adv-20260423-054907433"
+    },
+    {
+      "id": "engineering-process-release-discipline",
+      "reportPath": "scripts\\reports\\out\\engineering-process-release-discipline-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 6,
+        "total": 6
+      },
+      "generatedAt": "2026-04-23T05:49:07.7460557-03:00",
+      "runId": "maturity-adv-20260423-054907433"
+    },
+    {
+      "id": "frontend-authoring-surface",
+      "reportPath": "scripts\\reports\\out\\frontend-authoring-surface-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 7,
+        "total": 7
+      },
+      "generatedAt": "2026-04-23T05:49:07.9817843-03:00",
+      "runId": "maturity-adv-20260423-054907433"
+    },
+    {
+      "id": "integrated-runtime-package-self-sufficiency",
+      "reportPath": "scripts\\reports\\out\\integrated-runtime-package-self-sufficiency-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 6,
+        "total": 6
+      },
+      "generatedAt": "2026-04-23T05:49:08.4666626-03:00",
+      "runId": "maturity-adv-20260423-054907433"
+    },
+    {
+      "id": "single-source-maturity-reporting",
+      "reportPath": "scripts\\reports\\out\\single-source-maturity-reporting-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 7,
+        "total": 7
+      },
+      "generatedAt": "2026-04-23T05:49:08.5978314-03:00",
+      "runId": "maturity-adv-20260423-054907433"
+    }
+  ],
+  "archiveRoot": "scripts\\reports\\maturity\\maturity-adv-20260423-054907433",
+  "waiverPath": "scripts\\policy\\maturity-waivers.json",
+  "waiverState": "loaded",
+  "waivers": []
+}

@@ -1,0 +1,56 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.npdev'
+version = '0.1.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+/**
+ * npdev-migrations JAR
+ * - Packages canonical Flyway scripts from /db-history into classpath:db/migration
+ * - Projections (FinalExec) just include this JAR and Flyway works everywhere
+ */
+
+def MIGRATIONS_SOURCE_DIR = file("${rootDir}/db-history/src/main/resources/db/migration")
+def STAGED_DIR = layout.buildDirectory.dir("staged-migrations/db/migration")
+
+tasks.register("stageFlywayMigrations") {
+    inputs.dir(MIGRATIONS_SOURCE_DIR)
+    outputs.dir(STAGED_DIR)
+
+    doLast {
+        if (!MIGRATIONS_SOURCE_DIR.exists()) {
+            throw new GradleException("Migrations source folder not found: ${MIGRATIONS_SOURCE_DIR}")
+        }
+
+        def dst = STAGED_DIR.get().asFile
+        dst.mkdirs()
+
+        copy {
+            from(MIGRATIONS_SOURCE_DIR)
+            include("V*.sql", "R__*.sql")
+            into(dst)
+        }
+
+        def copied = fileTree(dst).matching { include("V*.sql", "R__*.sql") }.files
+        if (copied.isEmpty()) {
+            throw new GradleException("No Flyway migrations copied from: ${MIGRATIONS_SOURCE_DIR}")
+        }
+
+        println "Staged ${copied.size()} Flyway scripts into: ${dst}"
+    }
+}
+
+tasks.named("processResources") {
+    dependsOn("stageFlywayMigrations")
+    from(STAGED_DIR) {
+        // IMPORTANT: this makes them appear as classpath:db/migration/...
+        into("db/migration")
+    }
+}

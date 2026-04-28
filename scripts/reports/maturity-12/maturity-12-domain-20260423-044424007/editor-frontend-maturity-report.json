@@ -1,0 +1,409 @@
+{
+  "generatedAt": "2026-04-23T04:44:40.4174480-03:00",
+  "runId": "maturity-12-domain-20260423-044424007",
+  "scriptPath": "scripts\\maturity_adv\\check-06-editor-frontend-maturity.ps1",
+  "workspaceRoot": "D:\\WorkSpace\\NPDev_General",
+  "maturityItem": "editor-frontend-maturity",
+  "overallStatus": "failed",
+  "checks": [
+    {
+      "conditionId": "EFM-001",
+      "name": "EFM-001",
+      "status": "failed",
+      "conditionText": "Round-trip test covers: empty concept list, empty field list, null optional values, deeply nested JSONB",
+      "expectation": "Round-trip test covers: empty concept list, empty field list, null optional values, deeply nested JSONB",
+      "summary": "editorRoundTripAndUx.test.ts does not yet show all expected empty/null/deep JSONB coverage signals.",
+      "data": {
+        "hits": {
+          "path": "NPDevEditor\\ui-react\\src\\authoring\\editorRoundTripAndUx.test.ts",
+          "lineNumber": 158,
+          "line": "expect(manifest).not.toBeNull();"
+        }
+      },
+      "checkedAt": "2026-04-23T04:44:40.3801352-03:00"
+    },
+    {
+      "conditionId": "EFM-002",
+      "name": "EFM-002",
+      "status": "passed",
+      "conditionText": "Round-trip test proves: semantic diff is empty after load→edit→save",
+      "expectation": "Round-trip test proves: semantic diff is empty after load→edit→save",
+      "summary": "editorRoundTripAndUx.test.ts contains semantic-diff stability signals.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevEditor\\ui-react\\src\\authoring\\editorRoundTripAndUx.test.ts",
+            "lineNumber": 46,
+            "line": "describe(\"Step 46 editor round-trip and UX confidence\", () => {"
+          },
+          {
+            "path": "NPDevEditor\\ui-react\\src\\authoring\\editorRoundTripAndUx.test.ts",
+            "lineNumber": 47,
+            "line": "it(\"supports form mode to JSON mode round-trip for the canonical demo model\", async () => {"
+          },
+          {
+            "path": "NPDevEditor\\ui-react\\src\\authoring\\editorRoundTripAndUx.test.ts",
+            "lineNumber": 60,
+            "line": "it(\"supports JSON mode back to form mode round-trip after a raw edit\", async () => {"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T04:44:40.3806900-03:00"
+    },
+    {
+      "conditionId": "EFM-003",
+      "name": "EFM-003",
+      "status": "passed",
+      "conditionText": "editorEvolutionSafety.test.ts proves: old editor can load models saved by new editor",
+      "expectation": "editorEvolutionSafety.test.ts proves: old editor can load models saved by new editor",
+      "summary": "editorEvolutionSafety.test.ts contains backwards/forwards load-compatibility signals.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevEditor\\ui-react\\src\\authoring\\editorEvolutionSafety.test.ts",
+            "lineNumber": 8,
+            "line": "import { loadWorkspaceConfigDocument } from \"./config/configDocumentService\";"
+          },
+          {
+            "path": "NPDevEditor\\ui-react\\src\\authoring\\editorEvolutionSafety.test.ts",
+            "lineNumber": 11,
+            "line": "import { buildWorkspaceSeed } from \"./services/modelLoader\";"
+          },
+          {
+            "path": "NPDevEditor\\ui-react\\src\\authoring\\editorEvolutionSafety.test.ts",
+            "lineNumber": 12,
+            "line": "import { loadWorkspaceModelDocument, serializeModelDocument } from \"./services/modelDocumentService\";"
+          },
+          {
+            "path": "NPDevEditor\\ui-react\\src\\authoring\\editorEvolutionSafety.test.ts",
+            "lineNumber": 26,
+            "line": "const modelSession = await loadWorkspaceModelDocument(workspace);"
+          },
+          {
+            "path": "NPDevEditor\\ui-react\\src\\authoring\\editorEvolutionSafety.test.ts",
+            "lineNumber": 27,
+            "line": "const configSession = await loadWorkspaceConfigDocument(workspace);"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T04:44:40.3811593-03:00"
+    },
+    {
+      "conditionId": "EFM-004",
+      "name": "EFM-004",
+      "status": "failed",
+      "conditionText": "editorSemanticValidation.test.ts proves: invalid models rejected before save",
+      "expectation": "editorSemanticValidation.test.ts proves: invalid models rejected before save",
+      "summary": "editorSemanticValidation.test.ts does not yet visibly prove invalid-before-save rejection.",
+      "data": {
+        "hits": null
+      },
+      "checkedAt": "2026-04-23T04:44:40.3816170-03:00"
+    },
+    {
+      "conditionId": "EFM-005",
+      "name": "EFM-005",
+      "status": "passed",
+      "conditionText": "All tests pass in npmTest gate",
+      "expectation": "All tests pass in npmTest gate",
+      "summary": "The frontend gate test sub-step is currently passed.",
+      "data": {
+        "frontendGateStatus": "passed"
+      },
+      "checkedAt": "2026-04-23T04:44:40.3855272-03:00"
+    },
+    {
+      "conditionId": "EFM-006",
+      "name": "EFM-006",
+      "status": "passed",
+      "conditionText": "run-frontend-gate.ps1 produces frontend-gate-report.json with all required fields",
+      "expectation": "run-frontend-gate.ps1 produces frontend-gate-report.json with all required fields",
+      "summary": "run-frontend-gate.ps1 produces the expected structured frontend gate report.",
+      "data": {
+        "missingPatterns": []
+      },
+      "checkedAt": "2026-04-23T04:44:40.3887401-03:00"
+    },
+    {
+      "conditionId": "EFM-007",
+      "name": "EFM-007",
+      "status": "passed",
+      "conditionText": "Report includes: Node version, npm version, Java version, Gradle command, exit code, duration, output tail",
+      "expectation": "Report includes: Node version, npm version, Java version, Gradle command, exit code, duration, output tail",
+      "summary": "The current frontend gate report includes the expected toolchain and command evidence fields.",
+      "data": {
+        "reportPath": "scripts\\reports\\out\\frontend-gate-report.json"
+      },
+      "checkedAt": "2026-04-23T04:44:40.4027639-03:00"
+    },
+    {
+      "conditionId": "EFM-008",
+      "name": "EFM-008",
+      "status": "passed",
+      "conditionText": "Report includes: input fingerprints for package.json, package-lock.json, build.gradle",
+      "expectation": "Report includes: input fingerprints for package.json, package-lock.json, build.gradle",
+      "summary": "The frontend gate report includes package/build input fingerprints.",
+      "data": {
+        "inputs": {
+          "packageJson": {
+            "path": "NPDevEditor\\ui-react\\package.json",
+            "sha256": "14bfecf15641de0a2751f829b3d99e644f8042067e38dbbc0db049b25c67956a",
+            "sizeBytes": 746
+          },
+          "packageLock": {
+            "path": "NPDevEditor\\ui-react\\package-lock.json",
+            "sha256": "874a585cdfb6b12278498fd4b760e81a975338d55efdfd1786cee6f2630599fc",
+            "sizeBytes": 49059
+          },
+          "buildGradle": {
+            "path": "NPDevEditor\\build.gradle",
+            "sha256": "8a5b82c4888237b89b7545b5a0027f37525e6f975ae5e964dd58aa00dce1cfdb",
+            "sizeBytes": 5981
+          }
+        }
+      },
+      "checkedAt": "2026-04-23T04:44:40.4072239-03:00"
+    },
+    {
+      "conditionId": "EFM-009",
+      "name": "EFM-009",
+      "status": "passed",
+      "conditionText": "Generated residue check passes (no node_modules or .vite left in ui-react)",
+      "expectation": "Generated residue check passes (no node_modules or .vite left in ui-react)",
+      "summary": "The current frontend gate report shows clean residue after the run.",
+      "data": {
+        "cleanup": {
+          "expectedGeneratedResidueCount": 0,
+          "remainingGeneratedResidueCount": 0,
+          "remainingGeneratedResidue": [],
+          "checkedPaths": [
+            {
+              "path": "NPDevEditor\\ui-react\\node_modules",
+              "exists": false,
+              "fileCount": 0,
+              "sizeBytes": 0
+            },
+            {
+              "path": "NPDevEditor\\ui-react\\dist",
+              "exists": false,
+              "fileCount": 0,
+              "sizeBytes": 0
+            },
+            {
+              "path": "NPDevEditor\\ui-react\\playwright-static",
+              "exists": false,
+              "fileCount": 0,
+              "sizeBytes": 0
+            },
+            {
+              "path": "NPDevEditor\\ui-react\\test-results",
+              "exists": false,
+              "fileCount": 0,
+              "sizeBytes": 0
+            },
+            {
+              "path": "NPDevEditor\\ui-react\\playwright-report",
+              "exists": false,
+              "fileCount": 0,
+              "sizeBytes": 0
+            },
+            {
+              "path": "NPDevEditor\\ui-react\\coverage",
+              "exists": false,
+              "fileCount": 0,
+              "sizeBytes": 0
+            },
+            {
+              "path": "NPDevEditor\\ui-react\\.vite",
+              "exists": false,
+              "fileCount": 0,
+              "sizeBytes": 0
+            },
+            {
+              "path": "NPDevEditor\\ui-react\\.vitest",
+              "exists": false,
+              "fileCount": 0,
+              "sizeBytes": 0
+            }
+          ]
+        }
+      },
+      "checkedAt": "2026-04-23T04:44:40.4109518-03:00"
+    },
+    {
+      "conditionId": "EFM-010",
+      "name": "EFM-010",
+      "status": "failed",
+      "conditionText": "Gate passes consistently across 3 consecutive runs on clean workspace",
+      "expectation": "Gate passes consistently across 3 consecutive runs on clean workspace",
+      "summary": "There are not yet three consecutive archived passed frontend gate reports.",
+      "data": {
+        "archivedStatuses": [
+          "passed",
+          "passed"
+        ],
+        "archivedRunIds": [
+          "runtimehost-beta-20260423-012013",
+          "runtimehost-beta-20260422-235325"
+        ]
+      },
+      "checkedAt": "2026-04-23T04:44:40.4149283-03:00"
+    },
+    {
+      "conditionId": "EFM-011",
+      "name": "EFM-011",
+      "status": "failed",
+      "conditionText": "Test validates every .tsx file in src/ is listed in ui-boundary.json or explicitly exempted",
+      "expectation": "Test validates every .tsx file in src/ is listed in ui-boundary.json or explicitly exempted",
+      "summary": "ui-boundary.json does not currently account for every .tsx file under src/.",
+      "data": {
+        "missingTsxEntries": [
+          "NPDevEditor\\ui-react\\src\\authoring\\app\\AuthoringApp.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\designers\\ActionMetadataBuilder.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\designers\\EnumConfigurationDesigner.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\designers\\LayoutDesigner.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\designers\\ReferencePickerDesigner.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\designers\\StateTransitionDesigner.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\designers\\VisibilityConditionBuilder.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\diagnostics\\DiagnosticLinkPanel.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\actions\\ActionsEditorSection.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\concepts\\ConceptsEditorSection.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\config\\ConfigValidationPanel.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\config\\DatabaseRuntimeConfigSection.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\config\\FormBasedConfigEditor.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\config\\MetadataConfigSection.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\config\\ProjectionConfigSection.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\config\\ScenarioConfigSection.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\domainTypes\\DomainTypesEditorSection.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\enums\\EnumsEditorSection.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\fields\\FieldsEditorSection.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\flows\\FlowsEditorSection.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\invariants\\InvariantsEditorSection.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\metadata\\MetadataEditorSection.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\panels\\PanelsEditorSection.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\procedures\\ProceduresEditorSection.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\queries\\QueriesEditorSection.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\references\\ReferencesEditorSection.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\ruleProfiles\\RuleProfilesEditorSection.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\stateMachines\\StateMachinesEditorSection.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\FormBasedModelEditor.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\graph\\SemanticGraphPanel.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\help\\ExplainabilityTooltip.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\home\\AuthoringHomeScreen.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\io\\ImportExportWorkspace.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\json\\RawJsonEditorPanel.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\layout\\AuthoringShell.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\models\\chooser\\ModelChooserScreen.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\onboarding\\ConceptCreationWizard.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\onboarding\\ContextualHelpPanel.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\onboarding\\FlowCreationWizard.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\onboarding\\ReferenceWizard.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\preview\\actions\\ActionPreviewSurface.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\preview\\forms\\FormPreviewSurface.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\preview\\layout\\LayoutPreviewSurface.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\preview\\pickers\\PickerPreviewSurface.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\preview\\tables\\TablePreviewSurface.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\preview\\PreviewWorkspace.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\state\\AuthoringState.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\sync\\ModelSyncStatusBanner.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\templates\\StarterTemplateGallery.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\validation\\InlineValidationSummary.tsx"
+        ],
+        "tsxFileCount": 95
+      },
+      "checkedAt": "2026-04-23T04:44:40.4160460-03:00"
+    },
+    {
+      "conditionId": "EFM-012",
+      "name": "EFM-012",
+      "status": "passed",
+      "conditionText": "Test validates no component imports from outside its boundary zone",
+      "expectation": "Test validates no component imports from outside its boundary zone",
+      "summary": "Boundary/zone enforcement signals were found in the frontend source tree.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevEditor\\ui-react\\src\\authoring\\io\\ImportExportWorkspace.tsx",
+            "lineNumber": 309,
+            "line": "<span>Projection boundary preserved</span>"
+          },
+          {
+            "path": "NPDevEditor\\ui-react\\src\\authoring\\services\\modelLoader.ts",
+            "lineNumber": 141,
+            "line": "bestFor: \"Resuming existing work while preserving a future import/export workflow boundary.\","
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T04:44:40.4162860-03:00"
+    },
+    {
+      "conditionId": "EFM-013",
+      "name": "EFM-013",
+      "status": "failed",
+      "conditionText": "Boundary changes require explicit ui-boundary.json update",
+      "expectation": "Boundary changes require explicit ui-boundary.json update",
+      "summary": "ui-boundary.json does not currently expose explicit enumerated entries for change control.",
+      "data": {
+        "uiBoundaryKeys": [
+          "surface",
+          "status",
+          "canonicalOperatorSurface",
+          "canonicalSurface",
+          "alternateSurface",
+          "alternateRoute",
+          "purpose",
+          "stage"
+        ]
+      },
+      "checkedAt": "2026-04-23T04:44:40.4166176-03:00"
+    },
+    {
+      "conditionId": "EFM-014",
+      "name": "EFM-014",
+      "status": "passed",
+      "conditionText": "CI gate fails on boundary violation",
+      "expectation": "CI gate fails on boundary violation",
+      "summary": "There are some source-level signs of boundary enforcement that could be wired into CI.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevEditor\\ui-react\\src\\authoring\\io\\ImportExportWorkspace.tsx",
+            "lineNumber": 309,
+            "line": "<span>Projection boundary preserved</span>"
+          },
+          {
+            "path": "NPDevEditor\\ui-react\\src\\authoring\\services\\modelLoader.ts",
+            "lineNumber": 141,
+            "line": "bestFor: \"Resuming existing work while preserving a future import/export workflow boundary.\","
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T04:44:40.4167935-03:00"
+    },
+    {
+      "conditionId": "EFM-015",
+      "name": "EFM-015",
+      "status": "failed",
+      "conditionText": "Boundary documentation (MIGRATION_DIGEST.md) explains each zone",
+      "expectation": "Boundary documentation (MIGRATION_DIGEST.md) explains each zone",
+      "summary": "The UI migration digest does not yet visibly explain boundary zones.",
+      "data": {
+        "hits": {
+          "path": "NPDevEditor\\ui-react\\MIGRATION_DIGEST.md",
+          "lineNumber": 11,
+          "line": "Use this digest plus PROJECT_DIGEST.md to finish the boundary cleanup and dependency isolation."
+        }
+      },
+      "checkedAt": "2026-04-23T04:44:40.4169704-03:00"
+    }
+  ],
+  "summary": {
+    "failed": 6,
+    "warnings": 0,
+    "passed": 9,
+    "total": 15
+  },
+  "extra": {
+    "conditionCount": 15
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "version": "1.0",
+  "samples": [
+    {
+      "id": "restaurant-saas-multitenant",
+      "name": "Restaurant SaaS Multi-Tenant",
+      "description": "Pizza House, Sushi Bar, and Vegan Bistro share one generated app through explicit Tenant plus tenantId references.",
+      "modelPath": "restaurant-saas-multitenant/model.json",
+      "configPath": "restaurant-saas-multitenant/config.json",
+      "status": "experimental",
+      "tenancy": {
+        "strategy": "modeled-tenant-reference",
+        "tenantConcept": "Tenant",
+        "tenantReferenceField": "tenantId"
+      }
+    }
+  ]
+}

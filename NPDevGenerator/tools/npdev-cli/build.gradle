@@ -1,0 +1,25 @@
+plugins {
+    id 'application'
+}
+
+dependencies {
+    implementation project(':kernel')
+    implementation project(':dsl')
+
+    implementation project(':adapters:flow-compiled')
+    implementation project(':adapters:expression-cel')
+    implementation project(':adapters:events-inproc')
+    implementation project(':adapters:flowinstance-inproc')
+    implementation project(':adapters:tracing-inproc')
+    implementation project(':adapters:json-jackson')
+    implementation project(':adapters:circuit-inproc')
+    implementation project(':adapters:bulkhead-inproc')
+    implementation project(':adapters:idempotency-inproc')
+    implementation project(':adapters:schema-validator-default')
+
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
+}
+
+application {
+    mainClass = 'com.npdev.cli.NPDevCliMain'
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/official-samples-catalog.schema.json",
+  "title": "NPDev Official Samples Catalog",
+  "type": "object",
+  "required": ["apps"],
+  "additionalProperties": false,
+  "properties": {
+    "apps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "complexity", "mainFlow", "description", "features", "docs", "expectedOutcomes"],
+        "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "complexity": { "type": "string", "minLength": 1 },
+          "mainFlow": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "features": { "type": "array", "items": { "type": "string" } },
+          "inputFiles": { "type": "array", "items": { "type": "string" } },
+          "docs": { "type": "array", "items": { "type": "string" } },
+          "expectedOutcomes": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

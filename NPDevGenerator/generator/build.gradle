@@ -1,0 +1,28 @@
+plugins {
+    id 'application'
+}
+
+application {
+    mainClass = 'com.npdev.generator.GeneratorMain'
+}
+
+dependencies {
+    implementation project(':dsl')
+    implementation project(':core')
+
+    implementation 'com.github.spullara.mustache.java:compiler:0.9.14'
+    implementation 'org.slf4j:slf4j-simple:2.0.16'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
+
+    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+}
+
+tasks.named('run') {
+    // Make relative paths like test-models\... work from NPDev root
+    workingDir rootProject.projectDir
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

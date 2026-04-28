@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/expected-procedure-behavior.schema.json",
+  "title": "NPDev AI Expected Procedure Behavior",
+  "type": "object",
+  "required": ["schemaVersion", "procedureId", "expectedClass"],
+  "properties": {
+    "schemaVersion": { "const": "ai-expected-procedure-behavior.v1" },
+    "procedureId": { "type": "string" },
+    "expectedClass": { "type": "string" },
+    "assertions": { "type": "array", "default": [] }
+  },
+  "additionalProperties": true
+}

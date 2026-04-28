@@ -1,0 +1,44 @@
+package {{packageName}};
+
+import jakarta.persistence.*;
+{{#hasJsonFields}}
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+{{/hasJsonFields}}
+
+@Entity
+@Table(name = "{{tableName}}")
+public class {{entityName}} {
+
+{{#fields}}
+{{#id}}
+    @Id
+    @Column(nullable = false)
+    private {{javaType}} {{name}};
+{{/id}}
+{{^id}}
+{{#jsonField}}
+    @JdbcTypeCode(SqlTypes.JSON)
+{{/jsonField}}
+{{#required}}
+    @Column(nullable = false)
+{{/required}}
+{{^required}}
+    @Column
+{{/required}}
+    private {{javaType}} {{name}};
+{{/id}}
+
+{{/fields}}
+
+{{#fields}}
+    public {{javaType}} get{{capName}}() {
+        return this.{{name}};
+    }
+
+    public void set{{capName}}({{javaType}} {{name}}) {
+        this.{{name}} = {{name}};
+    }
+
+{{/fields}}
+}

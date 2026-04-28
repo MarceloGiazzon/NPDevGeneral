@@ -1,0 +1,42 @@
+package {{apiPackage}};
+
+import {{dtoPackage}}.CorrelationTimelineResponse;
+import {{servicePackage}}.KernelFacade;
+import {{servicePackage}}.RuntimeContextService;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping({"/api/v1/correlations", "/api/correlations"})
+public class CorrelationController {
+    private final KernelFacade kernelFacade;
+    private final RuntimeContextService runtimeContextService;
+
+    public CorrelationController(KernelFacade kernelFacade, RuntimeContextService runtimeContextService) {
+        this.kernelFacade = kernelFacade;
+        this.runtimeContextService = runtimeContextService;
+    }
+
+    @GetMapping("/{correlationId}")
+    public ResponseEntity<CorrelationTimelineResponse> getCorrelationTimeline(
+            @PathVariable("correlationId") String correlationId,
+            @RequestParam(value = "limit", required = false, defaultValue = "50") int limit,
+            @RequestParam(value = "offset", required = false, defaultValue = "0") int offset,
+            HttpServletRequest request
+    ) {
+        CorrelationTimelineResponse response = CorrelationTimelineResponse.from(
+                kernelFacade.correlationTimeline(
+                        correlationId,
+                        runtimeContextService.currentContext(request),
+                        limit,
+                        offset
+                )
+        );
+        return ResponseEntity.ok(response);
+    }
+}

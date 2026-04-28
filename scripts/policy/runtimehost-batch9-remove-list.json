@@ -1,0 +1,16 @@
+{
+  "batch": "runtimehost-batch9",
+  "description": "Fourth RuntimeHost reduction slice. Remove a very small, coherent set of zero-reference internal controllers focused on change-impact and compiler preview surfaces.",
+  "rationale": [
+    "The current RuntimeHost footprint still shows a large internalButNeeded controller inventory with many zero-reference dead/remove candidates.",
+    "This batch stays conservative by touching controllers only, not more services.",
+    "The slice is intentionally thematic and small to reduce risk: change-impact and compiler-preview endpoints only."
+  ],
+  "files": [
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/ChangeImpactPreviewController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/ChangeImpactVisualizationController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/CompilerCandidateDiffController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/CompilerDependencyGraphController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/CompilerImpactClassificationController.java"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "packageId": "notification-incompatible-package",
+  "version": "1.0.0",
+  "trustLevel": "trusted",
+  "compatibility": {
+    "npdevMinVersion": "9.0.0",
+    "npdevMaxVersion": "9.9.999"
+  },
+  "capabilities": [
+    {
+      "capability": "notification",
+      "adapterId": "notification-incompatible-external",
+      "operations": ["send"]
+    }
+  ]
+}

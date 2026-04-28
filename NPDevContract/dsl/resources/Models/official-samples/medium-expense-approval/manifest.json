@@ -1,0 +1,42 @@
+﻿{
+  "id": "medium-expense-approval",
+  "title": "Medium Expense Approval",
+  "complexity": "medium",
+  "mainFlow": "SubmitExpense",
+  "purpose": "First official medium scenario showing resumable orchestration and branching after an external approval event.",
+  "businessStory": "A team submits an expense that persists immediately, waits for review, and later resumes after an approval event arrives.",
+  "features": [
+    "concept",
+    "query",
+    "ruleProfiles",
+    "procedure",
+    "panel",
+    "conceptGateway",
+    "invariants",
+    "persistence",
+    "notification",
+    "webhook",
+    "awaitEvent",
+    "branch",
+    "trace",
+    "audit"
+  ],
+  "inputFiles": [
+    "input/submit-expense.json",
+    "input/publish-approval-event.json"
+  ],
+  "walkthrough": [
+    "Run the sample through the Step 50 one-command trial path.",
+    "Submit an expense payload to start the process.",
+    "Capture the returned correlation id or execution context.",
+    "Publish the approval event using the provided sample payload structure.",
+    "Inspect the trace before and after resume to understand the orchestration.",
+    "Run the golden slice gate to verify the panel action and procedure path both route through the Concept Gateway."
+  ],
+  "expectedOutcomes": [
+    "The expense enters a waiting state after submission.",
+    "A later event resumes the execution using correlation information.",
+    "The branch outcome can be inspected through traces and runtime state.",
+    "The supported panel action resolves to SubmitExpenseProcedure and the procedure saves through the Concept Gateway."
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "$schema": "..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "canonical-clinic-demo",
+    "description": "Frozen canonical demo scenario for NPDev projection, generation, and baseline documentation.",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": {
+    "root": "..\\..\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\Output\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\Output\\App",
+    "deleteBeforeMount": true
+  },
+  "database": {
+    "provider": "docker-postgres",
+    "host": "localhost",
+    "port": 5432,
+    "database": "canonical_clinic_demo",
+    "username": "finalexec",
+    "password": "finalexec",
+    "adminDatabase": "postgres",
+    "resetMode": "reset",
+    "containerName": "npdev-canonical-clinic-demo"
+  },
+  "runtime": {
+    "springProfile": "dev,step0,trial",
+    "serverPort": 8081,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "trialDefaults": {
+    "apiKey": "dev-key",
+    "recommendedProfiles": "dev,step0,trial",
+    "runtimeUrl": "http://localhost:8081/",
+    "databaseMode": "step0-h2",
+    "pluginDiscoveryMode": "filesystem-folder",
+    "pluginPackageDirectory": "./npdev-generated/src/main/resources/npdev/plugin-packages",
+    "notes": [
+      "Canonical demo trials should boot without requiring a running Postgres container.",
+      "The dedicated port keeps the canonical demo stable when other samples are tried on the same machine."
+    ]
+  }
+}

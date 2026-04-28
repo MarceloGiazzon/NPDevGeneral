@@ -1,0 +1,25 @@
+﻿{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "$id":  "https://npdev.local/contracts/ui-metadata-policy.schema.json",
+    "title":  "NPDev UI Metadata Policy",
+    "type":  "object",
+    "additionalProperties":  true,
+    "properties":  {
+                       "contractVersion":  {
+                                               "description":  "UI metadata policy contract version.",
+                                               "type":  "string"
+                                           },
+                       "rules":  {
+                                     "type":  "array",
+                                     "description":  "Allowed UI metadata surfaces for generated apps.",
+                                     "items":  {
+                                                   "type":  "object",
+                                                   "additionalProperties":  true
+                                               }
+                                 }
+                   },
+    "required":  [
+                     "contractVersion",
+                     "rules"
+                 ]
+}

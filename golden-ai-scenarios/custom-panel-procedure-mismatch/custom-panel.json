@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "ai-custom-panel.v1",
+  "panelId": "readiness-panel",
+  "route": "/learners/readiness",
+  "dataSources": [
+    {
+      "name": "learners",
+      "concept": "Learner"
+    },
+    {
+      "name": "promotion",
+      "procedure": "promote-learner"
+    }
+  ],
+  "visibleFields": ["id", "name", "score", "status"],
+  "actions": [
+    {
+      "name": "promote",
+      "binding": "procedure",
+      "procedure": "promote-learner"
+    },
+    {
+      "name": "refresh",
+      "binding": "query",
+      "query": "LearnerReadiness"
+    }
+  ],
+  "layout": {
+    "type": "table",
+    "fields": ["id", "name", "score", "status"]
+  },
+  "widgets": [
+    {
+      "type": "action",
+      "action": "promote"
+    }
+  ]
+}

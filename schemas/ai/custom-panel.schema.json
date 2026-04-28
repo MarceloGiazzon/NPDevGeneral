@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/custom-panel.schema.json",
+  "title": "NPDev AI Custom Panel",
+  "type": "object",
+  "required": ["schemaVersion", "panelId", "route", "dataSources", "visibleFields", "actions", "layout"],
+  "properties": {
+    "schemaVersion": { "const": "ai-custom-panel.v1" },
+    "panelId": { "type": "string" },
+    "route": { "type": "string" },
+    "dataSources": { "type": "array" },
+    "visibleFields": { "type": "array" },
+    "actions": { "type": "array" },
+    "layout": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["table", "detail", "form", "summary"] }
+      },
+      "additionalProperties": true
+    },
+    "validationHints": { "type": "array", "default": [] },
+    "widgets": { "type": "array", "default": [] },
+    "implementation": {
+      "type": "object",
+      "required": ["mode", "language", "entrypoint"],
+      "properties": {
+        "mode": { "enum": ["trustedSource"] },
+        "language": { "enum": ["html+javascript", "html", "javascript"] },
+        "entrypoint": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "not": {
+    "anyOf": [
+      { "required": ["script"] },
+      { "required": ["customHtml"] },
+      { "required": ["externalUrl"] }
+    ]
+  },
+  "additionalProperties": true
+}

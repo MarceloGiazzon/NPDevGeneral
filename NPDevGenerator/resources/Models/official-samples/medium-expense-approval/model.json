@@ -1,0 +1,342 @@
+{
+  "$schema": "..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "schemaVersion": "1.0.0",
+  "namespace": "trial.expenseapproval",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "concepts": [
+    {
+      "name": "ExpenseRequest",
+      "ui": {
+        "label": "Expense request"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "employeeEmail",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Employee email"
+          }
+        },
+        {
+          "name": "amount",
+          "type": "integer",
+          "required": true,
+          "ui": {
+            "label": "Amount"
+          }
+        },
+        {
+          "name": "needsManagerApproval",
+          "type": "boolean",
+          "required": true,
+          "ui": {
+            "label": "Needs manager approval"
+          }
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Status"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "EmployeeEmailRequired",
+          "expr": "employeeEmail != null && employeeEmail != ''"
+        },
+        {
+          "name": "PositiveAmount",
+          "expr": "amount != null && amount > 0"
+        }
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        "save",
+        "findById"
+      ]
+    },
+    {
+      "name": "notification",
+      "type": "NotificationCapability",
+      "operations": [
+        "send"
+      ]
+    },
+    {
+      "name": "webhook",
+      "type": "WebhookCapability",
+      "operations": [
+        "post"
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    },
+    {
+      "capability": "notification",
+      "adapter": "notification-inproc"
+    },
+    {
+      "capability": "webhook",
+      "adapter": "webhook-inproc"
+    },
+    {
+      "capability": "eventBus",
+      "adapter": "inproc"
+    }
+  ],
+  "events": [
+    {
+      "name": "ExpenseSubmitted",
+      "payload": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "ExpenseApproved",
+      "payload": [
+        {
+          "name": "expenseId",
+          "type": "uuid"
+        },
+        {
+          "name": "approved",
+          "type": "boolean"
+        },
+        {
+          "name": "reviewer",
+          "type": "string"
+        }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "name": "PendingExpenseRequests",
+      "concept": "ExpenseRequest",
+      "where": "status == 'SUBMITTED'",
+      "orderBy": [
+        "employeeEmail"
+      ],
+      "tracePolicy": "summary",
+      "auditPolicy": "read"
+    }
+  ],
+  "ruleProfiles": [
+    {
+      "name": "always",
+      "description": "Shared ExpenseRequest semantic rules evaluated by the Concept Gateway.",
+      "appliesTo": [
+        "ExpenseRequest"
+      ],
+      "enabled": true,
+      "metadata": {
+        "invariants": [
+          "EmployeeEmailRequired",
+          "PositiveAmount"
+        ]
+      }
+    },
+    {
+      "name": "interactive",
+      "description": "Panel-triggered approval actions use the same gateway semantics as headless procedures.",
+      "appliesTo": [
+        "ExpenseRequest"
+      ],
+      "enabled": true
+    }
+  ],
+  "procedures": [
+    {
+      "name": "SubmitExpenseProcedure",
+      "description": "Saves an expense request through the Concept Gateway and returns the governed record.",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true
+        }
+      ],
+      "steps": [
+        {
+          "name": "save-expense-through-gateway",
+          "type": "saveConcept",
+          "concept": "ExpenseRequest",
+          "id": "$id",
+          "data": {
+            "input": "$input"
+          },
+          "target": "savedExpense",
+          "trace": true,
+          "audit": true
+        },
+        {
+          "name": "return-saved-expense",
+          "type": "return",
+          "value": "$savedExpense",
+          "trace": true
+        }
+      ],
+      "tracePolicy": "detailed",
+      "auditPolicy": "write"
+    }
+  ],
+  "panels": [
+    {
+      "name": "ExpenseApprovalPanel",
+      "route": "/expenses/approval",
+      "title": "Expense approval",
+      "dataSources": [
+        {
+          "name": "pendingExpenses",
+          "query": "PendingExpenseRequests"
+        }
+      ],
+      "layout": {
+        "type": "table",
+        "fields": [
+          "employeeEmail",
+          "amount",
+          "needsManagerApproval",
+          "status"
+        ]
+      },
+      "fieldBindings": [
+        {
+          "field": "employeeEmail",
+          "source": "pendingExpenses.employeeEmail"
+        },
+        {
+          "field": "amount",
+          "source": "pendingExpenses.amount"
+        },
+        {
+          "field": "status",
+          "source": "pendingExpenses.status"
+        }
+      ],
+      "actions": [
+        {
+          "name": "SubmitExpense",
+          "binding": "procedure",
+          "procedure": "SubmitExpenseProcedure",
+          "label": "Submit expense",
+          "explainability": {
+            "semanticPath": "PanelRuntime -> ProcedureExecutor -> ConceptGateway"
+          }
+        }
+      ],
+      "explainability": {
+        "governedDataAccess": "ConceptGateway",
+        "ruleProfile": "interactive"
+      }
+    }
+  ],
+  "flows": [
+    {
+      "name": "SubmitExpense",
+      "input": {
+        "concept": "ExpenseRequest",
+        "mode": "create"
+      },
+      "steps": [
+        {
+          "name": "validate-expense",
+          "type": "validate",
+          "scope": "ExpenseRequest",
+          "invariants": [
+            "EmployeeEmailRequired",
+            "PositiveAmount"
+          ]
+        },
+        {
+          "name": "save-expense",
+          "type": "createConcept",
+          "scope": "ExpenseRequest",
+          "input": "$input",
+          "out": "$saved"
+        },
+        {
+          "name": "emit-expense-submitted",
+          "type": "emitEvent",
+          "event": "ExpenseSubmitted",
+          "from": "$saved"
+        },
+        {
+          "name": "approval-gate",
+          "type": "if",
+          "condition": "$saved.needsManagerApproval == true",
+          "then": [
+            {
+              "name": "await-approval",
+              "type": "waitForEvent",
+              "awaitEvent": "ExpenseApproved",
+              "as": "approval",
+              "match": {
+                "correlation": true
+              }
+            },
+            {
+              "name": "notify-approval",
+              "type": "callCapability",
+              "cap": "notification",
+              "op": "send",
+              "args": [
+                "$approval"
+              ],
+              "out": "$notification"
+            },
+            {
+              "name": "publish-webhook",
+              "type": "callCapability",
+              "cap": "webhook",
+              "op": "post",
+              "args": [
+                "$approval"
+              ],
+              "out": "$webhookResult"
+            },
+            {
+              "name": "return-approval",
+              "type": "return",
+              "value": "$approval"
+            }
+          ],
+          "else": [
+            {
+              "name": "return-expense",
+              "type": "return",
+              "value": "$saved"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

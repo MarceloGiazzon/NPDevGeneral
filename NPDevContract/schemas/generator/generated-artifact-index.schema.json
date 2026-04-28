@@ -1,0 +1,30 @@
+﻿{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "$id":  "https://npdev.local/contracts/generated-artifact-index.schema.json",
+    "title":  "NPDev Generated Artifact Index",
+    "type":  "object",
+    "additionalProperties":  true,
+    "properties":  {
+                       "contractVersion":  {
+                                               "description":  "Artifact index contract version.",
+                                               "type":  "string"
+                                           },
+                       "artifacts":  {
+                                         "type":  "array",
+                                         "description":  "Files generated for a final app.",
+                                         "items":  {
+                                                       "type":  "object",
+                                                       "additionalProperties":  true
+                                                   }
+                                     },
+                       "checksums":  {
+                                         "type":  "object",
+                                         "description":  "Optional artifact checksum map.",
+                                         "additionalProperties":  true
+                                     }
+                   },
+    "required":  [
+                     "contractVersion",
+                     "artifacts"
+                 ]
+}

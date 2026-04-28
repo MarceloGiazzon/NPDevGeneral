@@ -1,0 +1,43 @@
+plugins {
+    id 'base'
+}
+
+allprojects {
+    group = 'com.npdev'
+    version = '0.1.0'
+
+    repositories {
+        mavenCentral()
+    }
+}
+
+subprojects {
+    apply plugin: 'java-library'
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(17)
+        }
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+    }
+
+    dependencies {
+        testImplementation 'org.junit.jupiter:junit-jupiter:5.11.0'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.0'
+    }
+
+    tasks.withType(Test).configureEach {
+        useJUnitPlatform()
+    }
+}
+
+tasks.register('generatorQualityGate') {
+    group = 'verification'
+    description = 'Runs the independent NPDevGenerator verification build.'
+    dependsOn ':generator:test'
+    dependsOn ':tools:npdev-cli:test'
+    dependsOn ':npdev-migrations:jar'
+}

@@ -1,0 +1,29 @@
+package {{dtoPackage}};
+
+import com.npdev.kernel.events.EventMetaSummary;
+
+public record EventMetaSummaryResponse(
+        String eventId,
+        String tenantId,
+        String correlationId,
+        String eventName,
+        String flowName,
+        int stepIndex,
+        long timestampMs
+) {
+    public static EventMetaSummaryResponse from(EventMetaSummary summary) {
+        if (summary == null) {
+            return null;
+        }
+        return new EventMetaSummaryResponse(
+                summary.eventId(),
+                summary.tenantId(),
+                summary.correlationId(),
+                summary.eventName(),
+                summary.flowName(),
+                summary.stepIndex(),
+                summary.timestampMs()
+        );
+    }
+}
+

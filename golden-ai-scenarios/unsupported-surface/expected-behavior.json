@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "ai-expected-behavior.v1",
+  "scenarioId": "unsupported-surface",
+  "comparisonMode": "exact",
+  "expectedClass": "PASS_EXACT",
+  "assertions": []
+}

@@ -1,0 +1,36 @@
+﻿{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "$id":  "https://npdev.local/contracts/event-envelope.schema.json",
+    "title":  "NPDev Kernel Event Envelope",
+    "type":  "object",
+    "additionalProperties":  true,
+    "properties":  {
+                       "contractVersion":  {
+                                               "description":  "Event envelope contract version.",
+                                               "type":  "string"
+                                           },
+                       "eventId":  {
+                                       "description":  "Unique event id.",
+                                       "type":  "string"
+                                   },
+                       "eventType":  {
+                                         "description":  "Domain or platform event type.",
+                                         "type":  "string"
+                                     },
+                       "payload":  {
+                                       "type":  "object",
+                                       "description":  "Event payload.",
+                                       "additionalProperties":  true
+                                   },
+                       "correlationId":  {
+                                             "description":  "Trace correlation id.",
+                                             "type":  "string"
+                                         }
+                   },
+    "required":  [
+                     "contractVersion",
+                     "eventId",
+                     "eventType",
+                     "payload"
+                 ]
+}

@@ -1,0 +1,53 @@
+package {{apiPackage}};
+
+import {{dtoPackage}}.AuditRecordResponse;
+import {{servicePackage}}.KernelFacade;
+import {{servicePackage}}.RuntimeContextService;
+import com.npdev.kernel.ports.AuditQuery;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
+@RestController
+@RequestMapping({"/api/v1/audit", "/api/audit"})
+public class AuditController {
+    private final KernelFacade kernelFacade;
+    private final RuntimeContextService runtimeContextService;
+
+    public AuditController(KernelFacade kernelFacade, RuntimeContextService runtimeContextService) {
+        this.kernelFacade = kernelFacade;
+        this.runtimeContextService = runtimeContextService;
+    }
+
+    @GetMapping
+    public List<AuditRecordResponse> searchAudit(
+            @RequestParam(required = false) String actorId,
+            @RequestParam(required = false) String action,
+            @RequestParam(required = false) String resourceType,
+            @RequestParam(required = false) String resourceId,
+            @RequestParam(required = false) Long from,
+            @RequestParam(required = false) Long to,
+            @RequestParam(required = false, defaultValue = "50") Integer limit,
+            @RequestParam(required = false, defaultValue = "0") Integer offset,
+            HttpServletRequest request
+    ) {
+        AuditQuery query = new AuditQuery(
+                null,
+                actorId,
+                action,
+                resourceType,
+                resourceId,
+                from,
+                to,
+                limit == null ? 50 : limit,
+                offset == null ? 0 : offset
+        );
+        return kernelFacade.searchAudit(query, runtimeContextService.currentContext(request)).stream()
+                .map(AuditRecordResponse::from)
+                .toList();
+    }
+}

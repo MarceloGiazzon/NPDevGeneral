@@ -1,0 +1,46 @@
+{
+  "version": "1.0",
+  "fields": [
+    {
+      "name": "token",
+      "expectedMask": "[REDACTED]",
+      "surfaces": [
+        "trace",
+        "event",
+        "execution"
+      ]
+    },
+    {
+      "name": "password",
+      "expectedMask": "[REDACTED]",
+      "surfaces": [
+        "trace",
+        "event",
+        "execution"
+      ]
+    },
+    {
+      "name": "secret",
+      "expectedMask": "[REDACTED]",
+      "surfaces": [
+        "trace",
+        "event",
+        "execution"
+      ]
+    },
+    {
+      "name": "email",
+      "expectedMask": "[REDACTED]",
+      "surfaces": [
+        "trace",
+        "event",
+        "execution"
+      ]
+    }
+  ],
+  "allowlistedControllerAnnotations": [
+    "PreAuthorize",
+    "RolesAllowed",
+    "Secured"
+  ]
+}

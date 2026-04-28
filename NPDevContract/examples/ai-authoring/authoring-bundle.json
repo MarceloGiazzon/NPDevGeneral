@@ -1,0 +1,23 @@
+{
+  "bundleVersion": "1.0.0",
+  "contract": "npdev-authoring-bundle",
+  "modelPath": "model.json",
+  "configPath": "config.json",
+  "intendedConsumers": [
+    "AI assistant",
+    "CLI",
+    "Editor",
+    "Generator"
+  ],
+  "requiredAuthoringSurfaces": [
+    "concepts",
+    "queries",
+    "ruleProfiles",
+    "procedures",
+    "panels"
+  ],
+  "verification": {
+    "rootGate": "scripts/quality/run-ai-bundle-gate.ps1",
+    "report": "scripts/reports/out/ai-bundle-gate-report.json"
+  }
+}

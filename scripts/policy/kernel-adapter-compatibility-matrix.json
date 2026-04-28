@@ -1,0 +1,38 @@
+{
+  "version": "1.0",
+  "proofCase": {
+    "id": "persistence-postgres-events-inproc-tracing-inproc",
+    "testClass": "com.npdev.kernel.MixedAdapterExecutionPathTest",
+    "requiredAdapters": {
+      "persistence": "persistence-postgres",
+      "events": "events-inproc",
+      "tracing": "tracing-inproc"
+    }
+  },
+  "strictDefaults": {
+    "surfaceProfileProperty": "npdev.runtime.surface-profile",
+    "surfaceProfileValue": "supported-core",
+    "strictExecutionProperty": "npdev.strict-execution.enabled",
+    "strictExecutionExpectedFragment": "true"
+  },
+  "compatibilityMatrix": [
+    {
+      "capability": "persistence",
+      "supportedAdapters": [
+        "persistence-postgres"
+      ]
+    },
+    {
+      "capability": "events",
+      "supportedAdapters": [
+        "events-inproc"
+      ]
+    },
+    {
+      "capability": "tracing",
+      "supportedAdapters": [
+        "tracing-inproc"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1759 @@
+Listagem de caminhos de pasta para o volume Data
+O número de série do volume é 0466-657A
+D:.
+¦   NPDevSamples_Tree.txt
+¦   PROJECT_DIGEST.md
+¦   README.md
+¦   sample-catalog.json
+¦   
++---canonical-demo
+¦   +---Input
+¦   ¦       config.json
+¦   ¦       expected-behavior.md
+¦   ¦       model.json
+¦   ¦       README.md
+¦   ¦       
+¦   +---Output
++---medium-expense-approval
+¦   +---Input
+¦   ¦   ¦   config.json
+¦   ¦   ¦   expected-behavior.md
+¦   ¦   ¦   expected-diagnostics.md
+¦   ¦   ¦   expected-endpoints.md
+¦   ¦   ¦   manifest.json
+¦   ¦   ¦   model.json
+¦   ¦   ¦   README.md
+¦   ¦   ¦   
+¦   ¦   +---Requests
+¦   ¦           publish-approval-event.json
+¦   ¦           submit-expense.json
+¦   ¦           
+¦   +---Output
++---restaurant-saas-multitenant
+¦   +---Input
+¦   ¦       config.json
+¦   ¦       model.json
+¦   ¦       README.md
+¦   ¦       
+¦   +---Output
+¦       +---App
+¦       ¦   ¦   .gitignore
+¦       ¦   ¦   build.gradle
+¦       ¦   ¦   docker-compose.yml
+¦       ¦   ¦   gradle.properties
+¦       ¦   ¦   gradlew
+¦       ¦   ¦   gradlew.bat
+¦       ¦   ¦   MIGRATION_DIGEST.md
+¦       ¦   ¦   PROJECT_DIGEST.md
+¦       ¦   ¦   reset-db-docker.ps1
+¦       ¦   ¦   reset-db.ps1
+¦       ¦   ¦   settings.gradle
+¦       ¦   ¦   
+¦       ¦   +---.gradle
+¦       ¦   ¦   ¦   file-system.probe
+¦       ¦   ¦   ¦   
+¦       ¦   ¦   +---8.5
+¦       ¦   ¦   ¦   +---checksums
+¦       ¦   ¦   ¦   ¦       checksums.lock
+¦       ¦   ¦   ¦   ¦       
+¦       ¦   ¦   ¦   +---dependencies-accessors
+¦       ¦   ¦   ¦   ¦       dependencies-accessors.lock
+¦       ¦   ¦   ¦   ¦       
+¦       ¦   ¦   ¦   +---executionHistory
+¦       ¦   ¦   ¦   ¦       executionHistory.bin
+¦       ¦   ¦   ¦   ¦       executionHistory.lock
+¦       ¦   ¦   ¦   ¦       
+¦       ¦   ¦   ¦   +---fileChanges
+¦       ¦   ¦   ¦   +---fileHashes
+¦       ¦   ¦   ¦   ¦       fileHashes.bin
+¦       ¦   ¦   ¦   ¦       fileHashes.lock
+¦       ¦   ¦   ¦   ¦       resourceHashesCache.bin
+¦       ¦   ¦   ¦   ¦       
+¦       ¦   ¦   ¦   +---vcsMetadata
+¦       ¦   ¦   +---buildOutputCleanup
+¦       ¦   ¦   ¦       buildOutputCleanup.lock
+¦       ¦   ¦   ¦       cache.properties
+¦       ¦   ¦   ¦       outputFiles.bin
+¦       ¦   ¦   ¦       
+¦       ¦   ¦   +---vcs-1
+¦       ¦   +---build
+¦       ¦   ¦   ¦   resolvedMainClassName
+¦       ¦   ¦   ¦   
+¦       ¦   ¦   +---classes
+¦       ¦   ¦   ¦   +---java
+¦       ¦   ¦   ¦       +---main
+¦       ¦   ¦   ¦           +---com
+¦       ¦   ¦   ¦               +---finalexec
+¦       ¦   ¦   ¦               ¦   ¦   FinalExecApplication.class
+¦       ¦   ¦   ¦               ¦   ¦   GeneratedBuildInfoLogger$BuildInfo.class
+¦       ¦   ¦   ¦               ¦   ¦   GeneratedBuildInfoLogger.class
+¦       ¦   ¦   ¦               ¦   ¦   HelloController.class
+¦       ¦   ¦   ¦               ¦   ¦   RuntimeUiMetadataVerifierTokens.class
+¦       ¦   ¦   ¦               ¦   ¦   
+¦       ¦   ¦   ¦               ¦   +---api
+¦       ¦   ¦   ¦               ¦   ¦       ArchitectureVisualizationController.class
+¦       ¦   ¦   ¦               ¦   ¦       ArchitectureVisualizationUiController.class
+¦       ¦   ¦   ¦               ¦   ¦       BetaOnboardingController.class
+¦       ¦   ¦   ¦               ¦   ¦       BetaOnboardingUiController.class
+¦       ¦   ¦   ¦               ¦   ¦       BetaReadinessConsolidationController.class
+¦       ¦   ¦   ¦               ¦   ¦       BetaSecurityHardeningController.class
+¦       ¦   ¦   ¦               ¦   ¦       BetaSecurityPostureUiController.class
+¦       ¦   ¦   ¦               ¦   ¦       BusinessCapabilityMarketplaceController.class
+¦       ¦   ¦   ¦               ¦   ¦       CanonicalSourceMutationExecutorController.class
+¦       ¦   ¦   ¦               ¦   ¦       CanonicalSourceValidationController.class
+¦       ¦   ¦   ¦               ¦   ¦       CapabilityIntegrationPanelController.class
+¦       ¦   ¦   ¦               ¦   ¦       CapabilityIntegrationUiController.class
+¦       ¦   ¦   ¦               ¦   ¦       ChangeImpactPreviewController.class
+¦       ¦   ¦   ¦               ¦   ¦       ChangeImpactVisualizationController.class
+¦       ¦   ¦   ¦               ¦   ¦       ChangeImpactVisualizationUiController.class
+¦       ¦   ¦   ¦               ¦   ¦       CompilerCandidateDiffController.class
+¦       ¦   ¦   ¦               ¦   ¦       CompilerDependencyGraphController.class
+¦       ¦   ¦   ¦               ¦   ¦       CompilerImpactClassificationController.class
+¦       ¦   ¦   ¦               ¦   ¦       CrossTenantGovernanceController.class
+¦       ¦   ¦   ¦               ¦   ¦       DirectExecutionGatewayController.class
+¦       ¦   ¦   ¦               ¦   ¦       EndUserLaunchChecklistController.class
+¦       ¦   ¦   ¦               ¦   ¦       EndUserRealSystemOutcomeController.class
+¦       ¦   ¦   ¦               ¦   ¦       ErrorRecoveryAssistantController.class
+¦       ¦   ¦   ¦               ¦   ¦       ExecutionMonitorController.class
+¦       ¦   ¦   ¦               ¦   ¦       ExecutionMonitorUiController.class
+¦       ¦   ¦   ¦               ¦   ¦       ExplainabilityBundleController.class
+¦       ¦   ¦   ¦               ¦   ¦       ExplainabilityGraphController.class
+¦       ¦   ¦   ¦               ¦   ¦       ExplainabilityGraphUiController.class
+¦       ¦   ¦   ¦               ¦   ¦       FinalUserWorkflowController.class
+¦       ¦   ¦   ¦               ¦   ¦       FlowBuilderController.class
+¦       ¦   ¦   ¦               ¦   ¦       FlowBuilderUiController.class
+¦       ¦   ¦   ¦               ¦   ¦       FlowExecutionPluginEvidenceAdvice.class
+¦       ¦   ¦   ¦               ¦   ¦       FriendlyExplanationCatalogController.class
+¦       ¦   ¦   ¦               ¦   ¦       GeneratedArtifactPreviewController.class
+¦       ¦   ¦   ¦               ¦   ¦       GovernanceWorkspaceController.class
+¦       ¦   ¦   ¦               ¦   ¦       GovernanceWorkspaceUiController.class
+¦       ¦   ¦   ¦               ¦   ¦       GuidedTaskWorkspaceController.class
+¦       ¦   ¦   ¦               ¦   ¦       HumanReadableAuditExportController.class
+¦       ¦   ¦   ¦               ¦   ¦       ImportConflictAnalysisController.class
+¦       ¦   ¦   ¦               ¦   ¦       ImportCorrectionWorkspaceController.class
+¦       ¦   ¦   ¦               ¦   ¦       ImportExecutionController.class
+¦       ¦   ¦   ¦               ¦   ¦       ModelSyncStatusController.class
+¦       ¦   ¦   ¦               ¦   ¦       MultiCapabilityCompositionController.class
+¦       ¦   ¦   ¦               ¦   ¦       OperationalReadinessDashboardController.class
+¦       ¦   ¦   ¦               ¦   ¦       OwnershipIsolationController.class
+¦       ¦   ¦   ¦               ¦   ¦       PolicyPackGovernancePresetController.class
+¦       ¦   ¦   ¦               ¦   ¦       PublicationExecutorController.class
+¦       ¦   ¦   ¦               ¦   ¦       PublicationExplainabilityBundleController.class
+¦       ¦   ¦   ¦               ¦   ¦       PublicationFailureRecoveryController.class
+¦       ¦   ¦   ¦               ¦   ¦       PublicationRollbackExecutorController.class
+¦       ¦   ¦   ¦               ¦   ¦       PublicationTransactionRecordController.class
+¦       ¦   ¦   ¦               ¦   ¦       RealPublicationExecutorController.class
+¦       ¦   ¦   ¦               ¦   ¦       ReferenceAppGalleryController.class
+¦       ¦   ¦   ¦               ¦   ¦       ReferenceAppGalleryUiController.class
+¦       ¦   ¦   ¦               ¦   ¦       RegulatoryAnnotationController.class
+¦       ¦   ¦   ¦               ¦   ¦       ReliabilityPostureController.class
+¦       ¦   ¦   ¦               ¦   ¦       ReliabilityPostureUiController.class
+¦       ¦   ¦   ¦               ¦   ¦       RichExplainabilityController.class
+¦       ¦   ¦   ¦               ¦   ¦       RoleWorkspaceController.class
+¦       ¦   ¦   ¦               ¦   ¦       RollbackExecutionController.class
+¦       ¦   ¦   ¦               ¦   ¦       RuntimeEventEvidenceController.class
+¦       ¦   ¦   ¦               ¦   ¦       RuntimeMetadataController$MetadataCall.class
+¦       ¦   ¦   ¦               ¦   ¦       RuntimeMetadataController.class
+¦       ¦   ¦   ¦               ¦   ¦       RuntimeMetadataValidationController.class
+¦       ¦   ¦   ¦               ¦   ¦       RuntimePluginExecutionController.class
+¦       ¦   ¦   ¦               ¦   ¦       RuntimePluginManifestController.class
+¦       ¦   ¦   ¦               ¦   ¦       RuntimePluginPackagesController.class
+¦       ¦   ¦   ¦               ¦   ¦       RuntimePluginPolicyController.class
+¦       ¦   ¦   ¦               ¦   ¦       RuntimePluginStatusController.class
+¦       ¦   ¦   ¦               ¦   ¦       RuntimeRefreshController.class
+¦       ¦   ¦   ¦               ¦   ¦       RuntimeSchedulesController.class
+¦       ¦   ¦   ¦               ¦   ¦       RuntimeTopologyExplorerController.class
+¦       ¦   ¦   ¦               ¦   ¦       RuntimeTopologyExplorerUiController.class
+¦       ¦   ¦   ¦               ¦   ¦       RuntimeUiMetadataController$MetadataCall.class
+¦       ¦   ¦   ¦               ¦   ¦       RuntimeUiMetadataController.class
+¦       ¦   ¦   ¦               ¦   ¦       ScenarioTemplateController.class
+¦       ¦   ¦   ¦               ¦   ¦       SemanticBehaviorWriteBackController.class
+¦       ¦   ¦   ¦               ¦   ¦       SemanticGovernanceController.class
+¦       ¦   ¦   ¦               ¦   ¦       SemanticPublicationMappingController.class
+¦       ¦   ¦   ¦               ¦   ¦       SemanticRollbackController.class
+¦       ¦   ¦   ¦               ¦   ¦       SourceMutationApprovalGateController.class
+¦       ¦   ¦   ¦               ¦   ¦       SourceMutationAuditRecordController.class
+¦       ¦   ¦   ¦               ¦   ¦       SourceMutationRegenerationController.class
+¦       ¦   ¦   ¦               ¦   ¦       SourceMutationRollbackAnchorController.class
+¦       ¦   ¦   ¦               ¦   ¦       SourceRollbackExecutorController.class
+¦       ¦   ¦   ¦               ¦   ¦       SpreadsheetOnboardingController.class
+¦       ¦   ¦   ¦               ¦   ¦       StructuralPublicationMappingController.class
+¦       ¦   ¦   ¦               ¦   ¦       StructuralWriteBackController.class
+¦       ¦   ¦   ¦               ¦   ¦       SupportDiagnosticsController.class
+¦       ¦   ¦   ¦               ¦   ¦       SupportDiagnosticsUiController.class
+¦       ¦   ¦   ¦               ¦   ¦       TemplateLibraryManagementController.class
+¦       ¦   ¦   ¦               ¦   ¦       TemplateVariantSpecializationController.class
+¦       ¦   ¦   ¦               ¦   ¦       TenantOperationalAdministrationController.class
+¦       ¦   ¦   ¦               ¦   ¦       TenantQueryEnforcementController.class
+¦       ¦   ¦   ¦               ¦   ¦       TenantStoragePartitioningController.class
+¦       ¦   ¦   ¦               ¦   ¦       WorkflowPolishReportUiController.class
+¦       ¦   ¦   ¦               ¦   ¦       WorkingDraftRollbackController.class
+¦       ¦   ¦   ¦               ¦   ¦       WorkingDraftSystemController.class
+¦       ¦   ¦   ¦               ¦   ¦       
+¦       ¦   ¦   ¦               ¦   +---config
+¦       ¦   ¦   ¦               ¦   ¦       AuthClaimsDebugFilterConfig$AuthClaimsDebugFilter.class
+¦       ¦   ¦   ¦               ¦   ¦       AuthClaimsDebugFilterConfig.class
+¦       ¦   ¦   ¦               ¦   ¦       BindingResolverDebugConfig$1.class
+¦       ¦   ¦   ¦               ¦   ¦       BindingResolverDebugConfig.class
+¦       ¦   ¦   ¦               ¦   ¦       BindingsDebugConfig.class
+¦       ¦   ¦   ¦               ¦   ¦       BindingsFingerprintConfig.class
+¦       ¦   ¦   ¦               ¦   ¦       CapabilityAdapterResolver$ResolvedCapabilityAdapter.class
+¦       ¦   ¦   ¦               ¦   ¦       CapabilityAdapterResolver.class
+¦       ¦   ¦   ¦               ¦   ¦       CorsConfig.class
+¦       ¦   ¦   ¦               ¦   ¦       DevCorsPreflightFilterConfig$DevCorsPreflightFilter.class
+¦       ¦   ¦   ¦               ¦   ¦       DevCorsPreflightFilterConfig.class
+¦       ¦   ¦   ¦               ¦   ¦       JwtBearerAuthFilter$1.class
+¦       ¦   ¦   ¦               ¦   ¦       JwtBearerAuthFilter$JwtValidationException.class
+¦       ¦   ¦   ¦               ¦   ¦       JwtBearerAuthFilter.class
+¦       ¦   ¦   ¦               ¦   ¦       NpdevAuthConfig.class
+¦       ¦   ¦   ¦               ¦   ¦       NpdevCapabilityBindingConfig$1$1.class
+¦       ¦   ¦   ¦               ¦   ¦       NpdevCapabilityBindingConfig$1.class
+¦       ¦   ¦   ¦               ¦   ¦       NpdevCapabilityBindingConfig.class
+¦       ¦   ¦   ¦               ¦   ¦       NpdevObservabilityConfig.class
+¦       ¦   ¦   ¦               ¦   ¦       NpdevPluginConfig$1.class
+¦       ¦   ¦   ¦               ¦   ¦       NpdevPluginConfig.class
+¦       ¦   ¦   ¦               ¦   ¦       NpdevPropertiesDumpConfig.class
+¦       ¦   ¦   ¦               ¦   ¦       NpdevRuntimeModeConfig.class
+¦       ¦   ¦   ¦               ¦   ¦       NpdevRuntimePlatformConfig.class
+¦       ¦   ¦   ¦               ¦   ¦       NpdevSchedulerConfig.class
+¦       ¦   ¦   ¦               ¦   ¦       PermissionDebugConfig$1.class
+¦       ¦   ¦   ¦               ¦   ¦       PermissionDebugConfig.class
+¦       ¦   ¦   ¦               ¦   ¦       RequestResponseLoggingFilter.class
+¦       ¦   ¦   ¦               ¦   ¦       
+¦       ¦   ¦   ¦               ¦   +---debug
+¦       ¦   ¦   ¦               ¦   ¦       StorageWiringLogger.class
+¦       ¦   ¦   ¦               ¦   ¦       
+¦       ¦   ¦   ¦               ¦   +---execution
+¦       ¦   ¦   ¦               ¦   ¦       DirectExecutionGateway$1.class
+¦       ¦   ¦   ¦               ¦   ¦       DirectExecutionGateway$2.class
+¦       ¦   ¦   ¦               ¦   ¦       DirectExecutionGateway.class
+¦       ¦   ¦   ¦               ¦   ¦       DirectExecutionRequest.class
+¦       ¦   ¦   ¦               ¦   ¦       
+¦       ¦   ¦   ¦               ¦   +---npdev
+¦       ¦   ¦   ¦               ¦   ¦   +---dto
+¦       ¦   ¦   ¦               ¦   ¦   ¦       AuditExportRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       BetaReadinessConsolidationRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       BusinessCapabilitySelectionRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       CanonicalSourceMutationExecutionRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       CanonicalSourceValidationRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       ChangeImpactPreviewRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       CompilerCandidateDiffRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       CompilerDependencyGraphRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       CompilerImpactClassificationRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       ComplianceExportRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       CrossTenantGovernanceRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       EndUserLaunchChecklistRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       EndUserRealSystemOutcomeRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       ErrorRecoveryAdviceRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       ExplainabilityBundleRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       FinalUserWorkflowSampleRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       FlowBuilderDraftRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       FlowBuilderStepRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       GeneratedArtifactPreviewRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       GovernancePresetApplicationRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       GovernanceWorkspaceDecisionRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       ImportConflictAnalysisRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       ImportCorrectionDecisionRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       ImportExecutionRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       ImportMappingPreviewRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       MultiCapabilityCompositionRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       OperationalDashboardSnapshotRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       OwnershipIsolationEvaluationRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       PublicationExecutionRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       PublicationExplainabilityBundleRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       PublicationFailureRecoveryRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       PublicationRollbackExecutionRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       PublicationTransactionRecordRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       PublishImportedScenarioDraftRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RealPublicationExecutionRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RegulatoryAnnotationRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RichExplainabilityRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RollbackAuthorityRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RollbackExecutionRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       ScenarioTemplateSpecializationRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       SemanticBehaviorCanonicalizationRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       SemanticBehaviorWriteBackRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       SemanticGovernanceActionRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       SemanticGovernanceRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       SemanticImpactPreviewRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       SemanticPublicationMappingRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       SemanticRollbackRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       SourceMutationApprovalDecisionRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       SourceMutationAuditRecordRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       SourceMutationRegenerationRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       SourceMutationRollbackAnchorCreateRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       SourceRollbackExecutionRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       SpreadsheetOnboardingRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       StructuralCanonicalizationRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       StructuralPublicationMappingRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       StructuralWriteBackRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       TemplateLibraryRegistrationRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       TemplateVariantRegistrationRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       TenantNativeGovernanceRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       TenantOperationalAdministrationRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       TenantQueryEnforcementRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       TenantStoragePartitioningRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       WorkingDraftLifecycleActionRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       WorkingDraftLineageRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       WorkingDraftRollbackRequest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       
+¦       ¦   ¦   ¦               ¦   ¦   +---migration
+¦       ¦   ¦   ¦               ¦   ¦   ¦       MigrationOperation.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       MigrationRiskAssessment.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       MigrationRiskAssessmentBuilder.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       MigrationSharedSupport.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       ModelDiffPreview.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       ModelDiffPreviewBuilder.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimeModelCompatibilityReport.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimeModelCompatibilityReportBuilder.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       StorageColumnSchema.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       StorageSchemaFromCompiledModel.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       StorageSchemaSnapshot.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       StorageTableSchema.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       
+¦       ¦   ¦   ¦               ¦   ¦   +---model
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginManifest$AdapterContribution.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginManifest$AdapterSummary.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginManifest$ImplementationRef.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginManifest$PluginContribution.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginManifest$PluginSummary.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginManifest$Summary.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginManifest.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginPackageDescriptor$ArtifactRef.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginPackageDescriptor$ArtifactSummary.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginPackageDescriptor$CapabilityBinding.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginPackageDescriptor$CapabilityBindingSummary.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginPackageDescriptor$Compatibility.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginPackageDescriptor$CompatibilitySummary.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginPackageDescriptor$PluginManifestRef.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginPackageDescriptor$Provenance.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginPackageDescriptor$ProvenanceSummary.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginPackageDescriptor$Signature.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginPackageDescriptor$SignatureSummary.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginPackageDescriptor$Summary.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginPackageDescriptor$Trust.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginPackageDescriptor$TrustSummary.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginPackageDescriptor.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimePluginRepositoryDescriptor.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       RuntimeRefreshStatus.class
+¦       ¦   ¦   ¦               ¦   ¦   ¦       
+¦       ¦   ¦   ¦               ¦   ¦   +---service
+¦       ¦   ¦   ¦               ¦   ¦           ArchitectureVisualizationService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           ArchitectureVisualizationService.class
+¦       ¦   ¦   ¦               ¦   ¦           BetaOnboardingService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           BetaOnboardingService.class
+¦       ¦   ¦   ¦               ¦   ¦           BetaReadinessConsolidationService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           BetaReadinessConsolidationService.class
+¦       ¦   ¦   ¦               ¦   ¦           BetaSecurityHardeningService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           BetaSecurityHardeningService.class
+¦       ¦   ¦   ¦               ¦   ¦           BetaSecurityRoleEvaluator.class
+¦       ¦   ¦   ¦               ¦   ¦           BusinessCapabilityMarketplaceService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           BusinessCapabilityMarketplaceService.class
+¦       ¦   ¦   ¦               ¦   ¦           CanonicalSourceArtifactStore.class
+¦       ¦   ¦   ¦               ¦   ¦           CanonicalSourceMutationExecutorService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           CanonicalSourceMutationExecutorService.class
+¦       ¦   ¦   ¦               ¦   ¦           CanonicalSourceValidationService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           CanonicalSourceValidationService.class
+¦       ¦   ¦   ¦               ¦   ¦           CapabilityIntegrationPanelService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           CapabilityIntegrationPanelService.class
+¦       ¦   ¦   ¦               ¦   ¦           CapabilityReadinessClassifier.class
+¦       ¦   ¦   ¦               ¦   ¦           ChangeImpactPreviewService.class
+¦       ¦   ¦   ¦               ¦   ¦           ChangeImpactVisualizationService.class
+¦       ¦   ¦   ¦               ¦   ¦           ClasspathArtifactRealizationProvider.class
+¦       ¦   ¦   ¦               ¦   ¦           CompilerCandidateDiffService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           CompilerCandidateDiffService.class
+¦       ¦   ¦   ¦               ¦   ¦           CompilerDependencyGraphService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           CompilerDependencyGraphService.class
+¦       ¦   ¦   ¦               ¦   ¦           CompilerImpactClassificationService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           CompilerImpactClassificationService.class
+¦       ¦   ¦   ¦               ¦   ¦           CrossTenantGovernanceService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           CrossTenantGovernanceService.class
+¦       ¦   ¦   ¦               ¦   ¦           EndUserLaunchChecklistService.class
+¦       ¦   ¦   ¦               ¦   ¦           EndUserRealSystemOutcomeService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           EndUserRealSystemOutcomeService.class
+¦       ¦   ¦   ¦               ¦   ¦           ErrorRecoveryAssistantService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           ErrorRecoveryAssistantService.class
+¦       ¦   ¦   ¦               ¦   ¦           ExecutionMonitorService.class
+¦       ¦   ¦   ¦               ¦   ¦           ExplainabilityBundleService.class
+¦       ¦   ¦   ¦               ¦   ¦           ExplainabilityGraphService$ExplainabilitySelection.class
+¦       ¦   ¦   ¦               ¦   ¦           ExplainabilityGraphService.class
+¦       ¦   ¦   ¦               ¦   ¦           FileRuntimePluginExecutionSummaryStore.class
+¦       ¦   ¦   ¦               ¦   ¦           FilesystemArtifactRealizationProvider.class
+¦       ¦   ¦   ¦               ¦   ¦           FinalUserWorkflowService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           FinalUserWorkflowService.class
+¦       ¦   ¦   ¦               ¦   ¦           FlowBuilderService.class
+¦       ¦   ¦   ¦               ¦   ¦           FriendlyExplanationCatalogService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           FriendlyExplanationCatalogService.class
+¦       ¦   ¦   ¦               ¦   ¦           GeneratedArtifactPreviewService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           GeneratedArtifactPreviewService.class
+¦       ¦   ¦   ¦               ¦   ¦           GenericCustomProcedureCapabilityAdapter.class
+¦       ¦   ¦   ¦               ¦   ¦           GovernanceWorkspaceService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           GovernanceWorkspaceService.class
+¦       ¦   ¦   ¦               ¦   ¦           GraphWeightedImpactScorer.class
+¦       ¦   ¦   ¦               ¦   ¦           GuidedTaskWorkspaceService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           GuidedTaskWorkspaceService.class
+¦       ¦   ¦   ¦               ¦   ¦           HumanReadableAuditExportService.class
+¦       ¦   ¦   ¦               ¦   ¦           ImportConflictAnalysisService.class
+¦       ¦   ¦   ¦               ¦   ¦           ImportCorrectionWorkspaceService.class
+¦       ¦   ¦   ¦               ¦   ¦           ImportExecutionService.class
+¦       ¦   ¦   ¦               ¦   ¦           ModelSyncStatusService$ModelSyncStatus.class
+¦       ¦   ¦   ¦               ¦   ¦           ModelSyncStatusService.class
+¦       ¦   ¦   ¦               ¦   ¦           MultiCapabilityCompositionService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           MultiCapabilityCompositionService.class
+¦       ¦   ¦   ¦               ¦   ¦           OperationalReadinessDashboardService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           OperationalReadinessDashboardService.class
+¦       ¦   ¦   ¦               ¦   ¦           OwnershipIsolationService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           OwnershipIsolationService.class
+¦       ¦   ¦   ¦               ¦   ¦           PermissionAwareUiMetadataService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           PermissionAwareUiMetadataService$ActionEvaluation.class
+¦       ¦   ¦   ¦               ¦   ¦           PermissionAwareUiMetadataService$ActionPolicy.class
+¦       ¦   ¦   ¦               ¦   ¦           PermissionAwareUiMetadataService$ActionUiState.class
+¦       ¦   ¦   ¦               ¦   ¦           PermissionAwareUiMetadataService$FieldAccessState.class
+¦       ¦   ¦   ¦               ¦   ¦           PermissionAwareUiMetadataService$FieldEvaluation.class
+¦       ¦   ¦   ¦               ¦   ¦           PermissionAwareUiMetadataService$FieldPolicy.class
+¦       ¦   ¦   ¦               ¦   ¦           PermissionAwareUiMetadataService$UiMetadataPolicy.class
+¦       ¦   ¦   ¦               ¦   ¦           PermissionAwareUiMetadataService.class
+¦       ¦   ¦   ¦               ¦   ¦           PluginExecutionPolicyDecision.class
+¦       ¦   ¦   ¦               ¦   ¦           PluginExecutionPolicyEvaluator.class
+¦       ¦   ¦   ¦               ¦   ¦           PluginManifestSchemaValidator.class
+¦       ¦   ¦   ¦               ¦   ¦           PluginPackageSchemaValidator.class
+¦       ¦   ¦   ¦               ¦   ¦           PolicyPackGovernancePresetService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           PolicyPackGovernancePresetService.class
+¦       ¦   ¦   ¦               ¦   ¦           PreviewReferenceResolver.class
+¦       ¦   ¦   ¦               ¦   ¦           PublicationChainReferenceResolver.class
+¦       ¦   ¦   ¦               ¦   ¦           PublicationExecutorService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           PublicationExecutorService.class
+¦       ¦   ¦   ¦               ¦   ¦           PublicationExplainabilityBundleService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           PublicationExplainabilityBundleService.class
+¦       ¦   ¦   ¦               ¦   ¦           PublicationFailureRecoveryService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           PublicationFailureRecoveryService.class
+¦       ¦   ¦   ¦               ¦   ¦           PublicationRollbackExecutorService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           PublicationRollbackExecutorService.class
+¦       ¦   ¦   ¦               ¦   ¦           PublicationStateStore.class
+¦       ¦   ¦   ¦               ¦   ¦           PublicationTransactionRecordService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           PublicationTransactionRecordService.class
+¦       ¦   ¦   ¦               ¦   ¦           RealPublicationExecutorService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           RealPublicationExecutorService.class
+¦       ¦   ¦   ¦               ¦   ¦           ReferenceAppGalleryService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           ReferenceAppGalleryService.class
+¦       ¦   ¦   ¦               ¦   ¦           RegulatoryAnnotationService.class
+¦       ¦   ¦   ¦               ¦   ¦           ReliabilityPostureService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           ReliabilityPostureService.class
+¦       ¦   ¦   ¦               ¦   ¦           RichExplainabilityService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           RichExplainabilityService.class
+¦       ¦   ¦   ¦               ¦   ¦           RoleWorkspaceService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           RoleWorkspaceService.class
+¦       ¦   ¦   ¦               ¦   ¦           RollbackAuthorityService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           RollbackAuthorityService.class
+¦       ¦   ¦   ¦               ¦   ¦           RollbackExecutionService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           RollbackExecutionService.class
+¦       ¦   ¦   ¦               ¦   ¦           RollbackReferenceNormalizer.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimeMetadataService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimeMetadataService.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimeMetadataValidationService.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginAdapterRegistry$RegisteredAdapterContribution.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginAdapterRegistry$Summary.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginAdapterRegistry$SummaryItem.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginAdapterRegistry.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginArtifactRealizationProvider.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginExecutionSummaryStore.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginManifestLoader.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageAdmissionEvaluator$AdmissionDecision.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageAdmissionEvaluator.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageCatalog$GovernanceSummary.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageCatalog$PackageCatalogEntry.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageCatalog$PackageSummary.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageCatalog$RejectedPackageSummary.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageCatalog$RejectionReason.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageCatalog$SelectedCapabilityBinding.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageCatalog$Summary.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageCatalog.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageCompatibilityEvaluator$CompatibilityEvaluation.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageCompatibilityEvaluator$ManifestSelection.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageCompatibilityEvaluator$RuntimeCompatibilitySummary.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageCompatibilityEvaluator.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackagedArtifactHandlerResolver$PackagedArtifactResolution.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackagedArtifactHandlerResolver$Summary.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackagedArtifactHandlerResolver.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageDescriptorLoader.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageDiscoveryService$DiscoveredPackageCandidate.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageDiscoveryService$DiscoveryMode.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageDiscoveryService$DiscoveryResult.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageDiscoveryService.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageRealizationService$ArtifactRealization.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageRealizationService$RealizationRequest.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageRealizationService$RealizationSummaryItem.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageRealizationService$RealizedAdapter.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageRealizationService$SelectedPackageMatch.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageRealizationService$Summary.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageRealizationService.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageTrustEvaluator$TrustEvaluation.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageTrustEvaluator$TrustPolicySummary.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginPackageTrustEvaluator.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginProfileDiagnostics.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginProfileResolver$ProfileResources.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginProfileResolver$ResolvedRuntimePluginProfile.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginProfileResolver.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginRealizationProvider.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginRealizationProviderCatalog$Summary.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginRealizationProviderCatalog.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginRepositoryCatalog$1.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginRepositoryCatalog.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginRuntimeRefResolver.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginStatusSummary$AdapterExecutionTrace.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginStatusSummary$ConfigurationReference.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginStatusSummary$MetadataReference.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginStatusSummary$PluginTraceabilitySummary.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginStatusSummary$ResourceOwnershipSummary.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginStatusSummary$ResourceReference.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginStatusSummary$SelectedArtifactReference.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimePluginStatusSummary.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimeRefArtifactRealizationProvider.class
+¦       ¦   ¦   ¦               ¦   ¦           RuntimeTopologyExplorerService.class
+¦       ¦   ¦   ¦               ¦   ¦           SandboxedCapabilityAdapter.class
+¦       ¦   ¦   ¦               ¦   ¦           SandboxedPluginExecutionEngine$PluginExecutionThreadFactory.class
+¦       ¦   ¦   ¦               ¦   ¦           SandboxedPluginExecutionEngine.class
+¦       ¦   ¦   ¦               ¦   ¦           SandboxedPluginExecutionResult$Status.class
+¦       ¦   ¦   ¦               ¦   ¦           SandboxedPluginExecutionResult$Summary.class
+¦       ¦   ¦   ¦               ¦   ¦           SandboxedPluginExecutionResult.class
+¦       ¦   ¦   ¦               ¦   ¦           ScenarioTemplateService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           ScenarioTemplateService.class
+¦       ¦   ¦   ¦               ¦   ¦           SemanticBehaviorWriteBackCanonicalizationService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           SemanticBehaviorWriteBackCanonicalizationService.class
+¦       ¦   ¦   ¦               ¦   ¦           SemanticBehaviorWriteBackService.class
+¦       ¦   ¦   ¦               ¦   ¦           SemanticGovernanceService.class
+¦       ¦   ¦   ¦               ¦   ¦           SemanticPublicationMappingService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           SemanticPublicationMappingService.class
+¦       ¦   ¦   ¦               ¦   ¦           SemanticRollbackService.class
+¦       ¦   ¦   ¦               ¦   ¦           SourceMutationApprovalGateService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           SourceMutationApprovalGateService.class
+¦       ¦   ¦   ¦               ¦   ¦           SourceMutationAuditRecordService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           SourceMutationAuditRecordService.class
+¦       ¦   ¦   ¦               ¦   ¦           SourceMutationRegenerationArtifactStore.class
+¦       ¦   ¦   ¦               ¦   ¦           SourceMutationRegenerationService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           SourceMutationRegenerationService.class
+¦       ¦   ¦   ¦               ¦   ¦           SourceMutationRollbackAnchorService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           SourceMutationRollbackAnchorService.class
+¦       ¦   ¦   ¦               ¦   ¦           SourceRollbackExecutorService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           SourceRollbackExecutorService.class
+¦       ¦   ¦   ¦               ¦   ¦           SpreadsheetOnboardingService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           SpreadsheetOnboardingService.class
+¦       ¦   ¦   ¦               ¦   ¦           StructuralPublicationMappingService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           StructuralPublicationMappingService.class
+¦       ¦   ¦   ¦               ¦   ¦           StructuralWriteBackCanonicalizationService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           StructuralWriteBackCanonicalizationService.class
+¦       ¦   ¦   ¦               ¦   ¦           StructuralWriteBackService.class
+¦       ¦   ¦   ¦               ¦   ¦           SupportDiagnosticsService.class
+¦       ¦   ¦   ¦               ¦   ¦           TemplateLibraryManagementService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           TemplateLibraryManagementService.class
+¦       ¦   ¦   ¦               ¦   ¦           TemplateVariantSpecializationService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           TemplateVariantSpecializationService.class
+¦       ¦   ¦   ¦               ¦   ¦           TenantNativeGovernanceService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           TenantNativeGovernanceService.class
+¦       ¦   ¦   ¦               ¦   ¦           TenantOperationalAdministrationService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           TenantOperationalAdministrationService.class
+¦       ¦   ¦   ¦               ¦   ¦           TenantQueryEnforcementService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           TenantQueryEnforcementService.class
+¦       ¦   ¦   ¦               ¦   ¦           TenantStoragePartitioningService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           TenantStoragePartitioningService.class
+¦       ¦   ¦   ¦               ¦   ¦           TenantStoragePathResolver.class
+¦       ¦   ¦   ¦               ¦   ¦           WorkingDraftLineageService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           WorkingDraftLineageService.class
+¦       ¦   ¦   ¦               ¦   ¦           WorkingDraftRollbackService$1.class
+¦       ¦   ¦   ¦               ¦   ¦           WorkingDraftRollbackService.class
+¦       ¦   ¦   ¦               ¦   ¦           WorkingDraftSystemService.class
+¦       ¦   ¦   ¦               ¦   ¦           
+¦       ¦   ¦   ¦               ¦   +---tenant
+¦       ¦   ¦   ¦               ¦           TenantPartitionRealityVerifier.class
+¦       ¦   ¦   ¦               ¦           
+¦       ¦   ¦   ¦               +---npdev
+¦       ¦   ¦   ¦                   +---generated
+¦       ¦   ¦   ¦                       +---config
+¦       ¦   ¦   ¦                       ¦       GeneratedJpaConfig.class
+¦       ¦   ¦   ¦                       ¦       
+¦       ¦   ¦   ¦                       +---controllers
+¦       ¦   ¦   ¦                       ¦       DiningOrderController.class
+¦       ¦   ¦   ¦                       ¦       DiningOrderControllerBase.class
+¦       ¦   ¦   ¦                       ¦       DiningTableController.class
+¦       ¦   ¦   ¦                       ¦       DiningTableControllerBase.class
+¦       ¦   ¦   ¦                       ¦       MenuItemController.class
+¦       ¦   ¦   ¦                       ¦       MenuItemControllerBase.class
+¦       ¦   ¦   ¦                       ¦       OrderLineController.class
+¦       ¦   ¦   ¦                       ¦       OrderLineControllerBase.class
+¦       ¦   ¦   ¦                       ¦       PaymentReceiptController.class
+¦       ¦   ¦   ¦                       ¦       PaymentReceiptControllerBase.class
+¦       ¦   ¦   ¦                       ¦       ReservationController.class
+¦       ¦   ¦   ¦                       ¦       ReservationControllerBase.class
+¦       ¦   ¦   ¦                       ¦       StaffMemberController.class
+¦       ¦   ¦   ¦                       ¦       StaffMemberControllerBase.class
+¦       ¦   ¦   ¦                       ¦       TenantController.class
+¦       ¦   ¦   ¦                       ¦       TenantControllerBase.class
+¦       ¦   ¦   ¦                       ¦       
+¦       ¦   ¦   ¦                       +---dtos
+¦       ¦   ¦   ¦                       ¦       DiningOrderCreateRequest.class
+¦       ¦   ¦   ¦                       ¦       DiningOrderResponse.class
+¦       ¦   ¦   ¦                       ¦       DiningOrderUpdateRequest.class
+¦       ¦   ¦   ¦                       ¦       DiningTableCreateRequest.class
+¦       ¦   ¦   ¦                       ¦       DiningTableResponse.class
+¦       ¦   ¦   ¦                       ¦       DiningTableUpdateRequest.class
+¦       ¦   ¦   ¦                       ¦       MenuItemCreateRequest.class
+¦       ¦   ¦   ¦                       ¦       MenuItemResponse.class
+¦       ¦   ¦   ¦                       ¦       MenuItemUpdateRequest.class
+¦       ¦   ¦   ¦                       ¦       OrderLineCreateRequest.class
+¦       ¦   ¦   ¦                       ¦       OrderLineResponse.class
+¦       ¦   ¦   ¦                       ¦       OrderLineUpdateRequest.class
+¦       ¦   ¦   ¦                       ¦       PaymentReceiptCreateRequest.class
+¦       ¦   ¦   ¦                       ¦       PaymentReceiptResponse.class
+¦       ¦   ¦   ¦                       ¦       PaymentReceiptUpdateRequest.class
+¦       ¦   ¦   ¦                       ¦       ReservationCreateRequest.class
+¦       ¦   ¦   ¦                       ¦       ReservationResponse.class
+¦       ¦   ¦   ¦                       ¦       ReservationUpdateRequest.class
+¦       ¦   ¦   ¦                       ¦       StaffMemberCreateRequest.class
+¦       ¦   ¦   ¦                       ¦       StaffMemberResponse.class
+¦       ¦   ¦   ¦                       ¦       StaffMemberUpdateRequest.class
+¦       ¦   ¦   ¦                       ¦       TenantCreateRequest.class
+¦       ¦   ¦   ¦                       ¦       TenantResponse.class
+¦       ¦   ¦   ¦                       ¦       TenantUpdateRequest.class
+¦       ¦   ¦   ¦                       ¦       
+¦       ¦   ¦   ¦                       +---entities
+¦       ¦   ¦   ¦                       ¦       DiningOrder.class
+¦       ¦   ¦   ¦                       ¦       DiningTable.class
+¦       ¦   ¦   ¦                       ¦       MenuItem.class
+¦       ¦   ¦   ¦                       ¦       OrderLine.class
+¦       ¦   ¦   ¦                       ¦       PaymentReceipt.class
+¦       ¦   ¦   ¦                       ¦       Reservation.class
+¦       ¦   ¦   ¦                       ¦       StaffMember.class
+¦       ¦   ¦   ¦                       ¦       Tenant.class
+¦       ¦   ¦   ¦                       ¦       
+¦       ¦   ¦   ¦                       +---repositories
+¦       ¦   ¦   ¦                       ¦       DiningOrderRepository.class
+¦       ¦   ¦   ¦                       ¦       DiningTableRepository.class
+¦       ¦   ¦   ¦                       ¦       MenuItemRepository.class
+¦       ¦   ¦   ¦                       ¦       OrderLineRepository.class
+¦       ¦   ¦   ¦                       ¦       PaymentReceiptRepository.class
+¦       ¦   ¦   ¦                       ¦       ReservationRepository.class
+¦       ¦   ¦   ¦                       ¦       StaffMemberRepository.class
+¦       ¦   ¦   ¦                       ¦       TenantRepository.class
+¦       ¦   ¦   ¦                       ¦       
+¦       ¦   ¦   ¦                       +---runtime
+¦       ¦   ¦   ¦                       ¦   +---api
+¦       ¦   ¦   ¦                       ¦   ¦       AdminController$1.class
+¦       ¦   ¦   ¦                       ¦   ¦       AdminController$DraftKind.class
+¦       ¦   ¦   ¦                       ¦   ¦       AdminController.class
+¦       ¦   ¦   ¦                       ¦   ¦       AuditController.class
+¦       ¦   ¦   ¦                       ¦   ¦       CorrelationController.class
+¦       ¦   ¦   ¦                       ¦   ¦       EventIngestionController.class
+¦       ¦   ¦   ¦                       ¦   ¦       EventQueryController.class
+¦       ¦   ¦   ¦                       ¦   ¦       ExecutionQueryController.class
+¦       ¦   ¦   ¦                       ¦   ¦       FlowExecutionController$1.class
+¦       ¦   ¦   ¦                       ¦   ¦       FlowExecutionController.class
+¦       ¦   ¦   ¦                       ¦   ¦       OpenApiController.class
+¦       ¦   ¦   ¦                       ¦   ¦       TraceController.class
+¦       ¦   ¦   ¦                       ¦   ¦       UiRedirectController.class
+¦       ¦   ¦   ¦                       ¦   ¦       
+¦       ¦   ¦   ¦                       ¦   +---config
+¦       ¦   ¦   ¦                       ¦   ¦       GeneratedBindingManifestLoader.class
+¦       ¦   ¦   ¦                       ¦   ¦       GeneratedPermissionManifestLoader.class
+¦       ¦   ¦   ¦                       ¦   ¦       GeneratedRuntimeOverridesLoader.class
+¦       ¦   ¦   ¦                       ¦   ¦       NPDevRuntimeConfig.class
+¦       ¦   ¦   ¦                       ¦   ¦       RuntimeApiKeyAuthFilter$PrincipalClaims.class
+¦       ¦   ¦   ¦                       ¦   ¦       RuntimeApiKeyAuthFilter.class
+¦       ¦   ¦   ¦                       ¦   ¦       
+¦       ¦   ¦   ¦                       ¦   +---dto
+¦       ¦   ¦   ¦                       ¦   ¦       AdminCircuitResponse.class
+¦       ¦   ¦   ¦                       ¦   ¦       AdminIdempotencyResponse.class
+¦       ¦   ¦   ¦                       ¦   ¦       AuditRecordResponse.class
+¦       ¦   ¦   ¦                       ¦   ¦       CorrelationTimelineResponse.class
+¦       ¦   ¦   ¦                       ¦   ¦       EventMetaSummaryResponse.class
+¦       ¦   ¦   ¦                       ¦   ¦       EventPublishRequest.class
+¦       ¦   ¦   ¦                       ¦   ¦       EventPublishResponse.class
+¦       ¦   ¦   ¦                       ¦   ¦       EventQueryResponse.class
+¦       ¦   ¦   ¦                       ¦   ¦       ExecutionQueryResponse.class
+¦       ¦   ¦   ¦                       ¦   ¦       ExecutionSummaryResponse.class
+¦       ¦   ¦   ¦                       ¦   ¦       FlowDefinitionResponse.class
+¦       ¦   ¦   ¦                       ¦   ¦       FlowExecutionResponse$CapabilityErrorView.class
+¦       ¦   ¦   ¦                       ¦   ¦       FlowExecutionResponse$EventEnvelopeView.class
+¦       ¦   ¦   ¦                       ¦   ¦       FlowExecutionResponse$FailureInfoView.class
+¦       ¦   ¦   ¦                       ¦   ¦       FlowExecutionResponse$InputValidationErrorView.class
+¦       ¦   ¦   ¦                       ¦   ¦       FlowExecutionResponse$InvariantViolationView.class
+¦       ¦   ¦   ¦                       ¦   ¦       FlowExecutionResponse.class
+¦       ¦   ¦   ¦                       ¦   ¦       TraceSummaryResponse.class
+¦       ¦   ¦   ¦                       ¦   ¦       
+¦       ¦   ¦   ¦                       ¦   +---model
+¦       ¦   ¦   ¦                       ¦   ¦       NPDevModelProvider.class
+¦       ¦   ¦   ¦                       ¦   ¦       
+¦       ¦   ¦   ¦                       ¦   +---service
+¦       ¦   ¦   ¦                       ¦           KernelFacade$1.class
+¦       ¦   ¦   ¦                       ¦           KernelFacade$CorrelationTimeline.class
+¦       ¦   ¦   ¦                       ¦           KernelFacade$FlowDefinitionView.class
+¦       ¦   ¦   ¦                       ¦           KernelFacade$FlowStepView.class
+¦       ¦   ¦   ¦                       ¦           KernelFacade.class
+¦       ¦   ¦   ¦                       ¦           RuntimeContextService.class
+¦       ¦   ¦   ¦                       ¦           
+¦       ¦   ¦   ¦                       +---services
+¦       ¦   ¦   ¦                               DiningOrderService.class
+¦       ¦   ¦   ¦                               DiningOrderServiceBase$UniqueViolation.class
+¦       ¦   ¦   ¦                               DiningOrderServiceBase.class
+¦       ¦   ¦   ¦                               DiningTableService.class
+¦       ¦   ¦   ¦                               DiningTableServiceBase$UniqueViolation.class
+¦       ¦   ¦   ¦                               DiningTableServiceBase.class
+¦       ¦   ¦   ¦                               MenuItemService.class
+¦       ¦   ¦   ¦                               MenuItemServiceBase$UniqueViolation.class
+¦       ¦   ¦   ¦                               MenuItemServiceBase.class
+¦       ¦   ¦   ¦                               OrderLineService.class
+¦       ¦   ¦   ¦                               OrderLineServiceBase$UniqueViolation.class
+¦       ¦   ¦   ¦                               OrderLineServiceBase.class
+¦       ¦   ¦   ¦                               PaymentReceiptService.class
+¦       ¦   ¦   ¦                               PaymentReceiptServiceBase$UniqueViolation.class
+¦       ¦   ¦   ¦                               PaymentReceiptServiceBase.class
+¦       ¦   ¦   ¦                               ReservationService.class
+¦       ¦   ¦   ¦                               ReservationServiceBase$UniqueViolation.class
+¦       ¦   ¦   ¦                               ReservationServiceBase.class
+¦       ¦   ¦   ¦                               StaffMemberService.class
+¦       ¦   ¦   ¦                               StaffMemberServiceBase$UniqueViolation.class
+¦       ¦   ¦   ¦                               StaffMemberServiceBase.class
+¦       ¦   ¦   ¦                               TenantService.class
+¦       ¦   ¦   ¦                               TenantServiceBase$UniqueViolation.class
+¦       ¦   ¦   ¦                               TenantServiceBase.class
+¦       ¦   ¦   ¦                               
+¦       ¦   ¦   +---generated
+¦       ¦   ¦   ¦   +---sources
+¦       ¦   ¦   ¦       +---annotationProcessor
+¦       ¦   ¦   ¦       ¦   +---java
+¦       ¦   ¦   ¦       ¦       +---main
+¦       ¦   ¦   ¦       +---headers
+¦       ¦   ¦   ¦           +---java
+¦       ¦   ¦   ¦               +---main
+¦       ¦   ¦   +---resources
+¦       ¦   ¦   ¦   +---main
+¦       ¦   ¦   ¦       ¦   application-default.properties
+¦       ¦   ¦   ¦       ¦   application-dev.properties
+¦       ¦   ¦   ¦       ¦   application-dev.yml
+¦       ¦   ¦   ¦       ¦   application-external-acceptance.properties
+¦       ¦   ¦   ¦       ¦   application-external-beta.properties
+¦       ¦   ¦   ¦       ¦   application-external-demo.properties
+¦       ¦   ¦   ¦       ¦   application-filesystem.properties
+¦       ¦   ¦   ¦       ¦   application-step0.yml
+¦       ¦   ¦   ¦       ¦   application-trial.properties
+¦       ¦   ¦   ¦       ¦   application-warning.properties
+¦       ¦   ¦   ¦       ¦   application.properties
+¦       ¦   ¦   ¦       ¦   application.yml
+¦       ¦   ¦   ¦       ¦   npdev-runtime-actuator.properties
+¦       ¦   ¦   ¦       ¦   
+¦       ¦   ¦   ¦       +---db
+¦       ¦   ¦   ¦       ¦   +---migration
+¦       ¦   ¦   ¦       ¦           R__npdev_schema.sql
+¦       ¦   ¦   ¦       ¦           V5001__create_npdev_flow_instance.sql
+¦       ¦   ¦   ¦       ¦           V5002__create_npdev_event_store.sql
+¦       ¦   ¦   ¦       ¦           V5003__create_npdev_trace.sql
+¦       ¦   ¦   ¦       ¦           V5004__add_execution_context_columns.sql
+¦       ¦   ¦   ¦       ¦           V5005__create_npdev_correlation_owner.sql
+¦       ¦   ¦   ¦       ¦           V5006__create_npdev_audit_log.sql
+¦       ¦   ¦   ¦       ¦           V5007__add_perf_indexes.sql
+¦       ¦   ¦   ¦       ¦           V5008__add_flow_instance_resume_fields.sql
+¦       ¦   ¦   ¦       ¦           V5009__create_npdev_circuit_breaker.sql
+¦       ¦   ¦   ¦       ¦           V5010__create_npdev_idempotency.sql
+¦       ¦   ¦   ¦       ¦           V5012__add_flow_instance_failure_fields.sql
+¦       ¦   ¦   ¦       ¦           V5014__create_npdev_scheduled_event.sql
+¦       ¦   ¦   ¦       ¦           
+¦       ¦   ¦   ¦       +---npdev
+¦       ¦   ¦   ¦       ¦   ¦   compiled-metadata.json
+¦       ¦   ¦   ¦       ¦   ¦   compiled-model.json
+¦       ¦   ¦   ¦       ¦   ¦   model-diff-baseline.json
+¦       ¦   ¦   ¦       ¦   ¦   model.json
+¦       ¦   ¦   ¦       ¦   ¦   
+¦       ¦   ¦   ¦       ¦   +---bindings
+¦       ¦   ¦   ¦       ¦   ¦       alt.bindings.json
+¦       ¦   ¦   ¦       ¦   ¦       dev.bindings.json
+¦       ¦   ¦   ¦       ¦   ¦       
+¦       ¦   ¦   ¦       ¦   +---metadata
+¦       ¦   ¦   ¦       ¦   ¦       actions.manifest.json
+¦       ¦   ¦   ¦       ¦   ¦       concepts.manifest.json
+¦       ¦   ¦   ¦       ¦   ¦       enums.manifest.json
+¦       ¦   ¦   ¦       ¦   ¦       fields.manifest.json
+¦       ¦   ¦   ¦       ¦   ¦       index.json
+¦       ¦   ¦   ¦       ¦   ¦       layout.manifest.json
+¦       ¦   ¦   ¦       ¦   ¦       references.manifest.json
+¦       ¦   ¦   ¦       ¦   ¦       validation-hints.manifest.json
+¦       ¦   ¦   ¦       ¦   ¦       
+¦       ¦   ¦   ¦       ¦   +---plugin-packages
+¦       ¦   ¦   ¦       ¦   ¦       custom-procedure.package.json
+¦       ¦   ¦   ¦       ¦   ¦       index.json
+¦       ¦   ¦   ¦       ¦   ¦       notification-incompatible.package.json
+¦       ¦   ¦   ¦       ¦   ¦       notification-inproc.package.json
+¦       ¦   ¦   ¦       ¦   ¦       notification-untrusted.package.json
+¦       ¦   ¦   ¦       ¦   ¦       notification-valid.package.json
+¦       ¦   ¦   ¦       ¦   ¦       notification-warning.package.json
+¦       ¦   ¦   ¦       ¦   ¦       
+¦       ¦   ¦   ¦       ¦   +---plugins
+¦       ¦   ¦   ¦       ¦   ¦       default.plugin-manifest.json
+¦       ¦   ¦   ¦       ¦   ¦       generated.plugin-requirements.json
+¦       ¦   ¦   ¦       ¦   ¦       warning.plugin-manifest.json
+¦       ¦   ¦   ¦       ¦   ¦       
+¦       ¦   ¦   ¦       ¦   +---runtime
+¦       ¦   ¦   ¦       ¦   ¦       dev.runtime.json
+¦       ¦   ¦   ¦       ¦   ¦       
+¦       ¦   ¦   ¦       ¦   +---schema
+¦       ¦   ¦   ¦       ¦   ¦       npdev-plugin-manifest-v1.schema.json
+¦       ¦   ¦   ¦       ¦   ¦       npdev-plugin-package-v1.schema.json
+¦       ¦   ¦   ¦       ¦   ¦       npdev-plugin-repository-v1.schema.json
+¦       ¦   ¦   ¦       ¦   ¦       
+¦       ¦   ¦   ¦       ¦   +---security
+¦       ¦   ¦   ¦       ¦   ¦       dev.permissions.json
+¦       ¦   ¦   ¦       ¦   ¦       dev.ui-metadata-policy.json
+¦       ¦   ¦   ¦       ¦   ¦       
+¦       ¦   ¦   ¦       ¦   +---ui-boundary
+¦       ¦   ¦   ¦       ¦           canonical-ui-selection.json
+¦       ¦   ¦   ¦       ¦           
+¦       ¦   ¦   ¦       +---static
+¦       ¦   ¦   ¦           +---npdev-ui
+¦       ¦   ¦   ¦           ¦       app.js
+¦       ¦   ¦   ¦           ¦       index.html
+¦       ¦   ¦   ¦           ¦       style.css
+¦       ¦   ¦   ¦           ¦       
+¦       ¦   ¦   ¦           +---npdev-ui-react
+¦       ¦   ¦   ¦               ¦   index.html
+¦       ¦   ¦   ¦               ¦   
+¦       ¦   ¦   ¦               +---assets
+¦       ¦   ¦   ¦                       app.css
+¦       ¦   ¦   ¦                       app.js
+¦       ¦   ¦   ¦                       
+¦       ¦   ¦   +---tmp
+¦       ¦   ¦       +---compileJava
+¦       ¦   ¦               previous-compilation-data.bin
+¦       ¦   ¦               
+¦       ¦   +---gradle
+¦       ¦   ¦   +---wrapper
+¦       ¦   ¦           gradle-wrapper.jar
+¦       ¦   ¦           gradle-wrapper.properties
+¦       ¦   ¦           
+¦       ¦   +---libs
+¦       ¦   ¦       audit-inproc-0.1.0.jar
+¦       ¦   ¦       audit-postgres-0.1.0.jar
+¦       ¦   ¦       auth-context-jwt-0.1.0.jar
+¦       ¦   ¦       authz-default-0.1.0.jar
+¦       ¦   ¦       bulkhead-inproc-0.1.0.jar
+¦       ¦   ¦       bulkhead-postgres-0.1.0.jar
+¦       ¦   ¦       circuit-inproc-0.1.0.jar
+¦       ¦   ¦       circuit-postgres-0.1.0.jar
+¦       ¦   ¦       core-0.1.0.jar
+¦       ¦   ¦       dsl-0.1.0.jar
+¦       ¦   ¦       events-inproc-0.1.0.jar
+¦       ¦   ¦       eventstore-postgres-0.1.0.jar
+¦       ¦   ¦       expression-cel-0.1.0.jar
+¦       ¦   ¦       flow-compiled-0.1.0.jar
+¦       ¦   ¦       flowinstance-inproc-0.1.0.jar
+¦       ¦   ¦       flowinstance-postgres-0.1.0.jar
+¦       ¦   ¦       generator-0.1.0.jar
+¦       ¦   ¦       idempotency-inproc-0.1.0.jar
+¦       ¦   ¦       idempotency-postgres-0.1.0.jar
+¦       ¦   ¦       itu-1.10.3.jar
+¦       ¦   ¦       json-jackson-0.1.0.jar
+¦       ¦   ¦       json-schema-validator-1.5.6.jar
+¦       ¦   ¦       kernel-0.1.0.jar
+¦       ¦   ¦       metrics-micrometer-0.1.0.jar
+¦       ¦   ¦       notification-inproc-0.1.0.jar
+¦       ¦   ¦       npdev-cli-0.1.0.jar
+¦       ¦   ¦       persistence-inproc-0.1.0.jar
+¦       ¦   ¦       persistence-postgres-0.1.0.jar
+¦       ¦   ¦       request-context-default-0.1.0.jar
+¦       ¦   ¦       resume-bootstrap-spring-0.1.0.jar
+¦       ¦   ¦       runtime-validation-0.1.0.jar
+¦       ¦   ¦       schema-validator-default-0.1.0.jar
+¦       ¦   ¦       tracestore-postgres-0.1.0.jar
+¦       ¦   ¦       tracing-inproc-0.1.0.jar
+¦       ¦   ¦       tracing-redaction-default-0.1.0.jar
+¦       ¦   ¦       webhook-inproc-0.1.0.jar
+¦       ¦   ¦       
+¦       ¦   +---npdev-generated
+¦       ¦   ¦   +---resources
+¦       ¦   ¦   +---src
+¦       ¦   ¦       +---main
+¦       ¦   ¦           +---java
+¦       ¦   ¦           ¦   +---com
+¦       ¦   ¦           ¦       +---npdev
+¦       ¦   ¦           ¦           +---generated
+¦       ¦   ¦           ¦               +---config
+¦       ¦   ¦           ¦               ¦       GeneratedJpaConfig.java
+¦       ¦   ¦           ¦               ¦       
+¦       ¦   ¦           ¦               +---controllers
+¦       ¦   ¦           ¦               ¦       DiningOrderController.java
+¦       ¦   ¦           ¦               ¦       DiningOrderControllerBase.java
+¦       ¦   ¦           ¦               ¦       DiningTableController.java
+¦       ¦   ¦           ¦               ¦       DiningTableControllerBase.java
+¦       ¦   ¦           ¦               ¦       MenuItemController.java
+¦       ¦   ¦           ¦               ¦       MenuItemControllerBase.java
+¦       ¦   ¦           ¦               ¦       OrderLineController.java
+¦       ¦   ¦           ¦               ¦       OrderLineControllerBase.java
+¦       ¦   ¦           ¦               ¦       PaymentReceiptController.java
+¦       ¦   ¦           ¦               ¦       PaymentReceiptControllerBase.java
+¦       ¦   ¦           ¦               ¦       ReservationController.java
+¦       ¦   ¦           ¦               ¦       ReservationControllerBase.java
+¦       ¦   ¦           ¦               ¦       StaffMemberController.java
+¦       ¦   ¦           ¦               ¦       StaffMemberControllerBase.java
+¦       ¦   ¦           ¦               ¦       TenantController.java
+¦       ¦   ¦           ¦               ¦       TenantControllerBase.java
+¦       ¦   ¦           ¦               ¦       
+¦       ¦   ¦           ¦               +---dtos
+¦       ¦   ¦           ¦               ¦       DiningOrderCreateRequest.java
+¦       ¦   ¦           ¦               ¦       DiningOrderResponse.java
+¦       ¦   ¦           ¦               ¦       DiningOrderUpdateRequest.java
+¦       ¦   ¦           ¦               ¦       DiningTableCreateRequest.java
+¦       ¦   ¦           ¦               ¦       DiningTableResponse.java
+¦       ¦   ¦           ¦               ¦       DiningTableUpdateRequest.java
+¦       ¦   ¦           ¦               ¦       MenuItemCreateRequest.java
+¦       ¦   ¦           ¦               ¦       MenuItemResponse.java
+¦       ¦   ¦           ¦               ¦       MenuItemUpdateRequest.java
+¦       ¦   ¦           ¦               ¦       OrderLineCreateRequest.java
+¦       ¦   ¦           ¦               ¦       OrderLineResponse.java
+¦       ¦   ¦           ¦               ¦       OrderLineUpdateRequest.java
+¦       ¦   ¦           ¦               ¦       PaymentReceiptCreateRequest.java
+¦       ¦   ¦           ¦               ¦       PaymentReceiptResponse.java
+¦       ¦   ¦           ¦               ¦       PaymentReceiptUpdateRequest.java
+¦       ¦   ¦           ¦               ¦       ReservationCreateRequest.java
+¦       ¦   ¦           ¦               ¦       ReservationResponse.java
+¦       ¦   ¦           ¦               ¦       ReservationUpdateRequest.java
+¦       ¦   ¦           ¦               ¦       StaffMemberCreateRequest.java
+¦       ¦   ¦           ¦               ¦       StaffMemberResponse.java
+¦       ¦   ¦           ¦               ¦       StaffMemberUpdateRequest.java
+¦       ¦   ¦           ¦               ¦       TenantCreateRequest.java
+¦       ¦   ¦           ¦               ¦       TenantResponse.java
+¦       ¦   ¦           ¦               ¦       TenantUpdateRequest.java
+¦       ¦   ¦           ¦               ¦       
+¦       ¦   ¦           ¦               +---entities
+¦       ¦   ¦           ¦               ¦       DiningOrder.java
+¦       ¦   ¦           ¦               ¦       DiningTable.java
+¦       ¦   ¦           ¦               ¦       MenuItem.java
+¦       ¦   ¦           ¦               ¦       OrderLine.java
+¦       ¦   ¦           ¦               ¦       PaymentReceipt.java
+¦       ¦   ¦           ¦               ¦       Reservation.java
+¦       ¦   ¦           ¦               ¦       StaffMember.java
+¦       ¦   ¦           ¦               ¦       Tenant.java
+¦       ¦   ¦           ¦               ¦       
+¦       ¦   ¦           ¦               +---repositories
+¦       ¦   ¦           ¦               ¦       DiningOrderRepository.java
+¦       ¦   ¦           ¦               ¦       DiningTableRepository.java
+¦       ¦   ¦           ¦               ¦       MenuItemRepository.java
+¦       ¦   ¦           ¦               ¦       OrderLineRepository.java
+¦       ¦   ¦           ¦               ¦       PaymentReceiptRepository.java
+¦       ¦   ¦           ¦               ¦       ReservationRepository.java
+¦       ¦   ¦           ¦               ¦       StaffMemberRepository.java
+¦       ¦   ¦           ¦               ¦       TenantRepository.java
+¦       ¦   ¦           ¦               ¦       
+¦       ¦   ¦           ¦               +---runtime
+¦       ¦   ¦           ¦               ¦   +---api
+¦       ¦   ¦           ¦               ¦   ¦       AdminController.java
+¦       ¦   ¦           ¦               ¦   ¦       AuditController.java
+¦       ¦   ¦           ¦               ¦   ¦       CorrelationController.java
+¦       ¦   ¦           ¦               ¦   ¦       EventIngestionController.java
+¦       ¦   ¦           ¦               ¦   ¦       EventQueryController.java
+¦       ¦   ¦           ¦               ¦   ¦       ExecutionQueryController.java
+¦       ¦   ¦           ¦               ¦   ¦       FlowExecutionController.java
+¦       ¦   ¦           ¦               ¦   ¦       OpenApiController.java
+¦       ¦   ¦           ¦               ¦   ¦       TraceController.java
+¦       ¦   ¦           ¦               ¦   ¦       UiRedirectController.java
+¦       ¦   ¦           ¦               ¦   ¦       
+¦       ¦   ¦           ¦               ¦   +---config
+¦       ¦   ¦           ¦               ¦   ¦       GeneratedBindingManifestLoader.java
+¦       ¦   ¦           ¦               ¦   ¦       GeneratedPermissionManifestLoader.java
+¦       ¦   ¦           ¦               ¦   ¦       GeneratedRuntimeOverridesLoader.java
+¦       ¦   ¦           ¦               ¦   ¦       NPDevRuntimeConfig.java
+¦       ¦   ¦           ¦               ¦   ¦       RuntimeApiKeyAuthFilter.java
+¦       ¦   ¦           ¦               ¦   ¦       
+¦       ¦   ¦           ¦               ¦   +---dto
+¦       ¦   ¦           ¦               ¦   ¦       AdminCircuitResponse.java
+¦       ¦   ¦           ¦               ¦   ¦       AdminIdempotencyResponse.java
+¦       ¦   ¦           ¦               ¦   ¦       AuditRecordResponse.java
+¦       ¦   ¦           ¦               ¦   ¦       CorrelationTimelineResponse.java
+¦       ¦   ¦           ¦               ¦   ¦       EventMetaSummaryResponse.java
+¦       ¦   ¦           ¦               ¦   ¦       EventPublishRequest.java
+¦       ¦   ¦           ¦               ¦   ¦       EventPublishResponse.java
+¦       ¦   ¦           ¦               ¦   ¦       EventQueryResponse.java
+¦       ¦   ¦           ¦               ¦   ¦       ExecutionQueryResponse.java
+¦       ¦   ¦           ¦               ¦   ¦       ExecutionSummaryResponse.java
+¦       ¦   ¦           ¦               ¦   ¦       FlowDefinitionResponse.java
+¦       ¦   ¦           ¦               ¦   ¦       FlowExecutionResponse.java
+¦       ¦   ¦           ¦               ¦   ¦       TraceSummaryResponse.java
+¦       ¦   ¦           ¦               ¦   ¦       
+¦       ¦   ¦           ¦               ¦   +---model
+¦       ¦   ¦           ¦               ¦   ¦       NPDevModelProvider.java
+¦       ¦   ¦           ¦               ¦   ¦       
+¦       ¦   ¦           ¦               ¦   +---service
+¦       ¦   ¦           ¦               ¦           KernelFacade.java
+¦       ¦   ¦           ¦               ¦           RuntimeContextService.java
+¦       ¦   ¦           ¦               ¦           
+¦       ¦   ¦           ¦               +---services
+¦       ¦   ¦           ¦                       DiningOrderService.java
+¦       ¦   ¦           ¦                       DiningOrderServiceBase.java
+¦       ¦   ¦           ¦                       DiningTableService.java
+¦       ¦   ¦           ¦                       DiningTableServiceBase.java
+¦       ¦   ¦           ¦                       MenuItemService.java
+¦       ¦   ¦           ¦                       MenuItemServiceBase.java
+¦       ¦   ¦           ¦                       OrderLineService.java
+¦       ¦   ¦           ¦                       OrderLineServiceBase.java
+¦       ¦   ¦           ¦                       PaymentReceiptService.java
+¦       ¦   ¦           ¦                       PaymentReceiptServiceBase.java
+¦       ¦   ¦           ¦                       ReservationService.java
+¦       ¦   ¦           ¦                       ReservationServiceBase.java
+¦       ¦   ¦           ¦                       StaffMemberService.java
+¦       ¦   ¦           ¦                       StaffMemberServiceBase.java
+¦       ¦   ¦           ¦                       TenantService.java
+¦       ¦   ¦           ¦                       TenantServiceBase.java
+¦       ¦   ¦           ¦                       
+¦       ¦   ¦           +---resources
+¦       ¦   ¦               ¦   npdev-runtime-actuator.properties
+¦       ¦   ¦               ¦   
+¦       ¦   ¦               +---npdev
+¦       ¦   ¦               ¦   ¦   compiled-metadata.json
+¦       ¦   ¦               ¦   ¦   compiled-model.json
+¦       ¦   ¦               ¦   ¦   model.json
+¦       ¦   ¦               ¦   ¦   
+¦       ¦   ¦               ¦   +---bindings
+¦       ¦   ¦               ¦   ¦       alt.bindings.json
+¦       ¦   ¦               ¦   ¦       dev.bindings.json
+¦       ¦   ¦               ¦   ¦       
+¦       ¦   ¦               ¦   +---metadata
+¦       ¦   ¦               ¦   ¦       actions.manifest.json
+¦       ¦   ¦               ¦   ¦       concepts.manifest.json
+¦       ¦   ¦               ¦   ¦       enums.manifest.json
+¦       ¦   ¦               ¦   ¦       fields.manifest.json
+¦       ¦   ¦               ¦   ¦       index.json
+¦       ¦   ¦               ¦   ¦       layout.manifest.json
+¦       ¦   ¦               ¦   ¦       references.manifest.json
+¦       ¦   ¦               ¦   ¦       validation-hints.manifest.json
+¦       ¦   ¦               ¦   ¦       
+¦       ¦   ¦               ¦   +---plugin-packages
+¦       ¦   ¦               ¦   ¦       custom-procedure.package.json
+¦       ¦   ¦               ¦   ¦       index.json
+¦       ¦   ¦               ¦   ¦       notification-incompatible.package.json
+¦       ¦   ¦               ¦   ¦       notification-inproc.package.json
+¦       ¦   ¦               ¦   ¦       notification-untrusted.package.json
+¦       ¦   ¦               ¦   ¦       notification-valid.package.json
+¦       ¦   ¦               ¦   ¦       notification-warning.package.json
+¦       ¦   ¦               ¦   ¦       
+¦       ¦   ¦               ¦   +---plugins
+¦       ¦   ¦               ¦   ¦       default.plugin-manifest.json
+¦       ¦   ¦               ¦   ¦       generated.plugin-requirements.json
+¦       ¦   ¦               ¦   ¦       warning.plugin-manifest.json
+¦       ¦   ¦               ¦   ¦       
+¦       ¦   ¦               ¦   +---runtime
+¦       ¦   ¦               ¦   ¦       dev.runtime.json
+¦       ¦   ¦               ¦   ¦       
+¦       ¦   ¦               ¦   +---security
+¦       ¦   ¦               ¦   ¦       dev.permissions.json
+¦       ¦   ¦               ¦   ¦       dev.ui-metadata-policy.json
+¦       ¦   ¦               ¦   ¦       
+¦       ¦   ¦               ¦   +---ui-boundary
+¦       ¦   ¦               ¦           canonical-ui-selection.json
+¦       ¦   ¦               ¦           
+¦       ¦   ¦               +---static
+¦       ¦   ¦                   +---npdev-ui
+¦       ¦   ¦                   ¦       app.js
+¦       ¦   ¦                   ¦       index.html
+¦       ¦   ¦                   ¦       style.css
+¦       ¦   ¦                   ¦       
+¦       ¦   ¦                   +---npdev-ui-react
+¦       ¦   ¦                       ¦   index.html
+¦       ¦   ¦                       ¦   
+¦       ¦   ¦                       +---assets
+¦       ¦   ¦                               app.css
+¦       ¦   ¦                               app.js
+¦       ¦   ¦                               
+¦       ¦   +---src
+¦       ¦   ¦   +---main
+¦       ¦   ¦   ¦   +---java
+¦       ¦   ¦   ¦   ¦   +---com
+¦       ¦   ¦   ¦   ¦       +---finalexec
+¦       ¦   ¦   ¦   ¦           ¦   FinalExecApplication.java
+¦       ¦   ¦   ¦   ¦           ¦   GeneratedBuildInfoLogger.java
+¦       ¦   ¦   ¦   ¦           ¦   HelloController.java
+¦       ¦   ¦   ¦   ¦           ¦   RuntimeUiMetadataVerifierTokens.java
+¦       ¦   ¦   ¦   ¦           ¦   
+¦       ¦   ¦   ¦   ¦           +---api
+¦       ¦   ¦   ¦   ¦           ¦       ArchitectureVisualizationController.java
+¦       ¦   ¦   ¦   ¦           ¦       ArchitectureVisualizationUiController.java
+¦       ¦   ¦   ¦   ¦           ¦       BetaOnboardingController.java
+¦       ¦   ¦   ¦   ¦           ¦       BetaOnboardingUiController.java
+¦       ¦   ¦   ¦   ¦           ¦       BetaReadinessConsolidationController.java
+¦       ¦   ¦   ¦   ¦           ¦       BetaSecurityHardeningController.java
+¦       ¦   ¦   ¦   ¦           ¦       BetaSecurityPostureUiController.java
+¦       ¦   ¦   ¦   ¦           ¦       BusinessCapabilityMarketplaceController.java
+¦       ¦   ¦   ¦   ¦           ¦       CanonicalSourceMutationExecutorController.java
+¦       ¦   ¦   ¦   ¦           ¦       CanonicalSourceValidationController.java
+¦       ¦   ¦   ¦   ¦           ¦       CapabilityIntegrationPanelController.java
+¦       ¦   ¦   ¦   ¦           ¦       CapabilityIntegrationUiController.java
+¦       ¦   ¦   ¦   ¦           ¦       ChangeImpactPreviewController.java
+¦       ¦   ¦   ¦   ¦           ¦       ChangeImpactVisualizationController.java
+¦       ¦   ¦   ¦   ¦           ¦       ChangeImpactVisualizationUiController.java
+¦       ¦   ¦   ¦   ¦           ¦       CompilerCandidateDiffController.java
+¦       ¦   ¦   ¦   ¦           ¦       CompilerDependencyGraphController.java
+¦       ¦   ¦   ¦   ¦           ¦       CompilerImpactClassificationController.java
+¦       ¦   ¦   ¦   ¦           ¦       CrossTenantGovernanceController.java
+¦       ¦   ¦   ¦   ¦           ¦       DirectExecutionGatewayController.java
+¦       ¦   ¦   ¦   ¦           ¦       EndUserLaunchChecklistController.java
+¦       ¦   ¦   ¦   ¦           ¦       EndUserRealSystemOutcomeController.java
+¦       ¦   ¦   ¦   ¦           ¦       ErrorRecoveryAssistantController.java
+¦       ¦   ¦   ¦   ¦           ¦       ExecutionMonitorController.java
+¦       ¦   ¦   ¦   ¦           ¦       ExecutionMonitorUiController.java
+¦       ¦   ¦   ¦   ¦           ¦       ExplainabilityBundleController.java
+¦       ¦   ¦   ¦   ¦           ¦       ExplainabilityGraphController.java
+¦       ¦   ¦   ¦   ¦           ¦       ExplainabilityGraphUiController.java
+¦       ¦   ¦   ¦   ¦           ¦       FinalUserWorkflowController.java
+¦       ¦   ¦   ¦   ¦           ¦       FlowBuilderController.java
+¦       ¦   ¦   ¦   ¦           ¦       FlowBuilderUiController.java
+¦       ¦   ¦   ¦   ¦           ¦       FlowExecutionPluginEvidenceAdvice.java
+¦       ¦   ¦   ¦   ¦           ¦       FriendlyExplanationCatalogController.java
+¦       ¦   ¦   ¦   ¦           ¦       GeneratedArtifactPreviewController.java
+¦       ¦   ¦   ¦   ¦           ¦       GovernanceWorkspaceController.java
+¦       ¦   ¦   ¦   ¦           ¦       GovernanceWorkspaceUiController.java
+¦       ¦   ¦   ¦   ¦           ¦       GuidedTaskWorkspaceController.java
+¦       ¦   ¦   ¦   ¦           ¦       HumanReadableAuditExportController.java
+¦       ¦   ¦   ¦   ¦           ¦       ImportConflictAnalysisController.java
+¦       ¦   ¦   ¦   ¦           ¦       ImportCorrectionWorkspaceController.java
+¦       ¦   ¦   ¦   ¦           ¦       ImportExecutionController.java
+¦       ¦   ¦   ¦   ¦           ¦       ModelSyncStatusController.java
+¦       ¦   ¦   ¦   ¦           ¦       MultiCapabilityCompositionController.java
+¦       ¦   ¦   ¦   ¦           ¦       OperationalReadinessDashboardController.java
+¦       ¦   ¦   ¦   ¦           ¦       OwnershipIsolationController.java
+¦       ¦   ¦   ¦   ¦           ¦       PolicyPackGovernancePresetController.java
+¦       ¦   ¦   ¦   ¦           ¦       PublicationExecutorController.java
+¦       ¦   ¦   ¦   ¦           ¦       PublicationExplainabilityBundleController.java
+¦       ¦   ¦   ¦   ¦           ¦       PublicationFailureRecoveryController.java
+¦       ¦   ¦   ¦   ¦           ¦       PublicationRollbackExecutorController.java
+¦       ¦   ¦   ¦   ¦           ¦       PublicationTransactionRecordController.java
+¦       ¦   ¦   ¦   ¦           ¦       RealPublicationExecutorController.java
+¦       ¦   ¦   ¦   ¦           ¦       ReferenceAppGalleryController.java
+¦       ¦   ¦   ¦   ¦           ¦       ReferenceAppGalleryUiController.java
+¦       ¦   ¦   ¦   ¦           ¦       RegulatoryAnnotationController.java
+¦       ¦   ¦   ¦   ¦           ¦       ReliabilityPostureController.java
+¦       ¦   ¦   ¦   ¦           ¦       ReliabilityPostureUiController.java
+¦       ¦   ¦   ¦   ¦           ¦       RichExplainabilityController.java
+¦       ¦   ¦   ¦   ¦           ¦       RoleWorkspaceController.java
+¦       ¦   ¦   ¦   ¦           ¦       RollbackExecutionController.java
+¦       ¦   ¦   ¦   ¦           ¦       RuntimeEventEvidenceController.java
+¦       ¦   ¦   ¦   ¦           ¦       RuntimeMetadataController.java
+¦       ¦   ¦   ¦   ¦           ¦       RuntimeMetadataValidationController.java
+¦       ¦   ¦   ¦   ¦           ¦       RuntimePluginExecutionController.java
+¦       ¦   ¦   ¦   ¦           ¦       RuntimePluginManifestController.java
+¦       ¦   ¦   ¦   ¦           ¦       RuntimePluginPackagesController.java
+¦       ¦   ¦   ¦   ¦           ¦       RuntimePluginPolicyController.java
+¦       ¦   ¦   ¦   ¦           ¦       RuntimePluginStatusController.java
+¦       ¦   ¦   ¦   ¦           ¦       RuntimeRefreshController.java
+¦       ¦   ¦   ¦   ¦           ¦       RuntimeSchedulesController.java
+¦       ¦   ¦   ¦   ¦           ¦       RuntimeTopologyExplorerController.java
+¦       ¦   ¦   ¦   ¦           ¦       RuntimeTopologyExplorerUiController.java
+¦       ¦   ¦   ¦   ¦           ¦       RuntimeUiMetadataController.java
+¦       ¦   ¦   ¦   ¦           ¦       ScenarioTemplateController.java
+¦       ¦   ¦   ¦   ¦           ¦       SemanticBehaviorWriteBackController.java
+¦       ¦   ¦   ¦   ¦           ¦       SemanticGovernanceController.java
+¦       ¦   ¦   ¦   ¦           ¦       SemanticPublicationMappingController.java
+¦       ¦   ¦   ¦   ¦           ¦       SemanticRollbackController.java
+¦       ¦   ¦   ¦   ¦           ¦       SourceMutationApprovalGateController.java
+¦       ¦   ¦   ¦   ¦           ¦       SourceMutationAuditRecordController.java
+¦       ¦   ¦   ¦   ¦           ¦       SourceMutationRegenerationController.java
+¦       ¦   ¦   ¦   ¦           ¦       SourceMutationRollbackAnchorController.java
+¦       ¦   ¦   ¦   ¦           ¦       SourceRollbackExecutorController.java
+¦       ¦   ¦   ¦   ¦           ¦       SpreadsheetOnboardingController.java
+¦       ¦   ¦   ¦   ¦           ¦       StructuralPublicationMappingController.java
+¦       ¦   ¦   ¦   ¦           ¦       StructuralWriteBackController.java
+¦       ¦   ¦   ¦   ¦           ¦       SupportDiagnosticsController.java
+¦       ¦   ¦   ¦   ¦           ¦       SupportDiagnosticsUiController.java
+¦       ¦   ¦   ¦   ¦           ¦       TemplateLibraryManagementController.java
+¦       ¦   ¦   ¦   ¦           ¦       TemplateVariantSpecializationController.java
+¦       ¦   ¦   ¦   ¦           ¦       TenantOperationalAdministrationController.java
+¦       ¦   ¦   ¦   ¦           ¦       TenantQueryEnforcementController.java
+¦       ¦   ¦   ¦   ¦           ¦       TenantStoragePartitioningController.java
+¦       ¦   ¦   ¦   ¦           ¦       WorkflowPolishReportUiController.java
+¦       ¦   ¦   ¦   ¦           ¦       WorkingDraftRollbackController.java
+¦       ¦   ¦   ¦   ¦           ¦       WorkingDraftSystemController.java
+¦       ¦   ¦   ¦   ¦           ¦       
+¦       ¦   ¦   ¦   ¦           +---config
+¦       ¦   ¦   ¦   ¦           ¦       AuthClaimsDebugFilterConfig.java
+¦       ¦   ¦   ¦   ¦           ¦       BindingResolverDebugConfig.java
+¦       ¦   ¦   ¦   ¦           ¦       BindingsDebugConfig.java
+¦       ¦   ¦   ¦   ¦           ¦       BindingsFingerprintConfig.java
+¦       ¦   ¦   ¦   ¦           ¦       CapabilityAdapterResolver.java
+¦       ¦   ¦   ¦   ¦           ¦       CorsConfig.java
+¦       ¦   ¦   ¦   ¦           ¦       DevCorsPreflightFilterConfig.java
+¦       ¦   ¦   ¦   ¦           ¦       JwtBearerAuthFilter.java
+¦       ¦   ¦   ¦   ¦           ¦       NpdevAuthConfig.java
+¦       ¦   ¦   ¦   ¦           ¦       NpdevCapabilityBindingConfig.java
+¦       ¦   ¦   ¦   ¦           ¦       NpdevObservabilityConfig.java
+¦       ¦   ¦   ¦   ¦           ¦       NpdevPluginConfig.java
+¦       ¦   ¦   ¦   ¦           ¦       NpdevPropertiesDumpConfig.java
+¦       ¦   ¦   ¦   ¦           ¦       NpdevRuntimeModeConfig.java
+¦       ¦   ¦   ¦   ¦           ¦       NpdevRuntimePlatformConfig.java
+¦       ¦   ¦   ¦   ¦           ¦       NpdevSchedulerConfig.java
+¦       ¦   ¦   ¦   ¦           ¦       PermissionDebugConfig.java
+¦       ¦   ¦   ¦   ¦           ¦       RequestResponseLoggingFilter.java
+¦       ¦   ¦   ¦   ¦           ¦       
+¦       ¦   ¦   ¦   ¦           +---debug
+¦       ¦   ¦   ¦   ¦           ¦       StorageWiringLogger.java
+¦       ¦   ¦   ¦   ¦           ¦       
+¦       ¦   ¦   ¦   ¦           +---execution
+¦       ¦   ¦   ¦   ¦           ¦       DirectExecutionGateway.java
+¦       ¦   ¦   ¦   ¦           ¦       DirectExecutionRequest.java
+¦       ¦   ¦   ¦   ¦           ¦       
+¦       ¦   ¦   ¦   ¦           +---npdev
+¦       ¦   ¦   ¦   ¦           ¦   +---dto
+¦       ¦   ¦   ¦   ¦           ¦   ¦       AuditExportRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       BetaReadinessConsolidationRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       BusinessCapabilitySelectionRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       CanonicalSourceMutationExecutionRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       CanonicalSourceValidationRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       ChangeImpactPreviewRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       CompilerCandidateDiffRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       CompilerDependencyGraphRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       CompilerImpactClassificationRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       ComplianceExportRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       CrossTenantGovernanceRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       EndUserLaunchChecklistRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       EndUserRealSystemOutcomeRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       ErrorRecoveryAdviceRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       ExplainabilityBundleRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       FinalUserWorkflowSampleRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       FlowBuilderDraftRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       FlowBuilderStepRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       GeneratedArtifactPreviewRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       GovernancePresetApplicationRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       GovernanceWorkspaceDecisionRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       ImportConflictAnalysisRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       ImportCorrectionDecisionRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       ImportExecutionRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       ImportMappingPreviewRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       MultiCapabilityCompositionRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       OperationalDashboardSnapshotRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       OwnershipIsolationEvaluationRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       PublicationExecutionRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       PublicationExplainabilityBundleRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       PublicationFailureRecoveryRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       PublicationRollbackExecutionRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       PublicationTransactionRecordRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       PublishImportedScenarioDraftRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       RealPublicationExecutionRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       RegulatoryAnnotationRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       RichExplainabilityRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       RollbackAuthorityRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       RollbackExecutionRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       ScenarioTemplateSpecializationRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       SemanticBehaviorCanonicalizationRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       SemanticBehaviorWriteBackRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       SemanticGovernanceActionRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       SemanticGovernanceRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       SemanticImpactPreviewRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       SemanticPublicationMappingRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       SemanticRollbackRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       SourceMutationApprovalDecisionRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       SourceMutationAuditRecordRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       SourceMutationRegenerationRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       SourceMutationRollbackAnchorCreateRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       SourceRollbackExecutionRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       SpreadsheetOnboardingRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       StructuralCanonicalizationRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       StructuralPublicationMappingRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       StructuralWriteBackRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       TemplateLibraryRegistrationRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       TemplateVariantRegistrationRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       TenantNativeGovernanceRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       TenantOperationalAdministrationRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       TenantQueryEnforcementRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       TenantStoragePartitioningRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       WorkingDraftLifecycleActionRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       WorkingDraftLineageRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       WorkingDraftRollbackRequest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       
+¦       ¦   ¦   ¦   ¦           ¦   +---migration
+¦       ¦   ¦   ¦   ¦           ¦   ¦       MigrationOperation.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       MigrationRiskAssessment.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       MigrationRiskAssessmentBuilder.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       MigrationSharedSupport.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       ModelDiffPreview.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       ModelDiffPreviewBuilder.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       RuntimeModelCompatibilityReport.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       RuntimeModelCompatibilityReportBuilder.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       StorageColumnSchema.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       StorageSchemaFromCompiledModel.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       StorageSchemaSnapshot.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       StorageTableSchema.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       
+¦       ¦   ¦   ¦   ¦           ¦   +---model
+¦       ¦   ¦   ¦   ¦           ¦   ¦       RuntimePluginManifest.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       RuntimePluginPackageDescriptor.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       RuntimePluginRepositoryDescriptor.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       RuntimeRefreshStatus.java
+¦       ¦   ¦   ¦   ¦           ¦   ¦       
+¦       ¦   ¦   ¦   ¦           ¦   +---service
+¦       ¦   ¦   ¦   ¦           ¦           ArchitectureVisualizationService.java
+¦       ¦   ¦   ¦   ¦           ¦           BetaOnboardingService.java
+¦       ¦   ¦   ¦   ¦           ¦           BetaReadinessConsolidationService.java
+¦       ¦   ¦   ¦   ¦           ¦           BetaSecurityHardeningService.java
+¦       ¦   ¦   ¦   ¦           ¦           BetaSecurityRoleEvaluator.java
+¦       ¦   ¦   ¦   ¦           ¦           BusinessCapabilityMarketplaceService.java
+¦       ¦   ¦   ¦   ¦           ¦           CanonicalSourceArtifactStore.java
+¦       ¦   ¦   ¦   ¦           ¦           CanonicalSourceMutationExecutorService.java
+¦       ¦   ¦   ¦   ¦           ¦           CanonicalSourceValidationService.java
+¦       ¦   ¦   ¦   ¦           ¦           CapabilityIntegrationPanelService.java
+¦       ¦   ¦   ¦   ¦           ¦           CapabilityReadinessClassifier.java
+¦       ¦   ¦   ¦   ¦           ¦           ChangeImpactPreviewService.java
+¦       ¦   ¦   ¦   ¦           ¦           ChangeImpactVisualizationService.java
+¦       ¦   ¦   ¦   ¦           ¦           ClasspathArtifactRealizationProvider.java
+¦       ¦   ¦   ¦   ¦           ¦           CompilerCandidateDiffService.java
+¦       ¦   ¦   ¦   ¦           ¦           CompilerDependencyGraphService.java
+¦       ¦   ¦   ¦   ¦           ¦           CompilerImpactClassificationService.java
+¦       ¦   ¦   ¦   ¦           ¦           CrossTenantGovernanceService.java
+¦       ¦   ¦   ¦   ¦           ¦           EndUserLaunchChecklistService.java
+¦       ¦   ¦   ¦   ¦           ¦           EndUserRealSystemOutcomeService.java
+¦       ¦   ¦   ¦   ¦           ¦           ErrorRecoveryAssistantService.java
+¦       ¦   ¦   ¦   ¦           ¦           ExecutionMonitorService.java
+¦       ¦   ¦   ¦   ¦           ¦           ExplainabilityBundleService.java
+¦       ¦   ¦   ¦   ¦           ¦           ExplainabilityGraphService.java
+¦       ¦   ¦   ¦   ¦           ¦           FileRuntimePluginExecutionSummaryStore.java
+¦       ¦   ¦   ¦   ¦           ¦           FilesystemArtifactRealizationProvider.java
+¦       ¦   ¦   ¦   ¦           ¦           FinalUserWorkflowService.java
+¦       ¦   ¦   ¦   ¦           ¦           FlowBuilderService.java
+¦       ¦   ¦   ¦   ¦           ¦           FriendlyExplanationCatalogService.java
+¦       ¦   ¦   ¦   ¦           ¦           GeneratedArtifactPreviewService.java
+¦       ¦   ¦   ¦   ¦           ¦           GenericCustomProcedureCapabilityAdapter.java
+¦       ¦   ¦   ¦   ¦           ¦           GovernanceWorkspaceService.java
+¦       ¦   ¦   ¦   ¦           ¦           GraphWeightedImpactScorer.java
+¦       ¦   ¦   ¦   ¦           ¦           GuidedTaskWorkspaceService.java
+¦       ¦   ¦   ¦   ¦           ¦           HumanReadableAuditExportService.java
+¦       ¦   ¦   ¦   ¦           ¦           ImportConflictAnalysisService.java
+¦       ¦   ¦   ¦   ¦           ¦           ImportCorrectionWorkspaceService.java
+¦       ¦   ¦   ¦   ¦           ¦           ImportExecutionService.java
+¦       ¦   ¦   ¦   ¦           ¦           ModelSyncStatusService.java
+¦       ¦   ¦   ¦   ¦           ¦           MultiCapabilityCompositionService.java
+¦       ¦   ¦   ¦   ¦           ¦           OperationalReadinessDashboardService.java
+¦       ¦   ¦   ¦   ¦           ¦           OwnershipIsolationService.java
+¦       ¦   ¦   ¦   ¦           ¦           PermissionAwareUiMetadataService.java
+¦       ¦   ¦   ¦   ¦           ¦           PluginExecutionPolicyDecision.java
+¦       ¦   ¦   ¦   ¦           ¦           PluginExecutionPolicyEvaluator.java
+¦       ¦   ¦   ¦   ¦           ¦           PluginManifestSchemaValidator.java
+¦       ¦   ¦   ¦   ¦           ¦           PluginPackageSchemaValidator.java
+¦       ¦   ¦   ¦   ¦           ¦           PolicyPackGovernancePresetService.java
+¦       ¦   ¦   ¦   ¦           ¦           PreviewReferenceResolver.java
+¦       ¦   ¦   ¦   ¦           ¦           PublicationChainReferenceResolver.java
+¦       ¦   ¦   ¦   ¦           ¦           PublicationExecutorService.java
+¦       ¦   ¦   ¦   ¦           ¦           PublicationExplainabilityBundleService.java
+¦       ¦   ¦   ¦   ¦           ¦           PublicationFailureRecoveryService.java
+¦       ¦   ¦   ¦   ¦           ¦           PublicationRollbackExecutorService.java
+¦       ¦   ¦   ¦   ¦           ¦           PublicationStateStore.java
+¦       ¦   ¦   ¦   ¦           ¦           PublicationTransactionRecordService.java
+¦       ¦   ¦   ¦   ¦           ¦           RealPublicationExecutorService.java
+¦       ¦   ¦   ¦   ¦           ¦           ReferenceAppGalleryService.java
+¦       ¦   ¦   ¦   ¦           ¦           RegulatoryAnnotationService.java
+¦       ¦   ¦   ¦   ¦           ¦           ReliabilityPostureService.java
+¦       ¦   ¦   ¦   ¦           ¦           RichExplainabilityService.java
+¦       ¦   ¦   ¦   ¦           ¦           RoleWorkspaceService.java
+¦       ¦   ¦   ¦   ¦           ¦           RollbackAuthorityService.java
+¦       ¦   ¦   ¦   ¦           ¦           RollbackExecutionService.java
+¦       ¦   ¦   ¦   ¦           ¦           RollbackReferenceNormalizer.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimeMetadataService.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimeMetadataValidationService.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimePluginAdapterRegistry.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimePluginArtifactRealizationProvider.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimePluginExecutionSummaryStore.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimePluginManifestLoader.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimePluginPackageAdmissionEvaluator.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimePluginPackageCatalog.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimePluginPackageCompatibilityEvaluator.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimePluginPackagedArtifactHandlerResolver.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimePluginPackageDescriptorLoader.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimePluginPackageDiscoveryService.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimePluginPackageRealizationService.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimePluginPackageTrustEvaluator.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimePluginProfileDiagnostics.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimePluginProfileResolver.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimePluginRealizationProvider.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimePluginRealizationProviderCatalog.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimePluginRepositoryCatalog.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimePluginRuntimeRefResolver.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimePluginStatusSummary.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimeRefArtifactRealizationProvider.java
+¦       ¦   ¦   ¦   ¦           ¦           RuntimeTopologyExplorerService.java
+¦       ¦   ¦   ¦   ¦           ¦           SandboxedCapabilityAdapter.java
+¦       ¦   ¦   ¦   ¦           ¦           SandboxedPluginExecutionEngine.java
+¦       ¦   ¦   ¦   ¦           ¦           SandboxedPluginExecutionResult.java
+¦       ¦   ¦   ¦   ¦           ¦           ScenarioTemplateService.java
+¦       ¦   ¦   ¦   ¦           ¦           SemanticBehaviorWriteBackCanonicalizationService.java
+¦       ¦   ¦   ¦   ¦           ¦           SemanticBehaviorWriteBackService.java
+¦       ¦   ¦   ¦   ¦           ¦           SemanticGovernanceService.java
+¦       ¦   ¦   ¦   ¦           ¦           SemanticPublicationMappingService.java
+¦       ¦   ¦   ¦   ¦           ¦           SemanticRollbackService.java
+¦       ¦   ¦   ¦   ¦           ¦           SourceMutationApprovalGateService.java
+¦       ¦   ¦   ¦   ¦           ¦           SourceMutationAuditRecordService.java
+¦       ¦   ¦   ¦   ¦           ¦           SourceMutationRegenerationArtifactStore.java
+¦       ¦   ¦   ¦   ¦           ¦           SourceMutationRegenerationService.java
+¦       ¦   ¦   ¦   ¦           ¦           SourceMutationRollbackAnchorService.java
+¦       ¦   ¦   ¦   ¦           ¦           SourceRollbackExecutorService.java
+¦       ¦   ¦   ¦   ¦           ¦           SpreadsheetOnboardingService.java
+¦       ¦   ¦   ¦   ¦           ¦           StructuralPublicationMappingService.java
+¦       ¦   ¦   ¦   ¦           ¦           StructuralWriteBackCanonicalizationService.java
+¦       ¦   ¦   ¦   ¦           ¦           StructuralWriteBackService.java
+¦       ¦   ¦   ¦   ¦           ¦           SupportDiagnosticsService.java
+¦       ¦   ¦   ¦   ¦           ¦           TemplateLibraryManagementService.java
+¦       ¦   ¦   ¦   ¦           ¦           TemplateVariantSpecializationService.java
+¦       ¦   ¦   ¦   ¦           ¦           TenantNativeGovernanceService.java
+¦       ¦   ¦   ¦   ¦           ¦           TenantOperationalAdministrationService.java
+¦       ¦   ¦   ¦   ¦           ¦           TenantQueryEnforcementService.java
+¦       ¦   ¦   ¦   ¦           ¦           TenantStoragePartitioningService.java
+¦       ¦   ¦   ¦   ¦           ¦           TenantStoragePathResolver.java
+¦       ¦   ¦   ¦   ¦           ¦           WorkingDraftLineageService.java
+¦       ¦   ¦   ¦   ¦           ¦           WorkingDraftRollbackService.java
+¦       ¦   ¦   ¦   ¦           ¦           WorkingDraftSystemService.java
+¦       ¦   ¦   ¦   ¦           ¦           
+¦       ¦   ¦   ¦   ¦           +---tenant
+¦       ¦   ¦   ¦   ¦                   TenantPartitionRealityVerifier.java
+¦       ¦   ¦   ¦   ¦                   
+¦       ¦   ¦   ¦   +---resources
+¦       ¦   ¦   ¦       ¦   application-default.properties
+¦       ¦   ¦   ¦       ¦   application-dev.properties
+¦       ¦   ¦   ¦       ¦   application-dev.yml
+¦       ¦   ¦   ¦       ¦   application-external-acceptance.properties
+¦       ¦   ¦   ¦       ¦   application-external-beta.properties
+¦       ¦   ¦   ¦       ¦   application-external-demo.properties
+¦       ¦   ¦   ¦       ¦   application-filesystem.properties
+¦       ¦   ¦   ¦       ¦   application-step0.yml
+¦       ¦   ¦   ¦       ¦   application-trial.properties
+¦       ¦   ¦   ¦       ¦   application-warning.properties
+¦       ¦   ¦   ¦       ¦   application.properties
+¦       ¦   ¦   ¦       ¦   application.yml
+¦       ¦   ¦   ¦       ¦   
+¦       ¦   ¦   ¦       +---db
+¦       ¦   ¦   ¦       ¦   +---migration
+¦       ¦   ¦   ¦       ¦           R__npdev_schema.sql
+¦       ¦   ¦   ¦       ¦           V5001__create_npdev_flow_instance.sql
+¦       ¦   ¦   ¦       ¦           V5002__create_npdev_event_store.sql
+¦       ¦   ¦   ¦       ¦           V5003__create_npdev_trace.sql
+¦       ¦   ¦   ¦       ¦           V5004__add_execution_context_columns.sql
+¦       ¦   ¦   ¦       ¦           V5005__create_npdev_correlation_owner.sql
+¦       ¦   ¦   ¦       ¦           V5006__create_npdev_audit_log.sql
+¦       ¦   ¦   ¦       ¦           V5007__add_perf_indexes.sql
+¦       ¦   ¦   ¦       ¦           V5008__add_flow_instance_resume_fields.sql
+¦       ¦   ¦   ¦       ¦           V5009__create_npdev_circuit_breaker.sql
+¦       ¦   ¦   ¦       ¦           V5010__create_npdev_idempotency.sql
+¦       ¦   ¦   ¦       ¦           V5012__add_flow_instance_failure_fields.sql
+¦       ¦   ¦   ¦       ¦           V5014__create_npdev_scheduled_event.sql
+¦       ¦   ¦   ¦       ¦           
+¦       ¦   ¦   ¦       +---npdev
+¦       ¦   ¦   ¦           ¦   model-diff-baseline.json
+¦       ¦   ¦   ¦           ¦   
+¦       ¦   ¦   ¦           +---schema
+¦       ¦   ¦   ¦                   npdev-plugin-manifest-v1.schema.json
+¦       ¦   ¦   ¦                   npdev-plugin-package-v1.schema.json
+¦       ¦   ¦   ¦                   npdev-plugin-repository-v1.schema.json
+¦       ¦   ¦   ¦                   
+¦       ¦   ¦   +---test
+¦       ¦   ¦       +---java
+¦       ¦   ¦       ¦   +---com
+¦       ¦   ¦       ¦       +---finalexec
+¦       ¦   ¦       ¦               AbstractScenarioIntegrationTest.java
+¦       ¦   ¦       ¦               AsyncWaitResumeE2EIT.java
+¦       ¦   ¦       ¦               CanonicalDemoBusinessE2EIT.java
+¦       ¦   ¦       ¦               FileRuntimePluginExecutionSummaryStoreTest.java
+¦       ¦   ¦       ¦               InvariantApiIntegrationTest.java
+¦       ¦   ¦       ¦               JwtAuthExternalBetaIT.java
+¦       ¦   ¦       ¦               ModelSyncStatusControllerIntegrationTest.java
+¦       ¦   ¦       ¦               PermissionAwareUiMetadataServiceTest.java
+¦       ¦   ¦       ¦               PluginExecutionPolicyEvaluatorTest.java
+¦       ¦   ¦       ¦               PluginManifestLoaderTest.java
+¦       ¦   ¦       ¦               PluginPackageDescriptorLoaderTest.java
+¦       ¦   ¦       ¦               PublicationRollbackE2EIT.java
+¦       ¦   ¦       ¦               RuntimeMetadataControllerIntegrationTest.java
+¦       ¦   ¦       ¦               RuntimeMetadataServiceTest.java
+¦       ¦   ¦       ¦               RuntimeMetadataValidationControllerIntegrationTest.java
+¦       ¦   ¦       ¦               RuntimePluginAdapterRegistryTest.java
+¦       ¦   ¦       ¦               RuntimePluginFilesystemDiscoveryIntegrationTest.java
+¦       ¦   ¦       ¦               RuntimePluginPackageAdmissionEvaluatorTest.java
+¦       ¦   ¦       ¦               RuntimePluginPackageDiscoveryServiceTest.java
+¦       ¦   ¦       ¦               RuntimePluginPackageRealizationServiceTest.java
+¦       ¦   ¦       ¦               RuntimePluginProfileDiagnosticsTest.java
+¦       ¦   ¦       ¦               RuntimePluginProfileResolverTest.java
+¦       ¦   ¦       ¦               RuntimePluginRuntimeRefResolverTest.java
+¦       ¦   ¦       ¦               RuntimePluginStatusControllerIntegrationTest.java
+¦       ¦   ¦       ¦               RuntimeUiMetadataControllerIntegrationTest.java
+¦       ¦   ¦       ¦               SandboxedPluginExecutionEngineTest.java
+¦       ¦   ¦       ¦               Stage12UiModelRuntimeIT.java
+¦       ¦   ¦       ¦               Step01MultiConceptIntegrationTest.java
+¦       ¦   ¦       ¦               Step02ReferencesEnumsDomainTypesIntegrationTest.java
+¦       ¦   ¦       ¦               Step03NestedJsonbIntegrationTest.java
+¦       ¦   ¦       ¦               Step04InvariantExplainabilityIntegrationTest.java
+¦       ¦   ¦       ¦               Step05ProviderOverlapIntegrationTest.java
+¦       ¦   ¦       ¦               Step06RoomOverlapIntegrationTest.java
+¦       ¦   ¦       ¦               TenantIsolationIT.java
+¦       ¦   ¦       ¦               
+¦       ¦   ¦       +---resources
+¦       ¦   ¦           ¦   application-test.yml
+¦       ¦   ¦           ¦   
+¦       ¦   ¦           +---npdev
+¦       ¦   ¦               ¦   async-wait-resume-compiled-model.json
+¦       ¦   ¦               ¦   async-wait-resume-model.json
+¦       ¦   ¦               ¦   compiled-metadata.json
+¦       ¦   ¦               ¦   
+¦       ¦   ¦               +---metadata
+¦       ¦   ¦               ¦       actions.manifest.json
+¦       ¦   ¦               ¦       concepts.manifest.json
+¦       ¦   ¦               ¦       enums.manifest.json
+¦       ¦   ¦               ¦       fields.manifest.json
+¦       ¦   ¦               ¦       index.json
+¦       ¦   ¦               ¦       layout.manifest.json
+¦       ¦   ¦               ¦       references.manifest.json
+¦       ¦   ¦               ¦       validation-hints.manifest.json
+¦       ¦   ¦               ¦       
+¦       ¦   ¦               +---security
+¦       ¦   ¦                       dev.ui-metadata-policy.json
+¦       ¦   ¦                       
+¦       ¦   +---src-disabled
+¦       ¦       +---scenario-coupled-tests
+¦       ¦           +---com
+¦       ¦               +---finalexec
+¦       +---ArtifactNP
+¦       ¦   +---resources
+¦       ¦   ¦       npdev-build-info.properties
+¦       ¦   ¦       
+¦       ¦   +---src
+¦       ¦       +---main
+¦       ¦           +---java
+¦       ¦           ¦   +---com
+¦       ¦           ¦       +---npdev
+¦       ¦           ¦           +---generated
+¦       ¦           ¦               +---config
+¦       ¦           ¦               ¦       GeneratedJpaConfig.java
+¦       ¦           ¦               ¦       
+¦       ¦           ¦               +---controllers
+¦       ¦           ¦               ¦       DiningOrderController.java
+¦       ¦           ¦               ¦       DiningOrderControllerBase.java
+¦       ¦           ¦               ¦       DiningTableController.java
+¦       ¦           ¦               ¦       DiningTableControllerBase.java
+¦       ¦           ¦               ¦       MenuItemController.java
+¦       ¦           ¦               ¦       MenuItemControllerBase.java
+¦       ¦           ¦               ¦       OrderLineController.java
+¦       ¦           ¦               ¦       OrderLineControllerBase.java
+¦       ¦           ¦               ¦       PaymentReceiptController.java
+¦       ¦           ¦               ¦       PaymentReceiptControllerBase.java
+¦       ¦           ¦               ¦       ReservationController.java
+¦       ¦           ¦               ¦       ReservationControllerBase.java
+¦       ¦           ¦               ¦       StaffMemberController.java
+¦       ¦           ¦               ¦       StaffMemberControllerBase.java
+¦       ¦           ¦               ¦       TenantController.java
+¦       ¦           ¦               ¦       TenantControllerBase.java
+¦       ¦           ¦               ¦       
+¦       ¦           ¦               +---dtos
+¦       ¦           ¦               ¦       DiningOrderCreateRequest.java
+¦       ¦           ¦               ¦       DiningOrderResponse.java
+¦       ¦           ¦               ¦       DiningOrderUpdateRequest.java
+¦       ¦           ¦               ¦       DiningTableCreateRequest.java
+¦       ¦           ¦               ¦       DiningTableResponse.java
+¦       ¦           ¦               ¦       DiningTableUpdateRequest.java
+¦       ¦           ¦               ¦       MenuItemCreateRequest.java
+¦       ¦           ¦               ¦       MenuItemResponse.java
+¦       ¦           ¦               ¦       MenuItemUpdateRequest.java
+¦       ¦           ¦               ¦       OrderLineCreateRequest.java
+¦       ¦           ¦               ¦       OrderLineResponse.java
+¦       ¦           ¦               ¦       OrderLineUpdateRequest.java
+¦       ¦           ¦               ¦       PaymentReceiptCreateRequest.java
+¦       ¦           ¦               ¦       PaymentReceiptResponse.java
+¦       ¦           ¦               ¦       PaymentReceiptUpdateRequest.java
+¦       ¦           ¦               ¦       ReservationCreateRequest.java
+¦       ¦           ¦               ¦       ReservationResponse.java
+¦       ¦           ¦               ¦       ReservationUpdateRequest.java
+¦       ¦           ¦               ¦       StaffMemberCreateRequest.java
+¦       ¦           ¦               ¦       StaffMemberResponse.java
+¦       ¦           ¦               ¦       StaffMemberUpdateRequest.java
+¦       ¦           ¦               ¦       TenantCreateRequest.java
+¦       ¦           ¦               ¦       TenantResponse.java
+¦       ¦           ¦               ¦       TenantUpdateRequest.java
+¦       ¦           ¦               ¦       
+¦       ¦           ¦               +---entities
+¦       ¦           ¦               ¦       DiningOrder.java
+¦       ¦           ¦               ¦       DiningTable.java
+¦       ¦           ¦               ¦       MenuItem.java
+¦       ¦           ¦               ¦       OrderLine.java
+¦       ¦           ¦               ¦       PaymentReceipt.java
+¦       ¦           ¦               ¦       Reservation.java
+¦       ¦           ¦               ¦       StaffMember.java
+¦       ¦           ¦               ¦       Tenant.java
+¦       ¦           ¦               ¦       
+¦       ¦           ¦               +---repositories
+¦       ¦           ¦               ¦       DiningOrderRepository.java
+¦       ¦           ¦               ¦       DiningTableRepository.java
+¦       ¦           ¦               ¦       MenuItemRepository.java
+¦       ¦           ¦               ¦       OrderLineRepository.java
+¦       ¦           ¦               ¦       PaymentReceiptRepository.java
+¦       ¦           ¦               ¦       ReservationRepository.java
+¦       ¦           ¦               ¦       StaffMemberRepository.java
+¦       ¦           ¦               ¦       TenantRepository.java
+¦       ¦           ¦               ¦       
+¦       ¦           ¦               +---runtime
+¦       ¦           ¦               ¦   +---api
+¦       ¦           ¦               ¦   ¦       AdminController.java
+¦       ¦           ¦               ¦   ¦       AuditController.java
+¦       ¦           ¦               ¦   ¦       CorrelationController.java
+¦       ¦           ¦               ¦   ¦       EventIngestionController.java
+¦       ¦           ¦               ¦   ¦       EventQueryController.java
+¦       ¦           ¦               ¦   ¦       ExecutionQueryController.java
+¦       ¦           ¦               ¦   ¦       FlowExecutionController.java
+¦       ¦           ¦               ¦   ¦       OpenApiController.java
+¦       ¦           ¦               ¦   ¦       TraceController.java
+¦       ¦           ¦               ¦   ¦       UiRedirectController.java
+¦       ¦           ¦               ¦   ¦       
+¦       ¦           ¦               ¦   +---config
+¦       ¦           ¦               ¦   ¦       GeneratedBindingManifestLoader.java
+¦       ¦           ¦               ¦   ¦       GeneratedPermissionManifestLoader.java
+¦       ¦           ¦               ¦   ¦       GeneratedRuntimeOverridesLoader.java
+¦       ¦           ¦               ¦   ¦       NPDevRuntimeConfig.java
+¦       ¦           ¦               ¦   ¦       RuntimeApiKeyAuthFilter.java
+¦       ¦           ¦               ¦   ¦       
+¦       ¦           ¦               ¦   +---dto
+¦       ¦           ¦               ¦   ¦       AdminCircuitResponse.java
+¦       ¦           ¦               ¦   ¦       AdminIdempotencyResponse.java
+¦       ¦           ¦               ¦   ¦       AuditRecordResponse.java
+¦       ¦           ¦               ¦   ¦       CorrelationTimelineResponse.java
+¦       ¦           ¦               ¦   ¦       EventMetaSummaryResponse.java
+¦       ¦           ¦               ¦   ¦       EventPublishRequest.java
+¦       ¦           ¦               ¦   ¦       EventPublishResponse.java
+¦       ¦           ¦               ¦   ¦       EventQueryResponse.java
+¦       ¦           ¦               ¦   ¦       ExecutionQueryResponse.java
+¦       ¦           ¦               ¦   ¦       ExecutionSummaryResponse.java
+¦       ¦           ¦               ¦   ¦       FlowDefinitionResponse.java
+¦       ¦           ¦               ¦   ¦       FlowExecutionResponse.java
+¦       ¦           ¦               ¦   ¦       TraceSummaryResponse.java
+¦       ¦           ¦               ¦   ¦       
+¦       ¦           ¦               ¦   +---model
+¦       ¦           ¦               ¦   ¦       NPDevModelProvider.java
+¦       ¦           ¦               ¦   ¦       
+¦       ¦           ¦               ¦   +---service
+¦       ¦           ¦               ¦           KernelFacade.java
+¦       ¦           ¦               ¦           RuntimeContextService.java
+¦       ¦           ¦               ¦           
+¦       ¦           ¦               +---services
+¦       ¦           ¦                       DiningOrderService.java
+¦       ¦           ¦                       DiningOrderServiceBase.java
+¦       ¦           ¦                       DiningTableService.java
+¦       ¦           ¦                       DiningTableServiceBase.java
+¦       ¦           ¦                       MenuItemService.java
+¦       ¦           ¦                       MenuItemServiceBase.java
+¦       ¦           ¦                       OrderLineService.java
+¦       ¦           ¦                       OrderLineServiceBase.java
+¦       ¦           ¦                       PaymentReceiptService.java
+¦       ¦           ¦                       PaymentReceiptServiceBase.java
+¦       ¦           ¦                       ReservationService.java
+¦       ¦           ¦                       ReservationServiceBase.java
+¦       ¦           ¦                       StaffMemberService.java
+¦       ¦           ¦                       StaffMemberServiceBase.java
+¦       ¦           ¦                       TenantService.java
+¦       ¦           ¦                       TenantServiceBase.java
+¦       ¦           ¦                       
+¦       ¦           +---resources
+¦       ¦               ¦   npdev-build-info.properties
+¦       ¦               ¦   npdev-runtime-actuator.properties
+¦       ¦               ¦   
+¦       ¦               +---npdev
+¦       ¦               ¦   ¦   compiled-metadata.json
+¦       ¦               ¦   ¦   compiled-model.json
+¦       ¦               ¦   ¦   model.json
+¦       ¦               ¦   ¦   
+¦       ¦               ¦   +---bindings
+¦       ¦               ¦   ¦       alt.bindings.json
+¦       ¦               ¦   ¦       dev.bindings.json
+¦       ¦               ¦   ¦       
+¦       ¦               ¦   +---metadata
+¦       ¦               ¦   ¦       actions.manifest.json
+¦       ¦               ¦   ¦       concepts.manifest.json
+¦       ¦               ¦   ¦       enums.manifest.json
+¦       ¦               ¦   ¦       fields.manifest.json
+¦       ¦               ¦   ¦       index.json
+¦       ¦               ¦   ¦       layout.manifest.json
+¦       ¦               ¦   ¦       references.manifest.json
+¦       ¦               ¦   ¦       validation-hints.manifest.json
+¦       ¦               ¦   ¦       
+¦       ¦               ¦   +---plugin-packages
+¦       ¦               ¦   ¦       custom-procedure.package.json
+¦       ¦               ¦   ¦       index.json
+¦       ¦               ¦   ¦       notification-incompatible.package.json
+¦       ¦               ¦   ¦       notification-inproc.package.json
+¦       ¦               ¦   ¦       notification-untrusted.package.json
+¦       ¦               ¦   ¦       notification-valid.package.json
+¦       ¦               ¦   ¦       notification-warning.package.json
+¦       ¦               ¦   ¦       
+¦       ¦               ¦   +---plugins
+¦       ¦               ¦   ¦       default.plugin-manifest.json
+¦       ¦               ¦   ¦       generated.plugin-requirements.json
+¦       ¦               ¦   ¦       warning.plugin-manifest.json
+¦       ¦               ¦   ¦       
+¦       ¦               ¦   +---runtime
+¦       ¦               ¦   ¦       dev.runtime.json
+¦       ¦               ¦   ¦       
+¦       ¦               ¦   +---security
+¦       ¦               ¦   ¦       dev.permissions.json
+¦       ¦               ¦   ¦       dev.ui-metadata-policy.json
+¦       ¦               ¦   ¦       
+¦       ¦               ¦   +---ui-boundary
+¦       ¦               ¦           canonical-ui-selection.json
+¦       ¦               ¦           
+¦       ¦               +---static
+¦       ¦                   +---npdev-ui
+¦       ¦                   ¦       app.js
+¦       ¦                   ¦       index.html
+¦       ¦                   ¦       style.css
+¦       ¦                   ¦       
+¦       ¦                   +---npdev-ui-react
+¦       ¦                       ¦   index.html
+¦       ¦                       ¦   
+¦       ¦                       +---assets
+¦       ¦                               app.css
+¦       ¦                               app.js
+¦       ¦                               
+¦       +---RunOutput
+¦               bootrun-stderr.log
+¦               bootrun-stdout.log
+¦               bootrun.pid
+¦               seed-tenant-data-20260412-063211.json
+¦               seed-tenant-data-20260413-232651.json
+¦               seed-tenant-data-20260413-234904.json
+¦               
++---scripts
+¦   ¦   generate-sample-app.ps1
+¦   ¦   run-sample-app.ps1
+¦   ¦   sample-common.ps1
+¦   ¦   
+¦   +---restaurant-saas-multitenant
+¦           generate-restaurant-saas-sample.ps1
+¦           populate-restaurant-tenants.ps1
+¦           run-generated-app.ps1
+¦           verify-no-domain-leaks.ps1
+¦           verify-restaurant-tenant-data.ps1
+¦           
++---simple-contact-intake
+¦   +---Input
+¦   ¦   ¦   config.json
+¦   ¦   ¦   expected-behavior.md
+¦   ¦   ¦   expected-diagnostics.md
+¦   ¦   ¦   expected-endpoints.md
+¦   ¦   ¦   manifest.json
+¦   ¦   ¦   model.json
+¦   ¦   ¦   README.md
+¦   ¦   ¦   
+¦   ¦   +---Requests
+¦   ¦           submit-contact-message.json
+¦   ¦           
+¦   +---Output
++---simple-user-registry
+¦   +---Input
+¦   ¦   ¦   config.json
+¦   ¦   ¦   expected-behavior.md
+¦   ¦   ¦   expected-diagnostics.md
+¦   ¦   ¦   expected-endpoints.md
+¦   ¦   ¦   manifest.json
+¦   ¦   ¦   model.json
+¦   ¦   ¦   README.md
+¦   ¦   ¦   
+¦   ¦   +---Requests
+¦   ¦           create-user.json
+¦   ¦           
+¦   +---Output
++---user-minimal
+    +---Input
+    ¦       model.json
+    ¦       
+    +---Output

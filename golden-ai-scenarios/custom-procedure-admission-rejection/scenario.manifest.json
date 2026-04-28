@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "ai-scenario.v1",
+  "scenarioId": "custom-procedure-admission-rejection",
+  "kind": "ai-custom-procedure-functional-beta",
+  "files": {
+    "model": "model.json",
+    "config": "config.json",
+    "expectedBehavior": "expected-behavior.json",
+    "customProcedure": "custom-procedure.json",
+    "expectedProcedureBehavior": "expected-procedure-behavior.json"
+  },
+  "runtime": {
+    "strictExecution": true,
+    "surfaceProfile": "supported-core"
+  },
+  "requestedSurfaces": ["supported-core"],
+  "operations": [
+    {
+      "type": "customProcedure",
+      "procedureId": "promote-learner"
+    }
+  ],
+  "expectedOutcome": {
+    "class": "FAIL_PROCEDURE_ADMISSION",
+    "mustPass": false
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "namespace": "npdev.bootstrapexec.async",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "concepts": [
+    {
+      "name": "User",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "email", "type": "string", "required": true },
+        { "name": "name", "type": "string", "required": false },
+        { "name": "enabled", "type": "boolean", "required": false }
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": ["save", "findById"]
+    }
+  ],
+  "bindings": [
+    { "capability": "persistence", "adapter": "inmemory" },
+    { "capability": "eventBus", "adapter": "inproc" }
+  ],
+  "events": [
+    {
+      "name": "EmailVerified",
+      "payload": [
+        { "name": "email", "type": "string" }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "TypedHappyPath",
+      "input": {
+        "concept": "User",
+        "mode": "create"
+      },
+      "steps": [
+        {
+          "name": "save-user",
+          "type": "capabilityCall",
+          "cap": "persistence",
+          "op": "save",
+          "args": ["$input"],
+          "out": "$saved"
+        },
+        {
+          "name": "await-email",
+          "type": "awaitEvent",
+          "awaitEvent": "EmailVerified",
+          "as": "approval",
+          "match": {
+            "correlation": true
+          }
+        },
+        {
+          "name": "return-user",
+          "type": "return",
+          "value": "$saved"
+        }
+      ]
+    }
+  ]
+}

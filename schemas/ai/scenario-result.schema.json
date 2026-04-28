@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/scenario-result.schema.json",
+  "title": "NPDev AI Scenario Result",
+  "type": "object",
+  "required": ["schemaVersion", "scenarioId", "overallStatus", "resultClass"],
+  "properties": {
+    "schemaVersion": { "const": "ai-scenario-result.v1" },
+    "scenarioId": { "type": "string" },
+    "overallStatus": { "enum": ["passed", "failed"] },
+    "resultClass": { "type": "string" },
+    "classification": { "type": "string" },
+    "reports": { "type": "object" },
+    "artifacts": { "type": "array" }
+  },
+  "additionalProperties": true
+}

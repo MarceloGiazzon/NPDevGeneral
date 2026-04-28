@@ -1,0 +1,25 @@
+{
+  "batch": "runtimehost-batch6",
+  "description": "First real RuntimeHost deletion slice. Remove only zero-reference transitional UI controllers using the exact deadRemoveCandidates paths from the current runtime footprint report.",
+  "rationale": [
+    "Batch 5 proved the verification flow but removed 0 files because the planned paths were wrong.",
+    "This batch corrects the paths and keeps the same conservative scope: zero-reference transitional UI controllers only.",
+    "Supported-core and internal-but-needed surfaces remain untouched."
+  ],
+  "files": [
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/ArchitectureVisualizationUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/BetaOnboardingUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/BetaSecurityPostureUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/CapabilityIntegrationUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/ChangeImpactVisualizationUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/ExecutionMonitorUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/ExplainabilityGraphUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/FlowBuilderUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/GovernanceWorkspaceUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/ReferenceAppGalleryUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/ReliabilityPostureUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/RuntimeTopologyExplorerUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/SupportDiagnosticsUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/WorkflowPolishReportUiController.java"
+  ]
+}

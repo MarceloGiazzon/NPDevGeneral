@@ -1,0 +1,31 @@
+﻿{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "$id":  "https://npdev.local/contracts/trace-record.schema.json",
+    "title":  "NPDev Kernel Trace Record",
+    "type":  "object",
+    "additionalProperties":  true,
+    "properties":  {
+                       "contractVersion":  {
+                                               "description":  "Trace record contract version.",
+                                               "type":  "string"
+                                           },
+                       "traceId":  {
+                                       "description":  "Trace id.",
+                                       "type":  "string"
+                                   },
+                       "message":  {
+                                       "description":  "Trace message.",
+                                       "type":  "string"
+                                   },
+                       "attributes":  {
+                                          "type":  "object",
+                                          "description":  "Structured trace attributes.",
+                                          "additionalProperties":  true
+                                      }
+                   },
+    "required":  [
+                     "contractVersion",
+                     "traceId",
+                     "message"
+                 ]
+}

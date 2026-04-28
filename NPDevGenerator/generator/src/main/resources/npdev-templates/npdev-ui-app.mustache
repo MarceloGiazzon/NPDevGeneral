@@ -1,0 +1,1741 @@
+(function () {
+  "use strict";
+
+  const STORAGE_KEYS = {
+    apiKey: "npdev.ui.apiKey",
+    apiBase: "npdev.ui.apiBase",
+    lastFlow: "npdev.ui.lastFlow",
+    executeUseAdvanced: "npdev.ui.execute.useAdvanced",
+    executePayload: "npdev.ui.execute.payload",
+    traceFilters: "npdev.ui.trace.filters",
+    executionFilters: "npdev.ui.execution.filters"
+  };
+
+  const DEFAULT_LIMIT = 50;
+  const DEFAULT_OFFSET = 0;
+  const DEFAULT_DEV_API_KEY = "api-dev";
+  const SENSITIVE_KEY_TOKENS = [
+    "token",
+    "secret",
+    "password",
+    "authorization",
+    "apiKey",
+    "api_key",
+    "bearer",
+    "cookie"
+  ];
+
+  const state = {
+    flows: [],
+    flowDefinitionsByName: {},
+    executionsMode: "recent",
+    typedControls: [],
+    currentTrace: null,
+    currentExecution: null,
+    adminEnabled: false,
+    adminSection: "failures"
+  };
+
+  const el = {
+    apiKey: document.getElementById("apiKey"),
+    apiBase: document.getElementById("apiBase"),
+    statusBanner: document.getElementById("statusBanner"),
+    tabs: Array.from(document.querySelectorAll(".tab")),
+    views: {
+      flows: document.getElementById("view-flows"),
+      execute: document.getElementById("view-execute"),
+      executions: document.getElementById("view-executions"),
+      traces: document.getElementById("view-traces"),
+      events: document.getElementById("view-events"),
+      correlation: document.getElementById("view-correlation"),
+      admin: document.getElementById("view-admin")
+    },
+    reloadFlows: document.getElementById("reloadFlows"),
+    flowsList: document.getElementById("flowsList"),
+    executeFlowName: document.getElementById("executeFlowName"),
+    executeTypedContainer: document.getElementById("executeTypedContainer"),
+    executeUseAdvanced: document.getElementById("executeUseAdvanced"),
+    executePayload: document.getElementById("executePayload"),
+    executeButton: document.getElementById("executeButton"),
+    executeValidationErrors: document.getElementById("executeValidationErrors"),
+    executeResult: document.getElementById("executeResult"),
+    executeLinks: document.getElementById("executeLinks"),
+    executionsLimit: document.getElementById("executionsLimit"),
+    executionsOffset: document.getElementById("executionsOffset"),
+    staleOlderThanMinutes: document.getElementById("staleOlderThanMinutes"),
+    executionsStatusFilter: document.getElementById("executionsStatusFilter"),
+    loadExecutionsRecent: document.getElementById("loadExecutionsRecent"),
+    loadExecutionsWaiting: document.getElementById("loadExecutionsWaiting"),
+    loadExecutionsStale: document.getElementById("loadExecutionsStale"),
+    executionsPrev: document.getElementById("executionsPrev"),
+    executionsNext: document.getElementById("executionsNext"),
+    executionsTableBody: document.querySelector("#executionsTable tbody"),
+    executionStatusBlock: document.getElementById("executionStatusBlock"),
+    executionDetails: document.getElementById("executionDetails"),
+    executionAwaitedEventName: document.getElementById("executionAwaitedEventName"),
+    executionCorrelationId: document.getElementById("executionCorrelationId"),
+    executionEventPayload: document.getElementById("executionEventPayload"),
+    executionPublishEventButton: document.getElementById("executionPublishEventButton"),
+    executionPublishResult: document.getElementById("executionPublishResult"),
+    traceFilterFlowName: document.getElementById("traceFilterFlowName"),
+    traceFilterStatus: document.getElementById("traceFilterStatus"),
+    traceFilterFrom: document.getElementById("traceFilterFrom"),
+    traceFilterTo: document.getElementById("traceFilterTo"),
+    traceLimit: document.getElementById("traceLimit"),
+    traceOffset: document.getElementById("traceOffset"),
+    searchTraces: document.getElementById("searchTraces"),
+    tracePrev: document.getElementById("tracePrev"),
+    traceNext: document.getElementById("traceNext"),
+    traceSearchTableBody: document.querySelector("#traceSearchTable tbody"),
+    traceExecutionId: document.getElementById("traceExecutionId"),
+    loadTrace: document.getElementById("loadTrace"),
+    copyTraceExecutionId: document.getElementById("copyTraceExecutionId"),
+    copyTraceCorrelationId: document.getElementById("copyTraceCorrelationId"),
+    copyTraceSummary: document.getElementById("copyTraceSummary"),
+    copyTraceJson: document.getElementById("copyTraceJson"),
+    traceSummary: document.getElementById("traceSummary"),
+    traceDetails: document.getElementById("traceDetails"),
+    publishEventName: document.getElementById("publishEventName"),
+    publishCorrelationId: document.getElementById("publishCorrelationId"),
+    publishPayload: document.getElementById("publishPayload"),
+    publishEventButton: document.getElementById("publishEventButton"),
+    publishResult: document.getElementById("publishResult"),
+    timelineCorrelationId: document.getElementById("timelineCorrelationId"),
+    timelineLimit: document.getElementById("timelineLimit"),
+    timelineOffset: document.getElementById("timelineOffset"),
+    loadTimeline: document.getElementById("loadTimeline"),
+    timelinePrev: document.getElementById("timelinePrev"),
+    timelineNext: document.getElementById("timelineNext"),
+    timelineDetails: document.getElementById("timelineDetails"),
+    adminTab: document.getElementById("adminTab"),
+    adminLimit: document.getElementById("adminLimit"),
+    adminOffset: document.getElementById("adminOffset"),
+    loadAdminFailures: document.getElementById("loadAdminFailures"),
+    loadAdminStuck: document.getElementById("loadAdminStuck"),
+    adminSectionFailures: document.getElementById("adminSectionFailures"),
+    adminSectionStuck: document.getElementById("adminSectionStuck"),
+    adminFailuresPanel: document.getElementById("adminFailuresPanel"),
+    adminStuckPanel: document.getElementById("adminStuckPanel"),
+    adminFailuresTableBody: document.querySelector("#adminFailuresTable tbody"),
+    adminStuckTableBody: document.querySelector("#adminStuckTable tbody"),
+    adminResumeResult: document.getElementById("adminResumeResult"),
+    adminFailuresResult: document.getElementById("adminFailuresResult"),
+    adminCircuitCapability: document.getElementById("adminCircuitCapability"),
+    adminCircuitOperation: document.getElementById("adminCircuitOperation"),
+    adminCircuitLimit: document.getElementById("adminCircuitLimit"),
+    adminCircuitOffset: document.getElementById("adminCircuitOffset"),
+    loadAdminCircuits: document.getElementById("loadAdminCircuits"),
+    adminCircuitsResult: document.getElementById("adminCircuitsResult"),
+    adminIdempotencyKey: document.getElementById("adminIdempotencyKey"),
+    adminIdempotencyCapability: document.getElementById("adminIdempotencyCapability"),
+    adminIdempotencyOperation: document.getElementById("adminIdempotencyOperation"),
+    loadAdminIdempotency: document.getElementById("loadAdminIdempotency"),
+    adminIdempotencyResult: document.getElementById("adminIdempotencyResult"),
+    buildInfoFooter: document.getElementById("buildInfoFooter")
+  };
+
+  function showStatus(message, isError) {
+    if (!message) {
+      el.statusBanner.classList.add("hidden");
+      el.statusBanner.classList.remove("error");
+      el.statusBanner.textContent = "";
+      return;
+    }
+    el.statusBanner.classList.remove("hidden");
+    el.statusBanner.classList.toggle("error", Boolean(isError));
+    el.statusBanner.textContent = message;
+  }
+
+  function normalizeText(value) {
+    if (value === null || value === undefined) {
+      return "";
+    }
+    return String(value).trim();
+  }
+
+  function parseStoredJson(key, fallback) {
+    const raw = localStorage.getItem(key);
+    if (!raw) {
+      return fallback;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed === null || parsed === undefined ? fallback : parsed;
+    } catch (error) {
+      return fallback;
+    }
+  }
+
+  function readStoredInputs() {
+    const storedApiKey = localStorage.getItem(STORAGE_KEYS.apiKey);
+    el.apiKey.value = storedApiKey === null ? DEFAULT_DEV_API_KEY : storedApiKey;
+    if (storedApiKey === null) {
+      localStorage.setItem(STORAGE_KEYS.apiKey, DEFAULT_DEV_API_KEY);
+    }
+    el.apiBase.value = localStorage.getItem(STORAGE_KEYS.apiBase) || "";
+    el.executeUseAdvanced.checked = localStorage.getItem(STORAGE_KEYS.executeUseAdvanced) === "true";
+    el.executePayload.value = localStorage.getItem(STORAGE_KEYS.executePayload) || "{}";
+
+    const traceFilters = parseStoredJson(STORAGE_KEYS.traceFilters, {});
+    el.traceFilterFlowName.value = traceFilters.flowName || "";
+    el.traceFilterStatus.value = traceFilters.status || "";
+    el.traceFilterFrom.value = traceFilters.from || "";
+    el.traceFilterTo.value = traceFilters.to || "";
+    el.traceLimit.value = String(toInt(traceFilters.limit, DEFAULT_LIMIT));
+    el.traceOffset.value = String(toInt(traceFilters.offset, DEFAULT_OFFSET));
+
+    const executionFilters = parseStoredJson(STORAGE_KEYS.executionFilters, {});
+    el.executionsLimit.value = String(toInt(executionFilters.limit, DEFAULT_LIMIT));
+    el.executionsOffset.value = String(toInt(executionFilters.offset, DEFAULT_OFFSET));
+    el.staleOlderThanMinutes.value = String(toInt(executionFilters.olderThanMinutes, 60));
+    el.executionsStatusFilter.value = executionFilters.status || "";
+    if (executionFilters.mode === "waiting" || executionFilters.mode === "stale" || executionFilters.mode === "recent") {
+      state.executionsMode = executionFilters.mode;
+    }
+  }
+
+  function persistInput(key, value) {
+    if (!key) {
+      return;
+    }
+    const normalized = normalizeText(value);
+    if (!normalized) {
+      localStorage.removeItem(key);
+      return;
+    }
+    localStorage.setItem(key, normalized);
+  }
+
+  function persistJson(key, payload) {
+    if (!key) {
+      return;
+    }
+    localStorage.setItem(key, JSON.stringify(payload));
+  }
+
+  function persistTraceFilters() {
+    persistJson(STORAGE_KEYS.traceFilters, {
+      flowName: normalizeText(el.traceFilterFlowName.value),
+      status: normalizeText(el.traceFilterStatus.value),
+      from: normalizeText(el.traceFilterFrom.value),
+      to: normalizeText(el.traceFilterTo.value),
+      limit: toInt(el.traceLimit.value, DEFAULT_LIMIT),
+      offset: toInt(el.traceOffset.value, DEFAULT_OFFSET)
+    });
+  }
+
+  function persistExecutionFilters(mode) {
+    persistJson(STORAGE_KEYS.executionFilters, {
+      mode: mode || state.executionsMode,
+      limit: toInt(el.executionsLimit.value, DEFAULT_LIMIT),
+      offset: toInt(el.executionsOffset.value, DEFAULT_OFFSET),
+      olderThanMinutes: toInt(el.staleOlderThanMinutes.value, 60),
+      status: normalizeText(el.executionsStatusFilter.value)
+    });
+  }
+
+  function headers() {
+    const result = { "Content-Type": "application/json" };
+    const apiKey = normalizeText(el.apiKey.value);
+    if (apiKey) {
+      result["X-Api-Key"] = apiKey;
+    }
+    return result;
+  }
+
+  function apiUrl(path) {
+    const base = normalizeText(el.apiBase.value);
+    if (!base) {
+      return path;
+    }
+    const normalizedBase = base.endsWith("/") ? base.slice(0, -1) : base;
+    return normalizedBase + path;
+  }
+
+  function mapHttpError(status, payload) {
+    if (status === 403) {
+      return "Forbidden.";
+    }
+    if (status === 401) {
+      return "Unauthorized (check API key).";
+    }
+    if (typeof payload === "string" && payload) {
+      return payload;
+    }
+    if (payload && payload.message) {
+      return payload.message;
+    }
+    return "HTTP " + status;
+  }
+
+  async function api(path, method, body) {
+    const apiKey = normalizeText(el.apiKey.value);
+    if (!apiKey) {
+      showStatus("API key is empty. Server likely returns 401.", false);
+    }
+    const response = await fetch(apiUrl(path), {
+      method: method || "GET",
+      headers: headers(),
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    const responseContentType = response.headers.get("content-type") || "";
+    const isJson = responseContentType.includes("application/json");
+    const payload = isJson ? await response.json() : await response.text();
+    if (!response.ok) {
+      throw new Error(mapHttpError(response.status, payload));
+    }
+    return payload;
+
+  }
+
+  async function apiAllowError(path, method, body) {
+  const apiKey = normalizeText(el.apiKey.value);
+  if (!apiKey) {
+  showStatus("API key is empty. Server likely returns 401.", false);
+  }
+  const response = await fetch(apiUrl(path), {
+  method: method || "GET",
+  headers: headers(),
+  body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const responseContentType = response.headers.get("content-type") || "";
+  const isJson = responseContentType.includes("application/json");
+  const payload = isJson ? await response.json() : await response.text();
+  return {
+  ok: response.ok,
+  status: response.status,
+  contentType: responseContentType,
+  payload: payload
+  };
+  }
+
+
+
+  function formatBuildFooter(infoPayload) {
+    if (!infoPayload || typeof infoPayload !== "object") {
+      return "Version: unknown";
+    }
+    const version = normalizeText(infoPayload["npdev.version"] || (infoPayload.npdev && infoPayload.npdev.version)) || "unknown";
+    const commitRaw = normalizeText(infoPayload["npdev.commit"] || (infoPayload.npdev && infoPayload.npdev.commit)) || "unknown";
+    const shortCommit = commitRaw.length > 8 ? commitRaw.slice(0, 8) : commitRaw;
+    return "Version: " + version + " (" + shortCommit + ")";
+  }
+
+  async function loadBuildInfoFooter() {
+    if (!el.buildInfoFooter) {
+      return;
+    }
+    try {
+      const response = await fetch(apiUrl("/actuator/info"), {
+        method: "GET",
+        headers: headers()
+      });
+      if (!response.ok) {
+        el.buildInfoFooter.textContent = "Version: unavailable";
+        return;
+      }
+      const payload = await response.json();
+      el.buildInfoFooter.textContent = formatBuildFooter(payload);
+    } catch (error) {
+      el.buildInfoFooter.textContent = "Version: unavailable";
+    }
+  }
+
+  function setView(viewName) {
+    Object.keys(el.views).forEach(function (key) {
+      el.views[key].classList.toggle("active", key === viewName);
+    });
+    el.tabs.forEach(function (tab) {
+      tab.classList.toggle("active", tab.dataset.view === viewName);
+    });
+  }
+
+  function formatEpoch(epochMs) {
+    if (epochMs === null || epochMs === undefined) {
+      return "-";
+    }
+    try {
+      return new Date(epochMs).toISOString();
+    } catch (error) {
+      return String(epochMs);
+    }
+  }
+
+  function formatDuration(startedAtEpochMs, endedAtEpochMs) {
+    if (startedAtEpochMs === null || startedAtEpochMs === undefined || endedAtEpochMs === null || endedAtEpochMs === undefined) {
+      return "-";
+    }
+    const duration = Number(endedAtEpochMs) - Number(startedAtEpochMs);
+    if (!Number.isFinite(duration) || duration < 0) {
+      return "-";
+    }
+    return String(duration) + " ms";
+  }
+
+  function canResumeNow(row) {
+    if (!row || row.status !== "WAITING_EVENT") {
+      return false;
+    }
+    if (row.nextEligibleResumeAtEpochMs === null || row.nextEligibleResumeAtEpochMs === undefined) {
+      return true;
+    }
+    return Number(row.nextEligibleResumeAtEpochMs) <= Date.now();
+  }
+
+  function asJson(text, fallback) {
+    const value = normalizeText(text);
+    if (!value) {
+      return fallback;
+    }
+    return JSON.parse(value);
+  }
+
+  function toInt(value, fallback) {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isNaN(parsed)) {
+      return fallback;
+    }
+    return parsed;
+  }
+
+  function isSensitiveDisplayKey(key) {
+    const normalizedKey = normalizeText(key).toLowerCase();
+    if (!normalizedKey) {
+      return false;
+    }
+    return SENSITIVE_KEY_TOKENS.some(function (token) {
+      return normalizedKey.includes(token.toLowerCase());
+    });
+  }
+
+  function sanitizeForDisplay(payload, keyHint) {
+    if (payload === null || payload === undefined) {
+      return payload;
+    }
+    if (isSensitiveDisplayKey(keyHint)) {
+      return "***";
+    }
+    if (Array.isArray(payload)) {
+      return payload.map(function (item) {
+        return sanitizeForDisplay(item, keyHint);
+      });
+    }
+    if (typeof payload === "object") {
+      const out = {};
+      Object.keys(payload).forEach(function (key) {
+        out[key] = sanitizeForDisplay(payload[key], key);
+      });
+      return out;
+    }
+    return payload;
+  }
+
+  function printJson(target, payload) {
+    target.textContent = JSON.stringify(sanitizeForDisplay(payload, ""), null, 2);
+  }
+
+  function appendStatusRow(container, label, value) {
+    const dt = document.createElement("dt");
+    dt.textContent = label;
+    container.appendChild(dt);
+    const dd = document.createElement("dd");
+    dd.textContent = normalizeText(value) || "-";
+    container.appendChild(dd);
+  }
+
+  function isForbiddenMessage(message) {
+    return normalizeText(message).toLowerCase().includes("forbidden");
+  }
+
+  function setOffset(input, value) {
+    input.value = String(Math.max(0, value));
+  }
+
+  function makeActionButton(label, className, onClick) {
+    const button = document.createElement("button");
+    button.textContent = label;
+    if (className) {
+      button.className = className;
+    }
+    button.addEventListener("click", onClick);
+    return button;
+  }
+
+  function schemaType(schema) {
+    if (!schema || typeof schema !== "object") {
+      return "";
+    }
+    return normalizeText(schema.type).toLowerCase();
+  }
+
+  function selectedFlowDefinition() {
+    const flowName = normalizeText(el.executeFlowName.value);
+    return state.flowDefinitionsByName[flowName] || null;
+  }
+
+  function supportsTypedInput(definition) {
+    if (!definition || !definition.inputSchema || typeof definition.inputSchema !== "object") {
+      return false;
+    }
+    const type = schemaType(definition.inputSchema);
+    if (type !== "object") {
+      return false;
+    }
+    const properties = definition.inputSchema.properties;
+    return Boolean(properties && typeof properties === "object");
+  }
+
+  function clearTypedForm(message) {
+    el.executeTypedContainer.innerHTML = "";
+    state.typedControls = [];
+    const info = document.createElement("div");
+    info.className = "typed-help";
+    info.textContent = message || "No schema available. Use Advanced JSON mode.";
+    el.executeTypedContainer.appendChild(info);
+  }
+
+  function fieldHelp(schema) {
+    if (!schema || typeof schema !== "object") {
+      return "";
+    }
+    const parts = [];
+    const type = schemaType(schema);
+    if (type) {
+      parts.push("type: " + type);
+    }
+    if (schema.minLength !== null && schema.minLength !== undefined) {
+      parts.push("minLength: " + schema.minLength);
+    }
+    if (schema.maxLength !== null && schema.maxLength !== undefined) {
+      parts.push("maxLength: " + schema.maxLength);
+    }
+    if (schema.min !== null && schema.min !== undefined) {
+      parts.push("min: " + schema.min);
+    }
+    if (schema.max !== null && schema.max !== undefined) {
+      parts.push("max: " + schema.max);
+    }
+    if (schema.regex) {
+      parts.push("regex: " + schema.regex);
+    }
+    return parts.join(" | ");
+  }
+
+  function renderTypedForm() {
+    const definition = selectedFlowDefinition();
+    if (!supportsTypedInput(definition)) {
+      clearTypedForm("No object schema found for this flow. Use Advanced JSON mode.");
+      return;
+    }
+    el.executeTypedContainer.innerHTML = "";
+    state.typedControls = [];
+
+    const schema = definition.inputSchema;
+    const required = new Set(Array.isArray(schema.required) ? schema.required : []);
+    const properties = schema.properties || {};
+    const names = Object.keys(properties);
+    if (names.length === 0) {
+      clearTypedForm("Schema has no properties. Use Advanced JSON mode.");
+      return;
+    }
+
+    names.sort().forEach(function (name) {
+      const propSchema = properties[name] || {};
+      const type = schemaType(propSchema);
+      const wrapper = document.createElement("div");
+      wrapper.className = "typed-field";
+
+      const label = document.createElement("label");
+      label.textContent = name;
+      if (required.has(name)) {
+        label.classList.add("typed-required");
+      }
+      wrapper.appendChild(label);
+
+      let input;
+      if (type === "integer" || type === "number") {
+        input = document.createElement("input");
+        input.type = "number";
+        input.step = type === "integer" ? "1" : "any";
+      } else if (type === "boolean") {
+        input = document.createElement("input");
+        input.type = "checkbox";
+      } else if (type === "object" || type === "array") {
+        input = document.createElement("textarea");
+        input.rows = 4;
+        input.placeholder = type === "array" ? "[]" : "{}";
+      } else {
+        input = document.createElement("input");
+        input.type = "text";
+      }
+
+      if (type !== "boolean") {
+        input.placeholder = input.placeholder || name;
+      }
+      wrapper.appendChild(input);
+
+      if (propSchema.description) {
+        const description = document.createElement("div");
+        description.className = "typed-help";
+        description.textContent = propSchema.description;
+        wrapper.appendChild(description);
+      }
+
+      const constraints = fieldHelp(propSchema);
+      if (constraints) {
+        const help = document.createElement("div");
+        help.className = "typed-help";
+        help.textContent = constraints;
+        wrapper.appendChild(help);
+      }
+
+      el.executeTypedContainer.appendChild(wrapper);
+      state.typedControls.push({
+        name: name,
+        type: type || "string",
+        input: input
+      });
+    });
+  }
+
+  function syncExecuteModeUi() {
+    const typedAvailable = supportsTypedInput(selectedFlowDefinition());
+    const useAdvanced = !typedAvailable || el.executeUseAdvanced.checked;
+    el.executeTypedContainer.style.display = useAdvanced ? "none" : "block";
+    el.executePayload.style.display = useAdvanced ? "block" : "none";
+  }
+
+  function buildPayloadFromTypedControls() {
+    const payload = {};
+    state.typedControls.forEach(function (control) {
+      const name = control.name;
+      const type = control.type;
+      const input = control.input;
+      if (type === "boolean") {
+        payload[name] = Boolean(input.checked);
+        return;
+      }
+      const raw = normalizeText(input.value);
+      if (!raw) {
+        return;
+      }
+      if (type === "integer") {
+        const parsedInt = Number.parseInt(raw, 10);
+        if (Number.isNaN(parsedInt)) {
+          throw new Error("Field '" + name + "' must be integer.");
+        }
+        payload[name] = parsedInt;
+        return;
+      }
+      if (type === "number") {
+        const parsedNumber = Number(raw);
+        if (!Number.isFinite(parsedNumber)) {
+          throw new Error("Field '" + name + "' must be number.");
+        }
+        payload[name] = parsedNumber;
+        return;
+      }
+      if (type === "object" || type === "array") {
+        payload[name] = JSON.parse(raw);
+        return;
+      }
+      payload[name] = raw;
+    });
+    return payload;
+  }
+
+  function renderExecuteValidationErrors(result) {
+    el.executeValidationErrors.innerHTML = "";
+    if (!result || result.status !== "INPUT_VALIDATION_FAILED") {
+      const ok = document.createElement("div");
+      ok.className = "typed-help";
+      ok.textContent = "No validation errors.";
+      el.executeValidationErrors.appendChild(ok);
+      return;
+    }
+    const title = document.createElement("div");
+    title.textContent = "Input validation failed";
+    el.executeValidationErrors.appendChild(title);
+
+    const errors = Array.isArray(result.inputValidationErrors) ? result.inputValidationErrors : [];
+    if (errors.length === 0) {
+      const none = document.createElement("div");
+      none.className = "typed-help";
+      none.textContent = "No detailed field errors returned.";
+      el.executeValidationErrors.appendChild(none);
+      return;
+    }
+    const list = document.createElement("ul");
+    errors.forEach(function (item) {
+      const li = document.createElement("li");
+      const fieldPath = normalizeText(item.field);
+      const code = normalizeText(item.code);
+      const message = normalizeText(item.message);
+      li.textContent = (fieldPath || "<root>") + " | " + (code || "VALIDATION_ERROR") + " | " + (message || "validation error");
+      list.appendChild(li);
+    });
+    el.executeValidationErrors.appendChild(list);
+  }
+
+  function renderFlows() {
+    el.flowsList.innerHTML = "";
+    el.executeFlowName.innerHTML = "";
+    state.flows.forEach(function (flowName) {
+      const definition = state.flowDefinitionsByName[flowName];
+      const option = document.createElement("option");
+      option.value = flowName;
+      option.textContent = definition && definition.inputSchema ? flowName + " (typed)" : flowName;
+      el.executeFlowName.appendChild(option);
+
+      const item = document.createElement("li");
+      const code = document.createElement("code");
+      code.textContent = flowName;
+      const action = makeActionButton("Execute", "primary", function () {
+        el.executeFlowName.value = flowName;
+        persistInput(STORAGE_KEYS.lastFlow, flowName);
+        renderTypedForm();
+        syncExecuteModeUi();
+        setView("execute");
+      });
+      item.appendChild(code);
+      item.appendChild(action);
+      el.flowsList.appendChild(item);
+    });
+  }
+
+  async function loadFlows() {
+    try {
+      const definitions = await api("/api/v1/flows");
+      state.flowDefinitionsByName = {};
+      state.flows = Array.isArray(definitions)
+        ? definitions
+          .map(function (item) {
+            if (!item) {
+              return "";
+            }
+            if (typeof item === "string") {
+              state.flowDefinitionsByName[item] = { name: item };
+              return item;
+            }
+            const name = normalizeText(item.name);
+            if (name) {
+              state.flowDefinitionsByName[name] = item;
+            }
+            return name;
+          })
+          .filter(function (name) { return Boolean(name); })
+        : [];
+      renderFlows();
+      const storedFlow = normalizeText(localStorage.getItem(STORAGE_KEYS.lastFlow));
+      if (storedFlow && state.flowDefinitionsByName[storedFlow]) {
+        el.executeFlowName.value = storedFlow;
+      } else if (state.flows.length > 0) {
+        el.executeFlowName.value = state.flows[0];
+      }
+      renderTypedForm();
+      syncExecuteModeUi();
+      showStatus("Loaded flows: " + state.flows.length, false);
+    } catch (error) {
+      showStatus("Flows load failed: " + error.message, true);
+    }
+  }
+
+  function openExecution(executionId) {
+    if (!executionId) {
+      return;
+    }
+    setView("executions");
+    loadExecutionDetails(executionId);
+  }
+
+  function openTrace(executionId) {
+    if (!executionId) {
+      return;
+    }
+    setView("traces");
+    el.traceExecutionId.value = executionId;
+    loadTraceDetails(executionId);
+  }
+
+  function openCorrelation(correlationId) {
+    if (!correlationId) {
+      return;
+    }
+    setView("correlation");
+    el.timelineCorrelationId.value = correlationId;
+    loadCorrelationTimeline(correlationId);
+  }
+
+  function setExecuteLinks(result) {
+    el.executeLinks.innerHTML = "";
+    if (!result || !result.executionId) {
+      return;
+    }
+    el.executeLinks.appendChild(makeActionButton("Open Execution", "", function () {
+      openExecution(result.executionId);
+    }));
+    el.executeLinks.appendChild(makeActionButton("Open Trace", "primary", function () {
+      openTrace(result.executionId);
+    }));
+    if (result.correlationId) {
+      el.executeLinks.appendChild(makeActionButton("Open Correlation", "", function () {
+        openCorrelation(result.correlationId);
+      }));
+    }
+  }
+
+  async function executeFlow() {
+    const flowName = normalizeText(el.executeFlowName.value);
+    if (!flowName) {
+      showStatus("Select flow before execute.", true);
+      return;
+    }
+    persistInput(STORAGE_KEYS.lastFlow, flowName);
+    persistInput(STORAGE_KEYS.executePayload, el.executePayload.value);
+    localStorage.setItem(STORAGE_KEYS.executeUseAdvanced, el.executeUseAdvanced.checked ? "true" : "false");
+
+    let payload = {};
+    try {
+      const definition = selectedFlowDefinition();
+      if (!el.executeUseAdvanced.checked && supportsTypedInput(definition)) {
+        payload = buildPayloadFromTypedControls();
+      } else {
+        payload = asJson(el.executePayload.value, {});
+      }
+    } catch (error) {
+      showStatus("Payload build failed: " + error.message, true);
+      return;
+    }
+const response = await apiAllowError("/api/v1/flows/" + encodeURIComponent(flowName) + "/execute", "POST", payload);
+const result = response.payload;
+printJson(el.executeResult, result);
+renderExecuteValidationErrors(result);
+setExecuteLinks(result);
+const statusText = result && result.status ? result.status : "UNKNOWN";
+if (response.ok) {
+  showStatus("Execution status: " + statusText, false);
+} else {
+  showStatus("Execution failed (HTTP " + response.status + "): " + mapHttpError(response.status, result), true);
+}
+
+}
+
+  function renderExecutionStatusBlock(payload) {
+    if (!el.executionStatusBlock) {
+      return;
+    }
+    el.executionStatusBlock.innerHTML = "";
+    const dl = document.createElement("dl");
+
+    if (!payload || typeof payload !== "object") {
+      appendStatusRow(dl, "Status", "Not loaded");
+      el.executionStatusBlock.appendChild(dl);
+      return;
+    }
+
+    appendStatusRow(dl, "Status", payload.status);
+    appendStatusRow(dl, "Last Error Kind", payload.lastErrorKind || (payload.failureInfo && payload.failureInfo.kind));
+    appendStatusRow(dl, "Last Error Code", payload.lastErrorCode || (payload.failureInfo && payload.failureInfo.code));
+    appendStatusRow(dl, "Last Error Message", payload.lastErrorMessage || (payload.failureInfo && payload.failureInfo.message));
+    appendStatusRow(dl, "Failed At", formatEpoch(payload.failedAtEpochMs));
+
+    if (payload.status === "WAITING_EVENT") {
+      appendStatusRow(dl, "Awaited Event", payload.waitingForEventName || payload.awaitedEventName);
+      appendStatusRow(dl, "Next Eligible Resume", formatEpoch(payload.nextEligibleResumeAtEpochMs));
+      appendStatusRow(
+        dl,
+        "Resume Attempt Count",
+        payload.resumeAttemptCount === null || payload.resumeAttemptCount === undefined ? "-" : String(payload.resumeAttemptCount)
+      );
+    }
+
+    const failureInfoDetails = payload.failureInfo && payload.failureInfo.details && typeof payload.failureInfo.details === "object"
+      ? payload.failureInfo.details
+      : null;
+    if (failureInfoDetails) {
+      const masked = sanitizeForDisplay(failureInfoDetails, "details");
+      const detailText = Object.keys(masked).length === 0
+        ? "-"
+        : Object.keys(masked).map(function (key) {
+          return key + "=" + normalizeText(masked[key]);
+        }).join(" | ");
+      appendStatusRow(dl, "Failure Details", detailText);
+    }
+
+    el.executionStatusBlock.appendChild(dl);
+  }
+
+  function syncExecutionEventHelper(payload) {
+    if (!payload || typeof payload !== "object") {
+      return;
+    }
+    if (el.executionAwaitedEventName) {
+      el.executionAwaitedEventName.value = normalizeText(payload.waitingForEventName || payload.awaitedEventName);
+    }
+    if (el.executionCorrelationId) {
+      el.executionCorrelationId.value = normalizeText(payload.correlationId || payload.awaitedCorrelationId);
+    }
+    if (el.executionEventPayload && !normalizeText(el.executionEventPayload.value)) {
+      el.executionEventPayload.value = "{}";
+    }
+  }
+
+  async function loadExecutionDetails(executionId) {
+    try {
+      const payload = await api("/api/v1/executions/" + encodeURIComponent(executionId));
+      state.currentExecution = payload;
+      renderExecutionStatusBlock(payload);
+      syncExecutionEventHelper(payload);
+      printJson(el.executionDetails, payload);
+      if (payload && payload.executionId) {
+        el.traceExecutionId.value = payload.executionId;
+      }
+    } catch (error) {
+      showStatus("Execution detail load failed: " + error.message, true);
+    }
+  }
+
+  async function tryResume(executionId, preferAdminPath) {
+    if (!executionId) {
+      throw new Error("executionId is required");
+    }
+    if (preferAdminPath) {
+      try {
+        return await api("/api/v1/admin/executions/" + encodeURIComponent(executionId) + "/resume", "POST", {});
+      } catch (error) {
+        if (!isForbiddenMessage(error.message)) {
+          throw error;
+        }
+      }
+    }
+    return api("/api/v1/executions/" + encodeURIComponent(executionId) + "/resume", "POST", {});
+  }
+
+  async function resumeExecution(executionId) {
+    try {
+      const response = await tryResume(executionId, false);
+      printJson(el.executionDetails, response);
+      renderExecutionStatusBlock(response);
+      showStatus("Resume requested for: " + executionId, false);
+      await loadExecutions(state.executionsMode);
+      await loadExecutionDetails(executionId);
+    } catch (error) {
+      showStatus("Resume failed: " + error.message, true);
+    }
+  }
+
+  async function publishAwaitedEventFromExecution() {
+    const eventName = normalizeText(el.executionAwaitedEventName && el.executionAwaitedEventName.value);
+    const correlationId = normalizeText(el.executionCorrelationId && el.executionCorrelationId.value);
+    if (!eventName || !correlationId) {
+      showStatus("Awaited event helper requires EventName and CorrelationId.", true);
+      return;
+    }
+    let payload;
+    try {
+      payload = asJson(el.executionEventPayload ? el.executionEventPayload.value : "{}", {});
+    } catch (error) {
+      showStatus("Execution helper payload JSON invalid: " + error.message, true);
+      return;
+    }
+    try {
+      const response = await api("/api/v1/events/publish", "POST", {
+        eventName: eventName,
+        correlationId: correlationId,
+        payload: payload
+      });
+      printJson(el.executionPublishResult, response);
+      showStatus("Awaited event published: " + eventName, false);
+      if (state.currentExecution && state.currentExecution.executionId) {
+        await loadExecutionDetails(state.currentExecution.executionId);
+      }
+    } catch (error) {
+      showStatus("Awaited event publish failed: " + error.message, true);
+    }
+  }
+
+  function renderExecutionsTable(rows) {
+    el.executionsTableBody.innerHTML = "";
+    rows.forEach(function (row) {
+      const tr = document.createElement("tr");
+      const cells = [
+        row.executionId || "",
+        row.status || "",
+        row.flowName || "",
+        row.correlationId || "",
+        row.waitingForEventName || "",
+        row.resumeAttemptCount === null || row.resumeAttemptCount === undefined ? "" : String(row.resumeAttemptCount),
+        formatEpoch(row.nextEligibleResumeAtEpochMs),
+        row.lastResumeErrorCode || "",
+        row.lastErrorCode || "",
+        formatEpoch(row.failedAtEpochMs),
+        formatEpoch(row.updatedAtEpochMs)
+      ];
+      cells.forEach(function (text) {
+        const td = document.createElement("td");
+        td.textContent = text;
+        tr.appendChild(td);
+      });
+
+      const actionCell = document.createElement("td");
+      actionCell.className = "actions-cell";
+      actionCell.appendChild(makeActionButton("Detail", "", function (event) {
+        event.stopPropagation();
+        loadExecutionDetails(row.executionId);
+      }));
+      actionCell.appendChild(makeActionButton("Trace", "", function (event) {
+        event.stopPropagation();
+        openTrace(row.executionId);
+      }));
+      if (row.correlationId) {
+        actionCell.appendChild(makeActionButton("Correlation", "", function (event) {
+          event.stopPropagation();
+          openCorrelation(row.correlationId);
+        }));
+      }
+      if (row.status === "WAITING_EVENT") {
+        const resumeButton = makeActionButton("Resume", "primary", function (event) {
+          event.stopPropagation();
+          resumeExecution(row.executionId);
+        });
+        resumeButton.disabled = !canResumeNow(row);
+        actionCell.appendChild(resumeButton);
+      }
+      tr.appendChild(actionCell);
+      tr.addEventListener("click", function () {
+        loadExecutionDetails(row.executionId);
+      });
+      el.executionsTableBody.appendChild(tr);
+    });
+  }
+
+  async function loadExecutions(mode) {
+    state.executionsMode = mode || "recent";
+    const limit = toInt(el.executionsLimit.value, DEFAULT_LIMIT);
+    const offset = toInt(el.executionsOffset.value, DEFAULT_OFFSET);
+    persistExecutionFilters(state.executionsMode);
+    let path;
+    if (state.executionsMode === "stale") {
+      const olderThanMinutes = toInt(el.staleOlderThanMinutes.value, 60);
+      path = "/api/v1/executions/stale?olderThanMinutes="
+        + olderThanMinutes
+        + "&limit=" + limit
+        + "&offset=" + offset;
+    } else {
+      path = "/api/v1/executions/summaries?mode="
+        + encodeURIComponent(state.executionsMode === "waiting" ? "waiting" : "recent")
+        + "&limit=" + limit + "&offset=" + offset;
+    }
+    try {
+      const rows = await api(path);
+      const normalizedRows = Array.isArray(rows) ? rows : [];
+      const selectedStatus = normalizeText(el.executionsStatusFilter.value).toUpperCase();
+      const filteredRows = !selectedStatus
+        ? normalizedRows
+        : normalizedRows.filter(function (row) {
+          return normalizeText(row && row.status).toUpperCase() === selectedStatus;
+        });
+      renderExecutionsTable(filteredRows);
+      if (filteredRows.length > 0) {
+        state.currentExecution = filteredRows[0];
+        renderExecutionStatusBlock(filteredRows[0]);
+        syncExecutionEventHelper(filteredRows[0]);
+        printJson(el.executionDetails, filteredRows[0]);
+      } else {
+        state.currentExecution = null;
+        renderExecutionStatusBlock(null);
+        printJson(el.executionDetails, { message: "No executions found." });
+      }
+      showStatus("Executions loaded (" + state.executionsMode + "): " + filteredRows.length, false);
+    } catch (error) {
+      showStatus("Executions load failed: " + error.message, true);
+    }
+  }
+
+  function traceSearchParams() {
+    const params = new URLSearchParams();
+    const flowName = normalizeText(el.traceFilterFlowName.value);
+    const status = normalizeText(el.traceFilterStatus.value);
+    const from = normalizeText(el.traceFilterFrom.value);
+    const to = normalizeText(el.traceFilterTo.value);
+    const limit = toInt(el.traceLimit.value, DEFAULT_LIMIT);
+    const offset = toInt(el.traceOffset.value, DEFAULT_OFFSET);
+
+    if (flowName) {
+      params.set("flowName", flowName);
+    }
+    if (status) {
+      params.set("status", status);
+    }
+    if (from) {
+      params.set("from", from);
+    }
+    if (to) {
+      params.set("to", to);
+    }
+    params.set("limit", String(limit));
+    params.set("offset", String(offset));
+    return params;
+  }
+
+  function renderTraceSearchRows(rows) {
+    el.traceSearchTableBody.innerHTML = "";
+    rows.forEach(function (trace) {
+      const tr = document.createElement("tr");
+      const executionId = trace.executionId || "";
+      const flowName = trace.flowName || "";
+      const correlationId = trace.correlationId || "";
+      const outcome = trace.outcome || "";
+      const started = formatEpoch(trace.startedAtEpochMs);
+      [executionId, flowName, outcome, started, correlationId].forEach(function (text) {
+        const td = document.createElement("td");
+        td.textContent = text;
+        tr.appendChild(td);
+      });
+      tr.addEventListener("click", function () {
+        if (executionId) {
+          el.traceExecutionId.value = executionId;
+          loadTraceDetails(executionId);
+        }
+      });
+      el.traceSearchTableBody.appendChild(tr);
+    });
+  }
+
+  async function searchTraces() {
+    const params = traceSearchParams();
+    persistTraceFilters();
+    try {
+      const rows = await api("/api/v1/traces/summaries?" + params.toString());
+      renderTraceSearchRows(Array.isArray(rows) ? rows : []);
+      if (rows && rows.length > 0 && rows[0].executionId) {
+        el.traceExecutionId.value = rows[0].executionId;
+      }
+      showStatus("Trace search returned: " + (rows ? rows.length : 0), false);
+    } catch (error) {
+      showStatus("Trace search failed: " + error.message, true);
+    }
+  }
+
+  function clearTraceSummary(message) {
+    el.traceSummary.innerHTML = "";
+    const text = document.createElement("div");
+    text.className = "typed-help";
+    text.textContent = message || "Trace not loaded.";
+    el.traceSummary.appendChild(text);
+  }
+
+  function stepLabel(step) {
+    const index = step && step.stepIndex !== null && step.stepIndex !== undefined ? step.stepIndex : "?";
+    const name = normalizeText(step && step.stepName);
+    if (name) {
+      return "#" + index + " " + name;
+    }
+    return "#" + index;
+  }
+
+  function appendInfoLine(container, text) {
+    const line = document.createElement("div");
+    line.className = "typed-help";
+    line.textContent = text;
+    container.appendChild(line);
+  }
+
+  function firstDefined(values) {
+    for (let i = 0; i < values.length; i += 1) {
+      if (values[i] !== undefined && values[i] !== null && values[i] !== "") {
+        return values[i];
+      }
+    }
+    return "-";
+  }
+
+  function renderTraceSummary(trace) {
+    if (!trace || !trace.meta) {
+      clearTraceSummary("Trace not loaded.");
+      return;
+    }
+    el.traceSummary.innerHTML = "";
+
+    const header = document.createElement("div");
+    header.textContent = "Execution " + normalizeText(trace.meta.executionId) + " | Flow " + normalizeText(trace.meta.flowName) + " | Outcome " + normalizeText(trace.outcome);
+    el.traceSummary.appendChild(header);
+    appendInfoLine(el.traceSummary, "Correlation: " + normalizeText(trace.meta.correlationId));
+    appendInfoLine(el.traceSummary, "Started: " + formatEpoch(trace.startedAtEpochMs) + " | Ended: " + formatEpoch(trace.endedAtEpochMs));
+
+    const steps = Array.isArray(trace.steps) ? trace.steps : [];
+    appendInfoLine(el.traceSummary, "Steps: " + steps.length);
+    steps.forEach(function (step) {
+      const card = document.createElement("div");
+      card.className = "trace-step-card";
+
+      const header = document.createElement("div");
+      header.className = "trace-step-card-header";
+      header.textContent = stepLabel(step) + " | " + normalizeText(step.stepType);
+      card.appendChild(header);
+
+      const meta = document.createElement("div");
+      meta.className = "trace-step-card-meta";
+      meta.textContent =
+        "outcome=" + normalizeText(step.outcome)
+        + " | duration=" + formatDuration(step.startedAtEpochMs, step.endedAtEpochMs);
+      card.appendChild(meta);
+
+      const info = step && step.info && typeof step.info === "object" ? step.info : {};
+      const policy = document.createElement("div");
+      policy.className = "trace-step-card-policy";
+      policy.textContent =
+        "capability-policy: attempts="
+        + firstDefined([info.attemptCount, info.retryCount, info.attempt])
+        + ", timeoutMs=" + firstDefined([info.timeoutMs])
+        + ", circuit=" + firstDefined([info.circuitState, info.circuit])
+        + ", bulkhead=" + firstDefined([info.bulkheadState, info.bulkhead])
+        + ", idempotency=" + firstDefined([info.idempotencyState, info.idempotency]);
+      card.appendChild(policy);
+
+      el.traceSummary.appendChild(card);
+    });
+  }
+
+  function buildTraceTextSummary(trace) {
+    if (!trace || !trace.meta) {
+      return "Trace not loaded.";
+    }
+    const lines = [];
+    lines.push("ExecutionId: " + normalizeText(trace.meta.executionId));
+    lines.push("Flow: " + normalizeText(trace.meta.flowName));
+    lines.push("CorrelationId: " + normalizeText(trace.meta.correlationId));
+    lines.push("Outcome: " + normalizeText(trace.outcome));
+    lines.push("Started: " + formatEpoch(trace.startedAtEpochMs));
+    lines.push("Ended: " + formatEpoch(trace.endedAtEpochMs));
+    lines.push("");
+    const steps = Array.isArray(trace.steps) ? trace.steps : [];
+    lines.push("Steps (" + steps.length + "):");
+    steps.forEach(function (step) {
+      const info = step && step.info && typeof step.info === "object" ? step.info : {};
+      lines.push(
+        " - "
+        + stepLabel(step)
+        + " | type=" + normalizeText(step.stepType)
+        + " | outcome=" + normalizeText(step.outcome)
+        + " | duration=" + formatDuration(step.startedAtEpochMs, step.endedAtEpochMs)
+        + " | attempts=" + firstDefined([info.attemptCount, info.retryCount, info.attempt])
+        + " | timeoutMs=" + firstDefined([info.timeoutMs])
+        + " | circuit=" + firstDefined([info.circuitState, info.circuit])
+        + " | bulkhead=" + firstDefined([info.bulkheadState, info.bulkhead])
+        + " | idempotency=" + firstDefined([info.idempotencyState, info.idempotency])
+      );
+    });
+    return lines.join("\n");
+  }
+
+  async function loadTraceDetails(executionId) {
+    const id = normalizeText(executionId || el.traceExecutionId.value);
+    if (!id) {
+      showStatus("Trace executionId is required.", true);
+      return;
+    }
+    try {
+      const trace = await api("/api/v1/traces/" + encodeURIComponent(id));
+      state.currentTrace = trace;
+      renderTraceSummary(trace);
+      printJson(el.traceDetails, trace);
+      showStatus("Trace loaded: " + id, false);
+    } catch (error) {
+      showStatus("Trace load failed: " + error.message, true);
+    }
+  }
+
+  async function publishEvent() {
+    const eventName = normalizeText(el.publishEventName.value);
+    const correlationId = normalizeText(el.publishCorrelationId.value);
+    if (!eventName || !correlationId) {
+      showStatus("EventName and CorrelationId are required.", true);
+      return;
+    }
+    let payload;
+    try {
+      payload = asJson(el.publishPayload.value, {});
+    } catch (error) {
+      showStatus("Event payload JSON invalid: " + error.message, true);
+      return;
+    }
+    try {
+      const response = await api("/api/v1/events/publish", "POST", {
+        eventName: eventName,
+        correlationId: correlationId,
+        payload: payload
+      });
+      printJson(el.publishResult, response);
+      showStatus("Event published: " + eventName, false);
+      if (correlationId) {
+        openCorrelation(correlationId);
+      }
+    } catch (error) {
+      showStatus("Event publish failed: " + error.message, true);
+    }
+  }
+
+  function renderCorrelationTimeline(response) {
+    if (!response) {
+      printJson(el.timelineDetails, { message: "No data." });
+      return;
+    }
+    const lines = [];
+    lines.push("CorrelationId: " + normalizeText(response.correlationId));
+    lines.push("");
+    const executions = Array.isArray(response.executions) ? response.executions : [];
+    lines.push("Executions (" + executions.length + "):");
+    executions.forEach(function (item) {
+      lines.push(
+        "  - " + normalizeText(item.executionId)
+        + " | status=" + normalizeText(item.status)
+        + " | flow=" + normalizeText(item.flowName)
+        + " | waitingFor=" + normalizeText(item.waitingForEventName)
+        + " | attempts=" + (item.resumeAttemptCount === null || item.resumeAttemptCount === undefined ? "-" : item.resumeAttemptCount)
+        + " | nextEligible=" + formatEpoch(item.nextEligibleResumeAtEpochMs)
+        + " | lastErr=" + normalizeText(item.lastResumeErrorCode)
+        + " | failCode=" + normalizeText(item.lastErrorCode)
+        + " | failedAt=" + formatEpoch(item.failedAtEpochMs)
+      );
+    });
+    lines.push("");
+    const events = Array.isArray(response.events) ? response.events : [];
+    lines.push("Events (" + events.length + "):");
+    events.forEach(function (event) {
+      lines.push(
+        "  - " + formatEpoch(event.timestampEpochMs)
+        + " | " + normalizeText(event.eventName)
+        + " | id=" + normalizeText(event.eventId)
+        + " | flow=" + normalizeText(event.flowName)
+        + " | step=" + (event.stepIndex === null || event.stepIndex === undefined ? "-" : event.stepIndex)
+      );
+    });
+    lines.push("");
+    const traceExecutionIds = Array.isArray(response.traceExecutionIds) ? response.traceExecutionIds : [];
+    lines.push("Trace ExecutionIds (" + traceExecutionIds.length + "):");
+    traceExecutionIds.forEach(function (id) {
+      lines.push("  - " + normalizeText(id));
+    });
+    el.timelineDetails.textContent = lines.join("\n");
+  }
+
+  async function loadCorrelationTimeline(correlationId) {
+    const id = normalizeText(correlationId || el.timelineCorrelationId.value);
+    if (!id) {
+      showStatus("CorrelationId is required.", true);
+      return;
+    }
+    const limit = toInt(el.timelineLimit.value, DEFAULT_LIMIT);
+    const offset = toInt(el.timelineOffset.value, DEFAULT_OFFSET);
+    try {
+      const response = await api("/api/v1/correlations/" + encodeURIComponent(id) + "?limit=" + limit + "&offset=" + offset);
+      renderCorrelationTimeline(response);
+      showStatus("Correlation timeline loaded: " + id, false);
+    } catch (error) {
+      showStatus("Correlation timeline failed: " + error.message, true);
+    }
+  }
+
+  function setAdminTabVisible(visible) {
+    state.adminEnabled = Boolean(visible);
+    if (!el.adminTab) {
+      return;
+    }
+    el.adminTab.classList.toggle("hidden", !state.adminEnabled);
+    if (!state.adminEnabled && el.views.admin && el.views.admin.classList.contains("active")) {
+      setView("flows");
+    }
+  }
+
+  function setAdminSection(section) {
+    state.adminSection = section === "stuck" ? "stuck" : "failures";
+    if (el.adminSectionFailures) {
+      el.adminSectionFailures.classList.toggle("primary", state.adminSection === "failures");
+    }
+    if (el.adminSectionStuck) {
+      el.adminSectionStuck.classList.toggle("primary", state.adminSection === "stuck");
+    }
+    if (el.adminFailuresPanel) {
+      el.adminFailuresPanel.classList.toggle("hidden", state.adminSection !== "failures");
+    }
+    if (el.adminStuckPanel) {
+      el.adminStuckPanel.classList.toggle("hidden", state.adminSection !== "stuck");
+    }
+  }
+
+  async function probeAdminAccess() {
+    try {
+      await api("/api/v1/admin/failures/recent?limit=1&offset=0");
+      setAdminTabVisible(true);
+      setAdminSection(state.adminSection);
+    } catch (error) {
+      setAdminTabVisible(false);
+      if (!String(error.message || "").toLowerCase().includes("forbidden")) {
+        showStatus("Admin probe failed: " + error.message, true);
+      }
+    }
+  }
+
+  function renderAdminFailuresTable(rows) {
+    if (!el.adminFailuresTableBody) {
+      return;
+    }
+    el.adminFailuresTableBody.innerHTML = "";
+    rows.forEach(function (row) {
+      const tr = document.createElement("tr");
+      [
+        normalizeText(row.flowName),
+        normalizeText(row.executionId),
+        normalizeText(row.correlationId),
+        normalizeText(row.lastErrorCode),
+        formatEpoch(row.failedAtEpochMs)
+      ].forEach(function (text) {
+        const td = document.createElement("td");
+        td.textContent = text;
+        tr.appendChild(td);
+      });
+
+      const actionCell = document.createElement("td");
+      actionCell.className = "actions-cell";
+      actionCell.appendChild(makeActionButton("Execution", "", function (event) {
+        event.stopPropagation();
+        openExecution(row.executionId);
+      }));
+      actionCell.appendChild(makeActionButton("Trace", "", function (event) {
+        event.stopPropagation();
+        openTrace(row.executionId);
+      }));
+      actionCell.appendChild(makeActionButton("Copy Correlation", "", function (event) {
+        event.stopPropagation();
+        copyText(row.correlationId, "CorrelationId");
+      }));
+      tr.appendChild(actionCell);
+      el.adminFailuresTableBody.appendChild(tr);
+    });
+  }
+
+  function renderAdminStuckTable(rows) {
+    if (!el.adminStuckTableBody) {
+      return;
+    }
+    el.adminStuckTableBody.innerHTML = "";
+    rows.forEach(function (row) {
+      const tr = document.createElement("tr");
+      [
+        normalizeText(row.flowName),
+        normalizeText(row.executionId),
+        normalizeText(row.correlationId),
+        row.resumeAttemptCount === null || row.resumeAttemptCount === undefined ? "-" : String(row.resumeAttemptCount),
+        normalizeText(row.lastResumeErrorCode),
+        formatEpoch(row.lastProgressAtEpochMs),
+        formatEpoch(row.nextEligibleResumeAtEpochMs)
+      ].forEach(function (text) {
+        const td = document.createElement("td");
+        td.textContent = text;
+        tr.appendChild(td);
+      });
+
+      const actionCell = document.createElement("td");
+      actionCell.className = "actions-cell";
+      actionCell.appendChild(makeActionButton("Execution", "", function (event) {
+        event.stopPropagation();
+        openExecution(row.executionId);
+      }));
+      actionCell.appendChild(makeActionButton("Trace", "", function (event) {
+        event.stopPropagation();
+        openTrace(row.executionId);
+      }));
+      actionCell.appendChild(makeActionButton("Copy Correlation", "", function (event) {
+        event.stopPropagation();
+        copyText(row.correlationId, "CorrelationId");
+      }));
+      const resumeButton = makeActionButton("Try Resume", "primary", async function (event) {
+        event.stopPropagation();
+        try {
+          const response = await tryResume(row.executionId, true);
+          if (el.adminResumeResult) {
+            printJson(el.adminResumeResult, response);
+          }
+          showStatus("Resume attempted for stuck execution: " + normalizeText(row.executionId), false);
+          await loadAdminStuck();
+          await loadExecutionDetails(row.executionId);
+        } catch (error) {
+          if (isForbiddenMessage(error.message)) {
+            resumeButton.classList.add("hidden");
+          }
+          if (el.adminResumeResult) {
+            printJson(el.adminResumeResult, { executionId: row.executionId, error: error.message });
+          }
+          showStatus("Try resume failed: " + error.message, true);
+        }
+      });
+      resumeButton.disabled = !canResumeNow(row);
+      actionCell.appendChild(resumeButton);
+      tr.appendChild(actionCell);
+      el.adminStuckTableBody.appendChild(tr);
+    });
+  }
+
+  async function loadAdminFailures() {
+    if (!state.adminEnabled) {
+      showStatus("Admin access not available.", true);
+      return;
+    }
+    const limit = toInt(el.adminLimit.value, DEFAULT_LIMIT);
+    const offset = toInt(el.adminOffset.value, DEFAULT_OFFSET);
+    try {
+      const rows = await api("/api/v1/admin/failures/recent?limit=" + limit + "&offset=" + offset);
+      setAdminSection("failures");
+      renderAdminFailuresTable(Array.isArray(rows) ? rows : []);
+      printJson(el.adminFailuresResult, rows);
+      showStatus("Admin failures loaded: " + (Array.isArray(rows) ? rows.length : 0), false);
+    } catch (error) {
+      if (isForbiddenMessage(error.message)) {
+        setAdminTabVisible(false);
+      }
+      showStatus("Admin failures failed: " + error.message, true);
+    }
+  }
+
+  async function loadAdminStuck() {
+    if (!state.adminEnabled) {
+      showStatus("Admin access not available.", true);
+      return;
+    }
+    const limit = toInt(el.adminLimit.value, DEFAULT_LIMIT);
+    const offset = toInt(el.adminOffset.value, DEFAULT_OFFSET);
+    try {
+      const rows = await api("/api/v1/admin/stuck/recent?limit=" + limit + "&offset=" + offset);
+      setAdminSection("stuck");
+      renderAdminStuckTable(Array.isArray(rows) ? rows : []);
+      printJson(el.adminFailuresResult, rows);
+      showStatus("Admin stuck loaded: " + (Array.isArray(rows) ? rows.length : 0), false);
+    } catch (error) {
+      if (isForbiddenMessage(error.message)) {
+        setAdminTabVisible(false);
+      }
+      showStatus("Admin stuck failed: " + error.message, true);
+    }
+  }
+
+  async function loadAdminCircuits() {
+    if (!state.adminEnabled) {
+      showStatus("Admin access not available.", true);
+      return;
+    }
+    const capability = normalizeText(el.adminCircuitCapability.value);
+    const operation = normalizeText(el.adminCircuitOperation.value);
+    const limit = toInt(el.adminCircuitLimit.value, DEFAULT_LIMIT);
+    const offset = toInt(el.adminCircuitOffset.value, DEFAULT_OFFSET);
+    const params = new URLSearchParams();
+    if (capability) {
+      params.set("capability", capability);
+    }
+    if (operation) {
+      params.set("operation", operation);
+    }
+    params.set("limit", String(limit));
+    params.set("offset", String(offset));
+    try {
+      const rows = await api("/api/v1/admin/circuits?" + params.toString());
+      printJson(el.adminCircuitsResult, rows);
+      showStatus("Admin circuits loaded: " + (Array.isArray(rows) ? rows.length : 0), false);
+    } catch (error) {
+      showStatus("Admin circuits failed: " + error.message, true);
+    }
+  }
+
+  async function loadAdminIdempotency() {
+    if (!state.adminEnabled) {
+      showStatus("Admin access not available.", true);
+      return;
+    }
+    const key = normalizeText(el.adminIdempotencyKey.value);
+    const capability = normalizeText(el.adminIdempotencyCapability.value);
+    const operation = normalizeText(el.adminIdempotencyOperation.value);
+    if (!key || !capability || !operation) {
+      showStatus("Idempotency key, capability and operation are required.", true);
+      return;
+    }
+    const params = new URLSearchParams();
+    params.set("key", key);
+    params.set("capability", capability);
+    params.set("operation", operation);
+    try {
+      const row = await api("/api/v1/admin/idempotency?" + params.toString());
+      printJson(el.adminIdempotencyResult, row);
+      showStatus("Admin idempotency loaded.", false);
+    } catch (error) {
+      showStatus("Admin idempotency failed: " + error.message, true);
+    }
+  }
+
+  function shiftOffset(input, step) {
+    const current = toInt(input.value, DEFAULT_OFFSET);
+    const next = Math.max(0, current + step);
+    setOffset(input, next);
+  }
+
+  async function copyText(value, label) {
+    const text = normalizeText(value);
+    if (!text) {
+      showStatus(label + " is empty.", true);
+      return;
+    }
+    if (!navigator.clipboard || !navigator.clipboard.writeText) {
+      showStatus("Clipboard API not available in this browser context.", true);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      showStatus(label + " copied.", false);
+    } catch (error) {
+      showStatus("Copy failed: " + error.message, true);
+    }
+  }
+
+  function bindEvents() {
+    el.tabs.forEach(function (tab) {
+      tab.addEventListener("click", function () {
+        setView(tab.dataset.view);
+      });
+    });
+
+    el.apiKey.addEventListener("input", function () {
+      persistInput(STORAGE_KEYS.apiKey, el.apiKey.value);
+    });
+    el.apiBase.addEventListener("input", function () {
+      persistInput(STORAGE_KEYS.apiBase, el.apiBase.value);
+    });
+
+    el.reloadFlows.addEventListener("click", loadFlows);
+    el.executeFlowName.addEventListener("change", function () {
+      persistInput(STORAGE_KEYS.lastFlow, el.executeFlowName.value);
+      renderTypedForm();
+      syncExecuteModeUi();
+    });
+    el.executeUseAdvanced.addEventListener("change", function () {
+      localStorage.setItem(STORAGE_KEYS.executeUseAdvanced, el.executeUseAdvanced.checked ? "true" : "false");
+      syncExecuteModeUi();
+    });
+    el.executePayload.addEventListener("input", function () {
+      persistInput(STORAGE_KEYS.executePayload, el.executePayload.value);
+    });
+    el.executeButton.addEventListener("click", executeFlow);
+
+    el.loadExecutionsRecent.addEventListener("click", function () {
+      loadExecutions("recent");
+    });
+    el.loadExecutionsWaiting.addEventListener("click", function () {
+      loadExecutions("waiting");
+    });
+    el.loadExecutionsStale.addEventListener("click", function () {
+      loadExecutions("stale");
+    });
+    el.executionsPrev.addEventListener("click", function () {
+      shiftOffset(el.executionsOffset, -toInt(el.executionsLimit.value, DEFAULT_LIMIT));
+      loadExecutions(state.executionsMode);
+    });
+    el.executionsNext.addEventListener("click", function () {
+      shiftOffset(el.executionsOffset, toInt(el.executionsLimit.value, DEFAULT_LIMIT));
+      loadExecutions(state.executionsMode);
+    });
+    el.executionsStatusFilter.addEventListener("change", function () {
+      persistExecutionFilters(state.executionsMode);
+      loadExecutions(state.executionsMode);
+    });
+    if (el.executionPublishEventButton) {
+      el.executionPublishEventButton.addEventListener("click", publishAwaitedEventFromExecution);
+    }
+
+    el.searchTraces.addEventListener("click", searchTraces);
+    el.loadTrace.addEventListener("click", function () {
+      loadTraceDetails();
+    });
+    el.tracePrev.addEventListener("click", function () {
+      shiftOffset(el.traceOffset, -toInt(el.traceLimit.value, DEFAULT_LIMIT));
+      searchTraces();
+    });
+    el.traceNext.addEventListener("click", function () {
+      shiftOffset(el.traceOffset, toInt(el.traceLimit.value, DEFAULT_LIMIT));
+      searchTraces();
+    });
+    el.copyTraceExecutionId.addEventListener("click", function () {
+      const traceExecutionId = state.currentTrace && state.currentTrace.meta ? state.currentTrace.meta.executionId : el.traceExecutionId.value;
+      copyText(traceExecutionId, "ExecutionId");
+    });
+    el.copyTraceCorrelationId.addEventListener("click", function () {
+      const traceCorrelationId = state.currentTrace && state.currentTrace.meta ? state.currentTrace.meta.correlationId : "";
+      copyText(traceCorrelationId, "CorrelationId");
+    });
+    if (el.copyTraceSummary) {
+      el.copyTraceSummary.addEventListener("click", function () {
+        copyText(buildTraceTextSummary(state.currentTrace), "Trace summary");
+      });
+    }
+    if (el.copyTraceJson) {
+      el.copyTraceJson.addEventListener("click", function () {
+        const safe = sanitizeForDisplay(state.currentTrace || {}, "");
+        copyText(JSON.stringify(safe, null, 2), "Trace JSON");
+      });
+    }
+
+    el.publishEventButton.addEventListener("click", publishEvent);
+
+    el.loadTimeline.addEventListener("click", function () {
+      loadCorrelationTimeline();
+    });
+    el.timelinePrev.addEventListener("click", function () {
+      shiftOffset(el.timelineOffset, -toInt(el.timelineLimit.value, DEFAULT_LIMIT));
+      loadCorrelationTimeline();
+    });
+    el.timelineNext.addEventListener("click", function () {
+      shiftOffset(el.timelineOffset, toInt(el.timelineLimit.value, DEFAULT_LIMIT));
+      loadCorrelationTimeline();
+    });
+
+    if (el.loadAdminFailures) {
+      el.loadAdminFailures.addEventListener("click", loadAdminFailures);
+    }
+    if (el.loadAdminStuck) {
+      el.loadAdminStuck.addEventListener("click", loadAdminStuck);
+    }
+    if (el.adminSectionFailures) {
+      el.adminSectionFailures.addEventListener("click", function () {
+        setAdminSection("failures");
+      });
+    }
+    if (el.adminSectionStuck) {
+      el.adminSectionStuck.addEventListener("click", function () {
+        setAdminSection("stuck");
+      });
+    }
+    if (el.loadAdminCircuits) {
+      el.loadAdminCircuits.addEventListener("click", loadAdminCircuits);
+    }
+    if (el.loadAdminIdempotency) {
+      el.loadAdminIdempotency.addEventListener("click", loadAdminIdempotency);
+    }
+  }
+
+  async function bootstrap() {
+    readStoredInputs();
+    bindEvents();
+    clearTypedForm("Load flows to render typed input.");
+    clearTraceSummary("Load trace to see step diagnostics.");
+    renderExecutionStatusBlock(null);
+    setAdminSection(state.adminSection);
+    renderExecuteValidationErrors(null);
+    await loadFlows();
+    await loadExecutions(state.executionsMode);
+    await searchTraces();
+    await probeAdminAccess();
+    if (state.adminEnabled) {
+      await loadAdminFailures();
+    }
+    await loadBuildInfoFooter();
+  }
+
+  bootstrap();
+})();

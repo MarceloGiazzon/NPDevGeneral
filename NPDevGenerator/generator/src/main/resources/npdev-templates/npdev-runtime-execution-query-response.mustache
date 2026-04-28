@@ -1,0 +1,59 @@
+package {{dtoPackage}};
+
+import com.npdev.kernel.execution.FlowInstance;
+
+import java.util.List;
+
+public record ExecutionQueryResponse(
+        String executionId,
+        String flowName,
+        String correlationId,
+        String tenantId,
+        String actorId,
+        Integer currentStepIndex,
+        String status,
+        String waitingForEventName,
+        long createdAtEpochMs,
+        long updatedAtEpochMs,
+        Integer resumeAttemptCount,
+        Long lastResumeAtEpochMs,
+        String lastResumeErrorCode,
+        Long nextEligibleResumeAtEpochMs,
+        Long lastProgressAtEpochMs,
+        String lastErrorKind,
+        String lastErrorCode,
+        String lastErrorMessage,
+        Long failedAtEpochMs,
+        List<String> stateKeys
+) {
+    public static ExecutionQueryResponse from(FlowInstance instance) {
+        if (instance == null) {
+            return null;
+        }
+        List<String> keys = instance.state() == null
+                ? List.of()
+                : instance.state().keySet().stream().sorted().toList();
+        return new ExecutionQueryResponse(
+                instance.executionId(),
+                instance.flowName(),
+                instance.correlationId(),
+                instance.tenantId(),
+                instance.actorId(),
+                instance.currentStepIndex(),
+                instance.status() == null ? null : instance.status().name(),
+                instance.waitingForEventName(),
+                instance.createdAtEpochMs(),
+                instance.updatedAtEpochMs(),
+                instance.resumeAttemptCount(),
+                instance.lastResumeAtEpochMs(),
+                instance.lastResumeErrorCode(),
+                instance.nextEligibleResumeAtEpochMs(),
+                instance.lastProgressAtEpochMs(),
+                instance.lastErrorKind(),
+                instance.lastErrorCode(),
+                instance.lastErrorMessage(),
+                instance.failedAtEpochMs(),
+                keys
+        );
+    }
+}

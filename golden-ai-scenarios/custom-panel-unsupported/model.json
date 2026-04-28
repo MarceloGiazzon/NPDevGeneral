@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "namespace": "npdev.beta.custom.panel.unsupported",
+  "concepts": [
+    {
+      "name": "Learner",
+      "fields": ["id", "status"]
+    }
+  ],
+  "procedures": [],
+  "panels": [
+    {
+      "name": "readiness-panel"
+    }
+  ]
+}

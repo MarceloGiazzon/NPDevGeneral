@@ -1,0 +1,39 @@
+{
+  "version": "1.0",
+  "categories": [
+    {
+      "id": "canonical-demo",
+      "description": "Fixed platform specimen used for regressions, docs, screenshots, and baseline behavior.",
+      "authorityRootRelative": "Project\\NP\\resources\\Models\\canonical-demo",
+      "currentPhysicalRootRelative": "Project\\NP\\resources\\Models\\canonical-demo",
+      "currentModelRelative": "Project\\NP\\resources\\Models\\canonical-demo\\model.json",
+      "scriptRule": "Resolve directly by category with no model id.",
+      "status": "active-frozen-platform-specimen"
+    },
+    {
+      "id": "official-samples",
+      "description": "Curated sample models for onboarding, guided trials, and documented scenarios.",
+      "authorityRootRelative": "Project\\NP\\resources\\Models\\official-samples",
+      "currentPhysicalRootRelative": "Project\\NP\\resources\\Models\\official-samples",
+      "catalogRelative": "Project\\NP\\resources\\Models\\official-samples\\catalog.json",
+      "scriptRule": "Resolve by category plus sample id.",
+      "status": "active-standardized-sample-lane"
+    },
+    {
+      "id": "tenant-samples",
+      "description": "Tenant-shaped sample models used to explore SaaS and tenant-owned generated app data.",
+      "authorityRootRelative": "Project\\NP\\resources\\Models\\tenant-samples",
+      "currentPhysicalRootRelative": "Project\\NP\\resources\\Models\\tenant-samples",
+      "scriptRule": "Resolve by category plus tenant sample id.",
+      "status": "active-experimental-sample-lane"
+    },
+    {
+      "id": "user-models",
+      "description": "Open-ended user-authored or workspace-local models.",
+      "authorityRootRelative": "Project\\NP\\resources\\Models\\user-models",
+      "currentPhysicalRootRelative": "Project\\NP\\resources\\Models\\user-models",
+      "scriptRule": "Resolve the category root or a user model subdirectory.",
+      "status": "reserved-open-ended-lane"
+    }
+  ]
+}

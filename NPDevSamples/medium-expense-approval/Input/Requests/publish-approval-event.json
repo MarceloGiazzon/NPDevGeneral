@@ -1,0 +1,5 @@
+{
+  "expenseId": "<use saved id from execute result>",
+  "approved": true,
+  "reviewer": "manager-1"
+}

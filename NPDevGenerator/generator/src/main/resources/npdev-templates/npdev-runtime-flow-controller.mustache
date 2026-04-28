@@ -1,0 +1,86 @@
+package {{apiPackage}};
+
+import {{dtoPackage}}.FlowDefinitionResponse;
+import {{dtoPackage}}.FlowExecutionResponse;
+import {{servicePackage}}.KernelFacade;
+import {{servicePackage}}.RuntimeContextService;
+import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.ExecutionResult;
+import com.npdev.kernel.ExecutionStatus;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api")
+public class FlowExecutionController {
+    private final KernelFacade kernelFacade;
+    private final RuntimeContextService runtimeContextService;
+
+    public FlowExecutionController(KernelFacade kernelFacade, RuntimeContextService runtimeContextService) {
+        this.kernelFacade = kernelFacade;
+        this.runtimeContextService = runtimeContextService;
+    }
+
+    @GetMapping({"/v1/flows/names", "/flows"})
+    public List<String> listFlows() {
+        return kernelFacade.listFlowNames();
+    }
+
+    @GetMapping({"/v1/flows", "/flows/definitions"})
+    public List<FlowDefinitionResponse> listFlowDefinitions() {
+        return kernelFacade.listFlowDefinitions().stream()
+                .map(FlowDefinitionResponse::from)
+                .toList();
+    }
+
+    @PostMapping({"/v1/flows/{flowName}/execute", "/flows/{flowName}/execute"})
+    public ResponseEntity<FlowExecutionResponse> executeFlow(
+            @PathVariable String flowName,
+            @RequestBody(required = false) Map<String, Object> payload,
+            HttpServletRequest request
+    ) {
+        ExecutionContext ctx = runtimeContextService.currentContext(request);
+        ExecutionResult result = kernelFacade.executeFlow(
+                flowName,
+                payload,
+                ctx
+        );
+        FlowExecutionResponse response = FlowExecutionResponse.from(result);
+        return ResponseEntity.status(mapStatus(result.getStatus())).body(response);
+    }
+
+    @PostMapping({"/v1/executions/{executionId}/resume", "/executions/{executionId}/resume"})
+    public ResponseEntity<FlowExecutionResponse> resumeExecution(
+            @PathVariable String executionId,
+            HttpServletRequest request
+    ) {
+        ExecutionContext ctx = runtimeContextService.currentContext(request);
+        ExecutionResult result = kernelFacade.resumeExecution(
+                executionId,
+                ctx
+        );
+        FlowExecutionResponse response = FlowExecutionResponse.from(result);
+        return ResponseEntity.status(mapStatus(result.getStatus())).body(response);
+    }
+
+    private static HttpStatus mapStatus(ExecutionStatus status) {
+        if (status == null) {
+            return HttpStatus.INTERNAL_SERVER_ERROR;
+        }
+        return switch (status) {
+            case OK -> HttpStatus.OK;
+            case WAITING_EVENT -> HttpStatus.ACCEPTED;
+            case INPUT_VALIDATION_FAILED, INVARIANT_FAILED, CAPABILITY_FAILED, EVENT_PERSIST_FAILED, EVENT_PAYLOAD_INVALID, FAILED -> HttpStatus.UNPROCESSABLE_ENTITY;
+        };
+    }
+}

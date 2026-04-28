@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "namespace": "npdev.beta.custom.admission",
+  "concepts": [
+    {
+      "name": "Learner",
+      "fields": ["id", "status"]
+    }
+  ],
+  "procedures": [
+    {
+      "name": "promote-learner"
+    }
+  ],
+  "panels": []
+}

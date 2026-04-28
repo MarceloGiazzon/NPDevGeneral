@@ -1,0 +1,919 @@
+package com.npdev.dsl.v1.compiled;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.TreeMap;
+
+public final class CompiledModelCanonicalJson {
+    private static final ObjectMapper MAPPER = new ObjectMapper()
+            .enable(SerializationFeature.INDENT_OUTPUT);
+
+    private CompiledModelCanonicalJson() {
+    }
+
+    public static String toJson(CompiledModel model) {
+        ObjectNode canonical = toCanonicalObject(model);
+        try {
+            return MAPPER.writeValueAsString(canonical) + "\n";
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to serialize compiled model as canonical JSON", exception);
+        }
+    }
+
+    public static void write(Path outFile, CompiledModel model) throws IOException {
+        Path parent = outFile.toAbsolutePath().normalize().getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+        Files.writeString(outFile, toJson(model));
+    }
+
+    private static ObjectNode toCanonicalObject(CompiledModel model) {
+        ObjectNode root = JsonNodeFactory.instance.objectNode();
+        root.put("dslVersion", safe(model.getDslVersion()));
+        root.put("namespace", safe(model.getNamespace()));
+        root.put("version", safe(model.getVersion()));
+
+        root.set("domainTypes", toDomainTypes(model));
+        root.set("concepts", toConcepts(model));
+        root.set("capabilities", toCapabilities(model));
+        root.set("bindings", toBindings(model));
+        root.set("events", toEvents(model));
+        root.set("flows", toFlows(model));
+        root.set("orchestrationRules", toOrchestrationRules(model));
+        root.set("queries", toQueries(model));
+        root.set("ruleProfiles", toRuleProfiles(model));
+        root.set("procedures", toProcedures(model));
+        root.set("panels", toPanels(model));
+        return root;
+    }
+
+    private static ArrayNode toConcepts(CompiledModel model) {
+        ArrayNode concepts = JsonNodeFactory.instance.arrayNode();
+        List<CompiledConcept> sorted = new ArrayList<>(model.getConcepts());
+        sorted.sort(Comparator.comparing(concept -> normalize(concept.getName())));
+        for (CompiledConcept concept : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(concept.getName()));
+            node.put("className", safe(concept.getClassName()));
+            node.put("tableName", safe(concept.getTableName()));
+            node.set("ui", toPresentationMetadata(concept.getUi()));
+
+            List<CompiledField> fields = new ArrayList<>(concept.getFields());
+            fields.sort(Comparator.comparing(field -> normalize(field.getName())));
+            ArrayNode fieldsNode = JsonNodeFactory.instance.arrayNode();
+            for (CompiledField field : fields) {
+                ObjectNode fieldNode = JsonNodeFactory.instance.objectNode();
+                fieldNode.put("name", safe(field.getName()));
+                fieldNode.put("dslType", safe(field.getDslType()));
+                fieldNode.put("javaType", safe(field.getJavaType()));
+                fieldNode.put("id", field.isId());
+                fieldNode.put("required", field.isRequired());
+                fieldNode.put("unique", field.isUnique());
+                fieldNode.set("enumValues", toStringArray(field.getEnumValues()));
+                fieldNode.set("enumOptions", toEnumOptions(field.getEnumOptions()));
+                fieldNode.put("referenceTarget", safe(field.getReferenceTarget()));
+                fieldNode.set("referenceSemantics", toReferenceSemantics(field.getReferenceSemantics()));
+                fieldNode.put("domainType", safe(field.getDomainType()));
+                fieldNode.set("schema", toSchema(field.getSchema()));
+                fieldNode.set("ui", toPresentationMetadata(field.getUi()));
+                fieldsNode.add(fieldNode);
+            }
+            node.set("fields", fieldsNode);
+
+            List<String> expressionInvariants = new ArrayList<>(concept.getExpressionInvariants());
+            expressionInvariants.sort(String.CASE_INSENSITIVE_ORDER);
+            ArrayNode expressionInvariantsNode = JsonNodeFactory.instance.arrayNode();
+            for (String expressionInvariant : expressionInvariants) {
+                expressionInvariantsNode.add(safe(expressionInvariant));
+            }
+            node.set("expressionInvariants", expressionInvariantsNode);
+
+            List<CompiledInvariant> invariants = new ArrayList<>(concept.getInvariants());
+            invariants.sort(Comparator.comparing(invariant -> normalize(invariant.getRef())));
+            ArrayNode invariantsNode = JsonNodeFactory.instance.arrayNode();
+            for (CompiledInvariant invariant : invariants) {
+                ObjectNode invariantNode = JsonNodeFactory.instance.objectNode();
+                invariantNode.put("ref", safe(invariant.getRef()));
+                invariantNode.put("type", safe(invariant.getType()));
+                invariantNode.put("field", safe(invariant.getField()));
+                invariantNode.put("expression", safe(invariant.getExpression()));
+                invariantsNode.add(invariantNode);
+            }
+            node.set("invariants", invariantsNode);
+            node.set("lifecycle", toLifecycle(concept.getLifecycle()));
+            concepts.add(node);
+        }
+        return concepts;
+    }
+
+    private static ArrayNode toDomainTypes(CompiledModel model) {
+        ArrayNode domainTypes = JsonNodeFactory.instance.arrayNode();
+        List<CompiledDomainType> sorted = new ArrayList<>(model.getDomainTypes());
+        sorted.sort(Comparator.comparing(domainType -> normalize(domainType.getName())));
+        for (CompiledDomainType domainType : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(domainType.getName()));
+            node.put("baseType", safe(domainType.getBaseType()));
+            node.put("javaType", safe(domainType.getJavaType()));
+            node.put("formatHint", safe(domainType.getFormatHint()));
+            node.set("normalizationRules", toStringArray(domainType.getNormalizationRules()));
+            node.set("examples", toStringArray(domainType.getExamples()));
+            node.set("validationSchema", toSchema(domainType.getValidationSchema()));
+            node.set("ui", toDomainTypeUi(domainType.getUi()));
+            domainTypes.add(node);
+        }
+        return domainTypes;
+    }
+
+    private static ObjectNode toDomainTypeUi(CompiledDomainTypeUi ui) {
+        if (ui == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("label", safe(ui.getLabel()));
+        node.put("placeholder", safe(ui.getPlaceholder()));
+        node.put("helpText", safe(ui.getHelpText()));
+        node.put("widget", safe(ui.getWidget()));
+        return node;
+    }
+
+    private static ObjectNode toPresentationMetadata(CompiledPresentationMetadata metadata) {
+        if (metadata == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("label", safe(metadata.getLabel()));
+        node.put("shortLabel", safe(metadata.getShortLabel()));
+        node.put("description", safe(metadata.getDescription()));
+        node.put("helpText", safe(metadata.getHelpText()));
+        node.put("placeholder", safe(metadata.getPlaceholder()));
+        node.put("group", safe(metadata.getGroup()));
+        node.put("section", safe(metadata.getSection()));
+        if (metadata.getOrder() == null) {
+            node.putNull("order");
+        } else {
+            node.put("order", metadata.getOrder());
+        }
+        if (metadata.getAdvanced() == null) {
+            node.putNull("advanced");
+        } else {
+            node.put("advanced", metadata.getAdvanced());
+        }
+        if (metadata.getDeprecated() == null) {
+            node.putNull("deprecated");
+        } else {
+            node.put("deprecated", metadata.getDeprecated());
+        }
+        node.set("examples", toStringArray(metadata.getExamples()));
+        node.put("widget", safe(metadata.getWidget()));
+        node.put("visibleWhen", safe(metadata.getVisibleWhen()));
+        node.put("enabledWhen", safe(metadata.getEnabledWhen()));
+        node.put("readonlyWhen", safe(metadata.getReadonlyWhen()));
+        node.put("requiredWhen", safe(metadata.getRequiredWhen()));
+        node.put("pickerType", safe(metadata.getPickerType()));
+        if (metadata.getAllowInlineCreate() == null) {
+            node.putNull("allowInlineCreate");
+        } else {
+            node.put("allowInlineCreate", metadata.getAllowInlineCreate());
+        }
+        node.set("searchFields", toStringArray(metadata.getSearchFields()));
+        node.put("filterPreset", safe(metadata.getFilterPreset()));
+        node.put("tab", safe(metadata.getTab()));
+        if (metadata.getColumn() == null) {
+            node.putNull("column");
+        } else {
+            node.put("column", metadata.getColumn());
+        }
+        if (metadata.getColumnSpan() == null) {
+            node.putNull("columnSpan");
+        } else {
+            node.put("columnSpan", metadata.getColumnSpan());
+        }
+        node.put("width", safe(metadata.getWidth()));
+        if (metadata.getSummaryCard() == null) {
+            node.putNull("summaryCard");
+        } else {
+            node.put("summaryCard", metadata.getSummaryCard());
+        }
+        if (metadata.getListColumn() == null) {
+            node.putNull("listColumn");
+        } else {
+            node.put("listColumn", metadata.getListColumn());
+        }
+        if (metadata.getListColumnOrder() == null) {
+            node.putNull("listColumnOrder");
+        } else {
+            node.put("listColumnOrder", metadata.getListColumnOrder());
+        }
+        if (metadata.getFormColumns() == null) {
+            node.putNull("formColumns");
+        } else {
+            node.put("formColumns", metadata.getFormColumns());
+        }
+        node.put("displayMode", safe(metadata.getDisplayMode()));
+        node.put("defaultSort", safe(metadata.getDefaultSort()));
+        node.put("defaultGroup", safe(metadata.getDefaultGroup()));
+        return node;
+    }
+
+    private static ArrayNode toCapabilities(CompiledModel model) {
+        ArrayNode capabilities = JsonNodeFactory.instance.arrayNode();
+        List<CompiledCapability> sorted = new ArrayList<>(model.getCapabilities());
+        sorted.sort(Comparator.comparing(capability -> normalize(capability.getName())));
+        for (CompiledCapability capability : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(capability.getName()));
+            node.put("type", safe(capability.getType()));
+
+            List<CompiledCapabilityOperation> operations = new ArrayList<>(capability.getOperations());
+            operations.sort(Comparator.comparing(operation -> normalize(operation.getName())));
+            ArrayNode operationsNode = JsonNodeFactory.instance.arrayNode();
+            for (CompiledCapabilityOperation operation : operations) {
+                ObjectNode operationNode = JsonNodeFactory.instance.objectNode();
+                operationNode.put("name", safe(operation.getName()));
+                operationNode.set("input", toStringArray(operation.getInput()));
+                operationNode.set("output", toStringArray(operation.getOutput()));
+                operationNode.set("inputSchema", toSchema(operation.getInputSchema()));
+                operationNode.set("outputSchema", toSchema(operation.getOutputSchema()));
+                operationNode.set("executionPolicy", toExecutionPolicy(operation.getExecutionPolicy()));
+                operationsNode.add(operationNode);
+            }
+            node.set("operations", operationsNode);
+            capabilities.add(node);
+        }
+        return capabilities;
+    }
+
+    private static ArrayNode toBindings(CompiledModel model) {
+        ArrayNode bindings = JsonNodeFactory.instance.arrayNode();
+        List<CompiledCapabilityBinding> sorted = new ArrayList<>(model.getBindings());
+        sorted.sort(Comparator
+                .comparing((CompiledCapabilityBinding binding) -> normalize(binding.getCapability()))
+                .thenComparing(binding -> normalize(binding.getAdapter())));
+        for (CompiledCapabilityBinding binding : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("capability", safe(binding.getCapability()));
+            node.put("adapter", safe(binding.getAdapter()));
+            bindings.add(node);
+        }
+        return bindings;
+    }
+
+    private static ArrayNode toEvents(CompiledModel model) {
+        ArrayNode events = JsonNodeFactory.instance.arrayNode();
+        List<CompiledEvent> sorted = new ArrayList<>(model.getEvents());
+        sorted.sort(Comparator.comparing(event -> normalize(event.getName())));
+        for (CompiledEvent event : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(event.getName()));
+            node.put("conceptName", safe(event.getConceptName()));
+
+            List<CompiledEventField> payloadFields = new ArrayList<>(event.getPayloadFields());
+            payloadFields.sort(Comparator.comparing(field -> normalize(field.getName())));
+            ArrayNode payloadNode = JsonNodeFactory.instance.arrayNode();
+            for (CompiledEventField payloadField : payloadFields) {
+                ObjectNode payloadFieldNode = JsonNodeFactory.instance.objectNode();
+                payloadFieldNode.put("name", safe(payloadField.getName()));
+                payloadFieldNode.put("type", safe(payloadField.getType()));
+                payloadNode.add(payloadFieldNode);
+            }
+            node.set("payload", payloadNode);
+            events.add(node);
+        }
+        return events;
+    }
+
+    private static ArrayNode toFlows(CompiledModel model) {
+        ArrayNode flows = JsonNodeFactory.instance.arrayNode();
+        List<CompiledFlow> sorted = new ArrayList<>(model.getFlows());
+        sorted.sort(Comparator.comparing(flow -> normalize(flow.getName())));
+        for (CompiledFlow flow : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(flow.getName()));
+            node.put("concept", safe(flow.getConcept()));
+            node.put("mode", safe(flow.getMode()));
+            node.set("inputSchema", toSchema(flow.getInputSchema()));
+            node.set("outputSchema", toSchema(flow.getOutputSchema()));
+            node.set("action", toActionMetadata(flow.getAction()));
+            node.set("steps", toFlowSteps(flow.getSteps()));
+            flows.add(node);
+        }
+        return flows;
+    }
+
+    private static ArrayNode toQueries(CompiledModel model) {
+        ArrayNode queries = JsonNodeFactory.instance.arrayNode();
+        List<CompiledQuery> sorted = new ArrayList<>(model.getQueries());
+        sorted.sort(Comparator.comparing(query -> normalize(query.name())));
+        for (CompiledQuery query : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(query.name()));
+            node.put("concept", safe(query.concept()));
+            node.put("where", safe(query.where()));
+            node.set("orderBy", toStringArray(query.orderBy()));
+            putNullableInteger(node, "limit", query.limit());
+            node.set("parameters", toProcedureParameters(query.parameters()));
+            node.set("permissionRequirements", toStringArray(query.permissionRequirements()));
+            node.put("tracePolicy", safe(query.tracePolicy()));
+            node.put("auditPolicy", safe(query.auditPolicy()));
+            node.set("metadata", toObjectMap(query.metadata()));
+            queries.add(node);
+        }
+        return queries;
+    }
+
+    private static ArrayNode toRuleProfiles(CompiledModel model) {
+        ArrayNode profiles = JsonNodeFactory.instance.arrayNode();
+        List<CompiledRuleProfile> sorted = new ArrayList<>(model.getRuleProfiles());
+        sorted.sort(Comparator.comparing(profile -> normalize(profile.name())));
+        for (CompiledRuleProfile profile : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(profile.name()));
+            node.put("description", safe(profile.description()));
+            node.set("appliesTo", toStringArray(profile.appliesTo()));
+            node.put("enabled", profile.enabled());
+            node.set("metadata", toObjectMap(profile.metadata()));
+            profiles.add(node);
+        }
+        return profiles;
+    }
+
+    private static ArrayNode toProcedures(CompiledModel model) {
+        ArrayNode procedures = JsonNodeFactory.instance.arrayNode();
+        List<CompiledProcedure> sorted = new ArrayList<>(model.getProcedures());
+        sorted.sort(Comparator.comparing(procedure -> normalize(procedure.name())));
+        for (CompiledProcedure procedure : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(procedure.name()));
+            node.put("description", safe(procedure.description()));
+            node.set("parameters", toProcedureParameters(procedure.parameters()));
+            node.set("variables", toProcedureVariables(procedure.variables()));
+            node.set("steps", toProcedureSteps(procedure.steps()));
+            node.set("returns", toSchema(procedure.returns()));
+            node.set("permissionRequirements", toStringArray(procedure.permissionRequirements()));
+            node.put("tracePolicy", safe(procedure.tracePolicy()));
+            node.put("auditPolicy", safe(procedure.auditPolicy()));
+            node.set("metadata", toObjectMap(procedure.metadata()));
+            procedures.add(node);
+        }
+        return procedures;
+    }
+
+    private static ArrayNode toProcedureParameters(List<CompiledProcedureParameter> parameters) {
+        ArrayNode out = JsonNodeFactory.instance.arrayNode();
+        if (parameters == null) {
+            return out;
+        }
+        List<CompiledProcedureParameter> sorted = new ArrayList<>(parameters);
+        sorted.sort(Comparator.comparing(parameter -> normalize(parameter.name())));
+        for (CompiledProcedureParameter parameter : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(parameter.name()));
+            node.put("type", safe(parameter.type()));
+            node.put("required", parameter.required());
+            node.set("schema", toSchema(parameter.schema()));
+            node.put("description", safe(parameter.description()));
+            out.add(node);
+        }
+        return out;
+    }
+
+    private static ArrayNode toProcedureVariables(List<CompiledProcedureVariable> variables) {
+        ArrayNode out = JsonNodeFactory.instance.arrayNode();
+        if (variables == null) {
+            return out;
+        }
+        List<CompiledProcedureVariable> sorted = new ArrayList<>(variables);
+        sorted.sort(Comparator.comparing(variable -> normalize(variable.name())));
+        for (CompiledProcedureVariable variable : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(variable.name()));
+            node.put("type", safe(variable.type()));
+            node.set("schema", toSchema(variable.schema()));
+            node.set("initialValue", toAnyValueNode(variable.initialValue()));
+            out.add(node);
+        }
+        return out;
+    }
+
+    private static ArrayNode toProcedureSteps(List<CompiledProcedureStep> procedureSteps) {
+        ArrayNode steps = JsonNodeFactory.instance.arrayNode();
+        if (procedureSteps == null) {
+            return steps;
+        }
+        for (CompiledProcedureStep step : procedureSteps) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(step.name()));
+            node.put("type", safe(step.type()));
+            node.put("target", safe(step.target()));
+            node.set("value", toAnyValueNode(step.value()));
+            node.put("condition", safe(step.condition()));
+            node.put("items", safe(step.items()));
+            node.put("as", safe(step.as()));
+            node.put("concept", safe(step.concept()));
+            node.put("query", safe(step.query()));
+            node.set("data", toObjectMap(step.data()));
+            node.put("id", safe(step.id()));
+            node.put("procedure", safe(step.procedure()));
+            node.put("capability", safe(step.capability()));
+            node.put("operation", safe(step.operation()));
+            node.put("event", safe(step.event()));
+            node.set("args", toObjectMap(step.args()));
+            node.set("thenSteps", toProcedureSteps(step.thenSteps()));
+            node.set("elseSteps", toProcedureSteps(step.elseSteps()));
+            node.set("steps", toProcedureSteps(step.steps()));
+            putNullableBoolean(node, "trace", step.trace());
+            putNullableBoolean(node, "audit", step.audit());
+            node.set("metadata", toObjectMap(step.metadata()));
+            steps.add(node);
+        }
+        return steps;
+    }
+
+    private static ArrayNode toPanels(CompiledModel model) {
+        ArrayNode panels = JsonNodeFactory.instance.arrayNode();
+        List<CompiledPanel> sorted = new ArrayList<>(model.getPanels());
+        sorted.sort(Comparator.comparing(panel -> normalize(panel.name())));
+        for (CompiledPanel panel : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(panel.name()));
+            node.put("route", safe(panel.route()));
+            node.put("title", safe(panel.title()));
+            node.set("dataSources", toPanelDataSources(panel.dataSources()));
+            node.set("layout", toPanelLayout(panel.layout()));
+            node.set("fieldBindings", toPanelFieldBindings(panel.fieldBindings()));
+            node.put("visibility", safe(panel.visibility()));
+            node.put("enabledWhen", safe(panel.enabledWhen()));
+            node.set("actions", toPanelActions(panel.actions()));
+            node.set("explainability", toObjectMap(panel.explainability()));
+            node.set("metadata", toObjectMap(panel.metadata()));
+            panels.add(node);
+        }
+        return panels;
+    }
+
+    private static ArrayNode toPanelDataSources(List<CompiledPanelDataSource> dataSources) {
+        ArrayNode out = JsonNodeFactory.instance.arrayNode();
+        if (dataSources == null) {
+            return out;
+        }
+        List<CompiledPanelDataSource> sorted = new ArrayList<>(dataSources);
+        sorted.sort(Comparator.comparing(dataSource -> normalize(dataSource.name())));
+        for (CompiledPanelDataSource dataSource : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(dataSource.name()));
+            node.put("concept", safe(dataSource.concept()));
+            node.put("query", safe(dataSource.query()));
+            node.put("procedure", safe(dataSource.procedure()));
+            node.set("params", toObjectMap(dataSource.params()));
+            out.add(node);
+        }
+        return out;
+    }
+
+    private static JsonNode toPanelLayout(CompiledPanelLayout layout) {
+        if (layout == null) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("type", safe(layout.type()));
+        ArrayNode children = JsonNodeFactory.instance.arrayNode();
+        for (CompiledPanelLayout child : layout.children()) {
+            children.add(toPanelLayout(child));
+        }
+        node.set("children", children);
+        node.set("fields", toStringArray(layout.fields()));
+        node.set("metadata", toObjectMap(layout.metadata()));
+        return node;
+    }
+
+    private static ArrayNode toPanelFieldBindings(List<CompiledPanelFieldBinding> bindings) {
+        ArrayNode out = JsonNodeFactory.instance.arrayNode();
+        if (bindings == null) {
+            return out;
+        }
+        List<CompiledPanelFieldBinding> sorted = new ArrayList<>(bindings);
+        sorted.sort(Comparator.comparing(binding -> normalize(binding.field())));
+        for (CompiledPanelFieldBinding binding : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("field", safe(binding.field()));
+            node.put("source", safe(binding.source()));
+            node.put("visibleWhen", safe(binding.visibleWhen()));
+            node.put("enabledWhen", safe(binding.enabledWhen()));
+            node.put("readonlyWhen", safe(binding.readonlyWhen()));
+            node.set("ui", toPresentationMetadata(binding.ui()));
+            out.add(node);
+        }
+        return out;
+    }
+
+    private static ArrayNode toPanelActions(List<CompiledPanelAction> actions) {
+        ArrayNode out = JsonNodeFactory.instance.arrayNode();
+        if (actions == null) {
+            return out;
+        }
+        List<CompiledPanelAction> sorted = new ArrayList<>(actions);
+        sorted.sort(Comparator.comparing(action -> normalize(action.name())));
+        for (CompiledPanelAction action : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(action.name()));
+            node.put("label", safe(action.label()));
+            node.put("binding", safe(action.binding()));
+            node.put("concept", safe(action.concept()));
+            node.put("operation", safe(action.operation()));
+            node.put("procedure", safe(action.procedure()));
+            node.put("flow", safe(action.flow()));
+            node.put("visibleWhen", safe(action.visibleWhen()));
+            node.put("enabledWhen", safe(action.enabledWhen()));
+            node.set("permissionRequirements", toStringArray(action.permissionRequirements()));
+            node.set("explainability", toObjectMap(action.explainability()));
+            node.set("metadata", toObjectMap(action.metadata()));
+            out.add(node);
+        }
+        return out;
+    }
+
+    private static ObjectNode toLifecycle(CompiledLifecycle lifecycle) {
+        if (lifecycle == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("statusField", safe(lifecycle.getStatusField()));
+        ArrayNode statesNode = JsonNodeFactory.instance.arrayNode();
+        for (CompiledStateMachineState state : lifecycle.getStates()) {
+            ObjectNode stateNode = JsonNodeFactory.instance.objectNode();
+            stateNode.put("value", safe(state.getValue()));
+            stateNode.put("label", safe(state.getLabel()));
+            stateNode.put("initial", state.isInitial());
+            stateNode.put("terminal", state.isTerminal());
+            stateNode.set("metadata", toStringMap(state.getMetadata()));
+            statesNode.add(stateNode);
+        }
+        node.set("states", statesNode);
+        ArrayNode transitionsNode = JsonNodeFactory.instance.arrayNode();
+        List<CompiledStateTransition> transitions = new ArrayList<>(lifecycle.getTransitions());
+        transitions.sort(Comparator
+                .comparing((CompiledStateTransition transition) -> normalize(transition.getFrom()))
+                .thenComparing(transition -> normalize(transition.getTo()))
+                .thenComparing(transition -> normalize(transition.getEvent())));
+        for (CompiledStateTransition transition : transitions) {
+            ObjectNode transitionNode = JsonNodeFactory.instance.objectNode();
+            transitionNode.put("from", safe(transition.getFrom()));
+            transitionNode.put("to", safe(transition.getTo()));
+            transitionNode.set("requiredPayload", toStringArray(transition.getRequiredPayload()));
+            transitionNode.put("event", safe(transition.getEvent()));
+            transitionNode.put("guard", safe(transition.getGuard()));
+            transitionNode.put("actionLabel", safe(transition.getActionLabel()));
+            transitionNode.set("action", toActionMetadata(transition.getAction()));
+            transitionNode.set("metadata", toStringMap(transition.getMetadata()));
+            transitionsNode.add(transitionNode);
+        }
+        node.set("transitions", transitionsNode);
+        return node;
+    }
+
+    private static ArrayNode toOrchestrationRules(CompiledModel model) {
+        ArrayNode rules = JsonNodeFactory.instance.arrayNode();
+        List<CompiledOrchestration> sorted = new ArrayList<>(model.getOrchestrationRules());
+        sorted.sort(Comparator.comparing(rule -> normalize(rule.getName())));
+        for (CompiledOrchestration rule : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(rule.getName()));
+            node.put("condition", safe(rule.getCondition()));
+
+            ObjectNode triggerNode = JsonNodeFactory.instance.objectNode();
+            if (rule.getTrigger() != null) {
+                triggerNode.put("type", safe(rule.getTrigger().getType()));
+                triggerNode.put("event", safe(rule.getTrigger().getEvent()));
+            } else {
+                triggerNode.put("type", "");
+                triggerNode.put("event", "");
+            }
+            node.set("trigger", triggerNode);
+
+            List<CompiledOrchestrationAction> actions = rule.getActions().isEmpty()
+                    ? (rule.getAction() == null ? List.of() : List.of(rule.getAction()))
+                    : rule.getActions();
+            CompiledOrchestrationAction primaryAction = actions.isEmpty() ? null : actions.get(0);
+            node.set("action", toOrchestrationActionNode(primaryAction));
+            node.set("actions", toOrchestrationActions(actions));
+            rules.add(node);
+        }
+        return rules;
+    }
+
+    private static ObjectNode toOrchestrationActionNode(CompiledOrchestrationAction action) {
+        ObjectNode actionNode = JsonNodeFactory.instance.objectNode();
+        if (action != null) {
+            actionNode.put("type", safe(action.getType()));
+            actionNode.put("concept", safe(action.getConcept()));
+            actionNode.put("capability", safe(action.getCapability()));
+            actionNode.put("operation", safe(action.getOperation()));
+            actionNode.put("event", safe(action.getEvent()));
+            if (action.getDelaySeconds() == null) {
+                actionNode.putNull("delaySeconds");
+            } else {
+                actionNode.put("delaySeconds", action.getDelaySeconds());
+            }
+            actionNode.set("action", toActionMetadata(action.getAction()));
+            actionNode.set("map", toStringMap(action.getMap()));
+            return actionNode;
+        }
+        actionNode.put("type", "");
+        actionNode.put("concept", "");
+        actionNode.put("capability", "");
+        actionNode.put("operation", "");
+        actionNode.put("event", "");
+        actionNode.putNull("delaySeconds");
+        actionNode.set("map", JsonNodeFactory.instance.objectNode());
+        return actionNode;
+    }
+
+    private static ArrayNode toOrchestrationActions(List<CompiledOrchestrationAction> actions) {
+        ArrayNode out = JsonNodeFactory.instance.arrayNode();
+        if (actions == null) {
+            return out;
+        }
+        for (CompiledOrchestrationAction action : actions) {
+            out.add(toOrchestrationActionNode(action));
+        }
+        return out;
+    }
+
+    private static ArrayNode toFlowSteps(List<CompiledFlowStep> flowSteps) {
+        ArrayNode steps = JsonNodeFactory.instance.arrayNode();
+        for (CompiledFlowStep flowStep : flowSteps) {
+            ObjectNode stepNode = JsonNodeFactory.instance.objectNode();
+            stepNode.put("name", safe(flowStep.getName()));
+            stepNode.put("type", safe(flowStep.getType()));
+            stepNode.put("checkpoint", safe(flowStep.getCheckpoint()));
+            stepNode.put("scope", safe(flowStep.getScope()));
+            stepNode.set("invariants", toStringArray(flowStep.getInvariants()));
+            stepNode.put("eventName", safe(flowStep.getEventName()));
+            stepNode.put("payloadRef", safe(flowStep.getPayloadRef()));
+            stepNode.set("eventDataRefs", toStringMap(flowStep.getEventDataRefs()));
+            stepNode.put("condition", safe(flowStep.getCondition()));
+            stepNode.set("action", toActionMetadata(flowStep.getAction()));
+            stepNode.set("thenSteps", toFlowSteps(flowStep.getThenSteps()));
+            stepNode.set("elseSteps", toFlowSteps(flowStep.getElseSteps()));
+            stepNode.put("awaitEventName", safe(flowStep.getAwaitEventName()));
+            stepNode.put("awaitRef", safe(flowStep.getAwaitRef()));
+            if (flowStep.getAwaitMatchCorrelation() == null) {
+                stepNode.putNull("awaitMatchCorrelation");
+            } else {
+                stepNode.put("awaitMatchCorrelation", flowStep.getAwaitMatchCorrelation());
+            }
+            stepNode.set("awaitPayloadMatch", toStringMap(flowStep.getAwaitPayloadMatch()));
+            if (flowStep.getDelaySeconds() == null) {
+                stepNode.putNull("delaySeconds");
+            } else {
+                stepNode.put("delaySeconds", flowStep.getDelaySeconds());
+            }
+            stepNode.put("mapFromRef", safe(flowStep.getMapFromRef()));
+            stepNode.put("mapToRef", safe(flowStep.getMapToRef()));
+            stepNode.put("returnValueRef", safe(flowStep.getReturnValueRef()));
+            stepNode.set("capabilityCall", toCapabilityCall(flowStep.getCapabilityCall()));
+            steps.add(stepNode);
+        }
+        return steps;
+    }
+
+    private static ObjectNode toActionMetadata(CompiledActionMetadata action) {
+        if (action == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("label", safe(action.getLabel()));
+        node.put("confirmationText", safe(action.getConfirmationText()));
+        node.put("successMessage", safe(action.getSuccessMessage()));
+        node.put("failureHint", safe(action.getFailureHint()));
+        node.put("dangerLevel", safe(action.getDangerLevel()));
+        node.put("visibleWhen", safe(action.getVisibleWhen()));
+        node.put("permissionHint", safe(action.getPermissionHint()));
+        node.put("inputFormHint", safe(action.getInputFormHint()));
+        return node;
+    }
+
+    private static ObjectNode toCapabilityCall(CompiledCapabilityCall capabilityCall) {
+        if (capabilityCall == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("capabilityName", safe(capabilityCall.getCapabilityName()));
+        node.put("capabilityType", safe(capabilityCall.getCapabilityType()));
+        node.put("operation", safe(capabilityCall.getOperation()));
+        node.set("argsRefs", toStringArray(capabilityCall.getArgsRefs()));
+        node.put("inputRef", safe(capabilityCall.getInputRef()));
+        node.put("outputRef", safe(capabilityCall.getOutputRef()));
+        node.set("inputSchema", toSchema(capabilityCall.getInputSchema()));
+        node.set("outputSchema", toSchema(capabilityCall.getOutputSchema()));
+        node.set("executionPolicy", toExecutionPolicy(capabilityCall.getExecutionPolicy()));
+        return node;
+    }
+
+    private static ObjectNode toExecutionPolicy(CompiledCapabilityExecutionPolicy executionPolicy) {
+        if (executionPolicy == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("retryCount", executionPolicy.getRetryCount());
+        node.put("retryDelayMs", executionPolicy.getRetryDelayMs());
+        node.put("timeoutMs", executionPolicy.getTimeoutMs());
+        node.put("circuitOpenAfterFailures", executionPolicy.getCircuitOpenAfterFailures());
+        node.put("circuitOpenMs", executionPolicy.getCircuitOpenMs());
+        node.put("bulkheadMaxConcurrent", executionPolicy.getBulkheadMaxConcurrent());
+        node.put("idempotencyKeyField", safe(executionPolicy.getIdempotencyKeyField()));
+        node.put("failureClassification", safe(executionPolicy.getFailureClassification()));
+        return node;
+    }
+
+    private static ObjectNode toSchema(CompiledSchema schema) {
+        if (schema == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("type", safe(schema.getType()));
+        node.put("description", safe(schema.getDescription()));
+        if (schema.getMinLength() == null) {
+            node.putNull("minLength");
+        } else {
+            node.put("minLength", schema.getMinLength());
+        }
+        if (schema.getMaxLength() == null) {
+            node.putNull("maxLength");
+        } else {
+            node.put("maxLength", schema.getMaxLength());
+        }
+        if (schema.getMinItems() == null) {
+            node.putNull("minItems");
+        } else {
+            node.put("minItems", schema.getMinItems());
+        }
+        if (schema.getMaxItems() == null) {
+            node.putNull("maxItems");
+        } else {
+            node.put("maxItems", schema.getMaxItems());
+        }
+        if (schema.getUniqueItems() == null) {
+            node.putNull("uniqueItems");
+        } else {
+            node.put("uniqueItems", schema.getUniqueItems());
+        }
+        node.put("itemIdentityField", safe(schema.getItemIdentityField()));
+        node.put("duplicationPolicy", safe(schema.getDuplicationPolicy()));
+        if (schema.getMin() == null) {
+            node.putNull("min");
+        } else {
+            node.put("min", schema.getMin());
+        }
+        if (schema.getMax() == null) {
+            node.putNull("max");
+        } else {
+            node.put("max", schema.getMax());
+        }
+        node.put("regex", safe(schema.getRegex()));
+        node.set("required", toStringArray(schema.getRequired()));
+        node.set("enumValues", toStringArray(schema.getEnumValues()));
+        node.set("defaultValue", toAnyValueNode(schema.getDefaultValue()));
+        node.put("defaultExpression", safe(schema.getDefaultExpression()));
+        node.put("derivedExpression", safe(schema.getDerivedExpression()));
+        node.set("items", toSchema(schema.getItems()));
+
+        TreeMap<String, CompiledSchema> sortedProperties = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        sortedProperties.putAll(schema.getProperties());
+        ObjectNode properties = JsonNodeFactory.instance.objectNode();
+        for (Map.Entry<String, CompiledSchema> property : sortedProperties.entrySet()) {
+            properties.set(property.getKey(), toSchema(property.getValue()));
+        }
+        node.set("properties", properties);
+        return node;
+    }
+
+    private static com.fasterxml.jackson.databind.JsonNode toAnyValueNode(Object value) {
+        if (value == null) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+        return MAPPER.valueToTree(value);
+    }
+
+    private static ObjectNode toObjectMap(Map<String, Object> values) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        if (values == null || values.isEmpty()) {
+            return node;
+        }
+        TreeMap<String, Object> sorted = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        sorted.putAll(values);
+        for (Map.Entry<String, Object> entry : sorted.entrySet()) {
+            node.set(entry.getKey(), toAnyValueNode(entry.getValue()));
+        }
+        return node;
+    }
+
+    private static void putNullableBoolean(ObjectNode node, String fieldName, Boolean value) {
+        if (value == null) {
+            node.putNull(fieldName);
+        } else {
+            node.put(fieldName, value);
+        }
+    }
+
+    private static void putNullableInteger(ObjectNode node, String fieldName, Integer value) {
+        if (value == null) {
+            node.putNull(fieldName);
+        } else {
+            node.put(fieldName, value);
+        }
+    }
+
+    private static ArrayNode toStringArray(List<String> values) {
+        ArrayNode array = JsonNodeFactory.instance.arrayNode();
+        if (values == null) {
+            return array;
+        }
+        for (String value : values) {
+            array.add(safe(value));
+        }
+        return array;
+    }
+
+    private static ArrayNode toEnumOptions(List<CompiledEnumOption> options) {
+        ArrayNode array = JsonNodeFactory.instance.arrayNode();
+        if (options == null) {
+            return array;
+        }
+        for (CompiledEnumOption option : options) {
+            if (option == null) {
+                continue;
+            }
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("value", safe(option.getValue()));
+            node.put("label", safe(option.getLabel()));
+            if (option.getOrder() == null) {
+                node.putNull("order");
+            } else {
+                node.put("order", option.getOrder());
+            }
+            node.put("group", safe(option.getGroup()));
+            node.put("default", option.isDefaultValue());
+            node.put("deprecated", option.isDeprecated());
+            node.put("iconHint", safe(option.getIconHint()));
+            node.put("badgeHint", safe(option.getBadgeHint()));
+            node.put("description", safe(option.getDescription()));
+            array.add(node);
+        }
+        return array;
+    }
+
+    private static JsonNode toReferenceSemantics(CompiledReferenceSemantics referenceSemantics) {
+        if (referenceSemantics == null) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("target", safe(referenceSemantics.getTarget()));
+        node.put("multiple", referenceSemantics.isMultiple());
+        node.put("displayField", safe(referenceSemantics.getDisplayField()));
+        node.set("searchFields", toStringArray(referenceSemantics.getSearchFields()));
+        node.set("previewFields", toStringArray(referenceSemantics.getPreviewFields()));
+        node.put("inlineCreate", safe(referenceSemantics.getInlineCreatePolicy()));
+        node.put("displayTemplate", safe(referenceSemantics.getDisplayTemplate()));
+        node.set("pickerColumns", toStringArray(referenceSemantics.getPickerColumns()));
+        node.put("previewCardTemplate", safe(referenceSemantics.getPreviewCardTemplate()));
+        node.put("defaultFilter", safe(referenceSemantics.getDefaultFilter()));
+        return node;
+    }
+
+    private static ObjectNode toStringMap(Map<String, String> values) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        if (values == null || values.isEmpty()) {
+            return node;
+        }
+        TreeMap<String, String> sorted = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        sorted.putAll(values);
+        for (Map.Entry<String, String> entry : sorted.entrySet()) {
+            node.put(entry.getKey(), safe(entry.getValue()));
+        }
+        return node;
+    }
+
+    private static String safe(String value) {
+        return value == null ? "" : value;
+    }
+
+    private static String normalize(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+}

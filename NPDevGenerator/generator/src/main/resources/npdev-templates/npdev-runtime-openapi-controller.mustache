@@ -1,0 +1,98 @@
+package {{apiPackage}};
+
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+@Controller
+public class OpenApiController {
+
+    @GetMapping(value = "/v3/api-docs", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public Map<String, Object> docs() {
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("openapi", "3.0.3");
+        root.put("info", Map.of(
+                "title", "NPDev Runtime API",
+                "version", "v1",
+                "description", "Contract-frozen API for NPDev runtime"
+        ));
+        root.put("servers", List.of(Map.of("url", "/")));
+        root.put("components", Map.of(
+                "securitySchemes", Map.of(
+                        "ApiKeyAuth", Map.of(
+                                "type", "apiKey",
+                                "in", "header",
+                                "name", "X-Api-Key"
+                        )
+                )
+        ));
+        root.put("security", List.of(Map.of("ApiKeyAuth", List.of())));
+        root.put("paths", paths());
+        return root;
+    }
+
+    @GetMapping(value = "/swagger-ui/index.html", produces = MediaType.TEXT_HTML_VALUE)
+    @ResponseBody
+    public String swaggerUi() {
+        return """
+                <!doctype html>
+                <html lang="en">
+                <head>
+                  <meta charset="utf-8">
+                  <title>NPDev Swagger UI</title>
+                  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+                </head>
+                <body>
+                  <div id="swagger-ui"></div>
+                  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+                  <script>
+                    window.ui = SwaggerUIBundle({
+                      url: '/v3/api-docs',
+                      dom_id: '#swagger-ui',
+                      persistAuthorization: true
+                    });
+                  </script>
+                </body>
+                </html>
+                """;
+    }
+
+    private static Map<String, Object> paths() {
+        Map<String, Object> paths = new LinkedHashMap<>();
+        paths.put("/api/v1/flows", Map.of("get", op("List flow definitions")));
+        paths.put("/api/v1/flows/{flowName}/execute", Map.of("post", op("Execute flow")));
+        paths.put("/api/v1/executions/{executionId}/resume", Map.of("post", op("Resume execution")));
+        paths.put("/api/v1/executions/summaries", Map.of("get", op("List execution summaries")));
+        paths.put("/api/v1/traces/summaries", Map.of("get", op("List trace summaries")));
+        paths.put("/api/v1/traces/{executionId}", Map.of("get", op("Get trace by execution")));
+        paths.put("/api/v1/events/publish", Map.of("post", op("Publish external event")));
+        paths.put("/api/v1/correlations/{correlationId}", Map.of("get", op("Get correlation timeline")));
+        paths.put("/api/v1/audit", Map.of("get", op("Search audit records (admin)")));
+        paths.put("/api/v1/admin/failures/recent", Map.of("get", op("List recent permanent failures (operator/admin)")));
+        paths.put("/api/v1/admin/stuck/recent", Map.of("get", op("List recent stuck executions (operator/admin)")));
+        paths.put("/api/v1/admin/circuits", Map.of("get", op("List circuit breaker states (admin)")));
+        paths.put("/api/v1/admin/idempotency", Map.of("get", op("Lookup idempotency record (admin)")));
+        return paths;
+    }
+
+    private static Map<String, Object> op(String summary) {
+        return Map.of(
+                "summary", summary,
+                "responses", Map.of(
+                        "200", Map.of("description", "OK"),
+                        "202", Map.of("description", "Accepted"),
+                        "400", Map.of("description", "Invalid request"),
+                        "401", Map.of("description", "Unauthorized"),
+                        "403", Map.of("description", "Forbidden"),
+                        "404", Map.of("description", "Not found"),
+                        "422", Map.of("description", "Validation failed")
+                )
+        );
+    }
+}

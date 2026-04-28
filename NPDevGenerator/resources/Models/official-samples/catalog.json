@@ -1,0 +1,123 @@
+﻿{
+  "apps": [
+    {
+      "id": "simple-user-registry",
+      "title": "Simple User Registry",
+      "complexity": "simple",
+      "mainFlow": "CreateUser",
+      "description": "Smallest useful NPDev sample. Shows concept, invariants, persistence, event emission, and trace visibility.",
+      "learningGoals": [
+        "Understand a concept-centered model",
+        "Observe invariant enforcement in a simple form submission",
+        "See persistence and event emission in one flow"
+      ],
+      "features": [
+        "concept",
+        "invariants",
+        "persistence",
+        "event",
+        "trace"
+      ],
+      "inputFiles": [
+        "input/create-user.json"
+      ],
+      "docs": [
+        "README.md",
+        "expected-behavior.md",
+        "expected-endpoints.md",
+        "expected-diagnostics.md"
+      ],
+      "expectedOutcomes": [
+        "A user record is persisted",
+        "A UserCreated-style event is emitted",
+        "Execution trace and timeline are available for inspection"
+      ],
+      "nextExperiments": [
+        "Try submitting a duplicate or invalid email payload",
+        "Add a new optional field in later authoring steps",
+        "Inspect the trace after a valid execution"
+      ]
+    },
+    {
+      "id": "simple-contact-intake",
+      "title": "Simple Contact Intake",
+      "complexity": "simple",
+      "mainFlow": "SubmitContactMessage",
+      "description": "Adds notification capability to the basic pattern and shows how an external-style side effect can still be governed semantically.",
+      "learningGoals": [
+        "Understand a slightly richer simple app than user registry",
+        "See capability invocation in a beginner-friendly scenario",
+        "Observe event and notification behavior together"
+      ],
+      "features": [
+        "concept",
+        "invariants",
+        "persistence",
+        "notification",
+        "event",
+        "trace"
+      ],
+      "inputFiles": [
+        "input/submit-contact-message.json"
+      ],
+      "docs": [
+        "README.md",
+        "expected-behavior.md",
+        "expected-endpoints.md",
+        "expected-diagnostics.md"
+      ],
+      "expectedOutcomes": [
+        "A contact message is persisted",
+        "A notification capability is invoked",
+        "An event is emitted and trace evidence is available"
+      ],
+      "nextExperiments": [
+        "Try changing required fields later in visual authoring",
+        "Inspect notification-related trace evidence",
+        "Compare this flow with simple-user-registry to see capability growth"
+      ]
+    },
+    {
+      "id": "medium-expense-approval",
+      "title": "Medium Expense Approval",
+      "complexity": "medium",
+      "mainFlow": "SubmitExpense",
+      "description": "The first official medium sample. Demonstrates await-event, branching, persistence, notification, webhook behavior, and resumable orchestration.",
+      "learningGoals": [
+        "Understand that NPDev supports waiting and resuming business processes",
+        "See branching based on later external input",
+        "Observe how one semantic process can include persistence plus multiple capabilities"
+      ],
+      "features": [
+        "concept",
+        "invariants",
+        "persistence",
+        "notification",
+        "webhook",
+        "awaitEvent",
+        "branch",
+        "trace"
+      ],
+      "inputFiles": [
+        "input/submit-expense.json",
+        "input/publish-approval-event.json"
+      ],
+      "docs": [
+        "README.md",
+        "expected-behavior.md",
+        "expected-endpoints.md",
+        "expected-diagnostics.md"
+      ],
+      "expectedOutcomes": [
+        "Expense submission starts and persists the business record",
+        "The flow waits for a later approval-style event",
+        "After the event, the flow resumes and follows the correct branch"
+      ],
+      "nextExperiments": [
+        "Submit an expense and inspect the waiting state",
+        "Publish the approval event using the returned correlation id",
+        "Compare the trace before and after resume"
+      ]
+    }
+  ]
+}

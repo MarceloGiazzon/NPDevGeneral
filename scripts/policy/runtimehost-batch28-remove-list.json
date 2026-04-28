@@ -1,0 +1,16 @@
+{
+  "batch": "runtimehost-batch28",
+  "description": "Remove a small internal publication/reference/reliability service slice.",
+  "rationale": [
+    "All entries are zero-reference dead/remove candidates from the current runtime footprint.",
+    "The services share a publication/reference/reliability theme.",
+    "This keeps the service cleanup evidence-backed and conservative."
+  ],
+  "files": [
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\PublicationExplainabilityBundleService.java",
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\PublicationFailureRecoveryService.java",
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\ReferenceAppGalleryService.java",
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\RegulatoryAnnotationService.java",
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\ReliabilityPostureService.java"
+  ]
+}

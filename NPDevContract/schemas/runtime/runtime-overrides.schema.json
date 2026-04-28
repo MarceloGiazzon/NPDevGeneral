@@ -1,0 +1,22 @@
+﻿{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "$id":  "https://npdev.local/contracts/runtime-overrides.schema.json",
+    "title":  "NPDev Runtime Overrides",
+    "type":  "object",
+    "additionalProperties":  true,
+    "properties":  {
+                       "contractVersion":  {
+                                               "description":  "Runtime override contract version.",
+                                               "type":  "string"
+                                           },
+                       "overrides":  {
+                                         "type":  "object",
+                                         "description":  "Environment-specific runtime overrides.",
+                                         "additionalProperties":  true
+                                     }
+                   },
+    "required":  [
+                     "contractVersion",
+                     "overrides"
+                 ]
+}

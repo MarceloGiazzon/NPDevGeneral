@@ -1,0 +1,23 @@
+package {{apiPackage}};
+
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+
+@Controller
+public class UiRedirectController {
+
+    @GetMapping({"/", ""})
+    public String root() {
+        return "redirect:{{canonicalUiRootRedirect}}";
+    }
+
+    @GetMapping({"/npdev-ui", "/npdev-ui/"})
+    public String npdevUi() {
+        return "redirect:/npdev-ui/index.html";
+    }
+
+    @GetMapping({"/npdev-ui-react", "/npdev-ui-react/"})
+    public String npdevUiReact() {
+        return "redirect:/npdev-ui-react/index.html";
+    }
+}

@@ -1,0 +1,42 @@
+plugins {
+    id 'base'
+}
+
+allprojects {
+    group = 'com.npdev'
+    version = '0.1.0'
+
+    repositories {
+        mavenCentral()
+    }
+}
+
+subprojects {
+    apply plugin: 'java-library'
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(17)
+        }
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+    }
+
+    dependencies {
+        testImplementation 'org.junit.jupiter:junit-jupiter:5.11.0'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.0'
+    }
+
+    tasks.withType(Test).configureEach {
+        useJUnitPlatform()
+    }
+}
+
+tasks.register('kernelQualityGate') {
+    group = 'verification'
+    description = 'Runs the independent NPDevKernel verification build.'
+    dependsOn ':kernel:test'
+    dependsOn subprojects.findAll { it.path.startsWith(':adapters:') }.collect { it.tasks.named('test') }
+}

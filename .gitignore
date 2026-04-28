@@ -1,0 +1,51 @@
+# NPDev workspace local state and IDE metadata
+.npdev-gradle/
+.gradle/
+.idea/
+.vscode/
+*.iml
+**/.idea/
+**/.vscode/
+**/*.iml
+
+# Build and package outputs
+**/.gradle/
+**/build/
+**/target/
+**/dist/
+**/coverage/
+**/node_modules/
+
+# Generated sample/example/final-app output
+**/Output/
+**/RunOutput/
+
+# Generated reports and release evidence are artifacts, not source.
+scripts/reports/out/
+scripts/reports/releases/
+
+# Runtime/local process residue
+*.log
+*.pid
+*.tmp
+*.temp
+*.bak
+
+# Workspace snapshots should be produced outside the workspace by statezip scripts.
+*.zip
+*.7z
+*.rar
+# NPDev generated/build outputs
+**/out/
+**/.vite/
+**/playwright-report/
+**/test-results/
+**/ArtifactNP/
+**/App/npdev-generated/
+*.class
+*.jar
+*.war
+# Local release/state artifacts
+scripts/reports/tmp/
+scripts/reports/cache/
+NPDev_General__OutsideRepo/

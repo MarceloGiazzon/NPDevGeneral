@@ -1,0 +1,8 @@
+{
+  "capabilityOverrides": [
+    {
+      "capability": "persistence",
+      "useAdapterId": "repository"
+    }
+  ]
+}

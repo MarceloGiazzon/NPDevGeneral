@@ -1,0 +1,340 @@
+{
+  "generatedAt": "2026-04-23T05:40:37.0295607-03:00",
+  "runId": "maturity-12-domain-20260423-053958844",
+  "scriptPath": "scripts\\maturity_adv\\run-maturity-12-domain-suite.ps1",
+  "workspaceRoot": "D:\\WorkSpace\\NPDev_General",
+  "overallStatus": "passed",
+  "narrative": "All 12 maturity domains are currently green against the explicit done-condition controls.",
+  "summary": {
+    "failed": 0,
+    "warnings": 0,
+    "passed": 12,
+    "total": 12
+  },
+  "conditionSummary": {
+    "failed": 0.0,
+    "warnings": 0.0,
+    "passed": 175.0,
+    "total": 175.0
+  },
+  "dimensions": [
+    {
+      "id": "governance-release-evidence-maturity",
+      "reportPath": "scripts\\reports\\out\\governance-release-evidence-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 14,
+        "total": 14
+      },
+      "generatedAt": "2026-04-23T05:40:00.1899338-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "runtimehost-sample-matrix-maturity",
+      "reportPath": "scripts\\reports\\out\\runtimehost-sample-matrix-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 21,
+        "total": 21
+      },
+      "generatedAt": "2026-04-23T05:40:02.4497221-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "contract-schema-maturity",
+      "reportPath": "scripts\\reports\\out\\contract-schema-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 15,
+        "total": 15
+      },
+      "generatedAt": "2026-04-23T05:40:03.9560030-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "kernel-runtime-maturity",
+      "reportPath": "scripts\\reports\\out\\kernel-runtime-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 20,
+        "total": 20
+      },
+      "generatedAt": "2026-04-23T05:40:14.5200903-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "generator-maturity",
+      "reportPath": "scripts\\reports\\out\\generator-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 15,
+        "total": 15
+      },
+      "generatedAt": "2026-04-23T05:40:14.9356068-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "editor-frontend-maturity",
+      "reportPath": "scripts\\reports\\out\\editor-frontend-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 15,
+        "total": 15
+      },
+      "generatedAt": "2026-04-23T05:40:15.8114475-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "samples-documentation-maturity",
+      "reportPath": "scripts\\reports\\out\\samples-documentation-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 15,
+        "total": 15
+      },
+      "generatedAt": "2026-04-23T05:40:17.2202711-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "script-automation-maturity",
+      "reportPath": "scripts\\reports\\out\\script-automation-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 15,
+        "total": 15
+      },
+      "generatedAt": "2026-04-23T05:40:19.4513236-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "security-hardening-maturity",
+      "reportPath": "scripts\\reports\\out\\security-hardening-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 15,
+        "total": 15
+      },
+      "generatedAt": "2026-04-23T05:40:19.9481865-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "performance-scalability-maturity",
+      "reportPath": "scripts\\reports\\out\\performance-scalability-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 10,
+        "total": 10
+      },
+      "generatedAt": "2026-04-23T05:40:23.4065925-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "observability-debuggability-maturity",
+      "reportPath": "scripts\\reports\\out\\observability-debuggability-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 10,
+        "total": 10
+      },
+      "generatedAt": "2026-04-23T05:40:36.6304257-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "ai-ml-pipeline-maturity",
+      "reportPath": "scripts\\reports\\out\\ai-ml-pipeline-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 10,
+        "total": 10
+      },
+      "generatedAt": "2026-04-23T05:40:36.9406390-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    }
+  ],
+  "domains": [
+    {
+      "id": "governance-release-evidence-maturity",
+      "reportPath": "scripts\\reports\\out\\governance-release-evidence-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 14,
+        "total": 14
+      },
+      "generatedAt": "2026-04-23T05:40:00.1899338-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "runtimehost-sample-matrix-maturity",
+      "reportPath": "scripts\\reports\\out\\runtimehost-sample-matrix-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 21,
+        "total": 21
+      },
+      "generatedAt": "2026-04-23T05:40:02.4497221-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "contract-schema-maturity",
+      "reportPath": "scripts\\reports\\out\\contract-schema-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 15,
+        "total": 15
+      },
+      "generatedAt": "2026-04-23T05:40:03.9560030-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "kernel-runtime-maturity",
+      "reportPath": "scripts\\reports\\out\\kernel-runtime-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 20,
+        "total": 20
+      },
+      "generatedAt": "2026-04-23T05:40:14.5200903-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "generator-maturity",
+      "reportPath": "scripts\\reports\\out\\generator-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 15,
+        "total": 15
+      },
+      "generatedAt": "2026-04-23T05:40:14.9356068-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "editor-frontend-maturity",
+      "reportPath": "scripts\\reports\\out\\editor-frontend-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 15,
+        "total": 15
+      },
+      "generatedAt": "2026-04-23T05:40:15.8114475-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "samples-documentation-maturity",
+      "reportPath": "scripts\\reports\\out\\samples-documentation-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 15,
+        "total": 15
+      },
+      "generatedAt": "2026-04-23T05:40:17.2202711-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "script-automation-maturity",
+      "reportPath": "scripts\\reports\\out\\script-automation-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 15,
+        "total": 15
+      },
+      "generatedAt": "2026-04-23T05:40:19.4513236-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "security-hardening-maturity",
+      "reportPath": "scripts\\reports\\out\\security-hardening-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 15,
+        "total": 15
+      },
+      "generatedAt": "2026-04-23T05:40:19.9481865-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "performance-scalability-maturity",
+      "reportPath": "scripts\\reports\\out\\performance-scalability-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 10,
+        "total": 10
+      },
+      "generatedAt": "2026-04-23T05:40:23.4065925-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "observability-debuggability-maturity",
+      "reportPath": "scripts\\reports\\out\\observability-debuggability-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 10,
+        "total": 10
+      },
+      "generatedAt": "2026-04-23T05:40:36.6304257-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    },
+    {
+      "id": "ai-ml-pipeline-maturity",
+      "reportPath": "scripts\\reports\\out\\ai-ml-pipeline-maturity-report.json",
+      "overallStatus": "passed",
+      "summary": {
+        "failed": 0,
+        "warnings": 0,
+        "passed": 10,
+        "total": 10
+      },
+      "generatedAt": "2026-04-23T05:40:36.9406390-03:00",
+      "runId": "maturity-12-domain-20260423-053958844"
+    }
+  ],
+  "archiveRoot": "scripts\\reports\\maturity-12\\maturity-12-domain-20260423-053958844",
+  "waiverPath": "scripts\\policy\\maturity-waivers.json",
+  "waiverState": "loaded",
+  "waivers": []
+}

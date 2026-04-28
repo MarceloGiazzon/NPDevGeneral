@@ -1,0 +1,15 @@
+{
+    "$schema":  "model.schema.json",
+    "schemaVersion":  "1.0.0",
+    "namespace":  "npdev.template",
+    "name":  "runtime-host-template-model",
+    "concepts":  [
+
+                 ],
+    "procedures":  [
+
+                   ],
+    "panels":  [
+
+               ]
+}

@@ -1,0 +1,103 @@
+package {{apiPackage}};
+
+import {{dtoPackage}}.ExecutionQueryResponse;
+import {{dtoPackage}}.ExecutionSummaryResponse;
+import {{servicePackage}}.KernelFacade;
+import {{servicePackage}}.RuntimeContextService;
+import com.npdev.kernel.ExecutionContext;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
+@RestController
+@RequestMapping({"/api/v1/executions", "/api/executions"})
+public class ExecutionQueryController {
+    private final KernelFacade kernelFacade;
+    private final RuntimeContextService runtimeContextService;
+
+    public ExecutionQueryController(KernelFacade kernelFacade, RuntimeContextService runtimeContextService) {
+        this.kernelFacade = kernelFacade;
+        this.runtimeContextService = runtimeContextService;
+    }
+
+    @GetMapping("/{executionId}")
+    public ResponseEntity<ExecutionQueryResponse> getExecution(
+            @PathVariable String executionId,
+            HttpServletRequest request
+    ) {
+        return kernelFacade.findExecution(executionId, runtimeContextService.currentContext(request))
+                .map(ExecutionQueryResponse::from)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @GetMapping
+    public List<ExecutionQueryResponse> listExecutions(
+            @RequestParam(required = false, defaultValue = "50") Integer limit,
+            @RequestParam(required = false, defaultValue = "0") Integer offset,
+            HttpServletRequest request
+    ) {
+        return kernelFacade.listExecutions(
+                        limit == null ? 50 : limit,
+                        offset == null ? 0 : offset,
+                        runtimeContextService.currentContext(request)
+                ).stream()
+                .map(ExecutionQueryResponse::from)
+                .toList();
+    }
+
+    @GetMapping("/waiting")
+    public List<ExecutionQueryResponse> listWaitingExecutions(
+            @RequestParam(required = false, defaultValue = "50") Integer limit,
+            @RequestParam(required = false, defaultValue = "0") Integer offset,
+            HttpServletRequest request
+    ) {
+        return kernelFacade.listWaitingExecutions(
+                        limit == null ? 50 : limit,
+                        offset == null ? 0 : offset,
+                        runtimeContextService.currentContext(request)
+                ).stream()
+                .map(ExecutionQueryResponse::from)
+                .toList();
+    }
+
+    @GetMapping("/stale")
+    public List<ExecutionSummaryResponse> listStaleWaitingExecutions(
+            @RequestParam(required = false, defaultValue = "60") Integer olderThanMinutes,
+            @RequestParam(required = false, defaultValue = "50") Integer limit,
+            @RequestParam(required = false, defaultValue = "0") Integer offset,
+            HttpServletRequest request
+    ) {
+        return kernelFacade.listStaleWaitingExecutions(
+                        olderThanMinutes == null ? 60 : olderThanMinutes,
+                        limit == null ? 50 : limit,
+                        offset == null ? 0 : offset,
+                        runtimeContextService.currentContext(request)
+                ).stream()
+                .map(ExecutionSummaryResponse::from)
+                .toList();
+    }
+
+    @GetMapping("/summaries")
+    public List<ExecutionSummaryResponse> listExecutionSummaries(
+            @RequestParam(required = false, defaultValue = "recent") String mode,
+            @RequestParam(required = false, defaultValue = "50") Integer limit,
+            @RequestParam(required = false, defaultValue = "0") Integer offset,
+            HttpServletRequest request
+    ) {
+        return kernelFacade.listExecutionSummaries(
+                        mode,
+                        limit == null ? 50 : limit,
+                        offset == null ? 0 : offset,
+                        runtimeContextService.currentContext(request)
+                ).stream()
+                .map(ExecutionSummaryResponse::from)
+                .toList();
+    }
+}

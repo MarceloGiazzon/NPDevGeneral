@@ -1,0 +1,19 @@
+package {{packageName}};
+
+public class {{entityName}}CreateRequest {
+
+{{#fields}}
+    private {{javaType}} {{name}};
+{{/fields}}
+
+{{#fields}}
+    public {{javaType}} get{{capName}}() {
+        return this.{{name}};
+    }
+
+    public void set{{capName}}({{javaType}} {{name}}) {
+        this.{{name}} = {{name}};
+    }
+
+{{/fields}}
+}

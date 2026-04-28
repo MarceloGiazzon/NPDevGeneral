@@ -1,0 +1,16 @@
+﻿{
+    "contractVersion":  "1.0",
+    "status":  "passed",
+    "diagnostics":  [
+
+                    ],
+    "summary":  {
+                    "checkedFiles":  [
+                                         "examples\\valid\\minimal-model.json",
+                                         "examples\\valid\\simple-config.json"
+                                     ],
+                    "notes":  [
+                                  "Example report used by the Editor to Generator handoff manifest."
+                              ]
+                }
+}

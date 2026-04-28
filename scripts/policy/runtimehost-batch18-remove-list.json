@@ -1,0 +1,15 @@
+{
+  "batch": "runtimehost-batch18",
+  "description": "Remove a small internal diagnostics/operational tooling controller slice.",
+  "rationale": [
+    "Keep the slice small and thematic to reduce risk.",
+    "Controllers only, no service removals.",
+    "No supported-core removals."
+  ],
+  "files": [
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/OperationalDiagnosticsController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/OperationalTroubleshootingController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/RuntimeFailureTriageController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/SystemHealthNarrativeController.java"
+  ]
+}

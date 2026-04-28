@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "namespace": "npdev.beta.unsupported",
+  "concepts": [
+    {
+      "name": "Learner",
+      "fields": ["id"]
+    }
+  ],
+  "procedures": [],
+  "panels": []
+}

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "ai-scenario.v1",
+  "scenarioId": "unsupported-surface",
+  "kind": "ai-only-functional-beta",
+  "files": {
+    "model": "model.json",
+    "config": "config.json",
+    "expectedBehavior": "expected-behavior.json"
+  },
+  "runtime": {
+    "strictExecution": true,
+    "surfaceProfile": "external-ui-runtime"
+  },
+  "requestedSurfaces": ["external-ui-runtime"],
+  "operations": [
+    {
+      "type": "run",
+      "mode": "deterministic"
+    }
+  ],
+  "expectedOutcome": {
+    "class": "FAIL_UNSUPPORTED_SURFACE",
+    "mustPass": false
+  }
+}

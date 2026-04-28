@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "ai-custom-panel.v1",
+  "panelId": "user-admin-panel",
+  "route": "/users",
+  "implementation": {
+    "mode": "trustedSource",
+    "language": "html+javascript",
+    "entrypoint": "panel/user-admin-panel.html"
+  },
+  "dataSources": [
+    {
+      "name": "users",
+      "concept": "User"
+    },
+    {
+      "name": "creation",
+      "procedure": "create-users"
+    }
+  ],
+  "visibleFields": ["id", "name", "email", "active"],
+  "actions": [
+    {
+      "name": "create-users",
+      "label": "create users",
+      "binding": "procedure",
+      "procedure": "create-users"
+    },
+    {
+      "name": "refresh",
+      "label": "refresh",
+      "binding": "query",
+      "query": "UserList"
+    }
+  ],
+  "layout": {
+    "type": "table",
+    "fields": ["id", "name", "email", "active"]
+  },
+  "widgets": [
+    {
+      "type": "action",
+      "action": "create-users"
+    },
+    {
+      "type": "table",
+      "dataSource": "users"
+    }
+  ]
+}

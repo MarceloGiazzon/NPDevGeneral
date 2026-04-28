@@ -1,0 +1,545 @@
+{
+  "generatedAt": "2026-04-23T04:50:35.6192559-03:00",
+  "runId": "maturity-12-domain-20260423-045014845",
+  "scriptPath": "scripts\\maturity_adv\\check-08-script-automation-maturity.ps1",
+  "workspaceRoot": "D:\\WorkSpace\\NPDev_General",
+  "maturityItem": "script-automation-maturity",
+  "overallStatus": "failed",
+  "checks": [
+    {
+      "conditionId": "SAM-001",
+      "name": "SAM-001",
+      "status": "passed",
+      "conditionText": "All gate scripts use Invoke-NPDevReportedCommand for structured reporting",
+      "expectation": "All gate scripts use Invoke-NPDevReportedCommand for structured reporting",
+      "summary": "All run-*-gate scripts use Invoke-NPDevReportedCommand.",
+      "data": {
+        "missing": [],
+        "gateCommandAudit": [
+          {
+            "script": "scripts\\quality\\run-beta-release-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-contract-gate.ps1",
+            "usesReportedCommand": true,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-editor-gate.ps1",
+            "usesReportedCommand": true,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-frontend-audit-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-frontend-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-generator-gate.ps1",
+            "usesReportedCommand": true,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-hygiene-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-invariant-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-kernel-gate.ps1",
+            "usesReportedCommand": true,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-plugin-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-runtimehost-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T04:50:35.5849784-03:00"
+    },
+    {
+      "conditionId": "SAM-002",
+      "name": "SAM-002",
+      "status": "passed",
+      "conditionText": "All scripts produce JSON report to scripts\\\\reports\\\\out\\\\ on both success and failure",
+      "expectation": "All scripts produce JSON report to scripts\\\\reports\\\\out\\\\ on both success and failure",
+      "summary": "All run-*-gate scripts visibly write JSON reports under scripts\\\\reports\\\\out.",
+      "data": {
+        "missing": [],
+        "gateCommandAudit": [
+          {
+            "script": "scripts\\quality\\run-beta-release-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-contract-gate.ps1",
+            "usesReportedCommand": true,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-editor-gate.ps1",
+            "usesReportedCommand": true,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-frontend-audit-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-frontend-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-generator-gate.ps1",
+            "usesReportedCommand": true,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-hygiene-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-invariant-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-kernel-gate.ps1",
+            "usesReportedCommand": true,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-plugin-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-runtimehost-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T04:50:35.5851957-03:00"
+    },
+    {
+      "conditionId": "SAM-003",
+      "name": "SAM-003",
+      "status": "passed",
+      "conditionText": "All scripts include: runId, generatedAt, scriptPath, workspaceRoot, overallStatus",
+      "expectation": "All scripts include: runId, generatedAt, scriptPath, workspaceRoot, overallStatus",
+      "summary": "All audited gate scripts visibly emit the standard report fields.",
+      "data": {
+        "missing": [],
+        "gateCommandAudit": [
+          {
+            "script": "scripts\\quality\\run-beta-release-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-contract-gate.ps1",
+            "usesReportedCommand": true,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-editor-gate.ps1",
+            "usesReportedCommand": true,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-frontend-audit-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-frontend-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-generator-gate.ps1",
+            "usesReportedCommand": true,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-hygiene-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-invariant-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-kernel-gate.ps1",
+            "usesReportedCommand": true,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-plugin-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          },
+          {
+            "script": "scripts\\quality\\run-runtimehost-gate.ps1",
+            "usesReportedCommand": false,
+            "writesJson": true,
+            "hasReportPath": true,
+            "hasStandardFields": true
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T04:50:35.5853293-03:00"
+    },
+    {
+      "conditionId": "SAM-004",
+      "name": "SAM-004",
+      "status": "passed",
+      "conditionText": "Common patterns extracted to npdev-common.ps1 with no duplication",
+      "expectation": "Common patterns extracted to npdev-common.ps1 with no duplication",
+      "summary": "npdev-common.ps1 exists and no duplicate definitions were found for core common helpers.",
+      "data": {
+        "duplicates": []
+      },
+      "checkedAt": "2026-04-23T04:50:35.5861843-03:00"
+    },
+    {
+      "conditionId": "SAM-005",
+      "name": "SAM-005",
+      "status": "failed",
+      "conditionText": "Linting script (scripts/hygiene/check-script-quality.ps1) validates consistency",
+      "expectation": "Linting script (scripts/hygiene/check-script-quality.ps1) validates consistency",
+      "summary": "No dedicated script quality linting script exists.",
+      "data": {
+        "expectedPath": "scripts\\hygiene\\check-script-quality.ps1"
+      },
+      "checkedAt": "2026-04-23T04:50:35.5868616-03:00"
+    },
+    {
+      "conditionId": "SAM-006",
+      "name": "SAM-006",
+      "status": "passed",
+      "conditionText": "All subprojects use identical Gradle wrapper version",
+      "expectation": "All subprojects use identical Gradle wrapper version",
+      "summary": "All audited subprojects currently report the same Gradle wrapper version.",
+      "data": {
+        "wrapperVersions": [
+          {
+            "project": "NPDevContract/dsl",
+            "missing": [],
+            "wrapperVersion": "8.5"
+          },
+          {
+            "project": "NPDevEditor",
+            "missing": [],
+            "wrapperVersion": "8.5"
+          },
+          {
+            "project": "NPDevGenerator",
+            "missing": [],
+            "wrapperVersion": "8.5"
+          },
+          {
+            "project": "NPDevKernel",
+            "missing": [],
+            "wrapperVersion": "8.5"
+          },
+          {
+            "project": "NPDevRuntimeHost",
+            "missing": [],
+            "wrapperVersion": "8.5"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T04:50:35.5871007-03:00"
+    },
+    {
+      "conditionId": "SAM-007",
+      "name": "SAM-007",
+      "status": "passed",
+      "conditionText": "check-gradle-wrapper.ps1 validates: version match, jar integrity, properties consistency",
+      "expectation": "check-gradle-wrapper.ps1 validates: version match, jar integrity, properties consistency",
+      "summary": "check-gradle-wrapper.ps1 validates the expected wrapper artifacts and version extraction.",
+      "data": {
+        "missingPatterns": []
+      },
+      "checkedAt": "2026-04-23T04:50:35.5919717-03:00"
+    },
+    {
+      "conditionId": "SAM-008",
+      "name": "SAM-008",
+      "status": "passed",
+      "conditionText": "Doctor gate fails on wrapper version mismatch",
+      "expectation": "Doctor gate fails on wrapper version mismatch",
+      "summary": "The doctor gate already incorporates the gradle-wrapper check.",
+      "data": {
+        "doctorGradleWrapper": {
+          "name": "gradle-wrapper",
+          "status": "passed",
+          "summary": "Gradle wrappers are present for all supported projects.",
+          "data": {
+            "projects": [
+              {
+                "project": "NPDevContract/dsl",
+                "missing": [],
+                "wrapperVersion": "8.5"
+              },
+              {
+                "project": "NPDevEditor",
+                "missing": [],
+                "wrapperVersion": "8.5"
+              },
+              {
+                "project": "NPDevGenerator",
+                "missing": [],
+                "wrapperVersion": "8.5"
+              },
+              {
+                "project": "NPDevKernel",
+                "missing": [],
+                "wrapperVersion": "8.5"
+              },
+              {
+                "project": "NPDevRuntimeHost",
+                "missing": [],
+                "wrapperVersion": "8.5"
+              }
+            ]
+          },
+          "checkedAt": "2026-04-23T01:20:14.3861116-03:00"
+        }
+      },
+      "checkedAt": "2026-04-23T04:50:35.5921686-03:00"
+    },
+    {
+      "conditionId": "SAM-009",
+      "name": "SAM-009",
+      "status": "passed",
+      "conditionText": "Wrapper update requires single-point change (shared configuration)",
+      "expectation": "Wrapper update requires single-point change (shared configuration)",
+      "summary": "All audited wrappers currently converge on one version value.",
+      "data": {
+        "wrapperVersions": [
+          {
+            "project": "NPDevContract/dsl",
+            "missing": [],
+            "wrapperVersion": "8.5"
+          },
+          {
+            "project": "NPDevEditor",
+            "missing": [],
+            "wrapperVersion": "8.5"
+          },
+          {
+            "project": "NPDevGenerator",
+            "missing": [],
+            "wrapperVersion": "8.5"
+          },
+          {
+            "project": "NPDevKernel",
+            "missing": [],
+            "wrapperVersion": "8.5"
+          },
+          {
+            "project": "NPDevRuntimeHost",
+            "missing": [],
+            "wrapperVersion": "8.5"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T04:50:35.5923042-03:00"
+    },
+    {
+      "conditionId": "SAM-010",
+      "name": "SAM-010",
+      "status": "passed",
+      "conditionText": "Test proves: mismatched wrapper versions detected and reported",
+      "expectation": "Test proves: mismatched wrapper versions detected and reported",
+      "summary": "Mismatch-detection evidence was found for wrapper version drift.",
+      "data": {
+        "hits": [
+          {
+            "path": "scripts\\maturity_adv\\check-08-script-automation-maturity.ps1",
+            "lineNumber": 76,
+            "line": "$mismatchedWrapperTestHits = Find-MaturityTextMatches -WorkspaceRoot $WorkspaceRoot -RelativeRoot \"scripts\" -Includes @(\"*.ps1\", \"*.md\") -Pattern 'wrapper version mismatch|mismatched wrapper'"
+          },
+          {
+            "path": "scripts\\maturity_adv\\check-08-script-automation-maturity.ps1",
+            "lineNumber": 132,
+            "line": "Add-Condition \"SAM-008\" \"Doctor gate fails on wrapper version mismatch\" `"
+          },
+          {
+            "path": "scripts\\maturity_adv\\check-08-script-automation-maturity.ps1",
+            "lineNumber": 144,
+            "line": "Add-Condition \"SAM-010\" \"Test proves: mismatched wrapper versions detected and reported\" `"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T04:50:35.5924288-03:00"
+    },
+    {
+      "conditionId": "SAM-011",
+      "name": "SAM-011",
+      "status": "passed",
+      "conditionText": "State zip excludes: all build dirs, all cache dirs, all generated artifacts, all IDE configs",
+      "expectation": "State zip excludes: all build dirs, all cache dirs, all generated artifacts, all IDE configs",
+      "summary": "statezip-common.ps1 contains the expected exclusion patterns for build/cache/IDE directories.",
+      "data": {
+        "missingPatterns": []
+      },
+      "checkedAt": "2026-04-23T04:50:35.5925508-03:00"
+    },
+    {
+      "conditionId": "SAM-012",
+      "name": "SAM-012",
+      "status": "passed",
+      "conditionText": "State zip includes: source, tests, schemas, docs, scripts, sample inputs, reports",
+      "expectation": "State zip includes: source, tests, schemas, docs, scripts, sample inputs, reports",
+      "summary": "statezip-npdev-general.ps1 visibly includes workspace docs, significant trees, and reports.",
+      "data": {
+        "missingPatterns": []
+      },
+      "checkedAt": "2026-04-23T04:50:35.5959351-03:00"
+    },
+    {
+      "conditionId": "SAM-013",
+      "name": "SAM-013",
+      "status": "failed",
+      "conditionText": "Two state zips generated from identical source produce identical SHA256 (deterministic)",
+      "expectation": "Two state zips generated from identical source produce identical SHA256 (deterministic)",
+      "summary": "No deterministic state-zip hash evidence was found.",
+      "data": {
+        "existingStateZipCount": 63
+      },
+      "checkedAt": "2026-04-23T04:50:35.5962630-03:00"
+    },
+    {
+      "conditionId": "SAM-014",
+      "name": "SAM-014",
+      "status": "passed",
+      "conditionText": "State zip size ≤100MB (prevents bloating)",
+      "expectation": "State zip size ≤100MB (prevents bloating)",
+      "summary": "The latest available state zip is at or below 100MB.",
+      "data": {
+        "sizeMb": 2.4,
+        "latestStateZip": "D:\\WorkSpace\\NPDev_General__OutsideRepo\\state-zips\\NPDev_General_State_ALL_20260423_013546.zip"
+      },
+      "checkedAt": "2026-04-23T04:50:35.6050864-03:00"
+    },
+    {
+      "conditionId": "SAM-015",
+      "name": "SAM-015",
+      "status": "passed",
+      "conditionText": "State zip generation tested in CI",
+      "expectation": "State zip generation tested in CI",
+      "summary": "CI/state-zip evidence was found in project docs.",
+      "data": {
+        "hits": {
+          "path": "docs\\RELEASE_EVIDENCE_SOURCE_OF_TRUTH.md",
+          "lineNumber": 98,
+          "line": "If the run is not traceable to Git or CI metadata, the state zip still packages the evidence, but `release-ready-summary.json` marks it as diagnostic-only with `releaseReady: false`."
+        }
+      },
+      "checkedAt": "2026-04-23T04:50:35.6188482-03:00"
+    }
+  ],
+  "summary": {
+    "failed": 2,
+    "warnings": 0,
+    "passed": 13,
+    "total": 15
+  },
+  "extra": {
+    "totalScriptFiles": 98,
+    "conditionCount": 15,
+    "auditedGateScripts": 11
+  }
+}

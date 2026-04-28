@@ -1,0 +1,75 @@
+package {{configPackage}};
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.kernel.capabilities.CapabilityBindingDescriptor;
+import com.npdev.kernel.capabilities.CapabilityBindingManifest;
+
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+public final class GeneratedBindingManifestLoader {
+
+    private GeneratedBindingManifestLoader() {
+    }
+
+    public static CapabilityBindingManifest load(ObjectMapper objectMapper, String resourcePath) {
+        String normalizedResourcePath = normalizeResourcePath(resourcePath);
+        try (InputStream inputStream = GeneratedBindingManifestLoader.class.getClassLoader()
+                .getResourceAsStream(normalizedResourcePath)) {
+            if (inputStream == null) {
+                return new CapabilityBindingManifest(List.of());
+            }
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> json = objectMapper.readValue(inputStream, Map.class);
+            Object bindingsNode = json.get("bindings");
+            if (!(bindingsNode instanceof List<?> rawBindings)) {
+                return new CapabilityBindingManifest(List.of());
+            }
+
+            List<CapabilityBindingDescriptor> bindings = new ArrayList<>();
+            for (Object rawBinding : rawBindings) {
+                if (!(rawBinding instanceof Map<?, ?> bindingMap)) {
+                    continue;
+                }
+                bindings.add(new CapabilityBindingDescriptor(
+                        asString(bindingMap.get("capability")),
+                        asString(bindingMap.get("capabilityType")),
+                        asString(bindingMap.get("adapterId")),
+                        asString(bindingMap.get("adapterClass")),
+                        asString(bindingMap.get("environment")),
+                        asString(bindingMap.get("tenantId"))
+                ));
+            }
+            return new CapabilityBindingManifest(bindings).normalized();
+        } catch (Exception exception) {
+            throw new IllegalStateException(
+                    "Unable to load generated capability binding manifest from " + normalizedResourcePath,
+                    exception
+            );
+        }
+    }
+
+    private static String normalizeResourcePath(String resourcePath) {
+        if (resourcePath == null || resourcePath.isBlank()) {
+            throw new IllegalArgumentException("resourcePath must be non-blank");
+        }
+        String normalized = resourcePath.trim();
+        if (normalized.startsWith("classpath:")) {
+            normalized = normalized.substring("classpath:".length());
+        }
+        while (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        if (normalized.isBlank()) {
+            throw new IllegalArgumentException("resourcePath must resolve to a classpath resource");
+        }
+        return normalized;
+    }
+
+    private static String asString(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+}

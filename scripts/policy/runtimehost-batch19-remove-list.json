@@ -1,0 +1,16 @@
+{
+  "batch": "runtimehost-batch19",
+  "description": "Remove a small internal template/catalog/workspace controller slice.",
+  "rationale": [
+    "Keep the slice small and thematic to reduce risk.",
+    "Controllers only, no service removals.",
+    "No supported-core removals."
+  ],
+  "files": [
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/CapabilityTemplateCatalogController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/DomainWorkspaceCompositionController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/GuidedAssemblyWorkspaceController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/PanelTemplatePreviewController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/ProcedureTemplatePreviewController.java"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/expected-behavior.schema.json",
+  "title": "NPDev AI Expected Behavior",
+  "type": "object",
+  "required": ["schemaVersion", "scenarioId", "expectedClass"],
+  "properties": {
+    "schemaVersion": { "const": "ai-expected-behavior.v1" },
+    "scenarioId": { "type": "string" },
+    "comparisonMode": { "enum": ["exact", "policy"], "default": "exact" },
+    "expectedClass": { "type": "string" },
+    "assertions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "equals"],
+        "properties": {
+          "path": { "type": "string" },
+          "equals": {},
+          "mode": { "enum": ["exact", "unordered"], "default": "exact" }
+        },
+        "additionalProperties": true
+      },
+      "default": []
+    }
+  },
+  "additionalProperties": true
+}

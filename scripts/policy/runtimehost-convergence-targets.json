@@ -1,0 +1,18 @@
+{
+  "policyVersion": 1,
+  "description": "Initial RuntimeHost convergence targets. Keep these conservative and tighten after each successful reduction batch.",
+  "targets": {
+    "controllerInventoryMax": 95,
+    "supportedControllersMin": 8,
+    "serviceInventoryMax": 119,
+    "supportedServicesMin": 41,
+    "requireDeadZeroReferenceCountNonIncreasing": true,
+    "requireSupportedCoreShareNonDecreasing": true,
+    "allowMissingDetailedBreakdowns": true
+  },
+  "notes": [
+    "This file starts from the currently observed footprint baseline.",
+    "Tighten max values only after a successful reduction batch.",
+    "Do not lower supported minimums; convergence must not reduce supported-core coverage."
+  ]
+}

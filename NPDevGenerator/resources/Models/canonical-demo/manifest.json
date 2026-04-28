@@ -1,0 +1,29 @@
+{
+  "id": "canonical-demo",
+  "title": "Canonical Demo",
+  "complexity": "canonical",
+  "mainFlow": "CreateAppointment",
+  "purpose": "Platform-owned reference sample used to prove the canonical CRUD, lifecycle, orchestration, and metadata surface together.",
+  "businessStory": "A clinic schedules appointments, completes visits, and triggers downstream claim creation and notification behavior from governed runtime semantics.",
+  "features": [
+    "concept",
+    "reference",
+    "lifecycle",
+    "orchestration",
+    "notification",
+    "event",
+    "trace",
+    "metadata"
+  ],
+  "inputFiles": [],
+  "walkthrough": [
+    "Inspect the model and confirm the four canonical concepts are present.",
+    "Review the CreateAppointment flow and the Appointment lifecycle transitions.",
+    "Generate the sample and inspect the output runtime surfaces and compiled metadata."
+  ],
+  "expectedOutcomes": [
+    "The canonical demo remains the stable platform specimen.",
+    "Appointment lifecycle and orchestration metadata are present in generated output.",
+    "Generated runtime surfaces are suitable for documentation, screenshots, and regression checks."
+  ]
+}

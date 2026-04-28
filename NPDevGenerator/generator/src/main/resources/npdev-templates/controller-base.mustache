@@ -1,0 +1,80 @@
+package {{packageName}};
+
+import {{entityPackage}}.{{entityName}};
+import {{servicePackage}}.{{entityName}}Service;
+import {{dtoPackage}}.{{entityName}}CreateRequest;
+import {{dtoPackage}}.{{entityName}}UpdateRequest;
+
+import org.springframework.http.ResponseEntity;
+
+import java.net.URI;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+public class {{entityName}}ControllerBase {
+
+    protected final {{entityName}}Service service;
+
+    public {{entityName}}ControllerBase({{entityName}}Service service) {
+        this.service = service;
+    }
+
+    protected ResponseEntity<?> getByIdBase(UUID id) {
+        Optional<{{entityName}}> opt = service.getById(id);
+        return opt.<ResponseEntity<?>>map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    protected ResponseEntity<List<{{entityName}}>> listBase() {
+        return ResponseEntity.ok(service.list());
+    }
+
+    protected ResponseEntity<?> createBase({{entityName}}CreateRequest request) {
+        try {
+            {{entityName}} created = service.create(request);
+
+            try {
+                java.lang.reflect.Method getId = created.getClass().getMethod("getId");
+                Object idVal = getId.invoke(created);
+                if (idVal != null) {
+                    return ResponseEntity.created(URI.create("/api/{{route}}/" + idVal)).body(created);
+                }
+            } catch (Exception ignored) {}
+
+            return ResponseEntity.ok(created);
+        } catch (com.npdev.runtime.support.GeneratedCrudRuntimeSupport.InvariantViolationException ex) {
+            return ResponseEntity.status(ex.statusCode()).body(ex.toResponseBody());
+        } catch (com.npdev.generated.services.{{entityName}}ServiceBase.UniqueViolation ex) {
+            return ResponseEntity.status(409).body(ex.getMessage());
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(ex.getMessage());
+        }
+    }
+
+    protected ResponseEntity<?> updateBase(UUID id, {{entityName}}UpdateRequest request) {
+        try {
+            Optional<{{entityName}}> updated = service.update(id, request);
+            return updated.<ResponseEntity<?>>map(ResponseEntity::ok)
+                    .orElseGet(() -> ResponseEntity.notFound().build());
+        } catch (com.npdev.runtime.support.GeneratedCrudRuntimeSupport.InvariantViolationException ex) {
+            return ResponseEntity.status(ex.statusCode()).body(ex.toResponseBody());
+        } catch (com.npdev.generated.services.{{entityName}}ServiceBase.UniqueViolation ex) {
+            return ResponseEntity.status(409).body(ex.getMessage());
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(ex.getMessage());
+        }
+    }
+
+    protected ResponseEntity<?> deleteBase(UUID id) {
+        try {
+            boolean ok = service.delete(id);
+            if (!ok) return ResponseEntity.notFound().build();
+            return ResponseEntity.noContent().build();
+        } catch (com.npdev.runtime.support.GeneratedCrudRuntimeSupport.InvariantViolationException ex) {
+            return ResponseEntity.status(ex.statusCode()).body(ex.toResponseBody());
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(ex.getMessage());
+        }
+    }
+}

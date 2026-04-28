@@ -1,0 +1,38 @@
+﻿{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "$id":  "https://npdev.local/contracts/generation-report.schema.json",
+    "title":  "NPDev Generation Report",
+    "type":  "object",
+    "additionalProperties":  true,
+    "properties":  {
+                       "contractVersion":  {
+                                               "description":  "Generation report contract version.",
+                                               "type":  "string"
+                                           },
+                       "status":  {
+                                      "description":  "Overall generation result.",
+                                      "type":  "string"
+                                  },
+                       "artifacts":  {
+                                         "type":  "array",
+                                         "description":  "Artifacts emitted by the generator.",
+                                         "items":  {
+                                                       "type":  "object",
+                                                       "additionalProperties":  true
+                                                   }
+                                     },
+                       "diagnostics":  {
+                                           "type":  "array",
+                                           "description":  "Warnings and errors discovered during generation.",
+                                           "items":  {
+                                                         "type":  "object",
+                                                         "additionalProperties":  true
+                                                     }
+                                       }
+                   },
+    "required":  [
+                     "contractVersion",
+                     "status",
+                     "artifacts"
+                 ]
+}

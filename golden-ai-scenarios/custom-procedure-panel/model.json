@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "namespace": "npdev.beta.training.custom",
+  "concepts": [
+    {
+      "name": "Learner",
+      "fields": ["id", "name", "score", "status"]
+    },
+    {
+      "name": "Assessment",
+      "fields": ["id", "learnerId", "score"]
+    }
+  ],
+  "procedures": [
+    {
+      "name": "promote-learner"
+    }
+  ],
+  "panels": [
+    {
+      "name": "readiness-panel"
+    }
+  ]
+}

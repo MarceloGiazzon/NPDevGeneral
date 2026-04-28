@@ -1,0 +1,45 @@
+{
+  "packageFormatVersion": "1.0",
+  "packageId": "custom-procedure-package",
+  "displayName": "Generic Custom Procedure Package",
+  "version": "1.0.0",
+  "description": "Built-in sealed plugin package for the generic custom procedure adapter path.",
+  "provider": "NPDev",
+  "compatibility": {
+    "npdevRuntimeApiVersion": "1.0",
+    "minBootstrapVersion": "1.0.0"
+  },
+  "trust": {
+    "mode": "internal",
+    "source": "np-authored",
+    "level": "trusted"
+  },
+  "signature": {
+    "algorithm": "sha256",
+    "digest": "npdev-custom-procedure-sha256-demo",
+    "status": "verified",
+    "verifiedBy": "npdev-dev-trust"
+  },
+  "provenance": {
+    "sourceType": "internal-bundle",
+    "sourceLocation": "classpath:npdev/plugin-packages/custom-procedure.package.json",
+    "publishedAt": "2026-03-18T00:00:00Z",
+    "attestation": "npdev-authored"
+  },
+  "artifacts": [
+    {
+      "kind": "runtimeRefBundle",
+      "path": "built-in://custom-procedure"
+    }
+  ],
+  "capabilities": [
+    {
+      "capability": "customExtension",
+      "operation": "run",
+      "adapterId": "plugin:custom-procedure"
+    }
+  ],
+  "pluginManifest": {
+    "path": "npdev/plugins/dev.plugin-manifest.json"
+  }
+}

@@ -1,0 +1,87 @@
+package com.npdev.generated.runtime.model;
+
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledModelCanonicalJsonReader;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+
+@Component
+public final class NPDevModelProvider {
+    private final Path compiledModelPath;
+    private final CompiledModel compiledModel;
+
+    public NPDevModelProvider(
+            @Value("${npdev.compiled-model.path:${npdev.model.path:{{compiledModelPathDefault}}}}") String configuredCompiledModelPath
+    ) {
+        if (configuredCompiledModelPath == null || configuredCompiledModelPath.isBlank()) {
+            throw new IllegalArgumentException("npdev.compiled-model.path must be configured");
+        }
+
+        Path resolvedPath = Paths.get(configuredCompiledModelPath).toAbsolutePath().normalize();
+        if (Files.exists(resolvedPath)) {
+            this.compiledModelPath = resolvedPath;
+            this.compiledModel = loadCompiledModel(this.compiledModelPath);
+            return;
+        }
+
+        Path classpathCompiledModel = extractClasspathCompiledModel("/npdev/compiled-model.json");
+        if (classpathCompiledModel != null) {
+            this.compiledModelPath = classpathCompiledModel;
+            this.compiledModel = loadCompiledModel(this.compiledModelPath);
+            return;
+        }
+
+        throw new IllegalStateException(
+                "NPDev compiled model file not found. Checked configured path: " + resolvedPath +
+                " and classpath resource: /npdev/compiled-model.json"
+        );
+    }
+
+    public Path modelPath() {
+        return compiledModelPath;
+    }
+
+    public Path compiledModelPath() {
+        return compiledModelPath;
+    }
+
+    public CompiledModel compiledModel() {
+        return compiledModel;
+    }
+
+    private static CompiledModel loadCompiledModel(Path compiledModelPath) {
+        try {
+            return CompiledModelCanonicalJsonReader.read(compiledModelPath);
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to load NPDev compiled model: " + compiledModelPath, e);
+        }
+    }
+
+    private static Path extractClasspathCompiledModel(String resourcePath) {
+        try {
+            ClassPathResource resource = new ClassPathResource(resourcePath.startsWith("/") ? resourcePath.substring(1) : resourcePath);
+            if (!resource.exists()) {
+                return null;
+            }
+
+            Path tempFile = Files.createTempFile("npdev-compiled-model-", ".json");
+            tempFile.toFile().deleteOnExit();
+
+            try (InputStream inputStream = resource.getInputStream()) {
+                Files.copy(inputStream, tempFile, StandardCopyOption.REPLACE_EXISTING);
+            }
+
+            return tempFile.toAbsolutePath().normalize();
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to extract classpath NPDev compiled model from " + resourcePath, e);
+        }
+    }
+}

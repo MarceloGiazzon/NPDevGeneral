@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "ai-expected-procedure-behavior.v1",
+  "procedureId": "promote-learner",
+  "expectedClass": "PASS_PROCEDURE",
+  "assertions": [
+    {
+      "path": "actual.observations.customProcedure.executionMode",
+      "equals": "governed"
+    },
+    {
+      "path": "actual.observations.customProcedure.trust",
+      "equals": "trusted"
+    }
+  ]
+}

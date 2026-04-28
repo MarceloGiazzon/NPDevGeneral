@@ -1,0 +1,220 @@
+package {{packageName}};
+
+import com.npdev.runtime.support.GeneratedCrudRuntimeSupport;
+import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.concepts.ConceptGateway;
+import com.npdev.kernel.concepts.ConceptGatewaySemanticException;
+import com.npdev.kernel.concepts.ConceptReadRequest;
+import com.npdev.kernel.concepts.ConceptWriteRequest;
+import {{entityPackage}}.{{entityName}};
+import com.npdev.kernel.ports.PersistenceCapability;
+import {{repoPackage}}.{{entityName}}Repository;
+import {{dtoPackage}}.{{entityName}}CreateRequest;
+import {{dtoPackage}}.{{entityName}}UpdateRequest;
+
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+
+public class {{entityName}}ServiceBase {
+
+    protected final {{entityName}}Repository repo;
+    protected final PersistenceCapability<{{entityName}}, UUID> persistence;
+    protected final GeneratedCrudRuntimeSupport runtimeSupport;
+    protected final ConceptGateway conceptGateway;
+    private static final Set<String> ALLOWED_MUTATION_TOPICS = buildAllowedMutationTopics();
+
+    public {{entityName}}ServiceBase(
+            {{entityName}}Repository repo,
+            GeneratedCrudRuntimeSupport runtimeSupport,
+            ConceptGateway conceptGateway
+    ) {
+        this.repo = repo;
+        this.runtimeSupport = runtimeSupport;
+        this.conceptGateway = conceptGateway;
+        this.persistence = GeneratedCrudRuntimeSupport.persistenceCapability(
+                repo::findById,
+                repo::findAll,
+                repo::save,
+                repo::existsById,
+                repo::deleteById,
+                (fieldName, value, excludeId) -> {
+                    if (fieldName == null || value == null) return false;
+
+{{#uniqueFields}}
+                    if ("{{name}}".equalsIgnoreCase(fieldName)) {
+{{#isString}}
+                        String normalized = value.toString().trim();
+                        if (normalized.isEmpty()) return false;
+                        if (excludeId == null) {
+                            return repo.existsBy{{capName}}IgnoreCase(normalized);
+                        }
+                        return repo.existsBy{{capName}}IgnoreCaseAndIdNot(normalized, excludeId);
+{{/isString}}
+{{^isString}}
+                        {{boxedJavaType}} typed = ({{boxedJavaType}}) value;
+                        if (excludeId == null) {
+                            return repo.existsBy{{capName}}(typed);
+                        }
+                        return repo.existsBy{{capName}}AndIdNot(typed, excludeId);
+{{/isString}}
+                    }
+{{/uniqueFields}}
+                    return false;
+                }
+        );
+    }
+
+    public Optional<{{entityName}}> getById(UUID id) {
+        return persistence.findById(id);
+    }
+
+    public List<{{entityName}}> list() {
+        return persistence.findAll();
+    }
+
+    @Transactional
+    public {{entityName}} create({{entityName}}CreateRequest dto) {
+        if (dto == null) {
+            throw new IllegalArgumentException("Request body is required");
+        }
+        Map<String, Object> createPayload = runtimeSupport.buildCreateInvariantPayload("{{entityName}}", dto);
+        UUID generatedId = runtimeSupport.ensureGeneratedId(createPayload);
+        enforceWithKernel("{{entityName}}", createPayload);
+        enforceWithConceptGateway("{{conceptName}}", generatedId, createPayload);
+
+        {{entityName}} e = new {{entityName}}();
+        runtimeSupport.assignGeneratedId(e, generatedId);
+        runtimeSupport.applyCreateFields("{{entityName}}", dto, e);
+
+        {{entityName}} created = persistence.save(e);
+{{#emitCreatedEvent}}
+        publishMutationEvent("created", created.getId(), created);
+{{/emitCreatedEvent}}
+        return created;
+    }
+
+    @Transactional
+    public Optional<{{entityName}}> update(UUID id, {{entityName}}UpdateRequest dto) {
+        if (dto == null) {
+            throw new IllegalArgumentException("Request body is required");
+        }
+
+        Optional<{{entityName}}> opt = persistence.findById(id);
+        if (opt.isEmpty()) return Optional.empty();
+
+        {{entityName}} existing = opt.get();
+        String previousLifecycleStatus = runtimeSupport.captureLifecycleStatus("{{entityName}}", existing);
+        Map<String, Object> updatePayload = runtimeSupport.buildUpdateInvariantPayload("{{entityName}}", id, existing, dto);
+        enforceWithKernel("{{entityName}}", updatePayload);
+        enforceWithConceptGateway("{{conceptName}}", id, updatePayload);
+        runtimeSupport.applyUpdateFields("{{entityName}}", dto, existing);
+
+        {{entityName}} updated = persistence.save(existing);
+        runtimeSupport.publishLifecycleTransitionEvent("{{entityName}}", previousLifecycleStatus, updated, updatePayload);
+{{#emitUpdatedEvent}}
+        publishMutationEvent("updated", updated.getId(), updated);
+{{/emitUpdatedEvent}}
+        return Optional.of(updated);
+    }
+
+    @Transactional
+    public boolean delete(UUID id) {
+        if (!persistence.existsById(id)) return false;
+        enforceDeleteWithConceptGateway("{{conceptName}}", id);
+        persistence.deleteById(id);
+{{#emitDeletedEvent}}
+        publishMutationEvent("deleted", id, null);
+{{/emitDeletedEvent}}
+        return true;
+    }
+
+    public static final class UniqueViolation extends RuntimeException {
+        public UniqueViolation(String message) {
+            super(message);
+        }
+    }
+
+    private static Set<String> buildAllowedMutationTopics() {
+        Set<String> topics = new LinkedHashSet<>();
+{{#allowedMutationTopics}}
+        topics.add("{{value}}");
+{{/allowedMutationTopics}}
+        return topics;
+    }
+
+    private void enforceWithKernel(String entityName, Map<String, Object> payload) {
+        List<GeneratedCrudRuntimeSupport.InvariantViolationDetail> violations = runtimeSupport.validateEntityDetailed(
+                entityName,
+                payload,
+                (requestedEntityName, fieldName, value, excludeId, invariantPayload) ->
+                        persistence.existsUnique(fieldName, value, excludeId)
+        );
+        if (!violations.isEmpty()) {
+            throw new GeneratedCrudRuntimeSupport.InvariantViolationException(violations);
+        }
+    }
+
+    private void enforceWithConceptGateway(String conceptName, UUID id, Map<String, Object> payload) {
+        if (conceptGateway == null) {
+            throw new IllegalStateException("ConceptGateway is required for generated CRUD mutations.");
+        }
+        try {
+            conceptGateway.save(
+                    new ConceptWriteRequest(conceptName, String.valueOf(id), null, payload),
+                    generatedCrudExecutionContext()
+            );
+        } catch (ConceptGatewaySemanticException exception) {
+            throw new GeneratedCrudRuntimeSupport.InvariantViolationException(List.of(
+                    new GeneratedCrudRuntimeSupport.InvariantViolationDetail(
+                            exception.code(),
+                            conceptName,
+                            "conceptGateway",
+                            null,
+                            exception.getMessage(),
+                            false
+                    )
+            ));
+        }
+    }
+
+    private void enforceDeleteWithConceptGateway(String conceptName, UUID id) {
+        if (conceptGateway == null) {
+            throw new IllegalStateException("ConceptGateway is required for generated CRUD mutations.");
+        }
+        try {
+            conceptGateway.delete(
+                    new ConceptReadRequest(conceptName, String.valueOf(id), null),
+                    generatedCrudExecutionContext()
+            );
+        } catch (ConceptGatewaySemanticException exception) {
+            throw new GeneratedCrudRuntimeSupport.InvariantViolationException(List.of(
+                    new GeneratedCrudRuntimeSupport.InvariantViolationDetail(
+                            exception.code(),
+                            conceptName,
+                            "conceptGateway",
+                            null,
+                            exception.getMessage(),
+                            false
+                    )
+            ));
+        }
+    }
+
+    private ExecutionContext generatedCrudExecutionContext() {
+        return ExecutionContext.anonymous().withTag("executionMode", "headless");
+    }
+
+    private void publishMutationEvent(String action, UUID id, {{entityName}} snapshot) {
+        String topic = "{{entityName}}." + action;
+        if (!ALLOWED_MUTATION_TOPICS.contains(topic)) {
+            throw new IllegalStateException("Undeclared mutation event topic: " + topic);
+        }
+        runtimeSupport.publishMutationEvent("{{entityName}}", action, id, snapshot, ALLOWED_MUTATION_TOPICS);
+    }
+}

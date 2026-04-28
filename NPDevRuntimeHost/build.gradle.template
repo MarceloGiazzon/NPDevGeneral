@@ -1,0 +1,247 @@
+// Template only. NPDevGenerator materializes this file as build.gradle in an assembled FinalExec app.
+// Do not build directly from NPDevRuntimeHost; build from the generated final app root.
+
+import groovy.json.JsonSlurper
+
+plugins {
+    id 'org.springframework.boot' version '3.3.2'
+    id 'io.spring.dependency-management' version '1.1.6'
+    id 'java'
+    id 'org.flywaydb.flyway' version '10.10.0'
+}
+
+group = 'com.finalexec'
+version = '0.1.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+    implementation 'org.postgresql:postgresql:42.7.4'
+
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'com.networknt:json-schema-validator:1.5.6'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'com.tngtech.archunit:archunit-junit5:1.3.0'
+    testImplementation 'org.testcontainers:junit-jupiter:1.19.0'
+    testImplementation 'org.testcontainers:postgresql:1.19.0'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.awaitility:awaitility:4.2.0'
+    runtimeOnly 'com.h2database:h2'
+    testRuntimeOnly 'com.h2database:h2'
+
+    // Runtime extension jars live in ./libs
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+}
+
+def modelSpecificGeneratedAppTests = [
+        'com/finalexec/AsyncWaitResumeE2EIT.java',
+        'com/finalexec/CanonicalDemoBusinessE2EIT.java',
+        'com/finalexec/InvariantApiIntegrationTest.java',
+        'com/finalexec/ModelSyncStatusControllerIntegrationTest.java',
+        'com/finalexec/NonDefaultRuntimeSurfaceProfileIntegrationTest.java',
+        'com/finalexec/PermissionAwareUiMetadataServiceTest.java',
+        'com/finalexec/PublicationRollbackE2EIT.java',
+        'com/finalexec/RuntimeMetadataControllerIntegrationTest.java',
+        'com/finalexec/RuntimeMetadataServiceTest.java',
+        'com/finalexec/RuntimeMetadataValidationControllerIntegrationTest.java',
+        'com/finalexec/RuntimePluginFilesystemDiscoveryIntegrationTest.java',
+        'com/finalexec/RuntimePluginPackageRealizationServiceTest.java',
+        'com/finalexec/RuntimePluginRuntimeRefResolverTest.java',
+        'com/finalexec/RuntimeUiMetadataControllerIntegrationTest.java',
+        'com/finalexec/Stage12UiModelRuntimeIT.java',
+        'com/finalexec/Step01MultiConceptIntegrationTest.java',
+        'com/finalexec/Step02ReferencesEnumsDomainTypesIntegrationTest.java',
+        'com/finalexec/Step03NestedJsonbIntegrationTest.java',
+        'com/finalexec/Step04InvariantExplainabilityIntegrationTest.java',
+        'com/finalexec/Step05ProviderOverlapIntegrationTest.java',
+        'com/finalexec/Step06RoomOverlapIntegrationTest.java',
+        'com/finalexec/TenantIsolationIT.java'
+]
+
+def runtimeSurfaceManifest = new JsonSlurper().parse(file('src/main/resources/npdev/runtime-supported-controllers.json'))
+def supportedCoreControllerNames = (runtimeSurfaceManifest.supportedCoreControllers ?: []).collect { it.toString().trim() }.findAll { !it.isEmpty() }
+def supportedCoreServiceNames = (runtimeSurfaceManifest.supportedCoreServiceComponents ?: []).collect { it.toString().trim() }.findAll { !it.isEmpty() }
+def supportedCoreServicePatterns = (runtimeSurfaceManifest.supportedCoreServicePatterns ?: []).collect { it.toString().trim() }.findAll { !it.isEmpty() }
+
+def javaSourceRoot = file('src/main/java').canonicalFile
+def toRelativeSourcePath = { File sourceFile ->
+    sourceFile.canonicalPath
+            .substring(javaSourceRoot.path.length() + 1)
+            .replace(File.separator, '/')
+}
+
+def matchesSupportedPattern = { String simpleName, List<String> patterns ->
+    patterns.any { pattern ->
+        StringBuilder regex = new StringBuilder()
+        pattern.each { ch ->
+            if (ch == '*') {
+                regex.append('.*')
+            } else {
+                regex.append(java.util.regex.Pattern.quote(String.valueOf(ch)))
+            }
+        }
+        simpleName ==~ regex.toString()
+    }
+}
+
+def unsupportedRuntimeHostControllerSources = fileTree('src/main/java/com/finalexec/api') {
+    include '**/*Controller.java'
+}.files.collect(toRelativeSourcePath)
+        .findAll { sourcePath ->
+            String simpleName = sourcePath.tokenize('/').last().replace('.java', '')
+            !supportedCoreControllerNames.contains(simpleName)
+        }
+
+def unsupportedRuntimeHostServiceSources = fileTree('src/main/java/com/finalexec/npdev/service') {
+    include '**/*.java'
+}.files.collect(toRelativeSourcePath)
+        .findAll { sourcePath ->
+            String simpleName = sourcePath.tokenize('/').last().replace('.java', '')
+            !supportedCoreServiceNames.contains(simpleName)
+                    && !matchesSupportedPattern(simpleName, supportedCoreServicePatterns)
+        }
+
+sourceSets {
+    main {
+        java {
+            srcDir 'src/main/java'
+            srcDir 'npdev-generated/src/main/java'
+            exclude 'com/finalexec/HelloController.java'
+            unsupportedRuntimeHostControllerSources.each { exclude it }
+            unsupportedRuntimeHostServiceSources.each { exclude it }
+        }
+        resources {
+            srcDir 'src/main/resources'
+            srcDir 'npdev-generated/src/main/resources'
+        }
+    }
+    test {
+        java {
+            modelSpecificGeneratedAppTests.each { exclude it }
+        }
+    }
+}
+
+tasks.register('reportRuntimeSupportedSurface') {
+    group = 'verification'
+    description = 'Prints the supported-core RuntimeHost source allowlist used for packaging.'
+
+    doLast {
+        println "Supported-core controllers: ${supportedCoreControllerNames.sort(false)}"
+        println "Supported-core service components: ${supportedCoreServiceNames.sort(false)}"
+        println "Supported-core service patterns: ${supportedCoreServicePatterns.sort(false)}"
+        println "Excluded controller sources: ${unsupportedRuntimeHostControllerSources.sort(false)}"
+        println "Excluded service sources: ${unsupportedRuntimeHostServiceSources.sort(false)}"
+    }
+}
+
+/**
+ * Runtime resource policy:
+ * - application.* must come only from src/main/resources
+ * - generated resources may provide npdev metadata/static assets/templates
+ * - runtime schema-realization SQL comes from src/main/resources/db/migration
+ * - generated db/migration content is forbidden
+ * - schema-realization analysis artifacts must never go into runtime classpath
+ * - stateful upgrade management remains unsupported in the generated app
+ */
+tasks.named('processResources', Copy) {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    doFirst {
+        delete(destinationDir)
+    }
+
+    // Generated resources first, but NEVER generated runtime schema-realization SQL
+    from('npdev-generated/src/main/resources') {
+        exclude('**/application.yml')
+        exclude('**/application.yaml')
+        exclude('**/application.properties')
+        exclude('db/migration/**')
+        exclude('db/migration-plans/**')
+        exclude('db/schema-snapshots/**')
+    }
+
+    // Handwritten resources last and authoritative.
+    // This includes canonical runtime schema-realization SQL.
+    from('src/main/resources') {
+        exclude('db/migration-plans/**')
+        exclude('db/schema-snapshots/**')
+    }
+}
+
+tasks.register('enforceSingleMigrationSource') {
+    group = 'verification'
+    description = 'Ensures runtime schema-realization SQL comes from src/main/resources/db/migration only.'
+
+    doLast {
+        File generatedMigrationDir = file('npdev-generated/src/main/resources/db/migration')
+        if (generatedMigrationDir.exists()) {
+            def generatedFiles = fileTree(generatedMigrationDir).files
+            if (!generatedFiles.isEmpty()) {
+                throw new GradleException(
+                        "Generated runtime schema-realization SQL detected: ${generatedMigrationDir}. " +
+                        "Canonical runtime source is src/main/resources/db/migration."
+                )
+            }
+        }
+
+        def migrationJars = fileTree(dir: 'libs', include: ['npdev-migrations-*.jar']).files
+        if (!migrationJars.isEmpty()) {
+            throw new GradleException(
+                    "Schema-realization helper jar(s) found in libs/: ${migrationJars}. " +
+                        "Canonical runtime source is src/main/resources/db/migration, so stateful upgrade tooling must not be packaged into FinalExec."
+            )
+        }
+
+        File canonicalDir = file('src/main/resources/db/migration')
+        if (!canonicalDir.exists()) {
+            throw new GradleException(
+                    "Canonical schema-realization directory not found: ${canonicalDir}"
+            )
+        }
+
+        def canonicalFiles = fileTree(canonicalDir).matching {
+            include('**/*.sql')
+        }.files
+
+        if (canonicalFiles.isEmpty()) {
+            throw new GradleException(
+                    "No canonical schema-realization SQL files found in ${canonicalDir}"
+            )
+        }
+
+        println "Canonical schema-realization source: src/main/resources/db/migration"
+        println "Canonical schema-realization SQL files found: ${canonicalFiles.size()}"
+    }
+}
+
+tasks.named('bootRun') {
+    dependsOn 'enforceSingleMigrationSource'
+}
+
+tasks.named('test') {
+    dependsOn 'enforceSingleMigrationSource'
+    useJUnitPlatform()
+}
+
+flyway {
+    url = "jdbc:postgresql://localhost:5432/finalexec"
+    user = "finalexec"
+    password = "finalexec"
+    schemas = ['public']
+}

@@ -1,0 +1,44 @@
+package {{apiPackage}};
+
+import {{dtoPackage}}.EventPublishRequest;
+import {{dtoPackage}}.EventPublishResponse;
+import {{servicePackage}}.KernelFacade;
+import {{servicePackage}}.RuntimeContextService;
+import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.events.EventEnvelope;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
+
+@RestController
+@RequestMapping({"/api/v1/events", "/api/events"})
+public class EventIngestionController {
+    private final KernelFacade kernelFacade;
+    private final RuntimeContextService runtimeContextService;
+
+    public EventIngestionController(KernelFacade kernelFacade, RuntimeContextService runtimeContextService) {
+        this.kernelFacade = kernelFacade;
+        this.runtimeContextService = runtimeContextService;
+    }
+
+    @PostMapping("/publish")
+    public ResponseEntity<EventPublishResponse> publish(
+            @RequestBody EventPublishRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        ExecutionContext ctx = runtimeContextService.currentContext(httpRequest);
+        EventEnvelope envelope = kernelFacade.publishExternalEvent(
+                request == null ? null : request.eventName(),
+                request == null ? null : request.correlationId(),
+                request == null ? null : request.causationId(),
+                request == null ? Map.of() : request.payload(),
+                ctx
+        );
+        return ResponseEntity.accepted().body(EventPublishResponse.from(envelope));
+    }
+}

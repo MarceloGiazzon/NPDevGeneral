@@ -1,0 +1,43 @@
+package {{packageName}};
+
+import {{servicePackage}}.{{entityName}}Service;
+import {{dtoPackage}}.{{entityName}}CreateRequest;
+import {{dtoPackage}}.{{entityName}}UpdateRequest;
+
+import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
+
+@RestController
+@RequestMapping("/api/{{route}}")
+public class {{entityName}}Controller extends {{entityName}}ControllerBase {
+
+    public {{entityName}}Controller({{entityName}}Service service) {
+        super(service);
+    }
+
+    @GetMapping("/{id}")
+    public Object getById(@PathVariable UUID id) {
+        return getByIdBase(id);
+    }
+
+    @GetMapping
+    public Object list() {
+        return listBase();
+    }
+
+    @PostMapping
+    public Object create(@RequestBody {{entityName}}CreateRequest request) {
+        return createBase(request);
+    }
+
+    @PutMapping("/{id}")
+    public Object update(@PathVariable UUID id, @RequestBody {{entityName}}UpdateRequest request) {
+        return updateBase(id, request);
+    }
+
+    @DeleteMapping("/{id}")
+    public Object delete(@PathVariable UUID id) {
+        return deleteBase(id);
+    }
+}

@@ -1,0 +1,15 @@
+package com.npdev.kernel.auth;
+
+public enum Permission {
+    EXECUTE_FLOW,
+    READ_FLOW_DEFINITIONS,
+    READ_EXECUTIONS,
+    RESUME_EXECUTIONS,
+    PUBLISH_EVENTS,
+    READ_TRACES,
+    READ_AUDIT,
+    READ_ADMIN_HEALTH,
+    READ_FAILURES,
+    READ_STUCK,
+    READ_EVENTS
+}

@@ -1,0 +1,74 @@
+{
+  "policyVersion": "1.0.0",
+  "fieldPolicies": [
+    {
+      "concept": "Patient",
+      "fieldPath": "mrn",
+      "statesByRole": {
+        "ADMIN": "editable",
+        "SUPPORT": "readonly",
+        "USER": "hidden"
+      },
+      "messagesByState": {
+        "readonly": "Medical record numbers are visible to support staff but remain read-only.",
+        "hidden": "Medical record numbers are hidden for general users."
+      }
+    },
+    {
+      "concept": "Appointment",
+      "fieldPath": "checkInTime",
+      "statesByRole": {
+        "ADMIN": "editable",
+        "SUPPORT": "readonly",
+        "USER": "hidden"
+      },
+      "messagesByState": {
+        "readonly": "Check-in timestamps can be reviewed by support staff but only scheduling administrators can change them.",
+        "hidden": "Check-in timestamps are hidden for general users."
+      }
+    },
+    {
+      "concept": "Appointment",
+      "fieldPath": "checkOutTime",
+      "statesByRole": {
+        "ADMIN": "editable",
+        "SUPPORT": "readonly",
+        "USER": "hidden"
+      },
+      "messagesByState": {
+        "readonly": "Check-out timestamps can be reviewed by support staff but only scheduling administrators can change them.",
+        "hidden": "Check-out timestamps are hidden for general users."
+      }
+    }
+  ],
+  "actionPolicies": [
+    {
+      "name": "CreateAppointment",
+      "ownerName": "CreateAppointment",
+      "kind": "flow",
+      "denyMode": "disabled",
+      "denialMessage": "Creating appointments requires scheduling privileges."
+    },
+    {
+      "name": "CompleteAppointmentFlow#1",
+      "ownerName": "CompleteAppointmentFlow",
+      "kind": "orchestrationAction",
+      "denyMode": "hidden",
+      "denialMessage": "Insurance claim automation is reserved for privileged runtime roles."
+    },
+    {
+      "name": "CompleteAppointmentFlow#2",
+      "ownerName": "CompleteAppointmentFlow",
+      "kind": "orchestrationAction",
+      "denyMode": "disabled",
+      "denialMessage": "Sending completion notifications requires notification privileges."
+    },
+    {
+      "name": "queue-appointment-reminder",
+      "ownerName": "CreateAppointment",
+      "kind": "flowStep",
+      "denyMode": "disabled",
+      "denialMessage": "Reminder scheduling requires reminder-management privileges."
+    }
+  ]
+}

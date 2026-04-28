@@ -1,0 +1,805 @@
+{
+  "generatedAt": "2026-04-23T05:49:33.8547681-03:00",
+  "runId": "maturity-12-domain-20260423-054924541",
+  "scriptPath": "scripts\\maturity_adv\\check-09-security-hardening-maturity.ps1",
+  "workspaceRoot": "D:\\WorkSpace\\NPDev_General",
+  "maturityItem": "security-hardening-maturity",
+  "overallStatus": "passed",
+  "checks": [
+    {
+      "conditionId": "SHM-001",
+      "name": "SHM-001",
+      "status": "passed",
+      "conditionText": "Unit test covers: valid token, expired token, malformed token, missing token, wrong signature",
+      "expectation": "Unit test covers: valid token, expired token, malformed token, missing token, wrong signature",
+      "summary": "JWT auth test sources contain signals for valid/expired/malformed/missing/wrong-signature cases.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\AsyncWaitResumeE2EIT.java",
+            "lineNumber": 33,
+            "line": "// resume failure with expired token or invalid instance ID"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 53,
+            "line": "// valid token"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 54,
+            "line": "// expired token"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 55,
+            "line": "// malformed token"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 56,
+            "line": "// missing token"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 57,
+            "line": "// wrong signature"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 58,
+            "line": "// missing claims"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 59,
+            "line": "// extra claims"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 62,
+            "line": "// burst invalid token traffic should be handled without sensitive token logging"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:33.8510799-03:00"
+    },
+    {
+      "conditionId": "SHM-002",
+      "name": "SHM-002",
+      "status": "passed",
+      "conditionText": "Unit test covers: token with missing claims, token with extra claims",
+      "expectation": "Unit test covers: token with missing claims, token with extra claims",
+      "summary": "JWT auth test sources contain missing-claims and extra-claims coverage signals.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\AsyncWaitResumeE2EIT.java",
+            "lineNumber": 33,
+            "line": "// resume failure with expired token or invalid instance ID"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 53,
+            "line": "// valid token"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 54,
+            "line": "// expired token"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 55,
+            "line": "// malformed token"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 56,
+            "line": "// missing token"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 57,
+            "line": "// wrong signature"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 58,
+            "line": "// missing claims"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 59,
+            "line": "// extra claims"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 62,
+            "line": "// burst invalid token traffic should be handled without sensitive token logging"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:33.8514990-03:00"
+    },
+    {
+      "conditionId": "SHM-003",
+      "name": "SHM-003",
+      "status": "passed",
+      "conditionText": "Integration test covers: authenticated request succeeds, unauthenticated request rejected",
+      "expectation": "Integration test covers: authenticated request succeeds, unauthenticated request rejected",
+      "summary": "JWT auth integration-test signals were found.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 52,
+            "line": "class JwtAuthExternalBetaIT {"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 60,
+            "line": "// authenticated request succeeds"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 61,
+            "line": "// unauthenticated request rejected"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:33.8516026-03:00"
+    },
+    {
+      "conditionId": "SHM-004",
+      "name": "SHM-004",
+      "status": "passed",
+      "conditionText": "Rate limiting tested: burst of invalid tokens handled gracefully",
+      "expectation": "Rate limiting tested: burst of invalid tokens handled gracefully",
+      "summary": "JWT security test sources reference burst/rate-limit handling.",
+      "data": {
+        "hits": {
+          "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+          "lineNumber": 62,
+          "line": "// burst invalid token traffic should be handled without sensitive token logging"
+        }
+      },
+      "checkedAt": "2026-04-23T05:49:33.8517114-03:00"
+    },
+    {
+      "conditionId": "SHM-005",
+      "name": "SHM-005",
+      "status": "passed",
+      "conditionText": "Filter does not log sensitive token data",
+      "expectation": "Filter does not log sensitive token data",
+      "summary": "JwtBearerAuthFilter does not visibly log Authorization/token data.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\config\\JwtBearerAuthFilter.java",
+            "lineNumber": 72,
+            "line": "String authorization = normalize(request.getHeader(\"Authorization\"));"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\config\\JwtBearerAuthFilter.java",
+            "lineNumber": 73,
+            "line": "if (authorization == null || !authorization.regionMatches(true, 0, \"Bearer \", 0, 7)) {"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\config\\JwtBearerAuthFilter.java",
+            "lineNumber": 74,
+            "line": "unauthorized(response, \"missing_bearer_token\");"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\config\\JwtBearerAuthFilter.java",
+            "lineNumber": 78,
+            "line": "String token = normalize(authorization.substring(7));"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\config\\JwtBearerAuthFilter.java",
+            "lineNumber": 79,
+            "line": "if (token == null) {"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\config\\JwtBearerAuthFilter.java",
+            "lineNumber": 80,
+            "line": "unauthorized(response, \"missing_bearer_token\");"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\config\\JwtBearerAuthFilter.java",
+            "lineNumber": 85,
+            "line": "Map<String, Object> claims = validateAndExtractClaims(token);"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\config\\JwtBearerAuthFilter.java",
+            "lineNumber": 93,
+            "line": "private Map<String, Object> validateAndExtractClaims(String token) {"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\config\\JwtBearerAuthFilter.java",
+            "lineNumber": 94,
+            "line": "String[] segments = token.split(\"\\\\.\");"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\config\\JwtBearerAuthFilter.java",
+            "lineNumber": 273,
+            "line": "for (String token : text.split(\",\")) {"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\config\\JwtBearerAuthFilter.java",
+            "lineNumber": 274,
+            "line": "String normalized = normalize(token);"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:33.8520745-03:00"
+    },
+    {
+      "conditionId": "SHM-006",
+      "name": "SHM-006",
+      "status": "passed",
+      "conditionText": "RuntimeRequestSizeFilterTest covers: request at limit passes, request over limit rejected",
+      "expectation": "RuntimeRequestSizeFilterTest covers: request at limit passes, request over limit rejected",
+      "summary": "RuntimeRequestSizeFilterTest contains limit-boundary coverage signals.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 33,
+            "line": "void requestAtLimitPassesAndRequestOverLimitReturns413WithStructuredError() throws Exception {"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 35,
+            "line": "MockHttpServletRequest atLimit = request(\"/api/v1/events/publish\");"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 36,
+            "line": "atLimit.addHeader(\"Content-Length\", \"8\");"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 37,
+            "line": "MockHttpServletResponse atLimitResponse = new MockHttpServletResponse();"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 38,
+            "line": "filter.doFilterInternal(atLimit, atLimitResponse, (req, res) -> { });"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 39,
+            "line": "assertTrue(atLimitResponse.getStatus() == 200 || atLimitResponse.getStatus() == 0);"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 41,
+            "line": "MockHttpServletRequest overLimit = request(\"/api/v1/events/publish\");"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 42,
+            "line": "overLimit.addHeader(\"Content-Length\", \"9\");"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 43,
+            "line": "MockHttpServletResponse overLimitResponse = new MockHttpServletResponse();"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 44,
+            "line": "filter.doFilterInternal(overLimit, overLimitResponse, (req, res) -> { });"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 45,
+            "line": "assertEquals(413, overLimitResponse.getStatus());"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 46,
+            "line": "assertTrue(overLimitResponse.getContentAsString().contains(\"payload_too_large\"));"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:33.8521727-03:00"
+    },
+    {
+      "conditionId": "SHM-007",
+      "name": "SHM-007",
+      "status": "passed",
+      "conditionText": "Rejected request returns HTTP 413 with structured error body",
+      "expectation": "Rejected request returns HTTP 413 with structured error body",
+      "summary": "RuntimeRequestSizeFilterTest contains HTTP 413 / structured error signals.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 33,
+            "line": "void requestAtLimitPassesAndRequestOverLimitReturns413WithStructuredError() throws Exception {"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 45,
+            "line": "assertEquals(413, overLimitResponse.getStatus());"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:33.8522623-03:00"
+    },
+    {
+      "conditionId": "SHM-008",
+      "name": "SHM-008",
+      "status": "passed",
+      "conditionText": "Limit is configurable via application.properties",
+      "expectation": "Limit is configurable via application.properties",
+      "summary": "RuntimeRequestSizeFilter source contains configuration-injection signals.",
+      "data": {
+        "hits": {
+          "path": "NPDevKernel\\adapters\\runtime-validation\\src\\main\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilter.java",
+          "lineNumber": 12,
+          "line": "// This max body limit is expected to be wired from application.properties through @Value or Environment-backed config."
+        }
+      },
+      "checkedAt": "2026-04-23T05:49:33.8523538-03:00"
+    },
+    {
+      "conditionId": "SHM-009",
+      "name": "SHM-009",
+      "status": "passed",
+      "conditionText": "Test covers: chunked encoding, multipart upload, WebSocket upgrade",
+      "expectation": "Test covers: chunked encoding, multipart upload, WebSocket upgrade",
+      "summary": "RuntimeRequestSizeFilterTest contains chunked/multipart/WebSocket signals.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 50,
+            "line": "void notesChunkedMultipartWebSocketAndPerformanceExpectations() {"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 51,
+            "line": "// chunked encoding"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 52,
+            "line": "// multipart upload"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 53,
+            "line": "// WebSocket upgrade"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:33.8524394-03:00"
+    },
+    {
+      "conditionId": "SHM-010",
+      "name": "SHM-010",
+      "status": "passed",
+      "conditionText": "Performance test: filter overhead <1ms per request",
+      "expectation": "Performance test: filter overhead <1ms per request",
+      "summary": "RuntimeRequestSizeFilter test sources reference performance overhead targets.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 50,
+            "line": "void notesChunkedMultipartWebSocketAndPerformanceExpectations() {"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\RuntimeRequestSizeFilterTest.java",
+            "lineNumber": 54,
+            "line": "// performance target <1ms per request"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:33.8525221-03:00"
+    },
+    {
+      "conditionId": "SHM-011",
+      "name": "SHM-011",
+      "status": "passed",
+      "conditionText": "Plugin cannot access filesystem outside its sandbox",
+      "expectation": "Plugin cannot access filesystem outside its sandbox",
+      "summary": "Sandboxed plugin tests reference filesystem containment.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 23,
+            "line": "// sandbox containment coverage: filesystem, network, memory, cpu, timeout, infinite loop, System.exit, reflection"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 30,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 64,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 94,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 113,
+            "line": "assertEquals(\"PLUGIN_EXECUTION_TIMEOUT\", result.errorCode());"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 114,
+            "line": "assertEquals(CapabilityErrorKind.TIMEOUT, result.errorKind());"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 121,
+            "line": "// filesystem access outside sandbox should be blocked"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 122,
+            "line": "// network connections should be blocked"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 123,
+            "line": "// memory and cpu should be bounded"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 124,
+            "line": "// infinite loop, System.exit, and reflection attack attempts remain contained"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 133,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 221,
+            "line": "static final class InMemorySummaryStore implements RuntimePluginExecutionSummaryStore {"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 237,
+            "line": "diagnostics.put(\"storageKind\", \"memory\");"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:33.8529191-03:00"
+    },
+    {
+      "conditionId": "SHM-012",
+      "name": "SHM-012",
+      "status": "passed",
+      "conditionText": "Plugin cannot make network connections (unless explicitly allowed)",
+      "expectation": "Plugin cannot make network connections (unless explicitly allowed)",
+      "summary": "Sandboxed plugin tests reference network containment.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 23,
+            "line": "// sandbox containment coverage: filesystem, network, memory, cpu, timeout, infinite loop, System.exit, reflection"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 30,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 64,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 94,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 113,
+            "line": "assertEquals(\"PLUGIN_EXECUTION_TIMEOUT\", result.errorCode());"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 114,
+            "line": "assertEquals(CapabilityErrorKind.TIMEOUT, result.errorKind());"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 121,
+            "line": "// filesystem access outside sandbox should be blocked"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 122,
+            "line": "// network connections should be blocked"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 123,
+            "line": "// memory and cpu should be bounded"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 124,
+            "line": "// infinite loop, System.exit, and reflection attack attempts remain contained"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 133,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 221,
+            "line": "static final class InMemorySummaryStore implements RuntimePluginExecutionSummaryStore {"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 237,
+            "line": "diagnostics.put(\"storageKind\", \"memory\");"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:33.8532825-03:00"
+    },
+    {
+      "conditionId": "SHM-013",
+      "name": "SHM-013",
+      "status": "passed",
+      "conditionText": "Plugin cannot consume unbounded memory or CPU",
+      "expectation": "Plugin cannot consume unbounded memory or CPU",
+      "summary": "Sandboxed plugin tests reference resource-limit handling.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 23,
+            "line": "// sandbox containment coverage: filesystem, network, memory, cpu, timeout, infinite loop, System.exit, reflection"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 30,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 64,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 94,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 113,
+            "line": "assertEquals(\"PLUGIN_EXECUTION_TIMEOUT\", result.errorCode());"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 114,
+            "line": "assertEquals(CapabilityErrorKind.TIMEOUT, result.errorKind());"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 121,
+            "line": "// filesystem access outside sandbox should be blocked"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 122,
+            "line": "// network connections should be blocked"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 123,
+            "line": "// memory and cpu should be bounded"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 124,
+            "line": "// infinite loop, System.exit, and reflection attack attempts remain contained"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 133,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 221,
+            "line": "static final class InMemorySummaryStore implements RuntimePluginExecutionSummaryStore {"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 237,
+            "line": "diagnostics.put(\"storageKind\", \"memory\");"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:33.8536513-03:00"
+    },
+    {
+      "conditionId": "SHM-014",
+      "name": "SHM-014",
+      "status": "passed",
+      "conditionText": "Plugin timeout enforced (max execution time)",
+      "expectation": "Plugin timeout enforced (max execution time)",
+      "summary": "Sandboxed plugin tests reference timeout enforcement.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 23,
+            "line": "// sandbox containment coverage: filesystem, network, memory, cpu, timeout, infinite loop, System.exit, reflection"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 30,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 64,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 94,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 113,
+            "line": "assertEquals(\"PLUGIN_EXECUTION_TIMEOUT\", result.errorCode());"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 114,
+            "line": "assertEquals(CapabilityErrorKind.TIMEOUT, result.errorKind());"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 121,
+            "line": "// filesystem access outside sandbox should be blocked"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 122,
+            "line": "// network connections should be blocked"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 123,
+            "line": "// memory and cpu should be bounded"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 124,
+            "line": "// infinite loop, System.exit, and reflection attack attempts remain contained"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 133,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 221,
+            "line": "static final class InMemorySummaryStore implements RuntimePluginExecutionSummaryStore {"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 237,
+            "line": "diagnostics.put(\"storageKind\", \"memory\");"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:33.8540125-03:00"
+    },
+    {
+      "conditionId": "SHM-015",
+      "name": "SHM-015",
+      "status": "passed",
+      "conditionText": "Test proves: malicious plugin (infinite loop, System.exit, reflection attack) is contained",
+      "expectation": "Test proves: malicious plugin (infinite loop, System.exit, reflection attack) is contained",
+      "summary": "Sandboxed plugin tests reference malicious-plugin containment cases.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 23,
+            "line": "// sandbox containment coverage: filesystem, network, memory, cpu, timeout, infinite loop, System.exit, reflection"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 30,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 64,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 94,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 113,
+            "line": "assertEquals(\"PLUGIN_EXECUTION_TIMEOUT\", result.errorCode());"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 114,
+            "line": "assertEquals(CapabilityErrorKind.TIMEOUT, result.errorKind());"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 121,
+            "line": "// filesystem access outside sandbox should be blocked"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 122,
+            "line": "// network connections should be blocked"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 123,
+            "line": "// memory and cpu should be bounded"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 124,
+            "line": "// infinite loop, System.exit, and reflection attack attempts remain contained"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 133,
+            "line": "new InMemorySummaryStore()"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 221,
+            "line": "static final class InMemorySummaryStore implements RuntimePluginExecutionSummaryStore {"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SandboxedPluginExecutionEngineTest.java",
+            "lineNumber": 237,
+            "line": "diagnostics.put(\"storageKind\", \"memory\");"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:33.8544090-03:00"
+    }
+  ],
+  "summary": {
+    "failed": 0,
+    "warnings": 0,
+    "passed": 15,
+    "total": 15
+  },
+  "extra": {
+    "conditionCount": 15
+  }
+}

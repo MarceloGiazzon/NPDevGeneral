@@ -1,0 +1,16 @@
+{
+  "batch": "runtimehost-batch27",
+  "description": "Remove a small internal import/composition/readiness service slice.",
+  "rationale": [
+    "All entries are zero-reference dead/remove candidates from the current runtime footprint.",
+    "The services share a workflow/import/composition theme, which keeps the batch coherent.",
+    "Keeping to five services limits risk while still moving the service footprint down."
+  ],
+  "files": [
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\ImportConflictAnalysisService.java",
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\ImportCorrectionWorkspaceService.java",
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\ImportExecutionService.java",
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\MultiCapabilityCompositionService.java",
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\OperationalReadinessDashboardService.java"
+  ]
+}

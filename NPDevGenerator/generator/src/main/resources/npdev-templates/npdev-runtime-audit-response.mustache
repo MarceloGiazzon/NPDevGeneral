@@ -1,0 +1,42 @@
+package {{dtoPackage}};
+
+import com.npdev.kernel.audit.AuditRecord;
+
+import java.util.Map;
+import java.util.Set;
+
+public record AuditRecordResponse(
+        String auditId,
+        long timestampMs,
+        String tenantId,
+        String actorId,
+        Set<String> roles,
+        String action,
+        String resourceType,
+        String resourceId,
+        String outcome,
+        String reasonCode,
+        Map<String, String> tags,
+        Map<String, String> meta
+) {
+    public static AuditRecordResponse from(AuditRecord record) {
+        if (record == null) {
+            return null;
+        }
+        return new AuditRecordResponse(
+                record.auditId(),
+                record.timestampMs(),
+                record.tenantId(),
+                record.actorId(),
+                record.roles(),
+                record.action(),
+                record.resourceType(),
+                record.resourceId(),
+                record.outcome(),
+                record.reasonCode(),
+                record.tags(),
+                record.meta()
+        );
+    }
+}
+

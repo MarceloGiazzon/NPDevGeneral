@@ -1,0 +1,25 @@
+﻿{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "$id":  "https://npdev.local/contracts/plugin-package.schema.json",
+    "title":  "NPDev Plugin Package",
+    "type":  "object",
+    "additionalProperties":  true,
+    "properties":  {
+                       "contractVersion":  {
+                                               "description":  "Plugin package contract version.",
+                                               "type":  "string"
+                                           },
+                       "plugins":  {
+                                       "type":  "array",
+                                       "description":  "Plugin manifests included in this package.",
+                                       "items":  {
+                                                     "type":  "object",
+                                                     "additionalProperties":  true
+                                                 }
+                                   }
+                   },
+    "required":  [
+                     "contractVersion",
+                     "plugins"
+                 ]
+}

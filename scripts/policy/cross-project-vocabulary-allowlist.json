@@ -1,0 +1,59 @@
+{
+  "version": "1.0",
+  "roots": [
+    "NPDevContract\\dsl\\src\\main",
+    "NPDevContract\\schemas",
+    "NPDevKernel\\kernel\\src\\main",
+    "NPDevKernel\\adapters\\expression-cel\\src\\main",
+    "NPDevGenerator\\generator\\src\\main",
+    "NPDevRuntimeHost\\src\\main",
+    "NPDevEditor\\ui-react\\src"
+  ],
+  "terms": [
+    {
+      "name": "appointment",
+      "pattern": "\\bappointments?\\b|appointmentId|AppointmentRepository"
+    },
+    {
+      "name": "patient",
+      "pattern": "\\bpatients?\\b|patientId|PatientRepository"
+    },
+    {
+      "name": "provider-scheduling",
+      "pattern": "overlapsProvider|provider_id|Provider is already booked"
+    },
+    {
+      "name": "room-scheduling",
+      "pattern": "overlapsRoom|room_id|Room is already booked"
+    },
+    {
+      "name": "sample-overlap-helper",
+      "pattern": "providerHasOverlap|roomHasOverlap|appointmentHasOverlap|FROM appointments"
+    },
+    {
+      "name": "restaurant",
+      "pattern": "DiningTable|MenuItem|DiningOrder|PaymentReceipt|Pizza House|Sushi Bar|Vegan Bistro"
+    },
+    {
+      "name": "insurance-claim",
+      "pattern": "InsuranceClaim"
+    },
+    {
+      "name": "clinic-identifiers",
+      "pattern": "\\bmrn\\b|\\bnpi\\b|medicalRecordNumber|providerNpi"
+    },
+    {
+      "name": "expense-sample",
+      "pattern": "ExpenseRequest|employeeEmail|managerApproval|reimbursement"
+    },
+    {
+      "name": "contact-intake-sample",
+      "pattern": "ContactMessage|contact_intake|contactMessage"
+    },
+    {
+      "name": "restaurant-storage",
+      "pattern": "dining_orders|menu_items|payment_receipts|dining_tables"
+    }
+  ],
+  "allowlist": []
+}

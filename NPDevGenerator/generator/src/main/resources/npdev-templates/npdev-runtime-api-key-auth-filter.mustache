@@ -1,0 +1,133 @@
+package {{configPackage}};
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
+    public static final String CLAIMS_ATTRIBUTE = "npdev.auth.claims";
+    private static final String DEFAULT_API_KEY_MAPPINGS = "api-dev=dev:developer:ADMIN;dev-key=dev:developer:ADMIN";
+
+    private final Map<String, PrincipalClaims> byApiKey;
+
+    public RuntimeApiKeyAuthFilter(String encodedMappings) {
+        this.byApiKey = parseMappings(encodedMappings);
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String uri = request == null ? null : request.getRequestURI();
+        if (uri == null) {
+            return true;
+        }
+        return !(uri.startsWith("/api/") || uri.startsWith("/api/v1/"));
+    }
+
+    @Override
+    protected void doFilterInternal(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain filterChain
+    ) throws ServletException, IOException {
+        String apiKey = normalize(request.getHeader("X-Api-Key"));
+        if (apiKey == null) {
+            unauthorized(response, "missing_api_key");
+            return;
+        }
+        PrincipalClaims claims = byApiKey.get(apiKey);
+        if (claims == null) {
+            unauthorized(response, "invalid_api_key");
+            return;
+        }
+        request.setAttribute(CLAIMS_ATTRIBUTE, claims.toClaimMap());
+        filterChain.doFilter(request, response);
+    }
+
+    private static Map<String, PrincipalClaims> parseMappings(String encodedMappings) {
+        String raw = normalize(encodedMappings);
+        if (raw == null) {
+            raw = DEFAULT_API_KEY_MAPPINGS;
+        }
+        Map<String, PrincipalClaims> parsed = new LinkedHashMap<>();
+        String[] entries = raw.split(";");
+        for (String entry : entries) {
+            if (entry == null) {
+                continue;
+            }
+            String normalized = entry.trim();
+            if (normalized.isBlank()) {
+                continue;
+            }
+            int equalsIndex = normalized.indexOf('=');
+            if (equalsIndex <= 0 || equalsIndex >= normalized.length() - 1) {
+                continue;
+            }
+            String apiKey = normalize(normalized.substring(0, equalsIndex));
+            String mapping = normalized.substring(equalsIndex + 1);
+            PrincipalClaims claims = PrincipalClaims.parse(mapping);
+            if (apiKey != null && claims != null) {
+                parsed.put(apiKey, claims);
+            }
+        }
+        if (parsed.isEmpty()) {
+            parsed.put("api-dev", new PrincipalClaims("dev", "developer", Set.of("ADMIN")));
+            parsed.put("dev-key", new PrincipalClaims("dev", "developer", Set.of("ADMIN")));
+        }
+        return Map.copyOf(parsed);
+    }
+
+    private static void unauthorized(HttpServletResponse response, String code) throws IOException {
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType("application/json");
+        response.getWriter().write("{\"error\":\"" + code + "\"}");
+    }
+
+    private static String normalize(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isBlank() ? null : trimmed;
+    }
+
+    private record PrincipalClaims(String tenantId, String actorId, Set<String> roles) {
+        static PrincipalClaims parse(String encoded) {
+            String normalized = normalize(encoded);
+            if (normalized == null) {
+                return null;
+            }
+            String[] parts = normalized.split(":");
+            String tenantId = parts.length > 0 ? normalize(parts[0]) : null;
+            String actorId = parts.length > 1 ? normalize(parts[1]) : null;
+            Set<String> roles = parts.length > 2
+                    ? Arrays.stream(parts[2].split("\\|"))
+                    .map(RuntimeApiKeyAuthFilter::normalize)
+                    .filter(value -> value != null && !value.isBlank())
+                    .map(String::toUpperCase)
+                    .collect(Collectors.toCollection(LinkedHashSet::new))
+                    : Set.of("USER");
+            if (tenantId == null || actorId == null || roles.isEmpty()) {
+                return null;
+            }
+            return new PrincipalClaims(tenantId, actorId, Set.copyOf(roles));
+        }
+
+        Map<String, Object> toClaimMap() {
+            return Map.of(
+                    "tenant_id", tenantId,
+                    "actor_id", actorId,
+                    "roles", roles
+            );
+        }
+    }
+}

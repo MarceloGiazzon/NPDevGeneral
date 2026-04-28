@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "ai-expected-behavior.v1",
+  "scenarioId": "custom-procedure-admission-rejection",
+  "comparisonMode": "exact",
+  "expectedClass": "PASS_PROCEDURE",
+  "assertions": []
+}

@@ -1,0 +1,16 @@
+{
+  "batch": "runtimehost-batch15",
+  "description": "Remove a small workflow/composition/readiness internal-controller slice.",
+  "rationale": [
+    "Small thematic slice to keep risk low.",
+    "Controllers only, no service removals.",
+    "No supported-core removals."
+  ],
+  "files": [
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/CapabilityIntegrationPanelController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/FinalUserWorkflowController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/ImportExecutionController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/MultiCapabilityCompositionController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/OperationalReadinessDashboardController.java"
+  ]
+}

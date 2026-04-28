@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "ai-scenario.v1",
+  "scenarioId": "behavior-mismatch",
+  "kind": "ai-only-functional-beta",
+  "files": {
+    "model": "model.json",
+    "config": "config.json",
+    "expectedBehavior": "expected-behavior.json"
+  },
+  "runtime": {
+    "strictExecution": true,
+    "surfaceProfile": "supported-core"
+  },
+  "requestedSurfaces": ["supported-core"],
+  "operations": [
+    {
+      "type": "run",
+      "mode": "deterministic"
+    }
+  ],
+  "expectedOutcome": {
+    "class": "FAIL_BEHAVIOR_MISMATCH",
+    "mustPass": false
+  }
+}

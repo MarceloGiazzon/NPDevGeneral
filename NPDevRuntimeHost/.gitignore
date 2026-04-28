@@ -1,0 +1,15 @@
+.gradle/
+.idea/
+build/
+libs/
+out/
+target/
+npdev-generated/
+npdev-meta/
+runtime-data/
+*.log
+*.tmp
+*.bak
+*.iml
+build.gradle
+npdev-build-info.properties

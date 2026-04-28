@@ -1,0 +1,193 @@
+{
+  "generatedAt": "2026-04-23T05:49:08.5978314-03:00",
+  "runId": "maturity-adv-20260423-054907433",
+  "scriptPath": "scripts\\maturity_adv\\check-single-source-maturity-reporting.ps1",
+  "workspaceRoot": "D:\\WorkSpace\\NPDev_General",
+  "maturityItem": "single-source-maturity-reporting",
+  "overallStatus": "passed",
+  "checks": [
+    {
+      "name": "shared-maturity-vocabulary",
+      "status": "passed",
+      "expectation": "The maturity control mechanism should define one explicit vocabulary across all maturity dimensions and the suite runner.",
+      "summary": "All maturity dimension scripts and the suite runner exist.",
+      "data": {
+        "missing": [],
+        "existing": [
+          "scripts\\maturity_adv\\check-architecture-maturity.ps1",
+          "scripts\\maturity_adv\\check-engineering-process-release-discipline-maturity.ps1",
+          "scripts\\maturity_adv\\check-frontend-authoring-surface-maturity.ps1",
+          "scripts\\maturity_adv\\check-integrated-runtime-package-self-sufficiency-maturity.ps1",
+          "scripts\\maturity_adv\\check-single-source-maturity-reporting.ps1",
+          "scripts\\maturity_adv\\maturity-common.ps1",
+          "scripts\\maturity_adv\\run-maturity-adv-suite.ps1",
+          "scripts\\maturity_adv\\run-maturity-12-domain-suite.ps1"
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:08.5376984-03:00"
+    },
+    {
+      "name": "evidence-normalization",
+      "status": "passed",
+      "expectation": "Each maturity dimension should emit the same report schema so results are comparable and aggregatable.",
+      "summary": "All dimension reports use the expected normalized schema.",
+      "data": {
+        "findings": [
+          {
+            "id": "architecture",
+            "report": "scripts\\reports\\out\\architecture-maturity-report.json",
+            "exists": true,
+            "valid": true,
+            "parseError": null,
+            "missingProperties": []
+          },
+          {
+            "id": "engineering-process-release-discipline",
+            "report": "scripts\\reports\\out\\engineering-process-release-discipline-maturity-report.json",
+            "exists": true,
+            "valid": true,
+            "parseError": null,
+            "missingProperties": []
+          },
+          {
+            "id": "frontend-authoring-surface",
+            "report": "scripts\\reports\\out\\frontend-authoring-surface-maturity-report.json",
+            "exists": true,
+            "valid": true,
+            "parseError": null,
+            "missingProperties": []
+          },
+          {
+            "id": "integrated-runtime-package-self-sufficiency",
+            "report": "scripts\\reports\\out\\integrated-runtime-package-self-sufficiency-maturity-report.json",
+            "exists": true,
+            "valid": true,
+            "parseError": null,
+            "missingProperties": []
+          },
+          {
+            "id": "single-source-maturity-reporting",
+            "report": "scripts\\reports\\out\\single-source-maturity-reporting-maturity-report.json",
+            "exists": true,
+            "valid": true,
+            "parseError": null,
+            "missingProperties": []
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:08.5589770-03:00"
+    },
+    {
+      "name": "aggregation-logic",
+      "status": "passed",
+      "expectation": "One suite runner should aggregate the dimension reports into a single maturity decision.",
+      "summary": "Both suite runners and their aggregate maturity reports are present with the normalized schema and alias compatibility.",
+      "data": {
+        "suite12ReportMissingProperties": [],
+        "suite12HasDomains": true,
+        "suite12Script": "scripts\\maturity_adv\\run-maturity-12-domain-suite.ps1",
+        "suiteReportMissingProperties": [],
+        "suite12HasDimensions": true,
+        "suite12ReportExists": true,
+        "suiteReportExists": true,
+        "suite12ReportParseError": null,
+        "suiteReportParseError": null,
+        "suiteScript": "scripts\\maturity_adv\\run-maturity-adv-suite.ps1"
+      },
+      "checkedAt": "2026-04-23T05:49:08.5641914-03:00"
+    },
+    {
+      "name": "time-dimension",
+      "status": "passed",
+      "expectation": "The maturity mechanism should preserve run history so maturity can be trended over time.",
+      "summary": "Archived maturity run history exists.",
+      "data": {
+        "historyRoot": "scripts\\reports\\maturity",
+        "runDirectoryCount": 10,
+        "recentRunDirectories": [
+          "maturity-adv-20260423-054907433",
+          "maturity-adv-20260423-053958879",
+          "maturity-adv-20260423-045014817",
+          "maturity-adv-20260423-044424006",
+          "maturity-adv-20260423-032213999"
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:08.5714547-03:00"
+    },
+    {
+      "name": "ownership-and-freshness",
+      "status": "passed",
+      "expectation": "Maturity reports should be fresh enough to support decision-making and aligned to recent suite runs.",
+      "summary": "Suite and dimension reports are fresh.",
+      "data": {
+        "suiteAgeDays": 0.0,
+        "dimensionFreshness": [
+          {
+            "id": "architecture",
+            "isFresh": true,
+            "ageDays": 0.0,
+            "runId": "maturity-adv-20260423-054907433"
+          },
+          {
+            "id": "engineering-process-release-discipline",
+            "isFresh": true,
+            "ageDays": 0.0,
+            "runId": "maturity-adv-20260423-054907433"
+          },
+          {
+            "id": "frontend-authoring-surface",
+            "isFresh": true,
+            "ageDays": 0.0,
+            "runId": "maturity-adv-20260423-054907433"
+          },
+          {
+            "id": "integrated-runtime-package-self-sufficiency",
+            "isFresh": true,
+            "ageDays": 0.0,
+            "runId": "maturity-adv-20260423-054907433"
+          },
+          {
+            "id": "single-source-maturity-reporting",
+            "isFresh": true,
+            "ageDays": 0.0,
+            "runId": "single-source-maturity-reporting-20260423-054831747"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:08.5947387-03:00"
+    },
+    {
+      "name": "human-readable-decision-narrative",
+      "status": "passed",
+      "expectation": "The aggregate maturity decision should include a concise narrative, not only machine-oriented status fields.",
+      "summary": "The suite report contains a human-readable narrative.",
+      "data": {
+        "narrative": "All maturity dimensions currently satisfy the scripted control expectations.",
+        "suiteReportExists": true
+      },
+      "checkedAt": "2026-04-23T05:49:08.5965316-03:00"
+    },
+    {
+      "name": "exception-handling",
+      "status": "passed",
+      "expectation": "A maturity control system should have an explicit place to record waivers or temporary exceptions.",
+      "summary": "A maturity waiver file exists.",
+      "data": {
+        "waiverPath": "scripts\\policy\\maturity-waivers.json",
+        "exists": true
+      },
+      "checkedAt": "2026-04-23T05:49:08.5974398-03:00"
+    }
+  ],
+  "summary": {
+    "failed": 0,
+    "warnings": 0,
+    "passed": 7,
+    "total": 7
+  },
+  "extra": {
+    "historyRoot": "scripts\\reports\\maturity",
+    "suiteScript": "scripts\\maturity_adv\\run-maturity-adv-suite.ps1",
+    "suiteReport": "scripts\\reports\\out\\maturity-adv-suite-report.json"
+  }
+}

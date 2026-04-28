@@ -1,0 +1,349 @@
+{
+  "metadataManifestVersion" : "1.0.0",
+  "metadataVersion" : "1.0.0",
+  "catalog" : "validationHints",
+  "sourceCatalog" : "validation",
+  "generatedFrom" : "npdev/compiled-metadata.json",
+  "count" : 34,
+  "items" : [ {
+    "kind" : "expression",
+    "concept" : "Appointment",
+    "fieldPath" : "",
+    "invariantRef" : "PositiveDuration",
+    "expression" : "durationMinutes == null || durationMinutes > 0",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "expression",
+    "concept" : "Appointment",
+    "fieldPath" : "",
+    "invariantRef" : "ProviderSlotAvailable",
+    "expression" : "!overlapsProvider(providerId, scheduledAt, durationMinutes, id)",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "flowInvariantRef",
+    "concept" : "Appointment",
+    "fieldPath" : "",
+    "invariantRef" : "PositiveDuration",
+    "expression" : "",
+    "flowName" : "CreateAppointment",
+    "stepName" : "validate-appointment",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "required",
+    "concept" : "Appointment",
+    "fieldPath" : "id",
+    "invariantRef" : "required(id)",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "required",
+    "concept" : "Appointment",
+    "fieldPath" : "patientId",
+    "invariantRef" : "required(patientId)",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "required",
+    "concept" : "Appointment",
+    "fieldPath" : "providerId",
+    "invariantRef" : "required(providerId)",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "required",
+    "concept" : "Appointment",
+    "fieldPath" : "scheduledAt",
+    "invariantRef" : "required(scheduledAt)",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "required",
+    "concept" : "Appointment",
+    "fieldPath" : "status",
+    "invariantRef" : "required(status)",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "transitionRequired",
+    "concept" : "Appointment",
+    "fieldPath" : "checkInTime",
+    "invariantRef" : "",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "Scheduled->CheckedIn",
+    "event" : "AppointmentCheckedIn"
+  }, {
+    "kind" : "transitionRequired",
+    "concept" : "Appointment",
+    "fieldPath" : "checkOutTime",
+    "invariantRef" : "",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "CheckedIn->Completed",
+    "event" : "AppointmentCompleted"
+  }, {
+    "kind" : "required",
+    "concept" : "InsuranceClaim",
+    "fieldPath" : "appointmentId",
+    "invariantRef" : "required(appointmentId)",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "required",
+    "concept" : "InsuranceClaim",
+    "fieldPath" : "id",
+    "invariantRef" : "required(id)",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "required",
+    "concept" : "InsuranceClaim",
+    "fieldPath" : "patientId",
+    "invariantRef" : "required(patientId)",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "required",
+    "concept" : "InsuranceClaim",
+    "fieldPath" : "providerId",
+    "invariantRef" : "required(providerId)",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "required",
+    "concept" : "InsuranceClaim",
+    "fieldPath" : "status",
+    "invariantRef" : "required(status)",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "unique",
+    "concept" : "InsuranceClaim",
+    "fieldPath" : "appointmentId",
+    "invariantRef" : "InsuranceClaimAppointmentUnique",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "derivedField",
+    "concept" : "Patient",
+    "fieldPath" : "chartLabel",
+    "invariantRef" : "",
+    "expression" : "concat(lastName, ', ', firstName)",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "domainType",
+    "concept" : "Patient",
+    "fieldPath" : "mrn",
+    "invariantRef" : "MRN",
+    "expression" : "^[A-Z0-9-]+$",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "dynamicDefault",
+    "concept" : "Patient",
+    "fieldPath" : "reminderLanguage",
+    "invariantRef" : "",
+    "expression" : "preferredLanguage",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "expression",
+    "concept" : "Patient",
+    "fieldPath" : "",
+    "invariantRef" : "AllergyCodesUnique",
+    "expression" : "allergies.uniqueBy(code)",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "expression",
+    "concept" : "Patient",
+    "fieldPath" : "",
+    "invariantRef" : "PatientNameRequired",
+    "expression" : "firstName != null && firstName != '' && lastName != null && lastName != ''",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "required",
+    "concept" : "Patient",
+    "fieldPath" : "allergies[].code",
+    "invariantRef" : "required(allergies[].code)",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "required",
+    "concept" : "Patient",
+    "fieldPath" : "allergies[].substance",
+    "invariantRef" : "required(allergies[].substance)",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "required",
+    "concept" : "Patient",
+    "fieldPath" : "emergencyContact.name",
+    "invariantRef" : "required(emergencyContact.name)",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "required",
+    "concept" : "Patient",
+    "fieldPath" : "emergencyContact.phone",
+    "invariantRef" : "required(emergencyContact.phone)",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "required",
+    "concept" : "Patient",
+    "fieldPath" : "firstName",
+    "invariantRef" : "required(firstName)",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "required",
+    "concept" : "Patient",
+    "fieldPath" : "id",
+    "invariantRef" : "required(id)",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "required",
+    "concept" : "Patient",
+    "fieldPath" : "lastName",
+    "invariantRef" : "required(lastName)",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "staticDefault",
+    "concept" : "Patient",
+    "fieldPath" : "preferredLanguage",
+    "invariantRef" : "",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "unique",
+    "concept" : "Patient",
+    "fieldPath" : "mrn",
+    "invariantRef" : "PatientMrnUnique",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "domainType",
+    "concept" : "Provider",
+    "fieldPath" : "npi",
+    "invariantRef" : "NPI",
+    "expression" : "^\\d{10}$",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "required",
+    "concept" : "Provider",
+    "fieldPath" : "fullName",
+    "invariantRef" : "required(fullName)",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "required",
+    "concept" : "Provider",
+    "fieldPath" : "id",
+    "invariantRef" : "required(id)",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  }, {
+    "kind" : "unique",
+    "concept" : "Provider",
+    "fieldPath" : "npi",
+    "invariantRef" : "ProviderNpiUnique",
+    "expression" : "",
+    "flowName" : "",
+    "stepName" : "",
+    "transition" : "",
+    "event" : ""
+  } ]
+}

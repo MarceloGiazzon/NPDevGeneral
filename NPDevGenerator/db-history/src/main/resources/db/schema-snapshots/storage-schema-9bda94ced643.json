@@ -1,0 +1,50 @@
+{
+  "modelVersion" : "compiled-model",
+  "tables" : [ {
+    "name" : "patient",
+    "columns" : [ {
+      "name" : "date_of_birth",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : false
+    }, {
+      "name" : "first_name",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : false
+    }, {
+      "name" : "id",
+      "sqlType" : "UUID",
+      "required" : true,
+      "unique" : true
+    }, {
+      "name" : "last_name",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : false
+    }, {
+      "name" : "mrn",
+      "sqlType" : "VARCHAR",
+      "required" : false,
+      "unique" : true
+    } ]
+  }, {
+    "name" : "user",
+    "columns" : [ {
+      "name" : "email",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : true
+    }, {
+      "name" : "id",
+      "sqlType" : "UUID",
+      "required" : true,
+      "unique" : true
+    }, {
+      "name" : "name",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : false
+    } ]
+  } ]
+}

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "ai-expected-behavior.v1",
+  "scenarioId": "custom-panel-invalid-binding",
+  "comparisonMode": "exact",
+  "expectedClass": "PASS_PANEL",
+  "assertions": []
+}

@@ -1,0 +1,175 @@
+-- NPDev generated repeatable schema migration
+-- File: R__npdev_schema.sql
+-- Strategy:
+--  - CREATE TABLE IF NOT EXISTS
+--  - ALTER TABLE ADD COLUMN IF NOT EXISTS
+--  - SET NOT NULL for required fields
+--  - CREATE UNIQUE INDEX IF NOT EXISTS for unique fields
+--
+-- WARNING:
+--  - If required fields exist with NULLs, SET NOT NULL may fail.
+--  - Destructive changes (DROP COLUMN) are not generated.
+
+CREATE TABLE IF NOT EXISTS diningorders (
+  id UUID PRIMARY KEY
+);
+
+ALTER TABLE diningorders ADD COLUMN IF NOT EXISTS notes VARCHAR(255);
+ALTER TABLE diningorders ADD COLUMN IF NOT EXISTS opened_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE diningorders ADD COLUMN IF NOT EXISTS opened_by_staff_id UUID;
+ALTER TABLE diningorders ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE diningorders ADD COLUMN IF NOT EXISTS status VARCHAR(255);
+ALTER TABLE diningorders ADD COLUMN IF NOT EXISTS table_id UUID;
+ALTER TABLE diningorders ADD COLUMN IF NOT EXISTS tenant_id UUID;
+ALTER TABLE diningorders ADD COLUMN IF NOT EXISTS total_cents INTEGER;
+
+ALTER TABLE diningorders ALTER COLUMN opened_at SET NOT NULL;
+ALTER TABLE diningorders ALTER COLUMN opened_by_staff_id SET NOT NULL;
+ALTER TABLE diningorders ALTER COLUMN status SET NOT NULL;
+ALTER TABLE diningorders ALTER COLUMN table_id SET NOT NULL;
+ALTER TABLE diningorders ALTER COLUMN tenant_id SET NOT NULL;
+ALTER TABLE diningorders ALTER COLUMN total_cents SET NOT NULL;
+
+
+-- ----
+
+CREATE TABLE IF NOT EXISTS diningtables (
+  id UUID PRIMARY KEY
+);
+
+ALTER TABLE diningtables ADD COLUMN IF NOT EXISTS seats INTEGER;
+ALTER TABLE diningtables ADD COLUMN IF NOT EXISTS status VARCHAR(255);
+ALTER TABLE diningtables ADD COLUMN IF NOT EXISTS table_number VARCHAR(255);
+ALTER TABLE diningtables ADD COLUMN IF NOT EXISTS tenant_id UUID;
+
+ALTER TABLE diningtables ALTER COLUMN seats SET NOT NULL;
+ALTER TABLE diningtables ALTER COLUMN status SET NOT NULL;
+ALTER TABLE diningtables ALTER COLUMN table_number SET NOT NULL;
+ALTER TABLE diningtables ALTER COLUMN tenant_id SET NOT NULL;
+
+
+-- ----
+
+CREATE TABLE IF NOT EXISTS menuitems (
+  id UUID PRIMARY KEY
+);
+
+ALTER TABLE menuitems ADD COLUMN IF NOT EXISTS available BOOLEAN;
+ALTER TABLE menuitems ADD COLUMN IF NOT EXISTS category VARCHAR(255);
+ALTER TABLE menuitems ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+ALTER TABLE menuitems ADD COLUMN IF NOT EXISTS price_cents INTEGER;
+ALTER TABLE menuitems ADD COLUMN IF NOT EXISTS sku VARCHAR(255);
+ALTER TABLE menuitems ADD COLUMN IF NOT EXISTS tenant_id UUID;
+
+ALTER TABLE menuitems ALTER COLUMN available SET NOT NULL;
+ALTER TABLE menuitems ALTER COLUMN category SET NOT NULL;
+ALTER TABLE menuitems ALTER COLUMN name SET NOT NULL;
+ALTER TABLE menuitems ALTER COLUMN price_cents SET NOT NULL;
+ALTER TABLE menuitems ALTER COLUMN sku SET NOT NULL;
+ALTER TABLE menuitems ALTER COLUMN tenant_id SET NOT NULL;
+
+
+-- ----
+
+CREATE TABLE IF NOT EXISTS orderlines (
+  id UUID PRIMARY KEY
+);
+
+ALTER TABLE orderlines ADD COLUMN IF NOT EXISTS menu_item_id UUID;
+ALTER TABLE orderlines ADD COLUMN IF NOT EXISTS order_id UUID;
+ALTER TABLE orderlines ADD COLUMN IF NOT EXISTS quantity INTEGER;
+ALTER TABLE orderlines ADD COLUMN IF NOT EXISTS status VARCHAR(255);
+ALTER TABLE orderlines ADD COLUMN IF NOT EXISTS tenant_id UUID;
+ALTER TABLE orderlines ADD COLUMN IF NOT EXISTS unit_price_cents INTEGER;
+
+ALTER TABLE orderlines ALTER COLUMN menu_item_id SET NOT NULL;
+ALTER TABLE orderlines ALTER COLUMN order_id SET NOT NULL;
+ALTER TABLE orderlines ALTER COLUMN quantity SET NOT NULL;
+ALTER TABLE orderlines ALTER COLUMN status SET NOT NULL;
+ALTER TABLE orderlines ALTER COLUMN tenant_id SET NOT NULL;
+ALTER TABLE orderlines ALTER COLUMN unit_price_cents SET NOT NULL;
+
+
+-- ----
+
+CREATE TABLE IF NOT EXISTS paymentreceipts (
+  id UUID PRIMARY KEY
+);
+
+ALTER TABLE paymentreceipts ADD COLUMN IF NOT EXISTS amount_cents INTEGER;
+ALTER TABLE paymentreceipts ADD COLUMN IF NOT EXISTS order_id UUID;
+ALTER TABLE paymentreceipts ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE paymentreceipts ADD COLUMN IF NOT EXISTS provider VARCHAR(255);
+ALTER TABLE paymentreceipts ADD COLUMN IF NOT EXISTS tenant_id UUID;
+
+ALTER TABLE paymentreceipts ALTER COLUMN amount_cents SET NOT NULL;
+ALTER TABLE paymentreceipts ALTER COLUMN order_id SET NOT NULL;
+ALTER TABLE paymentreceipts ALTER COLUMN paid_at SET NOT NULL;
+ALTER TABLE paymentreceipts ALTER COLUMN provider SET NOT NULL;
+ALTER TABLE paymentreceipts ALTER COLUMN tenant_id SET NOT NULL;
+
+
+-- ----
+
+CREATE TABLE IF NOT EXISTS reservations (
+  id UUID PRIMARY KEY
+);
+
+ALTER TABLE reservations ADD COLUMN IF NOT EXISTS customer_name VARCHAR(255);
+ALTER TABLE reservations ADD COLUMN IF NOT EXISTS customer_phone VARCHAR(255);
+ALTER TABLE reservations ADD COLUMN IF NOT EXISTS party_size INTEGER;
+ALTER TABLE reservations ADD COLUMN IF NOT EXISTS reservation_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE reservations ADD COLUMN IF NOT EXISTS status VARCHAR(255);
+ALTER TABLE reservations ADD COLUMN IF NOT EXISTS table_id UUID;
+ALTER TABLE reservations ADD COLUMN IF NOT EXISTS tenant_id UUID;
+
+ALTER TABLE reservations ALTER COLUMN customer_name SET NOT NULL;
+ALTER TABLE reservations ALTER COLUMN party_size SET NOT NULL;
+ALTER TABLE reservations ALTER COLUMN reservation_at SET NOT NULL;
+ALTER TABLE reservations ALTER COLUMN status SET NOT NULL;
+ALTER TABLE reservations ALTER COLUMN table_id SET NOT NULL;
+ALTER TABLE reservations ALTER COLUMN tenant_id SET NOT NULL;
+
+
+-- ----
+
+CREATE TABLE IF NOT EXISTS staffmembers (
+  id UUID PRIMARY KEY
+);
+
+ALTER TABLE staffmembers ADD COLUMN IF NOT EXISTS active BOOLEAN;
+ALTER TABLE staffmembers ADD COLUMN IF NOT EXISTS email VARCHAR(255);
+ALTER TABLE staffmembers ADD COLUMN IF NOT EXISTS full_name VARCHAR(255);
+ALTER TABLE staffmembers ADD COLUMN IF NOT EXISTS role VARCHAR(255);
+ALTER TABLE staffmembers ADD COLUMN IF NOT EXISTS tenant_id UUID;
+
+ALTER TABLE staffmembers ALTER COLUMN active SET NOT NULL;
+ALTER TABLE staffmembers ALTER COLUMN email SET NOT NULL;
+ALTER TABLE staffmembers ALTER COLUMN full_name SET NOT NULL;
+ALTER TABLE staffmembers ALTER COLUMN role SET NOT NULL;
+ALTER TABLE staffmembers ALTER COLUMN tenant_id SET NOT NULL;
+
+
+-- ----
+
+CREATE TABLE IF NOT EXISTS tenants (
+  id UUID PRIMARY KEY
+);
+
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS active BOOLEAN;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS code VARCHAR(255);
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS display_name VARCHAR(255);
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS legal_name VARCHAR(255);
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS plan VARCHAR(255);
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS primary_contact_email VARCHAR(255);
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS timezone VARCHAR(255);
+
+ALTER TABLE tenants ALTER COLUMN active SET NOT NULL;
+ALTER TABLE tenants ALTER COLUMN code SET NOT NULL;
+ALTER TABLE tenants ALTER COLUMN display_name SET NOT NULL;
+ALTER TABLE tenants ALTER COLUMN plan SET NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_tenants_code ON tenants (code);
+
+-- ----
+

@@ -1,0 +1,35 @@
+﻿{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "$id":  "https://npdev.local/contracts/handoff-manifest.schema.json",
+    "title":  "NPDev Editor Handoff Manifest",
+    "type":  "object",
+    "additionalProperties":  true,
+    "properties":  {
+                       "contractVersion":  {
+                                               "description":  "Version of the Editor to Generator handoff contract.",
+                                               "type":  "string"
+                                           },
+                       "modelPath":  {
+                                         "description":  "Path to the exported model.json.",
+                                         "type":  "string"
+                                     },
+                       "configPath":  {
+                                          "description":  "Path to the exported config.json.",
+                                          "type":  "string"
+                                      },
+                       "validationReportPath":  {
+                                                    "description":  "Path to the validation report produced before export.",
+                                                    "type":  "string"
+                                                },
+                       "exportedAt":  {
+                                          "description":  "UTC timestamp of the handoff package creation.",
+                                          "type":  "string"
+                                      }
+                   },
+    "required":  [
+                     "contractVersion",
+                     "modelPath",
+                     "configPath",
+                     "validationReportPath"
+                 ]
+}

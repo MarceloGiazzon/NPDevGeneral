@@ -1,0 +1,24 @@
+package com.npdev.dsl.v1.ast;
+
+import java.util.List;
+import java.util.Map;
+
+public record QueryAst(
+        String name,
+        String concept,
+        String where,
+        List<String> orderBy,
+        Integer limit,
+        List<ProcedureParameterAst> parameters,
+        List<String> permissionRequirements,
+        String tracePolicy,
+        String auditPolicy,
+        Map<String, Object> metadata
+) {
+    public QueryAst {
+        orderBy = orderBy == null ? List.of() : List.copyOf(orderBy);
+        parameters = parameters == null ? List.of() : List.copyOf(parameters);
+        permissionRequirements = permissionRequirements == null ? List.of() : List.copyOf(permissionRequirements);
+        metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
+    }
+}

@@ -1,0 +1,19 @@
+package {{packageName}};
+
+public class {{entityName}}UpdateRequest {
+
+{{#fields}}
+    private {{boxedJavaType}} {{name}};
+{{/fields}}
+
+{{#fields}}
+    public {{boxedJavaType}} get{{capName}}() {
+        return this.{{name}};
+    }
+
+    public void set{{capName}}({{boxedJavaType}} {{name}}) {
+        this.{{name}} = {{name}};
+    }
+
+{{/fields}}
+}

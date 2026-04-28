@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "ai-custom-panel.v1",
+  "panelId": "readiness-panel",
+  "route": "/learners/readiness",
+  "dataSources": [
+    {
+      "name": "learners",
+      "concept": "Learner"
+    },
+    {
+      "name": "readiness",
+      "query": "LearnerReadiness"
+    }
+  ],
+  "visibleFields": ["id", "status"],
+  "actions": [
+    {
+      "name": "refresh",
+      "binding": "query",
+      "query": "LearnerReadiness"
+    },
+    {
+      "name": "filter",
+      "binding": "query",
+      "query": "LearnerStatusFilter"
+    }
+  ],
+  "layout": {
+    "type": "canvas",
+    "fields": ["id", "status"]
+  },
+  "widgets": []
+}

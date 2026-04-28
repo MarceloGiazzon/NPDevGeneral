@@ -1,0 +1,16 @@
+﻿{
+    "$schema":  "../../schemas/authoring/config.schema.json",
+    "configVersion":  "1.0",
+    "scenario":  {
+                     "name":  "invalid-output-path",
+                     "outputRoot":  ""
+                 },
+    "generator":  {
+                      "failIfModelMissing":  true,
+                      "failIfConfigMissing":  true,
+                      "cleanOutputBeforeGenerate":  true,
+                      "emitPluginAssets":  true,
+                      "emitRuntimeAssets":  true,
+                      "emitUiAssets":  true
+                  }
+}

@@ -1,0 +1,16 @@
+{
+  "batch": "runtimehost-batch29",
+  "description": "Remove a small internal semantic/role/rollback service slice.",
+  "rationale": [
+    "All entries are zero-reference dead/remove candidates from the current runtime footprint.",
+    "The services share semantic/role/rollback/workspace concerns.",
+    "This is the highest-risk slice in Pack D, so it remains capped at five services."
+  ],
+  "files": [
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\RichExplainabilityService.java",
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\RoleWorkspaceService.java",
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\ScenarioTemplateService.java",
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\SemanticGovernanceService.java",
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\SemanticRollbackService.java"
+  ]
+}

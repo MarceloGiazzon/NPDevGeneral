@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "ai-expected-behavior.v1",
+  "scenarioId": "behavior-mismatch",
+  "comparisonMode": "exact",
+  "expectedClass": "PASS_EXACT",
+  "assertions": [
+    {
+      "path": "actual.resultClass",
+      "equals": "PASS_EXACT"
+    },
+    {
+      "path": "actual.observations.model.concepts",
+      "equals": ["ArchivedLearner"],
+      "mode": "unordered"
+    }
+  ]
+}

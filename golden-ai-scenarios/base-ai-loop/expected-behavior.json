@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "ai-expected-behavior.v1",
+  "scenarioId": "base-ai-loop",
+  "comparisonMode": "exact",
+  "expectedClass": "PASS_EXACT",
+  "assertions": [
+    {
+      "path": "actual.overallStatus",
+      "equals": "passed"
+    },
+    {
+      "path": "actual.resultClass",
+      "equals": "PASS_EXACT"
+    },
+    {
+      "path": "actual.observations.runtime.profile",
+      "equals": "supported-core"
+    },
+    {
+      "path": "actual.observations.model.namespace",
+      "equals": "npdev.beta.training"
+    },
+    {
+      "path": "actual.observations.model.concepts",
+      "equals": ["Learner"],
+      "mode": "unordered"
+    },
+    {
+      "path": "actual.observations.model.procedures",
+      "equals": ["CalculateReadiness"],
+      "mode": "unordered"
+    },
+    {
+      "path": "actual.observations.model.panels",
+      "equals": ["LearnerProgress"],
+      "mode": "unordered"
+    }
+  ]
+}

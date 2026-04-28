@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/npdev-config-v1.schema.json",
+  "title": "NPDev Config v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "configVersion",
+    "scenario",
+    "generator",
+    "bootstrap",
+    "artifact",
+    "finalExec",
+    "database",
+    "runtime"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "configVersion": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "outputRoot"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "outputRoot": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "failIfModelMissing",
+        "failIfConfigMissing",
+        "cleanOutputBeforeGenerate",
+        "emitPluginAssets",
+        "emitRuntimeAssets",
+        "emitUiAssets"
+      ],
+      "properties": {
+        "failIfModelMissing": { "type": "boolean" },
+        "failIfConfigMissing": { "type": "boolean" },
+        "cleanOutputBeforeGenerate": { "type": "boolean" },
+        "emitPluginAssets": { "type": "boolean" },
+        "emitRuntimeAssets": { "type": "boolean" },
+        "emitUiAssets": { "type": "boolean" }
+      }
+    },
+    "bootstrap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "mergeStrategy"],
+      "properties": {
+        "root": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mergeStrategy": {
+          "type": "string",
+          "enum": ["clean-copy", "robocopy-merge"]
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "generatedFolderName", "libsFolderName", "metaFolderName"],
+      "properties": {
+        "root": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generatedFolderName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "libsFolderName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "metaFolderName": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "finalExec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "deleteBeforeMount"],
+      "properties": {
+        "root": {
+          "type": "string",
+          "minLength": 1
+        },
+        "deleteBeforeMount": {
+          "type": "boolean"
+        }
+      }
+    },
+    "database": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "host",
+        "port",
+        "database",
+        "username",
+        "password",
+        "adminDatabase",
+        "resetMode"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["docker-postgres", "postgres"]
+        },
+        "host": {
+          "type": "string",
+          "minLength": 1
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "database": {
+          "type": "string",
+          "minLength": 1
+        },
+        "username": {
+          "type": "string",
+          "minLength": 1
+        },
+        "password": {
+          "type": "string"
+        },
+        "adminDatabase": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resetMode": {
+          "type": "string",
+          "enum": ["reset", "preserve"]
+        },
+        "containerName": {
+          "type": "string"
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["springProfile", "serverPort", "javaArgs", "gradleTask"],
+      "properties": {
+        "springProfile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "serverPort": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "javaArgs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "gradleTask": {
+          "type": "string",
+          "enum": ["bootRun"]
+        }
+      }
+    },
+    "trialDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recommendedProfiles": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtimeUrl": {
+          "type": "string",
+          "minLength": 1
+        },
+        "databaseMode": {
+          "type": "string",
+          "enum": ["step0-h2", "docker-postgres", "postgres"]
+        },
+        "pluginDiscoveryMode": {
+          "type": "string",
+          "enum": ["classpath", "filesystem-folder"]
+        },
+        "pluginPackageDirectory": {
+          "type": "string",
+          "minLength": 1
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

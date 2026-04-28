@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "namespace": "npdev.beta.samples.users",
+  "concepts": [
+    {
+      "name": "User",
+      "fields": ["id", "name", "email", "active"]
+    }
+  ],
+  "procedures": [
+    {
+      "name": "create-users"
+    }
+  ],
+  "panels": [
+    {
+      "name": "user-admin-panel"
+    }
+  ]
+}

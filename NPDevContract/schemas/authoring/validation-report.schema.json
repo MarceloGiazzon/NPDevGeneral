@@ -1,0 +1,30 @@
+﻿{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "$id":  "https://npdev.local/contracts/validation-report.schema.json",
+    "title":  "NPDev Authoring Validation Report",
+    "type":  "object",
+    "additionalProperties":  true,
+    "properties":  {
+                       "contractVersion":  {
+                                               "description":  "Validation report contract version.",
+                                               "type":  "string"
+                                           },
+                       "status":  {
+                                      "description":  "Overall result: passed, warning, or failed.",
+                                      "type":  "string"
+                                  },
+                       "diagnostics":  {
+                                           "type":  "array",
+                                           "description":  "Validation diagnostics grouped by model/config path.",
+                                           "items":  {
+                                                         "type":  "object",
+                                                         "additionalProperties":  true
+                                                     }
+                                       }
+                   },
+    "required":  [
+                     "contractVersion",
+                     "status",
+                     "diagnostics"
+                 ]
+}

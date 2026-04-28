@@ -1,0 +1,452 @@
+package {{apiPackage}};
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import {{dtoPackage}}.AdminCircuitResponse;
+import {{dtoPackage}}.AdminIdempotencyResponse;
+import {{dtoPackage}}.ExecutionSummaryResponse;
+import {{dtoPackage}}.FlowExecutionResponse;
+import {{servicePackage}}.KernelFacade;
+import {{servicePackage}}.RuntimeContextService;
+import com.npdev.generated.runtime.model.NPDevModelProvider;
+import com.finalexec.npdev.migration.MigrationRiskAssessment;
+import com.finalexec.npdev.migration.MigrationRiskAssessmentBuilder;
+import com.finalexec.npdev.migration.ModelDiffPreview;
+import com.finalexec.npdev.migration.ModelDiffPreviewBuilder;
+import com.finalexec.npdev.migration.StorageSchemaFromCompiledModel;
+import com.finalexec.npdev.migration.StorageSchemaSnapshot;
+import com.finalexec.npdev.migration.RuntimeModelCompatibilityReport;
+import com.finalexec.npdev.migration.RuntimeModelCompatibilityReportBuilder;
+import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.ExecutionResult;
+import com.npdev.kernel.ExecutionStatus;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Properties;
+
+@RestController
+@RequestMapping({"/api/v1/admin", "/api/admin"})
+public class AdminController {
+    private static final ObjectMapper UI_MODEL_MAPPER = new ObjectMapper();
+    private static volatile JsonNode MODEL_EDITOR_DRAFT = null;
+    private static volatile JsonNode RULE_EDITOR_DRAFT = null;
+    private static volatile JsonNode ORCHESTRATION_EDITOR_DRAFT = null;
+
+    private final KernelFacade kernelFacade;
+    private final RuntimeContextService runtimeContextService;
+    private final NPDevModelProvider modelProvider;
+
+    public AdminController(KernelFacade kernelFacade, RuntimeContextService runtimeContextService, NPDevModelProvider modelProvider) {
+        this.kernelFacade = kernelFacade;
+        this.runtimeContextService = runtimeContextService;
+        this.modelProvider = modelProvider;
+    }
+
+    @GetMapping("/failures/recent")
+    public List<ExecutionSummaryResponse> listRecentFailures(
+            @RequestParam(required = false, defaultValue = "50") Integer limit,
+            @RequestParam(required = false, defaultValue = "0") Integer offset,
+            HttpServletRequest request
+    ) {
+        return kernelFacade.listRecentFailureExecutions(
+                        limit == null ? 50 : limit,
+                        offset == null ? 0 : offset,
+                        runtimeContextService.currentContext(request)
+                ).stream()
+                .map(ExecutionSummaryResponse::from)
+                .toList();
+    }
+
+    @GetMapping("/stuck/recent")
+    public List<ExecutionSummaryResponse> listRecentStuck(
+            @RequestParam(required = false, defaultValue = "50") Integer limit,
+            @RequestParam(required = false, defaultValue = "0") Integer offset,
+            HttpServletRequest request
+    ) {
+        return kernelFacade.listRecentStuckExecutions(
+                        limit == null ? 50 : limit,
+                        offset == null ? 0 : offset,
+                        runtimeContextService.currentContext(request)
+                ).stream()
+                .map(ExecutionSummaryResponse::from)
+                .toList();
+    }
+
+    @GetMapping("/circuits")
+    public List<AdminCircuitResponse> listCircuits(
+            @RequestParam(required = false) String capability,
+            @RequestParam(required = false) String operation,
+            @RequestParam(required = false, defaultValue = "50") Integer limit,
+            @RequestParam(required = false, defaultValue = "0") Integer offset,
+            HttpServletRequest request
+    ) {
+        return kernelFacade.listCircuitStates(
+                        capability,
+                        operation,
+                        limit == null ? 50 : limit,
+                        offset == null ? 0 : offset,
+                        runtimeContextService.currentContext(request)
+                ).stream()
+                .map(AdminCircuitResponse::from)
+                .toList();
+    }
+
+    @GetMapping("/idempotency")
+    public ResponseEntity<AdminIdempotencyResponse> getIdempotency(
+            @RequestParam("key") String idempotencyKey,
+            @RequestParam("capability") String capability,
+            @RequestParam("operation") String operation,
+            HttpServletRequest request
+    ) {
+        return kernelFacade.findIdempotencyRecord(
+                        idempotencyKey,
+                        capability,
+                        operation,
+                        runtimeContextService.currentContext(request)
+                )
+                .map(AdminIdempotencyResponse::from)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/executions/{executionId}/resume")
+    public ResponseEntity<FlowExecutionResponse> resumeExecutionAsAdmin(
+            @PathVariable String executionId,
+            HttpServletRequest request
+    ) {
+        requireAdminContext(request);
+        ExecutionResult result = kernelFacade.resumeExecution(
+                executionId,
+                runtimeContextService.currentContext(request)
+        );
+        return ResponseEntity.status(mapStatus(result.getStatus())).body(FlowExecutionResponse.from(result));
+    }
+
+    @GetMapping(value = "/model/export", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> exportModel(HttpServletRequest request) {
+        requireAdminContext(request);
+        ClassPathResource resource = new ClassPathResource("npdev/model.json");
+        if (!resource.exists()) {
+            return ResponseEntity.notFound().build();
+        }
+        try (InputStream inputStream = resource.getInputStream()) {
+            String body = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+            return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(body);
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "model_export_failed", exception);
+        }
+    }
+
+    @GetMapping(value = {"/model/ui", "/ui-model"}, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> exportUiModel(HttpServletRequest request) {
+        requireAdminContext(request);
+        ClassPathResource resource = new ClassPathResource("npdev/model.json");
+        if (!resource.exists()) {
+            return ResponseEntity.notFound().build();
+        }
+        try (InputStream inputStream = resource.getInputStream()) {
+            String body = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+            return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(buildUiModelProjectionSafe(body));
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "ui_model_export_failed", exception);
+        }
+    }
+
+    @GetMapping(value = {"/model/diff", "/model/diff/preview"}, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ModelDiffPreview> previewModelDiff(HttpServletRequest request) {
+        requireAdminContext(request);
+        StorageSchemaSnapshot baseline = loadBaselineSnapshot();
+        StorageSchemaSnapshot current = new StorageSchemaFromCompiledModel().from(modelProvider.compiledModel());
+        return ResponseEntity.ok(new ModelDiffPreviewBuilder().build(baseline, current));
+    }
+
+    @GetMapping(value = {"/model/migration/plan", "/model/migration/risk"}, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<MigrationRiskAssessment> previewMigrationRisk(HttpServletRequest request) {
+        requireAdminContext(request);
+        StorageSchemaSnapshot baseline = loadBaselineSnapshot();
+        StorageSchemaSnapshot current = new StorageSchemaFromCompiledModel().from(modelProvider.compiledModel());
+        return ResponseEntity.ok(new MigrationRiskAssessmentBuilder().build(baseline, current));
+    }
+
+    @GetMapping(value = {"/model/compatibility"}, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<RuntimeModelCompatibilityReport> previewModelCompatibility(HttpServletRequest request) {
+        requireAdminContext(request);
+        StorageSchemaSnapshot baseline = loadBaselineSnapshot();
+        StorageSchemaSnapshot current = new StorageSchemaFromCompiledModel().from(modelProvider.compiledModel());
+        return ResponseEntity.ok(new RuntimeModelCompatibilityReportBuilder().build(baseline, current, loadBuildInfo()));
+    }
+
+    @GetMapping(value = {"/model/editor/draft"}, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> getModelEditorDraft(HttpServletRequest request) {
+        requireAdminContext(request);
+        return readDraftOrModel(MODEL_EDITOR_DRAFT);
+    }
+
+    @PostMapping(value = {"/model/editor/draft"}, consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> saveModelEditorDraft(@RequestBody String draftJson, HttpServletRequest request) {
+        requireAdminContext(request);
+        return saveDraft(draftJson, DraftKind.MODEL);
+    }
+
+    @DeleteMapping(value = {"/model/editor/draft"})
+    public ResponseEntity<Void> resetModelEditorDraft(HttpServletRequest request) {
+        requireAdminContext(request);
+        MODEL_EDITOR_DRAFT = null;
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping(value = {"/model/rules/draft"}, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> getRuleEditorDraft(HttpServletRequest request) {
+        requireAdminContext(request);
+        return readDraftOrModel(RULE_EDITOR_DRAFT);
+    }
+
+    @PostMapping(value = {"/model/rules/draft"}, consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> saveRuleEditorDraft(@RequestBody String draftJson, HttpServletRequest request) {
+        requireAdminContext(request);
+        return saveDraft(draftJson, DraftKind.RULES);
+    }
+
+    @DeleteMapping(value = {"/model/rules/draft"})
+    public ResponseEntity<Void> resetRuleEditorDraft(HttpServletRequest request) {
+        requireAdminContext(request);
+        RULE_EDITOR_DRAFT = null;
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping(value = {"/model/orchestration/draft"}, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> getOrchestrationEditorDraft(HttpServletRequest request) {
+        requireAdminContext(request);
+        return readDraftOrModel(ORCHESTRATION_EDITOR_DRAFT);
+    }
+
+    @PostMapping(value = {"/model/orchestration/draft"}, consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> saveOrchestrationEditorDraft(@RequestBody String draftJson, HttpServletRequest request) {
+        requireAdminContext(request);
+        return saveDraft(draftJson, DraftKind.ORCHESTRATION);
+    }
+
+    @DeleteMapping(value = {"/model/orchestration/draft"})
+    public ResponseEntity<Void> resetOrchestrationEditorDraft(HttpServletRequest request) {
+        requireAdminContext(request);
+        ORCHESTRATION_EDITOR_DRAFT = null;
+        return ResponseEntity.noContent().build();
+    }
+
+    private enum DraftKind {
+        MODEL,
+        RULES,
+        ORCHESTRATION
+    }
+
+    private ResponseEntity<String> saveDraft(String draftJson, DraftKind draftKind) {
+        try {
+            JsonNode parsed = UI_MODEL_MAPPER.readTree(draftJson);
+            switch (draftKind) {
+                case MODEL -> MODEL_EDITOR_DRAFT = parsed;
+                case RULES -> RULE_EDITOR_DRAFT = parsed;
+                case ORCHESTRATION -> ORCHESTRATION_EDITOR_DRAFT = parsed;
+            }
+            return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON)
+                    .body(UI_MODEL_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(parsed));
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "draft_invalid_json", exception);
+        }
+    }
+
+    private ResponseEntity<String> readDraftOrModel(JsonNode draft) {
+        if (draft == null) {
+            ClassPathResource resource = new ClassPathResource("npdev/model.json");
+            if (!resource.exists()) {
+                return ResponseEntity.notFound().build();
+            }
+            try (InputStream inputStream = resource.getInputStream()) {
+                String body = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+                return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(body);
+            } catch (IOException exception) {
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "draft_load_failed", exception);
+            }
+        }
+        try {
+            return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON)
+                    .body(UI_MODEL_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(draft));
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "draft_serialize_failed", exception);
+        }
+    }
+
+    private static String buildUiModelProjectionSafe(String modelJson) {
+        try {
+            return buildUiModelProjection(modelJson);
+        } catch (Exception exception) {
+            try {
+                return buildEmptyUiModelProjection(modelJson);
+            } catch (Exception fallbackException) {
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "ui_model_export_failed", exception);
+            }
+        }
+    }
+
+    private static String buildUiModelProjection(String modelJson) throws IOException {
+        JsonNode root = UI_MODEL_MAPPER.readTree(stripUtf8Bom(modelJson));
+        ObjectNode projection = UI_MODEL_MAPPER.createObjectNode();
+        copyText(root, projection, "namespace");
+        copyText(root, projection, "dslVersion");
+        copyText(root, projection, "version");
+
+        ArrayNode concepts = UI_MODEL_MAPPER.createArrayNode();
+        JsonNode conceptNodes = root.path("concepts");
+        if (conceptNodes.isArray()) {
+            for (JsonNode concept : conceptNodes) {
+                ArrayNode fields = UI_MODEL_MAPPER.createArrayNode();
+                JsonNode conceptFields = concept.path("fields");
+                if (conceptFields.isArray()) {
+                    for (JsonNode field : conceptFields) {
+                        JsonNode uiNode = field.get("ui");
+                        if (uiNode == null || !uiNode.isObject() || uiNode.size() == 0) {
+                            continue;
+                        }
+                        ObjectNode fieldNode = UI_MODEL_MAPPER.createObjectNode();
+                        copyText(field, fieldNode, "name");
+                        copyText(field, fieldNode, "type");
+                        JsonNode enumValues = field.get("enumValues");
+                        if (enumValues != null && enumValues.isArray()) {
+                            fieldNode.set("enumValues", enumValues.deepCopy());
+                        }
+
+                        ObjectNode uiOut = UI_MODEL_MAPPER.createObjectNode();
+                        copyText(uiNode, uiOut, "label");
+                        copyText(uiNode, uiOut, "placeholder");
+                        copyText(uiNode, uiOut, "helpText");
+                        copyText(uiNode, uiOut, "widget");
+                        copyText(uiNode, uiOut, "group");
+                        copyText(uiNode, uiOut, "section");
+                        copyInt(uiNode, uiOut, "order");
+                        fieldNode.set("ui", uiOut);
+                        fields.add(fieldNode);
+                    }
+                }
+
+                if (fields.size() == 0) {
+                    continue;
+                }
+                ObjectNode conceptNode = UI_MODEL_MAPPER.createObjectNode();
+                copyText(concept, conceptNode, "name");
+                conceptNode.set("fields", fields);
+                concepts.add(conceptNode);
+            }
+        }
+
+        projection.set("concepts", concepts);
+        return UI_MODEL_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(projection);
+    }
+
+
+    private static String buildEmptyUiModelProjection(String modelJson) throws IOException {
+        JsonNode root = UI_MODEL_MAPPER.readTree(stripUtf8Bom(modelJson));
+        ObjectNode projection = UI_MODEL_MAPPER.createObjectNode();
+        copyText(root, projection, "namespace");
+        copyText(root, projection, "dslVersion");
+        copyText(root, projection, "version");
+        projection.set("concepts", UI_MODEL_MAPPER.createArrayNode());
+        return UI_MODEL_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(projection);
+    }
+
+    private static String stripUtf8Bom(String value) {
+        if (value == null || value.isEmpty()) {
+            return value;
+        }
+        if (value.charAt(0) == '﻿') {
+            return value.substring(1);
+        }
+        return value;
+    }
+
+    private static StorageSchemaSnapshot loadBaselineSnapshot() {
+        ClassPathResource resource = new ClassPathResource("npdev/model-diff-baseline.json");
+        if (!resource.exists()) {
+            return new StorageSchemaSnapshot("none", List.of());
+        }
+        try (InputStream inputStream = resource.getInputStream()) {
+            String body = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+            StorageSchemaSnapshot snapshot = UI_MODEL_MAPPER.readValue(body, StorageSchemaSnapshot.class);
+            if (snapshot == null) {
+                return new StorageSchemaSnapshot("none", List.of());
+            }
+            return snapshot.normalized();
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "model_diff_baseline_load_failed", exception);
+        }
+    }
+
+    private static Properties loadBuildInfo() {
+        Properties properties = new Properties();
+        ClassPathResource resource = new ClassPathResource("npdev-build-info.properties");
+        if (!resource.exists()) {
+            return properties;
+        }
+        try (InputStream inputStream = resource.getInputStream()) {
+            properties.load(inputStream);
+            return properties;
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "build_info_load_failed", exception);
+        }
+    }
+
+    private static void copyText(JsonNode source, ObjectNode target, String field) {
+        if (source == null || target == null || field == null || field.isBlank()) {
+            return;
+        }
+        JsonNode value = source.get(field);
+        if (value != null && value.isTextual()) {
+            target.put(field, value.asText());
+        }
+    }
+
+    private static void copyInt(JsonNode source, ObjectNode target, String field) {
+        if (source == null || target == null || field == null || field.isBlank()) {
+            return;
+        }
+        JsonNode value = source.get(field);
+        if (value != null && value.isNumber()) {
+            target.put(field, value.asInt());
+        }
+    }
+
+    private void requireAdminContext(HttpServletRequest request) {
+        ExecutionContext context = runtimeContextService.currentContext(request);
+        if (!context.hasRole("ADMIN")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
+        }
+    }
+
+    private static HttpStatus mapStatus(ExecutionStatus status) {
+        if (status == null) {
+            return HttpStatus.INTERNAL_SERVER_ERROR;
+        }
+        return switch (status) {
+            case OK -> HttpStatus.OK;
+            case WAITING_EVENT -> HttpStatus.ACCEPTED;
+            case INPUT_VALIDATION_FAILED, INVARIANT_FAILED, CAPABILITY_FAILED, EVENT_PERSIST_FAILED, EVENT_PAYLOAD_INVALID, FAILED -> HttpStatus.UNPROCESSABLE_ENTITY;
+        };
+    }
+}

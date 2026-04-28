@@ -1,0 +1,60 @@
+{
+  "$schema": "..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "simple-contact-intake",
+    "description": "Official NPDev sample that adds governed notification behavior to a simple persistence flow.",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": {
+    "root": "..\\..\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\Output\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\Output\\App",
+    "deleteBeforeMount": true
+  },
+  "database": {
+    "provider": "docker-postgres",
+    "host": "localhost",
+    "port": 5432,
+    "database": "sample_contact_intake",
+    "username": "finalexec",
+    "password": "finalexec",
+    "adminDatabase": "postgres",
+    "resetMode": "reset",
+    "containerName": "npdev-simple-contact-intake"
+  },
+  "runtime": {
+    "springProfile": "dev,step0,trial",
+    "serverPort": 8083,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "trialDefaults": {
+    "apiKey": "dev-key",
+    "recommendedProfiles": "dev,step0,trial",
+    "runtimeUrl": "http://localhost:8083/",
+    "databaseMode": "step0-h2",
+    "pluginDiscoveryMode": "filesystem-folder",
+    "pluginPackageDirectory": "./npdev-generated/src/main/resources/npdev/plugin-packages",
+    "notes": [
+      "This notification-oriented sample stays isolated from the other trial apps through a dedicated port.",
+      "The step0 profile keeps the sample runnable without external database setup."
+    ]
+  }
+}

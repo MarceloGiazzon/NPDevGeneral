@@ -1,0 +1,46 @@
+package {{dtoPackage}};
+
+import com.npdev.kernel.events.EventEnvelope;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+public record EventQueryResponse(
+        String eventId,
+        String eventName,
+        long timestampEpochMs,
+        String correlationId,
+        String causationId,
+        String tenantId,
+        String actorId,
+        String flowName,
+        Integer stepIndex,
+        List<String> payloadKeys,
+        Map<String, Object> payload
+) {
+    public static EventQueryResponse from(EventEnvelope event) {
+        if (event == null) {
+            return null;
+        }
+        List<String> keys = event.payload() == null
+                ? List.of()
+                : event.payload().keySet().stream().sorted().toList();
+        Map<String, Object> payload = event.payload() == null
+                ? Map.of()
+                : Map.copyOf(new LinkedHashMap<>(event.payload()));
+        return new EventQueryResponse(
+                event.eventId(),
+                event.eventName(),
+                event.timestampEpochMs(),
+                event.correlationId(),
+                event.causationId(),
+                event.tenantId(),
+                event.actorId(),
+                event.flowName(),
+                event.stepIndex(),
+                keys,
+                payload
+        );
+    }
+}

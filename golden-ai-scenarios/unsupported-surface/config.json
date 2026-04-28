@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "ai-generator-config.v1",
+  "generator": {
+    "mode": "deterministic",
+    "target": "external-ui-runtime",
+    "strictExecution": true
+  },
+  "runtime": {
+    "surfaceProfile": "external-ui-runtime",
+    "supportedSurfaceEnforced": true
+  }
+}

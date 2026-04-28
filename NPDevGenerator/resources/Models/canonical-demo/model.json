@@ -1,0 +1,1193 @@
+{
+  "$schema": "..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "canonical.clinicdemo",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "domainTypes": [
+    {
+      "name": "MRN",
+      "baseType": "string",
+      "validation": {
+        "type": "string",
+        "minLength": 8,
+        "maxLength": 12,
+        "regex": "^[A-Z0-9-]+$",
+        "description": "Clinic medical record number"
+      },
+      "normalization": [
+        "trim",
+        "uppercase"
+      ],
+      "format": "medical-record-number",
+      "examples": [
+        "MRN-000123"
+      ],
+      "ui": {
+        "label": "Medical record number",
+        "placeholder": "MRN-000123",
+        "helpText": "Clinic-issued patient record number",
+        "widget": "text"
+      }
+    },
+    {
+      "name": "NPI",
+      "baseType": "string",
+      "validation": {
+        "type": "string",
+        "minLength": 10,
+        "maxLength": 10,
+        "regex": "^\\d{10}$",
+        "description": "US national provider identifier"
+      },
+      "normalization": [
+        "trim",
+        "digitsOnly"
+      ],
+      "format": "national-provider-identifier",
+      "examples": [
+        "1234567890"
+      ],
+      "ui": {
+        "label": "NPI",
+        "placeholder": "1234567890",
+        "helpText": "10-digit provider identifier",
+        "widget": "text"
+      }
+    }
+  ],
+  "concepts": [
+    {
+      "name": "Patient",
+      "ui": {
+        "label": "Patient",
+        "shortLabel": "Pt",
+        "description": "Core patient demographics and clinical profile used across appointment and claim flows",
+        "helpText": "Author the patient profile with enough detail to support scheduling and downstream claim creation",
+        "group": "Clinical operations",
+        "section": "Registration",
+        "order": 10,
+        "examples": [
+          "New patient intake",
+          "Returning patient update"
+        ]
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "mrn",
+          "type": "string",
+          "domainType": "MRN",
+          "ui": {
+            "label": "Medical record number",
+            "shortLabel": "MRN",
+            "description": "Clinic-issued patient record number used as the primary search key",
+            "helpText": "Use the clinic-issued identifier so appointments and claims can trace back to the same chart",
+            "placeholder": "MRN-000123",
+            "group": "Identity",
+            "section": "Registration",
+            "order": 10,
+            "examples": [
+              "MRN-000123"
+            ]
+          }
+        },
+        {
+          "name": "firstName",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "First name",
+            "shortLabel": "First",
+            "description": "Given name used in patient-facing correspondence",
+            "helpText": "Use the patient's legal or preferred given name as required by clinic policy",
+            "widget": "text",
+            "group": "Identity",
+            "section": "Registration",
+            "order": 20,
+            "examples": [
+              "Marina"
+            ]
+          }
+        },
+        {
+          "name": "lastName",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Last name",
+            "shortLabel": "Last",
+            "description": "Family name used in chart labels and appointment pickers",
+            "helpText": "Use the family name that should appear in provider-facing schedules",
+            "widget": "text",
+            "group": "Identity",
+            "section": "Registration",
+            "order": 30,
+            "examples": [
+              "Silva"
+            ]
+          }
+        },
+        {
+          "name": "preferredLanguage",
+          "type": "string",
+          "default": "en-US",
+          "ui": {
+            "label": "Preferred language",
+            "shortLabel": "Language",
+            "description": "Primary language preference for patient-facing communication",
+            "placeholder": "e.g. pt-BR",
+            "helpText": "Language for reminders and patient-facing messages",
+            "group": "Preferences",
+            "section": "Communication",
+            "order": 40,
+            "examples": [
+              "pt-BR",
+              "en-US"
+            ]
+          }
+        },
+        {
+          "name": "reminderLanguage",
+          "type": "string",
+          "defaultExpression": "preferredLanguage",
+          "ui": {
+            "label": "Reminder language",
+            "shortLabel": "Reminder lang",
+            "description": "Resolved language used when sending reminder notifications",
+            "widget": "text",
+            "helpText": "Defaults to the patient's preferred language when not set explicitly",
+            "group": "Preferences",
+            "section": "Communication",
+            "order": 50,
+            "advanced": true
+          }
+        },
+        {
+          "name": "chartLabel",
+          "type": "string",
+          "derivedExpression": "concat(lastName, ', ', firstName)",
+          "ui": {
+            "label": "Chart label",
+            "shortLabel": "Chart",
+            "description": "Read-only patient list label assembled from the patient name",
+            "widget": "text",
+            "helpText": "Read-only computed label used in patient lists",
+            "group": "Identity",
+            "section": "Registration",
+            "order": 60,
+            "advanced": true
+          }
+        },
+        {
+          "name": "emergencyContact",
+          "type": "object",
+          "description": "Primary emergency contact for appointment and disclosure coordination",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "relationship": {
+              "type": "string"
+            },
+            "phone": {
+              "type": "string"
+            },
+            "authorizedForDisclosure": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "name",
+            "phone"
+          ],
+          "ui": {
+            "label": "Emergency contact",
+            "shortLabel": "Emergency",
+            "description": "Primary contact to reach for urgent disclosure or schedule coordination",
+            "widget": "group",
+            "group": "Clinical profile",
+            "section": "Clinical profile",
+            "order": 70,
+            "examples": [
+              "Spouse",
+              "Parent"
+            ]
+          }
+        },
+        {
+          "name": "allergies",
+          "type": "array",
+          "description": "Repeated allergy entries used to drive nested repeated sections",
+          "minItems": 0,
+          "maxItems": 20,
+          "itemIdentityField": "code",
+          "duplicationPolicy": "deny",
+          "items": {
+            "type": "object",
+            "required": [
+              "code",
+              "substance"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Clinic allergy code"
+              },
+              "substance": {
+                "type": "string",
+                "description": "Medication or allergen name"
+              },
+              "severity": {
+                "type": "enum",
+                "enumValues": [
+                  "Mild",
+                  "Moderate",
+                  "Severe"
+                ]
+              },
+              "active": {
+                "type": "boolean",
+                "default": true
+              }
+            }
+          },
+          "ui": {
+            "label": "Allergies",
+            "shortLabel": "Allergies",
+            "description": "Repeated allergy list used for intake review and provider safety checks",
+            "widget": "list",
+            "group": "Clinical profile",
+            "order": 80,
+            "section": "Clinical profile"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "PatientMrnUnique",
+          "type": "unique",
+          "fields": [
+            "mrn"
+          ]
+        },
+        {
+          "name": "PatientNameRequired",
+          "expr": "firstName != null && firstName != '' && lastName != null && lastName != ''"
+        },
+        {
+          "name": "AllergyCodesUnique",
+          "type": "expression",
+          "expression": "allergies.uniqueBy(code)"
+        }
+      ]
+    },
+    {
+      "name": "Provider",
+      "ui": {
+        "label": "Provider",
+        "shortLabel": "MD",
+        "description": "Licensed care provider that can be assigned to appointments and claims",
+        "helpText": "Keep provider identity and specialty metadata current for scheduling and claim downstreams",
+        "group": "Clinical operations",
+        "section": "Scheduling",
+        "order": 20,
+        "examples": [
+          "Primary care physician",
+          "Nurse practitioner"
+        ]
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "npi",
+          "type": "string",
+          "domainType": "NPI",
+          "ui": {
+            "label": "National provider identifier",
+            "shortLabel": "NPI",
+            "description": "Regulatory provider identifier used for scheduling lookups and claims",
+            "helpText": "Use the 10-digit provider identifier issued to the clinician",
+            "placeholder": "1234567890",
+            "group": "Identity",
+            "section": "Scheduling",
+            "order": 10,
+            "examples": [
+              "1234567890"
+            ]
+          }
+        },
+        {
+          "name": "fullName",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Provider name",
+            "shortLabel": "Name",
+            "description": "Display name shown in appointment pickers and schedule views",
+            "helpText": "Use the provider name exactly as it should appear in patient-facing scheduling surfaces",
+            "widget": "text",
+            "group": "Identity",
+            "section": "Scheduling",
+            "order": 20
+          }
+        },
+        {
+          "name": "specialty",
+          "type": "string",
+          "ui": {
+            "label": "Specialty",
+            "shortLabel": "Specialty",
+            "description": "Clinical specialty used to route appointments and filter provider search",
+            "helpText": "Examples include cardiology, pediatrics, or family medicine",
+            "group": "Scheduling",
+            "section": "Scheduling",
+            "order": 30,
+            "examples": [
+              "Family medicine",
+              "Cardiology"
+            ]
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "ProviderNpiUnique",
+          "type": "unique",
+          "fields": [
+            "npi"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Appointment",
+      "ui": {
+        "label": "Appointment",
+        "shortLabel": "Appt",
+        "description": "Scheduled encounter connecting a patient, provider, and lifecycle-driven visit state",
+        "helpText": "This is the canonical workflow specimen for scheduling, transitions, events, and downstream orchestration",
+        "group": "Clinical operations",
+        "section": "Scheduling",
+        "order": 30,
+        "formColumns": 2,
+        "displayMode": "standard",
+        "defaultSort": "-scheduledAt",
+        "defaultGroup": "status",
+        "examples": [
+          "Routine follow-up",
+          "Initial intake"
+        ]
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "patientId",
+          "type": "reference",
+          "required": true,
+          "ui": {
+            "label": "Patient",
+            "shortLabel": "Patient",
+            "description": "Patient selected for the visit",
+            "helpText": "Search by MRN or patient name when creating the appointment",
+            "group": "Scheduling",
+            "section": "Scheduling",
+            "order": 10,
+            "tab": "Overview",
+            "column": 1,
+            "columnSpan": 1,
+            "width": "lg",
+            "listColumn": true,
+            "listColumnOrder": 10,
+            "pickerType": "search-dialog",
+            "allowInlineCreate": true,
+            "searchFields": [
+              "mrn",
+              "lastName",
+              "firstName"
+            ],
+            "filterPreset": "recent-patients"
+          },
+          "reference": {
+            "target": "Patient",
+            "displayField": "lastName",
+            "displayTemplate": "{{lastName}}, {{firstName}} ({{mrn}})",
+            "searchFields": [
+              "mrn",
+              "lastName",
+              "firstName"
+            ],
+            "pickerColumns": [
+              "mrn",
+              "lastName",
+              "firstName"
+            ],
+            "previewFields": [
+              "mrn",
+              "firstName",
+              "lastName"
+            ],
+            "previewCardTemplate": "{{lastName}}, {{firstName}} | MRN {{mrn}}",
+            "defaultFilter": "recent-patients",
+            "inlineCreate": "allow"
+          }
+        },
+        {
+          "name": "providerId",
+          "type": "reference",
+          "required": true,
+          "ui": {
+            "label": "Provider",
+            "shortLabel": "Provider",
+            "description": "Assigned clinician responsible for the visit",
+            "helpText": "Search providers by specialty, name, or NPI",
+            "group": "Scheduling",
+            "section": "Scheduling",
+            "order": 20,
+            "tab": "Overview",
+            "column": 2,
+            "columnSpan": 1,
+            "width": "lg",
+            "listColumn": true,
+            "listColumnOrder": 20,
+            "enabledWhen": "status == 'Scheduled'",
+            "pickerType": "search-dialog",
+            "allowInlineCreate": false,
+            "searchFields": [
+              "fullName",
+              "specialty",
+              "npi"
+            ],
+            "filterPreset": "available-providers"
+          },
+          "reference": {
+            "target": "Provider",
+            "displayField": "fullName",
+            "displayTemplate": "{{fullName}} ({{specialty}})",
+            "searchFields": [
+              "npi",
+              "fullName",
+              "specialty"
+            ],
+            "pickerColumns": [
+              "fullName",
+              "specialty",
+              "npi"
+            ],
+            "previewFields": [
+              "fullName",
+              "specialty",
+              "npi"
+            ],
+            "previewCardTemplate": "{{fullName}} | {{specialty}} | NPI {{npi}}",
+            "defaultFilter": "available-providers",
+            "inlineCreate": "deny"
+          }
+        },
+        {
+          "name": "scheduledAt",
+          "type": "datetime",
+          "required": true,
+          "ui": {
+            "label": "Scheduled at",
+            "shortLabel": "Scheduled",
+            "description": "Date and time when the visit is expected to start",
+            "widget": "datetime-local",
+            "group": "Scheduling",
+            "section": "Scheduling",
+            "order": 30,
+            "tab": "Overview",
+            "column": 1,
+            "columnSpan": 1,
+            "width": "md",
+            "summaryCard": true,
+            "listColumn": true,
+            "listColumnOrder": 30
+          }
+        },
+        {
+          "name": "durationMinutes",
+          "type": "integer",
+          "ui": {
+            "label": "Duration in minutes",
+            "shortLabel": "Duration",
+            "description": "Planned visit duration used for slot allocation",
+            "helpText": "Use the expected slot length in minutes",
+            "group": "Scheduling",
+            "section": "Scheduling",
+            "order": 40,
+            "tab": "Overview",
+            "column": 2,
+            "columnSpan": 1,
+            "width": "sm",
+            "examples": [
+              "30",
+              "45"
+            ]
+          }
+        },
+        {
+          "name": "visitReason",
+          "type": "string",
+          "ui": {
+            "label": "Visit reason",
+            "shortLabel": "Reason",
+            "description": "Short clinical or operational reason for the visit",
+            "widget": "textarea",
+            "helpText": "Keep this short and patient-safe for provider schedule visibility",
+            "group": "Scheduling",
+            "section": "Scheduling",
+            "order": 50,
+            "tab": "Overview",
+            "column": 1,
+            "columnSpan": 2,
+            "width": "full",
+            "readonlyWhen": "status == 'Completed' || status == 'Cancelled'"
+          }
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "enumValues": [
+            {
+              "value": "Scheduled",
+              "label": "Scheduled",
+              "order": 10,
+              "group": "Active",
+              "default": true,
+              "iconHint": "calendar-clock",
+              "badge": "info",
+              "description": "Appointment has been booked but not yet checked in"
+            },
+            {
+              "value": "CheckedIn",
+              "label": "Checked in",
+              "order": 20,
+              "group": "Active",
+              "iconHint": "clipboard-check",
+              "badge": "progress",
+              "description": "Patient is present and intake is complete"
+            },
+            {
+              "value": "Completed",
+              "label": "Completed",
+              "order": 30,
+              "group": "Terminal",
+              "iconHint": "circle-check",
+              "badge": "success",
+              "description": "Visit is complete and downstream claim creation can start"
+            },
+            {
+              "value": "Cancelled",
+              "label": "Cancelled",
+              "order": 40,
+              "group": "Terminal",
+              "iconHint": "calendar-x",
+              "badge": "warning",
+              "description": "Appointment was cancelled before completion"
+            }
+          ],
+          "required": true,
+          "ui": {
+            "label": "Appointment status",
+            "shortLabel": "Status",
+            "description": "Lifecycle state that governs available actions and downstream events",
+            "widget": "select",
+            "helpText": "Current lifecycle state for the appointment",
+            "group": "Lifecycle",
+            "section": "Visit progress",
+            "order": 60,
+            "tab": "Visit lifecycle",
+            "column": 1,
+            "columnSpan": 1,
+            "width": "sm",
+            "summaryCard": true,
+            "listColumn": true,
+            "listColumnOrder": 40,
+            "readonlyWhen": "status == 'Completed' || status == 'Cancelled'"
+          }
+        },
+        {
+          "name": "checkInTime",
+          "type": "datetime",
+          "ui": {
+            "label": "Check-in time",
+            "shortLabel": "Check-in",
+            "description": "Time the patient completed arrival and intake",
+            "group": "Lifecycle",
+            "section": "Visit progress",
+            "order": 70,
+            "advanced": true,
+            "tab": "Visit lifecycle",
+            "column": 1,
+            "columnSpan": 1,
+            "width": "md",
+            "visibleWhen": "status == 'Scheduled' || status == 'CheckedIn'",
+            "enabledWhen": "status == 'Scheduled'",
+            "requiredWhen": "status == 'Scheduled'"
+          }
+        },
+        {
+          "name": "checkOutTime",
+          "type": "datetime",
+          "ui": {
+            "label": "Check-out time",
+            "shortLabel": "Check-out",
+            "description": "Time the visit was completed and ready for downstream claim work",
+            "group": "Lifecycle",
+            "section": "Visit progress",
+            "order": 80,
+            "advanced": true,
+            "tab": "Visit lifecycle",
+            "column": 2,
+            "columnSpan": 1,
+            "width": "md",
+            "visibleWhen": "status == 'CheckedIn' || status == 'Completed'",
+            "enabledWhen": "status == 'CheckedIn'",
+            "requiredWhen": "status == 'CheckedIn'"
+          }
+        }
+      ],
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          {
+            "value": "Scheduled",
+            "label": "Scheduled",
+            "initial": true,
+            "metadata": {
+              "lane": "active",
+              "badge": "info"
+            }
+          },
+          {
+            "value": "CheckedIn",
+            "label": "Checked In",
+            "metadata": {
+              "lane": "active",
+              "badge": "warning"
+            }
+          },
+          {
+            "value": "Completed",
+            "label": "Completed",
+            "terminal": true,
+            "metadata": {
+              "lane": "terminal",
+              "badge": "success"
+            }
+          },
+          {
+            "value": "Cancelled",
+            "label": "Cancelled",
+            "terminal": true,
+            "metadata": {
+              "lane": "terminal",
+              "badge": "danger"
+            }
+          }
+        ],
+        "transitions": [
+          {
+            "from": "Scheduled",
+            "to": "CheckedIn",
+            "requiredPayload": [
+              "checkInTime"
+            ],
+            "guard": "checkInTime != null",
+            "event": "AppointmentCheckedIn",
+            "actionLabel": "Check In",
+            "action": {
+              "label": "Check in patient",
+              "confirmationText": "Mark this appointment as checked in?",
+              "successMessage": "Appointment checked in.",
+              "failureHint": "Capture the patient's check-in time before retrying.",
+              "dangerLevel": "low",
+              "visibleWhen": "status == 'Scheduled'",
+              "permissionHint": "appointments.checkin",
+              "inputFormHint": "appointment-checkin"
+            },
+            "metadata": {
+              "intent": "check-in",
+              "surface": "primary"
+            }
+          },
+          {
+            "from": "CheckedIn",
+            "to": "Completed",
+            "requiredPayload": [
+              "checkOutTime"
+            ],
+            "guard": "checkOutTime != null",
+            "event": "AppointmentCompleted",
+            "actionLabel": "Complete Appointment",
+            "action": {
+              "label": "Complete appointment",
+              "confirmationText": "Complete this appointment and trigger downstream claim work?",
+              "successMessage": "Appointment completed.",
+              "failureHint": "Capture the visit check-out time before completing the appointment.",
+              "dangerLevel": "medium",
+              "visibleWhen": "status == 'CheckedIn'",
+              "permissionHint": "appointments.complete",
+              "inputFormHint": "appointment-complete"
+            },
+            "metadata": {
+              "intent": "complete",
+              "surface": "primary"
+            }
+          },
+          {
+            "from": "Scheduled",
+            "to": "Cancelled",
+            "event": "AppointmentCancelled",
+            "actionLabel": "Cancel Appointment",
+            "action": {
+              "label": "Cancel appointment",
+              "confirmationText": "Cancel this scheduled appointment?",
+              "successMessage": "Appointment cancelled.",
+              "failureHint": "Only scheduled appointments can be cancelled from the action menu.",
+              "dangerLevel": "high",
+              "visibleWhen": "status == 'Scheduled'",
+              "permissionHint": "appointments.cancel",
+              "inputFormHint": "appointment-cancel"
+            },
+            "metadata": {
+              "intent": "cancel",
+              "surface": "secondary"
+            }
+          }
+        ]
+      },
+      "invariants": [
+        {
+          "name": "PositiveDuration",
+          "type": "expression",
+          "expression": "durationMinutes == null || durationMinutes > 0"
+        },
+        {
+          "name": "ProviderSlotAvailable",
+          "type": "expression",
+          "expression": "!overlapsProvider(providerId, scheduledAt, durationMinutes, id)"
+        }
+      ]
+    },
+    {
+      "name": "InsuranceClaim",
+      "ui": {
+        "label": "Insurance claim",
+        "shortLabel": "Claim",
+        "description": "Downstream financial artifact created when an appointment is completed",
+        "helpText": "This concept exists to prove event-driven orchestration and capability invocation in the canonical specimen",
+        "group": "Revenue cycle",
+        "section": "Claims",
+        "order": 40,
+        "examples": [
+          "Draft claim after appointment completion"
+        ]
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "appointmentId",
+          "type": "reference",
+          "required": true,
+          "ui": {
+            "label": "Appointment",
+            "shortLabel": "Appointment",
+            "description": "Source appointment that produced the claim",
+            "group": "Claim context",
+            "section": "Claims",
+            "order": 10
+          },
+          "reference": {
+            "target": "Appointment",
+            "displayField": "status",
+            "searchFields": [
+              "id",
+              "status"
+            ],
+            "previewFields": [
+              "scheduledAt",
+              "status"
+            ],
+            "inlineCreate": "deny"
+          }
+        },
+        {
+          "name": "patientId",
+          "type": "reference",
+          "required": true,
+          "ui": {
+            "label": "Patient",
+            "shortLabel": "Patient",
+            "description": "Patient associated with the billed visit",
+            "group": "Claim context",
+            "section": "Claims",
+            "order": 20
+          },
+          "reference": {
+            "target": "Patient",
+            "displayField": "lastName",
+            "searchFields": [
+              "mrn",
+              "lastName",
+              "firstName"
+            ],
+            "previewFields": [
+              "mrn",
+              "firstName",
+              "lastName"
+            ],
+            "inlineCreate": "allow"
+          }
+        },
+        {
+          "name": "providerId",
+          "type": "reference",
+          "required": true,
+          "ui": {
+            "label": "Provider",
+            "shortLabel": "Provider",
+            "description": "Billing provider associated with the visit",
+            "group": "Claim context",
+            "section": "Claims",
+            "order": 30
+          },
+          "reference": {
+            "target": "Provider",
+            "displayField": "fullName",
+            "searchFields": [
+              "npi",
+              "fullName",
+              "specialty"
+            ],
+            "previewFields": [
+              "fullName",
+              "specialty",
+              "npi"
+            ],
+            "inlineCreate": "deny"
+          }
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "enumValues": [
+            "Draft",
+            "Submitted",
+            "Paid",
+            "Denied"
+          ],
+          "required": true,
+          "ui": {
+            "label": "Claim status",
+            "shortLabel": "Status",
+            "description": "Revenue-cycle lifecycle state for the generated claim",
+            "widget": "select",
+            "group": "Claim context",
+            "section": "Claims",
+            "order": 40,
+            "readonlyWhen": "appointmentId != null"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "InsuranceClaimAppointmentUnique",
+          "type": "unique",
+          "fields": [
+            "appointmentId"
+          ]
+        }
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        "save",
+        "findById"
+      ]
+    },
+    {
+      "name": "notification",
+      "type": "NotificationCapability",
+      "operations": [
+        {
+          "name": "send",
+          "input": {
+            "type": "object",
+            "properties": {
+              "appointmentId": {
+                "type": "string"
+              },
+              "patientId": {
+                "type": "string"
+              },
+              "providerId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "appointmentId",
+              "patientId",
+              "providerId",
+              "status"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    },
+    {
+      "capability": "notification",
+      "adapter": "notification-inproc"
+    }
+  ],
+  "events": [
+    {
+      "name": "AppointmentCheckedIn",
+      "payload": [
+        {
+          "name": "appointmentId",
+          "type": "uuid"
+        },
+        {
+          "name": "patientId",
+          "type": "uuid"
+        },
+        {
+          "name": "providerId",
+          "type": "uuid"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "AppointmentCompleted",
+      "payload": [
+        {
+          "name": "appointmentId",
+          "type": "uuid"
+        },
+        {
+          "name": "patientId",
+          "type": "uuid"
+        },
+        {
+          "name": "providerId",
+          "type": "uuid"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "AppointmentCancelled",
+      "payload": [
+        {
+          "name": "appointmentId",
+          "type": "uuid"
+        },
+        {
+          "name": "patientId",
+          "type": "uuid"
+        },
+        {
+          "name": "providerId",
+          "type": "uuid"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "AppointmentReminderDue",
+      "payload": [
+        {
+          "name": "appointmentId",
+          "type": "uuid"
+        },
+        {
+          "name": "patientId",
+          "type": "uuid"
+        },
+        {
+          "name": "providerId",
+          "type": "uuid"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    }
+  ],
+  "orchestrationRules": [
+    {
+      "name": "CompleteAppointmentFlow",
+      "trigger": {
+        "type": "event",
+        "event": "AppointmentCompleted"
+      },
+      "condition": "$event.status == \"Completed\"",
+      "actions": [
+        {
+          "type": "create",
+          "concept": "InsuranceClaim",
+          "action": {
+            "label": "Create insurance claim",
+            "successMessage": "Draft insurance claim created.",
+            "failureHint": "Review the appointment event payload if claim creation fails.",
+            "dangerLevel": "low",
+            "permissionHint": "claims.create",
+            "inputFormHint": "claim-auto-draft"
+          },
+          "map": {
+            "appointmentId": "$event.appointmentId",
+            "patientId": "$event.patientId",
+            "providerId": "$event.providerId",
+            "status": "Draft"
+          }
+        },
+        {
+          "type": "callCapability",
+          "capability": "notification",
+          "operation": "send",
+          "action": {
+            "label": "Send completion notification",
+            "successMessage": "Completion notification sent.",
+            "failureHint": "Check the notification capability binding if delivery fails.",
+            "dangerLevel": "low",
+            "permissionHint": "notifications.send",
+            "inputFormHint": "appointment-completion-notification"
+          },
+          "map": {
+            "appointmentId": "$event.appointmentId",
+            "patientId": "$event.patientId",
+            "providerId": "$event.providerId",
+            "status": "$event.status"
+          }
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "CreateAppointment",
+      "input": {
+        "concept": "Appointment",
+        "mode": "create"
+      },
+      "action": {
+        "label": "Create appointment",
+        "confirmationText": "Create this appointment and queue the related follow-up actions?",
+        "successMessage": "Appointment created.",
+        "failureHint": "Review the appointment details and required fields before retrying.",
+        "dangerLevel": "low",
+        "permissionHint": "appointments.create",
+        "inputFormHint": "appointment-create"
+      },
+      "steps": [
+        {
+          "name": "validate-appointment",
+          "type": "validate",
+          "scope": "Appointment",
+          "invariants": [
+            "PositiveDuration"
+          ]
+        },
+        {
+          "name": "save-appointment",
+          "type": "createConcept",
+          "scope": "Appointment",
+          "input": "$input",
+          "out": "$saved",
+          "action": {
+            "label": "Persist appointment",
+            "successMessage": "Appointment persisted.",
+            "failureHint": "Check persistence availability and appointment payload validity.",
+            "dangerLevel": "low",
+            "permissionHint": "appointments.create",
+            "inputFormHint": "appointment-create"
+          }
+        },
+        {
+          "name": "capture-created-id",
+          "type": "assign",
+          "input": "$saved.id",
+          "out": "$appointmentId"
+        },
+        {
+          "name": "schedule-reminder",
+          "type": "if",
+          "condition": "$saved.status == 'Scheduled'",
+          "then": [
+            {
+              "name": "queue-appointment-reminder",
+              "type": "scheduleEvent",
+              "event": "AppointmentReminderDue",
+              "delayMinutes": 1440,
+              "action": {
+                "label": "Queue appointment reminder",
+                "successMessage": "Reminder event queued.",
+                "failureHint": "Verify scheduling infrastructure if reminder creation fails.",
+                "dangerLevel": "low",
+                "permissionHint": "appointments.reminders.schedule",
+                "inputFormHint": "appointment-reminder"
+              },
+              "data": {
+                "appointmentId": "$saved.id",
+                "patientId": "$saved.patientId",
+                "providerId": "$saved.providerId",
+                "status": "$saved.status"
+              }
+            }
+          ]
+        },
+        {
+          "name": "return-appointment",
+          "type": "return",
+          "value": "$saved"
+        }
+      ]
+    }
+  ]
+}

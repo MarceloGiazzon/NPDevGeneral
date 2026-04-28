@@ -1,0 +1,187 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.npdev'
+version = '0.1.0'
+
+def uiDir = file('ui-react')
+def npmExecutable = System.getProperty('os.name')
+        .toLowerCase(java.util.Locale.ROOT)
+        .contains('windows') ? 'npm.cmd' : 'npm'
+def npmCiArguments = ['ci', '--no-audit', '--fund=false', '--foreground-scripts']
+def playwrightInstallMarker = layout.buildDirectory.file('playwright/chromium-installed.marker')
+def npmCacheDir = layout.buildDirectory.dir('npm-cache')
+def playwrightBrowsersDir = layout.buildDirectory.dir('playwright/browsers')
+def keepUiGenerated = providers.gradleProperty('keepUiGenerated')
+        .map { it.equalsIgnoreCase('true') }
+        .orElse(false)
+def uiGeneratedDirectories = [
+        'node_modules',
+        'dist',
+        'playwright-static',
+        'test-results',
+        'playwright-report',
+        'coverage',
+        '.vite',
+        '.vitest'
+].collect { file("${uiDir}/${it}") }
+
+def configureUiExecEnvironment = { Exec task ->
+    task.environment 'npm_config_cache', npmCacheDir.get().asFile.absolutePath
+    task.environment 'NPM_CONFIG_CACHE', npmCacheDir.get().asFile.absolutePath
+    task.environment 'npm_config_audit', 'false'
+    task.environment 'NPM_CONFIG_AUDIT', 'false'
+    task.environment 'npm_config_fund', 'false'
+    task.environment 'NPM_CONFIG_FUND', 'false'
+    task.environment 'npm_config_update_notifier', 'false'
+    task.environment 'NPM_CONFIG_UPDATE_NOTIFIER', 'false'
+    task.environment 'npm_config_foreground_scripts', 'true'
+    task.environment 'NPM_CONFIG_FOREGROUND_SCRIPTS', 'true'
+    task.environment 'PLAYWRIGHT_BROWSERS_PATH', playwrightBrowsersDir.get().asFile.absolutePath
+    task.doFirst {
+        npmCacheDir.get().asFile.mkdirs()
+        playwrightBrowsersDir.get().asFile.mkdirs()
+    }
+}
+
+tasks.register('npmInstall', Exec) {
+    group = 'build setup'
+    description = 'Installs NPDevEditor UI dependencies from package-lock.json.'
+    workingDir = uiDir
+    commandLine ([npmExecutable] + npmCiArguments)
+    inputs.file file("${uiDir}/package.json")
+    inputs.file file("${uiDir}/package-lock.json")
+    outputs.dir file("${uiDir}/node_modules")
+}
+
+tasks.register('npmTest', Exec) {
+    group = 'verification'
+    description = 'Runs NPDevEditor React/Vitest tests.'
+    dependsOn tasks.named('npmInstall')
+    workingDir = uiDir
+    commandLine npmExecutable, 'test'
+}
+
+tasks.register('playwrightInstall', Exec) {
+    group = 'verification'
+    description = 'Installs the Chromium browser used by NPDevEditor Playwright tests into the normal external Playwright cache.'
+    dependsOn tasks.named('npmInstall')
+    workingDir = uiDir
+    commandLine npmExecutable, 'exec', 'playwright', 'install', 'chromium'
+    inputs.file file("${uiDir}/package-lock.json")
+    outputs.file playwrightInstallMarker
+    doLast {
+        def marker = playwrightInstallMarker.get().asFile
+        marker.parentFile.mkdirs()
+        marker.text = 'installed\n'
+    }
+}
+
+tasks.register('npmBuild', Exec) {
+    group = 'build'
+    description = 'Builds the NPDevEditor React UI with Vite.'
+    dependsOn tasks.named('npmInstall')
+    mustRunAfter tasks.named('npmTest')
+    workingDir = uiDir
+    commandLine npmExecutable, 'run', 'build'
+    inputs.dir file("${uiDir}/src")
+    inputs.file file("${uiDir}/index.html")
+    inputs.file file("${uiDir}/package.json")
+    inputs.file file("${uiDir}/package-lock.json")
+    outputs.dir file("${uiDir}/dist")
+}
+
+tasks.register('npmE2e', Exec) {
+    group = 'verification'
+    description = 'Runs NPDevEditor Playwright browser tests against the staged static host.'
+    dependsOn tasks.named('playwrightInstall')
+    dependsOn tasks.named('npmBuild')
+    mustRunAfter tasks.named('npmTest')
+    workingDir = uiDir
+    commandLine npmExecutable, 'run', 'e2e'
+    inputs.dir file("${uiDir}/e2e")
+    inputs.file file("${uiDir}/playwright.config.ts")
+    inputs.dir file("${uiDir}/scripts")
+    inputs.dir file("${uiDir}/dist")
+    outputs.dir file("${uiDir}/playwright-static")
+}
+
+tasks.register('cleanUiReactGenerated', Delete) {
+    group = 'cleanup'
+    description = 'Removes generated NPDevEditor React/npm outputs so the source folder stays small.'
+    delete uiGeneratedDirectories
+    delete fileTree(uiDir) {
+        include '*.tsbuildinfo'
+        include 'npm-debug.log*'
+        include 'yarn-debug.log*'
+        include 'yarn-error.log*'
+    }
+    onlyIf { !keepUiGenerated.get() }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('npmTest')
+    dependsOn tasks.named('npmE2e')
+}
+
+tasks.named('jar') {
+    archiveBaseName = 'npdev-editor-ui'
+    dependsOn tasks.named('npmBuild')
+    from(file("${uiDir}/dist")) {
+        into 'META-INF/resources/npdev-ui-react'
+    }
+    manifest {
+        attributes(
+                'Implementation-Title': 'NPDev Editor UI',
+                'Implementation-Version': project.version
+        )
+    }
+}
+
+tasks.named('clean') {
+    dependsOn tasks.named('cleanUiReactGenerated')
+}
+
+tasks.register('editorQualityGate') {
+    group = 'verification'
+    description = 'Runs the independent NPDevEditor verification build.'
+    dependsOn tasks.named('check')
+    dependsOn tasks.named('jar')
+}
+
+tasks.named('cleanUiReactGenerated') {
+    mustRunAfter tasks.named('npmTest')
+    mustRunAfter tasks.named('playwrightInstall')
+    mustRunAfter tasks.named('npmBuild')
+    mustRunAfter tasks.named('npmE2e')
+    mustRunAfter tasks.named('check')
+    mustRunAfter tasks.named('jar')
+    mustRunAfter tasks.named('editorQualityGate')
+}
+
+[
+        'npmTest',
+        'playwrightInstall',
+        'npmBuild',
+        'npmE2e',
+        'check',
+        'jar',
+        'editorQualityGate'
+].each { taskName ->
+    tasks.named(taskName) {
+        finalizedBy tasks.named('cleanUiReactGenerated')
+    }
+}
+
+[
+        'npmInstall',
+        'npmTest',
+        'playwrightInstall',
+        'npmBuild',
+        'npmE2e'
+].each { taskName ->
+    tasks.named(taskName, Exec) {
+        configureUiExecEnvironment(it)
+    }
+}

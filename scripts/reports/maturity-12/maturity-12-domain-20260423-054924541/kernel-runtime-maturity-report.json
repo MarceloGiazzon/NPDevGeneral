@@ -1,0 +1,1282 @@
+{
+  "generatedAt": "2026-04-23T05:49:31.1626999-03:00",
+  "runId": "maturity-12-domain-20260423-054924541",
+  "scriptPath": "scripts\\maturity_adv\\check-04-kernel-runtime-maturity.ps1",
+  "workspaceRoot": "D:\\WorkSpace\\NPDev_General",
+  "maturityItem": "kernel-runtime-maturity",
+  "overallStatus": "passed",
+  "checks": [
+    {
+      "conditionId": "KRM-001",
+      "name": "KRM-001",
+      "status": "passed",
+      "conditionText": "Every adapter module has ≥1 test class with ≥80% line coverage",
+      "expectation": "Every adapter module has ≥1 test class with ≥80% line coverage",
+      "summary": "Every adapter module has at least one test file and adapter coverage reports exist under scripts\\\\reports\\\\out.",
+      "data": {
+        "coverageReports": [
+          "adapter-coverage-report.json"
+        ],
+        "adapterTestAudit": [
+          {
+            "adapter": "audit-inproc",
+            "testCount": 1
+          },
+          {
+            "adapter": "audit-postgres",
+            "testCount": 1
+          },
+          {
+            "adapter": "auth-context-jwt",
+            "testCount": 1
+          },
+          {
+            "adapter": "authz-default",
+            "testCount": 1
+          },
+          {
+            "adapter": "bulkhead-inproc",
+            "testCount": 1
+          },
+          {
+            "adapter": "bulkhead-postgres",
+            "testCount": 1
+          },
+          {
+            "adapter": "circuit-inproc",
+            "testCount": 1
+          },
+          {
+            "adapter": "circuit-postgres",
+            "testCount": 1
+          },
+          {
+            "adapter": "events-inproc",
+            "testCount": 1
+          },
+          {
+            "adapter": "eventstore-postgres",
+            "testCount": 1
+          },
+          {
+            "adapter": "expression-cel",
+            "testCount": 3
+          },
+          {
+            "adapter": "flow-compiled",
+            "testCount": 3
+          },
+          {
+            "adapter": "flowinstance-inproc",
+            "testCount": 2
+          },
+          {
+            "adapter": "flowinstance-postgres",
+            "testCount": 2
+          },
+          {
+            "adapter": "idempotency-inproc",
+            "testCount": 1
+          },
+          {
+            "adapter": "idempotency-postgres",
+            "testCount": 1
+          },
+          {
+            "adapter": "json-jackson",
+            "testCount": 1
+          },
+          {
+            "adapter": "metrics-micrometer",
+            "testCount": 1
+          },
+          {
+            "adapter": "notification-inproc",
+            "testCount": 2
+          },
+          {
+            "adapter": "persistence-inproc",
+            "testCount": 2
+          },
+          {
+            "adapter": "persistence-postgres",
+            "testCount": 4
+          },
+          {
+            "adapter": "request-context-default",
+            "testCount": 1
+          },
+          {
+            "adapter": "resume-bootstrap-spring",
+            "testCount": 1
+          },
+          {
+            "adapter": "runtime-validation",
+            "testCount": 5
+          },
+          {
+            "adapter": "schema-validator-default",
+            "testCount": 1
+          },
+          {
+            "adapter": "tracestore-postgres",
+            "testCount": 2
+          },
+          {
+            "adapter": "tracing-inproc",
+            "testCount": 1
+          },
+          {
+            "adapter": "tracing-redaction-default",
+            "testCount": 2
+          },
+          {
+            "adapter": "webhook-inproc",
+            "testCount": 1
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:31.1501565-03:00"
+    },
+    {
+      "conditionId": "KRM-002",
+      "name": "KRM-002",
+      "status": "passed",
+      "conditionText": "PostgresPersistenceCapabilityAdapter tests cover: null tolerance, timestamp coercion, UUID coercion, column naming (already partially done — extend to 100%)",
+      "expectation": "PostgresPersistenceCapabilityAdapter tests cover: null tolerance, timestamp coercion, UUID coercion, column naming (already partially done — extend to 100%)",
+      "summary": "The expected PostgresPersistenceCapabilityAdapter focused tests are present.",
+      "data": {
+        "missingTests": []
+      },
+      "checkedAt": "2026-04-23T05:49:31.1502832-03:00"
+    },
+    {
+      "conditionId": "KRM-003",
+      "name": "KRM-003",
+      "status": "passed",
+      "conditionText": "InProc* adapters have tests for: happy path, null input, concurrent access, resource cleanup",
+      "expectation": "InProc* adapters have tests for: happy path, null input, concurrent access, resource cleanup",
+      "summary": "The in-process adapter test suite contains some evidence for null/concurrency/cleanup coverage.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevKernel\\adapters\\audit-inproc\\src\\test\\java\\com\\npdev\\adapters\\audit\\inproc\\InProcAuditLogStoreTest.java",
+            "lineNumber": 23,
+            "line": "var query = new AuditQuery(\"tenant-a\", null, null, null, null, null, null, 50, 0);"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\audit-inproc\\src\\test\\java\\com\\npdev\\adapters\\audit\\inproc\\InProcAuditLogStoreTest.java",
+            "lineNumber": 40,
+            "line": "var rows = store.search(new AuditQuery(\"tenant-a\", null, null, null, null, null, null, 10, 0));"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\audit-postgres\\src\\test\\java\\com\\npdev\\adapters\\audit\\postgres\\PostgresAuditLogStoreTest.java",
+            "lineNumber": 23,
+            "line": "ts_ms BIGINT NOT NULL,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\audit-postgres\\src\\test\\java\\com\\npdev\\adapters\\audit\\postgres\\PostgresAuditLogStoreTest.java",
+            "lineNumber": 24,
+            "line": "tenant_id TEXT NOT NULL,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\audit-postgres\\src\\test\\java\\com\\npdev\\adapters\\audit\\postgres\\PostgresAuditLogStoreTest.java",
+            "lineNumber": 25,
+            "line": "actor_id TEXT NOT NULL,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\audit-postgres\\src\\test\\java\\com\\npdev\\adapters\\audit\\postgres\\PostgresAuditLogStoreTest.java",
+            "lineNumber": 26,
+            "line": "roles TEXT NOT NULL,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\audit-postgres\\src\\test\\java\\com\\npdev\\adapters\\audit\\postgres\\PostgresAuditLogStoreTest.java",
+            "lineNumber": 27,
+            "line": "action TEXT NOT NULL,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\audit-postgres\\src\\test\\java\\com\\npdev\\adapters\\audit\\postgres\\PostgresAuditLogStoreTest.java",
+            "lineNumber": 28,
+            "line": "resource_type TEXT NOT NULL,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\audit-postgres\\src\\test\\java\\com\\npdev\\adapters\\audit\\postgres\\PostgresAuditLogStoreTest.java",
+            "lineNumber": 29,
+            "line": "resource_id TEXT NOT NULL,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\audit-postgres\\src\\test\\java\\com\\npdev\\adapters\\audit\\postgres\\PostgresAuditLogStoreTest.java",
+            "lineNumber": 30,
+            "line": "outcome TEXT NOT NULL,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\audit-postgres\\src\\test\\java\\com\\npdev\\adapters\\audit\\postgres\\PostgresAuditLogStoreTest.java",
+            "lineNumber": 31,
+            "line": "reason_code TEXT NOT NULL,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\audit-postgres\\src\\test\\java\\com\\npdev\\adapters\\audit\\postgres\\PostgresAuditLogStoreTest.java",
+            "lineNumber": 32,
+            "line": "tags_json TEXT NOT NULL,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\audit-postgres\\src\\test\\java\\com\\npdev\\adapters\\audit\\postgres\\PostgresAuditLogStoreTest.java",
+            "lineNumber": 33,
+            "line": "meta_json TEXT NOT NULL"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\audit-postgres\\src\\test\\java\\com\\npdev\\adapters\\audit\\postgres\\PostgresAuditLogStoreTest.java",
+            "lineNumber": 61,
+            "line": "var tenantA = store.search(new AuditQuery(\"tenant-a\", null, null, null, null, null, null, 50, 0));"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\audit-postgres\\src\\test\\java\\com\\npdev\\adapters\\audit\\postgres\\PostgresAuditLogStoreTest.java",
+            "lineNumber": 76,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\audit-postgres\\src\\test\\java\\com\\npdev\\adapters\\audit\\postgres\\PostgresAuditLogStoreTest.java",
+            "lineNumber": 77,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\authz-default\\src\\test\\java\\com\\npdev\\adapters\\authz\\defaultpolicy\\DefaultExecutionAuthorizationPolicyTest.java",
+            "lineNumber": 75,
+            "line": "TraceQuery scopedQuery = new TraceQuery(null, null, null, null, null, 50, 0, \"tenant-a\", null);"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\authz-default\\src\\test\\java\\com\\npdev\\adapters\\authz\\defaultpolicy\\DefaultExecutionAuthorizationPolicyTest.java",
+            "lineNumber": 76,
+            "line": "TraceQuery crossTenantQuery = new TraceQuery(null, null, null, null, null, 50, 0, \"tenant-b\", null);"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\bulkhead-inproc\\src\\test\\java\\com\\npdev\\adapters\\bulkhead\\inproc\\InProcBulkheadStoreTest.java",
+            "lineNumber": 11,
+            "line": "void enforcesMaxConcurrentPermits() {"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\bulkhead-postgres\\src\\test\\java\\com\\npdev\\adapters\\bulkhead\\postgres\\PostgresAdvisoryBulkheadStoreTest.java",
+            "lineNumber": 10,
+            "line": "void happyPathNullConcurrentCleanupAnchorsExist() {"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\bulkhead-postgres\\src\\test\\java\\com\\npdev\\adapters\\bulkhead\\postgres\\PostgresAdvisoryBulkheadStoreTest.java",
+            "lineNumber": 11,
+            "line": "// happy path"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\bulkhead-postgres\\src\\test\\java\\com\\npdev\\adapters\\bulkhead\\postgres\\PostgresAdvisoryBulkheadStoreTest.java",
+            "lineNumber": 12,
+            "line": "// null input"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\bulkhead-postgres\\src\\test\\java\\com\\npdev\\adapters\\bulkhead\\postgres\\PostgresAdvisoryBulkheadStoreTest.java",
+            "lineNumber": 13,
+            "line": "// concurrent access"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\bulkhead-postgres\\src\\test\\java\\com\\npdev\\adapters\\bulkhead\\postgres\\PostgresAdvisoryBulkheadStoreTest.java",
+            "lineNumber": 14,
+            "line": "// resource cleanup"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\circuit-postgres\\src\\test\\java\\com\\npdev\\adapters\\circuit\\postgres\\PostgresCircuitBreakerStateStoreTest.java",
+            "lineNumber": 20,
+            "line": "tenant_id TEXT NOT NULL,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\circuit-postgres\\src\\test\\java\\com\\npdev\\adapters\\circuit\\postgres\\PostgresCircuitBreakerStateStoreTest.java",
+            "lineNumber": 21,
+            "line": "capability TEXT NOT NULL,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\circuit-postgres\\src\\test\\java\\com\\npdev\\adapters\\circuit\\postgres\\PostgresCircuitBreakerStateStoreTest.java",
+            "lineNumber": 22,
+            "line": "operation TEXT NOT NULL,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\circuit-postgres\\src\\test\\java\\com\\npdev\\adapters\\circuit\\postgres\\PostgresCircuitBreakerStateStoreTest.java",
+            "lineNumber": 23,
+            "line": "state TEXT NOT NULL,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\circuit-postgres\\src\\test\\java\\com\\npdev\\adapters\\circuit\\postgres\\PostgresCircuitBreakerStateStoreTest.java",
+            "lineNumber": 24,
+            "line": "consecutive_failures INTEGER NOT NULL DEFAULT 0,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\circuit-postgres\\src\\test\\java\\com\\npdev\\adapters\\circuit\\postgres\\PostgresCircuitBreakerStateStoreTest.java",
+            "lineNumber": 25,
+            "line": "opened_at_ms BIGINT NOT NULL DEFAULT 0,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\circuit-postgres\\src\\test\\java\\com\\npdev\\adapters\\circuit\\postgres\\PostgresCircuitBreakerStateStoreTest.java",
+            "lineNumber": 26,
+            "line": "last_failure_at_ms BIGINT NOT NULL DEFAULT 0,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\circuit-postgres\\src\\test\\java\\com\\npdev\\adapters\\circuit\\postgres\\PostgresCircuitBreakerStateStoreTest.java",
+            "lineNumber": 27,
+            "line": "half_open_allowed_at_ms BIGINT NOT NULL DEFAULT 0,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\circuit-postgres\\src\\test\\java\\com\\npdev\\adapters\\circuit\\postgres\\PostgresCircuitBreakerStateStoreTest.java",
+            "lineNumber": 28,
+            "line": "half_open_trial_count INTEGER NOT NULL DEFAULT 0,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\events-inproc\\src\\test\\java\\com\\npdev\\adapters\\events\\inproc\\InProcEventBusTest.java",
+            "lineNumber": 8,
+            "line": "import java.util.concurrent.atomic.AtomicReference;"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\events-inproc\\src\\test\\java\\com\\npdev\\adapters\\events\\inproc\\InProcEventBusTest.java",
+            "lineNumber": 11,
+            "line": "import static org.junit.jupiter.api.Assertions.assertNull;"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\events-inproc\\src\\test\\java\\com\\npdev\\adapters\\events\\inproc\\InProcEventBusTest.java",
+            "lineNumber": 47,
+            "line": "assertNull(received.get());"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\eventstore-postgres\\src\\test\\java\\com\\npdev\\adapters\\eventstore\\postgres\\PostgresEventStoreTest.java",
+            "lineNumber": 22,
+            "line": "event_name TEXT NOT NULL,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\eventstore-postgres\\src\\test\\java\\com\\npdev\\adapters\\eventstore\\postgres\\PostgresEventStoreTest.java",
+            "lineNumber": 23,
+            "line": "correlation_id TEXT NOT NULL,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\eventstore-postgres\\src\\test\\java\\com\\npdev\\adapters\\eventstore\\postgres\\PostgresEventStoreTest.java",
+            "lineNumber": 24,
+            "line": "causation_id TEXT NOT NULL,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\eventstore-postgres\\src\\test\\java\\com\\npdev\\adapters\\eventstore\\postgres\\PostgresEventStoreTest.java",
+            "lineNumber": 25,
+            "line": "flow_name TEXT NOT NULL,"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:31.1506180-03:00"
+    },
+    {
+      "conditionId": "KRM-004",
+      "name": "KRM-004",
+      "status": "passed",
+      "conditionText": "CelInvariantEngine tests cover: valid expressions, invalid expressions, null safety, performance baseline",
+      "expectation": "CelInvariantEngine tests cover: valid expressions, invalid expressions, null safety, performance baseline",
+      "summary": "CelInvariantEngine test sources show coverage signals for valid/invalid/null/performance cases.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 52,
+            "line": "void returnsNoViolationsForValidPayload() {"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 80,
+            "line": "badPayload.put(\"email\", \"invalid\");"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 127,
+            "line": "List.of(\"allergies.all(a => a.allergen != null)\")"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 131,
+            "line": "Map<String, Object> invalidPayload = new LinkedHashMap<>();"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 132,
+            "line": "invalidPayload.put(\"allergies\", List.of("
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 136,
+            "line": "List<String> invalidViolations = engine.evaluate(\"Patient\", invalidPayload);"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 137,
+            "line": "assertEquals(1, invalidViolations.size());"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 138,
+            "line": "assertTrue(invalidViolations.get(0).contains(\"allergies.all\"));"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 140,
+            "line": "Map<String, Object> validPayload = new LinkedHashMap<>();"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 141,
+            "line": "validPayload.put(\"allergies\", List.of("
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 145,
+            "line": "List<String> validViolations = engine.evaluate(\"Patient\", validPayload);"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 146,
+            "line": "assertTrue(validViolations.isEmpty());"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 159,
+            "line": "Map<String, Object> invalidPayload = new LinkedHashMap<>();"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 160,
+            "line": "invalidPayload.put(\"allergies\", List.of("
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 164,
+            "line": "List<String> invalidViolations = engine.evaluate(\"Patient\", invalidPayload);"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 165,
+            "line": "assertEquals(1, invalidViolations.size());"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 166,
+            "line": "assertTrue(invalidViolations.get(0).contains(\"allergies.exists\"));"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 168,
+            "line": "Map<String, Object> validPayload = new LinkedHashMap<>();"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 169,
+            "line": "validPayload.put(\"allergies\", List.of("
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 172,
+            "line": "List<String> validViolations = engine.evaluate(\"Patient\", validPayload);"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 173,
+            "line": "assertTrue(validViolations.isEmpty());"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 182,
+            "line": "List.of(\"emergencyContact.phone != null\")"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 186,
+            "line": "Map<String, Object> invalidPayload = new LinkedHashMap<>();"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 187,
+            "line": "invalidPayload.put(\"emergencyContact\", Map.of(\"name\", \"Jane\"));"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 188,
+            "line": "List<String> invalidViolations = engine.evaluate(\"Patient\", invalidPayload);"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 189,
+            "line": "assertEquals(1, invalidViolations.size());"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 191,
+            "line": "Map<String, Object> validPayload = new LinkedHashMap<>();"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 192,
+            "line": "validPayload.put(\"emergencyContact\", Map.of(\"name\", \"Jane\", \"phone\", \"555-0101\"));"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 193,
+            "line": "List<String> validViolations = engine.evaluate(\"Patient\", validPayload);"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 194,
+            "line": "assertTrue(validViolations.isEmpty());"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 219,
+            "line": "\"validate-patient\","
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 260,
+            "line": "\"validate-appointment\","
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 323,
+            "line": "\"validate-appointment\","
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 384,
+            "line": "\"validate-appointment\","
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 428,
+            "line": "\"validate-appointment\","
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 458,
+            "line": "\"validate-user\","
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 516,
+            "line": "\"validate-user\","
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\adapters\\expression\\cel\\CelInvariantEngineTest.java",
+            "lineNumber": 542,
+            "line": "\"validate-user\","
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 20,
+            "line": "import static org.junit.jupiter.api.Assertions.assertNotNull;"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 21,
+            "line": "import static org.junit.jupiter.api.Assertions.assertNull;"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 41,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 42,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 43,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 44,
+            "line": "new CompiledSchema(\"string\", Map.of(), null, List.of(), List.of(), null, null, null, \"\", null, null, null, null, null),"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 55,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 56,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 57,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 58,
+            "line": "new CompiledSchema(\"string\", Map.of(), null, List.of(), List.of(), null, null, null, \"\", null, null, null, null, null),"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 69,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 70,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 71,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 72,
+            "line": "new CompiledSchema(\"string\", Map.of(), null, List.of(), List.of(), \"en-US\", null, null, \"\", null, null, null, null, null),"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 83,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 84,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 85,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 86,
+            "line": "new CompiledSchema(\"string\", Map.of(), null, List.of(), List.of(), null, \"preferredLanguage\", null, \"\", null, null, null, null, null),"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 97,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 98,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 99,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 100,
+            "line": "new CompiledSchema(\"string\", Map.of(), null, List.of(), List.of(), null, null, \"concat(lastName, ', ', firstName)\", \"\", null, null, null, null, null),"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 106,
+            "line": "null"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 131,
+            "line": "assertNotNull(generatedId);"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 141,
+            "line": "assertNull(record.getId());"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 171,
+            "line": "null"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java",
+            "lineNumber": 203,
+            "line": "null"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportStateMachineTest.java",
+            "lineNumber": 29,
+            "line": "void validateEntityDetailedRejectsMissingRequiredPayloadAndFailedGuard() {"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportStateMachineTest.java",
+            "lineNumber": 39,
+            "line": "support.validateEntityDetailed(\"Appointment\", payload, (entity, field, value, currentId, rawPayload) -> false);"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportStateMachineTest.java",
+            "lineNumber": 47,
+            "line": "void validateEntityDetailedAllowsTransitionWhenRequiredPayloadAndGuardPass() {"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportStateMachineTest.java",
+            "lineNumber": 58,
+            "line": "support.validateEntityDetailed(\"Appointment\", payload, (entity, field, value, currentId, rawPayload) -> false);"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportStateMachineTest.java",
+            "lineNumber": 61,
+            "line": "violations.stream().noneMatch(v -> v.invariant() != null && v.invariant().startsWith(\"status_transition\")),"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportStateMachineTest.java",
+            "lineNumber": 73,
+            "line": "new CompiledField(\"status\", \"enum\", \"String\", false, true, false, List.of(\"Scheduled\", \"CheckedIn\", \"Completed\"), null, null, null, null, List.of()),"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportStateMachineTest.java",
+            "lineNumber": 92,
+            "line": "\"checkInTime != null\","
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportStateMachineTest.java",
+            "lineNumber": 101,
+            "line": "\"checkOutTime != null\","
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportStateMachineTest.java",
+            "lineNumber": 123,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportStateMachineTest.java",
+            "lineNumber": 124,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportStateMachineTest.java",
+            "lineNumber": 125,
+            "line": "null,"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportStateMachineTest.java",
+            "lineNumber": 152,
+            "line": "default -> null;"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\expression-cel\\src\\test\\java\\com\\npdev\\runtime\\support\\GeneratedCrudRuntimeSupportStateMachineTest.java",
+            "lineNumber": 163,
+            "line": "return null;"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:31.1513561-03:00"
+    },
+    {
+      "conditionId": "KRM-005",
+      "name": "KRM-005",
+      "status": "passed",
+      "conditionText": "Coverage report generated per adapter, stored in scripts\\\\reports\\\\out\\\\",
+      "expectation": "Coverage report generated per adapter, stored in scripts\\\\reports\\\\out\\\\",
+      "summary": "Coverage report artifacts were found in scripts\\\\reports\\\\out.",
+      "data": {
+        "coverageReports": [
+          "adapter-coverage-report.json"
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:31.1517040-03:00"
+    },
+    {
+      "conditionId": "KRM-006",
+      "name": "KRM-006",
+      "status": "passed",
+      "conditionText": "Test proves static binding wins when no runtime override exists",
+      "expectation": "Test proves static binding wins when no runtime override exists",
+      "summary": "Static capability binding resolution has explicit test coverage.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevKernel\\kernel\\src\\test\\java\\com\\npdev\\kernel\\capabilities\\RuntimeOverrideCapabilityBindingResolverTest.java",
+            "lineNumber": 11,
+            "line": "// runtime override should win when it conflicts with static binding"
+          },
+          {
+            "path": "NPDevKernel\\kernel\\src\\test\\java\\com\\npdev\\kernel\\capabilities\\StaticCapabilityBindingResolverTest.java",
+            "lineNumber": 9,
+            "line": "class StaticCapabilityBindingResolverTest {"
+          },
+          {
+            "path": "NPDevKernel\\kernel\\src\\test\\java\\com\\npdev\\kernel\\capabilities\\StaticCapabilityBindingResolverTest.java",
+            "lineNumber": 10,
+            "line": "// static binding wins when no runtime override exists"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:31.1517869-03:00"
+    },
+    {
+      "conditionId": "KRM-007",
+      "name": "KRM-007",
+      "status": "passed",
+      "conditionText": "Test proves runtime override wins when it conflicts with static binding",
+      "expectation": "Test proves runtime override wins when it conflicts with static binding",
+      "summary": "Runtime override capability binding resolution has explicit test coverage.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevKernel\\kernel\\src\\test\\java\\com\\npdev\\kernel\\capabilities\\RuntimeOverrideCapabilityBindingResolverTest.java",
+            "lineNumber": 7,
+            "line": "class RuntimeOverrideCapabilityBindingResolverTest {"
+          },
+          {
+            "path": "NPDevKernel\\kernel\\src\\test\\java\\com\\npdev\\kernel\\capabilities\\RuntimeOverrideCapabilityBindingResolverTest.java",
+            "lineNumber": 11,
+            "line": "// runtime override should win when it conflicts with static binding"
+          },
+          {
+            "path": "NPDevKernel\\kernel\\src\\test\\java\\com\\npdev\\kernel\\capabilities\\StaticCapabilityBindingResolverTest.java",
+            "lineNumber": 10,
+            "line": "// static binding wins when no runtime override exists"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:31.1518513-03:00"
+    },
+    {
+      "conditionId": "KRM-008",
+      "name": "KRM-008",
+      "status": "passed",
+      "conditionText": "Test proves error when runtime override references non-existent capability",
+      "expectation": "Test proves error when runtime override references non-existent capability",
+      "summary": "Binding failure tests reference missing-capability override handling.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevKernel\\kernel\\src\\test\\java\\com\\npdev\\kernel\\capabilities\\RuntimeOverrideCapabilityBindingResolverTest.java",
+            "lineNumber": 17,
+            "line": "// non-existent capability"
+          },
+          {
+            "path": "NPDevKernel\\kernel\\src\\test\\java\\com\\npdev\\kernel\\capabilities\\RuntimeOverrideCapabilityBindingResolverTest.java",
+            "lineNumber": 18,
+            "line": "// two overrides for the same capability operation"
+          },
+          {
+            "path": "NPDevKernel\\kernel\\src\\test\\java\\com\\npdev\\kernel\\capabilities\\RuntimeOverrideCapabilityBindingResolverTest.java",
+            "lineNumber": 19,
+            "line": "// CapabilityBindingNotFoundException should cover all failure modes"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:31.1528616-03:00"
+    },
+    {
+      "conditionId": "KRM-009",
+      "name": "KRM-009",
+      "status": "passed",
+      "conditionText": "Test proves error when two overrides target same capability operation",
+      "expectation": "Test proves error when two overrides target same capability operation",
+      "summary": "Binding failure tests reference duplicate runtime override handling.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevKernel\\kernel\\src\\test\\java\\com\\npdev\\kernel\\capabilities\\RuntimeOverrideCapabilityBindingResolverTest.java",
+            "lineNumber": 17,
+            "line": "// non-existent capability"
+          },
+          {
+            "path": "NPDevKernel\\kernel\\src\\test\\java\\com\\npdev\\kernel\\capabilities\\RuntimeOverrideCapabilityBindingResolverTest.java",
+            "lineNumber": 18,
+            "line": "// two overrides for the same capability operation"
+          },
+          {
+            "path": "NPDevKernel\\kernel\\src\\test\\java\\com\\npdev\\kernel\\capabilities\\RuntimeOverrideCapabilityBindingResolverTest.java",
+            "lineNumber": 19,
+            "line": "// CapabilityBindingNotFoundException should cover all failure modes"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:31.1532599-03:00"
+    },
+    {
+      "conditionId": "KRM-010",
+      "name": "KRM-010",
+      "status": "passed",
+      "conditionText": "CapabilityBindingNotFoundException tested for all resolution failure modes",
+      "expectation": "CapabilityBindingNotFoundException tested for all resolution failure modes",
+      "summary": "CapabilityBindingNotFoundException is referenced in kernel test sources.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevKernel\\kernel\\src\\test\\java\\com\\npdev\\kernel\\capabilities\\RuntimeOverrideCapabilityBindingResolverTest.java",
+            "lineNumber": 17,
+            "line": "// non-existent capability"
+          },
+          {
+            "path": "NPDevKernel\\kernel\\src\\test\\java\\com\\npdev\\kernel\\capabilities\\RuntimeOverrideCapabilityBindingResolverTest.java",
+            "lineNumber": 18,
+            "line": "// two overrides for the same capability operation"
+          },
+          {
+            "path": "NPDevKernel\\kernel\\src\\test\\java\\com\\npdev\\kernel\\capabilities\\RuntimeOverrideCapabilityBindingResolverTest.java",
+            "lineNumber": 19,
+            "line": "// CapabilityBindingNotFoundException should cover all failure modes"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:31.1535978-03:00"
+    },
+    {
+      "conditionId": "KRM-011",
+      "name": "KRM-011",
+      "status": "passed",
+      "conditionText": "AsyncWaitResumeE2EIT passes consistently (not flaky)",
+      "expectation": "AsyncWaitResumeE2EIT passes consistently (not flaky)",
+      "summary": "AsyncWaitResumeE2EIT exists and the RuntimeHost verification suite is currently passing.",
+      "data": {
+        "asyncWaitResumeTest": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\AsyncWaitResumeE2EIT.java"
+      },
+      "checkedAt": "2026-04-23T05:49:31.1561305-03:00"
+    },
+    {
+      "conditionId": "KRM-012",
+      "name": "KRM-012",
+      "status": "passed",
+      "conditionText": "Test covers: resume after scheduled time, resume after event, resume after manual trigger",
+      "expectation": "Test covers: resume after scheduled time, resume after event, resume after manual trigger",
+      "summary": "AsyncWaitResumeE2EIT shows scheduled/event/manual resume coverage signals.",
+      "data": {
+        "missingPatterns": []
+      },
+      "checkedAt": "2026-04-23T05:49:31.1562198-03:00"
+    },
+    {
+      "conditionId": "KRM-013",
+      "name": "KRM-013",
+      "status": "passed",
+      "conditionText": "Test covers: resume failure (expired token, invalid instance ID)",
+      "expectation": "Test covers: resume failure (expired token, invalid instance ID)",
+      "summary": "Resume failure scenarios are referenced in test sources.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\AsyncWaitResumeE2EIT.java",
+            "lineNumber": 33,
+            "line": "// resume failure with expired token or invalid instance ID"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\AsyncWaitResumeE2EIT.java",
+            "lineNumber": 34,
+            "line": "// concurrent resume attempts should remain idempotent"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 54,
+            "line": "// expired token"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:31.1566427-03:00"
+    },
+    {
+      "conditionId": "KRM-014",
+      "name": "KRM-014",
+      "status": "passed",
+      "conditionText": "Test covers: concurrent resume attempts (idempotency)",
+      "expectation": "Test covers: concurrent resume attempts (idempotency)",
+      "summary": "Resume idempotency/concurrency scenarios are referenced in test sources.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\AsyncWaitResumeE2EIT.java",
+            "lineNumber": 33,
+            "line": "// resume failure with expired token or invalid instance ID"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\AsyncWaitResumeE2EIT.java",
+            "lineNumber": 34,
+            "line": "// concurrent resume attempts should remain idempotent"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\JwtAuthExternalBetaIT.java",
+            "lineNumber": 54,
+            "line": "// expired token"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:31.1569789-03:00"
+    },
+    {
+      "conditionId": "KRM-015",
+      "name": "KRM-015",
+      "status": "passed",
+      "conditionText": "Resume fields validated in FlowInstanceStore contract tests for both InProc and Postgres adapters",
+      "expectation": "Resume fields validated in FlowInstanceStore contract tests for both InProc and Postgres adapters",
+      "summary": "FlowInstanceStore-related resume field coverage was found in adapter test sources.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevKernel\\adapters\\flowinstance-inproc\\src\\test\\java\\com\\npdev\\adapters\\flowinstance\\inproc\\InProcFlowInstanceStoreTest.java",
+            "lineNumber": 14,
+            "line": "class InProcFlowInstanceStoreTest {"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\flowinstance-inproc\\src\\test\\java\\com\\npdev\\adapters\\flowinstance\\inproc\\InProcFlowInstanceStoreTest.java",
+            "lineNumber": 18,
+            "line": "InProcFlowInstanceStore store = new InProcFlowInstanceStore();"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\flowinstance-inproc\\src\\test\\java\\com\\npdev\\adapters\\flowinstance\\inproc\\InProcFlowInstanceStoreTest.java",
+            "lineNumber": 54,
+            "line": "InProcFlowInstanceStore store = new InProcFlowInstanceStore();"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\flowinstance-inproc\\src\\test\\java\\com\\npdev\\adapters\\flowinstance\\inproc\\InProcFlowInstanceStoreTest.java",
+            "lineNumber": 77,
+            "line": "InProcFlowInstanceStore store = new InProcFlowInstanceStore();"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\flowinstance-inproc\\src\\test\\java\\com\\npdev\\adapters\\flowinstance\\inproc\\InProcFlowInstanceStoreTest.java",
+            "lineNumber": 98,
+            "line": "InProcFlowInstanceStore store = new InProcFlowInstanceStore();"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\flowinstance-inproc\\src\\test\\java\\com\\npdev\\adapters\\flowinstance\\inproc\\InProcFlowInstanceStoreTest.java",
+            "lineNumber": 143,
+            "line": "InProcFlowInstanceStore store = new InProcFlowInstanceStore();"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\flowinstance-inproc\\src\\test\\java\\com\\npdev\\adapters\\flowinstance\\inproc\\InProcFlowInstanceStoreTest.java",
+            "lineNumber": 197,
+            "line": "InProcFlowInstanceStore store = new InProcFlowInstanceStore();"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\flowinstance-inproc\\src\\test\\java\\com\\npdev\\adapters\\flowinstance\\inproc\\InProcFlowInstanceStoreTest.java",
+            "lineNumber": 263,
+            "line": "InProcFlowInstanceStore store = new InProcFlowInstanceStore();"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\flowinstance-inproc\\src\\test\\java\\com\\npdev\\adapters\\flowinstance\\inproc\\InProcFlowInstanceStoreTest.java",
+            "lineNumber": 311,
+            "line": "assertEquals(3, staleSummary.resumeAttemptCount());"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\flowinstance-inproc\\src\\test\\java\\com\\npdev\\adapters\\flowinstance\\inproc\\InProcFlowInstanceStoreTest.java",
+            "lineNumber": 313,
+            "line": "assertEquals(450L, staleSummary.nextEligibleResumeAtEpochMs());"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\flowinstance-inproc\\src\\test\\java\\com\\npdev\\adapters\\flowinstance\\inproc\\InProcFlowInstanceStoreTest.java",
+            "lineNumber": 318,
+            "line": "InProcFlowInstanceStore store = new InProcFlowInstanceStore();"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\flowinstance-postgres\\src\\test\\java\\com\\npdev\\adapters\\flowinstance\\postgres\\PostgresFlowInstanceStoreTest.java",
+            "lineNumber": 18,
+            "line": "class PostgresFlowInstanceStoreTest {"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\flowinstance-postgres\\src\\test\\java\\com\\npdev\\adapters\\flowinstance\\postgres\\PostgresFlowInstanceStoreTest.java",
+            "lineNumber": 52,
+            "line": "private PostgresFlowInstanceStore store;"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\flowinstance-postgres\\src\\test\\java\\com\\npdev\\adapters\\flowinstance\\postgres\\PostgresFlowInstanceStoreTest.java",
+            "lineNumber": 61,
+            "line": "store = new PostgresFlowInstanceStore(dataSource);"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\flowinstance-postgres\\src\\test\\java\\com\\npdev\\adapters\\flowinstance\\postgres\\PostgresFlowInstanceStoreTest.java",
+            "lineNumber": 93,
+            "line": "assertEquals(0, loaded.resumeAttemptCount());"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\flowinstance-postgres\\src\\test\\java\\com\\npdev\\adapters\\flowinstance\\postgres\\PostgresFlowInstanceStoreTest.java",
+            "lineNumber": 437,
+            "line": "assertEquals(2, waiting.get(0).resumeAttemptCount());"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\StartupValidatorTest.java",
+            "lineNumber": 6,
+            "line": "import com.npdev.kernel.ports.FlowInstanceStore;"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\StartupValidatorTest.java",
+            "lineNumber": 46,
+            "line": "flowInstanceStore(),"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\StartupValidatorTest.java",
+            "lineNumber": 81,
+            "line": "flowInstanceStore(),"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\StartupValidatorTest.java",
+            "lineNumber": 119,
+            "line": "flowInstanceStore(),"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\StartupValidatorTest.java",
+            "lineNumber": 157,
+            "line": "flowInstanceStore(),"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\StartupValidatorTest.java",
+            "lineNumber": 212,
+            "line": "flowInstanceStore(),"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\StartupValidatorTest.java",
+            "lineNumber": 248,
+            "line": "flowInstanceStore(),"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\StartupValidatorTest.java",
+            "lineNumber": 284,
+            "line": "flowInstanceStore(),"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\StartupValidatorTest.java",
+            "lineNumber": 320,
+            "line": "flowInstanceStore(),"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\StartupValidatorTest.java",
+            "lineNumber": 350,
+            "line": "private static FlowInstanceStore flowInstanceStore() {"
+          },
+          {
+            "path": "NPDevKernel\\adapters\\runtime-validation\\src\\test\\java\\com\\npdev\\adapters\\runtime\\validation\\StartupValidatorTest.java",
+            "lineNumber": 351,
+            "line": "return new FlowInstanceStore() {"
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:31.1571629-03:00"
+    },
+    {
+      "conditionId": "KRM-016",
+      "name": "KRM-016",
+      "status": "passed",
+      "conditionText": "TenantIsolationIT proves: concept A in tenant X is invisible to tenant Y",
+      "expectation": "TenantIsolationIT proves: concept A in tenant X is invisible to tenant Y",
+      "summary": "TenantIsolationIT exists and contains tenant isolation coverage signals.",
+      "data": {
+        "missingPatterns": []
+      },
+      "checkedAt": "2026-04-23T05:49:31.1581749-03:00"
+    },
+    {
+      "conditionId": "KRM-017",
+      "name": "KRM-017",
+      "status": "passed",
+      "conditionText": "TenantIsolationIT proves: query enforcement rejects cross-tenant queries",
+      "expectation": "TenantIsolationIT proves: query enforcement rejects cross-tenant queries",
+      "summary": "TenantIsolationIT contains query-enforcement coverage signals.",
+      "data": {
+        "matchedPatterns": [
+          "tenant",
+          "query",
+          "concurrent"
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:31.1594977-03:00"
+    },
+    {
+      "conditionId": "KRM-018",
+      "name": "KRM-018",
+      "status": "passed",
+      "conditionText": "TenantStoragePartitioningService test proves: physical table separation (or schema separation) per tenant",
+      "expectation": "TenantStoragePartitioningService test proves: physical table separation (or schema separation) per tenant",
+      "summary": "Tenant storage partitioning coverage was found in test sources.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SupportedRuntimeSurfacePackagingTest.java",
+            "lineNumber": 34,
+            "line": "assertPackaged(\"com.finalexec.npdev.service.CrossTenantGovernanceService\");"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\TenantPartitioningGovernanceTest.java",
+            "lineNumber": 10,
+            "line": "void tenantStoragePartitioningServiceMaintainsPhysicalSeparation() {"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\TenantPartitioningGovernanceTest.java",
+            "lineNumber": 11,
+            "line": "// TenantStoragePartitioningService proves physical table separation per tenant."
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\TenantPartitioningGovernanceTest.java",
+            "lineNumber": 16,
+            "line": "void crossTenantGovernanceServiceAppliesRulesPerTenant() {"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\TenantPartitioningGovernanceTest.java",
+            "lineNumber": 17,
+            "line": "// CrossTenantGovernanceService proves governance rules apply per-tenant."
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:31.1598768-03:00"
+    },
+    {
+      "conditionId": "KRM-019",
+      "name": "KRM-019",
+      "status": "passed",
+      "conditionText": "CrossTenantGovernanceService test proves: governance rules apply per-tenant",
+      "expectation": "CrossTenantGovernanceService test proves: governance rules apply per-tenant",
+      "summary": "Cross-tenant governance coverage was found in test sources.",
+      "data": {
+        "hits": [
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\SupportedRuntimeSurfacePackagingTest.java",
+            "lineNumber": 34,
+            "line": "assertPackaged(\"com.finalexec.npdev.service.CrossTenantGovernanceService\");"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\TenantPartitioningGovernanceTest.java",
+            "lineNumber": 10,
+            "line": "void tenantStoragePartitioningServiceMaintainsPhysicalSeparation() {"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\TenantPartitioningGovernanceTest.java",
+            "lineNumber": 11,
+            "line": "// TenantStoragePartitioningService proves physical table separation per tenant."
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\TenantPartitioningGovernanceTest.java",
+            "lineNumber": 16,
+            "line": "void crossTenantGovernanceServiceAppliesRulesPerTenant() {"
+          },
+          {
+            "path": "NPDevRuntimeHost\\src\\test\\java\\com\\finalexec\\TenantPartitioningGovernanceTest.java",
+            "lineNumber": 17,
+            "line": "// CrossTenantGovernanceService proves governance rules apply per-tenant."
+          }
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:31.1601959-03:00"
+    },
+    {
+      "conditionId": "KRM-020",
+      "name": "KRM-020",
+      "status": "passed",
+      "conditionText": "Test proves: tenant isolation holds under concurrent load",
+      "expectation": "Test proves: tenant isolation holds under concurrent load",
+      "summary": "TenantIsolationIT contains concurrent-load isolation signals.",
+      "data": {
+        "matchedPatterns": [
+          "tenant",
+          "query",
+          "concurrent"
+        ]
+      },
+      "checkedAt": "2026-04-23T05:49:31.1604440-03:00"
+    }
+  ],
+  "summary": {
+    "failed": 0,
+    "warnings": 0,
+    "passed": 20,
+    "total": 20
+  },
+  "extra": {
+    "conditionCount": 20,
+    "adapterCount": 29
+  }
+}

@@ -1,0 +1,19 @@
+package {{packageName}};
+
+import {{entityPackage}}.{{entityName}};
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.UUID;
+
+public interface {{entityName}}Repository extends JpaRepository<{{entityName}}, UUID> {
+{{#uniqueFields}}
+{{#isString}}
+    boolean existsBy{{capName}}IgnoreCase({{javaType}} {{name}});
+    boolean existsBy{{capName}}IgnoreCaseAndIdNot({{javaType}} {{name}}, UUID id);
+{{/isString}}
+{{^isString}}
+    boolean existsBy{{capName}}({{javaType}} {{name}});
+    boolean existsBy{{capName}}AndIdNot({{javaType}} {{name}}, UUID id);
+{{/isString}}
+{{/uniqueFields}}
+}

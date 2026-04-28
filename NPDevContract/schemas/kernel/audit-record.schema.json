@@ -1,0 +1,37 @@
+﻿{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "$id":  "https://npdev.local/contracts/audit-record.schema.json",
+    "title":  "NPDev Kernel Audit Record",
+    "type":  "object",
+    "additionalProperties":  true,
+    "properties":  {
+                       "contractVersion":  {
+                                               "description":  "Audit record contract version.",
+                                               "type":  "string"
+                                           },
+                       "auditId":  {
+                                       "description":  "Unique audit id.",
+                                       "type":  "string"
+                                   },
+                       "action":  {
+                                      "description":  "Action performed.",
+                                      "type":  "string"
+                                  },
+                       "actor":  {
+                                     "type":  "object",
+                                     "description":  "Actor responsible for the action.",
+                                     "additionalProperties":  true
+                                 },
+                       "subject":  {
+                                       "type":  "object",
+                                       "description":  "Object affected by the action.",
+                                       "additionalProperties":  true
+                                   }
+                   },
+    "required":  [
+                     "contractVersion",
+                     "auditId",
+                     "action",
+                     "actor"
+                 ]
+}

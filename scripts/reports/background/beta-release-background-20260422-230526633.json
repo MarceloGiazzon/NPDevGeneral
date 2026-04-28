@@ -1,0 +1,33 @@
+{
+  "stdoutLogPath": "scripts\\reports\\background\\beta-release-background-20260422-230526633.stdout.log",
+  "command": "C:\\Program Files (x86)\\PowerShell\\7\\pwsh.exe -NoLogo -NoProfile -NonInteractive -File D:\\WorkSpace\\NPDev_General\\scripts\\quality\\invoke-background-gate-runner.ps1 -WorkspaceRoot D:\\WorkSpace\\NPDev_General -Gate beta-release -MetadataPath D:\\WorkSpace\\NPDev_General\\scripts\\reports\\background\\beta-release-background-20260422-230526633.json -SampleId simple-contact-intake",
+  "workspaceRoot": "D:\\WorkSpace\\NPDev_General",
+  "gate": "beta-release",
+  "createdAt": "2026-04-22T23:05:26.7255286-03:00",
+  "stderrLogPath": "scripts\\reports\\background\\beta-release-background-20260422-230526633.stderr.log",
+  "sampleId": "simple-contact-intake",
+  "expectedReportPath": "scripts\\reports\\out\\beta-release-gate-report.json",
+  "traceabilityOverrides": {
+    "commitSha": null,
+    "branch": null,
+    "dirty": null,
+    "provider": null,
+    "runId": null,
+    "runAttempt": null,
+    "workflow": null
+  },
+  "scriptPath": "scripts\\quality\\run-beta-release-gate.ps1",
+  "status": "passed",
+  "jobId": "beta-release-background-20260422-230526633",
+  "launchedAt": "2026-04-22T23:05:26.8536691-03:00",
+  "processId": 3332,
+  "runnerStartedAt": "2026-04-22T23:05:28.5560375-03:00",
+  "expectedReportExists": true,
+  "completedAt": "2026-04-22T23:13:40.5833527-03:00",
+  "expectedReportParseError": null,
+  "expectedReportRunId": "runtimehost-beta-20260422-230528",
+  "expectedReportOverallStatus": "passed",
+  "error": null,
+  "exitCode": 0,
+  "expectedReportGeneratedAt": "04/22/2026 23:13:40"
+}

@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "packageManager": "npm",
+  "packageLockOnly": true,
+  "rules": {
+    "failOnAnyProdVulnerability": true,
+    "failOnSeverityAtOrAbove": "high",
+    "requireAllowlistForDevSeverities": [
+      "moderate"
+    ]
+  },
+  "allowedDevPackages": []
+}

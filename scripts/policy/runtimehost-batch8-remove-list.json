@@ -1,0 +1,13 @@
+{
+  "batch": "runtimehost-batch8",
+  "description": "Third RuntimeHost reduction slice. Remove only the two zero-reference internal services explicitly listed as dead/remove candidates in the current runtime footprint evidence.",
+  "rationale": [
+    "This is the smallest next reduction after the transitional controller batches.",
+    "Both services were reported with referenceHitCount 0 in deadRemoveCandidates.services.",
+    "This is a controlled step into internal-but-needed territory, but limited to two services only."
+  ],
+  "files": [
+    "NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/RollbackAuthorityService.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/WorkingDraftLineageService.java"
+  ]
+}

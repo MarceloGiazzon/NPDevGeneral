@@ -1,0 +1,60 @@
+{
+  "$schema": "..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "simple-user-registry",
+    "description": "Official NPDev sample for first-contact concept, invariant, persistence, event, and trace behavior.",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": {
+    "root": "..\\..\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\Output\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\Output\\App",
+    "deleteBeforeMount": true
+  },
+  "database": {
+    "provider": "docker-postgres",
+    "host": "localhost",
+    "port": 5432,
+    "database": "sample_user_registry",
+    "username": "finalexec",
+    "password": "finalexec",
+    "adminDatabase": "postgres",
+    "resetMode": "reset",
+    "containerName": "npdev-simple-user-registry"
+  },
+  "runtime": {
+    "springProfile": "dev,step0,trial",
+    "serverPort": 8082,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "trialDefaults": {
+    "apiKey": "dev-key",
+    "recommendedProfiles": "dev,step0,trial",
+    "runtimeUrl": "http://localhost:8082/",
+    "databaseMode": "step0-h2",
+    "pluginDiscoveryMode": "filesystem-folder",
+    "pluginPackageDirectory": "./npdev-generated/src/main/resources/npdev/plugin-packages",
+    "notes": [
+      "This first-contact sample uses an isolated stable port for repeated guided trials.",
+      "The step0 profile keeps the sample runnable without external database setup."
+    ]
+  }
+}

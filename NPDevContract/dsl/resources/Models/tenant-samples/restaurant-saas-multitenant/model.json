@@ -1,0 +1,1190 @@
+{
+  "$schema": "..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.restaurant.saas.multitenant",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "SaaS restaurant sample where Pizza House, Sushi Bar, and Vegan Bistro are tenants of the same generated app.",
+    "tenancy": {
+      "strategy": "modeled-tenant-reference",
+      "tenantConcept": "Tenant",
+      "tenantReferenceField": "tenantId",
+      "sampleTenants": [
+        "Pizza House",
+        "Sushi Bar",
+        "Vegan Bistro"
+      ],
+      "currentRuntimeBoundary": "CRUD rows carry tenantId. Automatic authenticated-tenant CRUD filtering is not claimed by this sample."
+    }
+  },
+  "concepts": [
+    {
+      "name": "Tenant",
+      "ui": {
+        "label": "Tenant",
+        "description": "A SaaS customer restaurant",
+        "group": "Tenancy",
+        "order": 10
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Tenant code",
+            "widget": "text"
+          }
+        },
+        {
+          "name": "displayName",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Display name",
+            "widget": "text"
+          }
+        },
+        {
+          "name": "legalName",
+          "type": "string",
+          "ui": {
+            "label": "Legal name",
+            "widget": "text"
+          }
+        },
+        {
+          "name": "plan",
+          "type": "enum",
+          "enumValues": [
+            "Starter",
+            "Growth",
+            "Enterprise"
+          ],
+          "required": true,
+          "ui": {
+            "label": "Plan",
+            "widget": "select"
+          }
+        },
+        {
+          "name": "timezone",
+          "type": "string",
+          "default": "America/Sao_Paulo",
+          "ui": {
+            "label": "Timezone",
+            "widget": "text"
+          }
+        },
+        {
+          "name": "primaryContactEmail",
+          "type": "string",
+          "ui": {
+            "label": "Primary contact email",
+            "widget": "email"
+          }
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "required": true,
+          "default": true,
+          "ui": {
+            "label": "Active",
+            "widget": "checkbox"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "TenantCodeRequired",
+          "expr": "code != null && code != ''"
+        },
+        {
+          "name": "TenantCodeUnique",
+          "type": "unique",
+          "fields": [
+            "code"
+          ]
+        },
+        {
+          "name": "TenantDisplayNameRequired",
+          "expr": "displayName != null && displayName != ''"
+        }
+      ]
+    },
+    {
+      "name": "StaffMember",
+      "ui": {
+        "label": "Staff member",
+        "description": "A final user working inside one tenant",
+        "group": "Tenancy",
+        "order": 20
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "tenantId",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "Tenant",
+            "displayField": "displayName",
+            "searchFields": [
+              "code",
+              "displayName"
+            ],
+            "inlineCreate": "deny"
+          },
+          "ui": {
+            "label": "Tenant",
+            "widget": "search-dialog"
+          }
+        },
+        {
+          "name": "fullName",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Full name",
+            "widget": "text"
+          }
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Email",
+            "widget": "email"
+          }
+        },
+        {
+          "name": "role",
+          "type": "enum",
+          "enumValues": [
+            "Owner",
+            "Manager",
+            "Waiter",
+            "Cashier",
+            "Kitchen"
+          ],
+          "required": true,
+          "ui": {
+            "label": "Role",
+            "widget": "select"
+          }
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "required": true,
+          "default": true,
+          "ui": {
+            "label": "Active",
+            "widget": "checkbox"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "StaffTenantRequired",
+          "expr": "tenantId != null"
+        },
+        {
+          "name": "StaffNameRequired",
+          "expr": "fullName != null && fullName != ''"
+        },
+        {
+          "name": "StaffEmailRequired",
+          "expr": "email != null && email != ''"
+        }
+      ]
+    },
+    {
+      "name": "DiningTable",
+      "ui": {
+        "label": "Dining table",
+        "description": "A physical table scoped to one tenant",
+        "group": "Restaurant operations",
+        "order": 30
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "tenantId",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "Tenant",
+            "displayField": "displayName",
+            "searchFields": [
+              "code",
+              "displayName"
+            ],
+            "inlineCreate": "deny"
+          },
+          "ui": {
+            "label": "Tenant",
+            "widget": "search-dialog"
+          }
+        },
+        {
+          "name": "tableNumber",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Table number",
+            "widget": "text"
+          }
+        },
+        {
+          "name": "seats",
+          "type": "integer",
+          "required": true,
+          "ui": {
+            "label": "Seats",
+            "widget": "number"
+          }
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "enumValues": [
+            "Available",
+            "Reserved",
+            "Occupied",
+            "Inactive"
+          ],
+          "required": true,
+          "ui": {
+            "label": "Status",
+            "widget": "select"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "DiningTableTenantRequired",
+          "expr": "tenantId != null"
+        },
+        {
+          "name": "DiningTableNumberRequired",
+          "expr": "tableNumber != null && tableNumber != ''"
+        },
+        {
+          "name": "DiningTableSeatsPositive",
+          "expr": "seats != null && seats > 0"
+        }
+      ]
+    },
+    {
+      "name": "MenuItem",
+      "ui": {
+        "label": "Menu item",
+        "description": "Food or drink sold by one tenant",
+        "group": "Restaurant operations",
+        "order": 40
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "tenantId",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "Tenant",
+            "displayField": "displayName",
+            "searchFields": [
+              "code",
+              "displayName"
+            ],
+            "inlineCreate": "deny"
+          },
+          "ui": {
+            "label": "Tenant",
+            "widget": "search-dialog"
+          }
+        },
+        {
+          "name": "sku",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "SKU",
+            "widget": "text"
+          }
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Name",
+            "widget": "text"
+          }
+        },
+        {
+          "name": "category",
+          "type": "enum",
+          "enumValues": [
+            "Pizza",
+            "Sushi",
+            "Vegan",
+            "Drink",
+            "Dessert"
+          ],
+          "required": true,
+          "ui": {
+            "label": "Category",
+            "widget": "select"
+          }
+        },
+        {
+          "name": "priceCents",
+          "type": "integer",
+          "required": true,
+          "ui": {
+            "label": "Price in cents",
+            "widget": "number"
+          }
+        },
+        {
+          "name": "available",
+          "type": "boolean",
+          "required": true,
+          "default": true,
+          "ui": {
+            "label": "Available",
+            "widget": "checkbox"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "MenuItemTenantRequired",
+          "expr": "tenantId != null"
+        },
+        {
+          "name": "MenuItemNameRequired",
+          "expr": "name != null && name != ''"
+        },
+        {
+          "name": "MenuItemSkuRequired",
+          "expr": "sku != null && sku != ''"
+        },
+        {
+          "name": "MenuItemPricePositive",
+          "expr": "priceCents != null && priceCents > 0"
+        }
+      ]
+    },
+    {
+      "name": "Reservation",
+      "ui": {
+        "label": "Reservation",
+        "description": "Customer reservation scoped to one tenant",
+        "group": "Restaurant operations",
+        "order": 50
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "tenantId",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "Tenant",
+            "displayField": "displayName",
+            "searchFields": [
+              "code",
+              "displayName"
+            ],
+            "inlineCreate": "deny"
+          },
+          "ui": {
+            "label": "Tenant",
+            "widget": "search-dialog"
+          }
+        },
+        {
+          "name": "tableId",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "DiningTable",
+            "displayField": "tableNumber",
+            "searchFields": [
+              "tableNumber",
+              "status"
+            ],
+            "inlineCreate": "deny"
+          },
+          "ui": {
+            "label": "Table",
+            "widget": "search-dialog"
+          }
+        },
+        {
+          "name": "customerName",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Customer name",
+            "widget": "text"
+          }
+        },
+        {
+          "name": "customerPhone",
+          "type": "string",
+          "ui": {
+            "label": "Customer phone",
+            "widget": "text"
+          }
+        },
+        {
+          "name": "partySize",
+          "type": "integer",
+          "required": true,
+          "ui": {
+            "label": "Party size",
+            "widget": "number"
+          }
+        },
+        {
+          "name": "reservationAt",
+          "type": "datetime",
+          "required": true,
+          "ui": {
+            "label": "Reservation time",
+            "widget": "datetime-local"
+          }
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "enumValues": [
+            "Pending",
+            "Confirmed",
+            "Seated",
+            "Cancelled",
+            "NoShow"
+          ],
+          "required": true,
+          "ui": {
+            "label": "Status",
+            "widget": "select"
+          }
+        }
+      ],
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          {
+            "value": "Pending",
+            "label": "Pending",
+            "initial": true
+          },
+          {
+            "value": "Confirmed",
+            "label": "Confirmed"
+          },
+          {
+            "value": "Seated",
+            "label": "Seated",
+            "terminal": true
+          },
+          {
+            "value": "Cancelled",
+            "label": "Cancelled",
+            "terminal": true
+          },
+          {
+            "value": "NoShow",
+            "label": "No show",
+            "terminal": true
+          }
+        ],
+        "transitions": [
+          {
+            "from": "Pending",
+            "to": "Confirmed",
+            "event": "ReservationConfirmed",
+            "actionLabel": "Confirm reservation"
+          },
+          {
+            "from": "Confirmed",
+            "to": "Seated",
+            "event": "ReservationSeated",
+            "actionLabel": "Seat party"
+          },
+          {
+            "from": "Pending",
+            "to": "Cancelled",
+            "event": "ReservationCancelled",
+            "actionLabel": "Cancel reservation"
+          },
+          {
+            "from": "Confirmed",
+            "to": "Cancelled",
+            "event": "ReservationCancelled",
+            "actionLabel": "Cancel reservation"
+          },
+          {
+            "from": "Confirmed",
+            "to": "NoShow",
+            "event": "ReservationNoShow",
+            "actionLabel": "Mark no-show"
+          }
+        ]
+      },
+      "invariants": [
+        {
+          "name": "ReservationTenantRequired",
+          "expr": "tenantId != null"
+        },
+        {
+          "name": "ReservationCustomerRequired",
+          "expr": "customerName != null && customerName != ''"
+        },
+        {
+          "name": "ReservationPartySizePositive",
+          "expr": "partySize != null && partySize > 0"
+        }
+      ]
+    },
+    {
+      "name": "DiningOrder",
+      "ui": {
+        "label": "Dining order",
+        "description": "Dining order scoped to one tenant",
+        "group": "Restaurant operations",
+        "order": 60
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "tenantId",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "Tenant",
+            "displayField": "displayName",
+            "searchFields": [
+              "code",
+              "displayName"
+            ],
+            "inlineCreate": "deny"
+          },
+          "ui": {
+            "label": "Tenant",
+            "widget": "search-dialog"
+          }
+        },
+        {
+          "name": "tableId",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "DiningTable",
+            "displayField": "tableNumber",
+            "searchFields": [
+              "tableNumber",
+              "status"
+            ],
+            "inlineCreate": "deny"
+          },
+          "ui": {
+            "label": "Table",
+            "widget": "search-dialog"
+          }
+        },
+        {
+          "name": "openedByStaffId",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "StaffMember",
+            "displayField": "fullName",
+            "searchFields": [
+              "fullName",
+              "email",
+              "role"
+            ],
+            "inlineCreate": "deny"
+          },
+          "ui": {
+            "label": "Opened by",
+            "widget": "search-dialog"
+          }
+        },
+        {
+          "name": "openedAt",
+          "type": "datetime",
+          "required": true,
+          "ui": {
+            "label": "Opened at",
+            "widget": "datetime-local"
+          }
+        },
+        {
+          "name": "paidAt",
+          "type": "datetime",
+          "ui": {
+            "label": "Paid at",
+            "widget": "datetime-local"
+          }
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "enumValues": [
+            "Open",
+            "Submitted",
+            "Paid",
+            "Cancelled"
+          ],
+          "required": true,
+          "ui": {
+            "label": "Status",
+            "widget": "select"
+          }
+        },
+        {
+          "name": "totalCents",
+          "type": "integer",
+          "required": true,
+          "ui": {
+            "label": "Total in cents",
+            "widget": "number"
+          }
+        },
+        {
+          "name": "notes",
+          "type": "string",
+          "ui": {
+            "label": "Notes",
+            "widget": "textarea"
+          }
+        }
+      ],
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          {
+            "value": "Open",
+            "label": "Open",
+            "initial": true
+          },
+          {
+            "value": "Submitted",
+            "label": "Submitted"
+          },
+          {
+            "value": "Paid",
+            "label": "Paid",
+            "terminal": true
+          },
+          {
+            "value": "Cancelled",
+            "label": "Cancelled",
+            "terminal": true
+          }
+        ],
+        "transitions": [
+          {
+            "from": "Open",
+            "to": "Submitted",
+            "event": "DiningOrderSubmitted",
+            "actionLabel": "Submit order"
+          },
+          {
+            "from": "Submitted",
+            "to": "Paid",
+            "requiredPayload": [
+              "paidAt"
+            ],
+            "guard": "paidAt != null",
+            "event": "DiningOrderPaid",
+            "actionLabel": "Mark paid"
+          },
+          {
+            "from": "Open",
+            "to": "Cancelled",
+            "event": "DiningOrderCancelled",
+            "actionLabel": "Cancel order"
+          }
+        ]
+      },
+      "invariants": [
+        {
+          "name": "DiningOrderTenantRequired",
+          "expr": "tenantId != null"
+        },
+        {
+          "name": "DiningOrderTotalNonNegative",
+          "expr": "totalCents != null && totalCents >= 0"
+        }
+      ]
+    },
+    {
+      "name": "OrderLine",
+      "ui": {
+        "label": "Order line",
+        "description": "Item quantity inside a tenant-scoped order",
+        "group": "Restaurant operations",
+        "order": 70
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "tenantId",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "Tenant",
+            "displayField": "displayName",
+            "searchFields": [
+              "code",
+              "displayName"
+            ],
+            "inlineCreate": "deny"
+          },
+          "ui": {
+            "label": "Tenant",
+            "widget": "search-dialog"
+          }
+        },
+        {
+          "name": "orderId",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "DiningOrder",
+            "displayField": "status",
+            "searchFields": [
+              "status",
+              "notes"
+            ],
+            "inlineCreate": "deny"
+          },
+          "ui": {
+            "label": "Order",
+            "widget": "search-dialog"
+          }
+        },
+        {
+          "name": "menuItemId",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "MenuItem",
+            "displayField": "name",
+            "searchFields": [
+              "sku",
+              "name",
+              "category"
+            ],
+            "inlineCreate": "deny"
+          },
+          "ui": {
+            "label": "Menu item",
+            "widget": "search-dialog"
+          }
+        },
+        {
+          "name": "quantity",
+          "type": "integer",
+          "required": true,
+          "ui": {
+            "label": "Quantity",
+            "widget": "number"
+          }
+        },
+        {
+          "name": "unitPriceCents",
+          "type": "integer",
+          "required": true,
+          "ui": {
+            "label": "Unit price in cents",
+            "widget": "number"
+          }
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "enumValues": [
+            "New",
+            "Fired",
+            "Served",
+            "Cancelled"
+          ],
+          "required": true,
+          "ui": {
+            "label": "Line status",
+            "widget": "select"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "OrderLineTenantRequired",
+          "expr": "tenantId != null"
+        },
+        {
+          "name": "OrderLineQuantityPositive",
+          "expr": "quantity != null && quantity > 0"
+        },
+        {
+          "name": "OrderLinePricePositive",
+          "expr": "unitPriceCents != null && unitPriceCents > 0"
+        }
+      ]
+    },
+    {
+      "name": "PaymentReceipt",
+      "ui": {
+        "label": "Payment receipt",
+        "description": "Payment proof for a paid tenant-scoped order",
+        "group": "Restaurant operations",
+        "order": 80
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "tenantId",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "Tenant",
+            "displayField": "displayName",
+            "searchFields": [
+              "code",
+              "displayName"
+            ],
+            "inlineCreate": "deny"
+          },
+          "ui": {
+            "label": "Tenant",
+            "widget": "search-dialog"
+          }
+        },
+        {
+          "name": "orderId",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "DiningOrder",
+            "displayField": "status",
+            "searchFields": [
+              "status",
+              "notes"
+            ],
+            "inlineCreate": "deny"
+          },
+          "ui": {
+            "label": "Order",
+            "widget": "search-dialog"
+          }
+        },
+        {
+          "name": "amountCents",
+          "type": "integer",
+          "required": true,
+          "ui": {
+            "label": "Amount in cents",
+            "widget": "number"
+          }
+        },
+        {
+          "name": "provider",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Provider",
+            "widget": "text"
+          }
+        },
+        {
+          "name": "paidAt",
+          "type": "datetime",
+          "required": true,
+          "ui": {
+            "label": "Paid at",
+            "widget": "datetime-local"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "PaymentReceiptTenantRequired",
+          "expr": "tenantId != null"
+        },
+        {
+          "name": "PaymentReceiptAmountPositive",
+          "expr": "amountCents != null && amountCents > 0"
+        }
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        "save",
+        "findById",
+        "unique"
+      ]
+    },
+    {
+      "name": "notification",
+      "type": "NotificationCapability",
+      "operations": [
+        "send"
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    },
+    {
+      "capability": "notification",
+      "adapter": "notification-inproc"
+    },
+    {
+      "capability": "eventBus",
+      "adapter": "inproc"
+    }
+  ],
+  "events": [
+    {
+      "name": "DiningOrderSubmitted",
+      "payload": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "tenantId",
+          "type": "uuid"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        },
+        {
+          "name": "totalCents",
+          "type": "integer"
+        }
+      ]
+    },
+    {
+      "name": "DiningOrderPaid",
+      "payload": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "tenantId",
+          "type": "uuid"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        },
+        {
+          "name": "totalCents",
+          "type": "integer"
+        },
+        {
+          "name": "paidAt",
+          "type": "datetime"
+        }
+      ]
+    },
+    {
+      "name": "DiningOrderCancelled",
+      "payload": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "tenantId",
+          "type": "uuid"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "ReservationConfirmed",
+      "payload": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "tenantId",
+          "type": "uuid"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "ReservationSeated",
+      "payload": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "tenantId",
+          "type": "uuid"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "ReservationCancelled",
+      "payload": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "tenantId",
+          "type": "uuid"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "ReservationNoShow",
+      "payload": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "tenantId",
+          "type": "uuid"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    }
+  ],
+  "orchestrationRules": [
+    {
+      "name": "NotifyVenueWhenOrderPaid",
+      "trigger": {
+        "type": "event",
+        "event": "DiningOrderPaid"
+      },
+      "condition": "$event.status == \"Paid\"",
+      "actions": [
+        {
+          "type": "callCapability",
+          "capability": "notification",
+          "operation": "send",
+          "map": {
+            "tenantId": "$event.tenantId",
+            "orderId": "$event.id",
+            "message": "Order payment captured"
+          }
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "CreateDiningOrder",
+      "input": {
+        "concept": "DiningOrder",
+        "mode": "create"
+      },
+      "steps": [
+        {
+          "name": "validate-dining-order",
+          "type": "validate",
+          "scope": "DiningOrder",
+          "invariants": [
+            "DiningOrderTenantRequired",
+            "DiningOrderTotalNonNegative"
+          ]
+        },
+        {
+          "name": "save-dining-order",
+          "type": "createConcept",
+          "scope": "DiningOrder",
+          "input": "$input",
+          "out": "$saved"
+        },
+        {
+          "name": "return-dining-order",
+          "type": "return",
+          "value": "$saved"
+        }
+      ]
+    }
+  ]
+}

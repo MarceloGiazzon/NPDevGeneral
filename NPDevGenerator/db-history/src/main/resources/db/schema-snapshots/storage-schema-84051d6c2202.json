@@ -1,0 +1,22 @@
+{
+  "modelVersion" : "compiled-model",
+  "tables" : [ {
+    "name" : "user",
+    "columns" : [ {
+      "name" : "email",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : true
+    }, {
+      "name" : "id",
+      "sqlType" : "UUID",
+      "required" : true,
+      "unique" : true
+    }, {
+      "name" : "name",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : false
+    } ]
+  } ]
+}

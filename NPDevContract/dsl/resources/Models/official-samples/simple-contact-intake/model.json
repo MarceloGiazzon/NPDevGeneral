@@ -1,0 +1,170 @@
+{
+  "$schema": "..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "schemaVersion": "1.0.0",
+  "namespace": "trial.contactintake",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "concepts": [
+    {
+      "name": "ContactMessage",
+      "ui": {
+        "label": "Contact message"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Name"
+          }
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Email"
+          }
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Message"
+          }
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Status"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "NameRequired",
+          "expr": "name != null && name != ''"
+        },
+        {
+          "name": "EmailRequired",
+          "expr": "email != null && email != ''"
+        },
+        {
+          "name": "MessageRequired",
+          "expr": "message != null && message != ''"
+        }
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        "save"
+      ]
+    },
+    {
+      "name": "notification",
+      "type": "NotificationCapability",
+      "operations": [
+        "send"
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    },
+    {
+      "capability": "notification",
+      "adapter": "notification-inproc"
+    },
+    {
+      "capability": "eventBus",
+      "adapter": "inproc"
+    }
+  ],
+  "events": [
+    {
+      "name": "ContactMessageReceived",
+      "payload": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "email",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "SubmitContactMessage",
+      "input": {
+        "concept": "ContactMessage",
+        "mode": "create"
+      },
+      "steps": [
+        {
+          "name": "validate-contact-message",
+          "type": "enforceInvariants",
+          "scope": "ContactMessage",
+          "invariants": [
+            "NameRequired",
+            "EmailRequired",
+            "MessageRequired"
+          ]
+        },
+        {
+          "name": "save-message",
+          "type": "capabilityCall",
+          "cap": "persistence",
+          "op": "save",
+          "args": [
+            "$input"
+          ],
+          "out": "$saved"
+        },
+        {
+          "name": "send-notification",
+          "type": "capabilityCall",
+          "cap": "notification",
+          "op": "send",
+          "args": [
+            "$saved"
+          ],
+          "out": "$delivery"
+        },
+        {
+          "name": "emit-contact-event",
+          "type": "emitEvent",
+          "event": "ContactMessageReceived",
+          "from": "$saved"
+        },
+        {
+          "name": "return-message",
+          "type": "return",
+          "value": "$saved"
+        }
+      ]
+    }
+  ]
+}

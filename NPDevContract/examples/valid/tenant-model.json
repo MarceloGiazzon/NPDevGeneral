@@ -1,0 +1,161 @@
+{
+  "$schema": "../../schemas/authoring/model.schema.json",
+  "dslVersion": "1.0.0",
+  "namespace": "examples.tenant.workspace",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "Small domain-neutral model used to prove tenant concepts stay model-driven.",
+    "tenancy": {
+      "strategy": "modeled-tenant-reference",
+      "tenantConcept": "Tenant",
+      "tenantReferenceField": "tenantId"
+    }
+  },
+  "concepts": [
+    {
+      "name": "Tenant",
+      "ui": {
+        "label": "Tenant",
+        "description": "An isolated workspace owner.",
+        "group": "Tenancy",
+        "order": 10
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "displayName",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "plan",
+          "type": "enum",
+          "enumValues": [
+            "Starter",
+            "Growth",
+            "Enterprise"
+          ],
+          "required": true
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "required": true,
+          "default": true
+        }
+      ]
+    },
+    {
+      "name": "WorkspaceResource",
+      "ui": {
+        "label": "Workspace resource",
+        "description": "A tenant-scoped resource.",
+        "group": "Operations",
+        "order": 20
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "tenantId",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "Tenant",
+            "displayField": "displayName"
+          }
+        },
+        {
+          "name": "resourceCode",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "capacity",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "enumValues": [
+            "Available",
+            "Reserved",
+            "Inactive"
+          ],
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ResourceReservation",
+      "ui": {
+        "label": "Resource reservation",
+        "description": "A tenant-scoped reservation for a workspace resource.",
+        "group": "Operations",
+        "order": 30
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "tenantId",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "Tenant",
+            "displayField": "displayName"
+          }
+        },
+        {
+          "name": "resourceId",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "WorkspaceResource",
+            "displayField": "resourceCode"
+          }
+        },
+        {
+          "name": "requesterName",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "quantity",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "enumValues": [
+            "Requested",
+            "Confirmed",
+            "Cancelled",
+            "Completed"
+          ],
+          "required": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "employeeEmail": "manager.demo@example.com",
+  "amount": 250,
+  "needsManagerApproval": true,
+  "status": "submitted"
+}

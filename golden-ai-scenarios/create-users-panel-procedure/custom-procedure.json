@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "ai-custom-procedure.v1",
+  "procedureId": "create-users",
+  "executionMode": "governed",
+  "trust": "trusted",
+  "implementation": {
+    "mode": "trustedSource",
+    "language": "java",
+    "entrypoint": "procedure/CreateUsersProcedure.java",
+    "className": "CreateUsersProcedure",
+    "method": "execute"
+  },
+  "inputs": [
+    {
+      "name": "requestedBy",
+      "type": "string"
+    },
+    {
+      "name": "source",
+      "type": "string"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "createdCount",
+      "type": "number"
+    },
+    {
+      "name": "users",
+      "type": "array"
+    }
+  ],
+  "sideEffects": ["concept:User:create:3"],
+  "steps": [
+    {
+      "type": "saveConcept",
+      "concept": "User",
+      "count": 3,
+      "records": [
+        {
+          "id": "u-001",
+          "name": "Ana Silva",
+          "email": "ana@example.test",
+          "active": true
+        },
+        {
+          "id": "u-002",
+          "name": "Bruno Costa",
+          "email": "bruno@example.test",
+          "active": true
+        },
+        {
+          "id": "u-003",
+          "name": "Carla Rocha",
+          "email": "carla@example.test",
+          "active": true
+        }
+      ]
+    },
+    {
+      "type": "return",
+      "value": {
+        "createdCount": 3
+      }
+    }
+  ]
+}

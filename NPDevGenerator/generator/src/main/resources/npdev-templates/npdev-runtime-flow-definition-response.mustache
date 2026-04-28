@@ -1,0 +1,26 @@
+package {{dtoPackage}};
+
+import {{servicePackage}}.KernelFacade.FlowDefinitionView;
+import {{servicePackage}}.KernelFacade.FlowStepView;
+
+import java.util.List;
+
+public record FlowDefinitionResponse(
+        String name,
+        String concept,
+        String mode,
+        Object inputSchema,
+        Object outputSchema,
+        List<FlowStepView> steps
+) {
+    public static FlowDefinitionResponse from(FlowDefinitionView view) {
+        return new FlowDefinitionResponse(
+                view.name(),
+                view.concept(),
+                view.mode(),
+                view.inputSchema(),
+                view.outputSchema(),
+                view.steps()
+        );
+    }
+}

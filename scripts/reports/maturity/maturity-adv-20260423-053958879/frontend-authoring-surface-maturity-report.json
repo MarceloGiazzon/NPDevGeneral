@@ -1,0 +1,152 @@
+{
+  "generatedAt": "2026-04-23T05:40:00.8877976-03:00",
+  "runId": "maturity-adv-20260423-053958879",
+  "scriptPath": "scripts\\maturity_adv\\check-frontend-authoring-surface-maturity.ps1",
+  "workspaceRoot": "D:\\WorkSpace\\NPDev_General",
+  "maturityItem": "frontend-authoring-surface",
+  "overallStatus": "failed",
+  "checks": [
+    {
+      "name": "workflow-cohesion",
+      "status": "passed",
+      "expectation": "The authoring surface should guide users from start state through edit, validate, preview, and handoff.",
+      "summary": "The main authoring workflow surfaces are all present.",
+      "data": {
+        "existing": [
+          "NPDevEditor\\ui-react\\src\\authoring\\app\\AuthoringApp.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\models\\chooser\\ModelChooserScreen.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\io\\ImportExportWorkspace.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\preview\\PreviewWorkspace.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\pipeline\\pipelineHandoff.ts",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\FormBasedModelEditor.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\config\\FormBasedConfigEditor.tsx"
+        ],
+        "missing": []
+      },
+      "checkedAt": "2026-04-23T05:40:00.1271832-03:00"
+    },
+    {
+      "name": "data-integrity",
+      "status": "passed",
+      "expectation": "Form, JSON, import/export, and persistence views should remain synchronized without data loss.",
+      "summary": "Synchronization and round-trip integrity assets are present.",
+      "data": {
+        "existing": [
+          "NPDevEditor\\ui-react\\src\\authoring\\json\\useSynchronizedJsonEditor.ts",
+          "NPDevEditor\\ui-react\\src\\authoring\\json\\synchronizedJsonState.ts",
+          "NPDevEditor\\ui-react\\src\\authoring\\services\\modelDocumentService.ts",
+          "NPDevEditor\\ui-react\\src\\authoring\\io\\bundleIoService.ts",
+          "NPDevEditor\\ui-react\\src\\authoring\\editorRoundTripAndUx.test.ts",
+          "NPDevEditor\\ui-react\\src\\authoring\\editorEvolutionSafety.test.ts"
+        ],
+        "missing": []
+      },
+      "checkedAt": "2026-04-23T05:40:00.1508013-03:00"
+    },
+    {
+      "name": "validation-quality",
+      "status": "passed",
+      "expectation": "Diagnostics should be explainable, actionable, and available in both local and server-assisted flows.",
+      "summary": "Validation and diagnostic-linking assets are present.",
+      "data": {
+        "existing": [
+          "NPDevEditor\\ui-react\\src\\authoring\\editors\\modelValidation.ts",
+          "NPDevEditor\\ui-react\\src\\authoring\\config\\configValidation.ts",
+          "NPDevEditor\\ui-react\\src\\authoring\\validation\\authoringValidation.ts",
+          "NPDevEditor\\ui-react\\src\\authoring\\validation\\ValidationWorkspace.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\diagnostics\\DiagnosticLinkPanel.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\diagnostics\\diagnosticLinking.ts",
+          "NPDevEditor\\ui-react\\src\\authoring\\validation\\useServerValidation.ts"
+        ],
+        "missing": []
+      },
+      "checkedAt": "2026-04-23T05:40:00.1996987-03:00"
+    },
+    {
+      "name": "explainability-for-users",
+      "status": "passed",
+      "expectation": "The authoring surface should help users understand semantic meaning and runtime implications in plain language.",
+      "summary": "Explainability surfaces are present across help, graph, and preview paths.",
+      "data": {
+        "existing": [
+          "NPDevEditor\\ui-react\\src\\authoring\\explainability\\interactionExplainability.ts",
+          "NPDevEditor\\ui-react\\src\\authoring\\explainability\\modelExplainability.ts",
+          "NPDevEditor\\ui-react\\src\\authoring\\graph\\SemanticGraphPanel.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\help\\ExplainabilityTooltip.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\preview\\PreviewWorkspace.tsx"
+        ],
+        "missing": []
+      },
+      "checkedAt": "2026-04-23T05:40:00.2220514-03:00"
+    },
+    {
+      "name": "ux-polish-for-repeated-use",
+      "status": "passed",
+      "expectation": "Frequent authoring workflows should get faster through wizards, help, sync feedback, and regression coverage for likely confusion points.",
+      "summary": "Wizard/help/sync UX assets are present.",
+      "data": {
+        "existing": [
+          "NPDevEditor\\ui-react\\src\\authoring\\onboarding\\ConceptCreationWizard.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\onboarding\\FlowCreationWizard.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\onboarding\\ReferenceWizard.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\onboarding\\ContextualHelpPanel.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\sync\\ModelSyncStatusBanner.tsx",
+          "NPDevEditor\\ui-react\\src\\authoring\\step48UxFixes.test.ts"
+        ],
+        "missing": []
+      },
+      "checkedAt": "2026-04-23T05:40:00.2474594-03:00"
+    },
+    {
+      "name": "accessibility-and-scale-behavior",
+      "status": "warning",
+      "expectation": "The frontend should have explicit evidence for accessibility and scaling behavior, not just generic e2e coverage.",
+      "summary": "Browser automation exists, but explicit accessibility evidence was not found.",
+      "data": {
+        "missing": [],
+        "e2eFileCount": 1,
+        "accessibilityMatches": null,
+        "existing": [
+          "NPDevEditor\\ui-react\\playwright.config.ts",
+          "NPDevEditor\\ui-react\\package.json"
+        ]
+      },
+      "checkedAt": "2026-04-23T05:40:00.6595864-03:00"
+    },
+    {
+      "name": "boundary-discipline-with-generated-outputs",
+      "status": "failed",
+      "expectation": "The editor should remain a contract-authoring surface and avoid direct coupling to runtime or generated-app internals.",
+      "summary": "The editor boundary is either undocumented, structurally incomplete, or directly coupled to forbidden runtime/generated sources.",
+      "data": {
+        "missing": [],
+        "missingDigestPatterns": [
+          "The Editor should not mutate generated files directly."
+        ],
+        "existing": [
+          "NPDevEditor\\ui-react\\src\\authoring\\pipeline\\pipelineHandoff.ts",
+          "NPDevEditor\\ui-react\\src\\authoring\\io\\ImportExportWorkspace.tsx"
+        ],
+        "forbiddenImports": null
+      },
+      "checkedAt": "2026-04-23T05:40:00.8869287-03:00"
+    }
+  ],
+  "summary": {
+    "failed": 1,
+    "warnings": 1,
+    "passed": 5,
+    "total": 7
+  },
+  "extra": {
+    "checkedAreas": [
+      "workflow-cohesion",
+      "data-integrity",
+      "validation-quality",
+      "explainability-for-users",
+      "ux-polish-for-repeated-use",
+      "accessibility-and-scale-behavior",
+      "boundary-discipline-with-generated-outputs"
+    ]
+  }
+}

@@ -1,0 +1,1460 @@
+package {{servicePackage}};
+
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledSchema;
+import {{dtoPackage}}.CorrelationTimelineResponse;
+import com.npdev.kernel.CorrelationOwnershipViolationException;
+import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.ExecutionResult;
+import com.npdev.kernel.KernelRunner;
+import com.npdev.kernel.audit.AuditRecord;
+import com.npdev.kernel.capability.CircuitBreakerStateSummary;
+import com.npdev.kernel.capability.IdempotencyRecord;
+import com.npdev.kernel.events.EventEnvelope;
+import com.npdev.kernel.events.EventMetaSummary;
+import com.npdev.kernel.exec.ExecutionSummary;
+import com.npdev.kernel.execution.FlowInstance;
+import com.npdev.kernel.ports.AuditLogStore;
+import com.npdev.kernel.ports.AuditQuery;
+import com.npdev.kernel.ports.CircuitBreakerStateStore;
+import com.npdev.kernel.ports.EventMetaStore;
+import com.npdev.kernel.ports.EventRedactionPolicy;
+import com.npdev.kernel.ports.EventStore;
+import com.npdev.kernel.ports.ExecutionSummaryStore;
+import com.npdev.kernel.ports.ExecutionAuthorizationPolicy;
+import com.npdev.kernel.ports.ExecutionRedactionPolicy;
+import com.npdev.kernel.ports.FlowInstanceStore;
+import com.npdev.kernel.ports.IdempotencyStore;
+import com.npdev.kernel.ports.MetricsSink;
+import com.npdev.kernel.ports.TraceQuery;
+import com.npdev.kernel.ports.TraceRedactionPolicy;
+import com.npdev.kernel.ports.TraceSummaryStore;
+import com.npdev.kernel.ports.TraceStore;
+import com.npdev.kernel.trace.FlowTrace;
+import com.npdev.kernel.trace.TraceSummary;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.function.Supplier;
+
+@Service
+public class KernelFacade {
+    private static final String OUTCOME_ALLOW = "ALLOW";
+    private static final String OUTCOME_DENY = "DENY";
+    private static final String OUTCOME_ERROR = "ERROR";
+
+    private final KernelRunner kernelRunner;
+    private final TraceStore traceStore;
+    private final TraceRedactionPolicy traceRedactionPolicy;
+    private final EventRedactionPolicy eventRedactionPolicy;
+    private final ExecutionRedactionPolicy executionRedactionPolicy;
+    private final ExecutionAuthorizationPolicy executionAuthorizationPolicy;
+    private final FlowInstanceStore flowInstanceStore;
+    private final EventStore eventStore;
+    private final TraceSummaryStore traceSummaryStore;
+    private final ExecutionSummaryStore executionSummaryStore;
+    private final EventMetaStore eventMetaStore;
+    private final AuditLogStore auditLogStore;
+    private final CircuitBreakerStateStore circuitBreakerStateStore;
+    private final IdempotencyStore idempotencyStore;
+    private final MetricsSink metricsSink;
+    private final CompiledModel compiledModel;
+
+    public KernelFacade(
+            KernelRunner kernelRunner,
+            TraceStore traceStore,
+            TraceRedactionPolicy traceRedactionPolicy,
+            EventRedactionPolicy eventRedactionPolicy,
+            ExecutionRedactionPolicy executionRedactionPolicy,
+            ExecutionAuthorizationPolicy executionAuthorizationPolicy,
+            FlowInstanceStore flowInstanceStore,
+            EventStore eventStore,
+            TraceSummaryStore traceSummaryStore,
+            ExecutionSummaryStore executionSummaryStore,
+            EventMetaStore eventMetaStore,
+            AuditLogStore auditLogStore,
+            CircuitBreakerStateStore circuitBreakerStateStore,
+            IdempotencyStore idempotencyStore,
+            MetricsSink metricsSink,
+            CompiledModel compiledModel
+    ) {
+        this.kernelRunner = kernelRunner;
+        this.traceStore = traceStore;
+        this.traceRedactionPolicy = traceRedactionPolicy == null ? TraceRedactionPolicy.NOOP : traceRedactionPolicy;
+        this.eventRedactionPolicy = eventRedactionPolicy == null ? EventRedactionPolicy.NOOP : eventRedactionPolicy;
+        this.executionRedactionPolicy = executionRedactionPolicy == null
+                ? ExecutionRedactionPolicy.NOOP
+                : executionRedactionPolicy;
+        this.executionAuthorizationPolicy = executionAuthorizationPolicy == null
+                ? ExecutionAuthorizationPolicy.ALLOW_ALL
+                : executionAuthorizationPolicy;
+        this.flowInstanceStore = flowInstanceStore == null ? FlowInstanceStore.noop() : flowInstanceStore;
+        this.eventStore = eventStore;
+        this.traceSummaryStore = traceSummaryStore == null ? TraceSummaryStore.noop() : traceSummaryStore;
+        this.executionSummaryStore = executionSummaryStore == null
+                ? ExecutionSummaryStore.noop()
+                : executionSummaryStore;
+        this.eventMetaStore = eventMetaStore == null ? EventMetaStore.noop() : eventMetaStore;
+        this.auditLogStore = auditLogStore == null ? AuditLogStore.noop() : auditLogStore;
+        this.circuitBreakerStateStore = circuitBreakerStateStore == null
+                ? CircuitBreakerStateStore.noop()
+                : circuitBreakerStateStore;
+        this.idempotencyStore = idempotencyStore == null ? IdempotencyStore.noop() : idempotencyStore;
+        this.metricsSink = metricsSink == null ? MetricsSink.noop() : metricsSink;
+        this.compiledModel = compiledModel;
+    }
+
+    public ExecutionResult executeFlow(String flowName, Map<String, Object> input, ExecutionContext executionContext) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext ctx = normalizeContext(executionContext);
+        metricInc("npdev.api.execute.started", ctx, Map.of("flowName", safe(flowName)));
+        if (!executionAuthorizationPolicy.canExecuteFlow(ctx, flowName)) {
+            audit(ctx, "EXECUTE_FLOW", "FLOW", flowName, OUTCOME_DENY, "forbidden", Map.of());
+            metricInc(
+                    "npdev.api.execute.failed",
+                    ctx,
+                    Map.of("flowName", safe(flowName), "errorCode", "forbidden")
+            );
+            metricObserveMs("npdev.api.execute.duration_ms", startedAtMs, ctx, Map.of("flowName", safe(flowName)));
+            throw forbidden();
+        }
+        try {
+            ExecutionResult result = kernelRunner.executeFlow(
+                    flowName,
+                    input == null ? Map.of() : input,
+                    ctx
+            );
+            audit(
+                    ctx,
+                    "EXECUTE_FLOW",
+                    "FLOW",
+                    flowName,
+                    OUTCOME_ALLOW,
+                    statusReason(result),
+                    Map.of("status", statusValue(result))
+            );
+            if (result != null
+                    && (result.getStatus() == null
+                    || result.getStatus() == com.npdev.kernel.ExecutionStatus.OK
+                    || result.getStatus() == com.npdev.kernel.ExecutionStatus.WAITING_EVENT)) {
+                metricInc(
+                        "npdev.api.execute.completed",
+                        ctx,
+                        Map.of("flowName", safe(flowName), "status", statusValue(result))
+                );
+            } else {
+                metricInc(
+                        "npdev.api.execute.failed",
+                        ctx,
+                        Map.of("flowName", safe(flowName), "errorCode", metricErrorCode(result))
+                );
+            }
+            metricObserveMs("npdev.api.execute.duration_ms", startedAtMs, ctx, Map.of("flowName", safe(flowName)));
+            return result;
+        } catch (CorrelationOwnershipViolationException ignored) {
+            audit(ctx, "EXECUTE_FLOW", "FLOW", flowName, OUTCOME_DENY, "correlation_owner_conflict", Map.of());
+            metricInc(
+                    "npdev.api.execute.failed",
+                    ctx,
+                    Map.of("flowName", safe(flowName), "errorCode", "correlation_owner_conflict")
+            );
+            metricObserveMs("npdev.api.execute.duration_ms", startedAtMs, ctx, Map.of("flowName", safe(flowName)));
+            throw forbidden();
+        } catch (RuntimeException exception) {
+            audit(ctx, "EXECUTE_FLOW", "FLOW", flowName, OUTCOME_ERROR, errorReason(exception), Map.of());
+            metricInc(
+                    "npdev.api.execute.failed",
+                    ctx,
+                    Map.of("flowName", safe(flowName), "errorCode", errorReason(exception))
+            );
+            metricObserveMs("npdev.api.execute.duration_ms", startedAtMs, ctx, Map.of("flowName", safe(flowName)));
+            throw exception;
+        }
+    }
+
+    public ExecutionResult resumeExecution(String executionId, ExecutionContext executionContext) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext ctx = normalizeContext(executionContext);
+        metricInc("npdev.api.resume.attempted", ctx, Map.of("outcome", "ATTEMPT"));
+        Optional<FlowInstance> instanceOpt = flowInstanceStore.findByExecutionId(executionId);
+        if (instanceOpt.isPresent()
+                && !executionAuthorizationPolicy.canResumeExecution(ctx, instanceOpt.get())) {
+            audit(ctx, "RESUME_EXECUTION", "EXECUTION", executionId, OUTCOME_DENY, "forbidden", Map.of());
+            metricInc("npdev.api.resume.failed", ctx, Map.of("errorCode", "forbidden"));
+            metricObserveMs("npdev.api.resume.duration_ms", startedAtMs, ctx, Map.of("outcome", "DENY"));
+            throw forbidden();
+        }
+        try {
+            ExecutionResult result = kernelRunner.resumeExecution(executionId);
+            audit(
+                    ctx,
+                    "RESUME_EXECUTION",
+                    "EXECUTION",
+                    executionId,
+                    OUTCOME_ALLOW,
+                    statusReason(result),
+                    Map.of("status", statusValue(result))
+            );
+            metricObserveMs("npdev.api.resume.duration_ms", startedAtMs, ctx, Map.of("status", statusValue(result)));
+            return result;
+        } catch (RuntimeException exception) {
+            audit(ctx, "RESUME_EXECUTION", "EXECUTION", executionId, OUTCOME_ERROR, errorReason(exception), Map.of());
+            metricInc("npdev.api.resume.failed", ctx, Map.of("errorCode", errorReason(exception)));
+            metricObserveMs("npdev.api.resume.duration_ms", startedAtMs, ctx, Map.of("status", "ERROR"));
+            throw exception;
+        }
+    }
+
+    public EventEnvelope publishExternalEvent(
+            String eventName,
+            String correlationId,
+            String causationId,
+            Map<String, Object> payload,
+            ExecutionContext executionContext
+    ) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext ctx = normalizeContext(executionContext);
+        metricInc("npdev.api.event.publish", ctx, Map.of("outcome", "ATTEMPT"));
+        if (!executionAuthorizationPolicy.canPublishEvent(ctx, eventName, correlationId)) {
+            audit(
+                    ctx,
+                    "PUBLISH_EVENT",
+                    "EVENT",
+                    eventName == null ? "<none>" : eventName,
+                    OUTCOME_DENY,
+                    "forbidden",
+                    Map.of("correlationId", safe(correlationId))
+            );
+            metricInc("npdev.api.execute.failed", ctx, Map.of("errorCode", "forbidden", "mode", "publish_event"));
+            metricObserveMs(
+                    "npdev.api.event.publish.duration_ms",
+                    startedAtMs,
+                    ctx,
+                    Map.of("outcome", "DENY")
+            );
+            throw forbidden();
+        }
+        try {
+            EventEnvelope envelope = kernelRunner.publishExternalEvent(
+                    eventName,
+                    payload == null ? Map.of() : payload,
+                    correlationId,
+                    causationId,
+                    ctx
+            );
+            audit(
+                    ctx,
+                    "PUBLISH_EVENT",
+                    "EVENT",
+                    envelope.eventId(),
+                    OUTCOME_ALLOW,
+                    "ok",
+                    Map.of("eventName", safe(envelope.eventName()), "correlationId", safe(envelope.correlationId()))
+            );
+            metricInc("npdev.api.event.publish", ctx, Map.of("outcome", "ALLOW"));
+            metricObserveMs(
+                    "npdev.api.event.publish.duration_ms",
+                    startedAtMs,
+                    ctx,
+                    Map.of("outcome", "ALLOW")
+            );
+            return envelope;
+        } catch (CorrelationOwnershipViolationException ignored) {
+            audit(ctx, "PUBLISH_EVENT", "EVENT", eventName, OUTCOME_DENY, "correlation_owner_conflict", Map.of());
+            metricInc(
+                    "npdev.api.execute.failed",
+                    ctx,
+                    Map.of("errorCode", "correlation_owner_conflict", "mode", "publish_event")
+            );
+            metricObserveMs(
+                    "npdev.api.event.publish.duration_ms",
+                    startedAtMs,
+                    ctx,
+                    Map.of("outcome", "DENY")
+            );
+            throw forbidden();
+        } catch (RuntimeException exception) {
+            audit(ctx, "PUBLISH_EVENT", "EVENT", eventName, OUTCOME_ERROR, errorReason(exception), Map.of());
+            metricInc("npdev.api.execute.failed", ctx, Map.of("errorCode", errorReason(exception), "mode", "publish_event"));
+            metricObserveMs(
+                    "npdev.api.event.publish.duration_ms",
+                    startedAtMs,
+                    ctx,
+                    Map.of("outcome", "ERROR")
+            );
+            throw exception;
+        }
+    }
+
+    public List<String> listFlowNames() {
+        return compiledModel.getFlows().stream()
+                .map(flow -> flow.getName())
+                .sorted()
+                .toList();
+    }
+
+    public List<FlowDefinitionView> listFlowDefinitions() {
+        return compiledModel.getFlows().stream()
+                .map(flow -> new FlowDefinitionView(
+                        flow.getName(),
+                        flow.getConcept(),
+                        flow.getMode(),
+                        schemaToMap(flow.getInputSchema()),
+                        schemaToMap(flow.getOutputSchema()),
+                        flowStepViews(flow.getSteps(), "")
+                ))
+                .sorted((left, right) -> left.name().compareToIgnoreCase(right.name()))
+                .toList();
+    }
+
+    private static List<FlowStepView> flowStepViews(List<com.npdev.dsl.v1.compiled.CompiledFlowStep> steps, String prefix) {
+        java.util.List<FlowStepView> views = new java.util.ArrayList<>();
+        if (steps == null) {
+            return java.util.List.of();
+        }
+        for (int index = 0; index < steps.size(); index++) {
+            com.npdev.dsl.v1.compiled.CompiledFlowStep step = steps.get(index);
+            String orderKey = prefix == null || prefix.isBlank()
+                    ? String.format("%04d", index)
+                    : prefix + "." + String.format("%04d", index);
+            String correlationHint = "";
+            if (Boolean.TRUE.equals(step.getAwaitMatchCorrelation())) {
+                correlationHint = "match-current-correlation";
+            } else if (step.getAwaitPayloadMatch() != null && !step.getAwaitPayloadMatch().isEmpty()) {
+                correlationHint = "payload-match";
+            } else if ("event".equalsIgnoreCase(step.getType())
+                    || "scheduleEvent".equalsIgnoreCase(step.getType())
+                    || "await".equalsIgnoreCase(step.getType())) {
+                correlationHint = "flow-correlation";
+            }
+            views.add(new FlowStepView(
+                    orderKey,
+                    step.getName(),
+                    step.getType(),
+                    step.getCheckpoint(),
+                    step.getScope(),
+                    step.getCapabilityCall() == null ? null : step.getCapabilityCall().getCapabilityName(),
+                    step.getCapabilityCall() == null ? null : step.getCapabilityCall().getOperation(),
+                    step.getCapabilityCall() == null ? java.util.List.of() : step.getCapabilityCall().getArgsRefs(),
+                    step.getCapabilityCall() == null ? null : step.getCapabilityCall().getInputRef(),
+                    step.getCapabilityCall() == null ? null : step.getCapabilityCall().getOutputRef(),
+                    step.getEventName(),
+                    step.getCondition(),
+                    step.getAwaitEventName(),
+                    step.getAwaitMatchCorrelation(),
+                    step.getAwaitPayloadMatch(),
+                    step.getDelaySeconds(),
+                    step.getReturnValueRef(),
+                    step.getThenSteps().size(),
+                    step.getElseSteps().size(),
+                    correlationHint
+            ));
+            views.addAll(flowStepViews(step.getThenSteps(), orderKey + ".then"));
+            views.addAll(flowStepViews(step.getElseSteps(), orderKey + ".else"));
+        }
+        return java.util.List.copyOf(views);
+    }
+
+    private static Object schemaToMap(CompiledSchema schema) {
+        if (schema == null) {
+            return null;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (schema.getType() != null) {
+            out.put("type", schema.getType());
+        }
+        if (schema.getDescription() != null) {
+            out.put("description", schema.getDescription());
+        }
+        if (!schema.getRequired().isEmpty()) {
+            out.put("required", List.copyOf(schema.getRequired()));
+        }
+        if (schema.getMinLength() != null) {
+            out.put("minLength", schema.getMinLength());
+        }
+        if (schema.getMaxLength() != null) {
+            out.put("maxLength", schema.getMaxLength());
+        }
+        if (schema.getMin() != null) {
+            out.put("min", schema.getMin());
+        }
+        if (schema.getMax() != null) {
+            out.put("max", schema.getMax());
+        }
+        if (schema.getRegex() != null) {
+            out.put("regex", schema.getRegex());
+        }
+        if (!schema.getProperties().isEmpty()) {
+            Map<String, Object> properties = new LinkedHashMap<>();
+            for (Map.Entry<String, CompiledSchema> entry : schema.getProperties().entrySet()) {
+                properties.put(entry.getKey(), schemaToMap(entry.getValue()));
+            }
+            out.put("properties", properties);
+        }
+        return out;
+    }
+
+    public Optional<FlowTrace> findTrace(String executionId, ExecutionContext requesterContext) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        metricInc("npdev.api.trace.read", requester, Map.of("mode", "detail", "outcome", "ATTEMPT"));
+        if (executionId == null || executionId.isBlank()) {
+            audit(requester, "READ_TRACE", "TRACE", "<blank>", OUTCOME_DENY, "invalid_input", Map.of());
+            metricInc("npdev.api.trace.read", requester, Map.of("mode", "detail", "outcome", "DENY"));
+            metricObserveMs("npdev.api.trace.read.duration_ms", startedAtMs, requester, Map.of("mode", "detail", "outcome", "DENY"));
+            return Optional.empty();
+        }
+        ExecutionContext redactionContext = redactionContextFor(requester);
+        Optional<FlowTrace> traceOpt = traceStore.findByExecutionId(executionId);
+        if (traceOpt.isEmpty()) {
+            audit(requester, "READ_TRACE", "TRACE", executionId, OUTCOME_ALLOW, "not_found", Map.of());
+            metricInc("npdev.api.trace.read", requester, Map.of("mode", "detail", "outcome", "NOT_FOUND"));
+            metricObserveMs("npdev.api.trace.read.duration_ms", startedAtMs, requester, Map.of("mode", "detail", "outcome", "NOT_FOUND"));
+            return Optional.empty();
+        }
+        FlowTrace trace = traceOpt.get();
+        if (!executionAuthorizationPolicy.canReadTrace(requester, trace)) {
+            audit(requester, "READ_TRACE", "TRACE", executionId, OUTCOME_DENY, "forbidden", Map.of());
+            metricInc("npdev.api.trace.read", requester, Map.of("mode", "detail", "outcome", "DENY"));
+            metricObserveMs("npdev.api.trace.read.duration_ms", startedAtMs, requester, Map.of("mode", "detail", "outcome", "DENY"));
+            throw forbidden();
+        }
+        FlowTrace redacted = traceRedactionPolicy.redact(trace, redactionContext);
+        audit(requester, "READ_TRACE", "TRACE", executionId, OUTCOME_ALLOW, "ok", Map.of());
+        metricInc("npdev.api.trace.read", requester, Map.of("mode", "detail", "outcome", "ALLOW"));
+        metricObserveMs("npdev.api.trace.read.duration_ms", startedAtMs, requester, Map.of("mode", "detail", "outcome", "ALLOW"));
+        return Optional.ofNullable(redacted);
+    }
+
+    public List<FlowTrace> searchTraces(TraceQuery query, ExecutionContext requesterContext) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        ExecutionContext redactionContext = redactionContextFor(requester);
+        TraceQuery scopedQuery = tenantScopedTraceQuery(query, requester);
+        metricInc("npdev.api.trace.search", requester, Map.of("outcome", "ATTEMPT"));
+        if (!executionAuthorizationPolicy.canSearchTraces(requester, scopedQuery)) {
+            audit(requester, "SEARCH_TRACES", "TRACE", "<query>", OUTCOME_DENY, "forbidden", Map.of());
+            metricInc("npdev.api.trace.search", requester, Map.of("outcome", "DENY"));
+            metricObserveMs("npdev.api.trace.search.duration_ms", startedAtMs, requester, Map.of("outcome", "DENY"));
+            throw forbidden();
+        }
+        List<FlowTrace> rows = traceStore.search(scopedQuery).stream()
+                .filter(trace -> executionAuthorizationPolicy.canReadTrace(requester, trace))
+                .map(trace -> traceRedactionPolicy.redact(trace, redactionContext))
+                .toList();
+        audit(
+                requester,
+                "SEARCH_TRACES",
+                "TRACE",
+                "<query>",
+                OUTCOME_ALLOW,
+                "ok",
+                Map.of("count", String.valueOf(rows.size()))
+        );
+        metricInc("npdev.api.trace.search", requester, Map.of("outcome", "ALLOW"));
+        metricObserveMs("npdev.api.trace.search.duration_ms", startedAtMs, requester, Map.of("outcome", "ALLOW"));
+        return rows;
+    }
+
+    public List<TraceSummary> searchTraceSummaries(TraceQuery query, ExecutionContext requesterContext) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        TraceQuery scopedQuery = tenantScopedTraceQuery(query, requester);
+        metricInc("npdev.api.trace.search", requester, Map.of("mode", "summary", "outcome", "ATTEMPT"));
+        if (!executionAuthorizationPolicy.canSearchTraces(requester, scopedQuery)) {
+            audit(requester, "SEARCH_TRACES", "TRACE", "<query>", OUTCOME_DENY, "forbidden", Map.of("view", "summary"));
+            metricInc("npdev.api.trace.search", requester, Map.of("mode", "summary", "outcome", "DENY"));
+            metricObserveMs("npdev.api.trace.search.duration_ms", startedAtMs, requester, Map.of("mode", "summary", "outcome", "DENY"));
+            throw forbidden();
+        }
+        List<TraceSummary> rows = traceSummaryStore.searchSummaries(scopedQuery);
+        audit(
+                requester,
+                "SEARCH_TRACES",
+                "TRACE",
+                "<query>",
+                OUTCOME_ALLOW,
+                "ok",
+                Map.of("view", "summary", "count", String.valueOf(rows.size()))
+        );
+        metricInc("npdev.api.trace.search", requester, Map.of("mode", "summary", "outcome", "ALLOW"));
+        metricObserveMs("npdev.api.trace.search.duration_ms", startedAtMs, requester, Map.of("mode", "summary", "outcome", "ALLOW"));
+        return rows;
+    }
+
+    public Optional<FlowInstance> findExecution(String executionId, ExecutionContext requesterContext) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        metricInc("npdev.api.execution.read", requester, Map.of("mode", "detail", "outcome", "ATTEMPT"));
+        if (executionId == null || executionId.isBlank()) {
+            audit(requester, "READ_EXECUTION", "EXECUTION", "<blank>", OUTCOME_DENY, "invalid_input", Map.of());
+            metricInc("npdev.api.execution.read", requester, Map.of("mode", "detail", "outcome", "DENY"));
+            metricObserveMs("npdev.api.execution.read.duration_ms", startedAtMs, requester, Map.of("mode", "detail", "outcome", "DENY"));
+            return Optional.empty();
+        }
+        Optional<FlowInstance> instanceOpt = flowInstanceStore.findByExecutionId(executionId);
+        if (instanceOpt.isEmpty()) {
+            audit(requester, "READ_EXECUTION", "EXECUTION", executionId, OUTCOME_ALLOW, "not_found", Map.of());
+            metricInc("npdev.api.execution.read", requester, Map.of("mode", "detail", "outcome", "NOT_FOUND"));
+            metricObserveMs("npdev.api.execution.read.duration_ms", startedAtMs, requester, Map.of("mode", "detail", "outcome", "NOT_FOUND"));
+            return Optional.empty();
+        }
+        FlowInstance instance = instanceOpt.get();
+        if (!executionAuthorizationPolicy.canReadExecution(requester, instance)) {
+            audit(requester, "READ_EXECUTION", "EXECUTION", executionId, OUTCOME_DENY, "forbidden", Map.of());
+            metricInc("npdev.api.execution.read", requester, Map.of("mode", "detail", "outcome", "DENY"));
+            metricObserveMs("npdev.api.execution.read.duration_ms", startedAtMs, requester, Map.of("mode", "detail", "outcome", "DENY"));
+            throw forbidden();
+        }
+        FlowInstance redacted = executionRedactionPolicy.redact(instance, redactionContextFor(requester));
+        audit(requester, "READ_EXECUTION", "EXECUTION", executionId, OUTCOME_ALLOW, "ok", Map.of());
+        metricInc("npdev.api.execution.read", requester, Map.of("mode", "detail", "outcome", "ALLOW"));
+        metricObserveMs("npdev.api.execution.read.duration_ms", startedAtMs, requester, Map.of("mode", "detail", "outcome", "ALLOW"));
+        return Optional.ofNullable(redacted);
+    }
+
+    public List<FlowInstance> listExecutions(int limit, int offset, ExecutionContext requesterContext) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        ExecutionContext redactionContext = redactionContextFor(requester);
+        metricInc("npdev.api.execution.list", requester, Map.of("mode", "recent", "outcome", "ATTEMPT"));
+        if (!executionAuthorizationPolicy.canListExecutions(requester, requester.tenantId())) {
+            audit(requester, "LIST_EXECUTIONS", "EXECUTION", "<query>", OUTCOME_DENY, "forbidden", Map.of());
+            metricInc("npdev.api.execution.list", requester, Map.of("mode", "recent", "outcome", "DENY"));
+            metricObserveMs("npdev.api.execution.list.duration_ms", startedAtMs, requester, Map.of("mode", "recent", "outcome", "DENY"));
+            throw forbidden();
+        }
+        List<FlowInstance> rows = flowInstanceStore.findRecent(requester.tenantId(), normalizeLimit(limit), normalizeOffset(offset))
+                .stream()
+                .map(instance -> executionRedactionPolicy.redact(instance, redactionContext))
+                .toList();
+        audit(
+                requester,
+                "LIST_EXECUTIONS",
+                "EXECUTION",
+                "<query>",
+                OUTCOME_ALLOW,
+                "ok",
+                Map.of("count", String.valueOf(rows.size()))
+        );
+        metricInc("npdev.api.execution.list", requester, Map.of("mode", "recent", "outcome", "ALLOW"));
+        metricObserveMs("npdev.api.execution.list.duration_ms", startedAtMs, requester, Map.of("mode", "recent", "outcome", "ALLOW"));
+        return rows;
+    }
+
+    public List<FlowInstance> listWaitingExecutions(int limit, int offset, ExecutionContext requesterContext) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        ExecutionContext redactionContext = redactionContextFor(requester);
+        metricInc("npdev.api.execution.list", requester, Map.of("mode", "waiting", "outcome", "ATTEMPT"));
+        if (!executionAuthorizationPolicy.canListExecutions(requester, requester.tenantId())) {
+            audit(requester, "LIST_EXECUTIONS", "EXECUTION", "<waiting>", OUTCOME_DENY, "forbidden", Map.of());
+            metricInc("npdev.api.execution.list", requester, Map.of("mode", "waiting", "outcome", "DENY"));
+            metricObserveMs("npdev.api.execution.list.duration_ms", startedAtMs, requester, Map.of("mode", "waiting", "outcome", "DENY"));
+            throw forbidden();
+        }
+        List<FlowInstance> rows = flowInstanceStore.findWaiting(requester.tenantId(), normalizeLimit(limit), normalizeOffset(offset))
+                .stream()
+                .map(instance -> executionRedactionPolicy.redact(instance, redactionContext))
+                .toList();
+        audit(
+                requester,
+                "LIST_EXECUTIONS",
+                "EXECUTION",
+                "<waiting>",
+                OUTCOME_ALLOW,
+                "ok",
+                Map.of("count", String.valueOf(rows.size()))
+        );
+        metricInc("npdev.api.execution.list", requester, Map.of("mode", "waiting", "outcome", "ALLOW"));
+        metricObserveMs("npdev.api.execution.list.duration_ms", startedAtMs, requester, Map.of("mode", "waiting", "outcome", "ALLOW"));
+        return rows;
+    }
+
+    public List<ExecutionSummary> listExecutionSummaries(
+            String mode,
+            int limit,
+            int offset,
+            ExecutionContext requesterContext
+    ) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        metricInc("npdev.api.execution.list", requester, Map.of("mode", "summary", "outcome", "ATTEMPT"));
+        if (!executionAuthorizationPolicy.canListExecutions(requester, requester.tenantId())) {
+            audit(requester, "LIST_EXECUTIONS", "EXECUTION", "<summary>", OUTCOME_DENY, "forbidden", Map.of());
+            metricInc("npdev.api.execution.list", requester, Map.of("mode", "summary", "outcome", "DENY"));
+            metricObserveMs("npdev.api.execution.list.duration_ms", startedAtMs, requester, Map.of("mode", "summary", "outcome", "DENY"));
+            throw forbidden();
+        }
+        String normalizedMode = mode == null ? "recent" : mode.trim().toLowerCase();
+        if (!"waiting".equals(normalizedMode)) {
+            normalizedMode = "recent";
+        }
+        List<ExecutionSummary> rows = executionSummaryStore.listSummaries(
+                requester.tenantId(),
+                normalizedMode,
+                normalizeLimit(limit),
+                normalizeOffset(offset)
+        );
+        audit(
+                requester,
+                "LIST_EXECUTIONS",
+                "EXECUTION",
+                "<summary>",
+                OUTCOME_ALLOW,
+                "ok",
+                Map.of("mode", normalizedMode, "count", String.valueOf(rows.size()))
+        );
+        metricInc("npdev.api.execution.list", requester, Map.of("mode", normalizedMode, "outcome", "ALLOW"));
+        metricObserveMs("npdev.api.execution.list.duration_ms", startedAtMs, requester, Map.of("mode", normalizedMode, "outcome", "ALLOW"));
+        return rows;
+    }
+
+    public List<ExecutionSummary> listStaleWaitingExecutions(
+            int olderThanMinutes,
+            int limit,
+            int offset,
+            ExecutionContext requesterContext
+    ) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        metricInc("npdev.api.execution.list", requester, Map.of("mode", "stale", "outcome", "ATTEMPT"));
+        if (!executionAuthorizationPolicy.canListExecutions(requester, requester.tenantId())) {
+            audit(requester, "LIST_STALE_WAITING", "EXECUTION", "<stale>", OUTCOME_DENY, "forbidden", Map.of());
+            metricInc("npdev.api.execution.list", requester, Map.of("mode", "stale", "outcome", "DENY"));
+            metricObserveMs("npdev.api.execution.list.duration_ms", startedAtMs, requester, Map.of("mode", "stale", "outcome", "DENY"));
+            throw forbidden();
+        }
+        int minutes = olderThanMinutes <= 0 ? 60 : Math.min(olderThanMinutes, 7 * 24 * 60);
+        long threshold = System.currentTimeMillis() - (minutes * 60_000L);
+        List<ExecutionSummary> rows = flowInstanceStore.findStaleWaiting(
+                        requester.tenantId(),
+                        threshold,
+                        normalizeLimit(limit),
+                        normalizeOffset(offset)
+                ).stream()
+                .map(KernelFacade::toExecutionSummary)
+                .toList();
+        audit(
+                requester,
+                "LIST_STALE_WAITING",
+                "EXECUTION",
+                "<stale>",
+                OUTCOME_ALLOW,
+                "ok",
+                Map.of("olderThanMinutes", String.valueOf(minutes), "count", String.valueOf(rows.size()))
+        );
+        metricInc("npdev.api.execution.list", requester, Map.of("mode", "stale", "outcome", "ALLOW"));
+        metricObserveMs("npdev.api.execution.list.duration_ms", startedAtMs, requester, Map.of("mode", "stale", "outcome", "ALLOW"));
+        return rows;
+    }
+
+    public List<ExecutionSummary> listRecentFailureExecutions(
+            int limit,
+            int offset,
+            ExecutionContext requesterContext
+    ) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        metricInc("npdev.api.admin.failures", requester, Map.of("outcome", "ATTEMPT"));
+        if (!executionAuthorizationPolicy.canReadFailures(requester)) {
+            audit(requester, "ADMIN_LIST_FAILURES", "EXECUTION", "<failures>", OUTCOME_DENY, "forbidden_read_failures", Map.of());
+            metricInc("npdev.api.admin.failures", requester, Map.of("outcome", "DENY"));
+            metricObserveMs("npdev.api.admin.failures.duration_ms", startedAtMs, requester, Map.of("outcome", "DENY"));
+            throw forbidden();
+        }
+        List<ExecutionSummary> rows = executionSummaryStore.listFailureSummaries(
+                requester.tenantId(),
+                normalizeLimit(limit),
+                normalizeOffset(offset)
+        );
+        audit(
+                requester,
+                "ADMIN_LIST_FAILURES",
+                "EXECUTION",
+                "<failures>",
+                OUTCOME_ALLOW,
+                "ok",
+                Map.of("count", String.valueOf(rows.size()))
+        );
+        metricInc("npdev.api.admin.failures", requester, Map.of("outcome", "ALLOW"));
+        metricObserveMs("npdev.api.admin.failures.duration_ms", startedAtMs, requester, Map.of("outcome", "ALLOW"));
+        return rows;
+    }
+
+    public List<ExecutionSummary> listRecentStuckExecutions(
+            int limit,
+            int offset,
+            ExecutionContext requesterContext
+    ) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        metricInc("npdev.api.admin.stuck", requester, Map.of("outcome", "ATTEMPT"));
+        if (!executionAuthorizationPolicy.canReadFailures(requester)) {
+            audit(requester, "ADMIN_LIST_STUCK", "EXECUTION", "<stuck>", OUTCOME_DENY, "forbidden_read_stuck", Map.of());
+            metricInc("npdev.api.admin.stuck", requester, Map.of("outcome", "DENY"));
+            metricObserveMs("npdev.api.admin.stuck.duration_ms", startedAtMs, requester, Map.of("outcome", "DENY"));
+            throw forbidden();
+        }
+        List<ExecutionSummary> rows = executionSummaryStore.listStuckSummaries(
+                requester.tenantId(),
+                normalizeLimit(limit),
+                normalizeOffset(offset)
+        );
+        audit(
+                requester,
+                "ADMIN_LIST_STUCK",
+                "EXECUTION",
+                "<stuck>",
+                OUTCOME_ALLOW,
+                "ok",
+                Map.of("count", String.valueOf(rows.size()))
+        );
+        metricInc("npdev.api.admin.stuck", requester, Map.of("outcome", "ALLOW"));
+        metricObserveMs("npdev.api.admin.stuck.duration_ms", startedAtMs, requester, Map.of("outcome", "ALLOW"));
+        return rows;
+    }
+
+    public List<CircuitBreakerStateSummary> listCircuitStates(
+            String capabilityName,
+            String operationName,
+            int limit,
+            int offset,
+            ExecutionContext requesterContext
+    ) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        metricInc("npdev.api.admin.circuits", requester, Map.of("outcome", "ATTEMPT"));
+        if (!executionAuthorizationPolicy.canReadAdminOps(requester)) {
+            audit(requester, "ADMIN_LIST_CIRCUITS", "CIRCUIT", "<circuits>", OUTCOME_DENY, "forbidden_read_admin_ops", Map.of());
+            metricInc("npdev.api.admin.circuits", requester, Map.of("outcome", "DENY"));
+            metricObserveMs("npdev.api.admin.circuits.duration_ms", startedAtMs, requester, Map.of("outcome", "DENY"));
+            throw forbidden();
+        }
+        List<CircuitBreakerStateSummary> rows = circuitBreakerStateStore.listStates(
+                requester.tenantId(),
+                capabilityName,
+                operationName,
+                normalizeLimit(limit),
+                normalizeOffset(offset)
+        );
+        audit(
+                requester,
+                "ADMIN_LIST_CIRCUITS",
+                "CIRCUIT",
+                "<circuits>",
+                OUTCOME_ALLOW,
+                "ok",
+                Map.of("count", String.valueOf(rows.size()))
+        );
+        metricInc("npdev.api.admin.circuits", requester, Map.of("outcome", "ALLOW"));
+        metricObserveMs("npdev.api.admin.circuits.duration_ms", startedAtMs, requester, Map.of("outcome", "ALLOW"));
+        return rows;
+    }
+
+    public Optional<IdempotencyRecord> findIdempotencyRecord(
+            String idempotencyKey,
+            String capabilityName,
+            String operationName,
+            ExecutionContext requesterContext
+    ) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        metricInc("npdev.api.admin.idempotency", requester, Map.of("outcome", "ATTEMPT"));
+        if (!executionAuthorizationPolicy.canReadAdminOps(requester)) {
+            audit(
+                    requester,
+                    "ADMIN_READ_IDEMPOTENCY",
+                    "IDEMPOTENCY",
+                    "<idempotency>",
+                    OUTCOME_DENY,
+                    "forbidden_read_admin_ops",
+                    Map.of()
+            );
+            metricInc("npdev.api.admin.idempotency", requester, Map.of("outcome", "DENY"));
+            metricObserveMs("npdev.api.admin.idempotency.duration_ms", startedAtMs, requester, Map.of("outcome", "DENY"));
+            throw forbidden();
+        }
+        if (idempotencyKey == null || idempotencyKey.isBlank()
+                || capabilityName == null || capabilityName.isBlank()
+                || operationName == null || operationName.isBlank()) {
+            audit(
+                    requester,
+                    "ADMIN_READ_IDEMPOTENCY",
+                    "IDEMPOTENCY",
+                    "<idempotency>",
+                    OUTCOME_DENY,
+                    "invalid_input",
+                    Map.of()
+            );
+            metricInc("npdev.api.admin.idempotency", requester, Map.of("outcome", "DENY"));
+            metricObserveMs("npdev.api.admin.idempotency.duration_ms", startedAtMs, requester, Map.of("outcome", "DENY"));
+            return Optional.empty();
+        }
+        Optional<IdempotencyRecord> row = idempotencyStore.find(
+                requester.tenantId(),
+                capabilityName,
+                operationName,
+                idempotencyKey
+        );
+        audit(
+                requester,
+                "ADMIN_READ_IDEMPOTENCY",
+                "IDEMPOTENCY",
+                safe(idempotencyKey),
+                OUTCOME_ALLOW,
+                row.isPresent() ? "ok" : "not_found",
+                Map.of("capability", safe(capabilityName), "operation", safe(operationName))
+        );
+        metricInc("npdev.api.admin.idempotency", requester, Map.of("outcome", row.isPresent() ? "ALLOW" : "NOT_FOUND"));
+        metricObserveMs(
+                "npdev.api.admin.idempotency.duration_ms",
+                startedAtMs,
+                requester,
+                Map.of("outcome", row.isPresent() ? "ALLOW" : "NOT_FOUND")
+        );
+        return row;
+    }
+
+    public List<EventEnvelope> listEventsByCorrelation(
+            String correlationId,
+            int limit,
+            int offset,
+            ExecutionContext requesterContext
+    ) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        metricInc(
+                "npdev.api.event.read",
+                requester,
+                Map.of("mode", "byCorrelation", "outcome", "ATTEMPT")
+        );
+        if (eventStore == null || correlationId == null || correlationId.isBlank()) {
+            audit(requester, "LIST_EVENTS", "EVENT", safe(correlationId), OUTCOME_ALLOW, "not_available", Map.of());
+            metricInc(
+                    "npdev.api.event.read",
+                    requester,
+                    Map.of("mode", "byCorrelation", "outcome", "NOT_AVAILABLE")
+            );
+            metricObserveMs(
+                    "npdev.api.event.read.duration_ms",
+                    startedAtMs,
+                    requester,
+                    Map.of("mode", "byCorrelation", "outcome", "NOT_AVAILABLE")
+            );
+            return List.of();
+        }
+        ExecutionContext redactionContext = redactionContextFor(requester);
+        if (!executionAuthorizationPolicy.canReadEvents(requester, requester.tenantId())) {
+            audit(requester, "LIST_EVENTS", "EVENT", correlationId, OUTCOME_DENY, "forbidden", Map.of());
+            metricInc(
+                    "npdev.api.event.read",
+                    requester,
+                    Map.of("mode", "byCorrelation", "outcome", "DENY")
+            );
+            metricObserveMs(
+                    "npdev.api.event.read.duration_ms",
+                    startedAtMs,
+                    requester,
+                    Map.of("mode", "byCorrelation", "outcome", "DENY")
+            );
+            throw forbidden();
+        }
+        List<EventEnvelope> rows = eventStore.findByCorrelationId(
+                        requester.tenantId(),
+                        correlationId,
+                        normalizeLimit(limit),
+                        normalizeOffset(offset)
+                ).stream()
+                .map(event -> eventRedactionPolicy.redact(event, redactionContext))
+                .toList();
+        audit(
+                requester,
+                "LIST_EVENTS",
+                "EVENT",
+                correlationId,
+                OUTCOME_ALLOW,
+                "ok",
+                Map.of("count", String.valueOf(rows.size()))
+        );
+        metricInc(
+                "npdev.api.event.read",
+                requester,
+                Map.of("mode", "byCorrelation", "outcome", "ALLOW")
+        );
+        metricObserveMs(
+                "npdev.api.event.read.duration_ms",
+                startedAtMs,
+                requester,
+                Map.of("mode", "byCorrelation", "outcome", "ALLOW")
+        );
+        return rows;
+    }
+
+    public List<EventEnvelope> listEventsByName(
+            String eventName,
+            int limit,
+            int offset,
+            ExecutionContext requesterContext
+    ) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        metricInc(
+                "npdev.api.event.read",
+                requester,
+                Map.of("mode", "byName", "outcome", "ATTEMPT")
+        );
+        if (eventStore == null || eventName == null || eventName.isBlank()) {
+            audit(requester, "LIST_EVENTS", "EVENT", safe(eventName), OUTCOME_ALLOW, "not_available", Map.of());
+            metricInc(
+                    "npdev.api.event.read",
+                    requester,
+                    Map.of("mode", "byName", "outcome", "NOT_AVAILABLE")
+            );
+            metricObserveMs(
+                    "npdev.api.event.read.duration_ms",
+                    startedAtMs,
+                    requester,
+                    Map.of("mode", "byName", "outcome", "NOT_AVAILABLE")
+            );
+            return List.of();
+        }
+        ExecutionContext redactionContext = redactionContextFor(requester);
+        if (!executionAuthorizationPolicy.canReadEvents(requester, requester.tenantId())) {
+            audit(requester, "LIST_EVENTS", "EVENT", eventName, OUTCOME_DENY, "forbidden", Map.of());
+            metricInc(
+                    "npdev.api.event.read",
+                    requester,
+                    Map.of("mode", "byName", "outcome", "DENY")
+            );
+            metricObserveMs(
+                    "npdev.api.event.read.duration_ms",
+                    startedAtMs,
+                    requester,
+                    Map.of("mode", "byName", "outcome", "DENY")
+            );
+            throw forbidden();
+        }
+        List<EventEnvelope> rows = eventStore.findByEventName(
+                        requester.tenantId(),
+                        eventName,
+                        normalizeLimit(limit),
+                        normalizeOffset(offset)
+                ).stream()
+                .map(event -> eventRedactionPolicy.redact(event, redactionContext))
+                .toList();
+        audit(
+                requester,
+                "LIST_EVENTS",
+                "EVENT",
+                eventName,
+                OUTCOME_ALLOW,
+                "ok",
+                Map.of("count", String.valueOf(rows.size()))
+        );
+        metricInc(
+                "npdev.api.event.read",
+                requester,
+                Map.of("mode", "byName", "outcome", "ALLOW")
+        );
+        metricObserveMs(
+                "npdev.api.event.read.duration_ms",
+                startedAtMs,
+                requester,
+                Map.of("mode", "byName", "outcome", "ALLOW")
+        );
+        return rows;
+    }
+
+    public Optional<EventEnvelope> findEvent(String eventId, ExecutionContext requesterContext) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        metricInc(
+                "npdev.api.event.read",
+                requester,
+                Map.of("mode", "byId", "outcome", "ATTEMPT")
+        );
+        if (eventStore == null || eventId == null || eventId.isBlank()) {
+            audit(requester, "READ_EVENT", "EVENT", safe(eventId), OUTCOME_DENY, "invalid_input", Map.of());
+            metricInc(
+                    "npdev.api.event.read",
+                    requester,
+                    Map.of("mode", "byId", "outcome", "DENY")
+            );
+            metricObserveMs(
+                    "npdev.api.event.read.duration_ms",
+                    startedAtMs,
+                    requester,
+                    Map.of("mode", "byId", "outcome", "DENY")
+            );
+            return Optional.empty();
+        }
+        ExecutionContext redactionContext = redactionContextFor(requester);
+        if (!executionAuthorizationPolicy.canReadEvents(requester, requester.tenantId())) {
+            audit(requester, "READ_EVENT", "EVENT", eventId, OUTCOME_DENY, "forbidden", Map.of());
+            metricInc(
+                    "npdev.api.event.read",
+                    requester,
+                    Map.of("mode", "byId", "outcome", "DENY")
+            );
+            metricObserveMs(
+                    "npdev.api.event.read.duration_ms",
+                    startedAtMs,
+                    requester,
+                    Map.of("mode", "byId", "outcome", "DENY")
+            );
+            throw forbidden();
+        }
+        Optional<EventEnvelope> eventOpt = eventStore.findByEventId(requester.tenantId(), eventId)
+                .map(event -> eventRedactionPolicy.redact(event, redactionContext));
+        audit(
+                requester,
+                "READ_EVENT",
+                "EVENT",
+                eventId,
+                OUTCOME_ALLOW,
+                eventOpt.isPresent() ? "ok" : "not_found",
+                Map.of()
+        );
+        metricInc(
+                "npdev.api.event.read",
+                requester,
+                Map.of("mode", "byId", "outcome", eventOpt.isPresent() ? "ALLOW" : "NOT_FOUND")
+        );
+        metricObserveMs(
+                "npdev.api.event.read.duration_ms",
+                startedAtMs,
+                requester,
+                Map.of("mode", "byId", "outcome", eventOpt.isPresent() ? "ALLOW" : "NOT_FOUND")
+        );
+        return eventOpt;
+    }
+
+    public CorrelationTimeline correlationTimeline(
+            String correlationId,
+            ExecutionContext requesterContext,
+            int limit,
+            int offset
+    ) {
+        return correlationTimeline(correlationId, limit, offset, requesterContext);
+    }
+
+    public CorrelationTimelineResponse correlationTimelineResponse(
+            String correlationId,
+            ExecutionContext requesterContext,
+            int limit,
+            int offset
+    ) {
+        return CorrelationTimelineResponse.from(correlationTimeline(correlationId, limit, offset, requesterContext));
+    }
+
+    public CorrelationTimeline correlationTimeline(
+            String correlationId,
+            int limit,
+            int offset,
+            ExecutionContext requesterContext
+    ) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        metricInc(
+                "npdev.api.correlation.timeline",
+                requester,
+                Map.of("outcome", "ATTEMPT")
+        );
+        if (correlationId == null || correlationId.isBlank()) {
+            audit(requester, "READ_CORRELATION", "CORRELATION", "<blank>", OUTCOME_DENY, "invalid_input", Map.of());
+            metricInc(
+                    "npdev.api.correlation.timeline",
+                    requester,
+                    Map.of("outcome", "DENY")
+            );
+            metricObserveMs(
+                    "npdev.api.correlation.timeline.duration_ms",
+                    startedAtMs,
+                    requester,
+                    Map.of("outcome", "DENY")
+            );
+            return new CorrelationTimeline(correlationId, List.of(), List.of(), List.of());
+        }
+        if (!executionAuthorizationPolicy.canListExecutions(requester, requester.tenantId())
+                || !executionAuthorizationPolicy.canReadEvents(requester, requester.tenantId())) {
+            audit(requester, "READ_CORRELATION", "CORRELATION", correlationId, OUTCOME_DENY, "forbidden", Map.of());
+            metricInc(
+                    "npdev.api.correlation.timeline",
+                    requester,
+                    Map.of("outcome", "DENY")
+            );
+            metricObserveMs(
+                    "npdev.api.correlation.timeline.duration_ms",
+                    startedAtMs,
+                    requester,
+                    Map.of("outcome", "DENY")
+            );
+            throw forbidden();
+        }
+        int scopedLimit = normalizeLimit(limit);
+        int scopedOffset = normalizeOffset(offset);
+
+        List<ExecutionSummary> executions = executionSummaryStore.listByCorrelation(
+                requester.tenantId(),
+                correlationId,
+                scopedLimit,
+                scopedOffset
+        );
+        List<EventMetaSummary> events = eventMetaStore.listByCorrelation(
+                requester.tenantId(),
+                correlationId,
+                scopedLimit,
+                scopedOffset
+        );
+        TraceQuery summaryQuery = new TraceQuery(
+                correlationId,
+                null,
+                null,
+                null,
+                null,
+                scopedLimit,
+                scopedOffset,
+                requester.tenantId(),
+                requester.actorId()
+        );
+        Set<String> traceExecutionIds = traceSummaryStore.searchSummaries(summaryQuery).stream()
+                .map(TraceSummary::executionId)
+                .collect(LinkedHashSet::new, LinkedHashSet::add, LinkedHashSet::addAll);
+        audit(
+                requester,
+                "READ_CORRELATION",
+                "CORRELATION",
+                correlationId,
+                OUTCOME_ALLOW,
+                "ok",
+                Map.of(
+                        "events", String.valueOf(events.size()),
+                        "executions", String.valueOf(executions.size()),
+                        "traces", String.valueOf(traceExecutionIds.size())
+                )
+        );
+        metricInc(
+                "npdev.api.correlation.timeline",
+                requester,
+                Map.of("outcome", "ALLOW")
+        );
+        metricObserveMs(
+                "npdev.api.correlation.timeline.duration_ms",
+                startedAtMs,
+                requester,
+                Map.of("outcome", "ALLOW")
+        );
+        return new CorrelationTimeline(correlationId, executions, events, List.copyOf(traceExecutionIds));
+    }
+
+    public List<AuditRecord> searchAudit(AuditQuery query, ExecutionContext requesterContext) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        metricInc("npdev.api.audit.search", requester, Map.of("outcome", "ATTEMPT"));
+        if (!executionAuthorizationPolicy.canReadAudit(requester)) {
+            audit(requester, "READ_AUDIT", "AUDIT", "<query>", OUTCOME_DENY, "forbidden", Map.of());
+            metricInc("npdev.api.audit.search", requester, Map.of("outcome", "DENY"));
+            metricObserveMs("npdev.api.audit.search.duration_ms", startedAtMs, requester, Map.of("outcome", "DENY"));
+            throw forbidden();
+        }
+        AuditQuery scopedQuery = tenantScopedAuditQuery(query, requester);
+        List<AuditRecord> rows = auditLogStore.search(scopedQuery);
+        audit(
+                requester,
+                "READ_AUDIT",
+                "AUDIT",
+                "<query>",
+                OUTCOME_ALLOW,
+                "ok",
+                Map.of("count", String.valueOf(rows.size()))
+        );
+        metricInc("npdev.api.audit.search", requester, Map.of("outcome", "ALLOW"));
+        metricObserveMs("npdev.api.audit.search.duration_ms", startedAtMs, requester, Map.of("outcome", "ALLOW"));
+        return rows;
+    }
+
+    private static ExecutionContext normalizeContext(ExecutionContext context) {
+        return context == null ? ExecutionContext.anonymous() : context;
+    }
+
+    private ExecutionContext redactionContextFor(ExecutionContext requester) {
+        if (executionAuthorizationPolicy.canUseDebugView(requester)) {
+            return requester;
+        }
+        return requester.withRoles(Set.of("USER"));
+    }
+
+    private static int normalizeLimit(int limit) {
+        if (limit <= 0) {
+            return 50;
+        }
+        return Math.min(limit, 1000);
+    }
+
+    private static int normalizeOffset(int offset) {
+        return Math.max(offset, 0);
+    }
+
+    private static TraceQuery tenantScopedTraceQuery(TraceQuery query, ExecutionContext requester) {
+        TraceQuery effective = query == null ? TraceQuery.empty() : query;
+        return new TraceQuery(
+                effective.correlationId(),
+                effective.flowName(),
+                effective.status(),
+                effective.fromEpochMs(),
+                effective.toEpochMs(),
+                effective.limit(),
+                effective.offset(),
+                requester.tenantId(),
+                effective.actorId()
+        );
+    }
+
+    private static AuditQuery tenantScopedAuditQuery(AuditQuery query, ExecutionContext requester) {
+        AuditQuery effective = query == null ? AuditQuery.emptyForTenant(requester.tenantId()) : query;
+        return new AuditQuery(
+                requester.tenantId(),
+                effective.actorId(),
+                effective.action(),
+                effective.resourceType(),
+                effective.resourceId(),
+                effective.fromMs(),
+                effective.toMs(),
+                effective.limit(),
+                effective.offset()
+        );
+    }
+
+    private void metricInc(String name, ExecutionContext context, Map<String, String> tags) {
+        try {
+            metricsSink.inc(name, mergeMetricTags(context, tags));
+        } catch (RuntimeException ignored) {
+            // Metrics must never break primary execution.
+        }
+    }
+
+    private void metricObserveMs(
+            String name,
+            long startedAtEpochMs,
+            ExecutionContext context,
+            Map<String, String> tags
+    ) {
+        try {
+            long durationMs = Math.max(0L, System.currentTimeMillis() - startedAtEpochMs);
+            metricsSink.observeMs(name, durationMs, mergeMetricTags(context, tags));
+        } catch (RuntimeException ignored) {
+            // Metrics must never break primary execution.
+        }
+    }
+
+    private <T> T metricTimed(
+            String name,
+            ExecutionContext context,
+            Map<String, String> tags,
+            Supplier<T> supplier
+    ) {
+        long startedAtEpochMs = System.currentTimeMillis();
+        try {
+            return supplier.get();
+        } finally {
+            metricObserveMs(name, startedAtEpochMs, context, tags);
+        }
+    }
+
+    private static Map<String, String> mergeMetricTags(ExecutionContext context, Map<String, String> tags) {
+        ExecutionContext safeContext = normalizeContext(context);
+        Map<String, String> merged = new LinkedHashMap<>();
+        merged.put("tenantId", safe(safeContext.tenantId()));
+        if (tags != null) {
+            for (Map.Entry<String, String> entry : tags.entrySet()) {
+                String key = safe(entry.getKey());
+                if ("<none>".equals(key)) {
+                    continue;
+                }
+                merged.put(key, safe(entry.getValue()));
+            }
+        }
+        return Map.copyOf(merged);
+    }
+
+    private void audit(
+            ExecutionContext context,
+            String action,
+            String resourceType,
+            String resourceId,
+            String outcome,
+            String reasonCode,
+            Map<String, String> meta
+    ) {
+        try {
+            ExecutionContext safeContext = normalizeContext(context);
+            auditLogStore.append(AuditRecord.create(
+                    safeContext.tenantId(),
+                    safeContext.actorId(),
+                    safeContext.roles(),
+                    action,
+                    resourceType,
+                    safe(resourceId),
+                    outcome,
+                    safe(reasonCode),
+                    safeTags(safeContext.tags()),
+                    safeMeta(meta)
+            ));
+        } catch (RuntimeException ignored) {
+            // Audit logging must never break primary execution.
+        }
+    }
+
+    private static Map<String, String> safeTags(Map<String, String> tags) {
+        if (tags == null || tags.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> safe = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : tags.entrySet()) {
+            String key = safe(entry.getKey());
+            if (key.equals("<none>")) {
+                continue;
+            }
+            safe.put(key, safe(entry.getValue()));
+        }
+        return Map.copyOf(safe);
+    }
+
+    private static Map<String, String> safeMeta(Map<String, String> meta) {
+        if (meta == null || meta.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> safe = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : meta.entrySet()) {
+            String key = safe(entry.getKey());
+            if (key.equals("<none>")) {
+                continue;
+            }
+            safe.put(key, safe(entry.getValue()));
+        }
+        return Map.copyOf(safe);
+    }
+
+    private static String statusReason(ExecutionResult result) {
+        if (result == null || result.getStatus() == null) {
+            return "unknown";
+        }
+        return result.getStatus().name().toLowerCase();
+    }
+
+    private static String metricErrorCode(ExecutionResult result) {
+        if (result != null && result.getFailureInfo() != null && result.getFailureInfo().code() != null) {
+            return result.getFailureInfo().code();
+        }
+        if (result == null || result.getStatus() == null) {
+            return "unknown";
+        }
+        return switch (result.getStatus()) {
+            case INPUT_VALIDATION_FAILED -> "input_validation";
+            case INVARIANT_FAILED -> "invariant_failed";
+            case CAPABILITY_FAILED -> "capability_failed";
+            case EVENT_PERSIST_FAILED -> "event_persist_failed";
+            case EVENT_PAYLOAD_INVALID -> "event_payload_invalid";
+            case WAITING_EVENT -> "waiting_event";
+            case FAILED -> "failed";
+            case OK -> "ok";
+        };
+    }
+
+    private static String statusValue(ExecutionResult result) {
+        if (result == null || result.getStatus() == null) {
+            return "UNKNOWN";
+        }
+        return result.getStatus().name();
+    }
+
+    private static String errorReason(Throwable throwable) {
+        if (throwable == null) {
+            return "exception";
+        }
+        return "exception:" + throwable.getClass().getSimpleName();
+    }
+
+    private static String safe(String value) {
+        if (value == null) {
+            return "<none>";
+        }
+        String trimmed = value.trim();
+        return trimmed.isBlank() ? "<none>" : trimmed;
+    }
+
+    private static ExecutionSummary toExecutionSummary(FlowInstance instance) {
+        return new ExecutionSummary(
+                instance.executionId(),
+                instance.tenantId(),
+                instance.correlationId(),
+                instance.flowName(),
+                instance.status() == null ? null : instance.status().name(),
+                instance.currentStepIndex(),
+                instance.waitingForEventName(),
+                instance.updatedAtEpochMs(),
+                instance.resumeAttemptCount(),
+                instance.lastResumeAtEpochMs(),
+                instance.lastResumeErrorCode(),
+                instance.nextEligibleResumeAtEpochMs(),
+                instance.lastProgressAtEpochMs(),
+                instance.lastErrorKind(),
+                instance.lastErrorCode(),
+                instance.failedAtEpochMs()
+        );
+    }
+
+    private static ResponseStatusException forbidden() {
+        return new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
+    }
+
+    public record CorrelationTimeline(
+            String correlationId,
+            List<ExecutionSummary> executions,
+            List<EventMetaSummary> events,
+            List<String> traceExecutionIds
+    ) {
+    }
+
+    public record FlowDefinitionView(
+            String name,
+            String concept,
+            String mode,
+            Object inputSchema,
+            Object outputSchema,
+            List<FlowStepView> steps
+    ) {
+    }
+
+    public record FlowStepView(
+            String orderKey,
+            String name,
+            String type,
+            String checkpoint,
+            String scope,
+            String capability,
+            String operation,
+            List<String> capabilityArgsRefs,
+            String inputRef,
+            String outputRef,
+            String eventName,
+            String condition,
+            String awaitEventName,
+            Boolean awaitMatchCorrelation,
+            Map<String, String> awaitPayloadMatch,
+            Long delaySeconds,
+            String returnValueRef,
+            int thenCount,
+            int elseCount,
+            String correlationHint
+    ) {
+    }
+}

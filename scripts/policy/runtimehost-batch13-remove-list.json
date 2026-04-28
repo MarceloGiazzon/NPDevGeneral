@@ -1,0 +1,16 @@
+{
+  "batch": "runtimehost-batch13",
+  "description": "Eighth RuntimeHost reduction slice. Remove a small set of zero-reference internal governance/ownership controllers.",
+  "rationale": [
+    "Keep the slice small and thematic to reduce risk.",
+    "Controllers only, no service removals in this batch.",
+    "No supported-core removals; this remains inside the zero-reference internal-controller cleanup path."
+  ],
+  "files": [
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/CrossTenantGovernanceController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/OwnershipIsolationController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/PolicyPackGovernancePresetController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/TenantOperationalAdministrationController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/TenantQueryEnforcementController.java"
+  ]
+}

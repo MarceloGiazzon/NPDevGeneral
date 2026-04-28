@@ -1,0 +1,45 @@
+{
+  "packageFormatVersion": "1.0",
+  "packageId": "notification-inproc-package",
+  "displayName": "Notification In-Process Package",
+  "version": "1.0.0",
+  "description": "Built-in sealed plugin package for the in-process notification adapter.",
+  "provider": "NPDev",
+  "compatibility": {
+    "npdevRuntimeApiVersion": "1.0",
+    "minBootstrapVersion": "1.0.0"
+  },
+  "trust": {
+    "mode": "internal",
+    "source": "np-authored",
+    "level": "trusted"
+  },
+  "signature": {
+    "algorithm": "sha256",
+    "digest": "npdev-inproc-sha256-demo",
+    "status": "verified",
+    "verifiedBy": "npdev-dev-trust"
+  },
+  "provenance": {
+    "sourceType": "internal-bundle",
+    "sourceLocation": "classpath:npdev/plugin-packages/notification-inproc.package.json",
+    "publishedAt": "2026-03-09T09:00:00Z",
+    "attestation": "npdev-authored"
+  },
+  "artifacts": [
+    {
+      "kind": "runtimeRefBundle",
+      "path": "built-in://notification-inproc"
+    }
+  ],
+  "capabilities": [
+    {
+      "capability": "notification",
+      "operation": "send",
+      "adapterId": "notification-inproc"
+    }
+  ],
+  "pluginManifest": {
+    "path": "npdev/plugins/default.plugin-manifest.json"
+  }
+}

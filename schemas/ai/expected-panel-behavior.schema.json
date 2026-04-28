@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/expected-panel-behavior.schema.json",
+  "title": "NPDev AI Expected Panel Behavior",
+  "type": "object",
+  "required": ["schemaVersion", "panelId", "expectedClass"],
+  "properties": {
+    "schemaVersion": { "const": "ai-expected-panel-behavior.v1" },
+    "panelId": { "type": "string" },
+    "expectedClass": { "type": "string" },
+    "assertions": { "type": "array", "default": [] }
+  },
+  "additionalProperties": true
+}

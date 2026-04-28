@@ -1,0 +1,79 @@
+﻿{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "$id":  "https://npdev.local/contracts/compiled-model.schema.json",
+    "title":  "NPDev Compiled Model",
+    "type":  "object",
+    "additionalProperties":  true,
+    "properties":  {
+                       "contractVersion":  {
+                                               "description":  "Compiled model contract version.",
+                                               "type":  "string"
+                                           },
+                       "namespace":  {
+                                         "description":  "Resolved model namespace.",
+                                         "type":  "string"
+                                     },
+                       "concepts":  {
+                                        "type":  "array",
+                                        "description":  "Resolved concepts after defaults and references are processed.",
+                                        "items":  {
+                                                      "type":  "object",
+                                                      "additionalProperties":  true
+                                                  }
+                                    },
+                       "entities":  {
+                                        "type":  "array",
+                                        "description":  "Deprecated alias for concepts. Readers may accept it for older artifacts, but writers must emit concepts.",
+                                        "items":  {
+                                                      "type":  "object",
+                                                      "additionalProperties":  true
+                                                  },
+                                        "deprecated": true
+                                    },
+                       "flows":  {
+                                     "type":  "array",
+                                     "description":  "Resolved flows and orchestration metadata.",
+                                     "items":  {
+                                                   "type":  "object",
+                                                   "additionalProperties":  true
+                                               }
+                                 },
+                       "queries":  {
+                                      "type":  "array",
+                                      "description":  "Resolved query definitions.",
+                                      "items":  {
+                                                    "type":  "object",
+                                                    "additionalProperties":  true
+                                                }
+                                  },
+                       "ruleProfiles":  {
+                                            "type":  "array",
+                                            "description":  "Resolved governed rule profile definitions.",
+                                            "items":  {
+                                                          "type":  "object",
+                                                          "additionalProperties":  true
+                                                      }
+                                        },
+                       "procedures":  {
+                                         "type":  "array",
+                                         "description":  "Resolved headless procedure definitions.",
+                                         "items":  {
+                                                       "type":  "object",
+                                                       "additionalProperties":  true
+                                                   }
+                                     },
+                       "panels":  {
+                                     "type":  "array",
+                                     "description":  "Resolved interactive panel definitions.",
+                                     "items":  {
+                                                   "type":  "object",
+                                                   "additionalProperties":  true
+                                               }
+                                 }
+                   },
+    "required":  [
+                     "contractVersion",
+                     "namespace",
+                     "concepts"
+                 ]
+}

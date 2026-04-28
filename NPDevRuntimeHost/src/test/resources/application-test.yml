@@ -1,0 +1,23 @@
+spring:
+  datasource:
+    url: ${NPDEV_TEST_DB_URL:jdbc:h2:mem:npdev_test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE}
+    username: ${NPDEV_TEST_DB_USERNAME:sa}
+    password: ${NPDEV_TEST_DB_PASSWORD:}
+    driver-class-name: ${NPDEV_TEST_DB_DRIVER:org.h2.Driver}
+  jpa:
+    database-platform: ${NPDEV_TEST_DB_DIALECT:org.hibernate.dialect.H2Dialect}
+    open-in-view: false
+  flyway:
+    enabled: true
+    clean-on-validation-error: true
+    clean-disabled: false
+
+npdev:
+  execution:
+    mode: relaxed
+  runtime:
+    mode: ${NPDEV_TEST_RUNTIME_MODE:inproc}
+  auth:
+    enabled: false
+  scheduler:
+    enabled: false

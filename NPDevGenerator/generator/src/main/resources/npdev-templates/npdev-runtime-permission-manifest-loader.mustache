@@ -1,0 +1,51 @@
+package {{configPackage}};
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.kernel.security.PermissionGrant;
+
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+public final class GeneratedPermissionManifestLoader {
+
+    private GeneratedPermissionManifestLoader() {
+    }
+
+    public static List<PermissionGrant> load(ObjectMapper objectMapper) {
+        try (InputStream inputStream = GeneratedPermissionManifestLoader.class.getClassLoader()
+                .getResourceAsStream("npdev/security/dev.permissions.json")) {
+            if (inputStream == null) {
+                return List.of();
+            }
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> json = objectMapper.readValue(inputStream, Map.class);
+            Object grantsNode = json.get("grants");
+            if (!(grantsNode instanceof List<?> rawGrants)) {
+                return List.of();
+            }
+
+            List<PermissionGrant> grants = new ArrayList<>();
+            for (Object rawGrant : rawGrants) {
+                if (!(rawGrant instanceof Map<?, ?> grantMap)) {
+                    continue;
+                }
+                grants.add(new PermissionGrant(
+                        asString(grantMap.get("permission")),
+                        asString(grantMap.get("tenantId")),
+                        asString(grantMap.get("actorId")),
+                        asString(grantMap.get("role"))
+                ));
+            }
+            return List.copyOf(grants);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Unable to load generated permission manifest", exception);
+        }
+    }
+
+    private static String asString(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+}

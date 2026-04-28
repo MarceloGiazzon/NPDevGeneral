@@ -1,0 +1,187 @@
+package {{dtoPackage}};
+
+import com.npdev.kernel.CapabilityError;
+import com.npdev.kernel.ExecutionResult;
+import com.npdev.kernel.InputValidationError;
+import com.npdev.kernel.errors.FailureInfo;
+import com.npdev.kernel.events.EventEnvelope;
+import com.npdev.kernel.ports.InvariantEngine;
+
+import java.util.List;
+import java.util.Map;
+
+public record FlowExecutionResponse(
+        String executionId,
+        String correlationId,
+        String traceId,
+        String flowName,
+        String status,
+        Object output,
+        String errorCode,
+        String error,
+        String capabilityStepName,
+        Integer capabilityStepIndex,
+        String capabilityName,
+        String capabilityOperation,
+        String capabilityAdapterId,
+        CapabilityErrorView capabilityError,
+        FailureInfoView failureInfo,
+        String awaitedStepName,
+        Integer awaitedStepIndex,
+        String awaitedEventName,
+        String awaitedCorrelationId,
+        List<InputValidationErrorView> inputValidationErrors,
+        List<InvariantViolationView> invariantViolations,
+        List<EventEnvelopeView> emittedEvents
+) {
+    public static FlowExecutionResponse from(ExecutionResult result) {
+        return new FlowExecutionResponse(
+                result.getExecutionId(),
+                result.getCorrelationId(),
+                result.getTraceId(),
+                result.getFlowName(),
+                result.getStatus() == null ? null : result.getStatus().name(),
+                result.getOutput(),
+                result.getErrorCode(),
+                result.getError(),
+                result.getCapabilityStepName(),
+                result.getCapabilityStepIndex(),
+                result.getCapabilityName(),
+                result.getCapabilityOperation(),
+                result.getCapabilityAdapterId(),
+                mapCapabilityError(result.getCapabilityError()),
+                mapFailureInfo(result.getFailureInfo()),
+                result.getAwaitedStepName(),
+                result.getAwaitedStepIndex(),
+                result.getAwaitedEventName(),
+                result.getAwaitedCorrelationId(),
+                mapInputValidationErrors(result.getInputValidationErrors()),
+                mapViolations(result.getInvariantViolations()),
+                mapEvents(result.getEmittedEvents())
+        );
+    }
+
+    private static List<InputValidationErrorView> mapInputValidationErrors(List<InputValidationError> errors) {
+        if (errors == null) {
+            return List.of();
+        }
+        return errors.stream()
+                .map(error -> new InputValidationErrorView(
+                        error.field(),
+                        error.code(),
+                        error.message()
+                ))
+                .toList();
+    }
+
+    private static CapabilityErrorView mapCapabilityError(CapabilityError capabilityError) {
+        if (capabilityError == null) {
+            return null;
+        }
+        return new CapabilityErrorView(
+                capabilityError.code(),
+                capabilityError.message(),
+                capabilityError.kind() == null ? null : capabilityError.kind().name(),
+                capabilityError.details()
+        );
+    }
+
+    private static FailureInfoView mapFailureInfo(FailureInfo failureInfo) {
+        if (failureInfo == null) {
+            return null;
+        }
+        return new FailureInfoView(
+                failureInfo.kind() == null ? null : failureInfo.kind().name(),
+                failureInfo.code(),
+                failureInfo.message(),
+                failureInfo.details()
+        );
+    }
+
+    private static List<InvariantViolationView> mapViolations(List<InvariantEngine.Violation> violations) {
+        if (violations == null) {
+            return List.of();
+        }
+        return violations.stream()
+                .map(v -> new InvariantViolationView(
+                        v.code(),
+                        v.message(),
+                        v.invariantRef(),
+                        v.conceptName(),
+                        v.flowName(),
+                        v.stepName(),
+                        v.stepIndex(),
+                        v.details()
+                ))
+                .toList();
+    }
+
+    private static List<EventEnvelopeView> mapEvents(List<EventEnvelope> events) {
+        if (events == null) {
+            return List.of();
+        }
+        return events.stream()
+                .map(e -> new EventEnvelopeView(
+                        e.eventId(),
+                        e.eventName(),
+                        e.timestampEpochMs(),
+                        e.correlationId(),
+                        e.causationId(),
+                        e.tenantId(),
+                        e.actorId(),
+                        e.flowName(),
+                        e.stepIndex(),
+                        e.payload()
+                ))
+                .toList();
+    }
+
+    public record InvariantViolationView(
+            String code,
+            String message,
+            String invariantRef,
+            String conceptName,
+            String flowName,
+            String stepName,
+            Integer stepIndex,
+            Map<String, Object> details
+    ) {
+    }
+
+    public record CapabilityErrorView(
+            String code,
+            String message,
+            String kind,
+            Map<String, Object> details
+    ) {
+    }
+
+    public record FailureInfoView(
+            String kind,
+            String code,
+            String message,
+            Map<String, String> details
+    ) {
+    }
+
+    public record InputValidationErrorView(
+            String field,
+            String code,
+            String message
+    ) {
+    }
+
+    public record EventEnvelopeView(
+            String eventId,
+            String eventName,
+            long timestampEpochMs,
+            String correlationId,
+            String causationId,
+            String tenantId,
+            String actorId,
+            String flowName,
+            Integer stepIndex,
+            Map<String, Object> payload
+    ) {
+    }
+}

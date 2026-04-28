@@ -1,0 +1,123 @@
+{
+  "manifestVersion": "1.0",
+  "plugins": [
+    {
+      "pluginId": "notification-inproc-plugin",
+      "displayName": "In-process notification plugin",
+      "version": "1.0.0",
+      "enabled": true,
+      "adapters": [
+        {
+          "capability": "notification",
+          "operation": "send",
+          "adapterId": "notification-inproc",
+          "bindingKey": "notification.send",
+          "implementation": {
+            "kind": "runtimeRef",
+            "ref": "notificationInProcCapabilityAdapter"
+          }
+        }
+      ]
+    },
+    {
+      "pluginId": "notification-warning-plugin",
+      "displayName": "Warning notification plugin",
+      "version": "1.0.0",
+      "enabled": true,
+      "adapters": [
+        {
+          "capability": "notification",
+          "operation": "send",
+          "adapterId": "notification-warning-inproc",
+          "bindingKey": "notification.send.warning",
+          "implementation": {
+            "kind": "runtimeRef",
+            "ref": "notificationWarningCapabilityAdapter"
+          }
+        }
+      ]
+    },
+    {
+      "pluginId": "persistence-inmemory-plugin",
+      "displayName": "In-memory persistence plugin",
+      "version": "1.0.0",
+      "enabled": true,
+      "adapters": [
+        {
+          "capability": "persistence",
+          "operation": "save",
+          "adapterId": "memory",
+          "bindingKey": "persistence.save.memory",
+          "implementation": {
+            "kind": "runtimeRef",
+            "ref": "persistenceInMemoryCapabilityAdapter"
+          }
+        }
+      ]
+    },
+    {
+      "pluginId": "persistence-postgres-plugin",
+      "displayName": "Postgres persistence plugin",
+      "version": "1.0.0",
+      "enabled": true,
+      "adapters": [
+        {
+          "capability": "persistence",
+          "operation": "save",
+          "adapterId": "postgres",
+          "bindingKey": "persistence.save.postgres",
+          "implementation": {
+            "kind": "runtimeRef",
+            "ref": "persistencePostgresCapabilityAdapter"
+          }
+        },
+        {
+          "capability": "persistence",
+          "operation": "save",
+          "adapterId": "repository",
+          "bindingKey": "persistence.save.repository",
+          "implementation": {
+            "kind": "runtimeRef",
+            "ref": "persistencePostgresCapabilityAdapter"
+          }
+        }
+      ]
+    },
+    {
+      "pluginId": "webhook-inproc-plugin",
+      "displayName": "In-process webhook plugin",
+      "version": "1.0.0",
+      "enabled": true,
+      "adapters": [
+        {
+          "capability": "webhook",
+          "operation": "post",
+          "adapterId": "webhook-inproc",
+          "bindingKey": "webhook.post",
+          "implementation": {
+            "kind": "runtimeRef",
+            "ref": "webhookInProcCapabilityAdapter"
+          }
+        }
+      ]
+    },
+    {
+      "pluginId": "custom-procedure-plugin",
+      "displayName": "Generic custom procedure plugin",
+      "version": "1.0.0",
+      "enabled": true,
+      "adapters": [
+        {
+          "capability": "customExtension",
+          "operation": "run",
+          "adapterId": "plugin:custom-procedure",
+          "bindingKey": "customExtension.run.plugin:custom-procedure",
+          "implementation": {
+            "kind": "runtimeRef",
+            "ref": "customProcedureCapabilityAdapter"
+          }
+        }
+      ]
+    }
+  ]
+}

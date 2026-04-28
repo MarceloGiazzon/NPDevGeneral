@@ -1,0 +1,11 @@
+package {{dtoPackage}};
+
+import java.util.Map;
+
+public record EventPublishRequest(
+        String eventName,
+        String correlationId,
+        String causationId,
+        Map<String, Object> payload
+) {
+}

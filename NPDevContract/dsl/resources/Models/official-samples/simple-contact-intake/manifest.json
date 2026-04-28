@@ -1,0 +1,30 @@
+﻿{
+  "id": "simple-contact-intake",
+  "title": "Simple Contact Intake",
+  "complexity": "simple",
+  "mainFlow": "SubmitContactMessage",
+  "purpose": "A beginner-friendly sample that adds governed notification behavior to the basic concept + invariant + persistence pattern.",
+  "businessStory": "A team wants to collect incoming contact messages and trigger a notification without hand-coded custom application logic.",
+  "features": [
+    "concept",
+    "invariants",
+    "persistence",
+    "notification",
+    "event",
+    "trace"
+  ],
+  "inputFiles": [
+    "input/submit-contact-message.json"
+  ],
+  "walkthrough": [
+    "Run the sample through the Step 50 one-command trial path.",
+    "Call GET /api/flows and confirm SubmitContactMessage exists.",
+    "POST the contact payload and inspect the execution result.",
+    "Inspect traces to see notification-related evidence."
+  ],
+  "expectedOutcomes": [
+    "The contact message is validated and persisted.",
+    "A notification capability is invoked through governed runtime behavior.",
+    "The user sees a small but real business workflow beyond plain CRUD."
+  ]
+}

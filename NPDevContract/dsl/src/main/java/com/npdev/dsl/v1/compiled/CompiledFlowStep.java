@@ -1,0 +1,171 @@
+package com.npdev.dsl.v1.compiled;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+public final class CompiledFlowStep {
+    private final String name;
+    private final String type;
+    private final String checkpoint;
+    private final String scope;
+    private final List<String> invariants;
+    private final String eventName;
+    private final String payloadRef;
+    private final Map<String, String> eventDataRefs;
+    private final String condition;
+    private final List<CompiledFlowStep> thenSteps;
+    private final List<CompiledFlowStep> elseSteps;
+    private final String awaitEventName;
+    private final String awaitRef;
+    private final Boolean awaitMatchCorrelation;
+    private final Map<String, String> awaitPayloadMatch;
+    private final Long delaySeconds;
+    private final String mapFromRef;
+    private final String mapToRef;
+    private final String returnValueRef;
+    private final CompiledCapabilityCall capabilityCall;
+    private final CompiledActionMetadata action;
+
+    public CompiledFlowStep(
+            String name,
+            String type,
+            String checkpoint,
+            String scope,
+            List<String> invariants,
+            String eventName,
+            String payloadRef,
+            String returnValueRef,
+            CompiledCapabilityCall capabilityCall
+    ) {
+        this(name, type, checkpoint, scope, invariants, eventName, payloadRef, Map.of(),
+                null, List.of(), List.of(), null, null, null, Map.of(), null, null, null, returnValueRef, capabilityCall, null);
+    }
+
+    public CompiledFlowStep(
+            String name,
+            String type,
+            String checkpoint,
+            String scope,
+            List<String> invariants,
+            String eventName,
+            String payloadRef,
+            Map<String, String> eventDataRefs,
+            String condition,
+            List<CompiledFlowStep> thenSteps,
+            List<CompiledFlowStep> elseSteps,
+            String awaitEventName,
+            String awaitRef,
+            Boolean awaitMatchCorrelation,
+            Map<String, String> awaitPayloadMatch,
+            Long delaySeconds,
+            String mapFromRef,
+            String mapToRef,
+            String returnValueRef,
+            CompiledCapabilityCall capabilityCall
+    ) {
+        this(name, type, checkpoint, scope, invariants, eventName, payloadRef, eventDataRefs, condition, thenSteps,
+                elseSteps, awaitEventName, awaitRef, awaitMatchCorrelation, awaitPayloadMatch, delaySeconds,
+                mapFromRef, mapToRef, returnValueRef, capabilityCall, null);
+    }
+
+    public CompiledFlowStep(
+            String name,
+            String type,
+            String checkpoint,
+            String scope,
+            List<String> invariants,
+            String eventName,
+            String payloadRef,
+            Map<String, String> eventDataRefs,
+            String condition,
+            List<CompiledFlowStep> thenSteps,
+            List<CompiledFlowStep> elseSteps,
+            String awaitEventName,
+            String awaitRef,
+            Boolean awaitMatchCorrelation,
+            Map<String, String> awaitPayloadMatch,
+            Long delaySeconds,
+            String mapFromRef,
+            String mapToRef,
+            String returnValueRef,
+            CompiledCapabilityCall capabilityCall,
+            CompiledActionMetadata action
+    ) {
+        this.name = name;
+        this.type = type;
+        this.checkpoint = checkpoint;
+        this.scope = scope;
+        this.invariants = invariants == null ? List.of() : new ArrayList<>(invariants);
+        this.eventName = eventName;
+        this.payloadRef = payloadRef;
+        this.eventDataRefs = eventDataRefs == null ? Map.of() : new LinkedHashMap<>(eventDataRefs);
+        this.condition = condition;
+        this.thenSteps = thenSteps == null ? List.of() : new ArrayList<>(thenSteps);
+        this.elseSteps = elseSteps == null ? List.of() : new ArrayList<>(elseSteps);
+        this.awaitEventName = awaitEventName;
+        this.awaitRef = awaitRef;
+        this.awaitMatchCorrelation = awaitMatchCorrelation;
+        this.awaitPayloadMatch = awaitPayloadMatch == null ? Map.of() : new LinkedHashMap<>(awaitPayloadMatch);
+        this.delaySeconds = delaySeconds;
+        this.mapFromRef = mapFromRef;
+        this.mapToRef = mapToRef;
+        this.returnValueRef = returnValueRef;
+        this.capabilityCall = capabilityCall;
+        this.action = action;
+    }
+
+    public String getName() { return name; }
+
+    public String getType() { return type; }
+
+    public String getCheckpoint() { return checkpoint; }
+
+    public String getScope() { return scope; }
+
+    public List<String> getInvariants() {
+        return Collections.unmodifiableList(invariants);
+    }
+
+    public String getEventName() { return eventName; }
+
+    public String getPayloadRef() { return payloadRef; }
+
+    public Map<String, String> getEventDataRefs() {
+        return Collections.unmodifiableMap(eventDataRefs);
+    }
+
+    public String getCondition() { return condition; }
+
+    public List<CompiledFlowStep> getThenSteps() {
+        return Collections.unmodifiableList(thenSteps);
+    }
+
+    public List<CompiledFlowStep> getElseSteps() {
+        return Collections.unmodifiableList(elseSteps);
+    }
+
+    public String getAwaitEventName() { return awaitEventName; }
+
+    public String getAwaitRef() { return awaitRef; }
+
+    public Boolean getAwaitMatchCorrelation() { return awaitMatchCorrelation; }
+
+    public Map<String, String> getAwaitPayloadMatch() {
+        return Collections.unmodifiableMap(awaitPayloadMatch);
+    }
+
+    public Long getDelaySeconds() { return delaySeconds; }
+
+    public String getMapFromRef() { return mapFromRef; }
+
+    public String getMapToRef() { return mapToRef; }
+
+    public String getReturnValueRef() { return returnValueRef; }
+
+    public CompiledCapabilityCall getCapabilityCall() { return capabilityCall; }
+
+    public CompiledActionMetadata getAction() { return action; }
+}

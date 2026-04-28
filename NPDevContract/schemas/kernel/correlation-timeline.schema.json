@@ -1,0 +1,30 @@
+﻿{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "$id":  "https://npdev.local/contracts/correlation-timeline.schema.json",
+    "title":  "NPDev Kernel Correlation Timeline",
+    "type":  "object",
+    "additionalProperties":  true,
+    "properties":  {
+                       "contractVersion":  {
+                                               "description":  "Correlation timeline contract version.",
+                                               "type":  "string"
+                                           },
+                       "correlationId":  {
+                                             "description":  "Correlation id shared across records.",
+                                             "type":  "string"
+                                         },
+                       "records":  {
+                                       "type":  "array",
+                                       "description":  "Trace, audit, event, and flow records in order.",
+                                       "items":  {
+                                                     "type":  "object",
+                                                     "additionalProperties":  true
+                                                 }
+                                   }
+                   },
+    "required":  [
+                     "contractVersion",
+                     "correlationId",
+                     "records"
+                 ]
+}

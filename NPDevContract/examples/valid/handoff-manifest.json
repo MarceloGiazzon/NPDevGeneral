@@ -1,0 +1,7 @@
+﻿{
+    "contractVersion":  "1.0",
+    "modelPath":  "examples\\valid\\minimal-model.json",
+    "configPath":  "examples\\valid\\simple-config.json",
+    "validationReportPath":  "examples\\valid\\validation-report.json",
+    "exportedAt":  "2026-04-16T00:00:00Z"
+}

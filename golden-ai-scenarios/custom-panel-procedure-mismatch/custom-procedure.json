@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "ai-custom-procedure.v1",
+  "procedureId": "promote-learner",
+  "executionMode": "governed",
+  "trust": "trusted",
+  "inputs": [
+    {
+      "name": "learnerId",
+      "type": "string"
+    },
+    {
+      "name": "reviewReason",
+      "type": "string"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "status",
+      "type": "string"
+    },
+    {
+      "name": "reviewedAt",
+      "type": "datetime"
+    }
+  ],
+  "steps": [
+    {
+      "type": "readConcept",
+      "concept": "Learner"
+    },
+    {
+      "type": "return",
+      "value": "promoted"
+    }
+  ]
+}

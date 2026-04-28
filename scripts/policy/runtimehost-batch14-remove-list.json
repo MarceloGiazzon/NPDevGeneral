@@ -1,0 +1,15 @@
+{
+  "batch": "runtimehost-batch14",
+  "description": "Remove a small foundational source-mutation/controller slice.",
+  "rationale": [
+    "Small thematic slice to keep risk low.",
+    "Controllers only, no service removals.",
+    "No supported-core removals."
+  ],
+  "files": [
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/CanonicalSourceMutationExecutorController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/CanonicalSourceValidationController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/SourceMutationRegenerationController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/SourceRollbackExecutorController.java"
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "version": "1.0",
+  "schemas": [
+    {
+      "name": "canonical-model-alias",
+      "path": "NPDevContract\\dsl\\resources\\Schemas\\model.schema.json",
+      "expectedValues": {
+        "$id": "https://npdev.local/schema/npdev-model-1.0.0.schema.json",
+        "version": "1.0.0",
+        "canonicalSchema": "model.schema.json",
+        "deprecated": false
+      }
+    },
+    {
+      "name": "versioned-model-schema",
+      "path": "NPDevContract\\dsl\\resources\\Schemas\\model-1.0.0.schema.json",
+      "expectedValues": {
+        "$id": "https://npdev.local/schema/npdev-model-1.0.0.schema.json",
+        "version": "1.0.0",
+        "canonicalSchema": "model.schema.json",
+        "deprecated": true
+      }
+    },
+    {
+      "name": "classpath-model-schema",
+      "path": "NPDevContract\\dsl\\src\\main\\resources\\schema\\model.schema.json",
+      "expectedValues": {
+        "$id": "https://npdev.local/schema/npdev-model-1.0.0.schema.json",
+        "version": "1.0.0"
+      }
+    },
+    {
+      "name": "canonical-config-alias",
+      "path": "NPDevContract\\dsl\\resources\\Schemas\\config.schema.json",
+      "expectedValues": {
+        "$id": "https://npdev.local/schema/npdev-config-v1.schema.json",
+        "version": "1.0",
+        "canonicalSchema": "config.schema.json",
+        "deprecated": false
+      }
+    },
+    {
+      "name": "versioned-config-schema",
+      "path": "NPDevContract\\dsl\\resources\\Schemas\\config-1.0.schema.json",
+      "expectedValues": {
+        "$id": "https://npdev.local/schema/npdev-config-v1.schema.json",
+        "version": "1.0",
+        "canonicalSchema": "config.schema.json",
+        "deprecated": true
+      }
+    },
+    {
+      "name": "compiled-model-schema",
+      "path": "NPDevContract\\schemas\\generator\\compiled-model.schema.json",
+      "expectedValues": {
+        "$id": "https://npdev.local/contracts/compiled-model.schema.json",
+        "title": "NPDev Compiled Model"
+      }
+    }
+  ],
+  "aliasBehavior": {
+    "compiledModelSchemaPath": "NPDevContract\\schemas\\generator\\compiled-model.schema.json",
+    "canonicalProperty": "concepts",
+    "legacyProperty": "entities",
+    "writerPath": "NPDevContract\\dsl\\src\\main\\java\\com\\npdev\\dsl\\v1\\compiled\\CompiledModelCanonicalJson.java",
+    "readerTestPath": "NPDevContract\\dsl\\src\\test\\java\\com\\npdev\\dsl\\v1\\compiled\\CompiledModelCanonicalJsonReaderTest.java"
+  },
+  "requiredTests": [
+    {
+      "name": "deprecated-schema-rejection",
+      "path": "NPDevContract\\dsl\\src\\test\\java\\com\\npdev\\dsl\\v1\\DeprecatedSchemaVersionRejectionTest.java",
+      "requiredTokens": [
+        "rejectsDeprecatedSchemaTarget",
+        "deprecated schema",
+        "model.schema.json"
+      ]
+    },
+    {
+      "name": "structural-schema-conformance",
+      "path": "NPDevContract\\dsl\\src\\test\\java\\com\\npdev\\dsl\\v1\\StructuralSchemaAssetConformanceTest.java",
+      "requiredTokens": [
+        "canonicalSchemaCopiesStayAligned",
+        "canonicalDemoAndOfficialSampleModelsValidateStructurally",
+        "canonicalDemoAndOfficialSampleConfigsValidateStructurally"
+      ]
+    },
+    {
+      "name": "contract-surface-support",
+      "path": "NPDevContract\\dsl\\src\\test\\java\\com\\npdev\\dsl\\v1\\ContractSurfaceSupportTest.java",
+      "requiredTokens": [
+        "queries",
+        "ruleProfiles",
+        "procedures",
+        "panels"
+      ]
+    }
+  ]
+}

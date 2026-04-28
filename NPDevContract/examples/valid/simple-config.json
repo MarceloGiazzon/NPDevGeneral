@@ -1,0 +1,58 @@
+﻿{
+    "$schema":  "../../schemas/authoring/config.schema.json",
+    "configVersion":  "1.0",
+    "scenario":  {
+                     "name":  "minimal-contract-smoke",
+                     "description":  "Portable config used to validate the Editor to Generator handoff.",
+                     "outputRoot":  "D:\\WorkSpace\\NPDev_General\\NPDevSamples\\generated\\minimal-contract-smoke"
+                 },
+    "generator":  {
+                      "failIfModelMissing":  true,
+                      "failIfConfigMissing":  true,
+                      "cleanOutputBeforeGenerate":  true,
+                      "emitPluginAssets":  true,
+                      "emitRuntimeAssets":  true,
+                      "emitUiAssets":  true
+                  },
+    "bootstrap":  {
+                      "root":  "D:\\WorkSpace\\NPDev_General\\NPDevRuntimeHost",
+                      "mergeStrategy":  "clean-copy"
+                  },
+    "artifact":  {
+                     "root":  "D:\\WorkSpace\\NPDev_General\\NPDevSamples\\generated\\minimal-contract-smoke\\artifacts",
+                     "generatedFolderName":  "generated",
+                     "libsFolderName":  "libs",
+                     "metaFolderName":  "meta"
+                 },
+    "finalExec":  {
+                      "root":  "D:\\WorkSpace\\NPDev_General\\NPDevSamples\\generated\\minimal-contract-smoke\\finalexec",
+                      "deleteBeforeMount":  true
+                  },
+    "database":  {
+                     "provider":  "docker-postgres",
+                     "host":  "localhost",
+                     "port":  5432,
+                     "database":  "npdev_contract_smoke",
+                     "username":  "npdev",
+                     "password":  "npdev",
+                     "adminDatabase":  "postgres",
+                     "resetMode":  "reset",
+                     "containerName":  "npdev-contract-smoke-postgres"
+                 },
+    "runtime":  {
+                    "springProfile":  "dev",
+                    "serverPort":  8093,
+                    "javaArgs":  [
+                                     "-Dnpdev.apiKey=dev-key"
+                                 ],
+                    "gradleTask":  "bootRun"
+                },
+    "trialDefaults":  {
+                          "apiKey":  "dev-key",
+                          "recommendedProfiles":  "dev",
+                          "runtimeUrl":  "http://localhost:8093",
+                          "databaseMode":  "docker-postgres",
+                          "pluginDiscoveryMode":  "classpath",
+                          "pluginPackageDirectory":  "plugins"
+                      }
+}

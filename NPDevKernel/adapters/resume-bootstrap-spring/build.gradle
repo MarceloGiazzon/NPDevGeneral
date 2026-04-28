@@ -1,0 +1,6 @@
+dependencies {
+    implementation project(':kernel')
+
+    compileOnly 'org.springframework:spring-context:6.1.12'
+    compileOnly 'org.springframework.boot:spring-boot:3.3.2'
+}

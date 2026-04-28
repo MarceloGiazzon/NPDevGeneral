@@ -1,0 +1,29 @@
+﻿{
+  "id": "simple-user-registry",
+  "title": "Simple User Registry",
+  "complexity": "simple",
+  "mainFlow": "CreateUser",
+  "purpose": "Smallest useful NPDev scenario for first contact with concepts, invariants, persistence, events, and traceability.",
+  "businessStory": "A small organization wants to register users while enforcing basic rules and emitting a meaningful business event after success.",
+  "features": [
+    "concept",
+    "invariants",
+    "persistence",
+    "event",
+    "trace"
+  ],
+  "inputFiles": [
+    "input/create-user.json"
+  ],
+  "walkthrough": [
+    "Run the sample through the Step 50 one-command trial path.",
+    "Call GET /api/flows to confirm the exported flow surface.",
+    "POST the create-user payload to the CreateUser flow.",
+    "Inspect traces or summaries after the flow succeeds."
+  ],
+  "expectedOutcomes": [
+    "Valid data is accepted and persisted.",
+    "Trace evidence is created for the flow execution.",
+    "The sample demonstrates the minimum useful NPDev business path."
+  ]
+}

@@ -1,0 +1,27 @@
+package {{dtoPackage}};
+
+import com.npdev.kernel.events.EventEnvelope;
+
+public record EventPublishResponse(
+        String eventId,
+        String eventName,
+        String correlationId,
+        String causationId,
+        String tenantId,
+        String actorId,
+        long timestampEpochMs,
+        boolean published
+) {
+    public static EventPublishResponse from(EventEnvelope envelope) {
+        return new EventPublishResponse(
+                envelope.eventId(),
+                envelope.eventName(),
+                envelope.correlationId(),
+                envelope.causationId(),
+                envelope.tenantId(),
+                envelope.actorId(),
+                envelope.timestampEpochMs(),
+                true
+        );
+    }
+}

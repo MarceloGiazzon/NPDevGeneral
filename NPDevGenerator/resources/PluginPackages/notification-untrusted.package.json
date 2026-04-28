@@ -1,0 +1,16 @@
+{
+  "packageId": "notification-untrusted-package",
+  "version": "1.0.0",
+  "trustLevel": "untrusted",
+  "compatibility": {
+    "npdevMinVersion": "0.1.0",
+    "npdevMaxVersion": "0.9.999"
+  },
+  "capabilities": [
+    {
+      "capability": "notification",
+      "adapterId": "notification-untrusted-external",
+      "operations": ["send"]
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "ai-scenario.v1",
+  "scenarioId": "custom-procedure-panel",
+  "kind": "ai-custom-procedure-panel-functional-beta",
+  "files": {
+    "model": "model.json",
+    "config": "config.json",
+    "expectedBehavior": "expected-behavior.json",
+    "customProcedure": "custom-procedure.json",
+    "expectedProcedureBehavior": "expected-procedure-behavior.json",
+    "customPanel": "custom-panel.json",
+    "expectedPanelBehavior": "expected-panel-behavior.json"
+  },
+  "runtime": {
+    "strictExecution": true,
+    "surfaceProfile": "supported-core"
+  },
+  "requestedSurfaces": ["supported-core"],
+  "operations": [
+    {
+      "type": "customProcedure",
+      "procedureId": "promote-learner"
+    },
+    {
+      "type": "customPanel",
+      "panelId": "readiness-panel"
+    }
+  ],
+  "expectedOutcome": {
+    "class": "PASS_PANEL_PROCEDURE_INTEGRATION",
+    "mustPass": true
+  },
+  "reviewMetadata": {
+    "reviewer": "npdev-release-governance",
+    "reviewedAt": "2026-04-23T00:00:00Z",
+    "reason": "Reviewed as a must-pass custom procedure and panel scenario for release gating."
+  }
+}

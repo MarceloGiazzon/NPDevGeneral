@@ -1,0 +1,22 @@
+{
+  "grants": [
+    {
+      "permission": "flow.execute",
+      "tenantId": "dev",
+      "actorId": "",
+      "role": "admin"
+    },
+    {
+      "permission": "capability.invoke",
+      "tenantId": "dev",
+      "actorId": "",
+      "role": "admin"
+    },
+    {
+      "permission": "event.publish",
+      "tenantId": "dev",
+      "actorId": "",
+      "role": "admin"
+    }
+  ]
+}

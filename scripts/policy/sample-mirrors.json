@@ -1,0 +1,20 @@
+{
+  "version": "1.0",
+  "canonicalRoot": "NPDevSamples",
+  "canonicalInputSuffix": "Input",
+  "mirrorTargets": [
+    {
+      "name": "contract-dsl-models",
+      "root": "NPDevContract\\dsl\\resources\\Models"
+    },
+    {
+      "name": "generator-models",
+      "root": "NPDevGenerator\\resources\\Models"
+    }
+  ],
+  "rules": {
+    "authority": "NPDevSamples",
+    "requestsFolderMirrorName": "input",
+    "driftPolicy": "fail"
+  }
+}

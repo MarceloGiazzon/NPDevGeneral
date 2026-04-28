@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "ai-scenario.draft",
+  "scenarioId": "invalid-contract",
+  "kind": "ai-only-functional-beta",
+  "files": {
+    "model": "model.json",
+    "config": "config.json",
+    "expectedBehavior": "expected-behavior.json"
+  },
+  "runtime": {
+    "strictExecution": true,
+    "surfaceProfile": "supported-core"
+  },
+  "requestedSurfaces": ["supported-core"],
+  "operations": [
+    {
+      "type": "run",
+      "mode": "deterministic"
+    }
+  ],
+  "expectedOutcome": {
+    "class": "FAIL_CONTRACT",
+    "mustPass": false
+  }
+}

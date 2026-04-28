@@ -1,0 +1,32 @@
+﻿{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "$id":  "https://npdev.local/contracts/flow-execution-request.schema.json",
+    "title":  "NPDev Kernel Flow Execution Request",
+    "type":  "object",
+    "additionalProperties":  true,
+    "properties":  {
+                       "contractVersion":  {
+                                               "description":  "Kernel request contract version.",
+                                               "type":  "string"
+                                           },
+                       "flowId":  {
+                                      "description":  "Flow to execute.",
+                                      "type":  "string"
+                                  },
+                       "input":  {
+                                     "type":  "object",
+                                     "description":  "Flow input payload.",
+                                     "additionalProperties":  true
+                                 },
+                       "context":  {
+                                       "type":  "object",
+                                       "description":  "Execution scope, actor, trace, and permission context.",
+                                       "additionalProperties":  true
+                                   }
+                   },
+    "required":  [
+                     "contractVersion",
+                     "flowId",
+                     "input"
+                 ]
+}

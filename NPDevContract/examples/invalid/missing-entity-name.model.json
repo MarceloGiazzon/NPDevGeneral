@@ -1,0 +1,18 @@
+{
+  "$schema": "../../schemas/authoring/model.schema.json",
+  "dslVersion": "1.0.0",
+  "namespace": "examples.invalid",
+  "version": "1.0",
+  "concepts": [
+    {
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        }
+      ]
+    }
+  ]
+}

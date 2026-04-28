@@ -1,0 +1,82 @@
+package {{servicePackage}};
+
+import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.ports.AuthenticatedContextResolver;
+import com.npdev.adapters.runtime.validation.RuntimeSettings;
+import {{configPackage}}.RuntimeApiKeyAuthFilter;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.util.Enumeration;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+@Service
+public class RuntimeContextService {
+    private final AuthenticatedContextResolver authenticatedContextResolver;
+    private final RuntimeSettings runtimeSettings;
+
+    public RuntimeContextService(
+            AuthenticatedContextResolver authenticatedContextResolver,
+            RuntimeSettings runtimeSettings
+    ) {
+        this.authenticatedContextResolver = authenticatedContextResolver;
+        this.runtimeSettings = runtimeSettings;
+    }
+
+    public ExecutionContext currentContext(HttpServletRequest request) {
+        if (runtimeSettings != null && !runtimeSettings.authEnabled()) {
+            return ExecutionContext.of("dev", "developer").withRoles(java.util.Set.of("USER", "DEBUG", "ADMIN"));
+        }
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "unauthorized");
+        }
+        Object rawClaims = request.getAttribute(RuntimeApiKeyAuthFilter.CLAIMS_ATTRIBUTE);
+        if (!(rawClaims instanceof Map<?, ?> rawMap)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "unauthorized");
+        }
+        Map<String, Object> claims = toClaims(rawMap);
+        if (claims.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "unauthorized");
+        }
+        Map<String, String> headers = extractHeaders(request);
+        return authenticatedContextResolver.resolveFromPrincipal(claims, headers);
+    }
+
+    private static Map<String, Object> toClaims(Map<?, ?> rawMap) {
+        Map<String, Object> claims = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+            if (entry.getKey() == null) {
+                continue;
+            }
+            claims.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return Map.copyOf(claims);
+    }
+
+    private static Map<String, String> extractHeaders(HttpServletRequest request) {
+        Map<String, String> headers = new LinkedHashMap<>();
+        Enumeration<String> names = request.getHeaderNames();
+        if (names == null) {
+            return Map.of();
+        }
+        while (names.hasMoreElements()) {
+            String name = names.nextElement();
+            if (name == null) {
+                continue;
+            }
+            String normalized = name.trim();
+            if (normalized.isBlank()) {
+                continue;
+            }
+            String lower = normalized.toLowerCase();
+            if (!lower.startsWith("x-tag-")) {
+                continue;
+            }
+            headers.put(normalized, request.getHeader(name));
+        }
+        return Map.copyOf(headers);
+    }
+}

@@ -1,0 +1,24 @@
+{
+  "batch": "runtimehost-batch7",
+  "description": "Second real RuntimeHost deletion slice. Remove only remaining zero-reference transitional non-UI controllers under com/finalexec/api/experimental using the current deadRemoveCandidates evidence.",
+  "rationale": [
+    "Batch 6 removed 14 zero-reference transitional UI controllers and the RuntimeHost verification lane stayed green.",
+    "This batch keeps the same risk profile: transitional only, zero-reference only, no supported-core or internal-but-needed removal.",
+    "The goal is to reduce the remaining transitional controller inventory before considering deeper internal-but-needed cuts."
+  ],
+  "files": [
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/ArchitectureVisualizationController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/BetaReadinessConsolidationController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/BetaSecurityHardeningController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/BusinessCapabilityMarketplaceController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/GovernanceWorkspaceController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/GuidedTaskWorkspaceController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/ReferenceAppGalleryController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/ScenarioTemplateController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/SpreadsheetOnboardingController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/TemplateLibraryManagementController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/TemplateVariantSpecializationController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/WorkingDraftRollbackController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/experimental/WorkingDraftSystemController.java"
+  ]
+}

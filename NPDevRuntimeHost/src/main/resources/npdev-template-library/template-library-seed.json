@@ -1,0 +1,14 @@
+{
+    "resourceId":  "npdev-template-library/template-library-seed",
+    "resourceType":  "catalog",
+    "templateOwned":  true,
+    "version":  "1.0.0",
+    "status":  "seeded",
+    "generatedAt":  "2026-04-23T00:00:00Z",
+    "items":  [
+
+              ],
+    "notes":  [
+                  "Seeded template resource to satisfy runtime template completeness and allow future specialization."
+              ]
+}

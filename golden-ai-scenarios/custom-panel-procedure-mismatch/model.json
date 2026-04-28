@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "namespace": "npdev.beta.custom.mismatch",
+  "concepts": [
+    {
+      "name": "Learner",
+      "fields": ["id", "name", "score", "status"]
+    }
+  ],
+  "procedures": [
+    {
+      "name": "promote-learner"
+    }
+  ],
+  "panels": [
+    {
+      "name": "readiness-panel"
+    }
+  ]
+}

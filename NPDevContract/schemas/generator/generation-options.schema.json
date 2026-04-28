@@ -1,0 +1,33 @@
+﻿{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "$id":  "https://npdev.local/contracts/generation-options.schema.json",
+    "title":  "NPDev Generation Options",
+    "type":  "object",
+    "additionalProperties":  true,
+    "properties":  {
+                       "contractVersion":  {
+                                               "description":  "Generator options contract version.",
+                                               "type":  "string"
+                                           },
+                       "input":  {
+                                     "type":  "object",
+                                     "description":  "Model, config, and optional handoff package paths.",
+                                     "additionalProperties":  true
+                                 },
+                       "output":  {
+                                      "type":  "object",
+                                      "description":  "Target folders and cleanup behavior.",
+                                      "additionalProperties":  true
+                                  },
+                       "features":  {
+                                        "type":  "object",
+                                        "description":  "Optional generator feature switches.",
+                                        "additionalProperties":  true
+                                    }
+                   },
+    "required":  [
+                     "contractVersion",
+                     "input",
+                     "output"
+                 ]
+}

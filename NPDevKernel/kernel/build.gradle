@@ -1,0 +1,7 @@
+dependencies {
+    api project(':core')
+    testImplementation project(':adapters:persistence-postgres')
+    testImplementation project(':adapters:events-inproc')
+    testImplementation project(':adapters:tracing-inproc')
+    testImplementation 'com.h2database:h2:2.2.224'
+}

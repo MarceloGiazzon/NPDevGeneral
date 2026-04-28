@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/custom-procedure-panel-result.schema.json",
+  "title": "NPDev AI Custom Procedure Panel Result",
+  "type": "object",
+  "required": ["schemaVersion", "scenarioId", "overallStatus", "resultClass"],
+  "properties": {
+    "schemaVersion": { "const": "ai-custom-procedure-panel-result.v1" },
+    "scenarioId": { "type": "string" },
+    "overallStatus": { "enum": ["passed", "failed"] },
+    "resultClass": {
+      "enum": [
+        "PASS_PROCEDURE",
+        "PASS_PANEL",
+        "PASS_PANEL_PROCEDURE_INTEGRATION",
+        "FAIL_PROCEDURE_CONTRACT",
+        "FAIL_PROCEDURE_ADMISSION",
+        "FAIL_PROCEDURE_RUNTIME",
+        "FAIL_PROCEDURE_BEHAVIOR_MISMATCH",
+        "FAIL_PANEL_CONTRACT",
+        "FAIL_PANEL_BINDING",
+        "FAIL_PANEL_UNSUPPORTED_FEATURE",
+        "FAIL_PANEL_RUNTIME",
+        "FAIL_PANEL_BEHAVIOR_MISMATCH",
+        "FAIL_PANEL_PROCEDURE_INTEGRATION",
+        "FAIL_UNSUPPORTED_SURFACE",
+        "FAIL_ENVIRONMENT"
+      ]
+    }
+  },
+  "additionalProperties": true
+}

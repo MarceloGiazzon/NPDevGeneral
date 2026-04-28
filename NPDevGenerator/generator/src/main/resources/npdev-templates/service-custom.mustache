@@ -1,0 +1,18 @@
+package {{packageName}};
+
+import com.npdev.runtime.support.GeneratedCrudRuntimeSupport;
+import com.npdev.kernel.concepts.ConceptGateway;
+import {{repoPackage}}.{{entityName}}Repository;
+import org.springframework.stereotype.Service;
+
+@Service
+public class {{entityName}}Service extends {{entityName}}ServiceBase {
+
+    public {{entityName}}Service(
+            {{entityName}}Repository repo,
+            GeneratedCrudRuntimeSupport runtimeSupport,
+            ConceptGateway conceptGateway
+    ) {
+        super(repo, runtimeSupport, conceptGateway);
+    }
+}

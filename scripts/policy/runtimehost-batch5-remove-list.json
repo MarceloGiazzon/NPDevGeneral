@@ -1,0 +1,25 @@
+{
+  "batch": "runtimehost-batch5",
+  "description": "Conservative first RuntimeHost reduction batch. Remove only zero-reference transitional UI controllers.",
+  "rationale": [
+    "All entries were reported as dead/remove candidates with referenceHitCount 0 in the current runtime footprint report.",
+    "All entries are transitional UI controllers, not supported-core surfaces.",
+    "This batch intentionally avoids internal-but-needed and supported-core removals."
+  ],
+  "files": [
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/ArchitectureVisualizationUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/BetaOnboardingUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/BetaSecurityPostureUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/CapabilityIntegrationUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/ChangeImpactVisualizationUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/ExecutionMonitorUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/ExplainabilityGraphUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/FlowBuilderUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/GovernanceWorkspaceUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/ReferenceAppGalleryUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/ReliabilityPostureUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/RuntimeTopologyExplorerUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/SupportDiagnosticsUiController.java",
+    "NPDevRuntimeHost/src/main/java/com/finalexec/api/WorkflowPolishReportUiController.java"
+  ]
+}

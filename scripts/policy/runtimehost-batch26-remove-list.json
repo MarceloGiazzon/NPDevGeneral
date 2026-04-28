@@ -1,0 +1,16 @@
+{
+  "batch": "runtimehost-batch26",
+  "description": "Remove a small internal explainability/preview/audit service slice.",
+  "rationale": [
+    "All entries are zero-reference dead/remove candidates from the current runtime footprint.",
+    "All entries are internal-but-needed services, so the slice stays thematic and small.",
+    "This avoids mixing governance/publication concerns with explainability tooling."
+  ],
+  "files": [
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\ExplainabilityBundleService.java",
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\ExplainabilityGraphService.java",
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\FriendlyExplanationCatalogService.java",
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\GeneratedArtifactPreviewService.java",
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\HumanReadableAuditExportService.java"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "../../schemas/authoring/model.schema.json",
+  "dslVersion": "1.0.0",
+  "namespace": "examples.minimal",
+  "version": "1.0",
+  "concepts": [
+    {
+      "name": "Thing",
+      "ui": {
+        "label": "Thing",
+        "description": "Smallest useful concept for contract smoke tests."
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "namespace": "npdev.specialization",
+  "dslVersion": "1.0.0",
+  "version": "v2",
+  "concepts": [
+    {
+      "name": "Invoice",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "code", "type": "string", "required": true }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "InvoiceCreated",
+      "version": "1.0",
+      "payload": [
+        { "name": "code", "type": "string" }
+      ]
+    },
+    {
+      "name": "InvoiceCreatedV2",
+      "specializes": "InvoiceCreated",
+      "payload": [
+        { "name": "code", "type": "string" },
+        { "name": "extra", "type": "string" }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "EmitInvoice",
+      "concept": "Invoice",
+      "steps": [
+        { "name": "emit", "type": "event", "event": "InvoiceCreatedV2", "payload": "$input" },
+        { "name": "ret", "type": "return", "value": "$input" }
+      ]
+    }
+  ]
+}
+

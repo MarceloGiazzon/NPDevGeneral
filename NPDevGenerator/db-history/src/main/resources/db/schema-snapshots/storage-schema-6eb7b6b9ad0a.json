@@ -1,0 +1,154 @@
+{
+  "modelVersion" : "compiled-model",
+  "tables" : [ {
+    "name" : "appointments",
+    "columns" : [ {
+      "name" : "check_in_time",
+      "sqlType" : "TIMESTAMPTZ",
+      "required" : false,
+      "unique" : false
+    }, {
+      "name" : "check_out_time",
+      "sqlType" : "TIMESTAMPTZ",
+      "required" : false,
+      "unique" : false
+    }, {
+      "name" : "duration_minutes",
+      "sqlType" : "INTEGER",
+      "required" : false,
+      "unique" : false
+    }, {
+      "name" : "id",
+      "sqlType" : "UUID",
+      "required" : true,
+      "unique" : true
+    }, {
+      "name" : "patient_id",
+      "sqlType" : "UUID",
+      "required" : true,
+      "unique" : false
+    }, {
+      "name" : "provider_id",
+      "sqlType" : "UUID",
+      "required" : true,
+      "unique" : false
+    }, {
+      "name" : "room_id",
+      "sqlType" : "UUID",
+      "required" : true,
+      "unique" : false
+    }, {
+      "name" : "scheduled_at",
+      "sqlType" : "TIMESTAMPTZ",
+      "required" : true,
+      "unique" : false
+    }, {
+      "name" : "status",
+      "sqlType" : "VARCHAR",
+      "required" : false,
+      "unique" : false
+    } ]
+  }, {
+    "name" : "examrooms",
+    "columns" : [ {
+      "name" : "code",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : true
+    }, {
+      "name" : "id",
+      "sqlType" : "UUID",
+      "required" : true,
+      "unique" : true
+    }, {
+      "name" : "name",
+      "sqlType" : "VARCHAR",
+      "required" : false,
+      "unique" : false
+    } ]
+  }, {
+    "name" : "patients",
+    "columns" : [ {
+      "name" : "allergies",
+      "sqlType" : "JSONB",
+      "required" : false,
+      "unique" : false
+    }, {
+      "name" : "date_of_birth",
+      "sqlType" : "DATE",
+      "required" : true,
+      "unique" : false
+    }, {
+      "name" : "emergency_contact",
+      "sqlType" : "JSONB",
+      "required" : false,
+      "unique" : false
+    }, {
+      "name" : "first_name",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : false
+    }, {
+      "name" : "gender",
+      "sqlType" : "VARCHAR",
+      "required" : false,
+      "unique" : false
+    }, {
+      "name" : "id",
+      "sqlType" : "UUID",
+      "required" : true,
+      "unique" : true
+    }, {
+      "name" : "last_name",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : false
+    }, {
+      "name" : "mrn",
+      "sqlType" : "VARCHAR",
+      "required" : false,
+      "unique" : true
+    } ]
+  }, {
+    "name" : "providers",
+    "columns" : [ {
+      "name" : "full_name",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : false
+    }, {
+      "name" : "id",
+      "sqlType" : "UUID",
+      "required" : true,
+      "unique" : true
+    }, {
+      "name" : "npi",
+      "sqlType" : "VARCHAR",
+      "required" : false,
+      "unique" : true
+    }, {
+      "name" : "specialty",
+      "sqlType" : "VARCHAR",
+      "required" : false,
+      "unique" : false
+    } ]
+  }, {
+    "name" : "users",
+    "columns" : [ {
+      "name" : "email",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : true
+    }, {
+      "name" : "id",
+      "sqlType" : "UUID",
+      "required" : true,
+      "unique" : true
+    }, {
+      "name" : "name",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : false
+    } ]
+  } ]
+}

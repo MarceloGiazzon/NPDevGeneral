@@ -1,0 +1,14 @@
+{
+  "batch": "runtimehost-batch32",
+  "description": "Final evidence-backed zero-reference internal service slice 2 from the refreshed post-Batch-30 footprint.",
+  "rationale": [
+    "The refreshed runtime-footprint report shows exactly six remaining deadRemoveCandidates services and no controller candidates.",
+    "These three are the remaining zero-reference internal-but-needed services from that refreshed evidence set.",
+    "This should exhaust the current known deadRemoveCandidates set if verification stays green."
+  ],
+  "files": [
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\OwnershipIsolationService.java",
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\PolicyPackGovernancePresetService.java",
+    "NPDevRuntimeHost\\src\\main\\java\\com\\finalexec\\npdev\\service\\internal\\TenantQueryEnforcementService.java"
+  ]
+}

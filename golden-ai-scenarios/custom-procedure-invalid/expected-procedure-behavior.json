@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "ai-expected-procedure-behavior.v1",
+  "procedureId": "promote-learner",
+  "expectedClass": "FAIL_PROCEDURE_CONTRACT",
+  "assertions": []
+}

@@ -1,0 +1,45 @@
+{
+  "debugFingerprint": "#########__BINDINGS_ALT_20260318_WARNING_NOTIFICATION_ALIGNMENT__#########",
+  "bindings": [
+    {
+      "capability": "persistence",
+      "capabilityType": "PersistenceCapability",
+      "adapterId": "memory",
+      "adapterClass": "com.npdev.adapters.persistence.inproc.InMemoryPersistenceCapabilityAdapter",
+      "environment": "",
+      "tenantId": ""
+    },
+    {
+      "capability": "persistence",
+      "capabilityType": "PersistenceCapability",
+      "adapterId": "postgres",
+      "adapterClass": "com.npdev.adapters.persistence.postgres.PostgresPersistenceCapabilityAdapter",
+      "environment": "dev",
+      "tenantId": ""
+    },
+    {
+      "capability": "persistence",
+      "capabilityType": "PersistenceCapability",
+      "adapterId": "repository",
+      "adapterClass": "com.npdev.adapters.persistence.postgres.PostgresPersistenceCapabilityAdapter",
+      "environment": "dev",
+      "tenantId": ""
+    },
+    {
+      "capability": "notification",
+      "capabilityType": "NotificationCapability",
+      "adapterId": "notification-warning-inproc",
+      "adapterClass": "com.npdev.adapters.notification.inproc.InProcWarningNotificationCapabilityAdapter",
+      "environment": "dev",
+      "tenantId": ""
+    },
+    {
+      "capability": "webhook",
+      "capabilityType": "WebhookCapability",
+      "adapterId": "webhook-inproc",
+      "adapterClass": "com.npdev.adapters.webhook.inproc.InProcWebhookCapabilityAdapter",
+      "environment": "",
+      "tenantId": ""
+    }
+  ]
+}
