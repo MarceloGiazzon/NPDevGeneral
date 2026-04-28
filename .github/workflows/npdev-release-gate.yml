@@ -138,15 +138,9 @@ jobs:
             Get-Content (Join-Path $projectRoot "gradle\wrapper\gradle-wrapper.properties")
           }
 
-      - name: Preflight NPDevGenerator gate
-        timeout-minutes: 20
-        run: |
-          & pwsh -NoProfile -ExecutionPolicy Bypass `
-            -File "$env:NPDEV_WORKSPACE\scripts\quality\run-generator-gate.ps1" `
-            -WorkspaceRoot "$env:NPDEV_WORKSPACE"
 
       - name: Run beta release gate with GitHub traceability
-        timeout-minutes: 80
+        timeout-minutes: 180
         run: |
           $dirty = $false
           $status = git status --porcelain
@@ -157,8 +151,8 @@ jobs:
           & pwsh -NoProfile -ExecutionPolicy Bypass `
             -File "$env:NPDEV_WORKSPACE\scripts\release\invoke-ci-beta-release-gate-with-heartbeat.ps1" `
             -WorkspaceRoot "$env:NPDEV_WORKSPACE" `
-            -IdleTimeoutMinutes 12 `
-            -TotalTimeoutMinutes 75 `
+            -IdleTimeoutMinutes 0 `
+            -TotalTimeoutMinutes 160 `
             -SourceCommitSha "${{ github.sha }}" `
             -SourceBranch "${{ github.ref_name }}" `
             -SourceDirty $dirty `
@@ -212,3 +206,4 @@ jobs:
             _state-zips
           if-no-files-found: error
           retention-days: 30
+

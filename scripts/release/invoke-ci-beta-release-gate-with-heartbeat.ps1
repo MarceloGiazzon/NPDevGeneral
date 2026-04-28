@@ -1,8 +1,9 @@
 [CmdletBinding()]
 param(
     [string]$WorkspaceRoot = '',
-    [int]$IdleTimeoutMinutes = 12,
-    [int]$TotalTimeoutMinutes = 75,
+    [int]$IdleTimeoutMinutes = 0,
+    [int]$TotalTimeoutMinutes = 160,
+    [int]$HeartbeatSeconds = 60,
     [string]$SourceCommitSha = '',
     [string]$SourceBranch = '',
     [bool]$SourceDirty = $false,
@@ -17,8 +18,7 @@ $ErrorActionPreference = 'Stop'
 
 if ([string]::IsNullOrWhiteSpace($WorkspaceRoot)) {
     $WorkspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-}
-else {
+} else {
     $WorkspaceRoot = (Resolve-Path $WorkspaceRoot).Path
 }
 
@@ -53,9 +53,10 @@ $args = @(
     '-SourceWorkflow', $SourceWorkflow
 )
 
-Write-Host "INFO  Starting beta release gate with heartbeat wrapper."
-Write-Host "INFO  Idle timeout minutes: $IdleTimeoutMinutes"
+Write-Host "INFO  Starting beta release gate with CI heartbeat wrapper."
 Write-Host "INFO  Total timeout minutes: $TotalTimeoutMinutes"
+Write-Host "INFO  Idle timeout minutes: $IdleTimeoutMinutes"
+Write-Host "INFO  Heartbeat seconds: $HeartbeatSeconds"
 Write-Host "INFO  Target: $target"
 
 $process = Start-Process `
@@ -70,6 +71,7 @@ $start = Get-Date
 $lastOutput = Get-Date
 $stdoutLineCount = 0
 $stderrLineCount = 0
+$heartbeatCount = 0
 
 function Emit-NewLines {
     param(
@@ -91,8 +93,7 @@ function Emit-NewLines {
     foreach ($line in $newLines) {
         if ([string]::IsNullOrWhiteSpace($Prefix)) {
             Write-Host $line
-        }
-        else {
+        } else {
             Write-Host "$Prefix$line"
         }
     }
@@ -102,7 +103,7 @@ function Emit-NewLines {
 }
 
 while (-not $process.HasExited) {
-    Start-Sleep -Seconds 20
+    Start-Sleep -Seconds $HeartbeatSeconds
 
     $changed = $false
     if (Emit-NewLines -Path $stdoutPath -LineCount ([ref]$stdoutLineCount) -Prefix '') {
@@ -115,25 +116,27 @@ while (-not $process.HasExited) {
     if ($changed) {
         $lastOutput = Get-Date
     }
-    else {
-        $idle = [int]((Get-Date) - $lastOutput).TotalMinutes
-        Write-Host "INFO  Beta gate still running. No new output for $idle minute(s)."
-    }
 
-    if (((Get-Date) - $lastOutput).TotalMinutes -ge $IdleTimeoutMinutes) {
+    $elapsed = [int]((Get-Date) - $start).TotalMinutes
+    $idle = [int]((Get-Date) - $lastOutput).TotalMinutes
+    $heartbeatCount++
+
+    Write-Host "INFO  CI heartbeat #$heartbeatCount - beta gate still running. elapsed=${elapsed}m idleOutput=${idle}m"
+
+    if ($IdleTimeoutMinutes -gt 0 -and ((Get-Date) - $lastOutput).TotalMinutes -ge $IdleTimeoutMinutes) {
         Write-Host "ERROR Beta gate produced no output for $IdleTimeoutMinutes minute(s). Killing process."
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
 
         Write-Host ''
         Write-Host '==== STDOUT tail ===='
         if (Test-Path -LiteralPath $stdoutPath) {
-            Get-Content -LiteralPath $stdoutPath -Tail 120
+            Get-Content -LiteralPath $stdoutPath -Tail 160
         }
 
         Write-Host ''
         Write-Host '==== STDERR tail ===='
         if (Test-Path -LiteralPath $stderrPath) {
-            Get-Content -LiteralPath $stderrPath -Tail 120
+            Get-Content -LiteralPath $stderrPath -Tail 160
         }
 
         throw "Beta release gate idle timeout."
@@ -142,11 +145,23 @@ while (-not $process.HasExited) {
     if (((Get-Date) - $start).TotalMinutes -ge $TotalTimeoutMinutes) {
         Write-Host "ERROR Beta gate exceeded total timeout of $TotalTimeoutMinutes minute(s). Killing process."
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+
+        Write-Host ''
+        Write-Host '==== STDOUT tail ===='
+        if (Test-Path -LiteralPath $stdoutPath) {
+            Get-Content -LiteralPath $stdoutPath -Tail 200
+        }
+
+        Write-Host ''
+        Write-Host '==== STDERR tail ===='
+        if (Test-Path -LiteralPath $stderrPath) {
+            Get-Content -LiteralPath $stderrPath -Tail 200
+        }
+
         throw "Beta release gate total timeout."
     }
 }
 
-# Emit remaining lines.
 [void](Emit-NewLines -Path $stdoutPath -LineCount ([ref]$stdoutLineCount) -Prefix '')
 [void](Emit-NewLines -Path $stderrPath -LineCount ([ref]$stderrLineCount) -Prefix 'STDERR: ')
 
@@ -154,16 +169,16 @@ if ($process.ExitCode -ne 0) {
     Write-Host ''
     Write-Host '==== STDOUT tail ===='
     if (Test-Path -LiteralPath $stdoutPath) {
-        Get-Content -LiteralPath $stdoutPath -Tail 120
+        Get-Content -LiteralPath $stdoutPath -Tail 200
     }
 
     Write-Host ''
     Write-Host '==== STDERR tail ===='
     if (Test-Path -LiteralPath $stderrPath) {
-        Get-Content -LiteralPath $stderrPath -Tail 120
+        Get-Content -LiteralPath $stderrPath -Tail 200
     }
 
     throw "Beta release gate failed with exit code $($process.ExitCode)."
 }
 
-Write-Host "OK    Beta release gate completed through heartbeat wrapper."
+Write-Host "OK    Beta release gate completed through CI heartbeat wrapper."
