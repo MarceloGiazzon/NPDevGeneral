@@ -43,7 +43,16 @@ switch ($dirtyText) {
     default { throw "Invalid SourceDirty value: $SourceDirty" }
 }
 
-Write-Host "INFO  Starting beta release gate with CI heartbeat wrapper."
+$outDir = Join-Path $WorkspaceRoot 'scripts\reports\out'
+New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+
+$stdoutPath = Join-Path $outDir 'ci-beta-release-gate.stdout.log'
+$stderrPath = Join-Path $outDir 'ci-beta-release-gate.stderr.log'
+Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+New-Item -ItemType File -Path $stdoutPath -Force | Out-Null
+New-Item -ItemType File -Path $stderrPath -Force | Out-Null
+
+Write-Host "INFO  Starting beta release gate with CI file-polling heartbeat wrapper."
 Write-Host "INFO  WorkspaceRoot: $WorkspaceRoot"
 Write-Host "INFO  Target: $target"
 Write-Host "INFO  SourceCommitSha: $SourceCommitSha"
@@ -52,6 +61,8 @@ Write-Host "INFO  SourceDirty: $dirtyText"
 Write-Host "INFO  SourceDirtySwitch: $sourceDirtySwitch"
 Write-Host "INFO  TotalTimeoutMinutes: $TotalTimeoutMinutes"
 Write-Host "INFO  HeartbeatSeconds: $HeartbeatSeconds"
+Write-Host "INFO  StdoutLog: $stdoutPath"
+Write-Host "INFO  StderrLog: $stderrPath"
 
 $arguments = @(
     '-NoProfile',
@@ -67,96 +78,85 @@ $arguments = @(
     '-SourceWorkflow', $SourceWorkflow
 )
 
-$psi = [System.Diagnostics.ProcessStartInfo]::new()
-$psi.FileName = $pwsh
-$psi.UseShellExecute = $false
-$psi.RedirectStandardOutput = $true
-$psi.RedirectStandardError = $true
-$psi.CreateNoWindow = $true
-
-foreach ($arg in $arguments) {
-    [void]$psi.ArgumentList.Add($arg)
-}
-
-$process = [System.Diagnostics.Process]::new()
-$process.StartInfo = $psi
-
-$script:CiLastOutput = Get-Date
-$script:CiStdoutQueue = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
-$script:CiStderrQueue = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
-
-$stdoutHandler = [System.Diagnostics.DataReceivedEventHandler]{
-    param($sender, $eventArgs)
-    if ($null -ne $eventArgs.Data) {
-        $script:CiLastOutput = Get-Date
-        $script:CiStdoutQueue.Enqueue([string]$eventArgs.Data)
-        Write-Host $eventArgs.Data
-    }
-}
-
-$stderrHandler = [System.Diagnostics.DataReceivedEventHandler]{
-    param($sender, $eventArgs)
-    if ($null -ne $eventArgs.Data) {
-        $script:CiLastOutput = Get-Date
-        $script:CiStderrQueue.Enqueue([string]$eventArgs.Data)
-        Write-Host ("STDERR: " + $eventArgs.Data)
-    }
-}
-
-[void]$process.add_OutputDataReceived($stdoutHandler)
-[void]$process.add_ErrorDataReceived($stderrHandler)
-
-$started = $process.Start()
-if (-not $started) {
-    throw "Failed to start beta release gate process."
-}
-
-$process.BeginOutputReadLine()
-$process.BeginErrorReadLine()
+$process = Start-Process `
+    -FilePath $pwsh `
+    -ArgumentList $arguments `
+    -WorkingDirectory $WorkspaceRoot `
+    -PassThru `
+    -NoNewWindow `
+    -RedirectStandardOutput $stdoutPath `
+    -RedirectStandardError $stderrPath
 
 $start = Get-Date
 $heartbeatCount = 0
+$stdoutLineCount = 0
+$stderrLineCount = 0
 
-while (-not $process.WaitForExit($HeartbeatSeconds * 1000)) {
+function Emit-NewLines {
+    param(
+        [string]$Path,
+        [int]$StartIndex,
+        [string]$Prefix
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return [pscustomobject]@{ Count = $StartIndex; Emitted = 0 }
+    }
+
+    $lines = @(Get-Content -LiteralPath $Path -ErrorAction SilentlyContinue)
+    if ($lines.Count -le $StartIndex) {
+        return [pscustomobject]@{ Count = $StartIndex; Emitted = 0 }
+    }
+
+    for ($i = $StartIndex; $i -lt $lines.Count; $i++) {
+        if ([string]::IsNullOrWhiteSpace($Prefix)) {
+            Write-Host $lines[$i]
+        }
+        else {
+            Write-Host ($Prefix + $lines[$i])
+        }
+    }
+
+    return [pscustomobject]@{ Count = $lines.Count; Emitted = ($lines.Count - $StartIndex) }
+}
+
+while (-not $process.HasExited) {
+    Start-Sleep -Seconds $HeartbeatSeconds
+
+    $stdoutResult = Emit-NewLines -Path $stdoutPath -StartIndex $stdoutLineCount -Prefix ''
+    $stdoutLineCount = [int]$stdoutResult.Count
+
+    $stderrResult = Emit-NewLines -Path $stderrPath -StartIndex $stderrLineCount -Prefix 'STDERR: '
+    $stderrLineCount = [int]$stderrResult.Count
+
     $heartbeatCount++
     $elapsed = [int]((Get-Date) - $start).TotalMinutes
-    $idle = [int]((Get-Date) - $script:CiLastOutput).TotalMinutes
-
-    Write-Host "INFO  CI heartbeat #$heartbeatCount - beta gate still running. elapsed=${elapsed}m idleOutput=${idle}m"
+    Write-Host "INFO  CI heartbeat #$heartbeatCount - beta gate still running. elapsed=${elapsed}m stdoutLines=$stdoutLineCount stderrLines=$stderrLineCount"
 
     if (((Get-Date) - $start).TotalMinutes -ge $TotalTimeoutMinutes) {
         Write-Host "ERROR Beta gate exceeded total timeout of $TotalTimeoutMinutes minute(s). Killing process."
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-        break
+        throw "Beta release gate total timeout."
     }
 }
 
 $process.WaitForExit()
-Start-Sleep -Milliseconds 300
 
-function Show-CiTail {
-    param(
-        [string]$Title,
-        [System.Collections.Concurrent.ConcurrentQueue[string]]$Queue
-    )
-
-    Write-Host ''
-    Write-Host $Title
-    $items = @($Queue.ToArray())
-    if ($items.Count -eq 0) {
-        Write-Host '(no lines captured)'
-        return
-    }
-
-    $items | Select-Object -Last 200 | ForEach-Object {
-        Write-Host $_
-    }
-}
+$stdoutResult = Emit-NewLines -Path $stdoutPath -StartIndex $stdoutLineCount -Prefix ''
+$stdoutLineCount = [int]$stdoutResult.Count
+$stderrResult = Emit-NewLines -Path $stderrPath -StartIndex $stderrLineCount -Prefix 'STDERR: '
+$stderrLineCount = [int]$stderrResult.Count
 
 if ($process.ExitCode -ne 0) {
-    Show-CiTail -Title '==== STDOUT tail ====' -Queue $script:CiStdoutQueue
-    Show-CiTail -Title '==== STDERR tail ====' -Queue $script:CiStderrQueue
+    Write-Host ''
+    Write-Host '==== STDOUT tail ===='
+    Get-Content -LiteralPath $stdoutPath -Tail 200 -ErrorAction SilentlyContinue
+
+    Write-Host ''
+    Write-Host '==== STDERR tail ===='
+    Get-Content -LiteralPath $stderrPath -Tail 200 -ErrorAction SilentlyContinue
+
     throw "Beta release gate failed with exit code $($process.ExitCode)."
 }
 
-Write-Host "OK    Beta release gate completed through CI heartbeat wrapper."
+Write-Host "OK    Beta release gate completed through CI file-polling heartbeat wrapper."
