@@ -1,0 +1,133 @@
+name: NPDev Release Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - 'npdev-official-beta-*'
+  workflow_dispatch:
+
+concurrency:
+  group: npdev-release-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-gate:
+    name: NPDev release gate
+    runs-on: windows-latest
+    timeout-minutes: 180
+
+    defaults:
+      run:
+        shell: pwsh
+
+    env:
+      NPDEV_WORKSPACE: ${{ github.workspace }}
+      NPDEV_STATE_ZIP_OUT: ${{ github.workspace }}\_state-zips
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            NPDevEditor/ui-react/package-lock.json
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('NPDevEditor/ui-react/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright Chromium
+        working-directory: NPDevEditor/ui-react
+        run: |
+          npm ci
+          npm exec playwright install chromium
+
+      - name: Run beta release gate with GitHub traceability
+        run: |
+          $dirty = $false
+          $status = git status --porcelain
+          if (-not [string]::IsNullOrWhiteSpace($status)) {
+            $dirty = $true
+          }
+
+          & pwsh -NoProfile -ExecutionPolicy Bypass `
+            -File "$env:NPDEV_WORKSPACE\scripts\quality\run-beta-release-gate.ps1" `
+            -WorkspaceRoot "$env:NPDEV_WORKSPACE" `
+            -SourceCommitSha "${{ github.sha }}" `
+            -SourceBranch "${{ github.ref_name }}" `
+            -SourceDirty $dirty `
+            -SourceProvider "github-actions" `
+            -SourceRunId "${{ github.run_id }}" `
+            -SourceRunAttempt "${{ github.run_attempt }}" `
+            -SourceWorkflow "${{ github.workflow }}"
+
+      - name: Validate release traceability
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass `
+            -File "$env:NPDEV_WORKSPACE\scripts\tests\Test-ReleaseTraceability.ps1" `
+            -WorkspaceRoot "$env:NPDEV_WORKSPACE" `
+            -RequireOfficialEligibility
+
+      - name: Generate release-ready state zip
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:NPDEV_STATE_ZIP_OUT" | Out-Null
+
+          & pwsh -NoProfile -ExecutionPolicy Bypass `
+            -File "$env:NPDEV_WORKSPACE\scripts\statezip-npdev-general.ps1" `
+            -WorkspaceRoot "$env:NPDEV_WORKSPACE" `
+            -OutDir "$env:NPDEV_STATE_ZIP_OUT" `
+            -ReleaseReady `
+            -ExistingEvidenceRoot last
+
+      - name: Fix visible state zip timestamps
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass `
+            -File "$env:NPDEV_WORKSPACE\scripts\quality\fix-statezip-visible-timestamps.ps1" `
+            -ZipRoot "$env:NPDEV_STATE_ZIP_OUT"
+
+      - name: Validate CI release evidence freshness
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass `
+            -File "$env:NPDEV_WORKSPACE\scripts\tests\Test-CiReleaseEvidenceFreshness.ps1" `
+            -WorkspaceRoot "$env:NPDEV_WORKSPACE" `
+            -StateZipOut "$env:NPDEV_STATE_ZIP_OUT"
+
+      - name: Upload release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: npdev-release-evidence
+          path: |
+            scripts/reports/out
+            scripts/reports/releases
+            _state-zips
+          if-no-files-found: error
+          retention-days: 30
