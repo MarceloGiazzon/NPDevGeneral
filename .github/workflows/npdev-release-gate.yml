@@ -17,7 +17,7 @@ jobs:
   release-gate:
     name: NPDev release gate
     runs-on: windows-latest
-    timeout-minutes: 120
+    timeout-minutes: 240
 
     defaults:
       run:
@@ -101,7 +101,7 @@ jobs:
 
       - name: Install Playwright Chromium
         working-directory: NPDevEditor/ui-react
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: |
           npm ci
           npm exec playwright install chromium
@@ -138,7 +138,6 @@ jobs:
             Get-Content (Join-Path $projectRoot "gradle\wrapper\gradle-wrapper.properties")
           }
 
-
       - name: Run beta release gate with GitHub traceability
         timeout-minutes: 180
         run: |
@@ -151,8 +150,8 @@ jobs:
           & pwsh -NoProfile -ExecutionPolicy Bypass `
             -File "$env:NPDEV_WORKSPACE\scripts\release\invoke-ci-beta-release-gate-with-heartbeat.ps1" `
             -WorkspaceRoot "$env:NPDEV_WORKSPACE" `
-            -IdleTimeoutMinutes 0 `
             -TotalTimeoutMinutes 160 `
+            -HeartbeatSeconds 60 `
             -SourceCommitSha "${{ github.sha }}" `
             -SourceBranch "${{ github.ref_name }}" `
             -SourceDirty "$dirty" `
@@ -170,7 +169,7 @@ jobs:
             -RequireOfficialEligibility
 
       - name: Generate release-ready state zip
-        timeout-minutes: 20
+        timeout-minutes: 30
         run: |
           New-Item -ItemType Directory -Force -Path "$env:NPDEV_STATE_ZIP_OUT" | Out-Null
 
@@ -206,5 +205,3 @@ jobs:
             _state-zips
           if-no-files-found: error
           retention-days: 30
-
-

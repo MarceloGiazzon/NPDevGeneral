@@ -1,7 +1,6 @@
 [CmdletBinding()]
 param(
     [string]$WorkspaceRoot = '',
-    [int]$IdleTimeoutMinutes = 0,
     [int]$TotalTimeoutMinutes = 160,
     [int]$HeartbeatSeconds = 60,
     [string]$SourceCommitSha = '',
@@ -18,13 +17,9 @@ $ErrorActionPreference = 'Stop'
 
 if ([string]::IsNullOrWhiteSpace($WorkspaceRoot)) {
     $WorkspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-} else {
-    $WorkspaceRoot = (Resolve-Path $WorkspaceRoot).Path
 }
-
-$pwsh = 'C:\Program Files\PowerShell\7\pwsh.exe'
-if (-not (Test-Path -LiteralPath $pwsh)) {
-    $pwsh = 'pwsh'
+else {
+    $WorkspaceRoot = (Resolve-Path $WorkspaceRoot).Path
 }
 
 $target = Join-Path $WorkspaceRoot 'scripts\quality\run-beta-release-gate.ps1'
@@ -32,173 +27,136 @@ if (-not (Test-Path -LiteralPath $target)) {
     throw "Beta release gate script not found: $target"
 }
 
-$outDir = Join-Path $WorkspaceRoot 'scripts\reports\out'
-New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+$pwsh = 'C:\Program Files\PowerShell\7\pwsh.exe'
+if (-not (Test-Path -LiteralPath $pwsh)) {
+    $pwsh = 'pwsh'
+}
 
-$stdoutPath = Join-Path $outDir 'ci-beta-release-gate.stdout.log'
-$stderrPath = Join-Path $outDir 'ci-beta-release-gate.stderr.log'
-Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+$dirtyText = ([string]$SourceDirty).Trim().ToLowerInvariant()
+switch ($dirtyText) {
+    'true'  { $sourceDirtySwitch = '-SourceDirty:$true' }
+    '1'     { $sourceDirtySwitch = '-SourceDirty:$true' }
+    'yes'   { $sourceDirtySwitch = '-SourceDirty:$true' }
+    'false' { $sourceDirtySwitch = '-SourceDirty:$false' }
+    '0'     { $sourceDirtySwitch = '-SourceDirty:$false' }
+    'no'    { $sourceDirtySwitch = '-SourceDirty:$false' }
+    default { throw "Invalid SourceDirty value: $SourceDirty" }
+}
 
-$args = @(
+Write-Host "INFO  Starting beta release gate with CI heartbeat wrapper."
+Write-Host "INFO  WorkspaceRoot: $WorkspaceRoot"
+Write-Host "INFO  Target: $target"
+Write-Host "INFO  SourceCommitSha: $SourceCommitSha"
+Write-Host "INFO  SourceBranch: $SourceBranch"
+Write-Host "INFO  SourceDirty: $dirtyText"
+Write-Host "INFO  SourceDirtySwitch: $sourceDirtySwitch"
+Write-Host "INFO  TotalTimeoutMinutes: $TotalTimeoutMinutes"
+Write-Host "INFO  HeartbeatSeconds: $HeartbeatSeconds"
+
+$arguments = @(
     '-NoProfile',
     '-ExecutionPolicy', 'Bypass',
     '-File', $target,
     '-WorkspaceRoot', $WorkspaceRoot,
     '-SourceCommitSha', $SourceCommitSha,
     '-SourceBranch', $SourceBranch,
-    "-SourceDirty:$normalizedSourceDirty",
+    $sourceDirtySwitch,
     '-SourceProvider', $SourceProvider,
     '-SourceRunId', $SourceRunId,
     '-SourceRunAttempt', $SourceRunAttempt,
     '-SourceWorkflow', $SourceWorkflow
 )
 
-Write-Host "INFO  Starting beta release gate with CI heartbeat wrapper."
-Write-Host "INFO  Total timeout minutes: $TotalTimeoutMinutes"
-Write-Host "INFO  Idle timeout minutes: $IdleTimeoutMinutes"
-Write-Host "INFO  Heartbeat seconds: $HeartbeatSeconds"
-Write-Host "INFO  Target: $target"
+$psi = [System.Diagnostics.ProcessStartInfo]::new()
+$psi.FileName = $pwsh
+$psi.UseShellExecute = $false
+$psi.RedirectStandardOutput = $true
+$psi.RedirectStandardError = $true
+$psi.CreateNoWindow = $true
 
-$normalizedSourceDirty = 'false'
-if ($SourceDirty -is [bool]) {
-    $normalizedSourceDirty = if ($SourceDirty) { 'true' } else { 'false' }
-}
-elseif (-not [string]::IsNullOrWhiteSpace([string]$SourceDirty)) {
-    $dirtyText = ([string]$SourceDirty).Trim().ToLowerInvariant()
-    if ($dirtyText -in @('true', '1', 'yes')) {
-        $normalizedSourceDirty = 'true'
-    }
-    elseif ($dirtyText -in @('false', '0', 'no')) {
-        $normalizedSourceDirty = 'false'
-    }
-    else {
-        throw "Invalid SourceDirty value: $SourceDirty"
-    }
+foreach ($arg in $arguments) {
+    [void]$psi.ArgumentList.Add($arg)
 }
 
-Write-Host "INFO  SourceDirty normalized: $normalizedSourceDirty"
+$process = [System.Diagnostics.Process]::new()
+$process.StartInfo = $psi
 
-$process = Start-Process `
-    -FilePath $pwsh `
-    -ArgumentList $args `
-    -PassThru `
-    -NoNewWindow `
-    -RedirectStandardOutput $stdoutPath `
-    -RedirectStandardError $stderrPath
+$script:CiLastOutput = Get-Date
+$script:CiStdoutQueue = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
+$script:CiStderrQueue = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
+
+$stdoutHandler = [System.Diagnostics.DataReceivedEventHandler]{
+    param($sender, $eventArgs)
+    if ($null -ne $eventArgs.Data) {
+        $script:CiLastOutput = Get-Date
+        $script:CiStdoutQueue.Enqueue([string]$eventArgs.Data)
+        Write-Host $eventArgs.Data
+    }
+}
+
+$stderrHandler = [System.Diagnostics.DataReceivedEventHandler]{
+    param($sender, $eventArgs)
+    if ($null -ne $eventArgs.Data) {
+        $script:CiLastOutput = Get-Date
+        $script:CiStderrQueue.Enqueue([string]$eventArgs.Data)
+        Write-Host ("STDERR: " + $eventArgs.Data)
+    }
+}
+
+[void]$process.add_OutputDataReceived($stdoutHandler)
+[void]$process.add_ErrorDataReceived($stderrHandler)
+
+$started = $process.Start()
+if (-not $started) {
+    throw "Failed to start beta release gate process."
+}
+
+$process.BeginOutputReadLine()
+$process.BeginErrorReadLine()
 
 $start = Get-Date
-$lastOutput = Get-Date
-$stdoutLineCount = 0
-$stderrLineCount = 0
 $heartbeatCount = 0
 
-function Emit-NewLines {
-    param(
-        [string]$Path,
-        [ref]$LineCount,
-        [string]$Prefix
-    )
-
-    if (-not (Test-Path -LiteralPath $Path)) {
-        return $false
-    }
-
-    $lines = @(Get-Content -LiteralPath $Path -ErrorAction SilentlyContinue)
-    if ($lines.Count -le $LineCount.Value) {
-        return $false
-    }
-
-    $newLines = $lines[$LineCount.Value..($lines.Count - 1)]
-    foreach ($line in $newLines) {
-        if ([string]::IsNullOrWhiteSpace($Prefix)) {
-            Write-Host $line
-        } else {
-            Write-Host "$Prefix$line"
-        }
-    }
-
-    $LineCount.Value = $lines.Count
-    return $true
-}
-
-while (-not $process.HasExited) {
-    Start-Sleep -Seconds $HeartbeatSeconds
-
-    $changed = $false
-    if (Emit-NewLines -Path $stdoutPath -LineCount ([ref]$stdoutLineCount) -Prefix '') {
-        $changed = $true
-    }
-    if (Emit-NewLines -Path $stderrPath -LineCount ([ref]$stderrLineCount) -Prefix 'STDERR: ') {
-        $changed = $true
-    }
-
-    if ($changed) {
-        $lastOutput = Get-Date
-    }
-
-    $elapsed = [int]((Get-Date) - $start).TotalMinutes
-    $idle = [int]((Get-Date) - $lastOutput).TotalMinutes
+while (-not $process.WaitForExit($HeartbeatSeconds * 1000)) {
     $heartbeatCount++
+    $elapsed = [int]((Get-Date) - $start).TotalMinutes
+    $idle = [int]((Get-Date) - $script:CiLastOutput).TotalMinutes
 
     Write-Host "INFO  CI heartbeat #$heartbeatCount - beta gate still running. elapsed=${elapsed}m idleOutput=${idle}m"
-
-    if ($IdleTimeoutMinutes -gt 0 -and ((Get-Date) - $lastOutput).TotalMinutes -ge $IdleTimeoutMinutes) {
-        Write-Host "ERROR Beta gate produced no output for $IdleTimeoutMinutes minute(s). Killing process."
-        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-
-        Write-Host ''
-        Write-Host '==== STDOUT tail ===='
-        if (Test-Path -LiteralPath $stdoutPath) {
-            Get-Content -LiteralPath $stdoutPath -Tail 160
-        }
-
-        Write-Host ''
-        Write-Host '==== STDERR tail ===='
-        if (Test-Path -LiteralPath $stderrPath) {
-            Get-Content -LiteralPath $stderrPath -Tail 160
-        }
-
-        throw "Beta release gate idle timeout."
-    }
 
     if (((Get-Date) - $start).TotalMinutes -ge $TotalTimeoutMinutes) {
         Write-Host "ERROR Beta gate exceeded total timeout of $TotalTimeoutMinutes minute(s). Killing process."
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-
-        Write-Host ''
-        Write-Host '==== STDOUT tail ===='
-        if (Test-Path -LiteralPath $stdoutPath) {
-            Get-Content -LiteralPath $stdoutPath -Tail 200
-        }
-
-        Write-Host ''
-        Write-Host '==== STDERR tail ===='
-        if (Test-Path -LiteralPath $stderrPath) {
-            Get-Content -LiteralPath $stderrPath -Tail 200
-        }
-
-        throw "Beta release gate total timeout."
+        break
     }
 }
 
-[void](Emit-NewLines -Path $stdoutPath -LineCount ([ref]$stdoutLineCount) -Prefix '')
-[void](Emit-NewLines -Path $stderrPath -LineCount ([ref]$stderrLineCount) -Prefix 'STDERR: ')
+$process.WaitForExit()
+Start-Sleep -Milliseconds 300
+
+function Show-CiTail {
+    param(
+        [string]$Title,
+        [System.Collections.Concurrent.ConcurrentQueue[string]]$Queue
+    )
+
+    Write-Host ''
+    Write-Host $Title
+    $items = @($Queue.ToArray())
+    if ($items.Count -eq 0) {
+        Write-Host '(no lines captured)'
+        return
+    }
+
+    $items | Select-Object -Last 200 | ForEach-Object {
+        Write-Host $_
+    }
+}
 
 if ($process.ExitCode -ne 0) {
-    Write-Host ''
-    Write-Host '==== STDOUT tail ===='
-    if (Test-Path -LiteralPath $stdoutPath) {
-        Get-Content -LiteralPath $stdoutPath -Tail 200
-    }
-
-    Write-Host ''
-    Write-Host '==== STDERR tail ===='
-    if (Test-Path -LiteralPath $stderrPath) {
-        Get-Content -LiteralPath $stderrPath -Tail 200
-    }
-
+    Show-CiTail -Title '==== STDOUT tail ====' -Queue $script:CiStdoutQueue
+    Show-CiTail -Title '==== STDERR tail ====' -Queue $script:CiStderrQueue
     throw "Beta release gate failed with exit code $($process.ExitCode)."
 }
 
 Write-Host "OK    Beta release gate completed through CI heartbeat wrapper."
-
