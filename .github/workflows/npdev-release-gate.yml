@@ -37,8 +37,35 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: |
+            17
+            21
 
+      - name: Configure Gradle Java toolchain discovery
+        run: |
+          Write-Host "JAVA_HOME=$env:JAVA_HOME"
+          Write-Host "JAVA_HOME_17_X64=$env:JAVA_HOME_17_X64"
+          Write-Host "JAVA_HOME_21_X64=$env:JAVA_HOME_21_X64"
+          java -version
+
+          if ([string]::IsNullOrWhiteSpace($env:JAVA_HOME_17_X64)) {
+            throw "JAVA_HOME_17_X64 is not available after setup-java."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:JAVA_HOME_21_X64)) {
+            throw "JAVA_HOME_21_X64 is not available after setup-java."
+          }
+
+          $gradleUserHome = Join-Path $env:USERPROFILE ".gradle"
+          New-Item -ItemType Directory -Force -Path $gradleUserHome | Out-Null
+          $gradleProperties = Join-Path $gradleUserHome "gradle.properties"
+
+          @(
+            "org.gradle.java.installations.auto-detect=true",
+            "org.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64"
+          ) | Set-Content -LiteralPath $gradleProperties -Encoding UTF8
+
+          Write-Host "Gradle toolchain discovery properties:"
+          Get-Content $gradleProperties
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -163,4 +190,5 @@ jobs:
             _state-zips
           if-no-files-found: error
           retention-days: 30
+
 
