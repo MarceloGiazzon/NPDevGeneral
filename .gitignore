@@ -49,3 +49,7 @@ scripts/reports/releases/
 scripts/reports/tmp/
 scripts/reports/cache/
 NPDev_General__OutsideRepo/
+# Required Gradle wrapper artifacts for CI
+!**/gradle/wrapper/gradle-wrapper.jar
+!**/gradlew
+!**/gradlew.bat

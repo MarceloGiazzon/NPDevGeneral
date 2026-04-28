@@ -71,7 +71,39 @@ jobs:
           npm ci
           npm exec playwright install chromium
 
+      - name: Preflight Gradle wrappers
+        timeout-minutes: 15
+        run: |
+          $projects = @(
+            "NPDevContract\dsl",
+            "NPDevEditor",
+            "NPDevGenerator",
+            "NPDevKernel",
+            "NPDevRuntimeHost"
+          )
+
+          foreach ($project in $projects) {
+            $projectRoot = Join-Path $env:NPDEV_WORKSPACE $project
+            Write-Host "Checking Gradle wrapper in $projectRoot"
+
+            $required = @(
+              "gradle\wrapper\gradle-wrapper.properties",
+              "gradle\wrapper\gradle-wrapper.jar",
+              "gradlew",
+              "gradlew.bat"
+            )
+
+            foreach ($relative in $required) {
+              $path = Join-Path $projectRoot $relative
+              if (-not (Test-Path -LiteralPath $path)) {
+                throw "Missing Gradle wrapper artifact: $path"
+              }
+            }
+
+            Get-Content (Join-Path $projectRoot "gradle\wrapper\gradle-wrapper.properties")
+          }
       - name: Run beta release gate with GitHub traceability
+        timeout-minutes: 90
         run: |
           $dirty = $false
           $status = git status --porcelain
@@ -131,3 +163,4 @@ jobs:
             _state-zips
           if-no-files-found: error
           retention-days: 30
+
