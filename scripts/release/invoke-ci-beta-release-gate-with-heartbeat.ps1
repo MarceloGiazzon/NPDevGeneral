@@ -6,7 +6,7 @@ param(
     [int]$HeartbeatSeconds = 60,
     [string]$SourceCommitSha = '',
     [string]$SourceBranch = '',
-    [bool]$SourceDirty = $false,
+    [string]$SourceDirty = 'false',
     [string]$SourceProvider = 'github-actions',
     [string]$SourceRunId = '',
     [string]$SourceRunAttempt = '',
@@ -46,7 +46,7 @@ $args = @(
     '-WorkspaceRoot', $WorkspaceRoot,
     '-SourceCommitSha', $SourceCommitSha,
     '-SourceBranch', $SourceBranch,
-    '-SourceDirty', ([string]$SourceDirty),
+    "-SourceDirty:$normalizedSourceDirty",
     '-SourceProvider', $SourceProvider,
     '-SourceRunId', $SourceRunId,
     '-SourceRunAttempt', $SourceRunAttempt,
@@ -58,6 +58,25 @@ Write-Host "INFO  Total timeout minutes: $TotalTimeoutMinutes"
 Write-Host "INFO  Idle timeout minutes: $IdleTimeoutMinutes"
 Write-Host "INFO  Heartbeat seconds: $HeartbeatSeconds"
 Write-Host "INFO  Target: $target"
+
+$normalizedSourceDirty = 'false'
+if ($SourceDirty -is [bool]) {
+    $normalizedSourceDirty = if ($SourceDirty) { 'true' } else { 'false' }
+}
+elseif (-not [string]::IsNullOrWhiteSpace([string]$SourceDirty)) {
+    $dirtyText = ([string]$SourceDirty).Trim().ToLowerInvariant()
+    if ($dirtyText -in @('true', '1', 'yes')) {
+        $normalizedSourceDirty = 'true'
+    }
+    elseif ($dirtyText -in @('false', '0', 'no')) {
+        $normalizedSourceDirty = 'false'
+    }
+    else {
+        throw "Invalid SourceDirty value: $SourceDirty"
+    }
+}
+
+Write-Host "INFO  SourceDirty normalized: $normalizedSourceDirty"
 
 $process = Start-Process `
     -FilePath $pwsh `
@@ -182,3 +201,4 @@ if ($process.ExitCode -ne 0) {
 }
 
 Write-Host "OK    Beta release gate completed through CI heartbeat wrapper."
+

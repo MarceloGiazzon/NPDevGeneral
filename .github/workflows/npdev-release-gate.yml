@@ -155,7 +155,7 @@ jobs:
             -TotalTimeoutMinutes 160 `
             -SourceCommitSha "${{ github.sha }}" `
             -SourceBranch "${{ github.ref_name }}" `
-            -SourceDirty $dirty `
+            -SourceDirty "$dirty" `
             -SourceProvider "github-actions" `
             -SourceRunId "${{ github.run_id }}" `
             -SourceRunAttempt "${{ github.run_attempt }}" `
@@ -206,4 +206,5 @@ jobs:
             _state-zips
           if-no-files-found: error
           retention-days: 30
+
 
