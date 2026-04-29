@@ -63,7 +63,7 @@ foreach ($sampleId in $SampleIds) {
         $retainedEvidencePaths = @()
         foreach ($relativeEvidencePath in @(
                 "Reports\generation-run.json",
-                "App\PROJECT_DIGEST.md",
+                "App\.npdev-root",
                 "App\MIGRATION_DIGEST.md",
                 "App\gradlew.bat",
                 "App\settings.gradle",
@@ -88,7 +88,7 @@ foreach ($sampleId in $SampleIds) {
                 removedPathPatterns = @("App\.gradle", "App\build", "App\node_modules")
                 retainedEvidencePatterns = @(
                     "Output\Reports\generation-run.json",
-                    "Output\App\PROJECT_DIGEST.md",
+                    "Output\App\.npdev-root",
                     "Output\App\MIGRATION_DIGEST.md",
                     "Output\App\gradlew.bat",
                     "Output\App\settings.gradle",
@@ -128,3 +128,4 @@ $report = [pscustomobject]@{
 }
 Write-NPDevJsonFile $ReportPath $report
 Write-NPDevOk ("Sample output cleanup completed for " + ($SampleIds -join ", ") + ".")
+

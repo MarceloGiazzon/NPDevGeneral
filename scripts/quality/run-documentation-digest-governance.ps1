@@ -107,17 +107,17 @@ function Get-FreshnessMarker {
 }
 
 $requiredProjectDigests = @(
-    "PROJECT_DIGEST.md",
-    "NPDevContract\PROJECT_DIGEST.md",
-    "NPDevEditor\PROJECT_DIGEST.md",
-    "NPDevGenerator\PROJECT_DIGEST.md",
-    "NPDevKernel\PROJECT_DIGEST.md",
-    "NPDevRuntimeHost\PROJECT_DIGEST.md",
-    "NPDevSamples\PROJECT_DIGEST.md"
+    ".npdev-root",
+    "NPDevContract\.npdev-root",
+    "NPDevEditor\.npdev-root",
+    "NPDevGenerator\.npdev-root",
+    "NPDevKernel\.npdev-root",
+    "NPDevRuntimeHost\.npdev-root",
+    "NPDevSamples\.npdev-root"
 )
 $releaseSampleIds = Get-NPDevReleaseSampleIds $WorkspaceRoot
 $requiredGeneratedDigests = @($releaseSampleIds | ForEach-Object {
-        "NPDevSamples\" + $_ + "\Output\App\PROJECT_DIGEST.md"
+        "NPDevSamples\" + $_ + "\Output\App\.npdev-root"
     })
 $requiredGeneratedMigrationDigests = @($releaseSampleIds | ForEach-Object {
         "NPDevSamples\" + $_ + "\Output\App\MIGRATION_DIGEST.md"
@@ -198,7 +198,7 @@ foreach ($relativeDigestPath in @($requiredProjectDigests + $requiredGeneratedDi
 }
 
 $checks = @(
-    (New-NPDevCheckResult "required-project-digests" $(if ($missingRequiredProjectDigests.Count -eq 0) { "passed" } else { "failed" }) $(if ($missingRequiredProjectDigests.Count -eq 0) { "Required project digests are present." } else { "One or more required PROJECT_DIGEST.md files are missing." }) @{
+    (New-NPDevCheckResult "required-project-digests" $(if ($missingRequiredProjectDigests.Count -eq 0) { "passed" } else { "failed" }) $(if ($missingRequiredProjectDigests.Count -eq 0) { "Required project digests are present." } else { "One or more required .npdev-root files are missing." }) @{
             missing = @($missingRequiredProjectDigests)
         }),
     (New-NPDevCheckResult "generated-sample-migration-digests" $(if ($missingGeneratedMigrationDigests.Count -eq 0) { "passed" } else { "failed" }) $(if ($missingGeneratedMigrationDigests.Count -eq 0) { "Generated release samples expose MIGRATION_DIGEST.md." } else { "One or more generated release samples are missing MIGRATION_DIGEST.md." }) @{
@@ -249,3 +249,4 @@ if ($report.overallStatus -eq "warning") {
 
 Write-NPDevWarn "Documentation digest governance report failed."
 throw "Documentation digest governance report failed."
+

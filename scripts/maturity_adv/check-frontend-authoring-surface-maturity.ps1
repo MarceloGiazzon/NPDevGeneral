@@ -140,7 +140,7 @@ $checks += New-MaturityCheck `
         accessibilityMatches = $axeMatches
     }
 
-$boundaryDigestCheck = Test-MaturityFilePatterns -FilePath (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevEditor\PROJECT_DIGEST.md") -Patterns @(
+$boundaryDigestCheck = Test-MaturityFilePatterns -FilePath (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevEditor\.npdev-root") -Patterns @(
     "The Editor should not mutate generated files directly."
 )
 $forbiddenEditorImports = Find-MaturityTextMatches -WorkspaceRoot $WorkspaceRoot -RelativeRoot "NPDevEditor\ui-react\src" -Includes @("*.ts", "*.tsx") -Pattern '^\s*import\s+.+from\s+[''"][^''"]*(NPDevRuntimeHost|NPDevGenerator|com/finalexec|com/npdev/generated)[^''"]*[''"]'
@@ -189,3 +189,4 @@ $report = Write-MaturityReport `
     }
 
 Complete-MaturityScript -Report $report -PassThru:$PassThru
+

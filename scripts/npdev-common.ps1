@@ -20,7 +20,7 @@ function Normalize-NPDevPath([string]$PathValue) {
 function Get-NPDevWorkspaceRoot([string]$ScriptRoot) {
     $current = Normalize-NPDevPath $ScriptRoot
     while (-not [string]::IsNullOrWhiteSpace($current)) {
-        $isWorkspaceRoot = (Test-Path -LiteralPath (Join-Path $current "PROJECT_DIGEST.md") -PathType Leaf) `
+        $isWorkspaceRoot = (Test-Path -LiteralPath (Join-Path $current ".npdev-root") -PathType Leaf) `
             -and (Test-Path -LiteralPath (Join-Path $current "NPDevContract") -PathType Container) `
             -and (Test-Path -LiteralPath (Join-Path $current "NPDevEditor") -PathType Container) `
             -and (Test-Path -LiteralPath (Join-Path $current "NPDevGenerator") -PathType Container) `
@@ -457,3 +457,4 @@ function Get-NPDevWorkspaceRelativePath([string]$WorkspaceRoot, [string]$TargetP
     $targetUri = [Uri](Normalize-NPDevPath $TargetPath)
     return [Uri]::UnescapeDataString($rootUri.MakeRelativeUri($targetUri).ToString()).Replace("/", "\")
 }
+

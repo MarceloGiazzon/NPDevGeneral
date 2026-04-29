@@ -127,13 +127,13 @@ $brokenReadmeLinks = foreach ($readmeFile in $readmeFiles) {
     }
 }
 $projectDigestPaths = @(
-    "PROJECT_DIGEST.md",
-    "NPDevContract\PROJECT_DIGEST.md",
-    "NPDevEditor\PROJECT_DIGEST.md",
-    "NPDevGenerator\PROJECT_DIGEST.md",
-    "NPDevKernel\PROJECT_DIGEST.md",
-    "NPDevRuntimeHost\PROJECT_DIGEST.md",
-    "NPDevSamples\PROJECT_DIGEST.md"
+    ".npdev-root",
+    "NPDevContract\.npdev-root",
+    "NPDevEditor\.npdev-root",
+    "NPDevGenerator\.npdev-root",
+    "NPDevKernel\.npdev-root",
+    "NPDevRuntimeHost\.npdev-root",
+    "NPDevSamples\.npdev-root"
 )
 $projectDigestAudit = foreach ($relativePath in $projectDigestPaths) {
     $absolutePath = Resolve-NPDevWorkspacePath $WorkspaceRoot $relativePath
@@ -227,10 +227,10 @@ Add-Condition "SDM-013" "README files tested for: non-empty, contains required s
     "One or more README files contain broken internal links or there is no explicit README verification evidence." `
     @{ brokenReadmeLinks = $brokenReadmeLinks | Select-Object -First 40 }
 
-Add-Condition "SDM-014" "PROJECT_DIGEST.md in each subproject is ≤100 lines and accurately reflects current state" `
+Add-Condition "SDM-014" ".npdev-root in each subproject is ≤100 lines and accurately reflects current state" `
     (@($digestLineGaps).Count -eq 0) `
-    "Every checked PROJECT_DIGEST.md exists and is at or below 100 lines." `
-    "One or more PROJECT_DIGEST.md files are missing or exceed 100 lines." `
+    "Every checked .npdev-root exists and is at or below 100 lines." `
+    "One or more .npdev-root files are missing or exceed 100 lines." `
     @{ projectDigestAudit = $projectDigestAudit }
 
 Add-Condition "SDM-015" "Documentation freshness checked in hygiene gate" `
@@ -252,3 +252,4 @@ $report = Write-MaturityReport `
     }
 
 Complete-MaturityScript -Report $report -PassThru:$PassThru
+

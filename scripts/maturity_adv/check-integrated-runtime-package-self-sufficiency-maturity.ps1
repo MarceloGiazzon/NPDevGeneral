@@ -59,10 +59,10 @@ $checks += New-MaturityCheck `
     }
 
 $bootstrapReadmeCheck = Test-MaturityFilePatterns -FilePath (Resolve-NPDevWorkspacePath $WorkspaceRoot "README.md") -Patterns @(
-    "Start with PROJECT_DIGEST.md",
+    "Start with .npdev-root",
     "Current root automation entrypoints"
 )
-$bootstrapRuntimeHostCheck = Test-MaturityFilePatterns -FilePath (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\PROJECT_DIGEST.md") -Patterns @(
+$bootstrapRuntimeHostCheck = Test-MaturityFilePatterns -FilePath (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\.npdev-root") -Patterns @(
     "Do not build or run directly from",
     'Generated final apps are assembled by `NPDevGenerator`',
     "Run from the assembled final app root instead"
@@ -184,3 +184,4 @@ $report = Write-MaturityReport `
     }
 
 Complete-MaturityScript -Report $report -PassThru:$PassThru
+

@@ -327,7 +327,7 @@ function New-SampleMatrixReport(
             removedPathPatterns = @("App\.gradle", "App\build", "App\node_modules")
             retainedEvidencePatterns = @(
                 "Output\Reports\generation-run.json",
-                "Output\App\PROJECT_DIGEST.md",
+                "Output\App\.npdev-root",
                 "Output\App\MIGRATION_DIGEST.md",
                 "Output\App\gradlew.bat",
                 "Output\App\settings.gradle",
@@ -603,3 +603,4 @@ if ($status -eq "warning") {
 
 Write-NPDevWarn ("Sample matrix failed for " + ($failed.sampleId -join ", ") + ".")
 throw "Sample matrix failed."
+

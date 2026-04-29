@@ -19,11 +19,11 @@ $checks = @()
 
 $boundaryPaths = Test-MaturityPaths -WorkspaceRoot $WorkspaceRoot -RelativePaths @(
     "README.md",
-    "PROJECT_DIGEST.md",
-    "NPDevContract\PROJECT_DIGEST.md",
-    "NPDevEditor\PROJECT_DIGEST.md",
-    "NPDevGenerator\PROJECT_DIGEST.md",
-    "NPDevRuntimeHost\PROJECT_DIGEST.md",
+    ".npdev-root",
+    "NPDevContract\.npdev-root",
+    "NPDevEditor\.npdev-root",
+    "NPDevGenerator\.npdev-root",
+    "NPDevRuntimeHost\.npdev-root",
     "scripts\doctor\check-root-boundaries.ps1",
     "scripts\hygiene\check-root-boundaries.ps1",
     "NPDevContract\dsl\src\test\java\com\npdev\dsl\v1\RootBoundaryArchUnitTest.java",
@@ -197,3 +197,4 @@ $report = Write-MaturityReport `
     }
 
 Complete-MaturityScript -Report $report -PassThru:$PassThru
+

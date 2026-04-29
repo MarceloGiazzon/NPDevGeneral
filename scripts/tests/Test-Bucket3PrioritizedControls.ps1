@@ -495,7 +495,7 @@ try {
     $b15MissingDigestReport.overallStatus = "failed"
     $b15MissingDigestReport.checks[0].status = "failed"
     Write-JsonFileForTest -PathValue (Join-Path $b15MissingDigestRoot "scripts\reports\out\documentation-digest-governance-report.json") -Value $b15MissingDigestReport
-    Assert-True ([string](& $b15Script -WorkspaceRoot $b15MissingDigestRoot -PassThru).overallStatus -eq "failed") "Expected B15 control to fail when a required PROJECT_DIGEST.md is missing."
+    Assert-True ([string](& $b15Script -WorkspaceRoot $b15MissingDigestRoot -PassThru).overallStatus -eq "failed") "Expected B15 control to fail when a required .npdev-root is missing."
 
     $b15BrokenRefRoot = Copy-TestFixture -SourceRoot $passFixture.root -DestinationRoot $b15BrokenRefFixtureRoot
     $b15BrokenRefReport = Read-JsonFileForTest (Join-Path $b15BrokenRefRoot "scripts\reports\out\documentation-digest-governance-report.json")
@@ -593,3 +593,4 @@ foreach ($failure in $failures) {
     Write-NPDevWarn $failure
 }
 throw "Bucket 3 prioritized control tests failed."
+

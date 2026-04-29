@@ -603,8 +603,8 @@ function Copy-WorkspaceDocs {
 
     $rootDocFiles = @(
         "README.md",
-        "PROJECT_DIGEST.md",
-        "NPDev_ExtrucureAndProposal.txt",
+        ".npdev-root",
+        ".npdev-root",
         "NPDev_ExtrucureAndProposal_Clean.txt"
     )
     $referencedDocFiles = @(
@@ -744,3 +744,4 @@ function New-NPDevSubprojectStateZip {
         Remove-DirectorySafe -PathValue $stageRoot
     }
 }
+
