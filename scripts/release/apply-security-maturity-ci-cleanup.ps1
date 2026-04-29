@@ -39,7 +39,7 @@ if (-not [string]::IsNullOrWhiteSpace(($status -join "`n"))) {
 }
 
 Step 'Create security hardening maturity evidence runner'
-$scriptPath = Join-Path $WorkspaceRoot 'scripts\quality\run-security-hardening-maturity.ps1'
+$scriptPath = Join-Path $WorkspaceRoot 'scripts\evidence\write-security-hardening-maturity-report.ps1'
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $scriptPath) | Out-Null
 
 @'
@@ -163,7 +163,7 @@ $overallStatus = if ($failed.Count -eq 0) { 'passed' } else { 'failed' }
 $report = [pscustomobject]@{
     generatedAt = $checkedAt
     runId = 'security-hardening-maturity-' + (Get-Date).ToString('yyyyMMdd-HHmmss')
-    scriptPath = 'scripts\quality\run-security-hardening-maturity.ps1'
+    scriptPath = 'scripts\evidence\write-security-hardening-maturity-report.ps1'
     workspaceRoot = $WorkspaceRoot
     overallStatus = $overallStatus
     checks = $checks
@@ -200,7 +200,7 @@ if ($workflow -notmatch 'name:\s*Security hardening maturity evidence') {
         timeout-minutes: 10
         run: |
           & pwsh -NoProfile -ExecutionPolicy Bypass `
-            -File "$env:NPDEV_WORKSPACE\scripts\quality\run-security-hardening-maturity.ps1" `
+            -File "$env:NPDEV_WORKSPACE\scripts\evidence\write-security-hardening-maturity-report.ps1" `
             -WorkspaceRoot "$env:NPDEV_WORKSPACE"
 
       - name: Runtime security consistency evidence
@@ -248,4 +248,5 @@ if (-not $SkipPush) {
 Write-Host ''
 Write-Host 'OK    Security maturity CI cleanup applied.'
 Write-Host '      Watch NPDev CI Validation in GitHub Actions.'
+
 

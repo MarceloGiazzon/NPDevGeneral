@@ -118,7 +118,7 @@ $overallStatus = if ($failed.Count -eq 0) { 'passed' } else { 'failed' }
 $report = [pscustomobject]@{
     generatedAt = $checkedAt
     runId = 'security-hardening-maturity-' + (Get-Date).ToString('yyyyMMdd-HHmmss')
-    scriptPath = 'scripts\quality\run-security-hardening-maturity.ps1'
+    scriptPath = 'scripts\evidence\write-security-hardening-maturity-report.ps1'
     workspaceRoot = $WorkspaceRoot
     overallStatus = $overallStatus
     checks = $checks
@@ -139,3 +139,4 @@ if ($overallStatus -ne 'passed') {
 }
 
 Write-Host ('OK    Security hardening maturity evidence generated: ' + $reportPath)
+
