@@ -60,3 +60,5 @@ NPDev_General__OutsideRepo/
 # Do not ignore Java source packages named output
 !/NPDevGenerator/generator/src/main/java/com/npdev/generator/output/
 !/NPDevGenerator/generator/src/main/java/com/npdev/generator/output/**
+
+
