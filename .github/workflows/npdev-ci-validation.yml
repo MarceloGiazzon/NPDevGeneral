@@ -157,6 +157,35 @@ jobs:
           }
 
           git ls-files "NPDevGenerator/generator/src/main/java/com/npdev/generator/output/*"
+      - name: Generator gate / prepare RuntimeHost sample output
+        timeout-minutes: 40
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass `
+            -File "$env:NPDEV_WORKSPACE\scripts\quality\run-generator-gate.ps1" `
+            -WorkspaceRoot "$env:NPDEV_WORKSPACE"
+
+          $outputRoot = Join-Path $env:NPDEV_WORKSPACE "NPDevSamples\simple-contact-intake\Output"
+          $appRoot = Join-Path $outputRoot "App"
+          $artifactRoot = Join-Path $outputRoot "ArtifactNP"
+
+          Write-Host "Checking RuntimeHost sample prerequisite:"
+          Write-Host "OutputRoot:   $outputRoot"
+          Write-Host "AppRoot:      $appRoot"
+          Write-Host "ArtifactRoot: $artifactRoot"
+
+          if (-not (Test-Path -LiteralPath $outputRoot)) {
+            throw "RuntimeHost prerequisite missing after generator gate: $outputRoot"
+          }
+          if (-not (Test-Path -LiteralPath $appRoot)) {
+            throw "RuntimeHost prerequisite missing after generator gate: $appRoot"
+          }
+          if (-not (Test-Path -LiteralPath $artifactRoot)) {
+            throw "RuntimeHost prerequisite missing after generator gate: $artifactRoot"
+          }
+
+          Get-ChildItem -LiteralPath $outputRoot -Force |
+            Select-Object Name, FullName, PSIsContainer |
+            Format-Table -AutoSize
       - name: RuntimeHost gate
         timeout-minutes: 25
         run: |
@@ -181,4 +210,5 @@ jobs:
             scripts/reports/releases
           if-no-files-found: warn
           retention-days: 14
+
 
