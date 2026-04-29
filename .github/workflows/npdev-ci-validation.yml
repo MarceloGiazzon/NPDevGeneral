@@ -186,6 +186,19 @@ jobs:
           Get-ChildItem -LiteralPath $outputRoot -Force |
             Select-Object Name, FullName, PSIsContainer |
             Format-Table -AutoSize
+      - name: Security hardening maturity evidence
+        timeout-minutes: 10
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass `
+            -File "$env:NPDEV_WORKSPACE\scripts\quality\run-security-hardening-maturity.ps1" `
+            -WorkspaceRoot "$env:NPDEV_WORKSPACE"
+
+      - name: Runtime security consistency evidence
+        timeout-minutes: 10
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass `
+            -File "$env:NPDEV_WORKSPACE\scripts\quality\run-runtime-security-consistency.ps1" `
+            -WorkspaceRoot "$env:NPDEV_WORKSPACE"
       - name: RuntimeHost gate
         timeout-minutes: 25
         run: |
@@ -210,5 +223,6 @@ jobs:
             scripts/reports/releases
           if-no-files-found: warn
           retention-days: 14
+
 
 
