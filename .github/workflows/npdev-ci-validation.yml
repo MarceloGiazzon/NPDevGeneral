@@ -141,6 +141,22 @@ jobs:
             -File "$env:NPDEV_WORKSPACE\scripts\quality\run-runtime-surface-evidence.ps1" `
             -WorkspaceRoot "$env:NPDEV_WORKSPACE"
 
+      - name: Preflight generator source completeness
+        timeout-minutes: 5
+        run: |
+          $required = @(
+            "NPDevGenerator\generator\src\main\java\com\npdev\generator\output\GeneratedSourceWriter.java"
+          )
+
+          foreach ($relative in $required) {
+            $path = Join-Path $env:NPDEV_WORKSPACE $relative
+            Write-Host "Checking source file: $path"
+            if (-not (Test-Path -LiteralPath $path)) {
+              throw "Missing required tracked source file: $relative"
+            }
+          }
+
+          git ls-files "NPDevGenerator/generator/src/main/java/com/npdev/generator/output/*"
       - name: RuntimeHost gate
         timeout-minutes: 25
         run: |
@@ -165,3 +181,4 @@ jobs:
             scripts/reports/releases
           if-no-files-found: warn
           retention-days: 14
+
