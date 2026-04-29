@@ -14,7 +14,7 @@ function Step {
     Write-Host ('== ' + $Message + ' ==') -ForegroundColor Cyan
 }
 
-function Git {
+function Invoke-RepoGit {
     param([Parameter(Mandatory = $true)][string[]]$Args)
     & git @Args
     if ($LASTEXITCODE -ne 0) {
@@ -238,8 +238,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Step 'Commit and push'
-Git @('add', 'scripts/quality/run-security-hardening-maturity.ps1', '.github/workflows/npdev-ci-validation.yml')
-Git @('commit', '-m', $CommitMessage)
+Invoke-RepoGit @('add', 'scripts/quality/run-security-hardening-maturity.ps1', '.github/workflows/npdev-ci-validation.yml')
+Invoke-RepoGit @('commit', '-m', $CommitMessage)
 
 if (-not $SkipPush) {
     Git @('push', 'origin', 'main')
@@ -248,3 +248,4 @@ if (-not $SkipPush) {
 Write-Host ''
 Write-Host 'OK    Security maturity CI cleanup applied.'
 Write-Host '      Watch NPDev CI Validation in GitHub Actions.'
+
