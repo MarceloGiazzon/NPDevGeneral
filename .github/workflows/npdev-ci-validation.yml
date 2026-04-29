@@ -1,0 +1,167 @@
+name: NPDev CI Validation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: npdev-ci-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-validation:
+    name: NPDev segmented CI validation
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    defaults:
+      run:
+        shell: pwsh
+
+    env:
+      NPDEV_WORKSPACE: ${{ github.workspace }}
+      CI: true
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            17
+            21
+
+      - name: Configure Gradle CI
+        timeout-minutes: 5
+        run: |
+          Write-Host "JAVA_HOME=$env:JAVA_HOME"
+          Write-Host "JAVA_HOME_17_X64=$env:JAVA_HOME_17_X64"
+          Write-Host "JAVA_HOME_21_X64=$env:JAVA_HOME_21_X64"
+          java -version
+
+          if ([string]::IsNullOrWhiteSpace($env:JAVA_HOME_17_X64)) {
+            throw "JAVA_HOME_17_X64 is not available after setup-java."
+          }
+
+          $gradleUserHome = Join-Path $env:USERPROFILE ".gradle"
+          New-Item -ItemType Directory -Force -Path $gradleUserHome | Out-Null
+
+          @(
+            "org.gradle.daemon=false",
+            "org.gradle.console=plain",
+            "org.gradle.workers.max=2",
+            "org.gradle.vfs.watch=false",
+            "org.gradle.java.installations.auto-detect=true",
+            "org.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64"
+          ) | Set-Content -LiteralPath (Join-Path $gradleUserHome "gradle.properties") -Encoding UTF8
+
+          Get-Content (Join-Path $gradleUserHome "gradle.properties")
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            NPDevEditor/ui-react/package-lock.json
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('NPDevEditor/ui-react/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright Chromium
+        working-directory: NPDevEditor/ui-react
+        timeout-minutes: 15
+        run: |
+          npm ci
+          npm exec playwright install chromium
+
+      - name: Preflight Gradle wrappers
+        timeout-minutes: 10
+        run: |
+          $projects = @(
+            "NPDevContract\dsl",
+            "NPDevEditor",
+            "NPDevGenerator",
+            "NPDevKernel",
+            "NPDevRuntimeHost"
+          )
+
+          foreach ($project in $projects) {
+            $projectRoot = Join-Path $env:NPDEV_WORKSPACE $project
+            Write-Host "Checking Gradle wrapper in $projectRoot"
+
+            foreach ($relative in @(
+              "gradle\wrapper\gradle-wrapper.properties",
+              "gradle\wrapper\gradle-wrapper.jar",
+              "gradlew",
+              "gradlew.bat"
+            )) {
+              $path = Join-Path $projectRoot $relative
+              if (-not (Test-Path -LiteralPath $path)) {
+                throw "Missing Gradle wrapper artifact: $path"
+              }
+            }
+          }
+
+      - name: Script automation quality
+        timeout-minutes: 10
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass `
+            -File "$env:NPDEV_WORKSPACE\scripts\quality\run-script-automation-quality.ps1" `
+            -WorkspaceRoot "$env:NPDEV_WORKSPACE"
+
+      - name: Runtime surface evidence
+        timeout-minutes: 10
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass `
+            -File "$env:NPDEV_WORKSPACE\scripts\quality\run-runtime-surface-evidence.ps1" `
+            -WorkspaceRoot "$env:NPDEV_WORKSPACE"
+
+      - name: RuntimeHost gate
+        timeout-minutes: 25
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass `
+            -File "$env:NPDEV_WORKSPACE\scripts\quality\run-runtimehost-gate.ps1" `
+            -WorkspaceRoot "$env:NPDEV_WORKSPACE"
+
+      - name: Editor gate
+        timeout-minutes: 35
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass `
+            -File "$env:NPDEV_WORKSPACE\scripts\quality\run-editor-gate.ps1" `
+            -WorkspaceRoot "$env:NPDEV_WORKSPACE"
+
+      - name: Upload CI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npdev-ci-validation-evidence
+          path: |
+            scripts/reports/out
+            scripts/reports/releases
+          if-no-files-found: warn
+          retention-days: 14

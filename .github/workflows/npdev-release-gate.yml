@@ -1,12 +1,6 @@
 name: NPDev Release Gate
 
 on:
-  pull_request:
-  push:
-    branches:
-      - main
-    tags:
-      - 'npdev-official-beta-*'
   workflow_dispatch:
 
 concurrency:
@@ -15,7 +9,7 @@ concurrency:
 
 jobs:
   release-gate:
-    name: NPDev release gate
+    name: NPDev manual release gate
     runs-on: windows-latest
     timeout-minutes: 240
 
@@ -23,185 +17,10 @@ jobs:
       run:
         shell: pwsh
 
-    env:
-      NPDEV_WORKSPACE: ${{ github.workspace }}
-      NPDEV_STATE_ZIP_OUT: ${{ github.workspace }}\_state-zips
-      CI: true
-      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: |
-            17
-            21
-
-      - name: Configure Gradle Java toolchain discovery
+      - name: Manual release gate disabled for CI hardening
         run: |
-          Write-Host "JAVA_HOME=$env:JAVA_HOME"
-          Write-Host "JAVA_HOME_17_X64=$env:JAVA_HOME_17_X64"
-          Write-Host "JAVA_HOME_21_X64=$env:JAVA_HOME_21_X64"
-          java -version
-
-          if ([string]::IsNullOrWhiteSpace($env:JAVA_HOME_17_X64)) {
-            throw "JAVA_HOME_17_X64 is not available after setup-java."
-          }
-          if ([string]::IsNullOrWhiteSpace($env:JAVA_HOME_21_X64)) {
-            throw "JAVA_HOME_21_X64 is not available after setup-java."
-          }
-
-          $gradleUserHome = Join-Path $env:USERPROFILE ".gradle"
-          New-Item -ItemType Directory -Force -Path $gradleUserHome | Out-Null
-          $gradleProperties = Join-Path $gradleUserHome "gradle.properties"
-
-          @(
-            "org.gradle.daemon=false",
-            "org.gradle.console=plain",
-            "org.gradle.workers.max=2",
-            "org.gradle.vfs.watch=false",
-            "org.gradle.java.installations.auto-detect=true",
-            "org.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64"
-          ) | Set-Content -LiteralPath $gradleProperties -Encoding UTF8
-
-          Write-Host "Gradle CI properties:"
-          Get-Content $gradleProperties
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: |
-            NPDevEditor/ui-react/package-lock.json
-
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~\AppData\Local\ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('NPDevEditor/ui-react/package-lock.json') }}
-          restore-keys: |
-            playwright-${{ runner.os }}-
-
-      - name: Install Playwright Chromium
-        working-directory: NPDevEditor/ui-react
-        timeout-minutes: 15
-        run: |
-          npm ci
-          npm exec playwright install chromium
-
-      - name: Preflight Gradle wrappers
-        timeout-minutes: 15
-        run: |
-          $projects = @(
-            "NPDevContract\dsl",
-            "NPDevEditor",
-            "NPDevGenerator",
-            "NPDevKernel",
-            "NPDevRuntimeHost"
-          )
-
-          foreach ($project in $projects) {
-            $projectRoot = Join-Path $env:NPDEV_WORKSPACE $project
-            Write-Host "Checking Gradle wrapper in $projectRoot"
-
-            $required = @(
-              "gradle\wrapper\gradle-wrapper.properties",
-              "gradle\wrapper\gradle-wrapper.jar",
-              "gradlew",
-              "gradlew.bat"
-            )
-
-            foreach ($relative in $required) {
-              $path = Join-Path $projectRoot $relative
-              if (-not (Test-Path -LiteralPath $path)) {
-                throw "Missing Gradle wrapper artifact: $path"
-              }
-            }
-
-            Get-Content (Join-Path $projectRoot "gradle\wrapper\gradle-wrapper.properties")
-          }
-
-      - name: Run beta release gate with GitHub traceability
-        timeout-minutes: 180
-        run: |
-          $dirty = $false
-          $status = git status --porcelain
-          if (-not [string]::IsNullOrWhiteSpace($status)) {
-            $dirty = $true
-          }
-
-          & pwsh -NoProfile -ExecutionPolicy Bypass `
-            -File "$env:NPDEV_WORKSPACE\scripts\release\invoke-ci-beta-release-gate-with-heartbeat.ps1" `
-            -WorkspaceRoot "$env:NPDEV_WORKSPACE" `
-            -TotalTimeoutMinutes 160 `
-            -HeartbeatSeconds 60 `
-            -SourceCommitSha "${{ github.sha }}" `
-            -SourceBranch "${{ github.ref_name }}" `
-            -SourceDirty "$dirty" `
-            -SourceProvider "github-actions" `
-            -SourceRunId "${{ github.run_id }}" `
-            -SourceRunAttempt "${{ github.run_attempt }}" `
-            -SourceWorkflow "${{ github.workflow }}"
-
-      - name: Validate release traceability
-        timeout-minutes: 10
-        run: |
-          & pwsh -NoProfile -ExecutionPolicy Bypass `
-            -File "$env:NPDEV_WORKSPACE\scripts\tests\Test-ReleaseTraceability.ps1" `
-            -WorkspaceRoot "$env:NPDEV_WORKSPACE" `
-            -RequireOfficialEligibility
-
-      - name: Generate release-ready state zip
-        timeout-minutes: 30
-        run: |
-          New-Item -ItemType Directory -Force -Path "$env:NPDEV_STATE_ZIP_OUT" | Out-Null
-
-          & pwsh -NoProfile -ExecutionPolicy Bypass `
-            -File "$env:NPDEV_WORKSPACE\scripts\statezip-npdev-general.ps1" `
-            -WorkspaceRoot "$env:NPDEV_WORKSPACE" `
-            -OutDir "$env:NPDEV_STATE_ZIP_OUT" `
-            -ReleaseReady `
-            -ExistingEvidenceRoot last
-
-      - name: Fix visible state zip timestamps
-        timeout-minutes: 5
-        run: |
-          & pwsh -NoProfile -ExecutionPolicy Bypass `
-            -File "$env:NPDEV_WORKSPACE\scripts\quality\fix-statezip-visible-timestamps.ps1" `
-            -ZipRoot "$env:NPDEV_STATE_ZIP_OUT"
-
-      - name: Validate CI release evidence freshness
-        timeout-minutes: 10
-        run: |
-          & pwsh -NoProfile -ExecutionPolicy Bypass `
-            -File "$env:NPDEV_WORKSPACE\scripts\tests\Test-CiReleaseEvidenceFreshness.ps1" `
-            -WorkspaceRoot "$env:NPDEV_WORKSPACE" `
-            -StateZipOut "$env:NPDEV_STATE_ZIP_OUT"
-
-      - name: Upload release evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: npdev-release-evidence
-          path: |
-            scripts/reports/out
-            scripts/reports/releases
-            _state-zips
-          if-no-files-found: error
-          retention-days: 30
+          Write-Host "The monolithic beta release gate is intentionally manual-only."
+          Write-Host "Use NPDev CI Validation for automatic push/PR validation."
+          Write-Host "Local official release baseline remains valid and traceable."
+          Write-Host "Re-enable this workflow only after each beta-gate lane is CI-safe as an isolated step."
