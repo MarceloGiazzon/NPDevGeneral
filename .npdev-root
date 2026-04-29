@@ -1,3 +1,27 @@
+[CmdletBinding()]
+param(
+    [string]$WorkspaceRoot = 'D:\WorkSpace\NPDev_General'
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+Set-Location $WorkspaceRoot
+
+Write-Host ''
+Write-Host '== Validate workspace ==' -ForegroundColor Cyan
+
+$branch = (git branch --show-current).Trim()
+if ($branch -ne 'main') {
+    throw "Expected branch main. Current branch: $branch"
+}
+
+Write-Host "Branch: $branch"
+
+Write-Host ''
+Write-Host '== Create stable NPDev root sentinel ==' -ForegroundColor Cyan
+
+@'
 NPDev General workspace root marker.
 Required by local/CI root resolution after roadmap cleanup.
 Do not delete.
