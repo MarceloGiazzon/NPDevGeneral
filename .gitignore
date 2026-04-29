@@ -53,3 +53,6 @@ NPDev_General__OutsideRepo/
 !**/gradle/wrapper/gradle-wrapper.jar
 !**/gradlew
 !**/gradlew.bat
+# Local rebuildable caches and generated sample outputs
+/.npdev-gradle/
+/NPDevSamples/*/Output/
