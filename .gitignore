@@ -17,7 +17,6 @@
 **/node_modules/
 
 # Generated sample/example/final-app output
-**/Output/
 **/RunOutput/
 
 # Generated reports and release evidence are artifacts, not source.
@@ -56,3 +55,8 @@ NPDev_General__OutsideRepo/
 # Local rebuildable caches and generated sample outputs
 /.npdev-gradle/
 /NPDevSamples/*/Output/
+
+
+# Do not ignore Java source packages named output
+!/NPDevGenerator/generator/src/main/java/com/npdev/generator/output/
+!/NPDevGenerator/generator/src/main/java/com/npdev/generator/output/**
