@@ -73,7 +73,7 @@ function Test-AiModel {
     }
     else {
         if ([string]::IsNullOrWhiteSpace([string]$Model.app.name)) { Add-Failure $failures "app.name is required." }
-        if ($Model.app.kind -ne "simple-crud-workflow") { Add-Failure $failures "app.kind must be simple-crud-workflow." }
+        if ([string]$Model.app.kind -notin @("simple-crud-workflow", "expanded-beta-application")) { Add-Failure $failures "app.kind must be simple-crud-workflow or expanded-beta-application." }
     }
 
     $entityNames = [System.Collections.Generic.HashSet[string]]::new()
@@ -96,7 +96,7 @@ function Test-AiModel {
                     if (-not (Test-Identifier ([string]$field.name) "^[a-z][A-Za-z0-9]*$")) {
                         Add-Failure $failures ("field name is invalid: " + [string]$field.name)
                     }
-                    if (@("string", "text", "email", "integer", "number", "boolean", "date", "datetime", "uuid") -notcontains [string]$field.type) {
+                    if (@("string", "text", "email", "integer", "boolean", "date", "datetime", "uuid") -notcontains [string]$field.type) {
                         Add-Failure $failures ("field type is unsupported: " + [string]$field.type)
                     }
                     if ($null -eq $field.required -or $field.required.GetType().Name -ne "Boolean") {
@@ -120,6 +120,73 @@ function Test-AiModel {
             }
             if (@("create", "read", "update", "delete", "list") -notcontains [string]$flow.operation) {
                 Add-Failure $failures ("flow operation is unsupported: " + [string]$flow.operation)
+            }
+        }
+    }
+
+    if ([string]$Model.app.kind -eq "expanded-beta-application") {
+        foreach ($surface in @("panels", "procedures", "workflows", "tenancy", "auth", "roles")) {
+            if ($null -eq $Model.$surface -or (@($Model.$surface).Count -lt 1 -and $surface -notin @("tenancy", "auth"))) {
+                Add-Failure $failures ("expanded app is missing required surface: " + $surface)
+            }
+        }
+        $roleIds = @($Model.roles | ForEach-Object { [string]$_.roleId })
+        $procedureIds = @($Model.procedures | ForEach-Object { [string]$_.procedureId })
+        $workflowIds = @($Model.workflows | ForEach-Object { [string]$_.workflowId })
+        foreach ($role in @($Model.roles)) {
+            foreach ($permission in @($role.permissions)) {
+                if ([string]$permission -match "(?i)bypass|all-tenants|cross-tenant") {
+                    Add-Failure $failures ("role permission attempts tenant bypass: " + [string]$role.roleId)
+                }
+            }
+        }
+        foreach ($panel in @($Model.panels)) {
+            if ($roleIds -notcontains [string]$panel.requiredRole) {
+                Add-Failure $failures ("panel requiredRole is unresolved: " + [string]$panel.panelId)
+            }
+            if ([string]$panel.dataSource.kind -eq "entity" -and -not $entityNames.Contains([string]$panel.dataSource.name)) {
+                Add-Failure $failures ("panel entity data source is unresolved: " + [string]$panel.panelId)
+            }
+            if ([string]$panel.dataSource.kind -eq "procedure" -and $procedureIds -notcontains [string]$panel.dataSource.name) {
+                Add-Failure $failures ("panel procedure data source is unresolved: " + [string]$panel.panelId)
+            }
+            if ([string]$panel.dataSource.kind -eq "workflow" -and $workflowIds -notcontains [string]$panel.dataSource.name) {
+                Add-Failure $failures ("panel workflow data source is unresolved: " + [string]$panel.panelId)
+            }
+        }
+        foreach ($procedure in @($Model.procedures)) {
+            if ($roleIds -notcontains [string]$procedure.requiredRole) {
+                Add-Failure $failures ("procedure requiredRole is unresolved: " + [string]$procedure.procedureId)
+            }
+            if ([string]$procedure.type -eq "bulk-command" -and [int]$procedure.maxAffectedRows -lt 1) {
+                Add-Failure $failures ("bulk procedure must declare maxAffectedRows greater than zero: " + [string]$procedure.procedureId)
+            }
+            foreach ($entity in @($procedure.allowedEntities)) {
+                if (-not $entityNames.Contains([string]$entity)) {
+                    Add-Failure $failures ("procedure allowed entity is unresolved: " + [string]$procedure.procedureId)
+                }
+            }
+        }
+        foreach ($workflow in @($Model.workflows)) {
+            if (-not $entityNames.Contains([string]$workflow.entity)) {
+                Add-Failure $failures ("workflow entity is unresolved: " + [string]$workflow.workflowId)
+            }
+            $states = @($workflow.states | ForEach-Object { [string]$_ })
+            if ($states -notcontains [string]$workflow.startState) {
+                Add-Failure $failures ("workflow start state is unresolved: " + [string]$workflow.workflowId)
+            }
+            foreach ($terminal in @($workflow.terminalStates)) {
+                if ($states -notcontains [string]$terminal) {
+                    Add-Failure $failures ("workflow terminal state is unresolved: " + [string]$workflow.workflowId)
+                }
+            }
+            foreach ($transition in @($workflow.transitions)) {
+                if ($states -notcontains [string]$transition.from -or $states -notcontains [string]$transition.to) {
+                    Add-Failure $failures ("workflow transition state is unresolved: " + [string]$workflow.workflowId)
+                }
+                if ($roleIds -notcontains [string]$transition.requiredRole) {
+                    Add-Failure $failures ("workflow transition role is unresolved: " + [string]$workflow.workflowId)
+                }
             }
         }
     }
@@ -280,49 +347,80 @@ foreach ($scenarioDir in $scenarioDirs) {
             }
         }
         else {
-            foreach ($fileProperty in @("aiModel", "aiConfig", "verification", "expectedBehavior")) {
+            $requiredFileProperties = if ($expectedOutcome -eq "fail" -and $expectedStage -eq "ai-model-schema") {
+                @("aiModel")
+            }
+            elseif ($expectedOutcome -eq "fail" -and $expectedStage -eq "ai-config-schema") {
+                @("aiConfig")
+            }
+            elseif ($expectedOutcome -eq "fail" -and $expectedStage -eq "verification-schema") {
+                @("verification")
+            }
+            else {
+                @("aiModel", "aiConfig", "verification", "expectedBehavior")
+            }
+            foreach ($fileProperty in $requiredFileProperties) {
                 if (-not (Test-RelativeScenarioFile $scenarioDir ([string]$manifest.files.$fileProperty))) {
                     Add-Failure $scenarioFailures ("manifest file is missing or unsafe: " + $fileProperty)
                 }
             }
 
             if ($scenarioFailures.Count -eq 0) {
-                $modelPath = Join-Path $scenarioDir.FullName ([string]$manifest.files.aiModel)
-                $configPath = Join-Path $scenarioDir.FullName ([string]$manifest.files.aiConfig)
-                $verificationPath = Join-Path $scenarioDir.FullName ([string]$manifest.files.verification)
-                $modelSchemaValidation = Invoke-SchemaValidation `
-                    -SchemaPath "schemas/ai/ai-model.schema.json" `
-                    -InstancePath $modelPath `
-                    -ResultPath (Join-Path $schemaValidationRoot ($scenarioId + "-ai-model.json"))
-                $configSchemaValidation = Invoke-SchemaValidation `
-                    -SchemaPath "schemas/ai/ai-generator-config.schema.json" `
-                    -InstancePath $configPath `
-                    -ResultPath (Join-Path $schemaValidationRoot ($scenarioId + "-ai-config.json"))
-                $verificationSchemaValidation = Invoke-SchemaValidation `
-                    -SchemaPath "schemas/ai/ai-verification-report.schema.json" `
-                    -InstancePath $verificationPath `
-                    -ResultPath (Join-Path $schemaValidationRoot ($scenarioId + "-verification.json"))
-                $schemaValidations += $modelSchemaValidation
-                $schemaValidations += $configSchemaValidation
-                $schemaValidations += $verificationSchemaValidation
-                if ($modelSchemaValidation.status -ne "passed" -and $null -eq $actualFailureStage) { $actualFailureStage = "ai-model-schema" }
-                if ($configSchemaValidation.status -ne "passed" -and $null -eq $actualFailureStage) { $actualFailureStage = "ai-config-schema" }
-                if ($verificationSchemaValidation.status -ne "passed" -and $null -eq $actualFailureStage) { $actualFailureStage = "verification-schema" }
+                $modelSchemaValidation = $null
+                $configSchemaValidation = $null
+                $verificationSchemaValidation = $null
+                $modelFailures = @()
+                $configFailures = @()
+                $verificationFailures = @()
+                if ($requiredFileProperties -contains "aiModel") {
+                    $modelPath = Join-Path $scenarioDir.FullName ([string]$manifest.files.aiModel)
+                    $modelSchemaValidation = Invoke-SchemaValidation `
+                        -SchemaPath "schemas/ai/ai-model.schema.json" `
+                        -InstancePath $modelPath `
+                        -ResultPath (Join-Path $schemaValidationRoot ($scenarioId + "-ai-model.json"))
+                    $schemaValidations += $modelSchemaValidation
+                }
+                if ($requiredFileProperties -contains "aiConfig") {
+                    $configPath = Join-Path $scenarioDir.FullName ([string]$manifest.files.aiConfig)
+                    $configSchemaValidation = Invoke-SchemaValidation `
+                        -SchemaPath "schemas/ai/ai-generator-config.schema.json" `
+                        -InstancePath $configPath `
+                        -ResultPath (Join-Path $schemaValidationRoot ($scenarioId + "-ai-config.json"))
+                    $schemaValidations += $configSchemaValidation
+                }
+                if ($requiredFileProperties -contains "verification") {
+                    $verificationPath = Join-Path $scenarioDir.FullName ([string]$manifest.files.verification)
+                    $verificationSchemaValidation = Invoke-SchemaValidation `
+                        -SchemaPath "schemas/ai/ai-verification-report.schema.json" `
+                        -InstancePath $verificationPath `
+                        -ResultPath (Join-Path $schemaValidationRoot ($scenarioId + "-verification.json"))
+                    $schemaValidations += $verificationSchemaValidation
+                }
+                if ($null -ne $modelSchemaValidation -and $modelSchemaValidation.status -ne "passed" -and $null -eq $actualFailureStage) { $actualFailureStage = "ai-model-schema" }
+                if ($null -ne $configSchemaValidation -and $configSchemaValidation.status -ne "passed" -and $null -eq $actualFailureStage) { $actualFailureStage = "ai-config-schema" }
+                if ($null -ne $verificationSchemaValidation -and $verificationSchemaValidation.status -ne "passed" -and $null -eq $actualFailureStage) { $actualFailureStage = "verification-schema" }
 
-                $model = Read-JsonFile $modelPath
-                $modelFailures = Test-AiModel $model $scenarioId
-                if ($modelFailures.Count -gt 0 -and $null -eq $actualFailureStage) { $actualFailureStage = "ai-model-schema" }
+                if ($requiredFileProperties -contains "aiModel") {
+                    $model = Read-JsonFile $modelPath
+                    $modelFailures = Test-AiModel $model $scenarioId
+                    if ($modelFailures.Count -gt 0 -and $null -eq $actualFailureStage) { $actualFailureStage = "ai-model-schema" }
+                }
 
-                $config = Read-JsonFile $configPath
-                $configFailures = Test-AiConfig $config $scenarioId
-                if ($configFailures.Count -gt 0 -and $null -eq $actualFailureStage) { $actualFailureStage = "ai-config-schema" }
+                if ($requiredFileProperties -contains "aiConfig") {
+                    $config = Read-JsonFile $configPath
+                    $configFailures = Test-AiConfig $config $scenarioId
+                    if ($configFailures.Count -gt 0 -and $null -eq $actualFailureStage) { $actualFailureStage = "ai-config-schema" }
+                }
 
-                $verification = Read-JsonFile $verificationPath
-                $verificationFailures = Test-AiVerification $verification $scenarioId
-                if ($verificationFailures.Count -gt 0 -and $null -eq $actualFailureStage) { $actualFailureStage = "verification-schema" }
+                if ($requiredFileProperties -contains "verification") {
+                    $verification = Read-JsonFile $verificationPath
+                    $verificationFailures = Test-AiVerification $verification $scenarioId
+                    if ($verificationFailures.Count -gt 0 -and $null -eq $actualFailureStage) { $actualFailureStage = "verification-schema" }
+                }
 
                 if ($expectedOutcome -eq "pass") {
                     foreach ($schemaValidation in @($modelSchemaValidation, $configSchemaValidation, $verificationSchemaValidation)) {
+                        if ($null -eq $schemaValidation) { continue }
                         if ($schemaValidation.status -ne "passed") {
                             Add-Failure $scenarioFailures ("schema validation failed for " + [string]$schemaValidation.instancePath + ": " + (@($schemaValidation.failures) -join "; "))
                         }

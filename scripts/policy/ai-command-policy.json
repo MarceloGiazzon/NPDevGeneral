@@ -3,10 +3,18 @@
   "mode": "controlled-runner-required",
   "rawShellCommandsAllowed": false,
   "allowedRequestTypes": [
-    "trusted-script",
-    "gradle-task",
     "schema-validation",
-    "rest-smoke"
+    "normalize-contracts",
+    "generate-app",
+    "build-generated-app",
+    "boot-generated-app",
+    "rest-smoke",
+    "panel-smoke",
+    "procedure-smoke",
+    "workflow-smoke",
+    "tenant-auth-role-smoke",
+    "collect-evidence",
+    "gradle-task"
   ],
   "allowedTrustedScripts": [
     "scripts/quality/invoke-ai-beta-app-smoke.ps1",

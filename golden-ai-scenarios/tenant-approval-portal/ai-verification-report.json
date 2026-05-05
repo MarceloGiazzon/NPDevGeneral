@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "ai-verification-report.v1",
+  "scenarioId": "tenant-approval-portal",
+  "baseUrlVariable": "NPDEV_GENERATED_APP_BASE_URL",
+  "checks": [
+    {
+      "id": "health-ok",
+      "type": "http",
+      "method": "GET",
+      "path": "/actuator/health",
+      "expectedStatus": 200,
+      "expectedJsonContains": {
+        "status": "UP"
+      }
+    },
+    {
+      "id": "create-request",
+      "type": "http",
+      "method": "POST",
+      "path": "/api/requests",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Api-Key": "dev-key"
+      },
+      "body": {
+        "tenantId": "tenant-a",
+        "title": "Approval request",
+        "amount": 42
+      },
+      "expectedStatus": 201,
+      "expectedJsonContains": {
+        "title": "Approval request"
+      }
+    }
+  ]
+}

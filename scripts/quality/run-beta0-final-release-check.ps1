@@ -58,6 +58,7 @@ $orderedGates = @(
     [pscustomobject]@{ name = "runtime-null-context-tests"; command = "scripts/quality/run-runtime-null-context-tests.ps1" },
     [pscustomobject]@{ name = "sample-matrix"; command = "scripts/quality/run-sample-matrix.ps1" },
     [pscustomobject]@{ name = "ai-beta-gate"; command = "scripts/quality/run-ai-beta-gate.ps1" },
+    [pscustomobject]@{ name = "expanded-beta0-evidence"; command = "scripts/quality/run-expanded-beta0-evidence.ps1" },
     [pscustomobject]@{ name = "report-schema-validation"; command = "scripts/quality/run-report-schema-validation.ps1" },
     [pscustomobject]@{ name = "doc-entrypoint-validation"; command = "scripts/quality/run-doc-entrypoint-validation.ps1" },
     [pscustomobject]@{ name = "report-provenance-tests"; command = "scripts/quality/run-report-provenance-tests.ps1" }

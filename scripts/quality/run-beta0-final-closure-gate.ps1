@@ -48,6 +48,29 @@ $requiredReports = @(
     [pscustomobject]@{ name = "beta-release-gate"; path = "scripts/reports/out/beta-release-gate-report.json"; schemaVersion = "beta-release-gate-report.v1"; statusProperty = "overallStatus"; passValue = "passed" }
 )
 
+$expandedReports = @(
+    [pscustomobject]@{ name = "scope-policy"; path = "scripts/reports/out/scope-policy-report.json"; schemaVersion = "npdev-scope-policy-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
+    [pscustomobject]@{ name = "ai-command-policy"; path = "scripts/reports/out/ai-command-policy-report.json"; schemaVersion = "npdev-ai-command-policy-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
+    [pscustomobject]@{ name = "expanded-schema-validation"; path = "scripts/reports/out/schema-validation-report.json"; schemaVersion = "npdev-expanded-schema-validation-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
+    [pscustomobject]@{ name = "normalization"; path = "scripts/reports/out/normalization-report.json"; schemaVersion = "npdev-normalization-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
+    [pscustomobject]@{ name = "custom-panel-validation"; path = "scripts/reports/out/custom-panel-validation-report.json"; schemaVersion = "npdev-custom-panel-validation-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
+    [pscustomobject]@{ name = "custom-procedure-validation"; path = "scripts/reports/out/custom-procedure-validation-report.json"; schemaVersion = "npdev-custom-procedure-validation-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
+    [pscustomobject]@{ name = "tenant-auth-role-validation"; path = "scripts/reports/out/tenant-auth-role-validation-report.json"; schemaVersion = "npdev-tenant-auth-role-validation-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
+    [pscustomobject]@{ name = "workflow-validation"; path = "scripts/reports/out/workflow-validation-report.json"; schemaVersion = "npdev-workflow-validation-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
+    [pscustomobject]@{ name = "generated-app-build"; path = "scripts/reports/out/generated-app-build-report.json"; schemaVersion = "npdev-generated-app-build-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
+    [pscustomobject]@{ name = "generated-app-boot"; path = "scripts/reports/out/generated-app-boot-report.json"; schemaVersion = "npdev-generated-app-boot-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
+    [pscustomobject]@{ name = "rest-smoke"; path = "scripts/reports/out/rest-smoke-report.json"; schemaVersion = "npdev-rest-smoke-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
+    [pscustomobject]@{ name = "ui-panel-smoke"; path = "scripts/reports/out/ui-panel-smoke-report.json"; schemaVersion = "npdev-ui-panel-smoke-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
+    [pscustomobject]@{ name = "procedure-smoke"; path = "scripts/reports/out/procedure-smoke-report.json"; schemaVersion = "npdev-procedure-smoke-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
+    [pscustomobject]@{ name = "workflow-smoke"; path = "scripts/reports/out/workflow-smoke-report.json"; schemaVersion = "npdev-workflow-smoke-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
+    [pscustomobject]@{ name = "tenant-isolation-smoke"; path = "scripts/reports/out/tenant-isolation-smoke-report.json"; schemaVersion = "npdev-tenant-isolation-smoke-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
+    [pscustomobject]@{ name = "auth-role-smoke"; path = "scripts/reports/out/auth-role-smoke-report.json"; schemaVersion = "npdev-auth-role-smoke-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
+    [pscustomobject]@{ name = "provenance"; path = "scripts/reports/out/provenance-report.json"; schemaVersion = "npdev-provenance-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
+    [pscustomobject]@{ name = "stale-report-check"; path = "scripts/reports/out/stale-report-check-report.json"; schemaVersion = "npdev-stale-report-check-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
+    [pscustomobject]@{ name = "workspace-cleanliness"; path = "scripts/reports/out/workspace-cleanliness-report.json"; schemaVersion = "npdev-workspace-cleanliness-report.v1"; statusProperty = "overallStatus"; passValue = "passed" }
+)
+$requiredReports = @($requiredReports + $expandedReports)
+
 $reportResults = @()
 foreach ($definition in $requiredReports) {
     $exists = Test-Path -LiteralPath $definition.path -PathType Leaf

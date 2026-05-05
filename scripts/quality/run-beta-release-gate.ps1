@@ -261,7 +261,7 @@ catch {
 if ($policy.schemaVersion -ne "npdev-beta-release-gate-policy.v1" -or $policy.release -ne "ai-only-beta-0") {
     Add-Blocker $blockers "Beta release gate policy is missing or not ai-only-beta-0."
 }
-if ($scopePolicy.schemaVersion -ne "npdev-beta0-scope.v1" -or $scopePolicy.release -ne "ai-only-beta-0") {
+if ($scopePolicy.schemaVersion -notin @("npdev-beta0-scope.v1", "npdev-beta0-scope.v2") -or $scopePolicy.release -ne "ai-only-beta-0") {
     Add-Blocker $blockers "Beta 0 scope policy is missing or not ai-only-beta-0."
 }
 if ($truthTable.schemaVersion -ne "npdev-beta0-release-truth-table.v1") {

@@ -30,6 +30,139 @@
       "schemaPath": "schemas/ai/ai-beta-gate-report.schema.json"
     },
     {
+      "name": "scope-policy",
+      "path": "scripts/reports/out/scope-policy-report.json",
+      "schemaVersion": "npdev-scope-policy-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "ai-command-policy",
+      "path": "scripts/reports/out/ai-command-policy-report.json",
+      "schemaVersion": "npdev-ai-command-policy-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "expanded-schema-validation",
+      "path": "scripts/reports/out/schema-validation-report.json",
+      "schemaVersion": "npdev-expanded-schema-validation-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "normalization",
+      "path": "scripts/reports/out/normalization-report.json",
+      "schemaVersion": "npdev-normalization-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "custom-panel-validation",
+      "path": "scripts/reports/out/custom-panel-validation-report.json",
+      "schemaVersion": "npdev-custom-panel-validation-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "custom-procedure-validation",
+      "path": "scripts/reports/out/custom-procedure-validation-report.json",
+      "schemaVersion": "npdev-custom-procedure-validation-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "tenant-auth-role-validation",
+      "path": "scripts/reports/out/tenant-auth-role-validation-report.json",
+      "schemaVersion": "npdev-tenant-auth-role-validation-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "workflow-validation",
+      "path": "scripts/reports/out/workflow-validation-report.json",
+      "schemaVersion": "npdev-workflow-validation-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "generated-app-build",
+      "path": "scripts/reports/out/generated-app-build-report.json",
+      "schemaVersion": "npdev-generated-app-build-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "generated-app-boot",
+      "path": "scripts/reports/out/generated-app-boot-report.json",
+      "schemaVersion": "npdev-generated-app-boot-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "rest-smoke",
+      "path": "scripts/reports/out/rest-smoke-report.json",
+      "schemaVersion": "npdev-rest-smoke-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "ui-panel-smoke",
+      "path": "scripts/reports/out/ui-panel-smoke-report.json",
+      "schemaVersion": "npdev-ui-panel-smoke-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "procedure-smoke",
+      "path": "scripts/reports/out/procedure-smoke-report.json",
+      "schemaVersion": "npdev-procedure-smoke-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "workflow-smoke",
+      "path": "scripts/reports/out/workflow-smoke-report.json",
+      "schemaVersion": "npdev-workflow-smoke-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "tenant-isolation-smoke",
+      "path": "scripts/reports/out/tenant-isolation-smoke-report.json",
+      "schemaVersion": "npdev-tenant-isolation-smoke-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "auth-role-smoke",
+      "path": "scripts/reports/out/auth-role-smoke-report.json",
+      "schemaVersion": "npdev-auth-role-smoke-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "provenance",
+      "path": "scripts/reports/out/provenance-report.json",
+      "schemaVersion": "npdev-provenance-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "stale-report-check",
+      "path": "scripts/reports/out/stale-report-check-report.json",
+      "schemaVersion": "npdev-stale-report-check-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "workspace-cleanliness",
+      "path": "scripts/reports/out/workspace-cleanliness-report.json",
+      "schemaVersion": "npdev-workspace-cleanliness-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
       "name": "report-schema-validation",
       "path": "scripts/reports/out/report-schema-validation-report.json",
       "schemaVersion": "npdev-report-schema-validation-report.v1",

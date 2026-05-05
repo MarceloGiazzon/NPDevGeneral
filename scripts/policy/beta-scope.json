@@ -1,30 +1,41 @@
 {
-  "schemaVersion": "npdev-beta-scope.v1",
+  "schemaVersion": "npdev-beta-scope.v2",
   "release": "ai-only-beta-0",
+  "delegatesTo": "scripts/policy/beta0-scope.json",
+  "expandedBeta0ContractVersion": "expanded-beta0.2026-05-05",
   "supportedSurfaces": {
     "inputContracts": [
       "ai-model.v1",
       "ai-generator-config.v1",
-      "ai-verification-report.v1"
+      "ai-custom-panel.v1",
+      "ai-custom-procedure.v1",
+      "workflow-contract.v1",
+      "tenant-auth-role-contract.v1",
+      "ai-verification-report.v1",
+      "npdev-ai-command-request.v1"
     ],
     "officialContracts": [
       "model.schema.json",
-      "config.schema.json"
+      "config.schema.json",
+      "panel-contract",
+      "procedure-contract",
+      "workflow-contract",
+      "security-contract"
     ],
-    "verificationMedium": "rest-smoke-checks",
+    "verificationMedium": "expanded-smoke-checks",
     "runtimeProfile": "ai-beta-local",
     "databaseModes": [
       "embedded-test",
       "docker-postgres"
     ],
     "appKinds": [
-      "simple-crud-workflow"
+      "expanded-beta-application"
     ]
   },
   "excludedSurfaces": [
     "public-production-deployment",
     "arbitrary-shell",
-    "arbitrary-custom-code",
+    "arbitrary-inline-custom-code",
     "external-network-by-default",
     "manual-smoke-pass",
     "production-auth",
@@ -32,19 +43,21 @@
     "ui-only-required-verification"
   ],
   "commandExecution": {
-    "mode": "controlled-runner-required",
+    "mode": "typed-structured-requests-only",
     "defaultTimeoutSeconds": 300,
     "maxTimeoutSeconds": 600,
     "network": "disabled-by-default",
     "workspaceRootRequired": true
   },
   "sourceOfTruth": {
+    "scopePolicy": "scripts/policy/beta0-scope.json",
     "aiBetaProofReport": "scripts/reports/out/ai-beta-gate-report.json",
-    "releaseProofReport": "scripts/reports/out/beta-release-gate-report.json"
+    "releaseProofReport": "scripts/reports/out/beta-release-gate-report.json",
+    "finalProofReport": "scripts/reports/out/beta0-final-release-check-report.json"
   },
-  "readinessRule": "AI-only Beta 0 is blocked unless run-ai-beta-gate.ps1 and run-beta-release-gate.ps1 both exit 0 and write current source-of-truth reports for the current workspace fingerprint.",
+  "readinessRule": "Expanded AI-only Beta 0 is blocked unless the final release check validates every blocking report from scripts/reports/blocking-report-manifest.json against the current expanded contract version and current runId.",
   "legacyContext": {
-    "previousPolicyVersion": "1.1",
-    "note": "The previous broad beta release policy was superseded for the AI-only Beta 0 implementation batch. Historical release evidence remains diagnostic only and is not current AI-only Beta 0 proof."
+    "previousPolicyVersion": "npdev-beta-scope.v1",
+    "note": "The previous simple-crud-workflow-only policy is intentionally invalid for expanded Beta 0 release evidence."
   }
 }

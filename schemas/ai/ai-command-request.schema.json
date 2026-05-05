@@ -16,7 +16,16 @@
         "trusted-script",
         "gradle-task",
         "schema-validation",
+        "normalize-contracts",
+        "generate-app",
+        "build-generated-app",
+        "boot-generated-app",
         "rest-smoke",
+        "panel-smoke",
+        "procedure-smoke",
+        "workflow-smoke",
+        "tenant-auth-role-smoke",
+        "collect-evidence",
         "raw-command"
       ]
     },

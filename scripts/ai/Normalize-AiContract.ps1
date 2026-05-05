@@ -39,7 +39,6 @@ function Convert-FieldType {
         "email" { return "string" }
         "text" { return "string" }
         "integer" { return "integer" }
-        "number" { return "long" }
         default { return $AiType }
     }
 }
@@ -61,8 +60,8 @@ function Assert-AiContractSupported {
     if ($Config.schemaVersion -ne "ai-generator-config.v1") {
         $failures += New-NormalizerFailure "AI_CONFIG_SCHEMA_VERSION_UNSUPPORTED" "AI config schemaVersion must be ai-generator-config.v1."
     }
-    if ($Model.app.kind -ne "simple-crud-workflow") {
-        $failures += New-NormalizerFailure "AI_MODEL_KIND_UNSUPPORTED" "Only simple-crud-workflow is supported in AI-only Beta 0."
+    if ($Model.app.kind -notin @("simple-crud-workflow", "expanded-beta-application")) {
+        $failures += New-NormalizerFailure "AI_MODEL_KIND_UNSUPPORTED" "Only simple-crud-workflow and expanded-beta-application are supported in AI-only Beta 0."
     }
     if ($Config.target.runtime -ne "spring-boot") {
         $failures += New-NormalizerFailure "AI_CONFIG_RUNTIME_UNSUPPORTED" "Only spring-boot runtime is supported in AI-only Beta 0."
@@ -73,6 +72,66 @@ function Assert-AiContractSupported {
     if ($Config.output.directory -match "\.\." -or [System.IO.Path]::IsPathRooted([string]$Config.output.directory)) {
         $failures += New-NormalizerFailure "AI_CONFIG_OUTPUT_PATH_UNSAFE" "Output directory must be relative and must not contain path traversal."
     }
+    if ($Model.app.kind -eq "expanded-beta-application") {
+        foreach ($required in @("panels", "procedures", "workflows", "tenancy", "auth", "roles")) {
+            if ($null -eq $Model.$required -or (@($Model.$required).Count -lt 1 -and $required -notin @("tenancy", "auth"))) {
+                $failures += New-NormalizerFailure "EXPANDED_SURFACE_MISSING" ("Expanded Beta 0 model requires " + $required + ".")
+            }
+        }
+        $entityNames = @($Model.entities | ForEach-Object { [string]$_.name })
+        $roleIds = @($Model.roles | ForEach-Object { [string]$_.roleId })
+        $procedureIds = @($Model.procedures | ForEach-Object { [string]$_.procedureId })
+        $workflowIds = @($Model.workflows | ForEach-Object { [string]$_.workflowId })
+        foreach ($panel in @($Model.panels)) {
+            if ($roleIds -notcontains [string]$panel.requiredRole) {
+                $failures += New-NormalizerFailure "PANEL_ROLE_UNRESOLVED" ("Panel role does not resolve: " + [string]$panel.panelId)
+            }
+            if ([string]$panel.dataSource.kind -eq "entity" -and $entityNames -notcontains [string]$panel.dataSource.name) {
+                $failures += New-NormalizerFailure "PANEL_ENTITY_UNRESOLVED" ("Panel entity does not resolve: " + [string]$panel.panelId)
+            }
+            if ([string]$panel.dataSource.kind -eq "procedure" -and $procedureIds -notcontains [string]$panel.dataSource.name) {
+                $failures += New-NormalizerFailure "PANEL_PROCEDURE_UNRESOLVED" ("Panel procedure does not resolve: " + [string]$panel.panelId)
+            }
+            if ([string]$panel.dataSource.kind -eq "workflow" -and $workflowIds -notcontains [string]$panel.dataSource.name) {
+                $failures += New-NormalizerFailure "PANEL_WORKFLOW_UNRESOLVED" ("Panel workflow does not resolve: " + [string]$panel.panelId)
+            }
+        }
+        foreach ($procedure in @($Model.procedures)) {
+            if ($roleIds -notcontains [string]$procedure.requiredRole) {
+                $failures += New-NormalizerFailure "PROCEDURE_ROLE_UNRESOLVED" ("Procedure role does not resolve: " + [string]$procedure.procedureId)
+            }
+            if ([string]$procedure.type -eq "bulk-command" -and [int]$procedure.maxAffectedRows -lt 1) {
+                $failures += New-NormalizerFailure "PROCEDURE_BULK_LIMIT_MISSING" ("Bulk procedure requires maxAffectedRows > 0: " + [string]$procedure.procedureId)
+            }
+            foreach ($entity in @($procedure.allowedEntities)) {
+                if ($entityNames -notcontains [string]$entity) {
+                    $failures += New-NormalizerFailure "PROCEDURE_ENTITY_UNRESOLVED" ("Procedure entity does not resolve: " + [string]$procedure.procedureId)
+                }
+            }
+        }
+        foreach ($workflow in @($Model.workflows)) {
+            if ($entityNames -notcontains [string]$workflow.entity) {
+                $failures += New-NormalizerFailure "WORKFLOW_ENTITY_UNRESOLVED" ("Workflow entity does not resolve: " + [string]$workflow.workflowId)
+            }
+            $states = @($workflow.states | ForEach-Object { [string]$_ })
+            if ($states -notcontains [string]$workflow.startState) {
+                $failures += New-NormalizerFailure "WORKFLOW_START_STATE_UNRESOLVED" ("Workflow start state does not resolve: " + [string]$workflow.workflowId)
+            }
+            foreach ($terminalState in @($workflow.terminalStates)) {
+                if ($states -notcontains [string]$terminalState) {
+                    $failures += New-NormalizerFailure "WORKFLOW_TERMINAL_STATE_UNRESOLVED" ("Workflow terminal state does not resolve: " + [string]$workflow.workflowId)
+                }
+            }
+            foreach ($transition in @($workflow.transitions)) {
+                if ($states -notcontains [string]$transition.from -or $states -notcontains [string]$transition.to) {
+                    $failures += New-NormalizerFailure "WORKFLOW_TRANSITION_STATE_UNRESOLVED" ("Workflow transition state does not resolve: " + [string]$workflow.workflowId)
+                }
+                if ($roleIds -notcontains [string]$transition.requiredRole) {
+                    $failures += New-NormalizerFailure "WORKFLOW_TRANSITION_ROLE_UNRESOLVED" ("Workflow transition role does not resolve: " + [string]$workflow.workflowId)
+                }
+            }
+        }
+    }
     return $failures
 }
 
@@ -81,6 +140,9 @@ function New-OfficialModel {
     $concepts = @()
     $events = @()
     $flows = @()
+    $procedures = @()
+    $panels = @()
+    $tenantIdField = if ($null -ne $Model.tenancy) { [string]$Model.tenancy.tenantIdField } else { "" }
 
     foreach ($entity in @($Model.entities)) {
         $fields = @(
@@ -91,6 +153,13 @@ function New-OfficialModel {
                 required = $true
             }
         )
+        if ([bool]$entity.tenantScoped -and -not [string]::IsNullOrWhiteSpace($tenantIdField)) {
+            $fields += [ordered]@{
+                name = $tenantIdField
+                type = "string"
+                required = $true
+            }
+        }
         $invariants = @()
         foreach ($field in @($entity.fields)) {
             $officialType = Convert-FieldType ([string]$field.type)
@@ -105,7 +174,7 @@ function New-OfficialModel {
                     expr = ([string]$field.name + " != null && " + [string]$field.name + " != ''")
                 }
             }
-            if ([string]$field.type -eq "email") {
+            if ([bool]$field.unique) {
                 $invariants += [ordered]@{
                     name = (([string]$field.name).Substring(0, 1).ToUpperInvariant() + ([string]$field.name).Substring(1) + "Unique")
                     type = "unique"
@@ -167,6 +236,90 @@ function New-OfficialModel {
         }
     }
 
+    $modelProcedures = if ($null -eq $Model.procedures) { @() } else { @($Model.procedures) }
+    $modelPanels = if ($null -eq $Model.panels) { @() } else { @($Model.panels) }
+    foreach ($procedure in $modelProcedures) {
+        $procedureSteps = @()
+        $steps = if ($null -eq $procedure.steps) { @() } else { @($procedure.steps) }
+        foreach ($step in $steps) {
+            $procedureStep = [ordered]@{ type = [string]$step.type }
+            foreach ($propertyName in @("concept", "query", "procedure", "value")) {
+                $property = $step.PSObject.Properties[$propertyName]
+                if ($null -ne $property -and $null -ne $property.Value) {
+                    $procedureStep[$propertyName] = $property.Value
+                }
+            }
+            $procedureSteps += $procedureStep
+        }
+        if ($procedureSteps.Count -eq 0) {
+            $procedureSteps += [ordered]@{
+                type = "return"
+                value = ([string]$procedure.procedureId + "-ok")
+            }
+        }
+        $parameters = @($procedure.inputs | ForEach-Object {
+            [ordered]@{
+                name = [string]$_.name
+                type = (Convert-FieldType ([string]$_.type))
+                required = if ($null -eq $_.required) { $false } else { [bool]$_.required }
+            }
+        })
+        $procedures += [ordered]@{
+            name = [string]$procedure.procedureId
+            description = "Expanded Beta 0 procedure " + [string]$procedure.procedureId
+            parameters = $parameters
+            steps = $procedureSteps
+            returns = [ordered]@{ type = "string" }
+            permissionRequirements = @([string]$procedure.requiredRole)
+            tracePolicy = "summary"
+            auditPolicy = if ([string]$procedure.sideEffectType -eq "none") { "read" } else { "write" }
+            metadata = [ordered]@{
+                beta0Surface = "custom-procedure"
+                sideEffectType = [string]$procedure.sideEffectType
+                tenantScoped = [bool]$procedure.tenantScoped
+                maxAffectedRows = [int]$procedure.maxAffectedRows
+                trustedSourceEntrypoint = if ($null -ne $procedure.implementation) { [string]$procedure.implementation.entrypoint } else { "" }
+            }
+        }
+    }
+
+    foreach ($panel in $modelPanels) {
+        $dataSource = [ordered]@{ name = [string]$panel.dataSource.name }
+        if ([string]$panel.dataSource.kind -eq "entity") { $dataSource["concept"] = [string]$panel.dataSource.name }
+        if ([string]$panel.dataSource.kind -eq "procedure") { $dataSource["procedure"] = [string]$panel.dataSource.name }
+        if ([string]$panel.dataSource.kind -eq "workflow") { $dataSource["params"] = [ordered]@{ workflow = [string]$panel.dataSource.name } }
+        $layoutType = switch ([string]$panel.type) {
+            "dashboard-summary" { "dashboard" }
+            "workflow-task" { "detail" }
+            "entity-detail" { "detail" }
+            "entity-list" { "table" }
+            default { "form" }
+        }
+        $panelActions = @($panel.actions | ForEach-Object {
+            [ordered]@{
+                name = [string]$_
+                binding = "procedure"
+                procedure = [string]$_
+                permissionRequirements = @([string]$panel.requiredRole)
+            }
+        })
+        $panels += [ordered]@{
+            name = [string]$panel.panelId
+            route = [string]$panel.route
+            title = [string]$panel.panelId
+            dataSources = @($dataSource)
+            layout = [ordered]@{ type = $layoutType }
+            visibility = "role:" + [string]$panel.requiredRole
+            actions = $panelActions
+            metadata = [ordered]@{
+                beta0Surface = "custom-ui-panel"
+                sourceType = [string]$panel.type
+                tenantScoped = [bool]$panel.tenantScoped
+                trustedSourceEntrypoint = if ($null -ne $panel.implementation) { [string]$panel.implementation.entrypoint } else { "" }
+            }
+        }
+    }
+
     return [ordered]@{
         '$schema' = "NPDevContract/schemas/model.schema.json"
         namespace = "npdev.ai.beta." + ($ScenarioId -replace "-", ".")
@@ -192,9 +345,24 @@ function New-OfficialModel {
         )
         events = $events
         flows = $flows
+        procedures = $procedures
+        panels = $panels
         metadata = [ordered]@{
             normalizedFrom = "ai-model.v1"
             scenarioId = $ScenarioId
+            expandedBeta0ContractVersion = "expanded-beta0.2026-05-05"
+            tenancy = $Model.tenancy
+            auth = $Model.auth
+            roles = @($Model.roles)
+            workflows = @($Model.workflows)
+            requiredSurfaces = @(
+                "custom-ui-panels",
+                "custom-procedures",
+                "multi-tenancy",
+                "authentication",
+                "roles",
+                "workflow-engine"
+            )
         }
     }
 }
@@ -309,10 +477,44 @@ if ($failures.Count -gt 0) {
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $officialModel = New-OfficialModel $aiModel $scenarioId
 $officialConfig = New-OfficialConfig $aiConfig $aiModel $scenarioId
+$aiPanels = if ($null -eq $aiModel.panels) { @() } else { @($aiModel.panels) }
+$aiProcedures = if ($null -eq $aiModel.procedures) { @() } else { @($aiModel.procedures) }
+$aiWorkflows = if ($null -eq $aiModel.workflows) { @() } else { @($aiModel.workflows) }
+$aiRoles = if ($null -eq $aiModel.roles) { @() } else { @($aiModel.roles) }
 $modelPath = Join-Path $OutputDirectory "model.json"
 $configPath = Join-Path $OutputDirectory "config.json"
+$securityPath = Join-Path $OutputDirectory "security.json"
+$workflowPath = Join-Path $OutputDirectory "workflows.json"
+$panelPath = Join-Path $OutputDirectory "panels.json"
+$procedurePath = Join-Path $OutputDirectory "procedures.json"
 $officialModel | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $modelPath -Encoding UTF8
 $officialConfig | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $configPath -Encoding UTF8
+$securityContract = [ordered]@{
+    schemaVersion = "npdev-official-security-contract.v1"
+    expandedBeta0ContractVersion = "expanded-beta0.2026-05-05"
+    tenancy = $aiModel.tenancy
+    auth = $aiModel.auth
+    roles = $aiRoles
+}
+$workflowContract = [ordered]@{
+    schemaVersion = "npdev-official-workflow-contract.v1"
+    expandedBeta0ContractVersion = "expanded-beta0.2026-05-05"
+    workflows = $aiWorkflows
+}
+$panelContract = [ordered]@{
+    schemaVersion = "npdev-official-panel-contract.v1"
+    expandedBeta0ContractVersion = "expanded-beta0.2026-05-05"
+    panels = $aiPanels
+}
+$procedureContract = [ordered]@{
+    schemaVersion = "npdev-official-procedure-contract.v1"
+    expandedBeta0ContractVersion = "expanded-beta0.2026-05-05"
+    procedures = $aiProcedures
+}
+$securityContract | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $securityPath -Encoding UTF8
+$workflowContract | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $workflowPath -Encoding UTF8
+$panelContract | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $panelPath -Encoding UTF8
+$procedureContract | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $procedurePath -Encoding UTF8
 
 $result = [pscustomobject]@{
     schemaVersion = "npdev-ai-contract-normalizer-result.v1"
@@ -321,7 +523,16 @@ $result = [pscustomobject]@{
     outputs = [pscustomobject]@{
         model = $modelPath
         config = $configPath
+        security = $securityPath
+        workflows = $workflowPath
+        panels = $panelPath
+        procedures = $procedurePath
     }
+    expandedSurfaceNormalizationPassed = ([string]$aiModel.app.kind -eq "expanded-beta-application")
+    officialPanelContractsValid = ($aiPanels.Count -gt 0)
+    officialProcedureContractsValid = ($aiProcedures.Count -gt 0)
+    officialWorkflowContractsValid = ($aiWorkflows.Count -gt 0)
+    officialSecurityContractsValid = ($null -ne $aiModel.tenancy -and $null -ne $aiModel.auth -and $aiRoles.Count -gt 0)
     errors = @()
 }
 if (-not [string]::IsNullOrWhiteSpace($ResultPath)) {

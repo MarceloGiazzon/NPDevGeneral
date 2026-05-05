@@ -1,0 +1,165 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "app": {
+    "name": "Tenant Workflow Ops",
+    "kind": "expanded-beta-application"
+  },
+  "entities": [
+    {
+      "name": "Ticket",
+      "tenantScoped": true,
+      "fields": [
+        {
+          "name": "title",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "CreateTicket",
+      "entity": "Ticket",
+      "operation": "create",
+      "requiredRole": "agent",
+      "tenantScoped": true
+    }
+  ],
+  "panels": [
+    {
+      "panelId": "ticket-workflow-panel",
+      "type": "workflow-task",
+      "route": "/tickets/workflow",
+      "dataSource": {
+        "kind": "workflow",
+        "name": "ticket-lifecycle"
+      },
+      "components": [
+        "table",
+        "workflow-status-badge",
+        "button-action"
+      ],
+      "actions": [
+        "advance-ticket"
+      ],
+      "requiredRole": "agent",
+      "tenantScoped": true
+    }
+  ],
+  "procedures": [
+    {
+      "procedureId": "advance-ticket",
+      "type": "workflow-action",
+      "inputs": [
+        {
+          "name": "ticketId",
+          "type": "uuid",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ],
+      "sideEffectType": "workflow",
+      "requiredRole": "agent",
+      "tenantScoped": true,
+      "allowedEntities": [
+        "Ticket"
+      ],
+      "maxAffectedRows": 1,
+      "steps": [
+        {
+          "type": "return",
+          "value": "advanced"
+        }
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "workflowId": "ticket-lifecycle",
+      "entity": "Ticket",
+      "states": [
+        "open",
+        "in-review",
+        "closed"
+      ],
+      "startState": "open",
+      "terminalStates": [
+        "closed"
+      ],
+      "transitions": [
+        {
+          "name": "start-review",
+          "from": "open",
+          "to": "in-review",
+          "requiredRole": "agent"
+        },
+        {
+          "name": "close",
+          "from": "in-review",
+          "to": "closed",
+          "requiredRole": "manager"
+        }
+      ],
+      "tenantScoped": true
+    }
+  ],
+  "tenancy": {
+    "mode": "shared-app-tenant-scoped-data",
+    "tenantIdField": "tenantId",
+    "testTenants": [
+      "tenant-a",
+      "tenant-b"
+    ]
+  },
+  "auth": {
+    "mode": "generated-test-token",
+    "principalFields": [
+      "userId",
+      "tenantId",
+      "roles"
+    ],
+    "testUsers": [
+      {
+        "userId": "agent-a",
+        "tenantId": "tenant-a",
+        "roles": [
+          "agent"
+        ]
+      },
+      {
+        "userId": "manager-b",
+        "tenantId": "tenant-b",
+        "roles": [
+          "manager"
+        ]
+      }
+    ]
+  },
+  "roles": [
+    {
+      "roleId": "agent",
+      "permissions": [
+        "ticket:create",
+        "workflow:transition"
+      ]
+    },
+    {
+      "roleId": "manager",
+      "permissions": [
+        "workflow:transition",
+        "ticket:read"
+      ]
+    }
+  ]
+}

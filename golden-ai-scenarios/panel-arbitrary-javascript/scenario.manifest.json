@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "ai-scenario-manifest.v1",
+  "scenarioId": "panel-arbitrary-javascript",
+  "kind": "negative",
+  "expectedOutcome": "fail",
+  "expectedFailureStage": "ai-model-schema",
+  "files": {
+    "aiModel": "ai-model.json"
+  }
+}

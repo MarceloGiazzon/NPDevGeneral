@@ -37,7 +37,9 @@ Current root automation entrypoints:
 
 ## AI-only Beta 0
 
-Current Beta 0 scope is documented in `docs/beta/ai-only-beta-0-scope.md`.
+Expanded Beta 0 scope is enforced by `scripts/policy/beta0-scope.json`.
+The current release contract includes custom UI panels, custom procedures, multi-tenancy, authentication, roles, and workflow engine as blocking surfaces.
+Older simple CRUD-only Beta 0 reports are diagnostic only and cannot satisfy the expanded final release check.
 No-false-green release hardening is documented in `docs/beta/ai-only-beta-0-no-false-green-scope.md`.
 
 Target AI-only proof:
@@ -60,6 +62,7 @@ pwsh ./scripts/quality/run-json-schema-validator-tests.ps1
 pwsh ./scripts/quality/run-report-schema-validation.ps1
 pwsh ./scripts/quality/run-doc-entrypoint-validation.ps1
 pwsh ./scripts/quality/run-report-provenance-tests.ps1
+pwsh ./scripts/quality/run-expanded-beta0-evidence.ps1
 pwsh ./scripts/quality/run-beta0-final-closure-gate.ps1
 pwsh ./scripts/quality/run-beta0-final-release-check.ps1
 ```
@@ -88,6 +91,12 @@ Runbook and closure checklist:
 
 - `docs/beta/ai-only-beta-0-runbook.md`
 - `docs/beta/ai-only-beta-0-closure-checklist.md`
+
+Beta 0 tag gate dry-run:
+
+```powershell
+pwsh ./scripts/release/create-beta0-tag.ps1 -Version beta0 -DryRun
+```
 
 The release blocker execution roadmap and closing evidence are tracked in `docs/RELEASE_BLOCKER_EXECUTION_ROADMAP.md`.
 

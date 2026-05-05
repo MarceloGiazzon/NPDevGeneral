@@ -1,0 +1,84 @@
+{
+  "schemaVersion": "npdev-blocking-report-manifest.v1",
+  "release": "ai-only-beta-0",
+  "expandedBeta0ContractVersion": "expanded-beta0.2026-05-05",
+  "reports": [
+    {
+      "name": "scope-policy",
+      "path": "scripts/reports/out/scope-policy-report.json",
+      "schemaVersion": "npdev-scope-policy-report.v1",
+      "requiredStatus": "passed",
+      "inputs": [
+        "scripts/policy/beta0-scope.json"
+      ],
+      "blocking": true
+    },
+    {
+      "name": "ai-beta-gate",
+      "path": "scripts/reports/out/ai-beta-gate-report.json",
+      "schemaVersion": "npdev-ai-beta-gate-report.v1",
+      "requiredStatus": "passed",
+      "inputs": [
+        "golden-ai-scenarios",
+        "schemas/ai"
+      ],
+      "blocking": true
+    },
+    {
+      "name": "schema-validation",
+      "path": "scripts/reports/out/schema-validation-report.json",
+      "schemaVersion": "npdev-expanded-schema-validation-report.v1",
+      "requiredStatus": "passed",
+      "inputs": [
+        "schemas/ai",
+        "golden-ai-scenarios"
+      ],
+      "blocking": true
+    },
+    {
+      "name": "normalization",
+      "path": "scripts/reports/out/normalization-report.json",
+      "schemaVersion": "npdev-normalization-report.v1",
+      "requiredStatus": "passed",
+      "inputs": [
+        "scripts/ai/Normalize-AiContract.ps1",
+        "NPDevContract/schemas/model.schema.json",
+        "NPDevContract/schemas/config.schema.json"
+      ],
+      "blocking": true
+    },
+    {
+      "name": "expanded-smoke-suite",
+      "path": "scripts/reports/out/ui-panel-smoke-report.json",
+      "schemaVersion": "npdev-ui-panel-smoke-report.v1",
+      "requiredStatus": "passed",
+      "inputs": [
+        "golden-ai-scenarios/tenant-workflow-ops",
+        "golden-ai-scenarios/tenant-service-desk",
+        "golden-ai-scenarios/tenant-approval-portal"
+      ],
+      "blocking": true
+    },
+    {
+      "name": "beta-release-gate",
+      "path": "scripts/reports/out/beta-release-gate-report.json",
+      "schemaVersion": "beta-release-gate-report.v1",
+      "requiredStatus": "passed",
+      "inputs": [
+        "scripts/policy/beta-release-gate-policy.json",
+        "scripts/policy/beta0-release-truth-table.json"
+      ],
+      "blocking": true
+    },
+    {
+      "name": "final-release-check",
+      "path": "scripts/reports/out/beta0-final-release-check-report.json",
+      "schemaVersion": "npdev-beta0-final-release-check-report.v1",
+      "requiredStatus": "passed",
+      "inputs": [
+        "scripts/quality/run-beta0-final-release-check.ps1"
+      ],
+      "blocking": true
+    }
+  ]
+}

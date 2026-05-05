@@ -274,9 +274,13 @@ $policyStageStatus = "passed"
 $policyStageMessage = "Beta scope policy loaded."
 try {
     $policy = Read-JsonFile $policyPath
-    if ($policy.schemaVersion -ne "npdev-beta-scope.v1" -or $policy.release -ne "ai-only-beta-0") {
+    if ($policy.schemaVersion -notin @("npdev-beta-scope.v1", "npdev-beta-scope.v2") -or $policy.release -ne "ai-only-beta-0") {
         $policyStageStatus = "failed"
         $policyStageMessage = "Beta scope policy is malformed or not ai-only-beta-0."
+    }
+    elseif ($policy.schemaVersion -eq "npdev-beta-scope.v2" -and [string]$policy.delegatesTo -ne "scripts/policy/beta0-scope.json") {
+        $policyStageStatus = "failed"
+        $policyStageMessage = "Expanded Beta 0 scope must delegate to scripts/policy/beta0-scope.json."
     }
 }
 catch {

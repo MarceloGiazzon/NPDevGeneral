@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "ai-expected-behavior.v1",
+  "scenarioId": "tenant-service-desk",
+  "comparisonMode": "expanded-beta0",
+  "expectedClass": "PASS_EXPANDED_BETA0",
+  "assertions": [
+    {
+      "path": "actual.overallStatus",
+      "equals": "passed"
+    }
+  ]
+}
