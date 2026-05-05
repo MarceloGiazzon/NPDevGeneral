@@ -131,6 +131,25 @@ function Join-BaseAndPath {
     return $base + $PathValue
 }
 
+function Get-StringArray {
+    param([object]$Value)
+    if ($null -eq $Value) {
+        return @()
+    }
+    if ($Value -is [string]) {
+        if ([string]::IsNullOrWhiteSpace($Value)) { return @() }
+        return @($Value.Trim())
+    }
+    $items = @()
+    foreach ($item in @($Value)) {
+        $text = [string]$item
+        if (-not [string]::IsNullOrWhiteSpace($text)) {
+            $items += $text.Trim()
+        }
+    }
+    return @($items)
+}
+
 $planValidationPath = if (-not [string]::IsNullOrWhiteSpace($ReportPath)) { $ReportPath + ".plan-validation.json" } else { $null }
 $ErrorActionPreference = "Continue"
 pwsh -NoProfile -File scripts/quality/Invoke-JsonSchemaValidation.ps1 `
@@ -162,6 +181,7 @@ if ($ExpectedPort -gt 0 -and $baseUri.Port -ne $ExpectedPort) {
 
 $checkResults = @()
 $overallStatus = "passed"
+$coveredSurfaces = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
 foreach ($check in @($verification.checks)) {
     $failures = [System.Collections.Generic.List[string]]::new()
@@ -260,6 +280,12 @@ foreach ($check in @($verification.checks)) {
     if ($status -eq "failed") {
         $overallStatus = "failed"
     }
+    $checkCoveredSurfaces = @(Get-StringArray $check.coversSurfaces)
+    if ($status -eq "passed") {
+        foreach ($surface in $checkCoveredSurfaces) {
+            $coveredSurfaces.Add($surface) | Out-Null
+        }
+    }
     $checkResults += [pscustomobject]@{
         id = [string]$check.id
         status = $status
@@ -270,9 +296,16 @@ foreach ($check in @($verification.checks)) {
         durationMs = $durationMs
         responseBodySha256 = Get-Sha256Text $responseText
         responseBodyPreview = Limit-Preview $responseText
+        coversSurfaces = $checkCoveredSurfaces
         assertions = @($assertions)
         failures = @($failures)
     }
+}
+
+$requiredSurfaceCoverage = @(Get-StringArray $verification.requiredSurfaceCoverage)
+$missingSurfaceCoverage = @($requiredSurfaceCoverage | Where-Object { -not $coveredSurfaces.Contains($_) })
+if ($missingSurfaceCoverage.Count -gt 0) {
+    $overallStatus = "failed"
 }
 
 $report = [pscustomobject]@{
@@ -284,6 +317,12 @@ $report = [pscustomobject]@{
     baseUrl = $BaseUrl
     expectedPort = if ($ExpectedPort -gt 0) { $ExpectedPort } else { $null }
     planValidation = $planValidationPath
+    surfaceCoverage = [pscustomobject]@{
+        required = $requiredSurfaceCoverage
+        covered = @($coveredSurfaces | Sort-Object)
+        missing = $missingSurfaceCoverage
+        status = if ($missingSurfaceCoverage.Count -eq 0) { "passed" } else { "failed" }
+    }
     checks = $checkResults
 }
 

@@ -1,5 +1,7 @@
 package com.npdev.generator.emitters;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledMetadataCanonicalJson;
 import com.npdev.dsl.v1.compiled.CompiledModelCanonicalJson;
@@ -9,7 +11,10 @@ import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowStep;
 import com.npdev.dsl.v1.compiled.CompiledOrchestration;
 import com.npdev.dsl.v1.compiled.CompiledOrchestrationAction;
+import com.npdev.dsl.v1.compiled.CompiledPanel;
+import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
+import com.npdev.dsl.v1.compiled.CompiledProcedure;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.templates.TemplateEngine;
 
@@ -20,7 +25,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedHashSet;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -28,6 +37,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public final class RuntimeApiEmitter extends AbstractEmitter {
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     public RuntimeApiEmitter(TemplateEngine templates, GeneratedSourceWriter writer) {
         super(templates, writer);
@@ -224,7 +234,7 @@ writer.writeRelative(
         );
         writer.writeRelative(
                 "src/main/resources/npdev/security/dev.permissions.json",
-                generatePermissionManifest(model)
+                generatePermissionManifest(model, modelSourcePath)
         );
         writer.writeRelative(
                 "src/main/resources/npdev/security/dev.ui-metadata-policy.json",
@@ -312,7 +322,7 @@ writer.writeRelative(
         }
     }
 
-    private static String generatePermissionManifest(CompiledModel model) {
+    private static String generatePermissionManifest(CompiledModel model, Path modelSourcePath) {
         Set<String> permissions = new LinkedHashSet<>();
         permissions.add("flow.execute");
         permissions.add("capability.invoke");
@@ -327,15 +337,62 @@ writer.writeRelative(
                 addIfPresent(permissions, action.getAction() == null ? null : action.getAction().getPermissionHint());
             }
         }
+        for (CompiledProcedure procedure : model.getProcedures()) {
+            for (String requirement : procedure.permissionRequirements()) {
+                addIfPresent(permissions, requirement);
+            }
+        }
+        for (CompiledPanel panel : model.getPanels()) {
+            addRoleVisibilityPermission(permissions, panel.visibility());
+            for (CompiledPanelAction action : panel.actions()) {
+                for (String requirement : action.permissionRequirements()) {
+                    addIfPresent(permissions, requirement);
+                }
+            }
+        }
 
-        String grants = permissions.stream()
-                .map(permission -> """
+        AiBetaSecurityMetadata aiSecurity = readAiBetaSecurityMetadata(modelSourcePath);
+        permissions.addAll(aiSecurity.allDeclaredPermissions());
+
+        List<PermissionGrantSpec> grants = new ArrayList<>();
+        for (String permission : permissions) {
+            grants.add(new PermissionGrantSpec(permission, "dev", "", "admin"));
+        }
+        for (AiBetaUser user : aiSecurity.testUsers()) {
+            Set<String> userPermissions = new LinkedHashSet<>(List.of(
+                    "flow.execute",
+                    "capability.invoke",
+                    "event.publish"
+            ));
+            for (String role : user.roles()) {
+                addIfPresent(userPermissions, role);
+                userPermissions.addAll(aiSecurity.permissionsForRole(role));
+            }
+            for (String permission : userPermissions) {
+                grants.add(new PermissionGrantSpec(permission, user.tenantId(), user.userId(), ""));
+                for (String role : user.roles()) {
+                    grants.add(new PermissionGrantSpec(permission, user.tenantId(), "", role));
+                }
+            }
+        }
+
+        String grantsJson = grants.stream()
+                .sorted(Comparator.comparing(PermissionGrantSpec::permission)
+                        .thenComparing(PermissionGrantSpec::tenantId)
+                        .thenComparing(PermissionGrantSpec::actorId)
+                        .thenComparing(PermissionGrantSpec::role))
+                .map(grant -> """
     {
       "permission": "%s",
-      "tenantId": "dev",
-      "actorId": "",
-      "role": "admin"
-    }""".formatted(jsonEscape(permission)))
+      "tenantId": "%s",
+      "actorId": "%s",
+      "role": "%s"
+    }""".formatted(
+                        jsonEscape(grant.permission()),
+                        jsonEscape(grant.tenantId()),
+                        jsonEscape(grant.actorId()),
+                        jsonEscape(grant.role())
+                ))
                 .collect(Collectors.joining("," + System.lineSeparator()));
 
         return """
@@ -344,7 +401,7 @@ writer.writeRelative(
 %s
   ]
 }
-""".formatted(grants);
+""".formatted(grantsJson);
     }
 
     private static void collectStepPermissionHints(Iterable<CompiledFlowStep> steps, Set<String> permissions) {
@@ -359,6 +416,66 @@ writer.writeRelative(
             collectStepPermissionHints(step.getThenSteps(), permissions);
             collectStepPermissionHints(step.getElseSteps(), permissions);
         }
+    }
+
+    private static void addRoleVisibilityPermission(Set<String> permissions, String visibility) {
+        if (visibility == null) {
+            return;
+        }
+        String trimmed = visibility.trim();
+        if (trimmed.regionMatches(true, 0, "role:", 0, 5) && trimmed.length() > 5) {
+            addIfPresent(permissions, trimmed.substring(5));
+        }
+    }
+
+    private static AiBetaSecurityMetadata readAiBetaSecurityMetadata(Path modelSourcePath) {
+        if (modelSourcePath == null || !Files.isRegularFile(modelSourcePath)) {
+            return AiBetaSecurityMetadata.empty();
+        }
+        try {
+            JsonNode root = OBJECT_MAPPER.readTree(modelSourcePath.toFile());
+            JsonNode metadata = root.path("metadata");
+            Map<String, Set<String>> permissionsByRole = new HashMap<>();
+            for (JsonNode roleNode : metadata.path("roles")) {
+                String roleId = text(roleNode, "roleId");
+                if (roleId.isBlank()) {
+                    continue;
+                }
+                Set<String> rolePermissions = new LinkedHashSet<>();
+                rolePermissions.add(roleId);
+                for (JsonNode permissionNode : roleNode.path("permissions")) {
+                    addIfPresent(rolePermissions, permissionNode.asText(""));
+                }
+                permissionsByRole.put(roleId.toLowerCase(Locale.ROOT), rolePermissions);
+            }
+
+            List<AiBetaUser> users = new ArrayList<>();
+            for (JsonNode userNode : metadata.path("auth").path("testUsers")) {
+                String userId = text(userNode, "userId");
+                String tenantId = text(userNode, "tenantId");
+                if (userId.isBlank() || tenantId.isBlank()) {
+                    continue;
+                }
+                List<String> roles = new ArrayList<>();
+                for (JsonNode roleNode : userNode.path("roles")) {
+                    String role = roleNode.asText("").trim();
+                    if (!role.isBlank()) {
+                        roles.add(role);
+                    }
+                }
+                if (!roles.isEmpty()) {
+                    users.add(new AiBetaUser(userId, tenantId, List.copyOf(roles)));
+                }
+            }
+            return new AiBetaSecurityMetadata(Map.copyOf(permissionsByRole), List.copyOf(users));
+        } catch (IOException exception) {
+            throw new RuntimeException("Failed reading AI beta security metadata from " + modelSourcePath, exception);
+        }
+    }
+
+    private static String text(JsonNode node, String fieldName) {
+        JsonNode value = node == null ? null : node.get(fieldName);
+        return value == null || value.isNull() ? "" : value.asText("").trim();
     }
 
     private static String generateUiMetadataPolicyManifest(CompiledModel model) {
@@ -476,6 +593,47 @@ writer.writeRelative(
                 .replace("\n", "\\n");
     }
 
+    private record PermissionGrantSpec(String permission, String tenantId, String actorId, String role) {
+        PermissionGrantSpec {
+            permission = permission == null ? "" : permission.trim();
+            tenantId = tenantId == null ? "" : tenantId.trim();
+            actorId = actorId == null ? "" : actorId.trim();
+            role = role == null ? "" : role.trim();
+        }
+    }
+
+    private record AiBetaUser(String userId, String tenantId, List<String> roles) {
+        AiBetaUser {
+            roles = roles == null ? List.of() : List.copyOf(roles);
+        }
+    }
+
+    private record AiBetaSecurityMetadata(Map<String, Set<String>> permissionsByRole, List<AiBetaUser> testUsers) {
+        AiBetaSecurityMetadata {
+            permissionsByRole = permissionsByRole == null ? Map.of() : Map.copyOf(permissionsByRole);
+            testUsers = testUsers == null ? List.of() : List.copyOf(testUsers);
+        }
+
+        static AiBetaSecurityMetadata empty() {
+            return new AiBetaSecurityMetadata(Map.of(), List.of());
+        }
+
+        Set<String> permissionsForRole(String role) {
+            if (role == null) {
+                return Set.of();
+            }
+            return permissionsByRole.getOrDefault(role.trim().toLowerCase(Locale.ROOT), Set.of());
+        }
+
+        Set<String> allDeclaredPermissions() {
+            Set<String> out = new LinkedHashSet<>();
+            for (Map.Entry<String, Set<String>> entry : permissionsByRole.entrySet()) {
+                addIfPresent(out, entry.getKey());
+                out.addAll(entry.getValue());
+            }
+            return Set.copyOf(out);
+        }
+    }
 
     private static String readDefaultRuntimeManifest() {
         Path manifestPath = Paths.get("resources", "runtime", "dev.runtime.json");

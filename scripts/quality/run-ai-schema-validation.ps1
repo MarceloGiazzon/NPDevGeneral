@@ -229,6 +229,8 @@ function Test-AiVerification {
 
     $hasHealth = $false
     $hasBehavior = $false
+    $declaredSurfaceCoverage = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $requiredSurfaceCoverage = @($Verification.requiredSurfaceCoverage | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
     foreach ($check in @($Verification.checks)) {
         if ([string]::IsNullOrWhiteSpace([string]$check.id) -or [string]$check.id -notmatch "^[a-z0-9][a-z0-9-]*$") {
             Add-Failure $failures "check.id is required and must be kebab-case."
@@ -250,9 +252,17 @@ function Test-AiVerification {
         else {
             $hasBehavior = $true
         }
+        foreach ($surface in @($check.coversSurfaces | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+            $declaredSurfaceCoverage.Add($surface) | Out-Null
+        }
     }
     if (-not $hasHealth) { Add-Failure $failures "checks must include /actuator/health." }
     if (-not $hasBehavior) { Add-Failure $failures "checks must include at least one behavior check." }
+    foreach ($surface in $requiredSurfaceCoverage) {
+        if (-not $declaredSurfaceCoverage.Contains($surface)) {
+            Add-Failure $failures ("requiredSurfaceCoverage is not covered by any check: " + $surface)
+        }
+    }
     return $failures
 }
 

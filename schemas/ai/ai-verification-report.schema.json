@@ -20,6 +20,14 @@
     "baseUrlVariable": {
       "const": "NPDEV_GENERATED_APP_BASE_URL"
     },
+    "requiredSurfaceCoverage": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/beta0Surface"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
     "checks": {
       "type": "array",
       "minItems": 2,
@@ -72,10 +80,33 @@
           },
           "expectedJsonContains": {
             "type": "object"
+          },
+          "coversSurfaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/beta0Surface"
+            },
+            "uniqueItems": true,
+            "default": []
           }
         },
         "additionalProperties": false
       }
+    }
+  },
+  "$defs": {
+    "beta0Surface": {
+      "enum": [
+        "custom-ui-panels",
+        "custom-procedures",
+        "multi-tenancy",
+        "authentication",
+        "roles",
+        "workflow-engine",
+        "generated-app-build",
+        "generated-app-boot",
+        "rest-smoke"
+      ]
     }
   },
   "additionalProperties": false

@@ -44,6 +44,96 @@ try {
         throw "Positive REST smoke verifier result did not include observed response evidence."
     }
 
+    $coveragePlan = [ordered]@{
+        schemaVersion = "ai-verification-report.v1"
+        scenarioId = "surface-coverage"
+        baseUrlVariable = "NPDEV_GENERATED_APP_BASE_URL"
+        requiredSurfaceCoverage = @("authentication", "rest-smoke")
+        checks = @(
+            [ordered]@{
+                id = "health-ok"
+                type = "http"
+                method = "GET"
+                path = "/actuator/health"
+                expectedStatus = 200
+                expectedJsonContains = @{ status = "UP" }
+                coversSurfaces = @("rest-smoke")
+            },
+            [ordered]@{
+                id = "create-user-auth-surface"
+                type = "http"
+                method = "POST"
+                path = "/api/users"
+                headers = @{ "X-Api-Key" = "dev-key" }
+                body = @{
+                    email = "surface@example.com"
+                    displayName = "Surface Coverage"
+                }
+                expectedStatus = 201
+                coversSurfaces = @("authentication")
+            }
+        )
+    }
+    $coveragePlanPath = Join-Path $testRoot "coverage-plan.json"
+    $coveragePlan | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $coveragePlanPath -Encoding UTF8
+    $coverageReportPath = Join-Path $testRoot "coverage-result.json"
+    pwsh -NoProfile -File scripts/ai/Invoke-AiRestSmokeVerifier.ps1 `
+        -VerificationPath $coveragePlanPath `
+        -BaseUrl $baseUrl `
+        -ReportPath $coverageReportPath | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Surface coverage REST smoke verifier run failed."
+    }
+    $coverageResult = Get-Content -Raw -LiteralPath $coverageReportPath | ConvertFrom-Json
+    if ($coverageResult.surfaceCoverage.status -ne "passed" -or @($coverageResult.surfaceCoverage.covered).Count -lt 2) {
+        throw "Surface coverage was not recorded for passing checks."
+    }
+
+    $missingCoveragePlan = [ordered]@{
+        schemaVersion = "ai-verification-report.v1"
+        scenarioId = "missing-surface-coverage"
+        baseUrlVariable = "NPDEV_GENERATED_APP_BASE_URL"
+        requiredSurfaceCoverage = @("custom-ui-panels")
+        checks = @(
+            [ordered]@{
+                id = "health-ok"
+                type = "http"
+                method = "GET"
+                path = "/actuator/health"
+                expectedStatus = 200
+            },
+            [ordered]@{
+                id = "create-user-ok"
+                type = "http"
+                method = "POST"
+                path = "/api/users"
+                headers = @{ "X-Api-Key" = "dev-key" }
+                body = @{
+                    email = "missing-coverage@example.com"
+                    displayName = "Missing Coverage"
+                }
+                expectedStatus = 201
+            }
+        )
+    }
+    $missingCoveragePlanPath = Join-Path $testRoot "missing-coverage-plan.json"
+    $missingCoveragePlan | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $missingCoveragePlanPath -Encoding UTF8
+    $missingCoverageReportPath = Join-Path $testRoot "missing-coverage-result.json"
+    $ErrorActionPreference = "Continue"
+    pwsh -NoProfile -File scripts/ai/Invoke-AiRestSmokeVerifier.ps1 `
+        -VerificationPath $missingCoveragePlanPath `
+        -BaseUrl $baseUrl `
+        -ReportPath $missingCoverageReportPath 2>$null | Out-Null
+    $missingCoverageExit = $LASTEXITCODE
+    $ErrorActionPreference = "Stop"
+    if ($missingCoverageExit -eq 0) {
+        throw "Missing required surface coverage was not rejected."
+    }
+    $missingCoverageResult = Get-Content -Raw -LiteralPath $missingCoverageReportPath | ConvertFrom-Json
+    if ($missingCoverageResult.surfaceCoverage.status -ne "failed" -or @($missingCoverageResult.surfaceCoverage.missing) -notcontains "custom-ui-panels") {
+        throw "Missing surface coverage was not reported."
+    }
+
     $positiveSchemaReportPath = Join-Path $testRoot "positive-result-schema-validation.json"
     pwsh -NoProfile -File scripts/quality/Invoke-JsonSchemaValidation.ps1 `
         -SchemaPath schemas/ai/ai-rest-smoke-result.schema.json `
@@ -215,6 +305,7 @@ $report = [pscustomobject]@{
         "external URL paths are rejected",
         "wrong generated app ports are rejected",
         "malformed smoke plans are rejected before execution",
+        "required surface coverage is enforced",
         "result schema validation passes for positive evidence"
     )
 }

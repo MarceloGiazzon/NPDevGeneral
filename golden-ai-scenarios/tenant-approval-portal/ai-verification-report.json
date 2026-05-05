@@ -2,6 +2,15 @@
   "schemaVersion": "ai-verification-report.v1",
   "scenarioId": "tenant-approval-portal",
   "baseUrlVariable": "NPDEV_GENERATED_APP_BASE_URL",
+  "requiredSurfaceCoverage": [
+    "custom-ui-panels",
+    "custom-procedures",
+    "multi-tenancy",
+    "authentication",
+    "roles",
+    "workflow-engine",
+    "rest-smoke"
+  ],
   "checks": [
     {
       "id": "health-ok",
@@ -11,26 +20,166 @@
       "expectedStatus": 200,
       "expectedJsonContains": {
         "status": "UP"
-      }
+      },
+      "coversSurfaces": [
+        "rest-smoke"
+      ]
     },
     {
-      "id": "create-request",
+      "id": "missing-auth-rejected",
+      "type": "http",
+      "method": "GET",
+      "path": "/api/admin/runtime/metadata",
+      "expectedStatus": 401,
+      "expectedJsonContains": {
+        "error": "missing_api_key"
+      },
+      "coversSurfaces": [
+        "authentication"
+      ]
+    },
+    {
+      "id": "invalid-auth-rejected",
+      "type": "http",
+      "method": "GET",
+      "path": "/api/admin/runtime/metadata",
+      "headers": {
+        "X-Api-Key": "not-a-valid-key"
+      },
+      "expectedStatus": 401,
+      "expectedJsonContains": {
+        "error": "invalid_api_key"
+      },
+      "coversSurfaces": [
+        "authentication"
+      ]
+    },
+    {
+      "id": "scenario-authenticated-create-request",
       "type": "http",
       "method": "POST",
       "path": "/api/requests",
       "headers": {
         "Content-Type": "application/json",
-        "X-Api-Key": "dev-key"
+        "X-Api-Key": "ai-tenant-approval-portal-requester-a"
       },
       "body": {
         "tenantId": "tenant-a",
         "title": "Approval request",
-        "amount": 42
+        "amount": 42,
+        "status": "draft"
       },
       "expectedStatus": 201,
       "expectedJsonContains": {
+        "tenantId": "tenant-a",
         "title": "Approval request"
-      }
+      },
+      "coversSurfaces": [
+        "authentication",
+        "multi-tenancy"
+      ]
+    },
+    {
+      "id": "cross-tenant-panel-action-rejected",
+      "type": "http",
+      "method": "POST",
+      "path": "/api/execute/panel-action",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Api-Key": "ai-tenant-approval-portal-requester-a"
+      },
+      "body": {
+        "tenantId": "tenant-b",
+        "panelName": "approval-dashboard",
+        "actionName": "approval-summary",
+        "input": {
+          "tenantId": "tenant-b"
+        }
+      },
+      "expectedStatus": 403,
+      "coversSurfaces": [
+        "multi-tenancy"
+      ]
+    },
+    {
+      "id": "scenario-role-not-admin",
+      "type": "http",
+      "method": "GET",
+      "path": "/api/admin/runtime/metadata",
+      "headers": {
+        "X-Api-Key": "ai-tenant-approval-portal-requester-a"
+      },
+      "expectedStatus": 403,
+      "coversSurfaces": [
+        "roles"
+      ]
+    },
+    {
+      "id": "workflow-lifecycle-metadata",
+      "type": "http",
+      "method": "GET",
+      "path": "/api/admin/runtime/metadata/concepts/Request",
+      "headers": {
+        "X-Api-Key": "dev-key"
+      },
+      "expectedStatus": 200,
+      "expectedJsonContains": {
+        "concept": {
+          "name": "Request",
+          "lifecycleStatusField": "status",
+          "initialState": "draft",
+          "transitionCount": 3
+        }
+      },
+      "coversSurfaces": [
+        "workflow-engine"
+      ]
+    },
+    {
+      "id": "custom-panel-load",
+      "type": "http",
+      "method": "GET",
+      "path": "/api/runtime/metadata/ui/panels/approval-dashboard",
+      "headers": {
+        "X-Api-Key": "ai-tenant-approval-portal-approver-b"
+      },
+      "expectedStatus": 200,
+      "expectedJsonContains": {
+        "surfaceType": "panel-runtime",
+        "operation": "loadPanel",
+        "panelName": "approval-dashboard",
+        "tenantId": "tenant-b"
+      },
+      "coversSurfaces": [
+        "custom-ui-panels",
+        "multi-tenancy"
+      ]
+    },
+    {
+      "id": "custom-procedure-panel-action",
+      "type": "http",
+      "method": "POST",
+      "path": "/api/runtime/metadata/ui/panels/approval-dashboard/actions/approval-summary",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Api-Key": "ai-tenant-approval-portal-approver-b"
+      },
+      "body": {
+        "tenantId": "tenant-b"
+      },
+      "expectedStatus": 200,
+      "expectedJsonContains": {
+        "surfaceType": "panel-runtime",
+        "operation": "executeAction",
+        "panelName": "approval-dashboard",
+        "actionName": "approval-summary",
+        "status": "OK",
+        "tenantId": "tenant-b"
+      },
+      "coversSurfaces": [
+        "custom-procedures",
+        "custom-ui-panels"
+      ]
     }
   ]
 }

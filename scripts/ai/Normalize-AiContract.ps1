@@ -143,6 +143,7 @@ function New-OfficialModel {
     $procedures = @()
     $panels = @()
     $tenantIdField = if ($null -ne $Model.tenancy) { [string]$Model.tenancy.tenantIdField } else { "" }
+    $modelWorkflows = if ($null -eq $Model.workflows) { @() } else { @($Model.workflows | Where-Object { $null -ne $_ }) }
 
     foreach ($entity in @($Model.entities)) {
         $fields = @(
@@ -183,7 +184,33 @@ function New-OfficialModel {
             }
         }
 
-        $concepts += [ordered]@{
+        $entityWorkflow = $modelWorkflows | Where-Object { [string]$_.entity -eq [string]$entity.name } | Select-Object -First 1
+        $fieldNames = @($fields | ForEach-Object { [string]$_.name })
+        if ($null -ne $entityWorkflow -and -not [string]::IsNullOrWhiteSpace([string]$entityWorkflow.workflowId)) {
+            $workflowStates = @($entityWorkflow.states | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+            if ($fieldNames -contains "status") {
+                foreach ($fieldSpec in $fields) {
+                    if ([string]$fieldSpec.name -eq "status") {
+                        $fieldSpec["type"] = "enum"
+                        $fieldSpec["enumValues"] = $workflowStates
+                    }
+                }
+            }
+            else {
+                $fields += [ordered]@{
+                    name = "status"
+                    type = "enum"
+                    enumValues = $workflowStates
+                    required = $true
+                }
+                $invariants += [ordered]@{
+                    name = "StatusRequired"
+                    expr = "status != null && status != ''"
+                }
+            }
+        }
+
+        $concept = [ordered]@{
             name = [string]$entity.name
             ui = [ordered]@{
                 label = [string]$entity.name
@@ -191,6 +218,36 @@ function New-OfficialModel {
             fields = $fields
             invariants = $invariants
         }
+        if ($null -ne $entityWorkflow -and -not [string]::IsNullOrWhiteSpace([string]$entityWorkflow.workflowId)) {
+            $terminalStates = @($entityWorkflow.terminalStates | ForEach-Object { [string]$_ })
+            $concept["lifecycle"] = [ordered]@{
+                statusField = "status"
+                states = @($entityWorkflow.states | ForEach-Object {
+                    $stateValue = [string]$_
+                    [ordered]@{
+                        value = $stateValue
+                        label = $stateValue
+                        initial = ($stateValue -eq [string]$entityWorkflow.startState)
+                        terminal = ($terminalStates -contains $stateValue)
+                        metadata = [ordered]@{
+                            beta0WorkflowId = [string]$entityWorkflow.workflowId
+                        }
+                    }
+                })
+                transitions = @($entityWorkflow.transitions | ForEach-Object {
+                    [ordered]@{
+                        from = [string]$_.from
+                        to = [string]$_.to
+                        actionLabel = [string]$_.name
+                        metadata = [ordered]@{
+                            beta0WorkflowId = [string]$entityWorkflow.workflowId
+                            requiredRole = [string]$_.requiredRole
+                        }
+                    }
+                })
+            }
+        }
+        $concepts += $concept
         $events += [ordered]@{
             name = ([string]$entity.name + "Created")
             payload = @(
@@ -236,8 +293,8 @@ function New-OfficialModel {
         }
     }
 
-    $modelProcedures = if ($null -eq $Model.procedures) { @() } else { @($Model.procedures) }
-    $modelPanels = if ($null -eq $Model.panels) { @() } else { @($Model.panels) }
+    $modelProcedures = if ($null -eq $Model.procedures) { @() } else { @($Model.procedures | Where-Object { $null -ne $_ }) }
+    $modelPanels = if ($null -eq $Model.panels) { @() } else { @($Model.panels | Where-Object { $null -ne $_ }) }
     foreach ($procedure in $modelProcedures) {
         $procedureSteps = @()
         $steps = if ($null -eq $procedure.steps) { @() } else { @($procedure.steps) }
@@ -353,8 +410,8 @@ function New-OfficialModel {
             expandedBeta0ContractVersion = "expanded-beta0.2026-05-05"
             tenancy = $Model.tenancy
             auth = $Model.auth
-            roles = @($Model.roles)
-            workflows = @($Model.workflows)
+            roles = @(if ($null -eq $Model.roles) { @() } else { @($Model.roles | Where-Object { $null -ne $_ }) })
+            workflows = $modelWorkflows
             requiredSurfaces = @(
                 "custom-ui-panels",
                 "custom-procedures",
@@ -477,10 +534,10 @@ if ($failures.Count -gt 0) {
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $officialModel = New-OfficialModel $aiModel $scenarioId
 $officialConfig = New-OfficialConfig $aiConfig $aiModel $scenarioId
-$aiPanels = if ($null -eq $aiModel.panels) { @() } else { @($aiModel.panels) }
-$aiProcedures = if ($null -eq $aiModel.procedures) { @() } else { @($aiModel.procedures) }
-$aiWorkflows = if ($null -eq $aiModel.workflows) { @() } else { @($aiModel.workflows) }
-$aiRoles = if ($null -eq $aiModel.roles) { @() } else { @($aiModel.roles) }
+$aiPanels = if ($null -eq $aiModel.panels) { @() } else { @($aiModel.panels | Where-Object { $null -ne $_ }) }
+$aiProcedures = if ($null -eq $aiModel.procedures) { @() } else { @($aiModel.procedures | Where-Object { $null -ne $_ }) }
+$aiWorkflows = if ($null -eq $aiModel.workflows) { @() } else { @($aiModel.workflows | Where-Object { $null -ne $_ }) }
+$aiRoles = if ($null -eq $aiModel.roles) { @() } else { @($aiModel.roles | Where-Object { $null -ne $_ }) }
 $modelPath = Join-Path $OutputDirectory "model.json"
 $configPath = Join-Path $OutputDirectory "config.json"
 $securityPath = Join-Path $OutputDirectory "security.json"
