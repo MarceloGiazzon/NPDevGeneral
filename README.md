@@ -19,19 +19,75 @@ After reading the root PROJECT_DIGEST.md, read PROJECT_DIGEST.md inside each sub
 
 Current root automation entrypoints:
 
-- `pwsh -File scripts/quality/run-beta-release-gate.ps1`
-- `pwsh -File scripts/doctor/npdev-doctor.ps1`
-- `pwsh -File scripts/quality/run-contract-gate.ps1`
-- `pwsh -File scripts/quality/run-editor-gate.ps1`
-- `pwsh -File scripts/quality/run-frontend-gate.ps1`
 - `pwsh -File scripts/quality/run-generator-gate.ps1`
-- `pwsh -File scripts/quality/run-kernel-gate.ps1`
 - `pwsh -File scripts/quality/run-runtimehost-gate.ps1`
-- `pwsh -File scripts/quality/run-traceable-local-release.ps1`
-- `pwsh -File scripts/maturity_adv/run-prioritized-control-board.ps1`
+- `pwsh -File scripts/quality/run-json-schema-validator-tests.ps1`
+- `pwsh -File scripts/quality/run-ai-schema-validation.ps1`
+- `pwsh -File scripts/quality/run-ai-contract-normalizer-tests.ps1`
+- `pwsh -File scripts/quality/run-controlled-command-runner-tests.ps1`
+- `pwsh -File scripts/quality/run-ai-rest-smoke-verifier-tests.ps1`
+- `pwsh -File scripts/quality/run-sample-matrix.ps1`
+- `pwsh -File scripts/quality/run-ai-beta-gate.ps1`
+- `pwsh -File scripts/quality/run-report-schema-validation.ps1`
+- `pwsh -File scripts/quality/run-doc-entrypoint-validation.ps1`
+- `pwsh -File scripts/quality/run-report-provenance-tests.ps1`
+- `pwsh -File scripts/quality/run-beta-release-gate.ps1`
+- `pwsh -File scripts/quality/run-beta0-final-closure-gate.ps1`
+- `pwsh -File scripts/quality/run-beta0-final-release-check.ps1`
 
-Release readiness has one source of truth: `scripts/reports/out/beta-release-gate-report.json`, produced by `run-beta-release-gate.ps1`. Focused gate reports are evidence only and must be interpreted through that aggregate report. See `docs/RELEASE_EVIDENCE_SOURCE_OF_TRUTH.md`.
+## AI-only Beta 0
+
+Current Beta 0 scope is documented in `docs/beta/ai-only-beta-0-scope.md`.
+No-false-green release hardening is documented in `docs/beta/ai-only-beta-0-no-false-green-scope.md`.
+
+Target AI-only proof:
+
+```powershell
+pwsh ./scripts/quality/run-ai-beta-gate.ps1
+```
+
+Target release proof:
+
+```powershell
+pwsh ./scripts/quality/run-beta-release-gate.ps1
+```
+
+No-false-green closure proof:
+
+```powershell
+pwsh ./scripts/quality/run-json-schema-validation-tests.ps1
+pwsh ./scripts/quality/run-json-schema-validator-tests.ps1
+pwsh ./scripts/quality/run-report-schema-validation.ps1
+pwsh ./scripts/quality/run-doc-entrypoint-validation.ps1
+pwsh ./scripts/quality/run-report-provenance-tests.ps1
+pwsh ./scripts/quality/run-beta0-final-closure-gate.ps1
+pwsh ./scripts/quality/run-beta0-final-release-check.ps1
+```
+
+Docker/Linux proof is experimental for Beta 0 and is not official release evidence in this pass:
+
+```bash
+docker build -f Dockerfile.ai-beta -t npdev-ai-beta:local .
+docker run --rm -v "$PWD:/workspace" -w /workspace npdev-ai-beta:local pwsh ./scripts/quality/run-ai-beta-gate.ps1
+```
+
+Current source-of-truth reports:
+
+- `scripts/reports/out/ai-beta-gate-report.json`
+- `scripts/reports/out/beta-release-gate-report.json`
+- `scripts/reports/out/beta0-final-closure-report.json`
+- `scripts/reports/out/beta-release-evidence-manifest.json`
+- `scripts/reports/out/ai-beta-reproducibility-report.json`
+
+These gate scripts are required for AI-only Beta 0. If either script or report is missing, stale, manually edited, not tied to the current workspace fingerprint, or mixed across different child-report `runId` values, Beta 0 is blocked.
+
+Release readiness has one source of truth: `scripts/reports/out/beta-release-gate-report.json`, produced by the aggregate beta release gate. Focused gate reports are evidence only and must be interpreted through that aggregate report. See `docs/RELEASE_EVIDENCE_SOURCE_OF_TRUTH.md`.
 `release-ready-summary.json` is release-grade only when that aggregate report is `passed` and the evidence provenance is traceable to Git or CI. Local unanchored runs remain diagnostic-only.
+
+Runbook and closure checklist:
+
+- `docs/beta/ai-only-beta-0-runbook.md`
+- `docs/beta/ai-only-beta-0-closure-checklist.md`
 
 The release blocker execution roadmap and closing evidence are tracked in `docs/RELEASE_BLOCKER_EXECUTION_ROADMAP.md`.
 

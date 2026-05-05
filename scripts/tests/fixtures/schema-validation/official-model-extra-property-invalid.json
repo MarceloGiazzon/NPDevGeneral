@@ -1,0 +1,18 @@
+{
+  "$schema": "NPDevContract/schemas/model.schema.json",
+  "schemaVersion": "1.0.0",
+  "namespace": "npdev.beta.fixture",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "concepts": [
+    {
+      "name": "Contact",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid"
+        }
+      ]
+    }
+  ]
+}

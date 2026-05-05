@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "app": {
+    "name": "Invalid Contract",
+    "kind": "simple-crud-workflow"
+  },
+  "entities": [
+    {
+      "name": "user",
+      "fields": [
+        {
+          "name": "email",
+          "type": "secret",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "CreateUser",
+      "entity": "User",
+      "operation": "create"
+    }
+  ]
+}

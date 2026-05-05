@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/ai-verification-report.schema.json",
+  "title": "NPDev AI Verification Report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "scenarioId",
+    "baseUrlVariable",
+    "checks"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "ai-verification-report.v1"
+    },
+    "scenarioId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "baseUrlVariable": {
+      "const": "NPDEV_GENERATED_APP_BASE_URL"
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "method",
+          "path",
+          "expectedStatus"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "type": {
+            "const": "http"
+          },
+          "method": {
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "pattern": "^/[^\\s]*$"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "body": {
+            "type": "object"
+          },
+          "expectedStatus": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 599
+          },
+          "expectedJson": {
+            "type": "object"
+          },
+          "expectedJsonContains": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

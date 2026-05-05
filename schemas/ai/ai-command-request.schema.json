@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/ai-command-request.schema.json",
+  "title": "NPDev AI Command Request",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "type"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-ai-command-request.v1"
+    },
+    "type": {
+      "enum": [
+        "trusted-script",
+        "gradle-task",
+        "schema-validation",
+        "rest-smoke",
+        "raw-command"
+      ]
+    },
+    "description": {
+      "type": "string"
+    },
+    "script": {
+      "type": "string",
+      "minLength": 1
+    },
+    "args": {
+      "type": "object"
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schemaPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "instancePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verificationPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "baseUrl": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expectedPort": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "executable": {
+      "type": "string",
+      "minLength": 1
+    },
+    "arguments": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "workingDirectory": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timeoutSeconds": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "expectedErrorCode": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "trusted-script"
+          }
+        },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["script"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "gradle-task"
+          }
+        },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["projectRoot", "task"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "schema-validation"
+          }
+        },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["schemaPath", "instancePath"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "rest-smoke"
+          }
+        },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["verificationPath", "baseUrl"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "raw-command"
+          }
+        },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["executable", "arguments", "workingDirectory"]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

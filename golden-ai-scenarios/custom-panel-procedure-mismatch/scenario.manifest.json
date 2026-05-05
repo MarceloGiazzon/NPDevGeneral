@@ -1,33 +1,19 @@
 {
-  "schemaVersion": "ai-scenario.v1",
+  "schemaVersion": "ai-scenario-manifest.v1",
   "scenarioId": "custom-panel-procedure-mismatch",
-  "kind": "ai-custom-procedure-panel-functional-beta",
+  "kind": "negative",
+  "expectedOutcome": "fail",
+  "expectedFailureStage": "ai-model-schema",
   "files": {
+    "aiModel": "ai-model.json",
+    "aiConfig": "ai-config.json",
+    "verification": "ai-verification-report.json",
+    "expectedBehavior": "expected-behavior.json",
     "model": "model.json",
     "config": "config.json",
-    "expectedBehavior": "expected-behavior.json",
-    "customProcedure": "custom-procedure.json",
-    "expectedProcedureBehavior": "expected-procedure-behavior.json",
     "customPanel": "custom-panel.json",
-    "expectedPanelBehavior": "expected-panel-behavior.json"
-  },
-  "runtime": {
-    "strictExecution": true,
-    "surfaceProfile": "supported-core"
-  },
-  "requestedSurfaces": ["supported-core"],
-  "operations": [
-    {
-      "type": "customProcedure",
-      "procedureId": "promote-learner"
-    },
-    {
-      "type": "customPanel",
-      "panelId": "readiness-panel"
-    }
-  ],
-  "expectedOutcome": {
-    "class": "FAIL_PANEL_PROCEDURE_INTEGRATION",
-    "mustPass": false
+    "customProcedure": "custom-procedure.json",
+    "expectedPanelBehavior": "expected-panel-behavior.json",
+    "expectedProcedureBehavior": "expected-procedure-behavior.json"
   }
 }

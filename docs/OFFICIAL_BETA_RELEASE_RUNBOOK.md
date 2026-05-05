@@ -1,5 +1,7 @@
 # NPDev Official Beta Release Runbook
 
+Historical baseline notice: this runbook records the previous RuntimeHost convergence beta baseline. Current AI-only Beta 0 readiness is determined only by `scripts\reports\out\ai-beta-gate-report.json` and `scripts\reports\out\beta-release-gate-report.json` produced by the current gates for the current workspace fingerprint.
+
 ## Purpose
 
 This runbook defines the official local and GitHub/CI release path for NPDev after the RuntimeHost convergence roadmap.

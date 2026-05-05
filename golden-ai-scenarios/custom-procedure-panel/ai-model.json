@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "app": {
+    "name": "Custom Procedure Panel",
+    "kind": "custom-procedure-panel"
+  },
+  "entities": [
+    {
+      "name": "User",
+      "fields": [
+        {
+          "name": "email",
+          "type": "email",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "CreateUser",
+      "entity": "User",
+      "operation": "create"
+    }
+  ]
+}

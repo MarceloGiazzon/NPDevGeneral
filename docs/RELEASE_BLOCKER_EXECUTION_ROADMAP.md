@@ -1,5 +1,12 @@
 # Release Blocker Execution Roadmap
 
+Historical evidence only. Current AI-only Beta 0 readiness is determined exclusively by the current source-of-truth reports:
+
+- `scripts\reports\out\ai-beta-gate-report.json`
+- `scripts\reports\out\beta-release-gate-report.json`
+
+The dated release-ready statements below describe a previous RuntimeHost-focused beta evidence effort and must not be used as current AI-only Beta 0 proof.
+
 This roadmap converted the release evidence into an execution sequence for closing the remaining red lanes.
 
 The blocker baseline evidence run was:

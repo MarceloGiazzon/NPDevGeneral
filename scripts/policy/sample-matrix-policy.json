@@ -1,19 +1,34 @@
 {
-  "version": "1.0",
-  "releaseKinds": [
-    "canonical-demo",
-    "official-sample",
-    "tenant-sample"
+  "schemaVersion": "npdev-sample-matrix-policy.v1",
+  "release": "ai-only-beta-0",
+  "requiredBeta0Samples": [
+    "simple-user-registry"
   ],
-  "excludedKinds": [
-    "test-model"
+  "optionalBeta0Samples": [
+    "simple-contact-intake",
+    "canonical-demo"
   ],
-  "requiredReleaseCoveragePercent": 100.0,
-  "minimumReleaseSampleCount": 5,
-  "minimumReleaseSamplesByKind": {
-    "canonical-demo": 1,
-    "official-sample": 3,
-    "tenant-sample": 1
+  "postBeta0Samples": [
+    "medium-expense-approval",
+    "restaurant-saas-multitenant",
+    "user-minimal"
+  ],
+  "aiBetaScenarioLinks": {
+    "simple-user-registry": [
+      "base-ai-loop",
+      "behavior-mismatch"
+    ]
   },
-  "partialMatrixRequiresAllowPartialSwitch": true
+  "requiredInputFiles": [
+    "model.json",
+    "config.json",
+    "manifest.json",
+    "expected-behavior.md",
+    "expected-endpoints.md"
+  ],
+  "allowedDatabaseProviders": [
+    "docker-postgres",
+    "postgres",
+    "embedded-test"
+  ]
 }

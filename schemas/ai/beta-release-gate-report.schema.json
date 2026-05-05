@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/beta-release-gate-report.schema.json",
+  "title": "NPDev Beta Release Gate Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "status",
+    "overallStatus",
+    "candidateReady",
+    "releaseReady",
+    "provenanceReady",
+    "officialReleaseEligible",
+    "generatedAt",
+    "scriptPath",
+    "git",
+    "requiredReports",
+    "blockers"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "beta-release-gate-report.v1"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "overallStatus": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "candidateReady": {
+      "type": "boolean"
+    },
+    "releaseReady": {
+      "type": "boolean"
+    },
+    "officialReleaseEligible": {
+      "type": "boolean"
+    },
+    "provenanceReady": {
+      "type": "boolean"
+    },
+    "generatedAt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scriptPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "git": {
+      "type": "object",
+      "required": [
+        "branch",
+        "commit",
+        "dirty",
+        "dirtyFileCount"
+      ],
+      "properties": {
+        "branch": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        },
+        "dirty": {
+          "type": "boolean"
+        },
+        "dirtyFileCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dirtyHash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workspaceFingerprint": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "requiredReports": {
+      "type": "array"
+    },
+    "blockers": {
+      "type": "array"
+    },
+    "truthTableEvaluation": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "passed",
+          "requires"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "requires": {
+            "type": "array"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  }
+}

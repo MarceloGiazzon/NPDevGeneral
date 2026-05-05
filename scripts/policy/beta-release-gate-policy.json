@@ -1,0 +1,102 @@
+{
+  "schemaVersion": "npdev-beta-release-gate-policy.v1",
+  "release": "ai-only-beta-0",
+  "maxReportAgeHours": 24,
+  "sourceOfTruth": {
+    "aiBetaProofReport": "scripts/reports/out/ai-beta-gate-report.json",
+    "releaseProofReport": "scripts/reports/out/beta-release-gate-report.json",
+    "evidenceManifest": "scripts/reports/out/beta-release-evidence-manifest.json",
+    "releaseReadySummary": "scripts/reports/out/release-ready-summary.json"
+  },
+  "officialEvidencePlatform": "windows-ci",
+  "dockerLinuxEvidence": "experimental-non-release",
+  "requireCleanRoomForOfficialRelease": false,
+  "scopePolicy": "scripts/policy/beta0-scope.json",
+  "truthTable": "scripts/policy/beta0-release-truth-table.json",
+  "requiredReports": [
+    {
+      "name": "json-schema-validator-tests",
+      "path": "scripts/reports/out/json-schema-validator-tests-report.json",
+      "schemaVersion": "npdev-json-schema-validator-test-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "ai-beta-gate",
+      "path": "scripts/reports/out/ai-beta-gate-report.json",
+      "schemaVersion": "npdev-ai-beta-gate-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed",
+      "schemaPath": "schemas/ai/ai-beta-gate-report.schema.json"
+    },
+    {
+      "name": "report-schema-validation",
+      "path": "scripts/reports/out/report-schema-validation-report.json",
+      "schemaVersion": "npdev-report-schema-validation-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "doc-entrypoint-validation",
+      "path": "scripts/reports/out/doc-entrypoint-validation-report.json",
+      "schemaVersion": "npdev-doc-entrypoint-validation-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "ai-schema-validation",
+      "path": "scripts/reports/out/ai-schema-validation-report.json",
+      "schemaVersion": "npdev-ai-schema-validation-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "controlled-command-runner-tests",
+      "path": "scripts/reports/out/controlled-command-runner-tests-report.json",
+      "schemaVersion": "npdev-controlled-command-runner-test-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "ai-contract-normalizer-tests",
+      "path": "scripts/reports/out/ai-contract-normalizer-tests-report.json",
+      "schemaVersion": "npdev-ai-contract-normalizer-test-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "ai-rest-smoke-verifier-tests",
+      "path": "scripts/reports/out/ai-rest-smoke-verifier-tests-report.json",
+      "schemaVersion": "npdev-ai-rest-smoke-verifier-test-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "sample-matrix",
+      "path": "scripts/reports/out/sample-matrix-report.json",
+      "schemaVersion": "npdev-sample-matrix-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "ai-beta-reproducibility",
+      "path": "scripts/reports/out/ai-beta-reproducibility-report.json",
+      "schemaVersion": "npdev-ai-beta-reproducibility-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "runtime-null-context-tests",
+      "path": "scripts/reports/out/runtime-null-context-tests-report.json",
+      "schemaVersion": "npdev-runtime-null-context-test-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    }
+  ],
+  "informationalReports": [
+    "scripts/reports/out/generator-gate-report.json",
+    "scripts/reports/out/runtimehost-gate-report.json",
+    "scripts/reports/out/editor-gate-report.json"
+  ],
+  "readinessRule": "candidateReady and releaseReady require every required report to exist, be fresh, have the expected schemaVersion, pass, and satisfy any report schema. officialReleaseEligible additionally requires a clean workspace and commit identity."
+}

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/ai-rest-smoke-result.schema.json",
+  "title": "NPDev AI REST Smoke Result",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "status",
+    "scenarioId",
+    "baseUrl",
+    "checks"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-ai-rest-smoke-result.v1"
+    },
+    "status": {
+      "enum": ["passed", "failed"]
+    },
+    "scenarioId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "baseUrl": {
+      "type": "string",
+      "minLength": 1
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "method",
+          "path",
+          "expectedStatus",
+          "actualStatus",
+          "failures"
+        ],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["passed", "failed"] },
+          "method": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 },
+          "expectedStatus": { "type": "integer" },
+          "actualStatus": { "type": ["integer", "null"] },
+          "durationMs": { "type": "integer", "minimum": 0 },
+          "failures": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

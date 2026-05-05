@@ -1,6 +1,5 @@
 {
   "$schema": "..\\..\\NPDevContract\\schemas\\model.schema.json",
-  "schemaVersion": "1.0.0",
   "namespace": "trial.userregistry",
   "dslVersion": "1.0.0",
   "version": "1.0",

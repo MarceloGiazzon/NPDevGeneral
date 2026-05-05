@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "ai-verification-report.v1",
+  "scenarioId": "behavior-mismatch",
+  "baseUrlVariable": "NPDEV_GENERATED_APP_BASE_URL",
+  "checks": [
+    {
+      "id": "health-ok",
+      "type": "http",
+      "method": "GET",
+      "path": "/actuator/health",
+      "expectedStatus": 200,
+      "expectedJsonContains": {
+        "status": "UP"
+      }
+    },
+    {
+      "id": "create-user-wrong-expectation",
+      "type": "http",
+      "method": "POST",
+      "path": "/api/users",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Api-Key": "dev-key"
+      },
+      "body": {
+        "email": "beta0@example.com",
+        "displayName": "Beta Zero"
+      },
+      "expectedStatus": 201,
+      "expectedJsonContains": {
+        "email": "wrong@example.com"
+      }
+    }
+  ]
+}

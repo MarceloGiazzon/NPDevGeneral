@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "npdev-beta0-scope.v1",
+  "release": "ai-only-beta-0",
+  "officialEvidencePlatform": "windows-ci",
+  "dockerLinuxEvidence": "experimental-non-release",
+  "dockerRequiredForBeta0": false,
+  "aiMayGenerate": {
+    "aiModel": true,
+    "aiConfig": true,
+    "verificationPlan": true,
+    "arbitraryShellCommands": false,
+    "customHtml": false,
+    "customJavaScript": false,
+    "externalNetworkCalls": false,
+    "customRuntimeProcedures": false
+  },
+  "supportedAppTypes": [
+    "simple-crud-workflow"
+  ],
+  "supportedRuntime": {
+    "aiFacingDatabaseModes": [
+      "embedded-test",
+      "docker-postgres"
+    ],
+    "databaseProviders": [
+      "docker-postgres",
+      "postgres"
+    ],
+    "defaultBeta0Provider": "docker-postgres",
+    "authMode": "fixed-beta-test-profile"
+  },
+  "requiredScenarios": [
+    "base-ai-loop",
+    "behavior-mismatch",
+    "invalid-contract",
+    "unsupported-surface",
+    "command-policy-external-curl",
+    "command-policy-malicious-rm",
+    "command-policy-path-traversal"
+  ],
+  "releaseRules": {
+    "dirtyWorkspaceBlocksOfficialRelease": true,
+    "staleReportsBlockOfficialRelease": true,
+    "missingReportBlocksOfficialRelease": true,
+    "manualReportOverrideAllowed": false
+  }
+}

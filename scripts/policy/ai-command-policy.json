@@ -1,0 +1,91 @@
+{
+  "schemaVersion": "npdev-ai-command-policy.v1",
+  "mode": "controlled-runner-required",
+  "rawShellCommandsAllowed": false,
+  "allowedRequestTypes": [
+    "trusted-script",
+    "gradle-task",
+    "schema-validation",
+    "rest-smoke"
+  ],
+  "allowedTrustedScripts": [
+    "scripts/quality/invoke-ai-beta-app-smoke.ps1",
+    "scripts/ai/Invoke-AiRestSmokeVerifier.ps1",
+    "scripts/ai/Normalize-AiContract.ps1"
+  ],
+  "allowedGradleRoots": [
+    "NPDevGenerator",
+    "NPDevRuntimeHost",
+    "scripts/reports/tmp/ai-beta-gate"
+  ],
+  "minimalEnvironment": {
+    "enabled": true,
+    "allowedVariables": [
+      "PATH",
+      "Path",
+      "PATHEXT",
+      "SystemRoot",
+      "TEMP",
+      "TMP",
+      "JAVA_HOME",
+      "GRADLE_OPTS",
+      "CI"
+    ]
+  },
+  "defaultTimeoutSeconds": 300,
+  "maxTimeoutSeconds": 600,
+  "network": "disabled-except-localhost",
+  "allowedExecutables": [
+    "pwsh",
+    "powershell",
+    "gradlew",
+    "gradlew.bat",
+    "npm",
+    "node"
+  ],
+  "blockedExecutables": [
+    "curl",
+    "wget",
+    "ssh",
+    "scp",
+    "rm",
+    "del",
+    "rmdir"
+  ],
+  "blockedArgumentPatterns": [
+    "(?i)Remove-Item",
+    "(?i)Invoke-WebRequest",
+    "(?i)Invoke-RestMethod",
+    "(?i)\\birm\\b",
+    "(?i)\\biwr\\b",
+    "(?i)\\bcurl\\b",
+    "(?i)\\bwget\\b",
+    "(?i)\\bssh\\b",
+    "(?i)\\bscp\\b",
+    "(?i)\\brm\\b",
+    "(?i)--delete",
+    "(?i)format-volume",
+    "https?://(?!localhost(?::|/|$)|127\\.0\\.0\\.1(?::|/|$)|\\[::1\\](?::|/|$))"
+  ],
+  "pwsh": {
+    "allowCommandMode": false,
+    "allowedFileRoots": [
+      "scripts/quality",
+      "scripts/ai",
+      "scripts/tests/fixtures/controlled-runner"
+    ]
+  },
+  "redaction": {
+    "secretNamePatterns": [
+      "TOKEN",
+      "KEY",
+      "SECRET",
+      "PASSWORD",
+      "OPENAI_API_KEY",
+      "GITHUB_TOKEN",
+      "AWS_ACCESS_KEY_ID",
+      "AWS_SECRET_ACCESS_KEY"
+    ],
+    "replacement": "[REDACTED]"
+  }
+}

@@ -1,11 +1,31 @@
-# AI Authoring Bundle
+# AI Authoring Example
 
-This folder is a machine-readable handoff target for AI tools and CLI workflows. The files here use the same authoring contract as the Editor and Generator, with no UI-only assumptions.
+This example demonstrates the AI-only Beta 0 contract flow.
 
-Run the root gate:
+AI-authored inputs:
+
+- `ai-model.json`
+- `ai-config.json`
+- `ai-verification-report.json`
+
+Normalizer outputs:
+
+- `normalized/model.json`
+- `normalized/config.json`
+
+Compatibility copies:
+
+- `model.json`
+- `config.json`
+
+Run from the repository root:
 
 ```powershell
-pwsh -File scripts\quality\run-ai-bundle-gate.ps1
+pwsh ./scripts/ai/Normalize-AiContract.ps1 `
+  -AiModelPath NPDevContract/examples/ai-authoring/ai-model.json `
+  -AiConfigPath NPDevContract/examples/ai-authoring/ai-config.json `
+  -OutputDirectory NPDevContract/examples/ai-authoring/normalized `
+  -ResultPath scripts/reports/out/ai-authoring-normalizer-result.json
 ```
 
-The bundle is intentionally domain-neutral. It demonstrates concepts, rule profiles, queries, procedures, and panels without introducing platform-core business vocabulary.
+Beta 0 does not use arbitrary custom procedures, custom panels, or free-form shell execution as authoring examples.

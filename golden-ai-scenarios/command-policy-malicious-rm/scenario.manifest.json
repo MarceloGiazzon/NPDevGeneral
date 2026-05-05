@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "ai-scenario-manifest.v1",
+  "scenarioId": "command-policy-malicious-rm",
+  "kind": "negative",
+  "expectedOutcome": "fail",
+  "expectedFailureStage": "command-policy",
+  "expectedErrorCode": "NPDEV_COMMAND_EXECUTABLE_NOT_ALLOWED",
+  "requestedSurfaces": [
+    "command-policy"
+  ],
+  "files": {
+    "commandRequest": "command-request.json"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "$schema": "NPDevContract/schemas/config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "schema-validation-fixture",
+    "outputRoot": "scripts/reports/tmp/schema-validation-fixture"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": {
+    "root": "NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "scripts/reports/tmp/schema-validation-fixture/ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "scripts/reports/tmp/schema-validation-fixture/App",
+    "deleteBeforeMount": true
+  },
+  "database": {
+    "provider": "docker-postgres",
+    "host": "localhost",
+    "port": 5432,
+    "database": "schema_validation_fixture",
+    "username": "finalexec",
+    "password": "finalexec",
+    "adminDatabase": "postgres",
+    "resetMode": "reset"
+  },
+  "runtime": {
+    "springProfile": "dev,step0,ai-beta-local",
+    "serverPort": 18080,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  }
+}

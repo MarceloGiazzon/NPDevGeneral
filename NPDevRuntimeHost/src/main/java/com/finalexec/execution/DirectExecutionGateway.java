@@ -105,11 +105,12 @@ public class DirectExecutionGateway {
         validate(request);
 
         Map<String, Object> rules = loadRules();
+        ExecutionContext effectiveRequesterContext = requesterContext == null ? ExecutionContext.anonymous() : requesterContext;
         String directExecutionId = UUID.randomUUID().toString();
         String requestedAt = now();
         String requestedTenantId = request.getTenantId().trim();
-        String requesterTenantId = requesterContext == null ? "default" : requesterContext.tenantId();
-        String requesterActorId = requesterContext == null ? "anonymous" : requesterContext.actorId();
+        String requesterTenantId = effectiveRequesterContext.tenantId();
+        String requesterActorId = effectiveRequesterContext.actorId();
         String flowName = request.getFlowName().trim();
         Map<String, Object> input = request.getInput() == null ? Map.of() : request.getInput();
         boolean crossTenant = !requestedTenantId.equals(requesterTenantId);
@@ -122,7 +123,7 @@ public class DirectExecutionGateway {
             Map<String, Object> rejected = buildRejectedRecord(
                     directExecutionId,
                     request,
-                    requesterContext,
+                    effectiveRequesterContext,
                     requestedAt,
                     "ARCHITECTURE_BYPASS_REJECTED",
                     "Direct execution requires a flow with at least one capability call.",
@@ -147,7 +148,7 @@ public class DirectExecutionGateway {
             Map<String, Object> rejected = buildRejectedRecord(
                     directExecutionId,
                     request,
-                    requesterContext,
+                    effectiveRequesterContext,
                     requestedAt,
                     "CROSS_TENANT_REJECTED",
                     "Direct execution remains same-tenant only; cross-tenant execution is rejected even when governance is recorded.",
@@ -159,7 +160,7 @@ public class DirectExecutionGateway {
             throw new SecurityException("Cross-tenant direct execution is not allowed through the direct execution bridge.");
         }
 
-        ExecutionContext effectiveContext = requesterContext
+        ExecutionContext effectiveContext = effectiveRequesterContext
                 .withTag("directExecution", "true")
                 .withTag("directExecutionGateway", "step-111")
                 .withTag("directExecutionReference", directExecutionId);

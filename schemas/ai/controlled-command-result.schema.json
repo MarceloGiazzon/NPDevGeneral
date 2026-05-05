@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/controlled-command-result.schema.json",
+  "title": "NPDev Controlled Command Result",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "status",
+    "executable",
+    "arguments",
+    "workingDirectory",
+    "timedOut",
+    "stdout",
+    "stderr"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-controlled-command-result.v1"
+    },
+    "status": {
+      "enum": ["passed", "failed", "blocked", "timed-out"]
+    },
+    "executable": {
+      "type": "string",
+      "minLength": 1
+    },
+    "arguments": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "workingDirectory": {
+      "type": "string",
+      "minLength": 1
+    },
+    "exitCode": {
+      "type": ["integer", "null"]
+    },
+    "blockedReason": {
+      "type": ["string", "null"]
+    },
+    "errorCode": {
+      "type": ["string", "null"]
+    },
+    "timedOut": {
+      "type": "boolean"
+    },
+    "durationMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "stdout": {
+      "type": "string"
+    },
+    "stderr": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

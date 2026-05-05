@@ -1,27 +1,17 @@
 {
-  "schemaVersion": "ai-scenario.v1",
+  "schemaVersion": "ai-scenario-manifest.v1",
   "scenarioId": "custom-panel-unsupported",
-  "kind": "ai-custom-panel-functional-beta",
+  "kind": "negative",
+  "expectedOutcome": "fail",
+  "expectedFailureStage": "ai-model-schema",
   "files": {
+    "aiModel": "ai-model.json",
+    "aiConfig": "ai-config.json",
+    "verification": "ai-verification-report.json",
+    "expectedBehavior": "expected-behavior.json",
     "model": "model.json",
     "config": "config.json",
-    "expectedBehavior": "expected-behavior.json",
     "customPanel": "custom-panel.json",
     "expectedPanelBehavior": "expected-panel-behavior.json"
-  },
-  "runtime": {
-    "strictExecution": true,
-    "surfaceProfile": "supported-core"
-  },
-  "requestedSurfaces": ["supported-core"],
-  "operations": [
-    {
-      "type": "customPanel",
-      "panelId": "readiness-panel"
-    }
-  ],
-  "expectedOutcome": {
-    "class": "FAIL_PANEL_UNSUPPORTED_FEATURE",
-    "mustPass": false
   }
 }
