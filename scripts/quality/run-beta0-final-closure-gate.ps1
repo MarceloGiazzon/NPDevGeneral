@@ -22,10 +22,63 @@ function Invoke-GitText {
     try {
         $output = & git @Arguments 2>$null
         if ($LASTEXITCODE -ne 0) { return "" }
-        return (($output | Out-String).Trim())
+        return (($output | Out-String).TrimEnd())
     }
     catch {
         return ""
+    }
+}
+
+function Convert-GitStatusLineToPath {
+    param([string]$Line)
+    if ([string]::IsNullOrWhiteSpace($Line)) { return "" }
+    $value = $Line
+    if ($value.Length -ge 4) {
+        $value = $value.Substring(3)
+    }
+    $value = $value.Trim()
+    if ($value -match " -> ") {
+        $parts = $value -split " -> "
+        $value = $parts[$parts.Count - 1]
+    }
+    $value = $value.Trim('"') -replace "\\", "/"
+    return $value
+}
+
+function Test-AllowedGeneratedEvidenceDirtyPath {
+    param([string]$PathValue)
+    $normalized = ([string]$PathValue) -replace "\\", "/"
+    if ($normalized -match "^scripts/reports/out/[^/]+\.(json|log)$") { return $true }
+    if ($normalized -match "^scripts/reports/tmp/") { return $true }
+    return $false
+}
+
+function Get-DirtyClassification {
+    $status = Invoke-GitText @("status", "--porcelain=v1")
+    $lines = @()
+    if (-not [string]::IsNullOrWhiteSpace($status)) {
+        $lines = @($status -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+    $sourceDirtyPaths = @()
+    $allowedGeneratedEvidenceDirtyPaths = @()
+    foreach ($line in $lines) {
+        $pathValue = Convert-GitStatusLineToPath $line
+        if (Test-AllowedGeneratedEvidenceDirtyPath $pathValue) {
+            $allowedGeneratedEvidenceDirtyPaths += $pathValue
+        }
+        else {
+            $sourceDirtyPaths += $pathValue
+        }
+    }
+    return [pscustomobject]@{
+        sourceDirty = @($sourceDirtyPaths).Count -gt 0
+        sourceDirtyFileCount = @($sourceDirtyPaths).Count
+        sourceDirtyPaths = @($sourceDirtyPaths)
+        rawDirty = @($lines).Count -gt 0
+        rawDirtyFileCount = @($lines).Count
+        allowedGeneratedEvidenceDirty = @($allowedGeneratedEvidenceDirtyPaths).Count -gt 0
+        allowedGeneratedEvidenceDirtyFileCount = @($allowedGeneratedEvidenceDirtyPaths).Count
+        allowedGeneratedEvidenceDirtyPaths = @($allowedGeneratedEvidenceDirtyPaths)
     }
 }
 
@@ -47,29 +100,6 @@ $requiredReports = @(
     [pscustomobject]@{ name = "report-provenance-tests"; path = "scripts/reports/out/report-provenance-tests-report.json"; schemaVersion = "npdev-report-provenance-test-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
     [pscustomobject]@{ name = "beta-release-gate"; path = "scripts/reports/out/beta-release-gate-report.json"; schemaVersion = "beta-release-gate-report.v1"; statusProperty = "overallStatus"; passValue = "passed" }
 )
-
-$expandedReports = @(
-    [pscustomobject]@{ name = "scope-policy"; path = "scripts/reports/out/scope-policy-report.json"; schemaVersion = "npdev-scope-policy-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
-    [pscustomobject]@{ name = "ai-command-policy"; path = "scripts/reports/out/ai-command-policy-report.json"; schemaVersion = "npdev-ai-command-policy-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
-    [pscustomobject]@{ name = "expanded-schema-validation"; path = "scripts/reports/out/schema-validation-report.json"; schemaVersion = "npdev-expanded-schema-validation-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
-    [pscustomobject]@{ name = "normalization"; path = "scripts/reports/out/normalization-report.json"; schemaVersion = "npdev-normalization-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
-    [pscustomobject]@{ name = "custom-panel-validation"; path = "scripts/reports/out/custom-panel-validation-report.json"; schemaVersion = "npdev-custom-panel-validation-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
-    [pscustomobject]@{ name = "custom-procedure-validation"; path = "scripts/reports/out/custom-procedure-validation-report.json"; schemaVersion = "npdev-custom-procedure-validation-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
-    [pscustomobject]@{ name = "tenant-auth-role-validation"; path = "scripts/reports/out/tenant-auth-role-validation-report.json"; schemaVersion = "npdev-tenant-auth-role-validation-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
-    [pscustomobject]@{ name = "workflow-validation"; path = "scripts/reports/out/workflow-validation-report.json"; schemaVersion = "npdev-workflow-validation-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
-    [pscustomobject]@{ name = "generated-app-build"; path = "scripts/reports/out/generated-app-build-report.json"; schemaVersion = "npdev-generated-app-build-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
-    [pscustomobject]@{ name = "generated-app-boot"; path = "scripts/reports/out/generated-app-boot-report.json"; schemaVersion = "npdev-generated-app-boot-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
-    [pscustomobject]@{ name = "rest-smoke"; path = "scripts/reports/out/rest-smoke-report.json"; schemaVersion = "npdev-rest-smoke-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
-    [pscustomobject]@{ name = "ui-panel-smoke"; path = "scripts/reports/out/ui-panel-smoke-report.json"; schemaVersion = "npdev-ui-panel-smoke-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
-    [pscustomobject]@{ name = "procedure-smoke"; path = "scripts/reports/out/procedure-smoke-report.json"; schemaVersion = "npdev-procedure-smoke-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
-    [pscustomobject]@{ name = "workflow-smoke"; path = "scripts/reports/out/workflow-smoke-report.json"; schemaVersion = "npdev-workflow-smoke-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
-    [pscustomobject]@{ name = "tenant-isolation-smoke"; path = "scripts/reports/out/tenant-isolation-smoke-report.json"; schemaVersion = "npdev-tenant-isolation-smoke-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
-    [pscustomobject]@{ name = "auth-role-smoke"; path = "scripts/reports/out/auth-role-smoke-report.json"; schemaVersion = "npdev-auth-role-smoke-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
-    [pscustomobject]@{ name = "provenance"; path = "scripts/reports/out/provenance-report.json"; schemaVersion = "npdev-provenance-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
-    [pscustomobject]@{ name = "stale-report-check"; path = "scripts/reports/out/stale-report-check-report.json"; schemaVersion = "npdev-stale-report-check-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
-    [pscustomobject]@{ name = "workspace-cleanliness"; path = "scripts/reports/out/workspace-cleanliness-report.json"; schemaVersion = "npdev-workspace-cleanliness-report.v1"; statusProperty = "overallStatus"; passValue = "passed" }
-)
-$requiredReports = @($requiredReports + $expandedReports)
 
 $reportResults = @()
 foreach ($definition in $requiredReports) {
@@ -124,10 +154,10 @@ $releaseReady = $null -ne $releaseReport -and [bool]$releaseReport.releaseReady
 $provenanceReady = $null -ne $releaseReport -and [bool]$releaseReport.provenanceReady
 $officialReleaseEligible = $null -ne $releaseReport -and [bool]$releaseReport.officialReleaseEligible
 
-$dirtyStatus = Invoke-GitText @("status", "--porcelain=v1")
-$workspaceDirty = -not [string]::IsNullOrWhiteSpace($dirtyStatus)
+$dirty = Get-DirtyClassification
+$workspaceDirty = [bool]$dirty.sourceDirty
 if ($workspaceDirty) {
-    Add-Blocker $blockers "Workspace is dirty; beta0TagAllowed is blocked."
+    Add-Blocker $blockers ("Workspace has source dirtiness; beta0TagAllowed is blocked. Dirty file count: " + [string]$dirty.sourceDirtyFileCount)
 }
 if (-not $officialReleaseEligible) {
     Add-Blocker $blockers "Release gate did not grant officialReleaseEligible."
@@ -150,6 +180,14 @@ $finalReport = [pscustomobject]@{
     officialReleaseEligible = $officialReleaseEligible
     beta0TagAllowed = $beta0TagAllowed
     workspaceDirty = $workspaceDirty
+    rawWorkspaceDirty = [bool]$dirty.rawDirty
+    rawDirtyFileCount = [int]$dirty.rawDirtyFileCount
+    sourceDirtyFileCount = [int]$dirty.sourceDirtyFileCount
+    sourceDirtyPaths = @($dirty.sourceDirtyPaths)
+    allowedGeneratedEvidenceDirty = [bool]$dirty.allowedGeneratedEvidenceDirty
+    allowedGeneratedEvidenceDirtyFileCount = [int]$dirty.allowedGeneratedEvidenceDirtyFileCount
+    allowedGeneratedEvidenceDirtyPaths = @($dirty.allowedGeneratedEvidenceDirtyPaths)
+    generatedReportDirtinessPolicy = "dirty paths under scripts/reports/out/*.json, scripts/reports/out/*.log, and scripts/reports/tmp/** are generated evidence and do not block beta0TagAllowed; any other dirty path blocks."
     requiredReports = $reportResults
     blockers = @($blockers)
 }

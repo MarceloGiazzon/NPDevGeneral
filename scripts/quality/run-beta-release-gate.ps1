@@ -72,11 +72,44 @@ function Invoke-GitText {
         if ($LASTEXITCODE -ne 0) {
             return ""
         }
-        return (($output | Out-String).Trim())
+        return (($output | Out-String).TrimEnd())
     }
     catch {
         return ""
     }
+}
+
+function Convert-GitStatusLineToPath {
+    param([string]$Line)
+    if ([string]::IsNullOrWhiteSpace($Line)) { return "" }
+    $value = $Line
+    if ($value.Length -ge 4) {
+        $value = $value.Substring(3)
+    }
+    $value = $value.Trim()
+    if ($value -match " -> ") {
+        $parts = $value -split " -> "
+        $value = $parts[$parts.Count - 1]
+    }
+    $value = $value.Trim('"') -replace "\\", "/"
+    return $value
+}
+
+function Test-AllowedGeneratedEvidenceDirtyPath {
+    param([string]$PathValue)
+    $normalized = ([string]$PathValue) -replace "\\", "/"
+    if ($normalized -match "^scripts/reports/out/[^/]+\.(json|log)$") { return $true }
+    if ($normalized -match "^scripts/reports/tmp/") { return $true }
+    return $false
+}
+
+function New-HashForLines {
+    param([string[]]$Lines)
+    $joined = (@($Lines) -join "`n")
+    if ([string]::IsNullOrWhiteSpace($joined)) { return $null }
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($joined)
+    $hash = [System.Security.Cryptography.SHA256]::HashData($bytes)
+    return ([System.BitConverter]::ToString($hash) -replace "-", "").ToLowerInvariant()
 }
 
 function Get-DirtyFingerprint {
@@ -86,14 +119,45 @@ function Get-DirtyFingerprint {
             dirty = $false
             dirtyFileCount = 0
             dirtyHash = $null
+            rawDirty = $false
+            rawDirtyFileCount = 0
+            rawDirtyHash = $null
+            allowedGeneratedEvidenceDirty = $false
+            allowedGeneratedEvidenceDirtyFileCount = 0
+            dirtyPaths = @()
+            allowedGeneratedEvidenceDirtyPaths = @()
         }
     }
-    $bytes = [System.Text.Encoding]::UTF8.GetBytes($status)
-    $hash = [System.Security.Cryptography.SHA256]::HashData($bytes)
+
+    $lines = @($status -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $sourceDirtyLines = @()
+    $sourceDirtyPaths = @()
+    $allowedLines = @()
+    $allowedPaths = @()
+
+    foreach ($line in $lines) {
+        $pathValue = Convert-GitStatusLineToPath $line
+        if (Test-AllowedGeneratedEvidenceDirtyPath $pathValue) {
+            $allowedLines += $line
+            $allowedPaths += $pathValue
+        }
+        else {
+            $sourceDirtyLines += $line
+            $sourceDirtyPaths += $pathValue
+        }
+    }
+
     return [pscustomobject]@{
-        dirty = $true
-        dirtyFileCount = @($status -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count
-        dirtyHash = ([System.BitConverter]::ToString($hash) -replace "-", "").ToLowerInvariant()
+        dirty = @($sourceDirtyLines).Count -gt 0
+        dirtyFileCount = @($sourceDirtyLines).Count
+        dirtyHash = New-HashForLines $sourceDirtyLines
+        rawDirty = @($lines).Count -gt 0
+        rawDirtyFileCount = @($lines).Count
+        rawDirtyHash = New-HashForLines $lines
+        allowedGeneratedEvidenceDirty = @($allowedLines).Count -gt 0
+        allowedGeneratedEvidenceDirtyFileCount = @($allowedLines).Count
+        dirtyPaths = @($sourceDirtyPaths)
+        allowedGeneratedEvidenceDirtyPaths = @($allowedPaths)
     }
 }
 
@@ -384,6 +448,14 @@ $manifest = [pscustomobject]@{
         dirty = [bool]$dirty.dirty
         dirtyFileCount = [int]$dirty.dirtyFileCount
         dirtyHash = $dirty.dirtyHash
+        rawDirty = [bool]$dirty.rawDirty
+        rawDirtyFileCount = [int]$dirty.rawDirtyFileCount
+        rawDirtyHash = $dirty.rawDirtyHash
+        allowedGeneratedEvidenceDirty = [bool]$dirty.allowedGeneratedEvidenceDirty
+        allowedGeneratedEvidenceDirtyFileCount = [int]$dirty.allowedGeneratedEvidenceDirtyFileCount
+        allowedGeneratedEvidenceDirtyPaths = @($dirty.allowedGeneratedEvidenceDirtyPaths)
+        dirtyPaths = @($dirty.dirtyPaths)
+        generatedReportDirtinessPolicy = "dirty paths under scripts/reports/out/*.json, scripts/reports/out/*.log, and scripts/reports/tmp/** are generated evidence and do not block official eligibility; any other dirty path blocks."
         workspaceFingerprint = $workspaceFingerprint
     }
     candidateReady = $candidateReady
