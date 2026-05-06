@@ -51,25 +51,13 @@ $gradleDistribution = if (Test-Path -LiteralPath $gradleWrapperProperties -PathT
 else {
     ""
 }
-$localApplicationData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
-$userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
 $runtimeHostLibs = if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_RUNTIMEHOST_LIBS_DIR)) {
     $env:NPDEV_RUNTIMEHOST_LIBS_DIR
 }
-elseif (-not [string]::IsNullOrWhiteSpace($localApplicationData)) {
-    Join-Path $localApplicationData "NPDev\runtimehost-libs"
-}
-elseif (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-    Join-Path $env:LOCALAPPDATA "NPDev\runtimehost-libs"
-}
-elseif (-not [string]::IsNullOrWhiteSpace($userProfile)) {
-    Join-Path (Join-Path $userProfile ".cache") "npdev\runtimehost-libs"
-}
-elseif (-not [string]::IsNullOrWhiteSpace($HOME)) {
-    Join-Path (Join-Path $HOME ".cache") "npdev\runtimehost-libs"
-}
 else {
-    Join-Path $workspaceRoot ".npdev-cache\runtimehost-libs"
+    $workspace = Get-Item -LiteralPath $workspaceRoot
+    $outsideRepoRoot = Join-Path $workspace.Parent.FullName ($workspace.Name + "__OutsideRepo")
+    Join-Path $outsideRepoRoot "runtimehost-libs"
 }
 
 $report = [pscustomObject]@{

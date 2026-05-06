@@ -13,7 +13,7 @@ These remain source and should not be cleaned as residue:
 ## Disposable By Default
 
 - Gradle/npm/build caches: `.npdev-gradle`, `.gradle`, `build`, `node_modules`, `dist`, `coverage`, `target`. New Gradle caches default outside the workspace under the user cache directory, unless `NPDEV_GRADLE_USER_HOME` or `NPDEV_LOCAL_CACHE_ROOT` is set.
-- RuntimeHost local jars: staged outside the workspace under the user cache directory by default, unless `NPDEV_RUNTIMEHOST_LIBS_DIR` is set. Generated apps reference that external cache instead of copying jars into source, evidence, or sample output folders.
+- RuntimeHost local jars: staged outside the workspace in `..\NPDev_General__OutsideRepo\runtimehost-libs` by default, unless `NPDEV_RUNTIMEHOST_LIBS_DIR` is set. Generated apps reference that external folder instead of copying jars into source, evidence, or sample output folders.
 - Generated app/sample output: `Output`, `RunOutput`.
 - Rebuildable RuntimeHost assembly residue: `NPDevRuntimeHost\libs`, `NPDevRuntimeHost\npdev-generated`, `NPDevRuntimeHost\npdev-meta`, generated `NPDevRuntimeHost\build.gradle`, and `npdev-build-info.properties`.
 - IDE-local metadata: `.idea`, `.vscode`, `*.iml`.

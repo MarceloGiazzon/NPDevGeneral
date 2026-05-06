@@ -31,17 +31,15 @@ def resolveNpdevRuntimeLibsDir = {
         return file(configured.toString().trim())
     }
 
-    def localAppData = System.getenv('LOCALAPPDATA')
-    if (localAppData != null && !localAppData.trim().isEmpty()) {
-        return file("${localAppData}/NPDev/runtimehost-libs")
+    def current = projectDir
+    while (current != null) {
+        if (new File(current, '.npdev-root').isFile()) {
+            return new File(current.parentFile, "${current.name}__OutsideRepo/runtimehost-libs")
+        }
+        current = current.parentFile
     }
 
-    def xdgCacheHome = System.getenv('XDG_CACHE_HOME')
-    if (xdgCacheHome != null && !xdgCacheHome.trim().isEmpty()) {
-        return file("${xdgCacheHome}/npdev/runtimehost-libs")
-    }
-
-    return file("${System.getProperty('user.home')}/.cache/npdev/runtimehost-libs")
+    return file("${rootProject.projectDir.name}__OutsideRepo/runtimehost-libs")
 }
 
 def npdevRuntimeHostLibsDir = resolveNpdevRuntimeLibsDir()

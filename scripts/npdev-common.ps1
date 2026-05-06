@@ -322,7 +322,9 @@ function Get-NPDevRuntimeHostLibsDir([string]$WorkspaceRoot) {
         return Normalize-NPDevPath $env:NPDEV_RUNTIMEHOST_LIBS_DIR
     }
 
-    return Normalize-NPDevPath (Join-Path (Get-NPDevLocalCacheRoot $WorkspaceRoot) "runtimehost-libs")
+    $workspace = Get-Item -LiteralPath (Normalize-NPDevPath $WorkspaceRoot)
+    $outsideRepoRoot = Join-Path $workspace.Parent.FullName ($workspace.Name + "__OutsideRepo")
+    return Normalize-NPDevPath (Join-Path $outsideRepoRoot "runtimehost-libs")
 }
 
 function Invoke-NPDevCommandStreaming {
