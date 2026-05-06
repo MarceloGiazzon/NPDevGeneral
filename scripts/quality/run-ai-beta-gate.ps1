@@ -269,6 +269,35 @@ catch {
 }
 $reproducibilityReport = if (Test-Path -LiteralPath $reproducibilityReportPath -PathType Leaf) { Read-JsonFile $reproducibilityReportPath } else { $null }
 
+$runtimeHostLibsSyncReportPath = "scripts/reports/out/runtimehost-libs-sync-report.json"
+$runtimeHostLibsSyncExit = 0
+$runtimeHostLibsSyncError = $null
+try {
+    pwsh -NoProfile -File scripts/runtimehost/sync-runtimehost-libs.ps1 `
+        -WorkspaceRoot $workspaceRoot `
+        -BuildLocalJars `
+        -ReportPath $runtimeHostLibsSyncReportPath | Out-Null
+    $runtimeHostLibsSyncExit = $LASTEXITCODE
+}
+catch {
+    $runtimeHostLibsSyncExit = 1
+    $runtimeHostLibsSyncError = $_.Exception.Message
+}
+$runtimeHostLibsSyncReport = if (Test-Path -LiteralPath $runtimeHostLibsSyncReportPath -PathType Leaf) { Read-JsonFile $runtimeHostLibsSyncReportPath } else { $null }
+if ($null -ne $runtimeHostLibsSyncReport -and -not [string]::IsNullOrWhiteSpace([string]$runtimeHostLibsSyncReport.runtimeHostLibs)) {
+    $env:NPDEV_RUNTIMEHOST_LIBS_DIR = [string]$runtimeHostLibsSyncReport.runtimeHostLibs
+}
+$runtimeHostLibsStageStatus = if ($runtimeHostLibsSyncExit -eq 0 -and $null -ne $runtimeHostLibsSyncReport -and [string]$runtimeHostLibsSyncReport.overallStatus -eq "passed") { "passed" } else { "failed" }
+$runtimeHostLibsStageMessage = if ($runtimeHostLibsStageStatus -eq "passed") {
+    "RuntimeHost jars are staged in the external local cache."
+}
+elseif (-not [string]::IsNullOrWhiteSpace($runtimeHostLibsSyncError)) {
+    $runtimeHostLibsSyncError
+}
+else {
+    "RuntimeHost external jar staging failed."
+}
+
 $policyPath = Join-Path $workspaceRoot "scripts/policy/beta-scope.json"
 $policyStageStatus = "passed"
 $policyStageMessage = "Beta scope policy loaded."
@@ -305,7 +334,7 @@ $requiredScenarios = @($scopePolicy.requiredScenarios | ForEach-Object { [string
 $discoveredScenarioIds = @($scenarioDirs | ForEach-Object { [string]$_.Name })
 $missingRequiredScenarios = @($requiredScenarios | Where-Object { $discoveredScenarioIds -notcontains $_ })
 $scenarioResults = @()
-$overallStatus = if ($policyStageStatus -eq "passed" -and $null -ne $schemaReport -and $schemaExit -eq 0 -and $missingRequiredScenarios.Count -eq 0) { "passed" } else { "failed" }
+$overallStatus = if ($policyStageStatus -eq "passed" -and $runtimeHostLibsStageStatus -eq "passed" -and $null -ne $schemaReport -and $schemaExit -eq 0 -and $missingRequiredScenarios.Count -eq 0) { "passed" } else { "failed" }
 
 foreach ($scenarioDir in $scenarioDirs) {
     $scenarioFailureReasons = [System.Collections.Generic.List[string]]::new()
@@ -325,8 +354,15 @@ foreach ($scenarioDir in $scenarioDirs) {
     $stages += New-Stage "scope-policy" $policyStageStatus $policyStageMessage ([pscustomobject]@{
         policyPath = $policyPath
     })
+    $stages += New-Stage "runtimehost-libs" $runtimeHostLibsStageStatus $runtimeHostLibsStageMessage ([pscustomobject]@{
+        reportPath = $runtimeHostLibsSyncReportPath
+        runtimeHostLibs = if ($null -ne $runtimeHostLibsSyncReport) { $runtimeHostLibsSyncReport.runtimeHostLibs } else { $null }
+    })
     if ($policyStageStatus -ne "passed") {
         Add-Failure $scenarioFailureReasons $policyStageMessage
+    }
+    if ($runtimeHostLibsStageStatus -ne "passed" -and $expectedOutcome -eq "pass") {
+        Add-Failure $scenarioFailureReasons $runtimeHostLibsStageMessage
     }
 
     $schemaScenario = $null
@@ -633,6 +669,22 @@ $report = [pscustomobject]@{
     scenarioCount = $scenarioResults.Count
     sourceOfTruth = "scripts/reports/out/ai-beta-gate-report.json"
     reproducibilityReport = $reproducibilityReportPath
+    runtimeHostLibs = if ($null -ne $runtimeHostLibsSyncReport) {
+        [pscustomobject]@{
+            reportPath = $runtimeHostLibsSyncReportPath
+            overallStatus = $runtimeHostLibsSyncReport.overallStatus
+            path = $runtimeHostLibsSyncReport.runtimeHostLibs
+            location = $runtimeHostLibsSyncReport.runtimeHostLibsLocation
+        }
+    }
+    else {
+        [pscustomobject]@{
+            reportPath = $runtimeHostLibsSyncReportPath
+            overallStatus = "failed"
+            path = $null
+            location = "external-local-cache"
+        }
+    }
     scenarioCoverage = [pscustomobject]@{
         policyPath = $ScopePolicyPath
         requiredScenarios = $requiredScenarios

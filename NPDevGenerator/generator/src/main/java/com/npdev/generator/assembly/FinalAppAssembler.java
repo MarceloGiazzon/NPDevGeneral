@@ -28,6 +28,8 @@ public final class FinalAppAssembler {
             ".idea",
             ".git",
             "build",
+            "gradle",
+            "libs",
             "out",
             "target",
             "node_modules",
@@ -38,6 +40,8 @@ public final class FinalAppAssembler {
     private static final Set<String> EXCLUDED_FILE_NAMES = Set.of(
             ".DS_Store",
             "Thumbs.db",
+            "gradlew",
+            "gradlew.bat",
             "npdev-build-info.properties"
     );
     private static final List<String> UNSUPPORTED_RUNTIME_HOST_CONTROLLER_SOURCES = List.of(
@@ -146,12 +150,25 @@ public final class FinalAppAssembler {
     }
 
     private static void deleteTree(Path root) throws IOException {
-        try (var stream = Files.walk(root)) {
-            var paths = stream.sorted((left, right) -> right.compareTo(left)).toList();
-            for (Path path : paths) {
-                deletePathWithRetry(path);
+        IOException lastFailure = null;
+        for (int attempt = 1; attempt <= DELETE_RETRY_ATTEMPTS; attempt++) {
+            try (var stream = Files.walk(root)) {
+                var paths = stream.sorted((left, right) -> right.compareTo(left)).toList();
+                for (Path path : paths) {
+                    deletePathWithRetry(path);
+                }
+            }
+            if (!Files.exists(root)) {
+                return;
+            }
+
+            lastFailure = new IOException("Delete target still exists after attempt " + attempt + ": " + root);
+            if (attempt < DELETE_RETRY_ATTEMPTS) {
+                sleepBeforeRetry(root, attempt, lastFailure);
             }
         }
+
+        throw lastFailure;
     }
 
     private static void deletePathWithRetry(Path path) throws IOException {

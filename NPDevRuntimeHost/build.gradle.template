@@ -23,6 +23,29 @@ repositories {
     mavenCentral()
 }
 
+def resolveNpdevRuntimeLibsDir = {
+    def configured = providers.gradleProperty('npdevRuntimeHostLibsDir')
+            .orElse(providers.environmentVariable('NPDEV_RUNTIMEHOST_LIBS_DIR'))
+            .orNull
+    if (configured != null && !configured.toString().trim().isEmpty()) {
+        return file(configured.toString().trim())
+    }
+
+    def localAppData = System.getenv('LOCALAPPDATA')
+    if (localAppData != null && !localAppData.trim().isEmpty()) {
+        return file("${localAppData}/NPDev/runtimehost-libs")
+    }
+
+    def xdgCacheHome = System.getenv('XDG_CACHE_HOME')
+    if (xdgCacheHome != null && !xdgCacheHome.trim().isEmpty()) {
+        return file("${xdgCacheHome}/npdev/runtimehost-libs")
+    }
+
+    return file("${System.getProperty('user.home')}/.cache/npdev/runtimehost-libs")
+}
+
+def npdevRuntimeHostLibsDir = resolveNpdevRuntimeLibsDir()
+
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
@@ -44,8 +67,25 @@ dependencies {
     runtimeOnly 'com.h2database:h2'
     testRuntimeOnly 'com.h2database:h2'
 
-    // Runtime extension jars live in ./libs
-    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    // Runtime extension jars are staged outside the source/evidence workspace.
+    implementation fileTree(dir: npdevRuntimeHostLibsDir, include: ['*.jar'])
+}
+
+tasks.register('verifyNpdevRuntimeHostLibs') {
+    group = 'verification'
+    description = 'Checks that local RuntimeHost jars were staged outside the workspace before compilation.'
+
+    doLast {
+        def requiredJars = ['dsl-0.1.0.jar', 'kernel-0.1.0.jar', 'expression-cel-0.1.0.jar']
+        def missing = requiredJars.findAll { !new File(npdevRuntimeHostLibsDir, it).isFile() }
+        if (!missing.isEmpty()) {
+            throw new GradleException("Missing NPDev RuntimeHost jars in ${npdevRuntimeHostLibsDir}: ${missing}. Run scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars.")
+        }
+    }
+}
+
+tasks.named('compileJava') {
+    dependsOn tasks.named('verifyNpdevRuntimeHostLibs')
 }
 
 def modelSpecificGeneratedAppTests = [

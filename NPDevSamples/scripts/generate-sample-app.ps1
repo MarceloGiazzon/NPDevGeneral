@@ -71,8 +71,7 @@ else {
 }
 
 $generatorArgLine = ($generatorArgs | ForEach-Object { Quote-Arg $_ }) -join " "
-$workspaceGradleUserHome = Join-Path $NPDevRoot ".npdev-gradle"
-New-Item -ItemType Directory -Force -Path $workspaceGradleUserHome | Out-Null
+$workspaceGradleUserHome = Get-NPDevGradleUserHome $NPDevRoot
 
 Info "Generating ArtifactNP and assembling the sample app through NPDevGenerator"
 Push-Location $generatorRoot

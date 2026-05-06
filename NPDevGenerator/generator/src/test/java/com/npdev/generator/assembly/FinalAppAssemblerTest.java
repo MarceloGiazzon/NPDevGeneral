@@ -71,13 +71,15 @@ class FinalAppAssemblerTest {
         assertFalse(Files.exists(finalApp.resolve("src/main/java/com/finalexec/npdev/service/internal/ModelSyncStatusService.java")));
         assertFalse(Files.exists(finalApp.resolve("src/main/java/com/finalexec/npdev/service/experimental/FlowBuilderService.java")));
         assertFalse(Files.exists(finalApp.resolve("src/main/java/com/finalexec/HelloController.java")));
-        assertTrue(Files.exists(finalApp.resolve("libs/kernel-0.1.0.jar")));
+        assertFalse(Files.exists(finalApp.resolve("libs/kernel-0.1.0.jar")));
         assertTrue(Files.exists(finalApp.resolve("npdev-generated/src/main/java/com/npdev/generated/entities/User.java")));
         assertTrue(Files.exists(finalApp.resolve("npdev-generated/src/main/resources/npdev/compiled-model.json")));
         assertTrue(Files.exists(finalApp.resolve("npdev-generated/src/main/resources/npdev/support/generated-folder.signature.properties")));
         assertTrue(Files.exists(finalApp.resolve("src/main/resources/db/migration/V5001__runtime.sql")));
         assertTrue(Files.exists(finalApp.resolve("src/main/resources/db/migration/R__npdev_schema.sql")));
         assertTrue(Files.exists(finalApp.resolve("src/main/resources/npdev/model-diff-baseline.json")));
+        assertFalse(Files.exists(finalApp.resolve("gradle/wrapper/gradle-wrapper.jar")));
+        assertFalse(Files.exists(finalApp.resolve("gradlew.bat")));
         Path schemaRealizationManifest = finalApp.resolve("src/main/resources/npdev/support/schema-realization.manifest.json");
         assertTrue(Files.exists(schemaRealizationManifest));
         String schemaRealizationManifestJson = Files.readString(schemaRealizationManifest);

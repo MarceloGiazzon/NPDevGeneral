@@ -70,9 +70,35 @@ function Stop-ProcessTree {
 }
 
 $appRootFull = (Resolve-Path -LiteralPath $AppRoot).Path
+$workspaceRoot = (Resolve-Path ".").Path
+if ([string]::IsNullOrWhiteSpace($env:NPDEV_RUNTIMEHOST_LIBS_DIR)) {
+    $localApplicationData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
+    $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+    $env:NPDEV_RUNTIMEHOST_LIBS_DIR = if (-not [string]::IsNullOrWhiteSpace($localApplicationData)) {
+        Join-Path $localApplicationData "NPDev\runtimehost-libs"
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        Join-Path $env:LOCALAPPDATA "NPDev\runtimehost-libs"
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($userProfile)) {
+        Join-Path (Join-Path $userProfile ".cache") "npdev\runtimehost-libs"
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($HOME)) {
+        Join-Path (Join-Path $HOME ".cache") "npdev\runtimehost-libs"
+    }
+    else {
+        Join-Path $workspaceRoot ".npdev-cache\runtimehost-libs"
+    }
+}
 $gradlew = Join-Path $appRootFull "gradlew.bat"
 if (-not (Test-Path -LiteralPath $gradlew -PathType Leaf)) {
-    throw "Generated app gradlew.bat is missing: $gradlew"
+    $workspaceGradlew = Join-Path $workspaceRoot "NPDevRuntimeHost\gradlew.bat"
+    if (Test-Path -LiteralPath $workspaceGradlew -PathType Leaf) {
+        $gradlew = $workspaceGradlew
+    }
+    else {
+        throw "No Gradle wrapper is available for generated app verification. Checked: $gradlew and $workspaceGradlew"
+    }
 }
 
 $report = [ordered]@{

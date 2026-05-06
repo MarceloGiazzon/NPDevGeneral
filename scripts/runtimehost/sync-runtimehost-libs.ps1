@@ -2,6 +2,7 @@
 param(
     [string]$WorkspaceRoot = "",
     [switch]$BuildLocalJars,
+    [string]$RuntimeHostLibsDir = "",
     [string]$ReportPath = ""
 )
 
@@ -22,7 +23,12 @@ else {
     $ReportPath = Normalize-NPDevPath $ReportPath
 }
 
-$runtimeHostLibs = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\libs"
+$runtimeHostLibs = if ([string]::IsNullOrWhiteSpace($RuntimeHostLibsDir)) {
+    Get-NPDevRuntimeHostLibsDir $WorkspaceRoot
+}
+else {
+    Normalize-NPDevPath $RuntimeHostLibsDir
+}
 $kernelRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevKernel"
 $generatorRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevGenerator"
 
@@ -134,17 +140,40 @@ foreach ($required in $requiredLocalJars) {
     }
 }
 
+$cleanedSourceBuildOutputs = @()
+if ($BuildLocalJars) {
+    foreach ($sourceRoot in $sourceRoots) {
+        if (-not (Test-Path -LiteralPath $sourceRoot -PathType Container)) {
+            continue
+        }
+
+        foreach ($buildDir in @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq "build" } | Sort-Object { $_.FullName.Length } -Descending)) {
+            if (-not (Test-Path -LiteralPath $buildDir.FullName -PathType Container)) {
+                continue
+            }
+            $relativeBuildDir = Get-NPDevWorkspaceRelativePath $WorkspaceRoot $buildDir.FullName
+            if ($relativeBuildDir -notmatch '^(NPDevContract|NPDevGenerator|NPDevKernel)\\') {
+                throw ("Refusing to clean unexpected source build output: " + $relativeBuildDir)
+            }
+            Remove-Item -LiteralPath $buildDir.FullName -Recurse -Force
+            $cleanedSourceBuildOutputs += $relativeBuildDir
+        }
+    }
+}
+
 $overallStatus = if ($missingRequired.Count -gt 0) { "failed" } else { "passed" }
 $report = [pscustomobject]@{
     generatedAt = (Get-Date).ToString("o")
     workspaceRoot = $WorkspaceRoot
     runtimeHostLibs = $runtimeHostLibs
+    runtimeHostLibsLocation = "external-local-cache"
     builtLocalJars = [bool]$BuildLocalJars
     overallStatus = $overallStatus
     copied = $copied
     upToDate = $upToDate
     externalOrMissing = $externalOrMissing
     missingRequired = $missingRequired
+    cleanedSourceBuildOutputs = $cleanedSourceBuildOutputs
 }
 Write-NPDevJsonFile $ReportPath $report
 
@@ -153,4 +182,4 @@ if ($overallStatus -ne "passed") {
     throw "RuntimeHost libs sync failed."
 }
 
-Write-NPDevOk ("RuntimeHost libs synced. Copied " + $copied.Count + " local jar(s); " + $upToDate.Count + " already current.")
+Write-NPDevOk ("RuntimeHost libs synced outside workspace. Copied " + $copied.Count + " local jar(s); " + $upToDate.Count + " already current. Path: " + $runtimeHostLibs)

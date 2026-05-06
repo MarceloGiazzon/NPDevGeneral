@@ -29,6 +29,39 @@ function Normalize-AbsolutePath([string]$PathValue) {
     return [System.IO.Path]::GetFullPath($PathValue)
 }
 
+function Get-NPDevLocalCacheRoot([string]$WorkspaceRoot) {
+    if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_LOCAL_CACHE_ROOT)) {
+        return Normalize-AbsolutePath $env:NPDEV_LOCAL_CACHE_ROOT
+    }
+
+    $localApplicationData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
+    if (-not [string]::IsNullOrWhiteSpace($localApplicationData)) {
+        return Normalize-AbsolutePath (Join-Path $localApplicationData "NPDev")
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:XDG_CACHE_HOME)) {
+        return Normalize-AbsolutePath (Join-Path $env:XDG_CACHE_HOME "npdev")
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:HOME)) {
+        return Normalize-AbsolutePath (Join-Path (Join-Path $env:HOME ".cache") "npdev")
+    }
+
+    return Normalize-AbsolutePath (Join-Path $WorkspaceRoot ".npdev-cache")
+}
+
+function Get-NPDevGradleUserHome([string]$WorkspaceRoot) {
+    $gradleUserHome = if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_GRADLE_USER_HOME)) {
+        Normalize-AbsolutePath $env:NPDEV_GRADLE_USER_HOME
+    }
+    else {
+        Join-Path (Get-NPDevLocalCacheRoot $WorkspaceRoot) "gradle"
+    }
+
+    New-Item -ItemType Directory -Force -Path $gradleUserHome | Out-Null
+    return $gradleUserHome
+}
+
 function Quote-Arg([string]$Value) {
     return '"' + ($Value -replace '"', '\"') + '"'
 }

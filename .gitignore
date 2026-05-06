@@ -48,12 +48,14 @@ scripts/reports/releases/
 scripts/reports/tmp/
 scripts/reports/cache/
 NPDev_General__OutsideRepo/
+ai-times-workbench/
 # Required Gradle wrapper artifacts for CI
 !**/gradle/wrapper/gradle-wrapper.jar
 !**/gradlew
 !**/gradlew.bat
 # Local rebuildable caches and generated sample outputs
 /.npdev-gradle/
+/.npdev-cache/
 /NPDevSamples/*/Output/
 
 
