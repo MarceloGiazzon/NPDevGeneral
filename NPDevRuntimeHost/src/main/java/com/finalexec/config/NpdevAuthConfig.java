@@ -52,7 +52,7 @@ public class NpdevAuthConfig {
     ) {
         FilterRegistrationBean<RuntimeApiKeyAuthFilter> bean = new FilterRegistrationBean<>();
         bean.setFilter(runtimeApiKeyAuthFilter);
-        bean.addUrlPatterns("/api/*", "/api/v1/*");
+        bean.addUrlPatterns("/*");
         bean.setOrder(-100);
         bean.setEnabled(runtimeSettings.authEnabled());
         return bean;

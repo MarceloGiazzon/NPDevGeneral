@@ -1,29 +1,21 @@
 # AI-Only Beta 0 Release Runbook
 
-Official Beta 0 evidence is produced on Windows CI or an equivalent clean Windows workspace. Docker/Linux proof is experimental for this pass and must not be used to claim official release eligibility.
+Official Beta 0 evidence is produced from the Windows release gate plus the blocking Docker/Linux CI proof. Docker/Linux evidence must come from `scripts/quality/run-docker-linux-proof.ps1`.
 
 Run the full closure sequence:
+
+```powershell
+pwsh ./scripts/quality/run-traceable-local-release.ps1 -WorkspaceRoot .
+pwsh ./scripts/quality/run-roadmap-closure-check.ps1 -WorkspaceRoot .
+```
+
+For diagnostics, `run-traceable-local-release.ps1` invokes the canonical final release script:
 
 ```powershell
 pwsh ./scripts/quality/run-beta0-final-release-check.ps1
 ```
 
-For diagnostics, the final command runs this ordered sequence:
-
-```powershell
-pwsh ./scripts/quality/run-json-schema-validator-tests.ps1
-pwsh ./scripts/quality/run-ai-schema-validation.ps1
-pwsh ./scripts/quality/run-ai-contract-normalizer-tests.ps1
-pwsh ./scripts/quality/run-controlled-command-runner-tests.ps1
-pwsh ./scripts/quality/run-ai-rest-smoke-verifier-tests.ps1
-pwsh ./scripts/quality/run-sample-matrix.ps1
-pwsh ./scripts/quality/run-ai-beta-gate.ps1
-pwsh ./scripts/quality/run-report-schema-validation.ps1
-pwsh ./scripts/quality/run-doc-entrypoint-validation.ps1
-pwsh ./scripts/quality/run-report-provenance-tests.ps1
-pwsh ./scripts/quality/run-beta-release-gate.ps1
-pwsh ./scripts/quality/run-beta0-final-closure-gate.ps1
-```
+The canonical final release script owns the ordered gate list. Use `scripts/reports/out/beta0-final-release-check-report.json.gates` as the machine-readable record of the exact commands, exit codes, and durations from a given run.
 
 Decision table:
 

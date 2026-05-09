@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/powershell:7.4-debian-12
+FROM debian:12-slim
 
 ENV DEBIAN_FRONTEND=noninteractive \
     NPDEV_AI_BETA_CONTAINER=true \
@@ -8,11 +8,17 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
+        gnupg \
         git \
         openjdk-17-jdk \
         nodejs \
         npm \
         unzip \
+    && curl -fsSL https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb -o /tmp/packages-microsoft-prod.deb \
+    && dpkg -i /tmp/packages-microsoft-prod.deb \
+    && rm /tmp/packages-microsoft-prod.deb \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends powershell=7.4.15-1.deb \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace

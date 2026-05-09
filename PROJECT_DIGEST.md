@@ -42,10 +42,11 @@ The target release proof command is:
 pwsh ./scripts/quality/run-beta-release-gate.ps1
 ```
 
-The final no-false-green closure command is:
+The final no-false-green closure commands are:
 
 ```powershell
-pwsh ./scripts/quality/run-beta0-final-release-check.ps1
+pwsh ./scripts/quality/run-traceable-local-release.ps1 -WorkspaceRoot .
+pwsh ./scripts/quality/run-roadmap-closure-check.ps1 -WorkspaceRoot .
 ```
 
 If either command or report is missing, stale, manually edited, not tied to the current workspace fingerprint, or mixed across child-report `runId` values, Beta 0 is blocked.

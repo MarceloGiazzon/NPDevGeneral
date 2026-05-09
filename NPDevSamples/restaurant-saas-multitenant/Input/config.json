@@ -29,7 +29,7 @@
     "deleteBeforeMount": true
   },
   "database": {
-    "provider": "step0-h2",
+    "provider": "docker-postgres",
     "host": "localhost",
     "port": 5432,
     "database": "restaurant_saas_multitenant",
@@ -49,7 +49,7 @@
     "apiKey": "api-dev",
     "recommendedProfiles": "dev,step0,trial",
     "runtimeUrl": "http://localhost:8093/",
-    "databaseMode": "step0-h2",
+    "databaseMode": "docker-postgres",
     "notes": [
       "This sample models tenant ownership explicitly through Tenant plus tenantId references.",
       "CRUD population scripts use the generated REST API only; they do not write to the database directly.",

@@ -1,0 +1,121 @@
+{
+  "schemaVersion": "npdev-doc-entrypoint-classification-policy.v1",
+  "defaultScriptClassification": {
+    "classification": "release-relevant",
+    "releaseRelevant": true,
+    "reason": "Documented script entrypoints are release-relevant unless explicitly classified as future, non-release, or blocking-deferred."
+  },
+  "scriptClassifications": [
+    {
+      "path": "scripts/quality/run-frontend-gate.ps1",
+      "classification": "release-relevant",
+      "releaseRelevant": true,
+      "reason": "Frontend evidence is blocking for Beta0 and the frontend gate producer script is implemented."
+    },
+    {
+      "path": "scripts/quality/run-docker-linux-proof.ps1",
+      "classification": "release-relevant",
+      "releaseRelevant": true,
+      "reason": "Docker/Linux evidence is blocking for Beta0 and the canonical Docker/Linux proof script is implemented."
+    },
+    {
+      "path": "scripts/quality/run-runtimehost-staged-jar-preflight.ps1",
+      "classification": "release-relevant",
+      "releaseRelevant": true,
+      "reason": "RuntimeHost staged-jar preflight is blocking for Beta0 and the producer script is implemented."
+    },
+    {
+      "path": "scripts/quality/run-traceable-local-release.ps1",
+      "classification": "release-relevant",
+      "releaseRelevant": true,
+      "reason": "The official runbook helper is implemented and invokes the canonical Beta0 final release check while preserving command, report, hash, commit, and log evidence."
+    },
+    {
+      "path": "scripts/quality/run-roadmap-closure-check.ps1",
+      "classification": "release-relevant",
+      "releaseRelevant": true,
+      "reason": "The roadmap closure helper is implemented and verifies runbook/workflow alignment plus traceable release, final closure, beta gate, and optional state-zip evidence."
+    },
+    {
+      "path": "scripts/doctor/check-output-cleanliness.ps1",
+      "classification": "future-non-release",
+      "releaseRelevant": false,
+      "reason": "Doctor output cleanliness is roadmap/support tooling and not current Beta0 release evidence."
+    },
+    {
+      "path": "scripts/doctor/npdev-doctor.ps1",
+      "classification": "future-non-release",
+      "releaseRelevant": false,
+      "reason": "Doctor checks are roadmap/support tooling and not current Beta0 release evidence."
+    },
+    {
+      "path": "scripts/hygiene/prune-release-evidence.ps1",
+      "classification": "future-non-release",
+      "releaseRelevant": false,
+      "reason": "Release evidence pruning is maintenance cleanup tooling and not current Beta0 release evidence."
+    },
+    {
+      "path": "scripts/maturity_adv/run-prioritized-control-board.ps1",
+      "classification": "future-non-release",
+      "releaseRelevant": false,
+      "reason": "Maturity control-board automation is future/non-release governance tooling."
+    }
+  ],
+  "reportClassifications": [
+    {
+      "reportPath": "scripts/reports/out/frontend-gate-report.json",
+      "producerScripts": [
+        "scripts/quality/run-frontend-gate.ps1"
+      ],
+      "consumers": [
+        "scripts/policy/beta-release-gate-policy.json"
+      ],
+      "classification": "blocking-report",
+      "reason": "Frontend evidence is a blocking Beta0 report produced by scripts/quality/run-frontend-gate.ps1 and consumed by scripts/policy/beta-release-gate-policy.json.",
+      "blockingWhenProducerMissing": true
+    },
+    {
+      "reportPath": "scripts/reports/out/docker-linux-parity-report.json",
+      "producerScripts": [
+        "scripts/quality/run-docker-linux-proof.ps1"
+      ],
+      "consumers": [
+        "scripts/policy/beta-release-gate-policy.json"
+      ],
+      "classification": "blocking-report",
+      "reason": "Docker/Linux proof is a blocking Beta0 report produced by scripts/quality/run-docker-linux-proof.ps1 and consumed by scripts/policy/beta-release-gate-policy.json.",
+      "blockingWhenProducerMissing": true
+    },
+    {
+      "reportPath": "scripts/reports/out/runtimehost-staged-jar-preflight-report.json",
+      "producerScripts": [
+        "scripts/quality/run-runtimehost-staged-jar-preflight.ps1"
+      ],
+      "consumers": [
+        "scripts/policy/beta-release-gate-policy.json"
+      ],
+      "classification": "blocking-report",
+      "reason": "RuntimeHost staged-jar proof is a blocking Beta0 report produced by scripts/quality/run-runtimehost-staged-jar-preflight.ps1 and consumed by scripts/policy/beta-release-gate-policy.json.",
+      "blockingWhenProducerMissing": true
+    },
+    {
+      "reportPath": "scripts/reports/out/doctor-report.json",
+      "producerScripts": [
+        "scripts/doctor/npdev-doctor.ps1"
+      ],
+      "classification": "future-non-release-report",
+      "reason": "Doctor evidence is referenced by roadmap/support documentation and is not current Beta0 release evidence.",
+      "blockingWhenProducerMissing": false
+    },
+    {
+      "reportPath": "scripts/reports/out/trusted-source-beta0-design-report.json",
+      "producerScripts": [],
+      "plannedConsumers": [
+        "trusted-source design checkpoint only"
+      ],
+      "classification": "checkpoint-only-design-report",
+      "reason": "Trusted-source design report is checkpoint-only design evidence; release evidence is produced by trusted-source-beta0-proof-report.json.",
+      "blockingWhenProducerMissing": false
+    }
+  ]
+}

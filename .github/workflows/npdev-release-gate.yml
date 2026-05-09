@@ -38,8 +38,12 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Run final Beta 0 release check
-        run: pwsh ./scripts/quality/run-beta0-final-release-check.ps1
+      - name: Run traceable Beta 0 release check
+        run: pwsh ./scripts/quality/run-traceable-local-release.ps1 -WorkspaceRoot .
+
+      - name: Run roadmap closure check
+        if: always()
+        run: pwsh ./scripts/quality/run-roadmap-closure-check.ps1 -WorkspaceRoot .
 
       - name: Upload release evidence
         if: always()

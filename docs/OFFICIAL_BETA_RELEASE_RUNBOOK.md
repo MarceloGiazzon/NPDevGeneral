@@ -1,6 +1,6 @@
 # NPDev Official Beta Release Runbook
 
-Historical baseline notice: this runbook records the previous RuntimeHost convergence beta baseline. Current AI-only Beta 0 readiness is determined only by `scripts\reports\out\ai-beta-gate-report.json` and `scripts\reports\out\beta-release-gate-report.json` produced by the current gates for the current workspace fingerprint.
+Current AI-only Beta 0 readiness is determined by the canonical traceable release wrapper, `scripts\quality\run-traceable-local-release.ps1`, and the closure helper, `scripts\quality\run-roadmap-closure-check.ps1`, using fresh reports from the current workspace fingerprint.
 
 ## Purpose
 
@@ -169,12 +169,9 @@ The CI path must:
 5. cache npm;
 6. cache Playwright browsers;
 7. install Playwright Chromium;
-8. run `run-beta-release-gate.ps1` with GitHub traceability metadata;
-9. run `Test-ReleaseTraceability.ps1 -RequireOfficialEligibility`;
-10. generate release-ready state zip;
-11. fix visible state zip timestamps;
-12. run `Test-CiReleaseEvidenceFreshness.ps1`;
-13. upload release evidence and state zips as workflow artifacts.
+8. run `run-traceable-local-release.ps1 -WorkspaceRoot .`, which calls the canonical final release script and records command, log, report, hash, commit, and branch evidence;
+9. run `run-roadmap-closure-check.ps1 -WorkspaceRoot .` so CI verifies the same official runbook and workflow alignment checks used locally;
+10. upload release evidence as workflow artifacts.
 
 ---
 

@@ -31,17 +31,19 @@ else {
 }
 $kernelRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevKernel"
 $generatorRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevGenerator"
+$kernelGradleWrapper = Get-NPDevGradleWrapperExecutable $kernelRoot
+$generatorGradleWrapper = Get-NPDevGradleWrapperExecutable $generatorRoot
 
 New-Item -ItemType Directory -Force -Path $runtimeHostLibs | Out-Null
-Ensure-NPDevFile (Join-Path $kernelRoot "gradlew.bat") "Kernel Gradle wrapper"
-Ensure-NPDevFile (Join-Path $generatorRoot "gradlew.bat") "Generator Gradle wrapper"
+Ensure-NPDevFile $kernelGradleWrapper "Kernel Gradle wrapper"
+Ensure-NPDevFile $generatorGradleWrapper "Generator Gradle wrapper"
 
 if ($BuildLocalJars) {
     Write-NPDevInfo "Building local Kernel/Contract runtime jars for RuntimeHost staging"
-    Invoke-NPDevCommandStreaming -WorkingDirectory $kernelRoot -Executable ".\gradlew.bat" -Arguments @("jar", "--no-daemon", "--console=plain")
+    Invoke-NPDevCommandStreaming -WorkingDirectory $kernelRoot -Executable $kernelGradleWrapper -Arguments @("jar", "--no-daemon", "--console=plain")
 
     Write-NPDevInfo "Building local Generator and CLI jars for RuntimeHost staging"
-    Invoke-NPDevCommandStreaming -WorkingDirectory $generatorRoot -Executable ".\gradlew.bat" -Arguments @(":generator:jar", ":tools:npdev-cli:jar", "--no-daemon", "--console=plain")
+    Invoke-NPDevCommandStreaming -WorkingDirectory $generatorRoot -Executable $generatorGradleWrapper -Arguments @(":generator:jar", ":tools:npdev-cli:jar", "--no-daemon", "--console=plain")
 }
 
 $sourceRoots = @(
@@ -57,7 +59,7 @@ foreach ($sourceRoot in $sourceRoots) {
     }
 
     $jars = @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -Filter *.jar -File |
-            Where-Object { $_.FullName -like "*\build\libs\*" } |
+            Where-Object { ($_.FullName -replace "\\", "/") -like "*/build/libs/*" } |
             Where-Object { $_.Name -notlike "npdev-migrations-*" })
 
     foreach ($jar in $jars) {
@@ -73,6 +75,13 @@ foreach ($sourceRoot in $sourceRoots) {
     }
 }
 
+$sourceDiscoveredJars = @($sourceByName.Keys | Sort-Object | ForEach-Object {
+        $sourcePath = [string]$sourceByName[$_]
+        [pscustomobject]@{
+            name = [string]$_
+            source = $sourcePath
+        }
+    })
 $copied = @()
 $upToDate = @()
 $externalOrMissing = @()
@@ -128,17 +137,27 @@ foreach ($target in $existingTargetJars) {
     }
 }
 
-$requiredLocalJars = @(
-    "dsl-0.1.0.jar",
-    "kernel-0.1.0.jar",
-    "expression-cel-0.1.0.jar"
-)
+$requiredLocalJars = @($sourceByName.Keys | Sort-Object)
+$discoveryFailures = @()
+if ($requiredLocalJars.Count -eq 0) {
+    $discoveryFailures += "No RuntimeHost jars were discovered under build/libs after local jar build."
+}
 $missingRequired = @()
 foreach ($required in $requiredLocalJars) {
     if (-not (Test-Path -LiteralPath (Join-Path $runtimeHostLibs $required) -PathType Leaf)) {
         $missingRequired += $required
     }
 }
+
+$manifestPath = Join-Path $runtimeHostLibs "runtimehost-libs-manifest.json"
+$manifest = [pscustomobject]@{
+    schemaVersion = "npdev-runtimehost-libs-manifest.v1"
+    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    runtimeHostLibsLocation = "external-local-cache"
+    requiredStagedJars = $requiredLocalJars
+    sourceDiscoveredJars = $sourceDiscoveredJars
+}
+Write-NPDevJsonFile $manifestPath $manifest
 
 $cleanedSourceBuildOutputs = @()
 if ($BuildLocalJars) {
@@ -161,7 +180,7 @@ if ($BuildLocalJars) {
     }
 }
 
-$overallStatus = if ($missingRequired.Count -gt 0) { "failed" } else { "passed" }
+$overallStatus = if ($missingRequired.Count -gt 0 -or $discoveryFailures.Count -gt 0) { "failed" } else { "passed" }
 $report = [pscustomobject]@{
     generatedAt = (Get-Date).ToString("o")
     workspaceRoot = $WorkspaceRoot
@@ -169,16 +188,20 @@ $report = [pscustomobject]@{
     runtimeHostLibsLocation = "external-local-cache"
     builtLocalJars = [bool]$BuildLocalJars
     overallStatus = $overallStatus
+    sourceDiscoveredJars = $sourceDiscoveredJars
+    requiredStagedJars = $requiredLocalJars
+    runtimeHostLibsManifest = $manifestPath
     copied = $copied
     upToDate = $upToDate
     externalOrMissing = $externalOrMissing
     missingRequired = $missingRequired
+    discoveryFailures = $discoveryFailures
     cleanedSourceBuildOutputs = $cleanedSourceBuildOutputs
 }
 Write-NPDevJsonFile $ReportPath $report
 
 if ($overallStatus -ne "passed") {
-    Write-NPDevWarn ("RuntimeHost libs sync failed; missing required jars: " + ($missingRequired -join ", "))
+    Write-NPDevWarn ("RuntimeHost libs sync failed; missing required jars: " + ($missingRequired -join ", ") + "; discovery failures: " + ($discoveryFailures -join ", "))
     throw "RuntimeHost libs sync failed."
 }
 

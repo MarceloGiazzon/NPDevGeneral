@@ -125,6 +125,33 @@
         },
         "additionalProperties": true
       }
+    },
+    "directEvidenceSummary": {
+      "type": "object",
+      "required": [
+        "evidenceContractVersion",
+        "blockingBooleansAreDirectlyEvidenced",
+        "inferredFieldsPolicy",
+        "sampleInputContractPolicy"
+      ],
+      "properties": {
+        "evidenceContractVersion": {
+          "const": "npdev-direct-release-evidence.v1"
+        },
+        "blockingBooleansAreDirectlyEvidenced": {
+          "type": "boolean",
+          "const": true
+        },
+        "inferredFieldsPolicy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sampleInputContractPolicy": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true
     }
   }
 }

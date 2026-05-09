@@ -168,6 +168,24 @@ function Invoke-Controlled {
     }
 }
 
+function Get-GradleWrapperPath {
+    param([string]$ProjectRoot)
+    $windowsWrapper = Join-Path $ProjectRoot "gradlew.bat"
+    $unixWrapper = Join-Path $ProjectRoot "gradlew"
+    $preferredWrappers = if ($IsWindows -or $env:OS -eq "Windows_NT") {
+        @($windowsWrapper, $unixWrapper)
+    }
+    else {
+        @($unixWrapper, $windowsWrapper)
+    }
+    foreach ($candidate in $preferredWrappers) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return $candidate
+        }
+    }
+    return $null
+}
+
 $workspaceRoot = (Resolve-Path ".").Path
 $requestFullPath = Resolve-RepoPath $RequestPath
 $policy = Read-JsonFile (Resolve-RepoPath $PolicyPath)
@@ -197,31 +215,6 @@ if (@($policy.allowedRequestTypes) -notcontains $requestType) {
     exit 2
 }
 
-if ($requestType -eq "trusted-script") {
-    $scriptPath = [string]$request.script
-    if (@($policy.allowedTrustedScripts) -notcontains $scriptPath) {
-        $result = New-StructuredResult -Status "blocked" -BlockedReason "PWSH_FILE_OUTSIDE_ALLOWED_ROOT" -ExitCode $null
-        Write-StructuredResult $result | Out-Host
-        exit 2
-    }
-    $arguments = @("-NoProfile", "-File", $scriptPath)
-    foreach ($property in @($request.args.PSObject.Properties)) {
-        $arguments += "-" + $property.Name
-        $arguments += [string]$property.Value
-    }
-    $runnerResultPath = if (-not [string]::IsNullOrWhiteSpace($ResultPath)) { $ResultPath + ".controlled-command.json" } else { $null }
-    $argumentsJson = @($arguments) | ConvertTo-Json -Compress
-    $ErrorActionPreference = "Continue"
-    pwsh -NoProfile -File scripts/security/Invoke-ControlledCommand.ps1 -Executable "pwsh" -ArgumentsJson $argumentsJson -WorkingDirectory "." -ResultPath $runnerResultPath | Out-Null
-    $runnerExit = $LASTEXITCODE
-    $ErrorActionPreference = "Stop"
-    $runnerResult = if (-not [string]::IsNullOrWhiteSpace($runnerResultPath) -and (Test-Path -LiteralPath $runnerResultPath -PathType Leaf)) { Read-JsonFile $runnerResultPath } else { $null }
-    $status = if ($runnerExit -eq 0) { "passed" } elseif ($runnerExit -eq 2) { "blocked" } else { "failed" }
-    $result = New-StructuredResult -Status $status -BlockedReason $(if ($null -ne $runnerResult) { [string]$runnerResult.blockedReason } else { $null }) -ExitCode $runnerExit -CommandResult $runnerResult
-    Write-StructuredResult $result | Out-Host
-    exit $runnerExit
-}
-
 if ($requestType -eq "gradle-task") {
     try {
         Assert-RelativeSafePath ([string]$request.projectRoot) "projectRoot"
@@ -231,11 +224,8 @@ if ($requestType -eq "gradle-task") {
         if ($task -notmatch "^[A-Za-z0-9:_-]+$" -or $task.StartsWith("-")) {
             throw "Gradle task must be a single safe task name."
         }
-        $gradlew = Join-Path $projectRoot "gradlew.bat"
-        if (-not (Test-Path -LiteralPath $gradlew -PathType Leaf)) {
-            $gradlew = Join-Path $projectRoot "gradlew"
-        }
-        if (-not (Test-Path -LiteralPath $gradlew -PathType Leaf)) {
+        $gradlew = Get-GradleWrapperPath $projectRoot
+        if ([string]::IsNullOrWhiteSpace($gradlew)) {
             throw "Gradle wrapper is missing in projectRoot."
         }
         $run = Invoke-Controlled -Executable $gradlew -Arguments @($task, "--no-daemon", "--console=plain") -WorkingDirectory $projectRoot -TimeoutSeconds (Get-RequestInt $request "timeoutSeconds" ([int]$policy.defaultTimeoutSeconds)) -Name "gradle-task"

@@ -165,6 +165,24 @@ if ($rawCmd.result.status -ne "blocked" -or $rawCmd.result.errorCode -ne "NPDEV_
     throw "Structured runner did not block raw cmd execution."
 }
 
+$futureGenerateApp = Invoke-StructuredRunner -Name "structured-future-generate-app-schema-invalid" -Request ([ordered]@{
+    schemaVersion = "npdev-ai-command-request.v1"
+    type = "generate-app"
+    description = "Future request type must not be part of the release command surface yet."
+})
+if ($futureGenerateApp.result.status -ne "blocked" -or $futureGenerateApp.result.errorCode -ne "NPDEV_COMMAND_REQUEST_SCHEMA_INVALID") {
+    throw "Structured runner did not reject future generate-app request type at schema validation."
+}
+
+$trustedScript = Invoke-StructuredRunner -Name "structured-trusted-script-schema-invalid" -Request ([ordered]@{
+    schemaVersion = "npdev-ai-command-request.v1"
+    type = "trusted-script"
+    script = "scripts/quality/invoke-ai-beta-app-smoke.ps1"
+})
+if ($trustedScript.result.status -ne "blocked" -or $trustedScript.result.errorCode -ne "NPDEV_COMMAND_REQUEST_SCHEMA_INVALID") {
+    throw "Structured runner did not reject trusted-script before its design checkpoint."
+}
+
 $structuredSchema = Invoke-StructuredRunner -Name "structured-schema-validation-allowed" -Request ([ordered]@{
     schemaVersion = "npdev-ai-command-request.v1"
     type = "schema-validation"
@@ -237,6 +255,8 @@ $report = [pscustomobject]@{
         "structured runner blocks raw npx execution before execution",
         "structured runner blocks encoded PowerShell command mode",
         "structured runner blocks raw cmd execution",
+        "structured runner rejects future generate-app request type at schema validation",
+        "structured runner rejects trusted-script before its design checkpoint",
         "structured runner executes typed schema-validation requests",
         "structured runner executes typed gradle-task requests",
         "structured runner executes typed rest-smoke requests"

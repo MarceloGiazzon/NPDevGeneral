@@ -12,6 +12,7 @@ import com.npdev.generator.emitters.PluginRequirementAssetEmitter;
 import com.npdev.generator.emitters.RepositoryEmitter;
 import com.npdev.generator.emitters.RuntimeApiEmitter;
 import com.npdev.generator.emitters.ServiceEmitter;
+import com.npdev.generator.emitters.TrustedSourceEmitter;
 import com.npdev.generator.migration.MigrationDiffEngine;
 import com.npdev.generator.migration.MigrationPlan;
 import com.npdev.generator.migration.MigrationScriptEmitter;
@@ -78,6 +79,7 @@ public final class GeneratorFacade {
 
         new ConfigEmitter(templates, writer).emit(model);
         new RuntimeApiEmitter(templates, writer).emit(model, modelSourcePath);
+        new TrustedSourceEmitter(writer).emit(model, modelSourcePath);
         new MetadataManifestAssetEmitter(writer).emit(model, modelSourcePath);
 
         // Stage 3: emit deterministic plugin requirement asset derived from the model source.

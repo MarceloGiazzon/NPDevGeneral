@@ -46,8 +46,67 @@ function Get-ReportByName {
     return @($Reports | Where-Object { [string]$_.name -eq $Name } | Select-Object -First 1)
 }
 
+function Get-ReportFileName {
+    param([string]$PathValue)
+    if ([string]::IsNullOrWhiteSpace($PathValue)) {
+        return ""
+    }
+    return [System.IO.Path]::GetFileName(([string]$PathValue).Replace("\", "/"))
+}
+
+function Get-NormalizedReportFileNames {
+    param([object[]]$Values)
+    return @($Values | ForEach-Object {
+            if ($null -eq $_) {
+                return
+            }
+            if ($_.PSObject.Properties.Name -contains "path") {
+                Get-ReportFileName ([string]$_.path)
+            }
+            else {
+                Get-ReportFileName ([string]$_)
+            }
+        } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+}
+
+function Test-ScopePolicyReportAlignment {
+    param(
+        [object]$ScopePolicy,
+        [object]$ReleasePolicy
+    )
+    $scopeBlockingReports = @(Get-NormalizedReportFileNames @($ScopePolicy.blockingReports))
+    $releaseRequiredReports = @(Get-NormalizedReportFileNames @($ReleasePolicy.requiredReports))
+    $missingFromReleasePolicy = @($scopeBlockingReports | Where-Object { $releaseRequiredReports -notcontains $_ })
+    $missingFromScopePolicy = @($releaseRequiredReports | Where-Object { $scopeBlockingReports -notcontains $_ })
+    $duplicatesInScopePolicy = @(@($ScopePolicy.blockingReports | ForEach-Object { Get-ReportFileName ([string]$_) }) |
+        Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
+    $duplicatesInReleasePolicy = @(@($ReleasePolicy.requiredReports | ForEach-Object { Get-ReportFileName ([string]$_.path) }) |
+        Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
+    $passed = $missingFromReleasePolicy.Count -eq 0 -and
+        $missingFromScopePolicy.Count -eq 0 -and
+        $duplicatesInScopePolicy.Count -eq 0 -and
+        $duplicatesInReleasePolicy.Count -eq 0
+    return [pscustomobject]@{
+        status = if ($passed) { "passed" } else { "failed" }
+        authoritativeScopePolicy = "scripts/policy/beta0-scope.json"
+        comparedField = "blockingReports"
+        releasePolicyField = "requiredReports.path"
+        scopeBlockingReports = $scopeBlockingReports
+        releaseRequiredReports = $releaseRequiredReports
+        missingFromReleasePolicy = $missingFromReleasePolicy
+        missingFromScopePolicy = $missingFromScopePolicy
+        duplicatesInScopePolicy = $duplicatesInScopePolicy
+        duplicatesInReleasePolicy = $duplicatesInReleasePolicy
+    }
+}
+
 function New-TruthEvaluation {
-    param([string]$Name, [string[]]$Requires, [hashtable]$Inputs)
+    param(
+        [string]$Name,
+        [string[]]$Requires,
+        [hashtable]$Inputs,
+        [hashtable]$InputEvidence = @{}
+    )
     $requirementResults = @()
     $passed = $true
     foreach ($requirement in @($Requires)) {
@@ -56,6 +115,7 @@ function New-TruthEvaluation {
         $requirementResults += [pscustomobject]@{
             name = $requirement
             passed = $value
+            evidence = if ($InputEvidence.ContainsKey($requirement)) { $InputEvidence[$requirement] } else { [pscustomobject]@{ evidenceType = "diagnostic-inferred"; releaseBlocking = $false; reason = "No direct evidence mapping was provided for this diagnostic input." } }
         }
     }
     return [pscustomobject]@{
@@ -161,6 +221,82 @@ function Get-DirtyFingerprint {
     }
 }
 
+function Get-NestedJsonValue {
+    param([object]$ObjectValue, [string]$Path)
+    if ($null -eq $ObjectValue -or [string]::IsNullOrWhiteSpace($Path)) {
+        return $null
+    }
+    $current = $ObjectValue
+    foreach ($part in @($Path -split "\.")) {
+        if ($null -eq $current) {
+            return $null
+        }
+        $property = $current.PSObject.Properties[$part]
+        if ($null -eq $property) {
+            return $null
+        }
+        $current = $property.Value
+    }
+    return $current
+}
+
+function Test-EvidenceRequirement {
+    param(
+        [object]$Requirement,
+        [object]$Report,
+        [string]$ReportPath
+    )
+    $path = [string]$Requirement.path
+    $actual = Get-NestedJsonValue $Report $path
+    $expected = $Requirement.expected
+    $matches = $false
+    if ($expected -is [bool]) {
+        $matches = $null -ne $actual -and [bool]$actual -eq [bool]$expected
+    }
+    elseif ($expected -is [int] -or $expected -is [long] -or $expected -is [double]) {
+        $matches = $null -ne $actual -and [double]$actual -eq [double]$expected
+    }
+    else {
+        $matches = [string]$actual -eq [string]$expected
+    }
+    return [pscustomobject]@{
+        path = $path
+        expected = $expected
+        actual = $actual
+        passed = $matches
+        releaseBlocking = [bool]$Requirement.releaseBlocking
+        classification = if ([string]::IsNullOrWhiteSpace([string]$Requirement.classification)) { "blocking-direct-evidence" } else { [string]$Requirement.classification }
+        evidence = [pscustomobject]@{
+            type = "report-field"
+            path = $ReportPath
+            field = $path
+            reason = [string]$Requirement.reason
+        }
+    }
+}
+
+function New-ReportInputEvidence {
+    param(
+        [object]$ReportResult,
+        [string]$Reason,
+        [bool]$ReleaseBlocking = $true,
+        [string]$EvidenceClassification = "blocking-direct-evidence"
+    )
+    return [pscustomobject]@{
+        evidenceType = "required-report"
+        evidenceClassification = $EvidenceClassification
+        releaseBlocking = $ReleaseBlocking
+        reportName = if ($null -eq $ReportResult) { "" } else { [string]$ReportResult.name }
+        reportPath = if ($null -eq $ReportResult) { "" } else { [string]$ReportResult.path }
+        reportStatus = if ($null -eq $ReportResult) { "missing" } else { [string]$ReportResult.status }
+        reportValid = if ($null -eq $ReportResult) { $false } else { [bool]$ReportResult.valid }
+        reportFresh = if ($null -eq $ReportResult) { $false } else { [bool]$ReportResult.fresh }
+        reportHash = if ($null -eq $ReportResult) { $null } else { [string]$ReportResult.contentSha256 }
+        blockers = if ($null -eq $ReportResult) { @("required report result was not produced") } else { @($ReportResult.blockers) }
+        reason = $Reason
+    }
+}
+
 function Test-ReportFreshness {
     param([object]$Report, [int]$MaxAgeHours)
     $generatedAtValue = Get-JsonPropertyValue $Report "generatedAt"
@@ -259,6 +395,19 @@ function Test-RequiredReport {
         }
     }
 
+    $evidenceRequirementResults = @()
+    $definitionEvidenceRequirements = if ($Definition.PSObject.Properties.Name -contains "evidenceRequirements" -and $null -ne $Definition.evidenceRequirements) { @($Definition.evidenceRequirements) } else { @() }
+    foreach ($evidenceRequirement in $definitionEvidenceRequirements) {
+        if ($null -eq $report) {
+            continue
+        }
+        $evidenceResult = Test-EvidenceRequirement -Requirement $evidenceRequirement -Report $report -ReportPath $relativePath
+        $evidenceRequirementResults += $evidenceResult
+        if (-not [bool]$evidenceResult.passed -and [bool]$evidenceResult.releaseBlocking) {
+            Add-Blocker $reportBlockers ("Blocking evidence requirement failed: " + [string]$evidenceResult.path + " expected " + [string]$evidenceResult.expected + " but got " + [string]$evidenceResult.actual + ". " + [string]$evidenceResult.evidence.reason)
+        }
+    }
+
     $freshness = if ($null -ne $report) {
         Test-ReportFreshness $report $MaxAgeHours
     }
@@ -285,6 +434,7 @@ function Test-RequiredReport {
         generatedAt = $freshness.generatedAt
         ageSeconds = $freshness.ageSeconds
         blockers = @($reportBlockers)
+        evidenceRequirements = @($evidenceRequirementResults)
     }
 }
 
@@ -330,6 +480,22 @@ if ($scopePolicy.schemaVersion -notin @("npdev-beta0-scope.v1", "npdev-beta0-sco
 }
 if ($truthTable.schemaVersion -ne "npdev-beta0-release-truth-table.v1") {
     Add-Blocker $blockers "Beta 0 release truth table is missing or invalid."
+}
+
+$scopePolicyEnforcement = Test-ScopePolicyReportAlignment -ScopePolicy $scopePolicy -ReleasePolicy $policy
+if ($scopePolicyEnforcement.status -ne "passed") {
+    if (@($scopePolicyEnforcement.missingFromReleasePolicy).Count -gt 0) {
+        Add-Blocker $blockers ("Scope policy blockingReports missing from release policy requiredReports: " + (@($scopePolicyEnforcement.missingFromReleasePolicy) -join ", "))
+    }
+    if (@($scopePolicyEnforcement.missingFromScopePolicy).Count -gt 0) {
+        Add-Blocker $blockers ("Release policy requiredReports missing from scope policy blockingReports: " + (@($scopePolicyEnforcement.missingFromScopePolicy) -join ", "))
+    }
+    if (@($scopePolicyEnforcement.duplicatesInScopePolicy).Count -gt 0) {
+        Add-Blocker $blockers ("Scope policy blockingReports contains duplicates: " + (@($scopePolicyEnforcement.duplicatesInScopePolicy) -join ", "))
+    }
+    if (@($scopePolicyEnforcement.duplicatesInReleasePolicy).Count -gt 0) {
+        Add-Blocker $blockers ("Release policy requiredReports contains duplicate report paths: " + (@($scopePolicyEnforcement.duplicatesInReleasePolicy) -join ", "))
+    }
 }
 
 $requiredReports = @()
@@ -408,27 +574,51 @@ $workspaceFingerprintSource = ($commit + "|" + [string]$dirty.dirty + "|" + [str
 $workspaceFingerprintBytes = [System.Text.Encoding]::UTF8.GetBytes($workspaceFingerprintSource)
 $workspaceFingerprint = ([System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::HashData($workspaceFingerprintBytes)) -replace "-", "").ToLowerInvariant()
 
+$aiBetaGateReport = Get-ReportByName $requiredReports "ai-beta-gate"
+$sampleMatrixReport = Get-ReportByName $requiredReports "sample-matrix"
+$normalizerReport = Get-ReportByName $requiredReports "ai-contract-normalizer-tests"
+$restSmokeVerifierReport = Get-ReportByName $requiredReports "ai-rest-smoke-verifier-tests"
+$controlledCommandRunnerReport = Get-ReportByName $requiredReports "controlled-command-runner-tests"
+$schemaValidatorReport = Get-ReportByName $requiredReports "json-schema-validator-tests"
+$reportSchemaValidationReport = Get-ReportByName $requiredReports "report-schema-validation"
+$inputEvidence = @{
+    aiBetaGatePassed = New-ReportInputEvidence $aiBetaGateReport "AI beta gate report must be passed, fresh, schema-valid, and hash-addressed."
+    sampleMatrixPassed = New-ReportInputEvidence $sampleMatrixReport "Sample matrix is release evidence only when the report is valid and releaseEvidence.eligible is true; inputContractEvidence alone is diagnostic for release eligibility."
+    normalizerTestsPassed = New-ReportInputEvidence $normalizerReport "Normalizer tests report must be passed, fresh, and hash-addressed."
+    restSmokeVerifierTestsPassed = New-ReportInputEvidence $restSmokeVerifierReport "REST smoke verifier tests report must be passed, fresh, and hash-addressed."
+    controlledCommandRunnerTestsPassed = New-ReportInputEvidence $controlledCommandRunnerReport "Controlled command runner tests report must be passed, fresh, and hash-addressed."
+    schemaValidatorTestsPassed = New-ReportInputEvidence $schemaValidatorReport "JSON schema validator tests report must be passed, fresh, and hash-addressed."
+    reportSchemaValidationPassed = New-ReportInputEvidence $reportSchemaValidationReport "Report schema validation report must be passed, fresh, and hash-addressed."
+    workspaceClean = [pscustomobject]@{ evidenceType = "command"; evidenceClassification = "blocking-direct-evidence"; releaseBlocking = $true; command = "git status --porcelain=v1"; dirty = [bool]$dirty.dirty; dirtyFileCount = [int]$dirty.dirtyFileCount; dirtyHash = $dirty.dirtyHash; reason = "Workspace cleanliness is derived from the git porcelain output fingerprint." }
+    commitIdentityAvailable = [pscustomobject]@{ evidenceType = "command"; evidenceClassification = "blocking-direct-evidence"; releaseBlocking = $true; command = "git rev-parse HEAD"; commit = $commit; reason = "Release eligibility requires a concrete git commit identity." }
+    reportsFresh = [pscustomobject]@{ evidenceType = "required-report-freshness"; evidenceClassification = "blocking-direct-evidence"; releaseBlocking = $true; maxReportAgeHours = $maxAge; staleReports = @($requiredReports | Where-Object { -not [bool]$_.fresh } | ForEach-Object { [pscustomobject]@{ name = $_.name; path = $_.path; generatedAt = $_.generatedAt; ageSeconds = $_.ageSeconds } }); reason = "Freshness is evaluated from each required report generatedAt timestamp." }
+    approvedEvidencePlatform = [pscustomobject]@{ evidenceType = "policy"; evidenceClassification = "blocking-direct-evidence"; releaseBlocking = $true; policyPath = [string]$policy.scopePolicy; officialEvidencePlatform = [string]$scopePolicy.officialEvidencePlatform; dockerLinuxEvidence = [string]$scopePolicy.dockerLinuxEvidence; dockerRequiredForBeta0 = [bool]$scopePolicy.dockerRequiredForBeta0; reason = "Docker/Linux proof remains blocking through the machine-authoritative scope policy." }
+    noStaleContradictoryReports = [pscustomobject]@{ evidenceType = "report-scan"; evidenceClassification = "blocking-direct-evidence"; releaseBlocking = $true; scannedPath = "scripts/reports/out/*.json"; activeContradictoryReports = @($activeContradictoryReports); reason = "Active failed reports outside the required set are scanned as contradictory release evidence." }
+}
 $inputs = @{
-    aiBetaGatePassed = [bool](Get-ReportByName $requiredReports "ai-beta-gate").valid
-    sampleMatrixPassed = [bool](Get-ReportByName $requiredReports "sample-matrix").valid
-    normalizerTestsPassed = [bool](Get-ReportByName $requiredReports "ai-contract-normalizer-tests").valid
-    restSmokeVerifierTestsPassed = [bool](Get-ReportByName $requiredReports "ai-rest-smoke-verifier-tests").valid
-    controlledCommandRunnerTestsPassed = [bool](Get-ReportByName $requiredReports "controlled-command-runner-tests").valid
-    schemaValidatorTestsPassed = [bool](Get-ReportByName $requiredReports "json-schema-validator-tests").valid
-    reportSchemaValidationPassed = [bool](Get-ReportByName $requiredReports "report-schema-validation").valid
+    aiBetaGatePassed = [bool]$aiBetaGateReport.valid
+    sampleMatrixPassed = [bool]$sampleMatrixReport.valid
+    normalizerTestsPassed = [bool]$normalizerReport.valid
+    restSmokeVerifierTestsPassed = [bool]$restSmokeVerifierReport.valid
+    controlledCommandRunnerTestsPassed = [bool]$controlledCommandRunnerReport.valid
+    schemaValidatorTestsPassed = [bool]$schemaValidatorReport.valid
+    reportSchemaValidationPassed = [bool]$reportSchemaValidationReport.valid
     workspaceClean = -not [bool]$dirty.dirty
     commitIdentityAvailable = -not [string]::IsNullOrWhiteSpace($commit)
     reportsFresh = $reportsFresh
-    approvedEvidencePlatform = ([string]$scopePolicy.officialEvidencePlatform -eq "windows-ci" -and [string]$scopePolicy.dockerLinuxEvidence -eq "experimental-non-release")
+    approvedEvidencePlatform = ([string]$scopePolicy.officialEvidencePlatform -eq "windows-ci+docker-linux-ci" -and [string]$scopePolicy.dockerLinuxEvidence -eq "blocking-release-evidence" -and [bool]$scopePolicy.dockerRequiredForBeta0)
     noStaleContradictoryReports = $noStaleContradictoryReports
 }
-$candidateEvaluation = New-TruthEvaluation "candidateReady" @($truthTable.candidateReady.requires) $inputs
+$candidateEvaluation = New-TruthEvaluation "candidateReady" @($truthTable.candidateReady.requires) $inputs $inputEvidence
 $inputs["candidateReady"] = [bool]$candidateEvaluation.passed -and $blockers.Count -eq 0
-$releaseEvaluation = New-TruthEvaluation "releaseReady" @($truthTable.releaseReady.requires) $inputs
+$inputEvidence["candidateReady"] = [pscustomobject]@{ evidenceType = "truth-table-evaluation"; evidenceClassification = "blocking-direct-evidence"; releaseBlocking = $true; evaluationName = "candidateReady"; passed = [bool]$candidateEvaluation.passed; blockersAtEvaluation = $blockers.Count; reason = "candidateReady is computed from direct-evidenced prerequisite booleans and current blocker count." }
+$releaseEvaluation = New-TruthEvaluation "releaseReady" @($truthTable.releaseReady.requires) $inputs $inputEvidence
 $inputs["releaseReady"] = [bool]$releaseEvaluation.passed -and $blockers.Count -eq 0
-$provenanceEvaluation = New-TruthEvaluation "provenanceReady" @($truthTable.provenanceReady.requires) $inputs
+$inputEvidence["releaseReady"] = [pscustomobject]@{ evidenceType = "truth-table-evaluation"; evidenceClassification = "blocking-direct-evidence"; releaseBlocking = $true; evaluationName = "releaseReady"; passed = [bool]$releaseEvaluation.passed; blockersAtEvaluation = $blockers.Count; reason = "releaseReady is computed from candidateReady and direct-evidenced release checks." }
+$provenanceEvaluation = New-TruthEvaluation "provenanceReady" @($truthTable.provenanceReady.requires) $inputs $inputEvidence
 $inputs["provenanceReady"] = [bool]$provenanceEvaluation.passed -and $officialBlockers.Count -eq 0
-$officialEvaluation = New-TruthEvaluation "officialReleaseEligible" @($truthTable.officialReleaseEligible.requires) $inputs
+$inputEvidence["provenanceReady"] = [pscustomobject]@{ evidenceType = "truth-table-evaluation"; evidenceClassification = "blocking-direct-evidence"; releaseBlocking = $true; evaluationName = "provenanceReady"; passed = [bool]$provenanceEvaluation.passed; officialBlockersAtEvaluation = $officialBlockers.Count; reason = "provenanceReady is computed from git, freshness, platform, and contradictory-report evidence." }
+$officialEvaluation = New-TruthEvaluation "officialReleaseEligible" @($truthTable.officialReleaseEligible.requires) $inputs $inputEvidence
 $candidateReady = [bool]$inputs["candidateReady"]
 $releaseReady = [bool]$inputs["releaseReady"]
 $provenanceReady = [bool]$inputs["provenanceReady"]
@@ -464,6 +654,13 @@ $manifest = [pscustomobject]@{
     officialReleaseEligible = $officialReleaseEligible
     requiredReports = $requiredReports
     informationalReports = $informationalReports
+    directEvidenceSummary = [pscustomobject]@{
+        evidenceContractVersion = "npdev-direct-release-evidence.v1"
+        blockingBooleansAreDirectlyEvidenced = $true
+        inferredFieldsPolicy = "Fields marked diagnostic-inferred are not release-blocking and must not drive officialReleaseEligible."
+        sampleInputContractPolicy = "sample-matrix inputContractEvidence.eligible is diagnostic for release readiness unless releaseEvidence.eligible is true."
+        inputEvidence = $inputEvidence
+    }
 }
 
 $report = [pscustomobject]@{
@@ -488,9 +685,17 @@ $report = [pscustomobject]@{
     informationalReports = $informationalReports
     blockers = @($blockers + $officialBlockers)
     officialEligibilityBlockers = @($officialBlockers)
+    directEvidenceSummary = [pscustomobject]@{
+        evidenceContractVersion = "npdev-direct-release-evidence.v1"
+        blockingBooleansAreDirectlyEvidenced = $true
+        inferredFieldsPolicy = "Diagnostic/inferred fields may explain decisions but do not satisfy blocking release booleans."
+        sampleInputContractPolicy = "sample-matrix overallStatus/inputContractEvidence success is not full release evidence unless releaseEvidence.eligible is true."
+        inputEvidenceKeys = @($inputEvidence.Keys | Sort-Object)
+    }
     officialEvidencePlatform = [string]$policy.officialEvidencePlatform
     dockerLinuxEvidence = [string]$policy.dockerLinuxEvidence
     activeContradictoryReports = $activeContradictoryReports
+    scopePolicyEnforcement = $scopePolicyEnforcement
     truthTableEvaluation = @($candidateEvaluation, $releaseEvaluation, $provenanceEvaluation, $officialEvaluation)
     decisionRule = [string]$policy.readinessRule
 }

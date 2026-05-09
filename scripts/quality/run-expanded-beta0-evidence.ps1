@@ -139,14 +139,13 @@ foreach ($scenarioId in $commandScenarioIds) {
     $scenario = @($aiBetaReport.scenarios | Where-Object { [string]$_.scenarioId -eq $scenarioId } | Select-Object -First 1)
     if ($null -eq $scenario -or [string]$scenario.status -ne "passed") { $commandPassed = $false }
 }
-New-Report "ai-command-policy-report.json" "npdev-ai-command-policy-report.v1" $commandPassed ([pscustomObject]@{
-    allowedRequestTypes = (Read-JsonFile "scripts/policy/ai-command-policy.json").allowedRequestTypes
-    structuredOnly = $true
-    arbitraryShellRejected = $commandPassed
-    workspaceEscapeRejected = $commandPassed
-    externalNetworkCommandRejected = $commandPassed
-    commandScenarios = $commandScenarioIds
-}) $(if ($commandPassed) { @() } else { @("One or more command policy negative scenarios failed.") }) | Out-Null
+$ErrorActionPreference = "Continue"
+pwsh -NoProfile -File scripts/quality/run-structured-command-surface-alignment.ps1 -RunId $RunId 2>$null | Out-Null
+$commandAlignmentExit = $LASTEXITCODE
+$ErrorActionPreference = "Stop"
+if ($commandAlignmentExit -ne 0) {
+    $commandPassed = $false
+}
 
 New-Report "schema-validation-report.json" "npdev-expanded-schema-validation-report.v1" ($scenarioFailures.Count -eq 0 -and $negativeFailures.Count -eq 0) ([pscustomobject]@{
     aiSchemaValidationReport = "scripts/reports/out/ai-schema-validation-report.json"

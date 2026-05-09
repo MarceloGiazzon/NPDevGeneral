@@ -284,6 +284,29 @@ function Test-NPDevGradleExecutable([string]$Executable) {
     return $name -match '^(gradle|gradlew)(\.bat)?$'
 }
 
+function Get-NPDevGradleWrapperExecutable([string]$ProjectRoot) {
+    $windowsWrapper = Join-Path $ProjectRoot "gradlew.bat"
+    $posixWrapper = Join-Path $ProjectRoot "gradlew"
+    if ($IsWindows) {
+        if (Test-Path -LiteralPath $windowsWrapper -PathType Leaf) {
+            return $windowsWrapper
+        }
+        if (Test-Path -LiteralPath $posixWrapper -PathType Leaf) {
+            return $posixWrapper
+        }
+    }
+    else {
+        if (Test-Path -LiteralPath $posixWrapper -PathType Leaf) {
+            return $posixWrapper
+        }
+        if (Test-Path -LiteralPath $windowsWrapper -PathType Leaf) {
+            return $windowsWrapper
+        }
+    }
+
+    throw ("Gradle wrapper not found in " + $ProjectRoot)
+}
+
 function Get-NPDevLocalCacheRoot([string]$WorkspaceRoot) {
     if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_LOCAL_CACHE_ROOT)) {
         return Normalize-NPDevPath $env:NPDEV_LOCAL_CACHE_ROOT
@@ -486,11 +509,8 @@ function Get-NPDevOfficialSampleIds([string]$WorkspaceRoot = "") {
 
 function Get-NPDevWorkspaceRelativePath([string]$WorkspaceRoot, [string]$TargetPath) {
     $normalizedRoot = Normalize-NPDevPath $WorkspaceRoot
-    if (-not $normalizedRoot.EndsWith("\")) {
-        $normalizedRoot += "\"
-    }
-    $rootUri = [Uri]$normalizedRoot
-    $targetUri = [Uri](Normalize-NPDevPath $TargetPath)
-    return [Uri]::UnescapeDataString($rootUri.MakeRelativeUri($targetUri).ToString()).Replace("/", "\")
+    $normalizedTarget = Normalize-NPDevPath $TargetPath
+    $relativePath = [System.IO.Path]::GetRelativePath($normalizedRoot, $normalizedTarget)
+    return $relativePath.Replace("/", "\")
 }
 

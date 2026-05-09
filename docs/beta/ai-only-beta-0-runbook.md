@@ -7,6 +7,8 @@ pwsh ./scripts/quality/run-ai-beta-gate.ps1
 pwsh ./scripts/quality/run-report-schema-validation.ps1
 pwsh ./scripts/quality/run-doc-entrypoint-validation.ps1
 pwsh ./scripts/quality/run-report-provenance-tests.ps1
+pwsh ./scripts/quality/run-runtimehost-staged-jar-preflight.ps1
+pwsh ./scripts/quality/run-docker-linux-proof.ps1
 pwsh ./scripts/quality/run-beta-release-gate.ps1
 pwsh ./scripts/quality/run-beta0-final-closure-gate.ps1
 pwsh ./scripts/quality/run-beta0-final-release-check.ps1
@@ -46,11 +48,10 @@ All current-run child reports must carry the same non-empty `runId`. Mixed-run, 
 
 ## Clean Environment
 
-Docker/Linux proof is experimental for Beta 0 and is not official release evidence in this pass:
+Docker/Linux proof is blocking Beta 0 evidence and must be generated through the canonical proof script:
 
-```bash
-docker build -f Dockerfile.ai-beta -t npdev-ai-beta:local .
-docker run --rm -v "$PWD:/workspace" -w /workspace npdev-ai-beta:local pwsh ./scripts/quality/run-ai-beta-gate.ps1
+```powershell
+pwsh ./scripts/quality/run-docker-linux-proof.ps1
 ```
 
 The reproducibility report records OS, PowerShell, Java, Node/npm, Gradle wrapper distribution, git commit, dirty state, network policy, and cache mode.

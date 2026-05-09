@@ -83,12 +83,6 @@
   </main>
 
   <script>
-    const fallbackUsers = [
-      { id: "u-001", name: "Ana Silva", email: "ana@example.test", active: true },
-      { id: "u-002", name: "Bruno Costa", email: "bruno@example.test", active: true },
-      { id: "u-003", name: "Carla Rocha", email: "carla@example.test", active: true }
-    ];
-
     function renderUsers(users) {
       const body = document.getElementById("usersTable");
       body.innerHTML = "";
@@ -105,16 +99,14 @@
     }
 
     async function callCreateUsersProcedure() {
-      if (window.NPDev && typeof window.NPDev.callProcedure === "function") {
-        return window.NPDev.callProcedure("create-users", {
-          requestedBy: "panel-user",
-          source: "user-admin-panel"
-        });
+      if (!window.NPDev || typeof window.NPDev.callProcedure !== "function") {
+        throw new Error("NPDev trusted panel bridge is unavailable");
       }
-      return {
-        createdCount: fallbackUsers.length,
-        users: fallbackUsers
-      };
+      return window.NPDev.callProcedure("create-users", {
+        tenantId: "tenant-a",
+        requestedBy: "panel-user",
+        source: "user-admin-panel"
+      });
     }
 
     document.getElementById("createUsers").addEventListener("click", async () => {

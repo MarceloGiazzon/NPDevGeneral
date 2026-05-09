@@ -8,7 +8,7 @@
     "-File",
     "scripts/tests/fixtures/controlled-runner/allowed-build.ps1"
   ],
-  "workingDirectory": "D:\\",
+  "workingDirectory": "/",
   "timeoutSeconds": 5,
   "expectedErrorCode": "NPDEV_COMMAND_WORKDIR_OUTSIDE_SANDBOX"
 }

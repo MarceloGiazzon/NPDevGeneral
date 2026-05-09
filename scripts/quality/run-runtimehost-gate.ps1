@@ -76,10 +76,11 @@ try {
     try {
         Write-NPDevInfo ("Running RuntimeHost verification tasks for sample " + $SampleId)
         $verificationLogPath = Resolve-NPDevWorkspacePath $WorkspaceRoot ("scripts\reports\out\runtimehost-" + $SampleId + "-verification.log")
+        $assembledGradleWrapper = Get-NPDevGradleWrapperExecutable $assembledAppRoot
         $verificationCommand = Invoke-NPDevCommandEvidence `
             -WorkspaceRoot $WorkspaceRoot `
             -WorkingDirectory $assembledAppRoot `
-            -Executable ".\gradlew.bat" `
+            -Executable $assembledGradleWrapper `
             -Arguments @("--no-daemon", "--console=plain", "enforceSingleMigrationSource", "test") `
             -LogPath $verificationLogPath
 

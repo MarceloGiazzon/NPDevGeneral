@@ -4,22 +4,58 @@
   "rawShellCommandsAllowed": false,
   "allowedRequestTypes": [
     "schema-validation",
-    "normalize-contracts",
-    "generate-app",
-    "build-generated-app",
-    "boot-generated-app",
     "rest-smoke",
-    "panel-smoke",
-    "procedure-smoke",
-    "workflow-smoke",
-    "tenant-auth-role-smoke",
-    "collect-evidence",
     "gradle-task"
   ],
-  "allowedTrustedScripts": [
-    "scripts/quality/invoke-ai-beta-app-smoke.ps1",
-    "scripts/ai/Invoke-AiRestSmokeVerifier.ps1",
-    "scripts/ai/Normalize-AiContract.ps1"
+  "implementedRequestTypes": [
+    "schema-validation",
+    "rest-smoke",
+    "gradle-task"
+  ],
+  "schemaValidBlockedRequestTypes": [
+    "raw-command"
+  ],
+  "deferredRequestTypes": [
+    {
+      "type": "trusted-script",
+      "reason": "Deferred until the trusted-source design checkpoint defines tenant isolation, role checks, runtime APIs, and security boundaries."
+    },
+    {
+      "type": "normalize-contracts",
+      "reason": "Future non-release structured request type; current release normalization is driven by the canonical gate scripts."
+    },
+    {
+      "type": "generate-app",
+      "reason": "Future non-release structured request type; current release generation is driven by the canonical gate scripts."
+    },
+    {
+      "type": "build-generated-app",
+      "reason": "Future non-release structured request type; current release build evidence is driven by the canonical gate scripts."
+    },
+    {
+      "type": "boot-generated-app",
+      "reason": "Future non-release structured request type; current release boot evidence is driven by the canonical gate scripts."
+    },
+    {
+      "type": "panel-smoke",
+      "reason": "Future non-release structured request type; current panel smoke evidence is produced by the canonical expanded Beta 0 evidence flow."
+    },
+    {
+      "type": "procedure-smoke",
+      "reason": "Future non-release structured request type; current procedure smoke evidence is produced by the canonical expanded Beta 0 evidence flow."
+    },
+    {
+      "type": "workflow-smoke",
+      "reason": "Future non-release structured request type; current workflow smoke evidence is produced by the canonical expanded Beta 0 evidence flow."
+    },
+    {
+      "type": "tenant-auth-role-smoke",
+      "reason": "Future non-release structured request type; current tenant/auth/role evidence is produced by the canonical expanded Beta 0 evidence flow."
+    },
+    {
+      "type": "collect-evidence",
+      "reason": "Future non-release structured request type; current evidence collection is driven by the canonical release scripts."
+    }
   ],
   "allowedGradleRoots": [
     "NPDevGenerator",
@@ -37,6 +73,10 @@
       "TMP",
       "JAVA_HOME",
       "GRADLE_OPTS",
+      "GRADLE_USER_HOME",
+      "NPDEV_GRADLE_USER_HOME",
+      "NPDEV_LOCAL_CACHE_ROOT",
+      "NPDEV_RUNTIMEHOST_LIBS_DIR",
       "CI"
     ]
   },

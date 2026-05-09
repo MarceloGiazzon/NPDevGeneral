@@ -42,7 +42,9 @@ $requiredCurrentReports = @(
     "scripts/reports/out/report-schema-validation-report.json",
     "scripts/reports/out/doc-entrypoint-validation-report.json",
     "scripts/reports/out/ai-beta-reproducibility-report.json",
-    "scripts/reports/out/runtime-null-context-tests-report.json"
+    "scripts/reports/out/runtime-null-context-tests-report.json",
+    "scripts/reports/out/runtimehost-staged-jar-preflight-report.json",
+    "scripts/reports/out/docker-linux-parity-report.json"
 )
 
 $missingReports = @($requiredCurrentReports | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
@@ -144,7 +146,7 @@ function Write-FakeReleasePolicyAndReports {
         release = "ai-only-beta-0"
         maxReportAgeHours = 24
         officialEvidencePlatform = "windows-ci"
-        dockerLinuxEvidence = "experimental-non-release"
+        dockerLinuxEvidence = "blocking-release-evidence"
         scopePolicy = "scripts/policy/beta0-scope.json"
         truthTable = "scripts/policy/beta0-release-truth-table.json"
         requiredReports = $definitions

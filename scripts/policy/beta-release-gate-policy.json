@@ -8,8 +8,8 @@
     "evidenceManifest": "scripts/reports/out/beta-release-evidence-manifest.json",
     "releaseReadySummary": "scripts/reports/out/release-ready-summary.json"
   },
-  "officialEvidencePlatform": "windows-ci",
-  "dockerLinuxEvidence": "experimental-non-release",
+  "officialEvidencePlatform": "windows-ci+docker-linux-ci",
+  "dockerLinuxEvidence": "blocking-release-evidence",
   "requireCleanRoomForOfficialRelease": false,
   "scopePolicy": "scripts/policy/beta0-scope.json",
   "truthTable": "scripts/policy/beta0-release-truth-table.json",
@@ -41,7 +41,16 @@
       "path": "scripts/reports/out/ai-command-policy-report.json",
       "schemaVersion": "npdev-ai-command-policy-report.v1",
       "statusProperty": "overallStatus",
-      "passValue": "passed"
+      "passValue": "passed",
+      "schemaPath": "schemas/ai/ai-command-policy-report.schema.json"
+    },
+    {
+      "name": "trusted-source-beta0-proof",
+      "path": "scripts/reports/out/trusted-source-beta0-proof-report.json",
+      "schemaVersion": "npdev-trusted-source-beta0-proof-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed",
+      "schemaPath": "schemas/ai/trusted-source-beta0-proof-report.schema.json"
     },
     {
       "name": "expanded-schema-validation",
@@ -170,9 +179,41 @@
       "passValue": "passed"
     },
     {
+      "name": "direct-evidence-hardening-tests",
+      "path": "scripts/reports/out/direct-evidence-hardening-tests-report.json",
+      "schemaVersion": "npdev-direct-evidence-hardening-test-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed",
+      "schemaPath": "schemas/ai/direct-evidence-hardening-tests-report.schema.json"
+    },
+    {
+      "name": "final-regression-coverage-audit",
+      "path": "scripts/reports/out/final-regression-coverage-audit-report.json",
+      "schemaVersion": "npdev-final-regression-coverage-audit-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed",
+      "schemaPath": "schemas/ai/final-regression-coverage-audit-report.schema.json",
+      "evidenceRequirements": [
+        {
+          "path": "coverageStatus",
+          "expected": "passed",
+          "releaseBlocking": true,
+          "classification": "blocking-regression-coverage",
+          "reason": "Final regression coverage audit must pass even when separate release readiness blockers remain visible."
+        }
+      ]
+    },
+    {
       "name": "doc-entrypoint-validation",
       "path": "scripts/reports/out/doc-entrypoint-validation-report.json",
       "schemaVersion": "npdev-doc-entrypoint-validation-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed"
+    },
+    {
+      "name": "frontend-gate",
+      "path": "scripts/reports/out/frontend-gate-report.json",
+      "schemaVersion": "npdev-frontend-gate-report.v1",
       "statusProperty": "overallStatus",
       "passValue": "passed"
     },
@@ -209,7 +250,16 @@
       "path": "scripts/reports/out/sample-matrix-report.json",
       "schemaVersion": "npdev-sample-matrix-report.v1",
       "statusProperty": "overallStatus",
-      "passValue": "passed"
+      "passValue": "passed",
+      "evidenceRequirements": [
+        {
+          "path": "releaseEvidence.eligible",
+          "expected": true,
+          "releaseBlocking": true,
+          "classification": "blocking-release-evidence",
+          "reason": "Input-contract success alone is not full sample release evidence; generation/runtime verification must set releaseEvidence.eligible=true."
+        }
+      ]
     },
     {
       "name": "ai-beta-reproducibility",
@@ -224,6 +274,22 @@
       "schemaVersion": "npdev-runtime-null-context-test-report.v1",
       "statusProperty": "overallStatus",
       "passValue": "passed"
+    },
+    {
+      "name": "runtimehost-staged-jar-preflight",
+      "path": "scripts/reports/out/runtimehost-staged-jar-preflight-report.json",
+      "schemaVersion": "npdev-runtimehost-staged-jar-preflight-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed",
+      "schemaPath": "schemas/ai/runtimehost-staged-jar-preflight-report.schema.json"
+    },
+    {
+      "name": "docker-linux-parity",
+      "path": "scripts/reports/out/docker-linux-parity-report.json",
+      "schemaVersion": "npdev-docker-linux-parity-report.v1",
+      "statusProperty": "overallStatus",
+      "passValue": "passed",
+      "schemaPath": "schemas/ai/docker-linux-parity-report.schema.json"
     }
   ],
   "informationalReports": [

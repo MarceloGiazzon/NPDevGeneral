@@ -21,6 +21,8 @@ if ([string]::IsNullOrWhiteSpace($RunId)) {
     $RunId = "sample-generation-" + (Get-Date).ToString("yyyyMMdd-HHmmssfff")
 }
 
+$sampleOutputRoot = Join-Path (Join-Path $samplesRoot $SampleId) "Output"
+New-Item -ItemType Directory -Force -Path $sampleOutputRoot | Out-Null
 $sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId $SampleId
 Ensure-File -PathValue $sample.ModelPath -Label "Sample model.json"
 Ensure-File -PathValue $sample.ConfigPath -Label "Sample config.json"

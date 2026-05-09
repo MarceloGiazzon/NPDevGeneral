@@ -57,6 +57,10 @@ function Get-DescendantProcessIds {
 
 function Stop-ProcessTree {
     param([int]$RootProcessId)
+    if (-not $IsWindows) {
+        Stop-Process -Id $RootProcessId -Force -ErrorAction SilentlyContinue
+        return
+    }
     $ids = @((Get-DescendantProcessIds -RootProcessId $RootProcessId) | Select-Object -Unique)
     [array]::Reverse($ids)
     foreach ($id in $ids) {
@@ -69,6 +73,29 @@ function Stop-ProcessTree {
     }
 }
 
+function Resolve-GradleWrapper {
+    param(
+        [string]$PrimaryRoot,
+        [string]$FallbackRoot
+    )
+    $roots = @($PrimaryRoot, $FallbackRoot | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    foreach ($root in $roots) {
+        $windowsWrapper = Join-Path $root "gradlew.bat"
+        $posixWrapper = Join-Path $root "gradlew"
+        if ($IsWindows) {
+            foreach ($candidate in @($windowsWrapper, $posixWrapper)) {
+                if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+            }
+        }
+        else {
+            foreach ($candidate in @($posixWrapper, $windowsWrapper)) {
+                if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+            }
+        }
+    }
+    throw ("No Gradle wrapper is available for generated app verification. Checked: " + ($roots -join ", "))
+}
+
 $appRootFull = (Resolve-Path -LiteralPath $AppRoot).Path
 $workspaceRoot = (Resolve-Path ".").Path
 if ([string]::IsNullOrWhiteSpace($env:NPDEV_RUNTIMEHOST_LIBS_DIR)) {
@@ -76,16 +103,7 @@ if ([string]::IsNullOrWhiteSpace($env:NPDEV_RUNTIMEHOST_LIBS_DIR)) {
     $outsideRepoRoot = Join-Path $workspace.Parent.FullName ($workspace.Name + "__OutsideRepo")
     $env:NPDEV_RUNTIMEHOST_LIBS_DIR = Join-Path $outsideRepoRoot "runtimehost-libs"
 }
-$gradlew = Join-Path $appRootFull "gradlew.bat"
-if (-not (Test-Path -LiteralPath $gradlew -PathType Leaf)) {
-    $workspaceGradlew = Join-Path $workspaceRoot "NPDevRuntimeHost\gradlew.bat"
-    if (Test-Path -LiteralPath $workspaceGradlew -PathType Leaf) {
-        $gradlew = $workspaceGradlew
-    }
-    else {
-        throw "No Gradle wrapper is available for generated app verification. Checked: $gradlew and $workspaceGradlew"
-    }
-}
+$gradlew = Resolve-GradleWrapper -PrimaryRoot $appRootFull -FallbackRoot (Join-Path $workspaceRoot "NPDevRuntimeHost")
 
 $report = [ordered]@{
     schemaVersion = "npdev-ai-beta-app-smoke-result.v1"
@@ -125,7 +143,7 @@ try {
     $process = Start-Process -FilePath $gradlew -ArgumentList $bootArgs -WorkingDirectory $appRootFull -NoNewWindow -PassThru -RedirectStandardOutput $bootStdout -RedirectStandardError $bootStderr
     $report.boot = New-StageResult -Status "running" -Message "Generated app process started." -Evidence ([pscustomobject]@{
         processId = $process.Id
-        command = "gradlew.bat " + ($bootArgs -join " ")
+        command = ([System.IO.Path]::GetFileName($gradlew) + " " + ($bootArgs -join " "))
     })
     Write-JsonReport $report
 

@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/ai-command-policy-report.schema.json",
+  "title": "NPDev AI Command Policy Report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "overallStatus",
+    "policyPath",
+    "schemaPath",
+    "runnerPath",
+    "allowedRequestTypes",
+    "implementedRequestTypes",
+    "schemaValidBlockedRequestTypes",
+    "schemaEnumRequestTypes",
+    "deferredRequestTypes",
+    "alignment",
+    "commandScenarioEvidenceSource",
+    "failures"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-ai-command-policy-report.v1"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "scriptPath": {
+      "const": "scripts/quality/run-structured-command-surface-alignment.ps1"
+    },
+    "workspaceRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "overallStatus": {
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "policyPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schemaPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runnerPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "allowedRequestTypes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "implementedRequestTypes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "schemaValidBlockedRequestTypes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "schemaEnumRequestTypes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "deferredRequestTypes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "type",
+          "reason"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "alignment": {
+      "type": "object"
+    },
+    "commandScenarioEvidence": {
+      "type": "array"
+    },
+    "commandScenarioEvidenceSource": {
+      "type": "object",
+      "required": [
+        "path",
+        "exists"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "runId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "generatedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

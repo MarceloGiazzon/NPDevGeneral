@@ -24,6 +24,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  docker-linux-proof:
+    name: Docker/Linux blocking proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Docker/Linux proof
+        timeout-minutes: 85
+        run: pwsh ./scripts/quality/run-docker-linux-proof.ps1
+
+      - name: Upload Docker/Linux evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-linux-proof-reports
+          path: |
+            scripts/reports/out/docker-linux-parity-report.json
+            scripts/reports/out/docker-linux-proof
+            scripts/reports/out/docker-linux-ai-beta-gate-report.json
+          if-no-files-found: warn
+          retention-days: 14
+
   ai-beta-gate:
     name: AI-only Beta 0 proof
     runs-on: windows-latest
@@ -64,8 +95,12 @@ jobs:
           restore-keys: |
             ai-beta-gradle-${{ runner.os }}-
 
-      - name: Final Beta 0 release check
-        run: pwsh ./scripts/quality/run-beta0-final-release-check.ps1
+      - name: Traceable Beta 0 release check
+        run: pwsh ./scripts/quality/run-traceable-local-release.ps1 -WorkspaceRoot .
+
+      - name: Roadmap closure check
+        if: always()
+        run: pwsh ./scripts/quality/run-roadmap-closure-check.ps1 -WorkspaceRoot .
 
       - name: Upload AI beta reports
         if: always()

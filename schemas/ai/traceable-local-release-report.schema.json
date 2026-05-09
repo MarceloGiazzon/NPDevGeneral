@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/traceable-local-release-report.schema.json",
+  "title": "NPDev Traceable Local Release Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "overallStatus",
+    "source",
+    "canonicalRelease",
+    "blockers"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-traceable-local-release-report.v1"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scriptPath": {
+      "const": "scripts/quality/run-traceable-local-release.ps1"
+    },
+    "overallStatus": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "commitSha",
+        "branch",
+        "commitAvailable",
+        "branchAvailable",
+        "statusCommand",
+        "dirtyLineCount"
+      ],
+      "additionalProperties": true
+    },
+    "canonicalRelease": {
+      "type": "object",
+      "required": [
+        "scriptPath",
+        "command",
+        "exitCode",
+        "stdoutLog",
+        "stderrLog",
+        "finalReleaseReportPath",
+        "finalReleaseOverallStatus",
+        "officialReleaseEligible",
+        "beta0TagAllowed"
+      ],
+      "properties": {
+        "exitCode": {
+          "type": "integer"
+        },
+        "officialReleaseEligible": {
+          "type": "boolean"
+        },
+        "beta0TagAllowed": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    },
+    "blockers": {
+      "type": "array"
+    }
+  }
+}

@@ -1,16 +1,27 @@
 {
   "schemaVersion": "npdev-sample-matrix-policy.v1",
   "release": "ai-only-beta-0",
-  "requiredBeta0Samples": [
-    "simple-user-registry"
+  "semantics": "strict-release-sample",
+  "decision": "Every policy-defined release sample is release-blocking for AI-only Beta0. Fixture-only samples must be reported explicitly but do not count as release coverage or release blockers.",
+  "blockingClassifications": [
+    "release-sample"
   ],
-  "optionalBeta0Samples": [
+  "nonBlockingClassifications": [
+    "fixture-only"
+  ],
+  "coverage": {
+    "requiredReleaseCoveragePercent": 100.0,
+    "coverageDenominator": "release-sample",
+    "minimumRequiredSamples": 5
+  },
+  "releaseBlockingSamples": [
+    "canonical-demo",
+    "simple-user-registry",
     "simple-contact-intake",
-    "canonical-demo"
-  ],
-  "postBeta0Samples": [
     "medium-expense-approval",
-    "restaurant-saas-multitenant",
+    "restaurant-saas-multitenant"
+  ],
+  "fixtureOnlySamples": [
     "user-minimal"
   ],
   "aiBetaScenarioLinks": {

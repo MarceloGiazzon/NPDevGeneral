@@ -27,6 +27,8 @@ Current root automation entrypoints:
 - `pwsh -File scripts/quality/run-controlled-command-runner-tests.ps1`
 - `pwsh -File scripts/quality/run-ai-rest-smoke-verifier-tests.ps1`
 - `pwsh -File scripts/quality/run-sample-matrix.ps1`
+- `pwsh -File scripts/quality/run-runtimehost-staged-jar-preflight.ps1`
+- `pwsh -File scripts/quality/run-docker-linux-proof.ps1`
 - `pwsh -File scripts/quality/run-ai-beta-gate.ps1`
 - `pwsh -File scripts/quality/run-report-schema-validation.ps1`
 - `pwsh -File scripts/quality/run-doc-entrypoint-validation.ps1`
@@ -34,6 +36,8 @@ Current root automation entrypoints:
 - `pwsh -File scripts/quality/run-beta-release-gate.ps1`
 - `pwsh -File scripts/quality/run-beta0-final-closure-gate.ps1`
 - `pwsh -File scripts/quality/run-beta0-final-release-check.ps1`
+- `pwsh -File scripts/quality/run-traceable-local-release.ps1`
+- `pwsh -File scripts/quality/run-roadmap-closure-check.ps1`
 
 ## AI-only Beta 0
 
@@ -57,21 +61,14 @@ pwsh ./scripts/quality/run-beta-release-gate.ps1
 No-false-green closure proof:
 
 ```powershell
-pwsh ./scripts/quality/run-json-schema-validation-tests.ps1
-pwsh ./scripts/quality/run-json-schema-validator-tests.ps1
-pwsh ./scripts/quality/run-report-schema-validation.ps1
-pwsh ./scripts/quality/run-doc-entrypoint-validation.ps1
-pwsh ./scripts/quality/run-report-provenance-tests.ps1
-pwsh ./scripts/quality/run-expanded-beta0-evidence.ps1
-pwsh ./scripts/quality/run-beta0-final-closure-gate.ps1
-pwsh ./scripts/quality/run-beta0-final-release-check.ps1
+pwsh ./scripts/quality/run-traceable-local-release.ps1 -WorkspaceRoot .
+pwsh ./scripts/quality/run-roadmap-closure-check.ps1 -WorkspaceRoot .
 ```
 
-Docker/Linux proof is experimental for Beta 0 and is not official release evidence in this pass:
+Docker/Linux proof is blocking Beta 0 evidence. Use the canonical proof script so CI compatibility, command timeouts, logs, and report schema fields are captured:
 
-```bash
-docker build -f Dockerfile.ai-beta -t npdev-ai-beta:local .
-docker run --rm -v "$PWD:/workspace" -w /workspace npdev-ai-beta:local pwsh ./scripts/quality/run-ai-beta-gate.ps1
+```powershell
+pwsh ./scripts/quality/run-docker-linux-proof.ps1
 ```
 
 Current source-of-truth reports:
@@ -81,6 +78,8 @@ Current source-of-truth reports:
 - `scripts/reports/out/beta0-final-closure-report.json`
 - `scripts/reports/out/beta-release-evidence-manifest.json`
 - `scripts/reports/out/ai-beta-reproducibility-report.json`
+- `scripts/reports/out/runtimehost-staged-jar-preflight-report.json`
+- `scripts/reports/out/docker-linux-parity-report.json`
 
 These gate scripts are required for AI-only Beta 0. If either script or report is missing, stale, manually edited, not tied to the current workspace fingerprint, or mixed across different child-report `runId` values, Beta 0 is blocked.
 
@@ -100,7 +99,7 @@ pwsh ./scripts/release/create-beta0-tag.ps1 -Version beta0 -DryRun
 
 The release blocker execution roadmap and closing evidence are tracked in `docs/RELEASE_BLOCKER_EXECUTION_ROADMAP.md`.
 
-Frontend release evidence is intentionally diagnostic: `scripts/reports/out/frontend-gate-report.json` records toolchain versions, lockfile fingerprints, the Gradle/npm command, output tail, and generated-residue checks. See `docs/FRONTEND_GATE_REPRODUCIBILITY.md`.
+Frontend release evidence is blocking for Beta0: `scripts/reports/out/frontend-gate-report.json` records toolchain versions, lockfile fingerprints, the Gradle/npm command, output tail, and generated-residue checks. See `docs/FRONTEND_GATE_REPRODUCIBILITY.md`.
 
 Sample matrix release evidence requires full policy-defined coverage. `scripts/reports/out/sample-matrix-report.json` records coverage by sample kind, input fingerprints, and release eligibility. See `docs/SAMPLE_MATRIX_RELEASE_POLICY.md`.
 

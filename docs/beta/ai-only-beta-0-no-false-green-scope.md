@@ -1,6 +1,6 @@
 # AI-Only Beta 0 No-False-Green Scope
 
-Beta 0 release evidence is official only when produced by the Windows release gate path. Docker/Linux execution is experimental and non-release until the Windows-oriented generator, smoke, and process-control scripts are made cross-platform and proven in CI.
+Beta 0 release evidence is official only when produced by the Windows release gate path plus the blocking Docker/Linux proof from `scripts/quality/run-docker-linux-proof.ps1`. Docker/Linux execution must include CI compatibility, explicit timeouts, logs, report artifacts, and current-source report provenance.
 
 Green means machine-checked proof:
 
@@ -17,6 +17,8 @@ Current command sequence:
 pwsh ./scripts/quality/run-json-schema-validation-tests.ps1
 pwsh ./scripts/quality/run-json-schema-validator-tests.ps1
 pwsh ./scripts/quality/run-ai-contract-normalizer-tests.ps1
+pwsh ./scripts/quality/run-runtimehost-staged-jar-preflight.ps1
+pwsh ./scripts/quality/run-docker-linux-proof.ps1
 pwsh ./scripts/quality/run-sample-matrix.ps1
 pwsh ./scripts/quality/run-ai-beta-gate.ps1
 pwsh ./scripts/quality/run-report-schema-validation.ps1

@@ -56,17 +56,36 @@ $orderedGates = @(
     [pscustomobject]@{ name = "controlled-command-runner-tests"; command = "scripts/quality/run-controlled-command-runner-tests.ps1" },
     [pscustomobject]@{ name = "ai-rest-smoke-verifier-tests"; command = "scripts/quality/run-ai-rest-smoke-verifier-tests.ps1" },
     [pscustomobject]@{ name = "runtime-null-context-tests"; command = "scripts/quality/run-runtime-null-context-tests.ps1" },
+    [pscustomobject]@{ name = "runtimehost-staged-jar-preflight-tests"; command = "scripts/quality/run-runtimehost-staged-jar-preflight-tests.ps1" },
+    [pscustomobject]@{ name = "runtimehost-staged-jar-preflight"; command = "scripts/quality/run-runtimehost-staged-jar-preflight.ps1" },
+    [pscustomobject]@{ name = "frontend-gate"; command = "scripts/quality/run-frontend-gate.ps1" },
+    [pscustomobject]@{ name = "frontend-gate-tests"; command = "scripts/quality/run-frontend-gate-tests.ps1" },
+    [pscustomobject]@{ name = "docker-linux-proof-tests"; command = "scripts/quality/run-docker-linux-proof-tests.ps1" },
+    [pscustomobject]@{ name = "docker-linux-proof"; command = "scripts/quality/run-docker-linux-proof.ps1" },
+    [pscustomobject]@{ name = "sample-matrix-tests"; command = "scripts/quality/run-sample-matrix-tests.ps1" },
+    [pscustomobject]@{ name = "scope-policy-enforcement-tests"; command = "scripts/quality/run-scope-policy-enforcement-tests.ps1" },
+    [pscustomobject]@{ name = "direct-evidence-hardening-tests"; command = "scripts/quality/run-direct-evidence-hardening-tests.ps1" },
+    [pscustomobject]@{ name = "runbook-workflow-alignment-tests"; command = "scripts/quality/run-runbook-workflow-alignment-tests.ps1" },
     [pscustomobject]@{ name = "sample-matrix"; command = "scripts/quality/run-sample-matrix.ps1" },
     [pscustomobject]@{ name = "ai-beta-gate"; command = "scripts/quality/run-ai-beta-gate.ps1" },
     [pscustomobject]@{ name = "expanded-beta0-evidence"; command = "scripts/quality/run-expanded-beta0-evidence.ps1" },
+    [pscustomobject]@{ name = "structured-command-surface-alignment"; command = "scripts/quality/run-structured-command-surface-alignment.ps1" },
+    [pscustomobject]@{ name = "trusted-source-beta0-proof-tests"; command = "scripts/quality/run-trusted-source-beta0-proof-tests.ps1" },
+    [pscustomobject]@{ name = "trusted-source-beta0-proof"; command = "scripts/quality/run-trusted-source-beta0-proof.ps1" },
+    [pscustomobject]@{ name = "doc-entrypoint-validation-tests"; command = "scripts/quality/run-doc-entrypoint-validation-tests.ps1" },
     [pscustomobject]@{ name = "report-schema-validation"; command = "scripts/quality/run-report-schema-validation.ps1" },
     [pscustomobject]@{ name = "doc-entrypoint-validation"; command = "scripts/quality/run-doc-entrypoint-validation.ps1" },
+    [pscustomobject]@{ name = "beta-release-gate-pre-audit"; command = "scripts/quality/run-beta-release-gate.ps1"; alwaysContinue = $true },
+    [pscustomobject]@{ name = "final-regression-coverage-audit-tests"; command = "scripts/quality/run-final-regression-coverage-audit-tests.ps1" },
+    [pscustomobject]@{ name = "final-regression-coverage-audit"; command = "scripts/quality/run-final-regression-coverage-audit.ps1" },
+    [pscustomobject]@{ name = "report-schema-validation-final"; command = "scripts/quality/run-report-schema-validation.ps1" },
     [pscustomobject]@{ name = "report-provenance-tests"; command = "scripts/quality/run-report-provenance-tests.ps1" }
 )
 
 try {
     foreach ($gate in $orderedGates) {
-        Invoke-Gate -Name $gate.name -Command $gate.command | Out-Null
+        $alwaysContinue = $gate.PSObject.Properties.Name -contains "alwaysContinue" -and [bool]$gate.alwaysContinue
+        Invoke-Gate -Name $gate.name -Command $gate.command -AlwaysContinue $alwaysContinue | Out-Null
     }
 }
 catch {

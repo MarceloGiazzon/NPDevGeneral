@@ -74,7 +74,15 @@ tasks.register('verifyNpdevRuntimeHostLibs') {
     description = 'Checks that local RuntimeHost jars were staged outside the workspace before compilation.'
 
     doLast {
-        def requiredJars = ['dsl-0.1.0.jar', 'kernel-0.1.0.jar', 'expression-cel-0.1.0.jar']
+        def manifestFile = new File(npdevRuntimeHostLibsDir, 'runtimehost-libs-manifest.json')
+        if (!manifestFile.isFile()) {
+            throw new GradleException("Missing NPDev RuntimeHost libs manifest in ${npdevRuntimeHostLibsDir}. Run scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars.")
+        }
+        def manifest = new JsonSlurper().parse(manifestFile)
+        def requiredJars = (manifest.requiredStagedJars ?: []).collect { it.toString().trim() }.findAll { !it.isEmpty() }
+        if (requiredJars.isEmpty()) {
+            throw new GradleException("NPDev RuntimeHost libs manifest did not declare requiredStagedJars: ${manifestFile}.")
+        }
         def missing = requiredJars.findAll { !new File(npdevRuntimeHostLibsDir, it).isFile() }
         if (!missing.isEmpty()) {
             throw new GradleException("Missing NPDev RuntimeHost jars in ${npdevRuntimeHostLibsDir}: ${missing}. Run scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars.")

@@ -1,0 +1,475 @@
+{
+  "schemaVersion": "npdev-final-regression-coverage-manifest.v1",
+  "coverageItems": [
+    {
+      "id": "doc-entrypoint-missing-blocking-script-failure",
+      "description": "Doc-entrypoint validation fails on missing documented blocking scripts and records source locations.",
+      "finalEntrypoints": [
+        "scripts/quality/run-doc-entrypoint-validation-tests.ps1",
+        "scripts/quality/run-doc-entrypoint-validation.ps1"
+      ],
+      "reports": [
+        {
+          "path": "scripts/reports/out/doc-entrypoint-validation-tests-report.json",
+          "schemaVersion": "npdev-doc-entrypoint-validation-test-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed"
+        },
+        {
+          "path": "scripts/reports/out/doc-entrypoint-validation-report.json",
+          "schemaVersion": "npdev-doc-entrypoint-validation-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed"
+        }
+      ],
+      "sourcePatterns": [
+        {
+          "path": "scripts/quality/run-doc-entrypoint-validation-tests.ps1",
+          "patterns": [
+            "missing-blocking-script",
+            "lineNumber"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "entrypoint-classification-policy",
+      "description": "Documented entrypoints use a data-driven classification policy.",
+      "finalEntrypoints": [
+        "scripts/quality/run-doc-entrypoint-validation.ps1"
+      ],
+      "sourcePatterns": [
+        {
+          "path": "scripts/policy/doc-entrypoint-classification-policy.json",
+          "patterns": [
+            "future-non-release",
+            "release-relevant",
+            "blocking-report"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "frontend-gate-success-failure-tests",
+      "description": "Frontend gate has success and failure regression coverage.",
+      "finalEntrypoints": [
+        "scripts/quality/run-frontend-gate-tests.ps1",
+        "scripts/quality/run-frontend-gate.ps1"
+      ],
+      "reports": [
+        {
+          "path": "scripts/reports/out/frontend-gate-tests-report.json",
+          "schemaVersion": "npdev-frontend-gate-test-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed",
+          "requiredTestedReportBasenames": [
+            "success-report.json",
+            "failure-report.json"
+          ]
+        },
+        {
+          "path": "scripts/reports/out/frontend-gate-report.json",
+          "schemaVersion": "npdev-frontend-gate-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed"
+        }
+      ]
+    },
+    {
+      "id": "strict-sample-matrix-semantics",
+      "description": "Release-blocking samples use strict sample matrix semantics.",
+      "finalEntrypoints": [
+        "scripts/quality/run-sample-matrix-tests.ps1",
+        "scripts/quality/run-sample-matrix.ps1"
+      ],
+      "reports": [
+        {
+          "path": "scripts/reports/out/sample-matrix-tests-report.json",
+          "schemaVersion": "npdev-sample-matrix-test-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed",
+          "requiredTestedReportBasenames": [
+            "release-blocking-report.json",
+            "actual-release-samples-report.json"
+          ]
+        },
+        {
+          "path": "scripts/reports/out/sample-matrix-report.json",
+          "schemaVersion": "npdev-sample-matrix-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed"
+        }
+      ],
+      "sourcePatterns": [
+        {
+          "path": "scripts/policy/sample-matrix-policy.json",
+          "patterns": [
+            "canonical-demo",
+            "simple-user-registry",
+            "simple-contact-intake",
+            "medium-expense-approval",
+            "restaurant-saas-multitenant"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fixture-only-user-minimal",
+      "description": "user-minimal remains fixture-only and non-blocking.",
+      "finalEntrypoints": [
+        "scripts/quality/run-sample-matrix-tests.ps1"
+      ],
+      "reports": [
+        {
+          "path": "scripts/reports/out/sample-matrix-tests-report.json",
+          "schemaVersion": "npdev-sample-matrix-test-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed",
+          "requiredTestedReportBasenames": [
+            "fixture-only-nonblocking-report.json"
+          ]
+        }
+      ],
+      "sourcePatterns": [
+        {
+          "path": "scripts/policy/sample-matrix-policy.json",
+          "patterns": [
+            "user-minimal",
+            "fixture-only"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "scope-policy-enforcement-drift-tests",
+      "description": "Scope and release policy drift fail closed.",
+      "finalEntrypoints": [
+        "scripts/quality/run-scope-policy-enforcement-tests.ps1"
+      ],
+      "reports": [
+        {
+          "path": "scripts/reports/out/scope-policy-enforcement-tests-report.json",
+          "schemaVersion": "npdev-scope-policy-enforcement-test-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed"
+        }
+      ],
+      "sourcePatterns": [
+        {
+          "path": "scripts/quality/run-scope-policy-enforcement-tests.ps1",
+          "patterns": [
+            "missingFromReleasePolicy",
+            "missingFromScopePolicy"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "docker-linux-proof-blocking-behavior",
+      "description": "Docker/Linux proof is blocking and has negative coverage.",
+      "finalEntrypoints": [
+        "scripts/quality/run-docker-linux-proof-tests.ps1",
+        "scripts/quality/run-docker-linux-proof.ps1"
+      ],
+      "reports": [
+        {
+          "path": "scripts/reports/out/docker-linux-proof-tests-report.json",
+          "schemaVersion": "npdev-docker-linux-proof-test-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed",
+          "requiredAssertionNames": [
+            "missing-docker-exits-nonzero",
+            "docker-policy-is-blocking"
+          ]
+        },
+        {
+          "path": "scripts/reports/out/docker-linux-parity-report.json",
+          "schemaVersion": "npdev-docker-linux-parity-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed",
+          "allowCurrentFailureAsReleaseBlocker": true
+        }
+      ]
+    },
+    {
+      "id": "runtimehost-full-staged-jar-preflight",
+      "description": "RuntimeHost preflight checks full staged jar set and missing non-core jars fail.",
+      "finalEntrypoints": [
+        "scripts/quality/run-runtimehost-staged-jar-preflight-tests.ps1",
+        "scripts/quality/run-runtimehost-staged-jar-preflight.ps1"
+      ],
+      "reports": [
+        {
+          "path": "scripts/reports/out/runtimehost-staged-jar-preflight-tests-report.json",
+          "schemaVersion": "npdev-runtimehost-staged-jar-preflight-test-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed",
+          "requiredAssertionNames": [
+            "success-fixture-verifies-full-fixture-set",
+            "missing-non-core-jar-fails"
+          ]
+        },
+        {
+          "path": "scripts/reports/out/runtimehost-staged-jar-preflight-report.json",
+          "schemaVersion": "npdev-runtimehost-staged-jar-preflight-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed"
+        }
+      ]
+    },
+    {
+      "id": "structured-command-schema-policy-runner-alignment",
+      "description": "Structured command schema, policy, and runner align.",
+      "finalEntrypoints": [
+        "scripts/quality/run-controlled-command-runner-tests.ps1",
+        "scripts/quality/run-structured-command-surface-alignment.ps1"
+      ],
+      "reports": [
+        {
+          "path": "scripts/reports/out/controlled-command-runner-tests-report.json",
+          "schemaVersion": "npdev-controlled-command-runner-test-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed"
+        },
+        {
+          "path": "scripts/reports/out/ai-command-policy-report.json",
+          "schemaVersion": "npdev-ai-command-policy-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed"
+        }
+      ]
+    },
+    {
+      "id": "raw-command-blocked-future-command-types-rejected",
+      "description": "raw-command remains blocked and future request types are rejected.",
+      "finalEntrypoints": [
+        "scripts/quality/run-controlled-command-runner-tests.ps1",
+        "scripts/quality/run-structured-command-surface-alignment.ps1"
+      ],
+      "sourcePatterns": [
+        {
+          "path": "scripts/quality/run-structured-command-surface-alignment.ps1",
+          "patterns": [
+            "rawCommandBlocked",
+            "deferredInAllowed",
+            "deferredInSchema"
+          ]
+        },
+        {
+          "path": "scripts/quality/run-controlled-command-runner-tests.ps1",
+          "patterns": [
+            "raw-command",
+            "future",
+            "trusted-script"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "trusted-source-manifest-locking",
+      "description": "Trusted source manifest and SHA-256 locking fail closed.",
+      "finalEntrypoints": [
+        "scripts/quality/run-trusted-source-beta0-proof-tests.ps1",
+        "scripts/quality/run-trusted-source-beta0-proof.ps1"
+      ],
+      "reports": [
+        {
+          "path": "scripts/reports/out/trusted-source-beta0-proof-tests-report.json",
+          "schemaVersion": "npdev-trusted-source-beta0-proof-test-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed",
+          "requiredCaseNames": [
+            "manifest-lock-negative-cases"
+          ]
+        },
+        {
+          "path": "scripts/reports/out/trusted-source-beta0-proof-report.json",
+          "schemaVersion": "npdev-trusted-source-beta0-proof-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed"
+        }
+      ]
+    },
+    {
+      "id": "trusted-source-java-containment-bytecode",
+      "description": "Trusted Java source and bytecode containment checks cover forbidden APIs.",
+      "finalEntrypoints": [
+        "scripts/quality/run-trusted-source-beta0-proof-tests.ps1",
+        "scripts/quality/run-trusted-source-beta0-proof.ps1"
+      ],
+      "reports": [
+        {
+          "path": "scripts/reports/out/trusted-source-beta0-proof-tests-report.json",
+          "schemaVersion": "npdev-trusted-source-beta0-proof-test-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed",
+          "requiredCaseNames": [
+            "java-forbidden-api-negative-cases"
+          ]
+        }
+      ],
+      "sourcePatterns": [
+        {
+          "path": "scripts/quality/run-trusted-source-beta0-proof.ps1",
+          "patterns": [
+            "System.getProperty",
+            "ThreadLocal",
+            "java/lang/Process",
+            "java/lang/Class"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "trusted-source-panel-browser-csp-proof",
+      "description": "Trusted-source panel proof uses browser/CSP evidence and rejects fallback behavior.",
+      "finalEntrypoints": [
+        "scripts/quality/run-trusted-source-beta0-proof-tests.ps1",
+        "scripts/quality/run-trusted-source-beta0-proof.ps1"
+      ],
+      "reports": [
+        {
+          "path": "scripts/reports/out/trusted-source-beta0-proof-tests-report.json",
+          "schemaVersion": "npdev-trusted-source-beta0-proof-test-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed",
+          "requiredCaseNames": [
+            "panel-containment-negative-cases"
+          ]
+        },
+        {
+          "path": "scripts/reports/out/trusted-source-beta0-proof-report.json",
+          "schemaVersion": "npdev-trusted-source-beta0-proof-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed"
+        }
+      ],
+      "sourcePatterns": [
+        {
+          "path": "scripts/quality/run-trusted-source-beta0-proof.ps1",
+          "patterns": [
+            "playwright",
+            "fullCspMatched",
+            "fallbackSuccessPresent",
+            "inlineScriptCount",
+            "inlineStyleCount"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "trusted-source-generated-runtime-integration-proof",
+      "description": "Trusted source support is proven through the product generated runtime path.",
+      "finalEntrypoints": [
+        "scripts/quality/run-trusted-source-beta0-proof-tests.ps1",
+        "scripts/quality/run-trusted-source-beta0-proof.ps1"
+      ],
+      "reports": [
+        {
+          "path": "scripts/reports/out/trusted-source-beta0-proof-tests-report.json",
+          "schemaVersion": "npdev-trusted-source-beta0-proof-test-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed",
+          "requiredCaseNames": [
+            "default-generated-runtime-proof"
+          ]
+        },
+        {
+          "path": "scripts/reports/out/trusted-source-beta0-proof-report.json",
+          "schemaVersion": "npdev-trusted-source-beta0-proof-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed",
+          "requiredTopLevelProperties": [
+            "productGeneratedTrustedSourceIntegrationStatus",
+            "overlayHarnessUsed",
+            "runtimeInvocation",
+            "procedureSmoke",
+            "panelSmoke",
+            "roleChecks",
+            "tenantChecks"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "direct-evidence-hardening",
+      "description": "Blocking truth-table booleans are backed by direct evidence.",
+      "finalEntrypoints": [
+        "scripts/quality/run-direct-evidence-hardening-tests.ps1"
+      ],
+      "reports": [
+        {
+          "path": "scripts/reports/out/direct-evidence-hardening-tests-report.json",
+          "schemaVersion": "npdev-direct-evidence-hardening-test-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed"
+        }
+      ]
+    },
+    {
+      "id": "runbook-workflow-alignment",
+      "description": "Official runbook and workflows call the same canonical release path.",
+      "finalEntrypoints": [
+        "scripts/quality/run-runbook-workflow-alignment-tests.ps1"
+      ],
+      "reports": [
+        {
+          "path": "scripts/reports/out/runbook-workflow-alignment-tests-report.json",
+          "schemaVersion": "npdev-runbook-workflow-alignment-test-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed",
+          "requiredAssertionNames": [
+            "roadmap-closure-fails-on-workflow-drift"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "report-schema-validation",
+      "description": "Report schema validation covers current and governance reports.",
+      "finalEntrypoints": [
+        "scripts/quality/run-report-schema-validation.ps1"
+      ],
+      "reports": [
+        {
+          "path": "scripts/reports/out/report-schema-validation-report.json",
+          "schemaVersion": "npdev-report-schema-validation-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed",
+          "requiredCaseNames": [
+            "direct-evidence-hardening-tests-report",
+            "roadmap-closure-check-report",
+            "runbook-workflow-alignment-tests-report",
+            "final-regression-coverage-audit-report",
+            "valid-traceable-local-release-report",
+            "invalid-traceable-local-release-report-rejected"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "release-gate-blocks-on-sample-runtime-generation-evidence",
+      "description": "Aggregate release gate requires sample-matrix releaseEvidence.eligible=true.",
+      "finalEntrypoints": [
+        "scripts/quality/run-beta-release-gate.ps1"
+      ],
+      "policyRequirements": [
+        {
+          "policyPath": "scripts/policy/beta-release-gate-policy.json",
+          "requiredReportName": "sample-matrix",
+          "evidenceRequirementPath": "releaseEvidence.eligible",
+          "expected": true
+        }
+      ],
+      "reports": [
+        {
+          "path": "scripts/reports/out/beta-release-gate-report.json",
+          "schemaVersion": "beta-release-gate-report.v1",
+          "statusProperty": "overallStatus",
+          "passValue": "passed",
+          "allowCurrentFailureAsReleaseBlocker": true
+        }
+      ]
+    }
+  ]
+}

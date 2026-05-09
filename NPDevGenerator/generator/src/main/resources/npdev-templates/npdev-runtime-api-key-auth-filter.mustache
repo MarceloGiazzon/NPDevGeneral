@@ -30,6 +30,9 @@ public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
         if (uri == null) {
             return true;
         }
+        if (normalize(request.getHeader("X-Api-Key")) != null || normalize(request.getHeader("X-API-Key")) != null) {
+            return false;
+        }
         return !(uri.startsWith("/api/") || uri.startsWith("/api/v1/"));
     }
 
@@ -40,6 +43,9 @@ public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
         String apiKey = normalize(request.getHeader("X-Api-Key"));
+        if (apiKey == null) {
+            apiKey = normalize(request.getHeader("X-API-Key"));
+        }
         if (apiKey == null) {
             unauthorized(response, "missing_api_key");
             return;

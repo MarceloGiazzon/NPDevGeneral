@@ -43,8 +43,26 @@ function Resolve-RepoPath {
     return [System.IO.Path]::GetFullPath((Join-Path (Resolve-Path ".").Path $PathValue))
 }
 
+function Resolve-GradleWrapper {
+    param([string]$ProjectRoot)
+    $windowsWrapper = Join-Path $ProjectRoot "gradlew.bat"
+    $posixWrapper = Join-Path $ProjectRoot "gradlew"
+    if ($IsWindows) {
+        if (Test-Path -LiteralPath $windowsWrapper -PathType Leaf) { return $windowsWrapper }
+        if (Test-Path -LiteralPath $posixWrapper -PathType Leaf) { return $posixWrapper }
+    }
+    else {
+        if (Test-Path -LiteralPath $posixWrapper -PathType Leaf) { return $posixWrapper }
+        if (Test-Path -LiteralPath $windowsWrapper -PathType Leaf) { return $windowsWrapper }
+    }
+    throw ("Gradle wrapper not found in " + $ProjectRoot)
+}
+
 function Stop-RunRootProcesses {
     param([string]$RootPath)
+    if (-not $IsWindows) {
+        return
+    }
     $pathVariants = @(
         [System.IO.Path]::GetFullPath($RootPath),
         ([System.IO.Path]::GetFullPath($RootPath) -replace "/", "\"),
@@ -205,14 +223,15 @@ function Invoke-ControlledGradleGenerator {
         $generatorArgs += "--no-assembleFinalApp"
     }
     $gradleArgLine = Join-ArgsForGradleRun $generatorArgs
-    $gradlew = Join-Path $workspaceRoot "NPDevGenerator/gradlew.bat"
+    $generatorRoot = Join-Path $workspaceRoot "NPDevGenerator"
+    $gradlew = Resolve-GradleWrapper $generatorRoot
     $runnerArguments = @(":generator:run", ("--args=" + $gradleArgLine), "--no-daemon", "--console=plain")
     $runnerArgumentsJson = @($runnerArguments) | ConvertTo-Json -Compress
     $ErrorActionPreference = "Continue"
     pwsh -NoProfile -File scripts/security/Invoke-ControlledCommand.ps1 `
         -Executable $gradlew `
         -ArgumentsJson $runnerArgumentsJson `
-        -WorkingDirectory (Join-Path $workspaceRoot "NPDevGenerator") `
+        -WorkingDirectory $generatorRoot `
         -TimeoutSeconds 600 `
         -ResultPath $ResultPath 2>$null | Out-Null
     $runnerExit = $LASTEXITCODE

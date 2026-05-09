@@ -33,14 +33,14 @@ Ensure-NPDevFile $cleanScript "Sample cleanup script"
 $results = @()
 foreach ($sampleId in $SampleIds) {
     $appRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot ("NPDevSamples\" + $sampleId + "\Output\App")
-    $gradlew = Join-Path $appRoot "gradlew.bat"
+    $appBuildFile = Join-Path $appRoot "build.gradle"
     $verificationCommand = $null
     $cleanupEvidence = $null
     $sampleStatus = "passed"
     $sampleError = $null
 
     try {
-        if (-not (Test-Path -LiteralPath $gradlew -PathType Leaf)) {
+        if (-not (Test-Path -LiteralPath $appBuildFile -PathType Leaf)) {
             if (-not $GenerateIfMissing) {
                 throw ("Generated app is missing. Rerun with -GenerateIfMissing or generate first: " + $appRoot)
             }
@@ -48,13 +48,15 @@ foreach ($sampleId in $SampleIds) {
             & $generateScript -WorkspaceRoot $WorkspaceRoot -SampleIds @($sampleId)
         }
 
-        Ensure-NPDevFile $gradlew "Generated app Gradle wrapper"
+        Ensure-NPDevDirectory $appRoot "Generated sample app"
+        Ensure-NPDevFile $appBuildFile "Generated app build.gradle"
+        $gradlew = Get-NPDevGradleWrapperExecutable (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost")
         $verificationLogPath = Resolve-NPDevWorkspacePath $WorkspaceRoot ("scripts\reports\out\sample-verify\" + $sampleId + "-verification.log")
         $verificationCommand = Invoke-NPDevCommandEvidence `
             -WorkspaceRoot $WorkspaceRoot `
             -WorkingDirectory $appRoot `
-            -Executable ".\gradlew.bat" `
-            -Arguments @("--no-daemon", "--console=plain", "enforceSingleMigrationSource", "test") `
+            -Executable $gradlew `
+            -Arguments @("--no-daemon", "--console=plain", "-p", $appRoot, "enforceSingleMigrationSource", "test") `
             -LogPath $verificationLogPath
 
         if ([string]$verificationCommand.status -ne "passed") {
