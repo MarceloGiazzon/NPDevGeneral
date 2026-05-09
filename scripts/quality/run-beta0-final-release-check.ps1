@@ -102,6 +102,10 @@ catch {
     }
 }
 
+Invoke-Gate -Name "beta-release-gate-initial-final" -Command "scripts/quality/run-beta-release-gate.ps1" -AlwaysContinue $true | Out-Null
+Invoke-Gate -Name "final-regression-coverage-audit-refresh" -Command "scripts/quality/run-final-regression-coverage-audit.ps1" -AlwaysContinue $true | Out-Null
+Invoke-Gate -Name "report-schema-validation-post-audit-refresh" -Command "scripts/quality/run-report-schema-validation.ps1" -AlwaysContinue $true | Out-Null
+Invoke-Gate -Name "report-provenance-tests-post-audit-refresh" -Command "scripts/quality/run-report-provenance-tests.ps1" -AlwaysContinue $true | Out-Null
 Invoke-Gate -Name "beta-release-gate" -Command "scripts/quality/run-beta-release-gate.ps1" -AlwaysContinue $true | Out-Null
 Invoke-Gate -Name "beta0-final-closure-gate" -Command "scripts/quality/run-beta0-final-closure-gate.ps1" -AlwaysContinue $true | Out-Null
 
