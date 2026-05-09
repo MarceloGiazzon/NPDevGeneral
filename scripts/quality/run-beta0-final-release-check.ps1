@@ -10,7 +10,8 @@ function Invoke-Gate {
     param(
         [string]$Name,
         [string]$Command,
-        [bool]$AlwaysContinue = $false
+        [bool]$AlwaysContinue = $false,
+        [bool]$ExpectedNonzero = $false
     )
     $startedAt = (Get-Date).ToUniversalTime()
     $ErrorActionPreference = "Continue"
@@ -18,12 +19,14 @@ function Invoke-Gate {
     $exitCode = $LASTEXITCODE
     $ErrorActionPreference = "Stop"
     $finishedAt = (Get-Date).ToUniversalTime()
-    $status = if ($exitCode -eq 0) { "passed" } else { "failed" }
+    $status = if ($exitCode -eq 0) { "passed" } elseif ($ExpectedNonzero) { "failed-as-expected" } else { "failed" }
     $result = [pscustomobject]@{
         name = $Name
         command = ($Command + " -RunId " + $RunId)
         status = $status
         exitCode = $exitCode
+        blocking = (-not $ExpectedNonzero)
+        expectedNonzero = $ExpectedNonzero
         startedAt = $startedAt.ToString("o")
         finishedAt = $finishedAt.ToString("o")
         durationSeconds = [int]([DateTimeOffset]$finishedAt - [DateTimeOffset]$startedAt).TotalSeconds
@@ -75,7 +78,7 @@ $orderedGates = @(
     [pscustomobject]@{ name = "doc-entrypoint-validation-tests"; command = "scripts/quality/run-doc-entrypoint-validation-tests.ps1" },
     [pscustomobject]@{ name = "report-schema-validation"; command = "scripts/quality/run-report-schema-validation.ps1" },
     [pscustomobject]@{ name = "doc-entrypoint-validation"; command = "scripts/quality/run-doc-entrypoint-validation.ps1" },
-    [pscustomobject]@{ name = "beta-release-gate-pre-audit"; command = "scripts/quality/run-beta-release-gate.ps1"; alwaysContinue = $true },
+    [pscustomobject]@{ name = "beta-release-gate-pre-audit"; command = "scripts/quality/run-beta-release-gate.ps1"; alwaysContinue = $true; expectedNonzero = $true },
     [pscustomobject]@{ name = "final-regression-coverage-audit-tests"; command = "scripts/quality/run-final-regression-coverage-audit-tests.ps1" },
     [pscustomobject]@{ name = "final-regression-coverage-audit"; command = "scripts/quality/run-final-regression-coverage-audit.ps1" },
     [pscustomobject]@{ name = "report-schema-validation-final"; command = "scripts/quality/run-report-schema-validation.ps1" },
@@ -85,7 +88,8 @@ $orderedGates = @(
 try {
     foreach ($gate in $orderedGates) {
         $alwaysContinue = $gate.PSObject.Properties.Name -contains "alwaysContinue" -and [bool]$gate.alwaysContinue
-        Invoke-Gate -Name $gate.name -Command $gate.command -AlwaysContinue $alwaysContinue | Out-Null
+        $expectedNonzero = $gate.PSObject.Properties.Name -contains "expectedNonzero" -and [bool]$gate.expectedNonzero
+        Invoke-Gate -Name $gate.name -Command $gate.command -AlwaysContinue $alwaysContinue -ExpectedNonzero $expectedNonzero | Out-Null
     }
 }
 catch {
@@ -114,7 +118,8 @@ $releaseReady = $null -ne $closureReport -and [bool]$closureReport.releaseReady
 $provenanceReady = $null -ne $closureReport -and [bool]$closureReport.provenanceReady
 $officialReleaseEligible = $null -ne $closureReport -and [bool]$closureReport.officialReleaseEligible
 $beta0TagAllowed = $null -ne $closureReport -and [bool]$closureReport.beta0TagAllowed
-$overallStatus = if ($beta0TagAllowed -and -not $failedEarly -and @($gateResults | Where-Object { $_.status -eq "failed" }).Count -eq 0) { "passed" } else { "failed" }
+$blockingFailedGateCount = @($gateResults | Where-Object { $_.status -eq "failed" -and $_.blocking }).Count
+$overallStatus = if ($beta0TagAllowed -and -not $failedEarly -and $blockingFailedGateCount -eq 0) { "passed" } else { "failed" }
 
 $report = [pscustomobject]@{
     schemaVersion = "npdev-beta0-final-release-check-report.v1"
