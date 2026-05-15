@@ -26,17 +26,50 @@ function Convert-ErrorsToFailures {
 $schemaFullPath = Resolve-RepoPath $SchemaPath
 $instanceFullPath = Resolve-RepoPath $InstancePath
 $validatorRoot = Resolve-RepoPath "scripts/quality/json-schema-validator"
-$validatorScript = Join-Path $validatorRoot "validate-json-schema.mjs"
-$nodeModules = Join-Path $validatorRoot "node_modules"
+$validatorSourceScript = Join-Path $validatorRoot "validate-json-schema.mjs"
+$validatorPackageJson = Join-Path $validatorRoot "package.json"
+$validatorPackageLock = Join-Path $validatorRoot "package-lock.json"
+$workspaceRoot = (Resolve-Path ".").Path
+$workspace = Get-Item -LiteralPath $workspaceRoot
+$outsideRepoRoot = Join-Path $workspace.Parent.FullName ($workspace.Name + "__OutsideRepo")
+$validatorRuntimeRoot = Join-Path $outsideRepoRoot "node-tools\json-schema-validator"
+$validatorScript = Join-Path $validatorRuntimeRoot "validate-json-schema.mjs"
+$nodeModules = Join-Path $validatorRuntimeRoot "node_modules"
+$dependencyFingerprintPath = Join-Path $validatorRuntimeRoot ".package-lock.sha256"
 
-if (-not (Test-Path -LiteralPath $validatorScript -PathType Leaf)) {
-    throw "AJV validator wrapper is missing: $validatorScript"
+if (-not (Test-Path -LiteralPath $validatorSourceScript -PathType Leaf)) {
+    throw "AJV validator wrapper is missing: $validatorSourceScript"
 }
-if (-not (Test-Path -LiteralPath $nodeModules -PathType Container)) {
-    npm --prefix $validatorRoot install --silent | Out-Null
+if (-not (Test-Path -LiteralPath $validatorPackageJson -PathType Leaf)) {
+    throw "AJV validator package manifest is missing: $validatorPackageJson"
+}
+
+New-Item -ItemType Directory -Force -Path $validatorRuntimeRoot | Out-Null
+Copy-Item -LiteralPath $validatorSourceScript -Destination $validatorScript -Force
+Copy-Item -LiteralPath $validatorPackageJson -Destination (Join-Path $validatorRuntimeRoot "package.json") -Force
+if (Test-Path -LiteralPath $validatorPackageLock -PathType Leaf) {
+    Copy-Item -LiteralPath $validatorPackageLock -Destination (Join-Path $validatorRuntimeRoot "package-lock.json") -Force
+}
+
+$packageLockFingerprint = if (Test-Path -LiteralPath $validatorPackageLock -PathType Leaf) {
+    (Get-FileHash -Algorithm SHA256 -LiteralPath $validatorPackageLock).Hash
+}
+else {
+    (Get-FileHash -Algorithm SHA256 -LiteralPath $validatorPackageJson).Hash
+}
+$existingFingerprint = if (Test-Path -LiteralPath $dependencyFingerprintPath -PathType Leaf) {
+    [string](Get-Content -LiteralPath $dependencyFingerprintPath -Raw).Trim()
+}
+else {
+    ""
+}
+
+if (-not (Test-Path -LiteralPath $nodeModules -PathType Container) -or $existingFingerprint -ne $packageLockFingerprint) {
+    npm --prefix $validatorRuntimeRoot install --silent | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to install JSON Schema validator dependencies."
     }
+    Set-Content -LiteralPath $dependencyFingerprintPath -Value $packageLockFingerprint -Encoding ASCII
 }
 
 $ErrorActionPreference = "Continue"
