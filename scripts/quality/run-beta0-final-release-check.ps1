@@ -15,7 +15,7 @@ function Invoke-Gate {
     )
     $startedAt = (Get-Date).ToUniversalTime()
     $ErrorActionPreference = "Continue"
-    pwsh -NoProfile -File $Command -RunId $RunId 2>&1 | Out-Host
+    & pwsh -NoProfile -File $Command -RunId $RunId
     $exitCode = $LASTEXITCODE
     $ErrorActionPreference = "Stop"
     $finishedAt = (Get-Date).ToUniversalTime()
