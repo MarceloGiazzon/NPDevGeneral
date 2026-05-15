@@ -77,8 +77,12 @@ function Resolve-LastExistingEvidenceRoot {
 
     foreach ($candidate in $candidates) {
         $manifestPath = Join-Path $candidate.FullName "evidence-manifest.json"
+        $flatManifestPath = Join-Path $candidate.FullName "beta-release-evidence-manifest.json"
         $betaReportPath = Join-Path $candidate.FullName "scripts\reports\out\beta-release-gate-report.json"
-        if ((Test-Path -LiteralPath $manifestPath -PathType Leaf) -and (Test-Path -LiteralPath $betaReportPath -PathType Leaf)) {
+        $flatBetaReportPath = Join-Path $candidate.FullName "beta-release-gate-report.json"
+        $hasManifest = (Test-Path -LiteralPath $manifestPath -PathType Leaf) -or (Test-Path -LiteralPath $flatManifestPath -PathType Leaf)
+        $hasBetaReport = (Test-Path -LiteralPath $betaReportPath -PathType Leaf) -or (Test-Path -LiteralPath $flatBetaReportPath -PathType Leaf)
+        if ($hasManifest -and $hasBetaReport) {
             return $candidate.FullName
         }
     }
@@ -175,7 +179,13 @@ if ($ReleaseReady) {
         }
         Assert-PathExists -PathValue $releaseEvidenceRoot -Label "Existing release evidence root"
 
-        $releaseReportsOutSourceRoot = Join-Path $releaseEvidenceRoot "scripts\reports\out"
+        $structuredReportsOutSourceRoot = Join-Path $releaseEvidenceRoot "scripts\reports\out"
+        $releaseReportsOutSourceRoot = if (Test-Path -LiteralPath $structuredReportsOutSourceRoot -PathType Container) {
+            $structuredReportsOutSourceRoot
+        }
+        else {
+            $releaseEvidenceRoot
+        }
         Assert-PathExists -PathValue $releaseReportsOutSourceRoot -Label "Bundled reports/out evidence"
 
         $releaseEvidenceReportPath = Join-Path $releaseReportsOutSourceRoot "beta-release-gate-report.json"
@@ -192,9 +202,12 @@ if ($ReleaseReady) {
         throw ("Beta release gate report has invalid overallStatus: " + $releaseEvidenceStatus)
     }
 
-    $releaseEvidenceRunId = [string]$releaseEvidenceReport.releaseRunId
+    $releaseEvidenceRunId = Get-FirstNonBlankString -Values @(
+        (Get-OptionalObjectProperty -ObjectValue $releaseEvidenceReport -PropertyName "releaseRunId"),
+        (Get-OptionalObjectProperty -ObjectValue $releaseEvidenceReport -PropertyName "runId")
+    )
     if ([string]::IsNullOrWhiteSpace($releaseEvidenceRunId)) {
-        throw "Beta release gate report is missing releaseRunId."
+        throw "Beta release gate report is missing releaseRunId/runId."
     }
 
     if ([string]::IsNullOrWhiteSpace($releaseEvidenceRoot)) {
@@ -213,13 +226,19 @@ if ($ReleaseReady) {
     Assert-PathExists -PathValue $releaseEvidenceRoot -Label "Release evidence root"
 
     $releaseEvidenceManifestPath = Join-Path $releaseEvidenceRoot "evidence-manifest.json"
+    if (-not (Test-Path -LiteralPath $releaseEvidenceManifestPath -PathType Leaf)) {
+        $releaseEvidenceManifestPath = Join-Path $releaseEvidenceRoot "beta-release-evidence-manifest.json"
+    }
     Assert-PathExists -PathValue $releaseEvidenceManifestPath -Label "Release evidence manifest"
     $releaseEvidenceManifest = Get-Content -LiteralPath $releaseEvidenceManifestPath -Raw | ConvertFrom-Json
 
     $reportProvenanceGrade = Get-OptionalObjectProperty -ObjectValue $releaseEvidenceReport -PropertyName "provenanceGrade"
     $manifestProvenanceGrade = Get-OptionalObjectProperty -ObjectValue $releaseEvidenceManifest -PropertyName "provenanceGrade"
     Assert-TraceabilityFieldAgreement -FieldName "provenanceGrade" -ReportValue $reportProvenanceGrade -ManifestValue $manifestProvenanceGrade
-    $releaseProvenanceGrade = Get-FirstNonBlankString -Values @($manifestProvenanceGrade, $reportProvenanceGrade, "local-unanchored")
+    $reportProvenanceReady = Get-OptionalTraceabilityBoolean -ObjectValue $releaseEvidenceReport -PropertyName "provenanceReady"
+    $manifestProvenanceReady = Get-OptionalTraceabilityBoolean -ObjectValue $releaseEvidenceManifest -PropertyName "provenanceReady"
+    $derivedProvenanceGrade = if ($manifestProvenanceReady -or $reportProvenanceReady) { "git-traceable" } else { "local-unanchored" }
+    $releaseProvenanceGrade = Get-FirstNonBlankString -Values @($manifestProvenanceGrade, $reportProvenanceGrade, $derivedProvenanceGrade)
 
     $reportTraceabilitySatisfied = Get-OptionalTraceabilityBoolean -ObjectValue $releaseEvidenceReport -PropertyName "traceabilitySatisfied"
     $manifestTraceabilitySatisfied = Get-OptionalTraceabilityBoolean -ObjectValue $releaseEvidenceManifest -PropertyName "traceabilitySatisfied"
@@ -238,7 +257,7 @@ if ($ReleaseReady) {
     }
 
     $releaseDecision = Get-ReleaseReadyDecision -AggregateStatus $releaseEvidenceStatus -ProvenanceGrade $releaseProvenanceGrade
-    $releaseTraceabilitySatisfied = if ($null -ne $manifestTraceabilitySatisfied) { [bool]$manifestTraceabilitySatisfied } elseif ($null -ne $reportTraceabilitySatisfied) { [bool]$reportTraceabilitySatisfied } else { [bool]$releaseDecision.traceabilitySatisfied }
+    $releaseTraceabilitySatisfied = if ($null -ne $manifestTraceabilitySatisfied) { [bool]$manifestTraceabilitySatisfied } elseif ($null -ne $reportTraceabilitySatisfied) { [bool]$reportTraceabilitySatisfied } elseif ($null -ne $manifestProvenanceReady) { [bool]$manifestProvenanceReady } elseif ($null -ne $reportProvenanceReady) { [bool]$reportProvenanceReady } else { [bool]$releaseDecision.traceabilitySatisfied }
     $releaseReadyDecision = if ($null -ne $manifestReleaseReady) { [bool]$manifestReleaseReady } elseif ($null -ne $reportReleaseReady) { [bool]$reportReleaseReady } else { [bool]$releaseDecision.releaseReady }
     $officialReleaseEligible = if ($null -ne $manifestOfficialReleaseEligible) { [bool]$manifestOfficialReleaseEligible } elseif ($null -ne $reportOfficialReleaseEligible) { [bool]$reportOfficialReleaseEligible } else { [bool]$releaseDecision.officialReleaseEligible }
     $packagingMode = if ($officialReleaseEligible) { "RELEASE_READY" } else { [string]$releaseDecision.packagingMode }
@@ -365,7 +384,7 @@ try {
 
     if ($ReleaseReady) {
         $stagedBetaReport = Join-Path $reportsOutDest "beta-release-gate-report.json"
-        $stagedEvidenceManifest = Join-Path $releaseEvidenceDest "evidence-manifest.json"
+        $stagedEvidenceManifest = Join-Path $releaseEvidenceDest (Split-Path -Leaf $releaseEvidenceManifestPath)
         Assert-PathExists -PathValue $stagedBetaReport -Label "Staged beta release gate report"
         Assert-PathExists -PathValue $stagedEvidenceManifest -Label "Staged release evidence manifest"
 
@@ -435,7 +454,7 @@ try {
             sourceProvider = if ($null -eq $releaseCommitIdentity) { $null } else { [string]$releaseCommitIdentity.source }
             releaseEvidenceStatus = $releaseEvidenceStatus
             releaseEvidenceRunId = $releaseEvidenceRunId
-            releaseEvidenceManifest = $packagedReleaseEvidenceRoot + "\evidence-manifest.json"
+            releaseEvidenceManifest = $packagedReleaseEvidenceRoot + "\" + (Split-Path -Leaf $releaseEvidenceManifestPath)
             releaseEvidenceReport = "scripts\reports\out\beta-release-gate-report.json"
             releaseEvidenceRoot = $packagedReleaseEvidenceRoot
             authoritativeRule = "releaseReady is true only when scripts\reports\out\beta-release-gate-report.json has overallStatus 'passed'. officialReleaseEligible additionally requires git-traceable or ci-traceable provenance."
