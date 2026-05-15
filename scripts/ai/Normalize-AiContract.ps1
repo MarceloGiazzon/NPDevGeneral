@@ -8,6 +8,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "Test-AiShiftLeftSafety.ps1")
+
 function Read-JsonFile {
     param([string]$Path)
     return Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
@@ -341,6 +343,15 @@ function New-OfficialModel {
     }
 
     foreach ($panel in $modelPanels) {
+        $safePanelMetadata = [ordered]@{}
+        if ($null -ne $panel.metadata) {
+            foreach ($propertyName in @("displayName", "description", "emptyStateMessage", "icon", "variant")) {
+                $property = $panel.metadata.PSObject.Properties[$propertyName]
+                if ($null -ne $property -and $null -ne $property.Value) {
+                    $safePanelMetadata[$propertyName] = [string]$property.Value
+                }
+            }
+        }
         $dataSource = [ordered]@{ name = [string]$panel.dataSource.name }
         if ([string]$panel.dataSource.kind -eq "entity") { $dataSource["concept"] = [string]$panel.dataSource.name }
         if ([string]$panel.dataSource.kind -eq "procedure") { $dataSource["procedure"] = [string]$panel.dataSource.name }
@@ -370,8 +381,10 @@ function New-OfficialModel {
             actions = $panelActions
             metadata = [ordered]@{
                 beta0Surface = "custom-ui-panel"
+                customPanelContract = "minimal-declarative-v1"
                 sourceType = [string]$panel.type
                 tenantScoped = [bool]$panel.tenantScoped
+                safeCustomPanelMetadata = $safePanelMetadata
                 trustedSourceEntrypoint = if ($null -ne $panel.implementation) { [string]$panel.implementation.entrypoint } else { "" }
             }
         }
@@ -512,7 +525,11 @@ if ([string]::IsNullOrWhiteSpace($AiModelPath) -or [string]::IsNullOrWhiteSpace(
 $aiModel = Read-JsonFile $AiModelPath
 $aiConfig = Read-JsonFile $AiConfigPath
 $scenarioId = [string]$aiConfig.scenario
-$failures = @(Assert-AiContractSupported $aiModel $aiConfig)
+$safetyFindings = @(Invoke-AiShiftLeftSafetyLint -AiModel $aiModel -AiConfig $aiConfig)
+$failures = @($safetyFindings | ForEach-Object { New-NormalizerFailure ([string]$_.code) ([string]$_.message) })
+if ($failures.Count -eq 0) {
+    $failures = @(Assert-AiContractSupported $aiModel $aiConfig)
+}
 
 if ($failures.Count -gt 0) {
     $result = [pscustomobject]@{

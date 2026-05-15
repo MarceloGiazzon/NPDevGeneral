@@ -29,6 +29,16 @@ function Resolve-RepoPath {
     return [System.IO.Path]::GetFullPath((Join-Path (Resolve-Path ".").Path $PathValue))
 }
 
+function Resolve-OutsideRepoScratchPath {
+    param([string]$Name)
+    if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_WORKSPACE_SCRATCH_ROOT)) {
+        return [System.IO.Path]::GetFullPath((Join-Path $env:NPDEV_WORKSPACE_SCRATCH_ROOT $Name))
+    }
+    $workspace = Get-Item -LiteralPath $workspaceRoot
+    $outsideRepoRoot = Join-Path $workspace.Parent.FullName ($workspace.Name + "__OutsideRepo")
+    return [System.IO.Path]::GetFullPath((Join-Path (Join-Path $outsideRepoRoot "temp") $Name))
+}
+
 function Get-JsonPropertyValue {
     param([object]$ObjectValue, [string]$PropertyName)
     if ($null -eq $ObjectValue) {
@@ -159,7 +169,6 @@ function Test-AllowedGeneratedEvidenceDirtyPath {
     param([string]$PathValue)
     $normalized = ([string]$PathValue) -replace "\\", "/"
     if ($normalized -match "^scripts/reports/out/[^/]+\.(json|log)$") { return $true }
-    if ($normalized -match "^scripts/reports/tmp/") { return $true }
     return $false
 }
 
@@ -380,7 +389,7 @@ function Test-RequiredReport {
 
     $schemaPath = [string](Get-JsonPropertyValue $Definition "schemaPath")
     if ($null -ne $report -and -not [string]::IsNullOrWhiteSpace($schemaPath)) {
-        $schemaValidationPath = Join-Path "scripts/reports/tmp/report-schema-validation" (([string]$Definition.name) + ".json")
+        $schemaValidationPath = Join-Path $schemaValidationRoot (([string]$Definition.name) + ".json")
         $ErrorActionPreference = "Continue"
         pwsh -NoProfile -File scripts/quality/Invoke-JsonSchemaValidation.ps1 `
             -SchemaPath $schemaPath `
@@ -439,6 +448,7 @@ function Test-RequiredReport {
 }
 
 $workspaceRoot = (Resolve-Path ".").Path
+$schemaValidationRoot = Resolve-OutsideRepoScratchPath "report-schema-validation"
 $policyPathFull = Resolve-RepoPath $PolicyPath
 $policy = Read-JsonFile $policyPathFull
 $scopePolicy = Read-JsonFile (Resolve-RepoPath ([string]$policy.scopePolicy))
@@ -499,10 +509,10 @@ if ($scopePolicyEnforcement.status -ne "passed") {
 }
 
 $requiredReports = @()
-if (Test-Path -LiteralPath "scripts/reports/tmp/report-schema-validation") {
-    Remove-Item -LiteralPath "scripts/reports/tmp/report-schema-validation" -Recurse -Force
+if (Test-Path -LiteralPath $schemaValidationRoot) {
+    Remove-Item -LiteralPath $schemaValidationRoot -Recurse -Force
 }
-New-Item -ItemType Directory -Force -Path "scripts/reports/tmp/report-schema-validation" | Out-Null
+New-Item -ItemType Directory -Force -Path $schemaValidationRoot | Out-Null
 foreach ($definition in @($policy.requiredReports)) {
     $requiredReports += Test-RequiredReport $definition $maxAge $blockers
 }
@@ -645,7 +655,7 @@ $manifest = [pscustomobject]@{
         allowedGeneratedEvidenceDirtyFileCount = [int]$dirty.allowedGeneratedEvidenceDirtyFileCount
         allowedGeneratedEvidenceDirtyPaths = @($dirty.allowedGeneratedEvidenceDirtyPaths)
         dirtyPaths = @($dirty.dirtyPaths)
-        generatedReportDirtinessPolicy = "dirty paths under scripts/reports/out/*.json, scripts/reports/out/*.log, and scripts/reports/tmp/** are generated evidence and do not block official eligibility; any other dirty path blocks."
+        generatedReportDirtinessPolicy = "dirty paths under scripts/reports/out/*.json and scripts/reports/out/*.log are generated evidence and do not block official eligibility; workspace temp output must live outside NPDev_General."
         workspaceFingerprint = $workspaceFingerprint
     }
     candidateReady = $candidateReady
@@ -729,7 +739,7 @@ $report | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath (Resolve-RepoPath 
 $manifest | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath (Resolve-RepoPath $ManifestPath) -Encoding UTF8
 $summary | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Resolve-RepoPath $SummaryPath) -Encoding UTF8
 
-$selfSchemaResultPath = "scripts/reports/tmp/report-schema-validation/beta-release-gate-report-self.json"
+$selfSchemaResultPath = Join-Path $schemaValidationRoot "beta-release-gate-report-self.json"
 $ErrorActionPreference = "Continue"
 pwsh -NoProfile -File scripts/quality/Invoke-JsonSchemaValidation.ps1 `
     -SchemaPath "schemas/ai/beta-release-gate-report.schema.json" `

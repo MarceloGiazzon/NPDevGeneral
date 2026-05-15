@@ -97,20 +97,30 @@ function Get-RawCommandBlockedReason {
     $executableName = Get-ExecutableName ([string]$Request.executable)
     $workspaceRoot = (Resolve-Path ".").Path
     if ([bool]$Policy.rawShellCommandsAllowed -ne $true) {
-        if (@($Policy.blockedExecutables) -contains $executableName) { return "EXECUTABLE_BLOCKED" }
-        if (@($Policy.allowedExecutables) -notcontains $executableName) { return "EXECUTABLE_NOT_ALLOWED" }
         $argumentText = (@($Request.arguments) -join " ")
+
         if ($argumentText -match "https?://(?!localhost(?::|/|$)|127\.0\.0\.1(?::|/|$)|\[::1\](?::|/|$))") { return "NETWORK_BLOCKED" }
+
         if ([System.IO.Path]::IsPathRooted([string]$Request.executable) -and -not (Test-IsUnderRoot ([System.IO.Path]::GetFullPath([string]$Request.executable)) $workspaceRoot)) { return "EXECUTABLE_OUTSIDE_WORKSPACE" }
+
         $workdir = Resolve-RepoPath ([string]$Request.workingDirectory)
         if (-not (Test-IsUnderRoot $workdir $workspaceRoot)) { return "WORKING_DIRECTORY_OUTSIDE_WORKSPACE" }
+
         foreach ($pattern in @($Policy.blockedArgumentPatterns)) {
             if ($argumentText -match [string]$pattern) { return "ARGUMENT_BLOCKED" }
         }
+
         if ($executableName -in @("pwsh", "powershell")) {
-            $args = @($Request.arguments)
-            if (@($args | Where-Object { $_ -in @("-Command", "-EncodedCommand", "/c") }).Count -gt 0) { return "PWSH_COMMAND_MODE_BLOCKED" }
+            $normalizedArgs = @($Request.arguments) | ForEach-Object {
+                if ($null -eq $_) { "" } else { ([string]$_).Trim().ToLowerInvariant() }
+            }
+            $pwshCommandModes = @("-encodedcommand", "-enc", "-e", "-command", "-c", "/encodedcommand", "/enc", "/e", "/command", "/c")
+            if (@($normalizedArgs | Where-Object { $pwshCommandModes -contains $_ }).Count -gt 0) { return "PWSH_COMMAND_MODE_BLOCKED" }
         }
+
+        if (@($Policy.blockedExecutables) -contains $executableName) { return "EXECUTABLE_BLOCKED" }
+        if (@($Policy.allowedExecutables) -notcontains $executableName) { return "EXECUTABLE_NOT_ALLOWED" }
+
         return "RAW_COMMANDS_DISABLED"
     }
     return $null
@@ -190,6 +200,59 @@ $workspaceRoot = (Resolve-Path ".").Path
 $requestFullPath = Resolve-RepoPath $RequestPath
 $policy = Read-JsonFile (Resolve-RepoPath $PolicyPath)
 $request = $null
+# NPDEV_V22_NARROW_RAW_PREFLIGHT_BEGIN
+$npdevV22Request = $null
+try {
+    $npdevV22Request = Read-JsonFile $requestFullPath
+}
+catch {
+    $npdevV22Request = $null
+}
+
+if ($null -ne $npdevV22Request -and [string]$npdevV22Request.type -eq "raw-command") {
+    $npdevV22ExecutableName = Get-ExecutableName ([string]$npdevV22Request.executable)
+    $npdevV22Args = @($npdevV22Request.arguments) | ForEach-Object {
+        if ($null -eq $_) { "" } else { ([string]$_).Trim().ToLowerInvariant() }
+    }
+    $npdevV22ArgumentText = @($npdevV22Args) -join " "
+    $npdevV22WorkspaceRoot = (Resolve-Path ".").Path
+    $npdevV22Reason = $null
+
+    if ($npdevV22ArgumentText -match "https?://(?!localhost(?::|/|$)|127\.0\.0\.1(?::|/|$)|\[::1\](?::|/|$))") {
+        $npdevV22Reason = "NETWORK_BLOCKED"
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace([string]$npdevV22Request.workingDirectory)) {
+        try {
+            $npdevV22Workdir = Resolve-RepoPath ([string]$npdevV22Request.workingDirectory)
+            if (-not (Test-IsUnderRoot $npdevV22Workdir $npdevV22WorkspaceRoot)) {
+                $npdevV22Reason = "WORKING_DIRECTORY_OUTSIDE_WORKSPACE"
+            }
+        }
+        catch {
+            $npdevV22Reason = "WORKING_DIRECTORY_OUTSIDE_WORKSPACE"
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($npdevV22Reason)) {
+        if ($npdevV22ExecutableName -in @("cmd", "cmd.exe", "npx", "rm", "del", "rmdir")) {
+            $npdevV22Reason = "EXECUTABLE_NOT_ALLOWED"
+        }
+        elseif ($npdevV22ExecutableName -in @("pwsh", "powershell")) {
+            $npdevV22PwshModes = @("-encodedcommand", "-enc", "-e", "-command", "-c", "/encodedcommand", "/enc", "/e", "/command", "/c")
+            if (@($npdevV22Args | Where-Object { $npdevV22PwshModes -contains $_ }).Count -gt 0) {
+                $npdevV22Reason = "PWSH_COMMAND_MODE_BLOCKED"
+            }
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($npdevV22Reason)) {
+        $request = $npdevV22Request
+        $result = New-StructuredResult -Status "blocked" -BlockedReason $npdevV22Reason -ExitCode $null
+        Write-StructuredResult $result | Out-Host
+        exit 2
+    }
+}
+# NPDEV_V22_NARROW_RAW_PREFLIGHT_END
 
 $schemaValidationPath = if (-not [string]::IsNullOrWhiteSpace($ResultPath)) { $ResultPath + ".schema-validation.json" } else { $null }
 $ErrorActionPreference = "Continue"

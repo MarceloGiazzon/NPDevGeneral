@@ -1,0 +1,132 @@
+{
+  "schemaVersion": "npdev-maturity-max-roadmap-policy.v1",
+  "roadmapName": "NPDev Full Maturity Closure Roadmap",
+  "authoritativeRoadmapInput": "C:\\Users\\Marcelo\\Downloads\\npdev_full_maturity_closure_roadmap_updated.md",
+  "currentMaturity": {
+    "scoreOutOf10": 7.8,
+    "percent": 78,
+    "label": "7.8/10 (~78%)"
+  },
+  "targetMaturity": {
+    "scoreOutOf10Min": 9.2,
+    "scoreOutOf10Max": 9.5,
+    "percentMin": 92,
+    "percentMax": 95,
+    "label": "9.2-9.5/10 (~92-95%)"
+  },
+  "beta0TagImmutable": true,
+  "beta0RetagAllowed": false,
+  "requiresHumanApprovalForNewCheckpoint": true,
+  "newCheckpointRequiresHumanApproval": true,
+  "checkpointStopRule": true,
+  "checkpointCount": 16,
+  "checkpoints": [
+    {
+      "number": 0,
+      "slug": "honest-state-and-closure-contract",
+      "name": "Honest State and Closure Contract"
+    },
+    {
+      "number": 1,
+      "slug": "phase-2-postgres-and-linux-residual-fixes",
+      "name": "Phase-2 Postgres and Linux Residual Fixes"
+    },
+    {
+      "number": 2,
+      "slug": "runtimehost-integration-test-infrastructure",
+      "name": "RuntimeHost Integration Test Infrastructure"
+    },
+    {
+      "number": 3,
+      "slug": "trusted-source-and-custom-scenario-reconciliation",
+      "name": "Trusted-Source and Custom Scenario Reconciliation"
+    },
+    {
+      "number": 4,
+      "slug": "report-bootstrap-and-evidence-regeneration",
+      "name": "Report Bootstrap and Evidence Regeneration"
+    },
+    {
+      "number": 5,
+      "slug": "portable-tooling-and-path-neutrality",
+      "name": "Portable Tooling and Path Neutrality"
+    },
+    {
+      "number": 6,
+      "slug": "gradle-native-validation-migration",
+      "name": "Gradle-Native Validation Migration"
+    },
+    {
+      "number": 7,
+      "slug": "schema-consolidation-and-strict-legacy-rejection",
+      "name": "Schema Consolidation and Strict Legacy Rejection"
+    },
+    {
+      "number": 8,
+      "slug": "stateful-additive-migration-support",
+      "name": "Stateful Additive Migration Support"
+    },
+    {
+      "number": 9,
+      "slug": "incremental-migration-test-harness",
+      "name": "Incremental Migration Test Harness"
+    },
+    {
+      "number": 10,
+      "slug": "trusted-source-security-hardening",
+      "name": "Trusted Source Security Hardening"
+    },
+    {
+      "number": 11,
+      "slug": "shift-left-ai-safety-and-schema-hardening",
+      "name": "Shift-Left AI Safety and Schema Hardening"
+    },
+    {
+      "number": 12,
+      "slug": "custom-ux-and-extensibility-support",
+      "name": "Custom UX and Extensibility Support"
+    },
+    {
+      "number": 13,
+      "slug": "react-editor-decomplexification",
+      "name": "React Editor Decomplexification"
+    },
+    {
+      "number": 14,
+      "slug": "dsl-parser-robustness",
+      "name": "DSL Parser Robustness"
+    },
+    {
+      "number": 15,
+      "slug": "ci-parallelization-caching-onboarding-and-final-closure",
+      "name": "CI Parallelization, Caching, Onboarding, and Final Closure"
+    }
+  ],
+  "allowedNewFindingClassifications": [
+    "current-checkpoint-blocker",
+    "current-roadmap-blocker",
+    "known-risk-accepted",
+    "post-roadmap-backlog",
+    "human-decision-required",
+    "invalid-or-duplicate"
+  ],
+  "checkpointEvidenceRequirements": [
+    "checkpoint-summary.md",
+    "checkpoint-result.json",
+    "acceptance-matrix.md",
+    "progress-delta.json",
+    "changed-files.txt",
+    "git-diff.patch",
+    "incremental-diff-from-previous-checkpoint.patch",
+    "validation-commands.txt",
+    "validation-output.txt",
+    "bundle-size-report.md",
+    "omitted-large-artifacts.md",
+    "omitted-large-artifacts.json",
+    "artifacts/"
+  ],
+  "checkpoint0AdditionalEvidence": [
+    "artifacts/roadmap/npdev_full_maturity_closure_roadmap_updated.md",
+    "artifacts/roadmap/roadmap-sha256.txt"
+  ]
+}

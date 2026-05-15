@@ -35,7 +35,13 @@ public final class ModelDiffPreviewBuilder {
                 case CREATE_TABLE -> additiveChanges.add("create table " + operation.tableName());
                 case ADD_COLUMN -> additiveChanges.add("add column " + operation.tableName() + "." + operation.columnName());
                 case CREATE_UNIQUE_INDEX -> additiveChanges.add("add unique index " + operation.tableName() + "." + operation.columnName());
-                case SET_NOT_NULL -> riskyChanges.add("tighten required " + operation.tableName() + "." + operation.columnName());
+                case SET_NOT_NULL -> {
+                    if (prevTables.containsKey(operation.tableName())) {
+                        riskyChanges.add("tighten required " + operation.tableName() + "." + operation.columnName());
+                    } else {
+                        additiveChanges.add("set required on new table " + operation.tableName() + "." + operation.columnName());
+                    }
+                }
             }
         }
 

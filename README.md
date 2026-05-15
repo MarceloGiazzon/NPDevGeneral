@@ -19,6 +19,11 @@ After reading the root PROJECT_DIGEST.md, read PROJECT_DIGEST.md inside each sub
 
 Current root automation entrypoints:
 
+- `./npdev --version`
+- `./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json`
+- `./npdev normalize ai-model golden-ai-scenarios/base-ai-loop/ai-model.json`
+- `./npdev generate app --model NPDevContract/dsl/resources/Models/canonical-demo/model.json --config NPDevContract/dsl/resources/Models/canonical-demo/config.json --output build/npdev-generated`
+- `./npdev report bootstrap`
 - `pwsh -File scripts/quality/run-generator-gate.ps1`
 - `pwsh -File scripts/quality/run-runtimehost-gate.ps1`
 - `pwsh -File scripts/quality/run-json-schema-validator-tests.ps1`
@@ -28,6 +33,7 @@ Current root automation entrypoints:
 - `pwsh -File scripts/quality/run-ai-rest-smoke-verifier-tests.ps1`
 - `pwsh -File scripts/quality/run-sample-matrix.ps1`
 - `pwsh -File scripts/quality/run-runtimehost-staged-jar-preflight.ps1`
+- `pwsh -File scripts/hygiene/Test-WorkspaceSlimness.ps1`
 - `pwsh -File scripts/quality/run-docker-linux-proof.ps1`
 - `pwsh -File scripts/quality/run-ai-beta-gate.ps1`
 - `pwsh -File scripts/quality/run-report-schema-validation.ps1`
@@ -104,3 +110,16 @@ Frontend release evidence is blocking for Beta0: `scripts/reports/out/frontend-g
 Sample matrix release evidence requires full policy-defined coverage. `scripts/reports/out/sample-matrix-report.json` records coverage by sample kind, input fingerprints, and release eligibility. See `docs/SAMPLE_MATRIX_RELEASE_POLICY.md`.
 
 Keep new scripts product-facing: doctor checks, component gates, sample helpers, or AI/custom procedure utilities.
+
+## Portable NPDev CLI
+
+Use `NPDEV_ROOT` when invoking NPDev from outside the workspace. From the repository root on Linux or macOS:
+
+```sh
+./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json
+./npdev normalize ai-model golden-ai-scenarios/base-ai-loop/ai-model.json
+./npdev generate app --model NPDevContract/dsl/resources/Models/canonical-demo/model.json --config NPDevContract/dsl/resources/Models/canonical-demo/config.json --output build/npdev-generated
+./npdev report bootstrap
+```
+
+On Windows, `npdev.bat` provides the same commands. The PowerShell scripts remain available as compatibility wrappers for existing automation.

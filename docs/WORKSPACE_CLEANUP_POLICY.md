@@ -23,6 +23,26 @@ These remain source and should not be cleaned as residue:
 
 Empty `NPDevSamples\<sample>\Output\Reports` scaffolds are intentionally retained because layout checks expect them. Generated files inside sample `Output` directories remain disposable.
 
+## Slim Workspace Gate
+
+`NPDev_General` is source, not an artifact cache. The blocking slimness policy is enforced by:
+
+```powershell
+pwsh -File scripts\hygiene\Test-WorkspaceSlimness.ps1
+```
+
+Default limits:
+
+- maximum workspace size, excluding `.git`: `75 MB`
+- maximum workspace file count, excluding `.git`: `3000`
+- maximum `scripts` size: `10 MB`
+- maximum `scripts` file count: `500`
+- maximum `scripts\reports\out` size: `15 MB`
+- forbidden residue: `scripts\reports\tmp`, `scripts\reports\cache`, subproject `.gradle`, `build`, `target`, `dist`, `coverage`, `node_modules`, `RunOutput`, sample `Output`, RuntimeHost generated assembly folders, and archives.
+- forbidden jars: all `*.jar` files except `gradle\wrapper\gradle-wrapper.jar`.
+
+Any generated app, release scratch area, local dependency jar, state zip, or diagnostic bundle that would violate these limits must be written under `..\NPDev_General__OutsideRepo` or an explicit external cache path. Set `NPDEV_WORKSPACE_SCRATCH_ROOT` only when a gate needs a different external scratch root.
+
 ## Evidence Handling
 
 The active release decision remains `scripts\reports\out\beta-release-gate-report.json`. Release bundles under `scripts\reports\releases` are artifacts and should be uploaded or archived outside source control when needed.
@@ -56,6 +76,7 @@ pwsh -File scripts\hygiene\clean-workspace-state.ps1
 ```
 
 The cleanup script verifies every recursive delete target is inside the workspace and belongs to an explicit disposable category before removal.
+It removes nested subproject `.gradle` directories, build outputs, sample outputs, node/npm outputs, and `scripts\reports\tmp`.
 
 Full rebuildable-artifact cleanup:
 

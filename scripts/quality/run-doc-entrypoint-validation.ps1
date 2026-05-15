@@ -285,6 +285,38 @@ function Get-ScriptClassification {
     }
 }
 
+function Convert-PolicyPatternToRegex {
+    param([string]$Pattern)
+    $escaped = [regex]::Escape((Normalize-DocValidationPath $Pattern))
+    $escaped = $escaped -replace "\\\*\\\*/", "(?:.*/)?"
+    $escaped = $escaped -replace "\\\*", "[^/]*"
+    return "^" + $escaped + "$"
+}
+
+function Get-DocumentClassification {
+    param(
+        [string]$NormalizedPath,
+        [object]$ClassificationPolicy
+    )
+
+    foreach ($documentClassification in @($ClassificationPolicy.documentClassifications)) {
+        $pattern = [string]$documentClassification.pathPattern
+        if ([string]::IsNullOrWhiteSpace($pattern)) {
+            continue
+        }
+        if ($NormalizedPath -match (Convert-PolicyPatternToRegex $pattern)) {
+            return [pscustomobject]@{
+                classification = [string]$documentClassification.classification
+                releaseRelevant = [bool]$documentClassification.releaseRelevant
+                reason = [string]$documentClassification.reason
+                pathPattern = Normalize-DocValidationPath $pattern
+            }
+        }
+    }
+
+    return $null
+}
+
 function Get-ReportReferenceClassification {
     param(
         [string]$NormalizedPath,
@@ -355,11 +387,35 @@ $classificationPolicy = Read-ClassificationPolicy $ClassificationPolicyPath
 $documentsToScan = @(Get-DocumentsToScan | Sort-Object)
 $reportMappings = New-ReportMappings $classificationPolicy
 $failures = [System.Collections.Generic.List[string]]::new()
+$documentClassifications = @()
 $scriptEntrypoints = @()
 $reportReferences = @()
 
 foreach ($docFullPath in $documentsToScan) {
     $documentRelative = Get-RepoRelativePath $docFullPath
+    $documentNormalized = Normalize-DocValidationPath $documentRelative
+    if ($documentNormalized.StartsWith("docs/") -and $documentNormalized.EndsWith(".md")) {
+        $documentClassification = Get-DocumentClassification $documentNormalized $classificationPolicy
+        if ($null -eq $documentClassification) {
+            $failures.Add($documentRelative + " is not classified by " + $ClassificationPolicyPath) | Out-Null
+            $documentClassifications += [pscustomobject]@{
+                document = $documentRelative
+                classification = "unclassified"
+                blocking = $true
+                reason = "docs/**/*.md files must be classified."
+            }
+        }
+        else {
+            $documentClassifications += [pscustomobject]@{
+                document = $documentRelative
+                classification = [string]$documentClassification.classification
+                releaseRelevant = [bool]$documentClassification.releaseRelevant
+                blocking = $false
+                reason = [string]$documentClassification.reason
+                pathPattern = [string]$documentClassification.pathPattern
+            }
+        }
+    }
     $lines = @(Get-Content -LiteralPath $docFullPath)
     for ($index = 0; $index -lt $lines.Count; $index++) {
         $line = [string]$lines[$index]
@@ -411,6 +467,7 @@ $blockingMissingScripts = @($missingScripts | Where-Object { [bool]$_.blocking }
 $futureOrNonReleaseReferences = @($scriptEntrypoints | Where-Object { [string]$_.classification -eq "future-non-release" })
 $unmappedReports = @($reportReferences | Where-Object { [string]$_.mappingStatus -eq "unmapped" })
 $blockingReportReferences = @($reportReferences | Where-Object { [bool]$_.blocking })
+$unclassifiedDocuments = @($documentClassifications | Where-Object { [string]$_.classification -eq "unclassified" })
 
 $status = if ($failures.Count -eq 0) { "passed" } else { "failed" }
 $report = [pscustomobject]@{
@@ -425,6 +482,8 @@ $report = [pscustomobject]@{
     documentDiscoveryMode = if ($DocumentPaths.Count -gt 0) { "explicit" } else { "root-readme-project-digest-and-docs" }
     documentsScanned = $documentsToScan.Count
     documents = @($documentsToScan | ForEach-Object { Get-RepoRelativePath $_ })
+    documentClassifications = $documentClassifications
+    unclassifiedDocuments = $unclassifiedDocuments
     scriptEntrypoints = $scriptEntrypoints
     reportReferences = $reportReferences
     missingScripts = $missingScripts

@@ -29,19 +29,8 @@ class StructuralSchemaAssetConformanceTest {
     void canonicalSchemaCopiesStayAligned() throws Exception {
         assertEquals(
                 normalizeSchema(readJson(resolveCanonicalModelSchema())),
-                normalizeSchema(readJson(resolveCanonicalVersionedModelSchema())),
-                "Canonical model alias and versioned model schema must stay structurally aligned."
-        );
-        assertEquals(
-                normalizeSchema(readJson(resolveCanonicalModelSchema())),
                 normalizeSchema(readJson(resolveClasspathModelSchema())),
                 "Classpath model schema copy must stay aligned with canonical model schema."
-        );
-
-        assertEquals(
-                normalizeSchema(readJson(resolveCanonicalConfigSchema())),
-                normalizeSchema(readJson(resolveCanonicalVersionedConfigSchema())),
-                "Canonical config alias and versioned config schema must stay structurally aligned."
         );
     }
 
@@ -167,13 +156,6 @@ class StructuralSchemaAssetConformanceTest {
         ));
     }
 
-    private static Path resolveCanonicalVersionedModelSchema() {
-        return resolvePath(List.of(
-                Path.of("resources", "Schemas", "model-1.0.0.schema.json"),
-                Path.of("..", "resources", "Schemas", "model-1.0.0.schema.json")
-        ));
-    }
-
     private static Path resolveClasspathModelSchema() {
         return resolvePath(List.of(
                 Path.of("src", "main", "resources", "schema", "model.schema.json")
@@ -184,13 +166,6 @@ class StructuralSchemaAssetConformanceTest {
         return resolvePath(List.of(
                 Path.of("resources", "Schemas", "config.schema.json"),
                 Path.of("..", "resources", "Schemas", "config.schema.json")
-        ));
-    }
-
-    private static Path resolveCanonicalVersionedConfigSchema() {
-        return resolvePath(List.of(
-                Path.of("resources", "Schemas", "config-1.0.schema.json"),
-                Path.of("..", "resources", "Schemas", "config-1.0.schema.json")
         ));
     }
 

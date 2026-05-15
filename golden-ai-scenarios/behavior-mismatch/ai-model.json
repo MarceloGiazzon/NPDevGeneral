@@ -1,20 +1,20 @@
 {
   "schemaVersion": "ai-model.v1",
   "app": {
-    "name": "Behavior Mismatch Registry",
+    "name": "Behavior Mismatch Learner Registry",
     "kind": "simple-crud-workflow"
   },
   "entities": [
     {
-      "name": "User",
+      "name": "Learner",
       "fields": [
         {
-          "name": "email",
-          "type": "email",
+          "name": "name",
+          "type": "string",
           "required": true
         },
         {
-          "name": "displayName",
+          "name": "status",
           "type": "string",
           "required": true
         }
@@ -23,8 +23,8 @@
   ],
   "flows": [
     {
-      "name": "CreateUser",
-      "entity": "User",
+      "name": "CreateLearner",
+      "entity": "Learner",
       "operation": "create"
     }
   ]

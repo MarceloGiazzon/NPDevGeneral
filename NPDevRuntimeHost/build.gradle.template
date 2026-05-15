@@ -43,6 +43,23 @@ def resolveNpdevRuntimeLibsDir = {
 }
 
 def npdevRuntimeHostLibsDir = resolveNpdevRuntimeLibsDir()
+def javaSourceRoot = file('src/main/java').canonicalFile
+def testJavaSourceRoot = file('src/test/java').canonicalFile
+def generatedRuntimeRequiredFiles = [
+        'npdev-generated/src/main/java/com/npdev/generated/runtime/service/RuntimeContextService.java',
+        'npdev-generated/src/main/java/com/npdev/generated/runtime/service/KernelFacade.java',
+        'npdev-generated/src/main/java/com/npdev/generated/runtime/config/RuntimeApiKeyAuthFilter.java'
+]
+
+def generatedRuntimeMountPresent = {
+    generatedRuntimeRequiredFiles.every { file(it).isFile() }
+}
+
+def relativeJavaSourcePath = { File root, File sourceFile ->
+    sourceFile.canonicalPath
+            .substring(root.path.length() + 1)
+            .replace(File.separator, '/')
+}
 
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
@@ -58,8 +75,10 @@ dependencies {
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.3.0'
-    testImplementation 'org.testcontainers:junit-jupiter:1.19.0'
-    testImplementation 'org.testcontainers:postgresql:1.19.0'
+    testImplementation 'org.testcontainers:testcontainers:1.21.4'
+    testImplementation 'org.testcontainers:jdbc:1.21.4'
+    testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
+    testImplementation 'org.testcontainers:postgresql:1.21.4'
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
     testImplementation 'org.awaitility:awaitility:4.2.0'
     runtimeOnly 'com.h2database:h2'
@@ -67,6 +86,15 @@ dependencies {
 
     // Runtime extension jars are staged outside the source/evidence workspace.
     implementation fileTree(dir: npdevRuntimeHostLibsDir, include: ['*.jar'])
+}
+
+configurations.configureEach {
+    resolutionStrategy.force(
+            'org.testcontainers:testcontainers:1.21.4',
+            'org.testcontainers:jdbc:1.21.4',
+            'org.testcontainers:junit-jupiter:1.21.4',
+            'org.testcontainers:postgresql:1.21.4'
+    )
 }
 
 tasks.register('verifyNpdevRuntimeHostLibs') {
@@ -98,17 +126,33 @@ def modelSpecificGeneratedAppTests = [
         'com/finalexec/AsyncWaitResumeE2EIT.java',
         'com/finalexec/CanonicalDemoBusinessE2EIT.java',
         'com/finalexec/InvariantApiIntegrationTest.java',
+        'com/finalexec/JwtAuthExternalBetaIT.java',
         'com/finalexec/ModelSyncStatusControllerIntegrationTest.java',
+        'com/finalexec/ModelSyncStatusControllerStandaloneTest.java',
         'com/finalexec/NonDefaultRuntimeSurfaceProfileIntegrationTest.java',
         'com/finalexec/PermissionAwareUiMetadataServiceTest.java',
+        'com/finalexec/PublicationChainTenantReferenceValidationTest.java',
         'com/finalexec/PublicationRollbackE2EIT.java',
+        'com/finalexec/PluginManifestLoaderTest.java',
+        'com/finalexec/PluginPackageDescriptorLoaderTest.java',
         'com/finalexec/RuntimeMetadataControllerIntegrationTest.java',
+        'com/finalexec/RuntimeMetadataControllerStandaloneTest.java',
         'com/finalexec/RuntimeMetadataServiceTest.java',
         'com/finalexec/RuntimeMetadataValidationControllerIntegrationTest.java',
+        'com/finalexec/RuntimeMetadataValidationControllerStandaloneTest.java',
         'com/finalexec/RuntimePluginFilesystemDiscoveryIntegrationTest.java',
+        'com/finalexec/RuntimePluginStatusControllerIntegrationTest.java',
         'com/finalexec/RuntimePluginPackageRealizationServiceTest.java',
+        'com/finalexec/RuntimePluginAdapterRegistryTest.java',
+        'com/finalexec/RuntimePluginPackageAdmissionEvaluatorTest.java',
+        'com/finalexec/RuntimePluginPackageDiscoveryServiceTest.java',
+        'com/finalexec/RuntimePluginProfileResolverTest.java',
         'com/finalexec/RuntimePluginRuntimeRefResolverTest.java',
         'com/finalexec/RuntimeUiMetadataControllerIntegrationTest.java',
+        'com/finalexec/RuntimeUiMetadataControllerStandaloneTest.java',
+        'com/finalexec/SupportedCoreControllerBlackBoxIntegrationTest.java',
+        'com/finalexec/SupportedRuntimeSurfaceAllowlistIntegrationTest.java',
+        'com/finalexec/SupportedRuntimeSurfacePackagingTest.java',
         'com/finalexec/Stage12UiModelRuntimeIT.java',
         'com/finalexec/Step01MultiConceptIntegrationTest.java',
         'com/finalexec/Step02ReferencesEnumsDomainTypesIntegrationTest.java',
@@ -116,20 +160,37 @@ def modelSpecificGeneratedAppTests = [
         'com/finalexec/Step04InvariantExplainabilityIntegrationTest.java',
         'com/finalexec/Step05ProviderOverlapIntegrationTest.java',
         'com/finalexec/Step06RoomOverlapIntegrationTest.java',
-        'com/finalexec/TenantIsolationIT.java'
+        'com/finalexec/SupportedCoreControllerBlackBoxStandaloneTest.java',
+        'com/finalexec/TenantIsolationE2EIT.java'
+]
+
+def generatedRuntimeIntegrationTestSources = [
+        'com/finalexec/AbstractScenarioIntegrationTest.java',
+        'com/finalexec/JwtAuthExternalBetaIT.java',
+        'com/finalexec/PublicationRollbackE2EIT.java',
+        'com/finalexec/TenantIsolationE2EIT.java'
 ]
 
 def runtimeSurfaceManifest = new JsonSlurper().parse(file('src/main/resources/npdev/runtime-supported-controllers.json'))
-def supportedCoreControllerNames = (runtimeSurfaceManifest.supportedCoreControllers ?: []).collect { it.toString().trim() }.findAll { !it.isEmpty() }
+def supportedCoreControllerNames = (runtimeSurfaceManifest.allowedControllers ?: []).collect { it.toString().trim() }.findAll { !it.isEmpty() }
 def supportedCoreServiceNames = (runtimeSurfaceManifest.supportedCoreServiceComponents ?: []).collect { it.toString().trim() }.findAll { !it.isEmpty() }
 def supportedCoreServicePatterns = (runtimeSurfaceManifest.supportedCoreServicePatterns ?: []).collect { it.toString().trim() }.findAll { !it.isEmpty() }
 
-def javaSourceRoot = file('src/main/java').canonicalFile
 def toRelativeSourcePath = { File sourceFile ->
-    sourceFile.canonicalPath
-            .substring(javaSourceRoot.path.length() + 1)
-            .replace(File.separator, '/')
+    relativeJavaSourcePath(javaSourceRoot, sourceFile)
 }
+
+def generatedRuntimeDependentMainSources = fileTree('src/main/java') {
+    include '**/*.java'
+}.files.findAll { sourceFile ->
+    sourceFile.text.contains('com.npdev.generated.')
+}.collect(toRelativeSourcePath)
+
+def generatedRuntimeDependentTestSources = fileTree('src/test/java') {
+    include '**/*.java'
+}.files.findAll { sourceFile ->
+    sourceFile.text.contains('com.npdev.generated.')
+}.collect { sourceFile -> relativeJavaSourcePath(testJavaSourceRoot, sourceFile) }
 
 def matchesSupportedPattern = { String simpleName, List<String> patterns ->
     patterns.any { pattern ->
@@ -170,6 +231,9 @@ sourceSets {
             exclude 'com/finalexec/HelloController.java'
             unsupportedRuntimeHostControllerSources.each { exclude it }
             unsupportedRuntimeHostServiceSources.each { exclude it }
+            if (!generatedRuntimeMountPresent()) {
+                generatedRuntimeDependentMainSources.each { exclude it }
+            }
         }
         resources {
             srcDir 'src/main/resources'
@@ -179,8 +243,25 @@ sourceSets {
     test {
         java {
             modelSpecificGeneratedAppTests.each { exclude it }
+            generatedRuntimeDependentTestSources.each { exclude it }
         }
     }
+    integrationTest {
+        java {
+            srcDir 'src/test/java'
+            generatedRuntimeIntegrationTestSources.each { include it }
+        }
+        resources {
+            srcDir 'src/test/resources'
+        }
+        compileClasspath += sourceSets.main.output + sourceSets.test.output + configurations.testRuntimeClasspath
+        runtimeClasspath += output + compileClasspath
+    }
+}
+
+configurations {
+    integrationTestImplementation.extendsFrom testImplementation
+    integrationTestRuntimeOnly.extendsFrom testRuntimeOnly
 }
 
 tasks.register('reportRuntimeSupportedSurface') {
@@ -188,7 +269,7 @@ tasks.register('reportRuntimeSupportedSurface') {
     description = 'Prints the supported-core RuntimeHost source allowlist used for packaging.'
 
     doLast {
-        println "Supported-core controllers: ${supportedCoreControllerNames.sort(false)}"
+        println "Allowed supported-core controllers: ${supportedCoreControllerNames.sort(false)}"
         println "Supported-core service components: ${supportedCoreServiceNames.sort(false)}"
         println "Supported-core service patterns: ${supportedCoreServicePatterns.sort(false)}"
         println "Excluded controller sources: ${unsupportedRuntimeHostControllerSources.sort(false)}"
@@ -283,6 +364,84 @@ tasks.named('bootRun') {
 tasks.named('test') {
     dependsOn 'enforceSingleMigrationSource'
     useJUnitPlatform()
+    def activeProfiles = providers.gradleProperty('spring.profiles.active')
+            .orElse(providers.environmentVariable('SPRING_PROFILES_ACTIVE'))
+            .orNull
+    if (activeProfiles != null && !activeProfiles.toString().trim().isEmpty()) {
+        systemProperty 'spring.profiles.active', activeProfiles.toString().trim()
+    }
+    if (System.getProperty('os.name', '').toLowerCase().contains('win')
+            && System.getenv('DOCKER_HOST') == null) {
+        environment 'DOCKER_HOST', 'npipe:////./pipe/dockerDesktopLinuxEngine'
+        systemProperty 'docker.host', 'npipe:////./pipe/dockerDesktopLinuxEngine'
+        systemProperty 'docker.client.strategy', 'org.testcontainers.dockerclient.NpipeSocketClientProviderStrategy'
+    }
+}
+
+tasks.register('verifyGeneratedRuntimeMount') {
+    group = 'verification'
+    description = 'Fails clearly when the generated runtime mount required by integrationTest is missing.'
+
+    doLast {
+        def missing = generatedRuntimeRequiredFiles.findAll { !file(it).isFile() }
+        if (!missing.isEmpty()) {
+            throw new GradleException(
+                    "generated-runtime-mount missing: integrationTest requires generated runtime sources under npdev-generated. " +
+                            "Missing required file(s): ${missing}. Generate a final app with NPDevGenerator, then run ./gradlew integrationTest from the generated app root."
+            )
+        }
+    }
+}
+
+tasks.register('integrationTest', Test) {
+    group = 'verification'
+    description = 'Runs generated-runtime-dependent RuntimeHost integration tests.'
+    testClassesDirs = sourceSets.integrationTest.output.classesDirs
+    classpath = sourceSets.integrationTest.runtimeClasspath
+    shouldRunAfter tasks.named('test')
+    dependsOn tasks.named('verifyGeneratedRuntimeMount')
+    useJUnitPlatform {
+        includeTags 'integration'
+    }
+    def activeProfiles = providers.gradleProperty('spring.profiles.active')
+            .orElse(providers.environmentVariable('SPRING_PROFILES_ACTIVE'))
+            .orElse('test,postgres')
+            .get()
+    systemProperty 'spring.profiles.active', activeProfiles.toString().trim()
+    if (System.getProperty('os.name', '').toLowerCase().contains('win')
+            && System.getenv('DOCKER_HOST') == null) {
+        environment 'DOCKER_HOST', 'npipe:////./pipe/dockerDesktopLinuxEngine'
+        systemProperty 'docker.host', 'npipe:////./pipe/dockerDesktopLinuxEngine'
+        systemProperty 'docker.client.strategy', 'org.testcontainers.dockerclient.NpipeSocketClientProviderStrategy'
+    }
+}
+
+tasks.named('compileIntegrationTestJava') {
+    dependsOn tasks.named('verifyGeneratedRuntimeMount')
+}
+
+tasks.register('runtimeMigrationPreflight') {
+    group = 'verification'
+    description = 'Preflights Flyway migration assets before runtime startup.'
+
+    doLast {
+        def migrationDir = file('src/main/resources/db/migration')
+        if (!migrationDir.isDirectory()) {
+            throw new GradleException("Missing Flyway migration directory: ${migrationDir}")
+        }
+        def sqlFiles = fileTree(migrationDir) { include '*.sql' }.files.sort { it.name }
+        if (sqlFiles.isEmpty()) {
+            throw new GradleException("No Flyway SQL migrations found in ${migrationDir}")
+        }
+        def destructivePattern = ~/(?i)\b(drop|truncate|delete\s+from|alter\s+table\s+\S+\s+drop)\b/
+        def destructiveHits = sqlFiles.findAll { file ->
+            file.getText('UTF-8') =~ destructivePattern
+        }
+        if (!destructiveHits.isEmpty()) {
+            throw new GradleException("Runtime migration preflight rejected destructive SQL: ${destructiveHits*.name}")
+        }
+        println "Runtime migration preflight OK. Flyway SQL files checked: ${sqlFiles.size()}"
+    }
 }
 
 flyway {

@@ -295,6 +295,47 @@ class CelInvariantEngineTest {
     }
 
     @Test
+    void logicalOrComparisonPassesWhenOneBranchMatches() {
+        Map<String, CelInvariantEngine.EntityRules> rules = new LinkedHashMap<>();
+        rules.put("Appointment", new CelInvariantEngine.EntityRules(
+                java.util.Set.of(),
+                java.util.Set.of(),
+                List.of("durationMinutes == null || durationMinutes > 0")
+        ));
+        CelInvariantEngine engine = new CelInvariantEngine(rules);
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("durationMinutes", 30);
+
+        List<String> violations = engine.evaluate("Appointment", payload);
+        assertTrue(violations.isEmpty());
+    }
+
+    @Test
+    void overlapsProviderAliasDelegatesToConflictChecker() {
+        Map<String, CelInvariantEngine.EntityRules> rules = new LinkedHashMap<>();
+        rules.put("Appointment", new CelInvariantEngine.EntityRules(
+                java.util.Set.of(),
+                java.util.Set.of(),
+                List.of("!overlapsProvider(providerId, scheduledAt, durationMinutes, id)")
+        ));
+        CelInvariantEngine engine = new CelInvariantEngine(
+                rules,
+                (entity, field, value, payload) -> false,
+                (resourceField, resourceId, scheduledAtField, scheduledAt, durationField, durationMinutes, excludeId, payload) -> false
+        );
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", "a-2");
+        payload.put("providerId", "p-1");
+        payload.put("scheduledAt", "2026-03-10T11:15:00");
+        payload.put("durationMinutes", 30);
+
+        List<String> violations = engine.evaluate("Appointment", payload);
+        assertTrue(violations.isEmpty());
+    }
+
+    @Test
     void evaluatesOverlapsRoomExpressionWithNegation() {
         Map<String, CelInvariantEngine.EntityRules> rules = new LinkedHashMap<>();
         rules.put("Appointment", new CelInvariantEngine.EntityRules(

@@ -1,7 +1,6 @@
 package com.finalexec.npdev.service.internal;
 
 import com.finalexec.npdev.service.*;
-import com.finalexec.npdev.service.experimental.*;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,6 +9,7 @@ import com.finalexec.npdev.dto.CanonicalSourceValidationRequest;
 import com.finalexec.npdev.dto.RealPublicationExecutionRequest;
 import com.finalexec.npdev.dto.SourceMutationRegenerationRequest;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
@@ -43,19 +43,22 @@ public class RealPublicationExecutorService {
     private final CanonicalSourceMutationExecutorService canonicalSourceMutationExecutorService;
     private final CanonicalSourceValidationService canonicalSourceValidationService;
     private final SourceMutationRegenerationService sourceMutationRegenerationService;
+    private final JdbcTemplate jdbcTemplate;
 
     public RealPublicationExecutorService(
             ObjectMapper objectMapper,
             PublicationChainReferenceResolver referenceResolver,
             CanonicalSourceMutationExecutorService canonicalSourceMutationExecutorService,
             CanonicalSourceValidationService canonicalSourceValidationService,
-            SourceMutationRegenerationService sourceMutationRegenerationService
+            SourceMutationRegenerationService sourceMutationRegenerationService,
+            JdbcTemplate jdbcTemplate
     ) {
         this.objectMapper = objectMapper;
         this.referenceResolver = referenceResolver;
         this.canonicalSourceMutationExecutorService = canonicalSourceMutationExecutorService;
         this.canonicalSourceValidationService = canonicalSourceValidationService;
         this.sourceMutationRegenerationService = sourceMutationRegenerationService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     public Map<String, Object> summary() {
@@ -302,7 +305,66 @@ public class RealPublicationExecutorService {
         record.put("mode", mode);
 
         persistRecord(executionId, record);
+        persistPublicationExecution(record);
         return record;
+    }
+
+    private void persistPublicationExecution(Map<String, Object> record) {
+        try {
+            String payload = objectMapper.writeValueAsString(record);
+            jdbcTemplate.update(
+                    """
+                    INSERT INTO npdev_publication_execution (
+                        publication_execution_id,
+                        tenant_id,
+                        publication_reference,
+                        publication_transaction_id,
+                        execution_mode,
+                        publication_status,
+                        publication_outcome,
+                        execution_payload,
+                        started_at,
+                        completed_at,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (
+                        CAST(? AS uuid),
+                        ?,
+                        ?,
+                        NULLIF(?, '')::uuid,
+                        ?,
+                        ?,
+                        ?,
+                        ?::jsonb,
+                        NOW(),
+                        NOW(),
+                        NOW(),
+                        NOW()
+                    )
+                    ON CONFLICT (publication_execution_id) DO UPDATE SET
+                        tenant_id = EXCLUDED.tenant_id,
+                        publication_reference = EXCLUDED.publication_reference,
+                        publication_transaction_id = EXCLUDED.publication_transaction_id,
+                        execution_mode = EXCLUDED.execution_mode,
+                        publication_status = EXCLUDED.publication_status,
+                        publication_outcome = EXCLUDED.publication_outcome,
+                        execution_payload = EXCLUDED.execution_payload,
+                        completed_at = EXCLUDED.completed_at,
+                        updated_at = NOW()
+                    """,
+                    String.valueOf(record.getOrDefault("realPublicationExecutionId", "")),
+                    String.valueOf(record.getOrDefault("tenantId", "")),
+                    String.valueOf(record.getOrDefault("transactionReference", "")),
+                    String.valueOf(record.getOrDefault("resolvedTransactionId", "")),
+                    String.valueOf(record.getOrDefault("publicationMode", "")),
+                    String.valueOf(record.getOrDefault("publicationStatus", "")),
+                    String.valueOf(record.getOrDefault("publicationOutcome", "")),
+                    payload
+            );
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to persist publication execution database state.", exception);
+        }
     }
 
     private String buildMutationReference(String transactionReference) {

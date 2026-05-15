@@ -128,6 +128,14 @@
       "items": {
         "type": "string"
       }
+    },
+    "beta0DeferredGeneratedRuntimeTrustedSourceProof": {
+      "type": "boolean",
+      "description": "True when Beta0 explicitly defers real generated-runtime trusted-source proof while static containment and Docker AI beta evidence are proven separately."
+    },
+    "beta0DeferredGeneratedRuntimeTrustedSourceReason": {
+      "type": "string",
+      "description": "Human-readable Beta0 deferral rationale for generated-runtime trusted-source proof."
     }
   },
   "additionalProperties": false

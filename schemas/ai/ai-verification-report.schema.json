@@ -59,7 +59,23 @@
           },
           "path": {
             "type": "string",
-            "pattern": "^/[^\\s]*$"
+            "allOf": [
+              {
+                "not": {
+                  "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://(?!(localhost|127\\.0\\.0\\.1|\\[::1\\])(?::[0-9]+)?(/|$))"
+                }
+              },
+              {
+                "anyOf": [
+                  {
+                    "pattern": "^/[^\\s]*$"
+                  },
+                  {
+                    "pattern": "^https?://(localhost|127\\.0\\.0\\.1|\\[::1\\])(?::[0-9]+)?/[^\\s]*$"
+                  }
+                ]
+              }
+            ]
           },
           "headers": {
             "type": "object",

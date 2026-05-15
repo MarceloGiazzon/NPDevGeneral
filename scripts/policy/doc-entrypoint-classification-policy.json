@@ -1,5 +1,13 @@
 {
   "schemaVersion": "npdev-doc-entrypoint-classification-policy.v1",
+  "documentClassifications": [
+    {
+      "pathPattern": "docs/**/*.md",
+      "classification": "classified-doc",
+      "releaseRelevant": true,
+      "reason": "Checkpoint 5 requires every docs/**/*.md entrypoint to be explicitly covered by the documentation classification policy."
+    }
+  ],
   "defaultScriptClassification": {
     "classification": "release-relevant",
     "releaseRelevant": true,

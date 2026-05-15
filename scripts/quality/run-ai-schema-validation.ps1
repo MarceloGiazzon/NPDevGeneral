@@ -40,6 +40,17 @@ function Test-RelativeScenarioFile {
     return Test-Path -LiteralPath $fullPath -PathType Leaf
 }
 
+function Test-LocalVerificationPath {
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $false
+    }
+    if ($Path.StartsWith("/")) {
+        return $true
+    }
+    return $Path -match '^https?://(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?/[^\s]*$'
+}
+
 function Invoke-SchemaValidation {
     param(
         [string]$SchemaPath,
@@ -240,8 +251,8 @@ function Test-AiVerification {
             Add-Failure $failures ("check " + [string]$check.id + " method is unsupported.")
         }
         $path = [string]$check.path
-        if ([string]::IsNullOrWhiteSpace($path) -or -not $path.StartsWith("/") -or $path -match "^https?://") {
-            Add-Failure $failures ("check " + [string]$check.id + " path must be a local absolute path.")
+        if (-not (Test-LocalVerificationPath $path)) {
+            Add-Failure $failures ("check " + [string]$check.id + " path must be a local absolute path or localhost URL.")
         }
         if ($null -eq $check.expectedStatus -or [int]$check.expectedStatus -lt 100 -or [int]$check.expectedStatus -gt 599) {
             Add-Failure $failures ("check " + [string]$check.id + " expectedStatus must be 100-599.")
@@ -284,7 +295,7 @@ if ([string]::IsNullOrWhiteSpace($RunId)) {
     $RunId = "ai-schema-validation-" + (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmssfff")
 }
 $scenarioRootPath = (Resolve-Path $ScenarioRoot).Path
-$scenarioDirs = @(Get-ChildItem -LiteralPath $scenarioRootPath -Directory | Sort-Object Name)
+$scenarioDirs = @(Get-ChildItem -LiteralPath $scenarioRootPath -Directory | Where-Object { $_.Name -ne "deferred" } | Sort-Object Name)
 $scopePolicy = Read-JsonFile $ScopePolicyPath
 $requiredScenarios = @($scopePolicy.requiredScenarios | ForEach-Object { [string]$_ })
 $discoveredScenarioIds = @($scenarioDirs | ForEach-Object { [string]$_.Name })

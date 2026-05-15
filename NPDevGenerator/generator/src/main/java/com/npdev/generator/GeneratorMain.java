@@ -11,6 +11,9 @@ import com.npdev.dsl.v1.validation.SemanticValidator;
 import com.npdev.dsl.v1.validation.ValidationResult;
 import com.npdev.generator.assembly.FinalAppAssembler;
 import com.npdev.generator.api.GeneratorFacade;
+import com.npdev.generator.migration.MigrationRiskThreshold;
+import com.npdev.generator.migration.StatefulMigrationOptions;
+import com.npdev.generator.migration.StatefulMigrationPlanner;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.strategy.RegenerationPolicy;
 import com.npdev.generator.templates.TemplateEngine;
@@ -38,7 +41,7 @@ public final class GeneratorMain {
 
         // Clean only the disposable output folder (generated Java/resources).
         // Canonical migrations live elsewhere and are NOT cleaned.
-        if (cleanOut) {
+        if (cleanOut && !a.migrationPlanOnly) {
             cleanOutputRoot(outRoot);
         }
 
@@ -63,6 +66,19 @@ public final class GeneratorMain {
         }
 
         CompiledModel compiled = new ModelCompiler().compile(ast);
+        StatefulMigrationOptions migrationOptions = new StatefulMigrationOptions(
+                a.migrationMode,
+                a.migrationPlanOnly,
+                a.migrationRiskThreshold,
+                a.migrationDecisionReportPath == null ? null : Path.of(a.migrationDecisionReportPath).toAbsolutePath().normalize()
+        );
+
+        if (a.migrationPlanOnly) {
+            var result = new StatefulMigrationPlanner().plan(compiled, migrationsDir, migrationOptions);
+            System.out.println("Migration plan OK. Dry-run SQL: " + result.dryRunSqlPath());
+            System.out.println("Migration decision: " + result.decisionReportPath());
+            return;
+        }
 
         TemplateEngine templates = new TemplateEngine("npdev-templates/");
 
@@ -73,7 +89,8 @@ public final class GeneratorMain {
                 compiled,
                 outRoot,
                 migrationsDir,
-                modelPath
+                modelPath,
+                migrationOptions
         );
 
         writer.flushSummary();
@@ -446,6 +463,10 @@ public final class GeneratorMain {
         final boolean cleanFinalAppExplicit;
         final String generatedFolderName;
         final String metaFolderName;
+        final String migrationMode;
+        final boolean migrationPlanOnly;
+        final MigrationRiskThreshold migrationRiskThreshold;
+        final String migrationDecisionReportPath;
 
         private Args(
                 String configPath,
@@ -461,7 +482,11 @@ public final class GeneratorMain {
                 boolean cleanFinalApp,
                 boolean cleanFinalAppExplicit,
                 String generatedFolderName,
-                String metaFolderName
+                String metaFolderName,
+                String migrationMode,
+                boolean migrationPlanOnly,
+                MigrationRiskThreshold migrationRiskThreshold,
+                String migrationDecisionReportPath
         ) {
             this.configPath = configPath;
             this.modelPath = modelPath;
@@ -477,6 +502,10 @@ public final class GeneratorMain {
             this.cleanFinalAppExplicit = cleanFinalAppExplicit;
             this.generatedFolderName = generatedFolderName;
             this.metaFolderName = metaFolderName;
+            this.migrationMode = migrationMode;
+            this.migrationPlanOnly = migrationPlanOnly;
+            this.migrationRiskThreshold = migrationRiskThreshold;
+            this.migrationDecisionReportPath = migrationDecisionReportPath;
         }
 
         static Args parse(String[] args) {
@@ -498,11 +527,22 @@ public final class GeneratorMain {
             boolean cleanFinalExplicit = false;
             String generatedFolder = null;
             String metaFolder = null;
+            String migrationMode = "disabled";
+            boolean migrationPlanOnly = false;
+            MigrationRiskThreshold migrationRiskThreshold = MigrationRiskThreshold.SAFE_ADDITIVE;
+            String migrationDecisionReportPath = null;
 
             for (int i = 0; i < args.length; i++) {
                 String cur = args[i];
 
-                if ("--config".equals(cur) && i + 1 < args.length) {
+                if (cur.startsWith("--migrationMode=")) {
+                    migrationMode = cur.substring("--migrationMode=".length());
+                    validateMigrationMode(migrationMode);
+                } else if (cur.startsWith("--migrationRiskThreshold=")) {
+                    migrationRiskThreshold = MigrationRiskThreshold.parse(cur.substring("--migrationRiskThreshold=".length()));
+                } else if (cur.startsWith("--migrationDecisionReport=")) {
+                    migrationDecisionReportPath = cur.substring("--migrationDecisionReport=".length());
+                } else if ("--config".equals(cur) && i + 1 < args.length) {
                     config = args[++i];
                 } else if ("--model".equals(cur) && i + 1 < args.length) {
                     model = args[++i];
@@ -536,13 +576,20 @@ public final class GeneratorMain {
                 } else if ("--no-cleanFinalApp".equals(cur)) {
                     cleanFinal = false;
                     cleanFinalExplicit = true;
+                } else if ("--migrationPlanOnly".equals(cur)) {
+                    migrationPlanOnly = true;
+                    if ("disabled".equalsIgnoreCase(migrationMode)) {
+                        migrationMode = "additive-only";
+                    }
                 } else if ("--enableMigrations".equals(cur) || "--migrationManagement".equals(cur)) {
                     throw migrationsDisabled(cur);
                 } else if ("--migrationMode".equals(cur) && i + 1 < args.length) {
-                    String migrationMode = args[++i];
-                    if (!"disabled".equalsIgnoreCase(migrationMode) && !"off".equalsIgnoreCase(migrationMode)) {
-                        throw migrationsDisabled("--migrationMode=" + migrationMode);
-                    }
+                    migrationMode = args[++i];
+                    validateMigrationMode(migrationMode);
+                } else if ("--migrationRiskThreshold".equals(cur) && i + 1 < args.length) {
+                    migrationRiskThreshold = MigrationRiskThreshold.parse(args[++i]);
+                } else if ("--migrationDecisionReport".equals(cur) && i + 1 < args.length) {
+                    migrationDecisionReportPath = args[++i];
                 }
             }
 
@@ -560,8 +607,21 @@ public final class GeneratorMain {
                     cleanFinal,
                     cleanFinalExplicit,
                     generatedFolder,
-                    metaFolder
+                    metaFolder,
+                    migrationMode,
+                    migrationPlanOnly,
+                    migrationRiskThreshold,
+                    migrationDecisionReportPath
             );
+        }
+
+        private static void validateMigrationMode(String migrationMode) {
+            if ("disabled".equalsIgnoreCase(migrationMode)
+                    || "off".equalsIgnoreCase(migrationMode)
+                    || "additive-only".equalsIgnoreCase(migrationMode)) {
+                return;
+            }
+            throw migrationsDisabled("--migrationMode=" + migrationMode);
         }
     }
 

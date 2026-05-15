@@ -14,21 +14,21 @@
       }
     },
     {
-      "id": "create-user",
+      "id": "create-learner",
       "type": "http",
       "method": "POST",
-      "path": "/api/users",
+      "path": "/api/learners",
       "headers": {
         "Content-Type": "application/json",
         "X-Api-Key": "dev-key"
       },
       "body": {
-        "email": "beta0@example.com",
-        "displayName": "Beta Zero"
+        "name": "Beta Zero",
+        "status": "ready"
       },
       "expectedStatus": 201,
       "expectedJsonContains": {
-        "email": "beta0@example.com"
+        "name": "Beta Zero"
       }
     }
   ]

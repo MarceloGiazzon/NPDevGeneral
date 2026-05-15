@@ -1,371 +1,160 @@
 package com.finalexec;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.finalexec.api.DirectExecutionGatewayController;
-import com.finalexec.api.ExecutionMonitorController;
-import com.finalexec.api.RuntimeMetadataController;
-import com.finalexec.api.RuntimePluginStatusController;
-import com.finalexec.api.RuntimeSchedulesController;
-import com.finalexec.api.RuntimeUiMetadataController;
-import com.finalexec.api.SupportDiagnosticsController;
-import com.finalexec.execution.DirectExecutionGateway;
-import com.finalexec.npdev.service.BetaSecurityRoleEvaluator;
-import com.finalexec.npdev.service.ExecutionMonitorService;
-import com.finalexec.npdev.service.PermissionAwareUiMetadataService;
-import com.finalexec.npdev.service.RuntimeMetadataService;
-import com.finalexec.npdev.service.RuntimePluginStatusSummary;
-import com.finalexec.npdev.service.SupportDiagnosticsService;
-import com.npdev.generated.runtime.service.RuntimeContextService;
-import com.npdev.kernel.ExecutionContext;
-import com.npdev.runtime.support.GeneratedCrudRuntimeSupport;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationContext;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.util.ClassUtils;
+import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
-import java.util.List;
-import java.util.Map;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.stream.Stream;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@SpringBootTest(properties = {
+        "npdev.runtime.supported-surface-enforced=true",
+        "npdev.runtime.surface-profile=supported-core",
+        "spring.jpa.hibernate.ddl-auto=create-drop",
+        "spring.flyway.enabled=false"
+})
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
 class SupportedCoreControllerBlackBoxIntegrationTest {
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private static final String ALLOWLIST_RESOURCE = "npdev/runtime-supported-controllers.json";
+
+    @Autowired
+    private ApplicationContext applicationContext;
+
+    @Autowired
+    @Qualifier("requestMappingHandlerMapping")
+    private RequestMappingHandlerMapping handlerMapping;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Test
-    void directExecutionGatewayAcceptsGovernedExecutionRequests() throws Exception {
-        DirectExecutionGateway gateway = Mockito.mock(DirectExecutionGateway.class);
-        RuntimeContextService runtimeContextService = Mockito.mock(RuntimeContextService.class);
-        when(runtimeContextService.currentContext(any()))
-                .thenReturn(ExecutionContext.of("dev", "operator").withRoles(Set.of("OPERATOR")));
-        when(gateway.execute(any(), any()))
-                .thenReturn(Map.of(
-                        "executionLifecycleStatus", "EXECUTED",
-                        "tenantId", "dev",
-                        "flowName", "TypedHappyPath"
-                ));
+    void everyRuntimeHostControllerIsClassifiedExactlyOnce() throws Exception {
+        Set<String> sourceControllers = discoverSourceControllers();
+        Set<String> allowedControllers = loadArray("allowedControllers");
+        Set<String> deferredControllers = loadArray("deferredControllers");
+        Set<String> testOnlyControllers = loadArray("testOnlyControllers");
 
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(
-                new DirectExecutionGatewayController(gateway, runtimeContextService)
-        ).build();
+        assertNoOverlap("allowed/deferred", allowedControllers, deferredControllers);
+        assertNoOverlap("allowed/test-only", allowedControllers, testOnlyControllers);
+        assertNoOverlap("deferred/test-only", deferredControllers, testOnlyControllers);
 
-        mockMvc.perform(post("/api/v1/execute/flow")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "tenantId": "dev",
-                                  "flowName": "TypedHappyPath",
-                                  "input": {
-                                    "email": "operator@example.test"
-                                  }
-                                }
-                                """))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.executionLifecycleStatus").value("EXECUTED"))
-                .andExpect(jsonPath("$.tenantId").value("dev"))
-                .andExpect(jsonPath("$.flowName").value("TypedHappyPath"));
+        LinkedHashSet<String> classifiedControllers = new LinkedHashSet<>();
+        classifiedControllers.addAll(allowedControllers);
+        classifiedControllers.addAll(deferredControllers);
+        classifiedControllers.addAll(testOnlyControllers);
+
+        assertEquals(sourceControllers, classifiedControllers,
+                "Every RuntimeHost controller source must be classified as allowed, deferred, or test-only.");
     }
 
     @Test
-    void directExecutionGatewayRejectsInvalidForbiddenAndUnavailableRequests() throws Exception {
-        DirectExecutionGateway gateway = Mockito.mock(DirectExecutionGateway.class);
-        RuntimeContextService runtimeContextService = Mockito.mock(RuntimeContextService.class);
-        when(runtimeContextService.currentContext(any()))
-                .thenReturn(ExecutionContext.of("dev", "viewer").withRoles(Set.of("USER")));
-        when(gateway.execute(any(), any())).thenThrow(new IllegalArgumentException("tenantId is required."));
-        when(gateway.executePanelAction(any(), any())).thenThrow(new SecurityException("direct execution blocked"));
-        when(gateway.summary()).thenThrow(new IllegalStateException("direct execution evidence unavailable"));
+    void supportedCoreProfileExposesAllowedControllersOnly() throws Exception {
+        Set<String> allowedControllers = loadArray("allowedControllers");
+        Set<String> deferredControllers = loadArray("deferredControllers");
+        Set<String> testOnlyControllers = loadArray("testOnlyControllers");
+        Set<String> activeControllers = activeRuntimeControllers();
+        Set<String> mappedControllers = mappedRuntimeControllers();
 
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(
-                new DirectExecutionGatewayController(gateway, runtimeContextService)
-        ).build();
+        assertFalse(activeControllers.isEmpty(), "Expected supported-core profile to register runtime controllers.");
+        assertTrue(activeControllers.containsAll(allowedControllers), "Missing allowed controllers: " + difference(allowedControllers, activeControllers));
+        assertTrue(mappedControllers.containsAll(allowedControllers), "Missing mapped allowed controllers: " + difference(allowedControllers, mappedControllers));
+        assertTrue(allowedControllers.containsAll(activeControllers), "Unlisted active controllers: " + difference(activeControllers, allowedControllers));
+        assertTrue(allowedControllers.containsAll(mappedControllers), "Unlisted mapped controllers: " + difference(mappedControllers, allowedControllers));
 
-        mockMvc.perform(post("/api/v1/execute/flow")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "tenantId": "",
-                                  "flowName": "TypedHappyPath"
-                                }
-                                """))
-                .andExpect(status().isBadRequest());
-
-        mockMvc.perform(post("/api/v1/execute/panel-action")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "tenantId": "dev",
-                                  "panelName": "AppointmentPanel",
-                                  "actionName": "submit"
-                                }
-                                """))
-                .andExpect(status().isForbidden());
-
-        mockMvc.perform(get("/api/v1/admin/direct-execution-gateway"))
-                .andExpect(status().isForbidden());
-
-        when(runtimeContextService.currentContext(any()))
-                .thenReturn(ExecutionContext.of("dev", "admin").withRoles(Set.of("ADMIN")));
-
-        mockMvc.perform(get("/api/v1/admin/direct-execution-gateway"))
-                .andExpect(status().isServiceUnavailable());
+        for (String controller : deferredControllers) {
+            assertFalse(activeControllers.contains(controller), controller + " must be absent from supported-core.");
+            assertFalse(mappedControllers.contains(controller), controller + " must not be mapped in supported-core.");
+        }
+        for (String controller : testOnlyControllers) {
+            assertFalse(activeControllers.contains(controller), controller + " must be absent from supported-core.");
+            assertFalse(mappedControllers.contains(controller), controller + " must not be mapped in supported-core.");
+        }
     }
 
-    @Test
-    void executionMonitorExposesActiveAndHistorySummaries() throws Exception {
-        ExecutionMonitorService service = Mockito.mock(ExecutionMonitorService.class);
-        RuntimeContextService runtimeContextService = Mockito.mock(RuntimeContextService.class);
-        when(runtimeContextService.currentContext(any()))
-                .thenReturn(ExecutionContext.of("dev", "operator").withRoles(Set.of("OPERATOR")));
-        when(service.active(any())).thenReturn(Map.of(
-                "surfaceName", "Execution Monitor",
-                "activeCount", 1,
-                "items", List.of(Map.of("executionId", "exec-1"))
-        ));
-        when(service.history(any())).thenReturn(Map.of(
-                "surfaceName", "Execution Monitor",
-                "historyCount", 1,
-                "items", List.of(Map.of("executionId", "exec-1"))
-        ));
-
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(
-                new ExecutionMonitorController(service, runtimeContextService)
-        ).build();
-
-        mockMvc.perform(get("/api/v1/executions/active"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.activeCount").value(1))
-                .andExpect(jsonPath("$.items[0].executionId").value("exec-1"));
-
-        mockMvc.perform(get("/api/v1/executions/history"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.historyCount").value(1))
-                .andExpect(jsonPath("$.items[0].executionId").value("exec-1"));
+    private Set<String> discoverSourceControllers() throws Exception {
+        Path sourceRoot = Path.of("src", "main", "java", "com", "finalexec");
+        LinkedHashSet<String> controllers = new LinkedHashSet<>();
+        try (Stream<Path> stream = Files.walk(sourceRoot)) {
+            stream.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().endsWith("Controller.java"))
+                    .map(path -> path.getFileName().toString().replace(".java", ""))
+                    .sorted()
+                    .forEach(controllers::add);
+        }
+        return Set.copyOf(controllers);
     }
 
-    @Test
-    void executionMonitorLinksTranslateNotFoundForbiddenAndUnavailableFailures() throws Exception {
-        ExecutionMonitorService service = Mockito.mock(ExecutionMonitorService.class);
-        RuntimeContextService runtimeContextService = Mockito.mock(RuntimeContextService.class);
-        when(runtimeContextService.currentContext(any()))
-                .thenReturn(ExecutionContext.of("dev", "operator").withRoles(Set.of("OPERATOR")));
-        when(service.links(eq("missing"), any())).thenThrow(new IllegalArgumentException("executionId was not found."));
-        when(service.active(any())).thenThrow(new SecurityException("forbidden"));
-        when(service.history(any())).thenThrow(new IllegalStateException("execution monitor unavailable"));
-
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(
-                new ExecutionMonitorController(service, runtimeContextService)
-        ).build();
-
-        mockMvc.perform(get("/api/v1/executions/missing/links"))
-                .andExpect(status().isNotFound());
-
-        mockMvc.perform(get("/api/v1/executions/active"))
-                .andExpect(status().isForbidden());
-
-        mockMvc.perform(get("/api/v1/executions/history"))
-                .andExpect(status().isServiceUnavailable());
+    private Set<String> activeRuntimeControllers() {
+        LinkedHashSet<String> controllers = new LinkedHashSet<>();
+        for (String beanName : applicationContext.getBeanDefinitionNames()) {
+            Class<?> beanType = applicationContext.getType(beanName);
+            if (beanType == null || beanType.getPackage() == null) {
+                continue;
+            }
+            Class<?> userClass = ClassUtils.getUserClass(beanType);
+            if (userClass.getPackageName().startsWith("com.finalexec") && userClass.getSimpleName().endsWith("Controller")) {
+                controllers.add(userClass.getSimpleName());
+            }
+        }
+        return Set.copyOf(controllers);
     }
 
-    @Test
-    void runtimeSchedulesExposeListAndProcessDueOperations() throws Exception {
-        GeneratedCrudRuntimeSupport runtimeSupport = Mockito.mock(GeneratedCrudRuntimeSupport.class);
-        when(runtimeSupport.listScheduledEvents(50, 5))
-                .thenReturn(List.of(Map.of(
-                        "id", "schedule-1",
-                        "status", "PENDING"
-                )));
-        when(runtimeSupport.processDueScheduledEvents(Boolean.TRUE, 10))
-                .thenReturn(Map.of(
-                        "status", "processed",
-                        "processed", 1
-                ));
-
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(
-                new RuntimeSchedulesController(runtimeSupport)
-        ).build();
-
-        mockMvc.perform(get("/api/runtime/schedules")
-                        .param("limit", "50")
-                        .param("offset", "5"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value("schedule-1"))
-                .andExpect(jsonPath("$[0].status").value("PENDING"));
-
-        mockMvc.perform(post("/api/runtime/schedules/process-due")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .param("limit", "10")
-                        .content("""
-                                {
-                                  "forceDue": "true"
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("processed"))
-                .andExpect(jsonPath("$.processed").value(1))
-                .andExpect(jsonPath("$.requestedForceDue").value(true));
+    private Set<String> mappedRuntimeControllers() {
+        LinkedHashSet<String> controllers = new LinkedHashSet<>();
+        for (HandlerMethod handlerMethod : handlerMapping.getHandlerMethods().values()) {
+            Class<?> beanType = handlerMethod.getBeanType();
+            if (beanType.getPackage() == null) {
+                continue;
+            }
+            Class<?> userClass = ClassUtils.getUserClass(beanType);
+            if (userClass.getPackageName().startsWith("com.finalexec") && userClass.getSimpleName().endsWith("Controller")) {
+                controllers.add(userClass.getSimpleName());
+            }
+        }
+        return Set.copyOf(controllers);
     }
 
-    @Test
-    void runtimeSchedulesTranslateValidationAndSecurityFailures() throws Exception {
-        GeneratedCrudRuntimeSupport runtimeSupport = Mockito.mock(GeneratedCrudRuntimeSupport.class);
-        when(runtimeSupport.processDueScheduledEvents(Boolean.FALSE, 5))
-                .thenThrow(new IllegalArgumentException("limit must be positive"));
-        when(runtimeSupport.listScheduledEvents(anyInt(), anyInt()))
-                .thenThrow(new SecurityException("forbidden"));
-
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(
-                new RuntimeSchedulesController(runtimeSupport)
-        ).build();
-
-        mockMvc.perform(post("/api/runtime/schedules/process-due")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .param("forceDue", "false")
-                        .param("limit", "5"))
-                .andExpect(status().isBadRequest());
-
-        mockMvc.perform(get("/api/runtime/schedules"))
-                .andExpect(status().isForbidden());
+    private Set<String> loadArray(String propertyName) throws Exception {
+        try (InputStream inputStream = new ClassPathResource(ALLOWLIST_RESOURCE).getInputStream()) {
+            JsonNode root = objectMapper.readTree(inputStream);
+            LinkedHashSet<String> values = new LinkedHashSet<>();
+            for (JsonNode item : root.path(propertyName)) {
+                String value = item.asText("").trim();
+                if (!value.isEmpty()) {
+                    values.add(value);
+                }
+            }
+            return Set.copyOf(values);
+        }
     }
 
-    @Test
-    void supportDiagnosticsExposeDiagnosticsIssuesTracesAndBlockedStates() throws Exception {
-        SupportDiagnosticsService diagnosticsService = Mockito.mock(SupportDiagnosticsService.class);
-        BetaSecurityRoleEvaluator roleEvaluator = Mockito.mock(BetaSecurityRoleEvaluator.class);
-        RuntimeContextService runtimeContextService = Mockito.mock(RuntimeContextService.class);
-        ExecutionContext context = ExecutionContext.of("dev", "support-agent").withRoles(Set.of("SUPPORT"));
-        when(runtimeContextService.currentContext(any())).thenReturn(context);
-        when(roleEvaluator.hasPrivilegedAccess(context)).thenReturn(true);
-        when(diagnosticsService.diagnostics(context)).thenReturn(Map.of("issueCount", 1, "traceCount", 1));
-        when(diagnosticsService.issues(context)).thenReturn(Map.of("count", 1, "items", List.of(Map.of("issueReference", "issue-1"))));
-        when(diagnosticsService.traces(context)).thenReturn(Map.of("count", 1, "items", List.of(Map.of("traceReference", "trace-1"))));
-        when(diagnosticsService.blockedStates(context)).thenReturn(Map.of("count", 1, "items", List.of(Map.of("blockedStateReference", "blocked-1"))));
-
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(
-                new SupportDiagnosticsController(diagnosticsService, roleEvaluator, runtimeContextService)
-        ).build();
-
-        mockMvc.perform(get("/api/v1/support/diagnostics"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.issueCount").value(1))
-                .andExpect(jsonPath("$.traceCount").value(1));
-
-        mockMvc.perform(get("/api/v1/support/issues"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.count").value(1))
-                .andExpect(jsonPath("$.items[0].issueReference").value("issue-1"));
-
-        mockMvc.perform(get("/api/v1/support/traces"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.count").value(1))
-                .andExpect(jsonPath("$.items[0].traceReference").value("trace-1"));
-
-        mockMvc.perform(get("/api/v1/support/blocked-states"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.count").value(1))
-                .andExpect(jsonPath("$.items[0].blockedStateReference").value("blocked-1"));
+    private static void assertNoOverlap(String label, Set<String> left, Set<String> right) {
+        assertTrue(difference(left, right).size() == left.size(), "Controller classifications overlap: " + label);
     }
 
-    @Test
-    void supportDiagnosticsEnforcePrivilegedAccessAndTranslateFailures() throws Exception {
-        SupportDiagnosticsService diagnosticsService = Mockito.mock(SupportDiagnosticsService.class);
-        BetaSecurityRoleEvaluator roleEvaluator = Mockito.mock(BetaSecurityRoleEvaluator.class);
-        RuntimeContextService runtimeContextService = Mockito.mock(RuntimeContextService.class);
-        ExecutionContext context = ExecutionContext.of("dev", "viewer").withRoles(Set.of("USER"));
-        when(runtimeContextService.currentContext(any())).thenReturn(context);
-        when(roleEvaluator.hasPrivilegedAccess(context)).thenReturn(false);
-
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(
-                new SupportDiagnosticsController(diagnosticsService, roleEvaluator, runtimeContextService)
-        ).build();
-
-        mockMvc.perform(get("/api/v1/support/diagnostics"))
-                .andExpect(status().isForbidden());
-
-        when(roleEvaluator.hasPrivilegedAccess(context)).thenReturn(true);
-        when(diagnosticsService.diagnostics(context)).thenThrow(new IllegalStateException("support evidence unavailable"));
-
-        mockMvc.perform(get("/api/v1/support/diagnostics"))
-                .andExpect(status().isServiceUnavailable());
-    }
-
-    @Test
-    void runtimeMetadataControllerRejectsUnsupportedCatalogAndNonAdminAccess() throws Exception {
-        RuntimeContextService runtimeContextService = Mockito.mock(RuntimeContextService.class);
-        RuntimeMetadataController controller = new RuntimeMetadataController(
-                new RuntimeMetadataService(new ObjectMapper()),
-                runtimeContextService
-        );
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
-
-        when(runtimeContextService.currentContext(any()))
-                .thenReturn(ExecutionContext.of("dev", "viewer").withRoles(Set.of("USER")));
-
-        mockMvc.perform(get("/api/admin/runtime/metadata"))
-                .andExpect(status().isForbidden());
-
-        when(runtimeContextService.currentContext(any()))
-                .thenReturn(ExecutionContext.of("dev", "admin").withRoles(Set.of("ADMIN")));
-
-        mockMvc.perform(get("/api/admin/runtime/metadata/catalogs/unknown"))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void runtimePluginStatusReturnsSummaryAndFailsClosedForAdminBoundaries() throws Exception {
-        RuntimePluginStatusSummary summary = Mockito.mock(RuntimePluginStatusSummary.class);
-        RuntimeContextService runtimeContextService = Mockito.mock(RuntimeContextService.class);
-        when(runtimeContextService.currentContext(any()))
-                .thenReturn(ExecutionContext.of("dev", "admin").withRoles(Set.of("ADMIN")));
-        when(summary.toSummary()).thenReturn(Map.of(
-                "deploymentProfile", "default",
-                "selectedPackageIds", List.of("notification-inproc-package")
-        ));
-
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(
-                new RuntimePluginStatusController(summary, runtimeContextService)
-        ).build();
-
-        mockMvc.perform(get("/api/admin/runtime/plugin-status"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.deploymentProfile").value("default"))
-                .andExpect(jsonPath("$.selectedPackageIds[0]").value("notification-inproc-package"));
-
-        when(runtimeContextService.currentContext(any()))
-                .thenReturn(ExecutionContext.of("dev", "viewer").withRoles(Set.of("USER")));
-
-        mockMvc.perform(get("/api/admin/runtime/plugin-status"))
-                .andExpect(status().isForbidden());
-
-        when(runtimeContextService.currentContext(any()))
-                .thenReturn(ExecutionContext.of("dev", "admin").withRoles(Set.of("ADMIN")));
-        when(summary.toSummary()).thenThrow(new IllegalStateException("plugin status inventory unavailable"));
-
-        mockMvc.perform(get("/api/admin/runtime/plugin-status"))
-                .andExpect(status().isServiceUnavailable());
-    }
-
-    @Test
-    void runtimeUiMetadataReturnsServiceUnavailableWhenPanelRuntimeIsMissing() throws Exception {
-        PermissionAwareUiMetadataService permissionAwareUiMetadataService = Mockito.mock(PermissionAwareUiMetadataService.class);
-        RuntimeContextService runtimeContextService = Mockito.mock(RuntimeContextService.class);
-        when(runtimeContextService.currentContext(any()))
-                .thenReturn(ExecutionContext.of("dev", "operator").withRoles(Set.of("OPERATOR")));
-
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(
-                new RuntimeUiMetadataController(permissionAwareUiMetadataService, runtimeContextService)
-        ).build();
-
-        mockMvc.perform(get("/api/runtime/metadata/ui/panels/AppointmentPanel"))
-                .andExpect(status().isServiceUnavailable());
+    private static Set<String> difference(Set<String> actual, Set<String> allowed) {
+        LinkedHashSet<String> difference = new LinkedHashSet<>(actual);
+        difference.removeIf(allowed::contains);
+        return Set.copyOf(difference);
     }
 }

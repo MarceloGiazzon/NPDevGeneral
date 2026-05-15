@@ -144,6 +144,37 @@ class PanelRuntimeTest {
         assertEquals("ConceptGateway", loaded.get("governedDataAccess"));
     }
 
+    @Test
+    void rendersFallbackUiWhenCustomPanelDataSourceCannotHydrate() {
+        PanelRuntime runtime = new PanelRuntime(
+                metadataService,
+                null,
+                executablePanelModel(),
+                null,
+                null,
+                null
+        );
+
+        Map<String, Object> loaded = runtime.loadPanel(
+                "ContactPanel",
+                Map.of(),
+                ExecutionContext.of("dev", "operator").withRoles(Set.of("OPERATOR"))
+        );
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> dataSources = (List<Map<String, Object>>) loaded.get("dataSources");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) loaded.get("data");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> contacts = (Map<String, Object>) data.get("contacts");
+
+        assertEquals(true, loaded.get("fallbackUi"));
+        assertEquals(true, dataSources.get(0).get("fallback"));
+        assertEquals("CONCEPT_GATEWAY_UNAVAILABLE", dataSources.get(0).get("fallbackCode"));
+        assertEquals("UNAVAILABLE", contacts.get("status"));
+        assertEquals("CONCEPT_GATEWAY_UNAVAILABLE", contacts.get("code"));
+    }
+
     private static CompiledModel executablePanelModel() {
         CompiledProcedureStep saveStep = new CompiledProcedureStep(
                 "save-contact",

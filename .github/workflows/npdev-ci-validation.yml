@@ -12,6 +12,135 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  linux-maturity-validation:
+    name: Linux post-Beta0 maturity validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    defaults:
+      run:
+        shell: bash
+
+    env:
+      CI: true
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: DSL contract tests
+        working-directory: NPDevContract/dsl
+        timeout-minutes: 15
+        run: |
+          ./gradlew test --no-daemon --console=plain
+
+      - name: Kernel inproc adapter tests
+        working-directory: NPDevKernel
+        timeout-minutes: 20
+        run: |
+          ./gradlew \
+            :adapters:audit-inproc:test \
+            :adapters:bulkhead-inproc:test \
+            :adapters:circuit-inproc:test \
+            :adapters:events-inproc:test \
+            :adapters:flowinstance-inproc:test \
+            :adapters:idempotency-inproc:test \
+            :adapters:notification-inproc:test \
+            :adapters:persistence-inproc:test \
+            :adapters:tracing-inproc:test \
+            :adapters:webhook-inproc:test \
+            --no-daemon --console=plain
+
+      - name: Kernel Postgres Testcontainers adapter tests
+        working-directory: NPDevKernel
+        timeout-minutes: 35
+        run: |
+          ./gradlew \
+            :adapters:eventstore-postgres:test \
+            :adapters:audit-postgres:test \
+            :adapters:bulkhead-postgres:test \
+            :adapters:circuit-postgres:test \
+            :adapters:flowinstance-postgres:test \
+            :adapters:tracestore-postgres:test \
+            --no-daemon --console=plain
+
+      - name: Flow compiled tests
+        working-directory: NPDevKernel
+        timeout-minutes: 15
+        run: |
+          ./gradlew :adapters:flow-compiled:test --no-daemon --console=plain
+
+      - name: Generator unit tests
+        working-directory: NPDevGenerator
+        timeout-minutes: 30
+        run: |
+          ./gradlew :generator:test --no-daemon --console=plain
+
+      - name: Portable NPDev CLI smoke
+        timeout-minutes: 45
+        run: |
+          chmod +x ./npdev
+          ./npdev --version
+          ./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json
+          ./npdev normalize ai-model golden-ai-scenarios/base-ai-loop/ai-model.json > /tmp/npdev-normalized-model.json
+          ./npdev generate app --model NPDevContract/dsl/resources/Models/canonical-demo/model.json --config NPDevContract/dsl/resources/Models/canonical-demo/config.json --output build/npdev-generated
+
+      - name: Generate RuntimeHost canonical app for integration tests
+        timeout-minutes: 45
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass \
+            -File "$GITHUB_WORKSPACE/scripts/samples/generate-sample.ps1" \
+            -WorkspaceRoot "$GITHUB_WORKSPACE" \
+            -SampleIds canonical-demo
+
+      - name: RuntimeHost generated-app Postgres integration tests
+        working-directory: NPDevSamples/canonical-demo/Output/App
+        timeout-minutes: 45
+        run: |
+          chmod +x ./gradlew
+          ./gradlew integrationTest \
+            -Dspring.profiles.active=test,postgres \
+            --no-daemon --console=plain
+
+      - name: Bootstrap post-Beta0 maturity reports
+        timeout-minutes: 60
+        run: |
+          chmod +x ./npdev
+          chmod +x ./gradlew
+          ./npdev report bootstrap
+          ./gradlew postBeta0MaturityCheck --no-daemon --console=plain
+          pwsh -NoProfile -File ./scripts/quality/validate-report-schemas.ps1
+          pwsh -NoProfile -File ./scripts/quality/generate-final-evidence-bundle.ps1
+          pwsh -NoProfile -File ./scripts/quality/run-portable-tooling-check.ps1
+
+      - name: Upload Linux maturity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npdev-linux-maturity-validation-evidence
+          path: |
+            scripts/reports/out
+            ../NPDev_General__OutsideRepo/temp/final-evidence-bundle
+            NPDevContract/dsl/**/build/test-results/test
+            NPDevKernel/**/build/test-results/test
+            NPDevGenerator/**/build/test-results/test
+            NPDevRuntimeHost/**/build/test-results/test
+            NPDevRuntimeHost/**/build/test-results/integrationTest
+            NPDevSamples/**/Output/App/**/build/test-results/integrationTest
+            NPDevSamples/**/Output/App/**/build/reports/tests/integrationTest
+          if-no-files-found: warn
+          retention-days: 14
+
   ci-validation:
     name: NPDev segmented CI validation
     runs-on: windows-latest

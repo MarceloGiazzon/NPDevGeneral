@@ -1,5 +1,6 @@
 import React from "react";
 import type { AuthoringProcedure, AuthoringProcedureStep } from "../modelDocumentTypes";
+import ProcedureStepEditor from "./ProcedureStepEditor";
 
 type ProceduresEditorSectionProps = {
   procedures: AuthoringProcedure[];
@@ -121,190 +122,19 @@ export default function ProceduresEditorSection({
 
               <div className="authoring-editor-stack">
                 {(procedure.steps ?? []).map((step, stepIndex) => (
-                  <article key={`${step.name ?? "step"}-${stepIndex}`} className="authoring-subcard">
-                    <div className="authoring-preview-card__header">
-                      <strong>{step.name ?? `Step ${stepIndex + 1}`}</strong>
-                      <button
-                        type="button"
-                        className="authoring-ghost-button"
-                        onClick={() =>
-                          onChange(
-                            procedures.map((entry, index) =>
-                              index === procedureIndex
-                                ? {
-                                    ...entry,
-                                    steps: (entry.steps ?? []).filter((_, nestedIndex) => nestedIndex !== stepIndex)
-                                  }
-                                : entry
-                            )
-                          )
-                        }
-                      >
-                        Remove step
-                      </button>
-                    </div>
-
-                    <div className="authoring-form-grid">
-                      <label>
-                        Step name
-                        <input
-                          value={step.name ?? ""}
-                          onChange={(event) =>
-                            onChange(
-                              procedures.map((entry, index) =>
-                                index === procedureIndex
-                                  ? {
-                                      ...entry,
-                                      steps: (entry.steps ?? []).map((stepEntry, nestedIndex) =>
-                                        nestedIndex === stepIndex
-                                          ? {
-                                              ...stepEntry,
-                                              name: event.target.value || undefined
-                                            }
-                                          : stepEntry
-                                      )
-                                    }
-                                  : entry
-                              )
-                            )
-                          }
-                        />
-                      </label>
-
-                      <label>
-                        Type
-                        <select
-                          value={step.type}
-                          onChange={(event) =>
-                            onChange(
-                              procedures.map((entry, index) =>
-                                index === procedureIndex
-                                  ? {
-                                      ...entry,
-                                      steps: (entry.steps ?? []).map((stepEntry, nestedIndex) =>
-                                        nestedIndex === stepIndex
-                                          ? {
-                                              ...stepEntry,
-                                              type: event.target.value
-                                            }
-                                          : stepEntry
-                                      )
-                                    }
-                                  : entry
-                              )
-                            )
-                          }
-                        >
-                          {STEP_TYPES.map((stepType) => (
-                            <option key={stepType} value={stepType}>
-                              {stepType}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label>
-                        Concept
-                        <select
-                          value={step.concept ?? ""}
-                          onChange={(event) =>
-                            onChange(
-                              procedures.map((entry, index) =>
-                                index === procedureIndex
-                                  ? {
-                                      ...entry,
-                                      steps: (entry.steps ?? []).map((stepEntry, nestedIndex) =>
-                                        nestedIndex === stepIndex
-                                          ? {
-                                              ...stepEntry,
-                                              concept: event.target.value || undefined
-                                            }
-                                          : stepEntry
-                                      )
-                                    }
-                                  : entry
-                              )
-                            )
-                          }
-                        >
-                          <option value="">None</option>
-                          {conceptNames.map((conceptName) => (
-                            <option key={conceptName} value={conceptName}>
-                              {conceptName}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label>
-                        Query
-                        <select
-                          value={step.query ?? ""}
-                          onChange={(event) =>
-                            onChange(
-                              procedures.map((entry, index) =>
-                                index === procedureIndex
-                                  ? {
-                                      ...entry,
-                                      steps: (entry.steps ?? []).map((stepEntry, nestedIndex) =>
-                                        nestedIndex === stepIndex
-                                          ? {
-                                              ...stepEntry,
-                                              query: event.target.value || undefined
-                                            }
-                                          : stepEntry
-                                      )
-                                    }
-                                  : entry
-                              )
-                            )
-                          }
-                        >
-                          <option value="">None</option>
-                          {queryNames.map((queryName) => (
-                            <option key={queryName} value={queryName}>
-                              {queryName}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label>
-                        Procedure
-                        <select
-                          value={step.procedure ?? ""}
-                          onChange={(event) =>
-                            onChange(
-                              procedures.map((entry, index) =>
-                                index === procedureIndex
-                                  ? {
-                                      ...entry,
-                                      steps: (entry.steps ?? []).map((stepEntry, nestedIndex) =>
-                                        nestedIndex === stepIndex
-                                          ? {
-                                              ...stepEntry,
-                                              procedure: event.target.value || undefined
-                                            }
-                                          : stepEntry
-                                      )
-                                    }
-                                  : entry
-                              )
-                            )
-                          }
-                        >
-                          <option value="">None</option>
-                          {procedureNames
-                            .filter((procedureName) => procedureName !== procedure.name)
-                            .map((procedureName) => (
-                              <option key={procedureName} value={procedureName}>
-                                {procedureName}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
-                    </div>
-                  </article>
+                  <ProcedureStepEditor
+                    key={`${step.name ?? "step"}-${stepIndex}`}
+                    procedures={procedures}
+                    procedure={procedure}
+                    procedureIndex={procedureIndex}
+                    step={step}
+                    stepIndex={stepIndex}
+                    conceptNames={conceptNames}
+                    queryNames={queryNames}
+                    procedureNames={procedureNames}
+                    stepTypes={STEP_TYPES}
+                    onChange={onChange}
+                  />
                 ))}
               </div>
 

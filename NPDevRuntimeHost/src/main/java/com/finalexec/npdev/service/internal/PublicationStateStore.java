@@ -1,9 +1,9 @@
 package com.finalexec.npdev.service.internal;
 
 import com.finalexec.npdev.service.*;
-import com.finalexec.npdev.service.experimental.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Files;
@@ -24,9 +24,11 @@ public class PublicationStateStore {
             Paths.get("runtime-data", "real-publication-executions");
 
     private final ObjectMapper objectMapper;
+    private final JdbcTemplate jdbcTemplate;
 
-    public PublicationStateStore(ObjectMapper objectMapper) {
+    public PublicationStateStore(ObjectMapper objectMapper, JdbcTemplate jdbcTemplate) {
         this.objectMapper = objectMapper;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     public Map<String, Object> rollbackPublicationState(
@@ -37,6 +39,7 @@ public class PublicationStateStore {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("transactionUpdated", false);
         result.put("publicationUpdated", false);
+        result.put("publicationDbUpdated", false);
         result.put("transactionPath", "");
         result.put("publicationPath", "");
 
@@ -56,6 +59,10 @@ public class PublicationStateStore {
                 result.put("publicationUpdated", true);
                 result.put("publicationPath", publicationPath.toString().replace("\\", "/"));
             }
+            result.put(
+                    "publicationDbUpdated",
+                    updatePublicationDatabaseState(realPublicationExecutionId, rollbackReference)
+            );
         }
 
         return result;
@@ -90,5 +97,27 @@ public class PublicationStateStore {
         } catch (Exception e) {
             throw new IllegalStateException("Failed to update publication execution state.", e);
         }
+    }
+
+    private boolean updatePublicationDatabaseState(String realPublicationExecutionId, String rollbackReference) {
+        int updated = jdbcTemplate.update(
+                """
+                UPDATE npdev_publication_execution
+                SET publication_status = 'ROLLED_BACK',
+                    publication_outcome = 'PUBLICATION_STATE_RESTORED',
+                    execution_payload = jsonb_set(
+                        execution_payload,
+                        '{publicationRollbackReference}',
+                        to_jsonb(?::text),
+                        true
+                    ),
+                    completed_at = COALESCE(completed_at, NOW()),
+                    updated_at = NOW()
+                WHERE publication_execution_id = CAST(? AS uuid)
+                """,
+                rollbackReference,
+                realPublicationExecutionId
+        );
+        return updated > 0;
     }
 }

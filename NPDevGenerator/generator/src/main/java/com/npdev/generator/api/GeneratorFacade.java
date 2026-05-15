@@ -16,6 +16,8 @@ import com.npdev.generator.emitters.TrustedSourceEmitter;
 import com.npdev.generator.migration.MigrationDiffEngine;
 import com.npdev.generator.migration.MigrationPlan;
 import com.npdev.generator.migration.MigrationScriptEmitter;
+import com.npdev.generator.migration.StatefulMigrationOptions;
+import com.npdev.generator.migration.StatefulMigrationPlanner;
 import com.npdev.generator.migration.StorageSchemaFromCompiledModel;
 import com.npdev.generator.migration.StorageSchemaSnapshot;
 import com.npdev.generator.migration.StorageSchemaSnapshotStore;
@@ -33,6 +35,7 @@ public final class GeneratorFacade {
     private final StorageSchemaSnapshotStore snapshotStore;
     private final MigrationDiffEngine migrationDiffEngine;
     private final MigrationScriptEmitter migrationScriptEmitter;
+    private final StatefulMigrationPlanner statefulMigrationPlanner;
 
     public GeneratorFacade(TemplateEngine templates, GeneratedSourceWriter writer) {
         this(
@@ -41,7 +44,8 @@ public final class GeneratorFacade {
                 new StorageSchemaFromCompiledModel(),
                 new StorageSchemaSnapshotStore(),
                 new MigrationDiffEngine(),
-                new MigrationScriptEmitter()
+                new MigrationScriptEmitter(),
+                new StatefulMigrationPlanner()
         );
     }
 
@@ -51,7 +55,8 @@ public final class GeneratorFacade {
             StorageSchemaFromCompiledModel storageSchemaFromCompiledModel,
             StorageSchemaSnapshotStore snapshotStore,
             MigrationDiffEngine migrationDiffEngine,
-            MigrationScriptEmitter migrationScriptEmitter
+            MigrationScriptEmitter migrationScriptEmitter,
+            StatefulMigrationPlanner statefulMigrationPlanner
     ) {
         this.templates = templates;
         this.writer = writer;
@@ -59,6 +64,7 @@ public final class GeneratorFacade {
         this.snapshotStore = snapshotStore;
         this.migrationDiffEngine = migrationDiffEngine;
         this.migrationScriptEmitter = migrationScriptEmitter;
+        this.statefulMigrationPlanner = statefulMigrationPlanner;
     }
 
     public void generate(CompiledModel model, Path outRoot, Path canonicalMigrationsDir) throws Exception {
@@ -70,6 +76,16 @@ public final class GeneratorFacade {
             Path outRoot,
             Path canonicalMigrationsDir,
             Path modelSourcePath
+    ) throws Exception {
+        generate(model, outRoot, canonicalMigrationsDir, modelSourcePath, StatefulMigrationOptions.disabled());
+    }
+
+    public void generate(
+            CompiledModel model,
+            Path outRoot,
+            Path canonicalMigrationsDir,
+            Path modelSourcePath,
+            StatefulMigrationOptions statefulMigrationOptions
     ) throws Exception {
         new EntityEmitter(templates, writer).emit(model);
         new RepositoryEmitter(templates, writer).emit(model);
@@ -90,12 +106,21 @@ public final class GeneratorFacade {
         // This avoids version drift while keeping recreate-style app assembly deterministic.
         new FlywayEmitter().emitRepeatableSchema(model, canonicalMigrationsDir);
 
-        emitPhase8PersistenceArtifacts(model, canonicalMigrationsDir);
+        emitPhase8PersistenceArtifacts(model, canonicalMigrationsDir, statefulMigrationOptions);
         new GeneratedFolderSignatureEmitter().emit(outRoot);
     }
 
-    private void emitPhase8PersistenceArtifacts(CompiledModel model, Path canonicalMigrationsDir) throws Exception {
+    private void emitPhase8PersistenceArtifacts(
+            CompiledModel model,
+            Path canonicalMigrationsDir,
+            StatefulMigrationOptions statefulMigrationOptions
+    ) throws Exception {
         if (model == null || canonicalMigrationsDir == null) {
+            return;
+        }
+
+        if (statefulMigrationOptions != null && statefulMigrationOptions.additiveOnly()) {
+            statefulMigrationPlanner.plan(model, canonicalMigrationsDir, statefulMigrationOptions);
             return;
         }
 

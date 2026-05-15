@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/boundary-lock-report.schema.json",
+  "title": "NPDev Boundary Lock Report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "checkpoint",
+    "overallStatus",
+    "deprecatedSchemaReferences",
+    "runtimeControllerAllowlistStatus",
+    "uiBoundaryStatus",
+    "externalVerificationUrlBan",
+    "gradleWrapperConsistency",
+    "workspaceSlimness",
+    "docClassificationStatus",
+    "checks",
+    "findings",
+    "doesNotSolve"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-boundary-lock-report.v1"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "checkpoint": {
+      "const": "Checkpoint 5 - Boundary Lock Pack"
+    },
+    "overallStatus": {
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "deprecatedSchemaReferences": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "runtimeControllerAllowlistStatus": {
+      "$ref": "#/$defs/status"
+    },
+    "uiBoundaryStatus": {
+      "$ref": "#/$defs/status"
+    },
+    "externalVerificationUrlBan": {
+      "$ref": "#/$defs/status"
+    },
+    "gradleWrapperConsistency": {
+      "$ref": "#/$defs/status"
+    },
+    "workspaceSlimness": {
+      "$ref": "#/$defs/status"
+    },
+    "docClassificationStatus": {
+      "$ref": "#/$defs/status"
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "status"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "$ref": "#/$defs/status"
+          },
+          "evidence": {
+            "type": "object"
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "classification",
+          "status",
+          "summary"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "classification": {
+            "enum": [
+              "current-roadmap-blocker",
+              "known-risk",
+              "post-roadmap-backlog",
+              "human-decision-required",
+              "invalid-or-duplicate"
+            ]
+          },
+          "status": {
+            "enum": [
+              "open",
+              "resolved",
+              "accepted",
+              "invalid"
+            ]
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "doesNotSolve": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "$defs": {
+    "status": {
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    }
+  },
+  "additionalProperties": true
+}

@@ -30,14 +30,7 @@ public final class JsonModelSchemaValidator {
         if (!result.hasErrors()) {
             return;
         }
-        StringBuilder builder = new StringBuilder();
-        builder.append("Model schema validation failed for ")
-                .append(sourceLabel)
-                .append(":");
-        for (String message : result.getErrors()) {
-            builder.append(System.lineSeparator()).append(" - ").append(message);
-        }
-        throw new IOException(builder.toString());
+        throw new ModelSchemaValidationException(sourceLabel, result.getDiagnostics());
     }
 
     public ValidationResult validateWithDiagnostics(JsonNode modelRoot, String sourceLabel) {

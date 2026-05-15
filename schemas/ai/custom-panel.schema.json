@@ -150,6 +150,54 @@
       },
       "additionalProperties": false
     },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[^<>`$]*$"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 240,
+          "pattern": "^[^<>`$]*$"
+        },
+        "emptyStateMessage": {
+          "type": "string",
+          "maxLength": 160,
+          "pattern": "^[^<>`$]*$"
+        },
+        "icon": {
+          "enum": [
+            "table",
+            "form",
+            "summary",
+            "workflow",
+            "status"
+          ]
+        },
+        "variant": {
+          "enum": [
+            "default",
+            "compact",
+            "readonly"
+          ]
+        }
+      },
+      "not": {
+        "anyOf": [
+          { "required": [ "script" ] },
+          { "required": [ "component" ] },
+          { "required": [ "componentUrl" ] },
+          { "required": [ "dynamicComponent" ] },
+          { "required": [ "externalUrl" ] },
+          { "required": [ "html" ] }
+        ]
+      },
+      "additionalProperties": false
+    },
     "validationHints": {
       "type": "array",
       "items": {
@@ -193,34 +241,6 @@
         "additionalProperties": false
       },
       "default": []
-    },
-    "implementation": {
-      "type": "object",
-      "required": [
-        "mode",
-        "language",
-        "entrypoint"
-      ],
-      "properties": {
-        "mode": {
-          "const": "trustedSource"
-        },
-        "language": {
-          "enum": [
-            "html+javascript",
-            "html",
-            "javascript"
-          ]
-        },
-        "entrypoint": {
-          "type": "string",
-          "pattern": "^[A-Za-z0-9_./-]+\\.(html|js)$",
-          "not": {
-            "pattern": "(^/|^[A-Za-z]:|\\.\\.)"
-          }
-        }
-      },
-      "additionalProperties": false
     }
   },
   "not": {
@@ -238,6 +258,21 @@
       {
         "required": [
           "externalUrl"
+        ]
+      },
+      {
+        "required": [
+          "implementation"
+        ]
+      },
+      {
+        "required": [
+          "dynamicComponent"
+        ]
+      },
+      {
+        "required": [
+          "componentUrl"
         ]
       }
     ]

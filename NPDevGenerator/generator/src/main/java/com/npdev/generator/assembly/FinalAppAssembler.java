@@ -28,7 +28,6 @@ public final class FinalAppAssembler {
             ".idea",
             ".git",
             "build",
-            "gradle",
             "libs",
             "out",
             "target",
@@ -40,17 +39,13 @@ public final class FinalAppAssembler {
     private static final Set<String> EXCLUDED_FILE_NAMES = Set.of(
             ".DS_Store",
             "Thumbs.db",
-            "gradlew",
-            "gradlew.bat",
             "npdev-build-info.properties"
     );
     private static final List<String> UNSUPPORTED_RUNTIME_HOST_CONTROLLER_SOURCES = List.of(
             "com/finalexec/HelloController.java",
-            "com/finalexec/api/internal/*.java",
             "com/finalexec/api/experimental/*.java"
     );
     private static final List<String> UNSUPPORTED_RUNTIME_HOST_SERVICE_SOURCES = List.of(
-            "com/finalexec/npdev/service/internal/*.java",
             "com/finalexec/npdev/service/experimental/*.java"
     );
 

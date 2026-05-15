@@ -6,12 +6,32 @@ import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledProcedure;
 import com.npdev.generator.output.GeneratedSourceWriter;
+import com.sun.source.tree.BlockTree;
+import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.tree.IdentifierTree;
+import com.sun.source.tree.ImportTree;
+import com.sun.source.tree.MemberSelectTree;
+import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.MethodTree;
+import com.sun.source.tree.ModifiersTree;
+import com.sun.source.tree.NewClassTree;
+import com.sun.source.tree.Tree;
+import com.sun.source.util.JavacTask;
+import com.sun.source.util.TreeScanner;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.jsoup.parser.Parser;
+import org.jsoup.safety.Cleaner;
+import org.jsoup.safety.Safelist;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.util.EnumSet;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -20,12 +40,19 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+import javax.lang.model.element.Modifier;
+import javax.tools.Diagnostic;
+import javax.tools.DiagnosticCollector;
+import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
+import javax.tools.StandardJavaFileManager;
+import javax.tools.ToolProvider;
 
 public final class TrustedSourceEmitter {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String PACKAGE_NAME = "com.npdev.generated.trusted";
     private static final String PACKAGE_PATH = "com/npdev/generated/trusted";
-    private static final String FULL_CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'self'";
+    private static final String FULL_CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'self'; frame-src 'none'; frame-ancestors 'none'; worker-src 'none'; manifest-src 'self'; upgrade-insecure-requests";
     private static final Set<String> ALLOWED_JAVA_IMPORTS = Set.of(
             "java.util.List",
             "java.util.Map",
@@ -36,6 +63,79 @@ public final class TrustedSourceEmitter {
             "java.time.Instant"
     );
     private static final Pattern JAVA_IDENTIFIER = Pattern.compile("[A-Za-z_$][A-Za-z0-9_$]*");
+    private static final Safelist PANEL_HTML_SAFELIST = Safelist.relaxed()
+            .addTags("button", "main", "section", "article", "nav", "header", "footer", "template")
+            .addAttributes(":all", "class", "id", "title", "role", "aria-label", "aria-describedby", "aria-controls", "aria-expanded", "aria-live")
+            .addAttributes("button", "type", "name", "value")
+            .addAttributes("input", "type", "name", "value", "placeholder", "checked", "disabled", "readonly")
+            .addAttributes("label", "for")
+            .addAttributes("form", "method")
+            .preserveRelativeLinks(true);
+    private static final Set<String> FORBIDDEN_JAVA_IMPORT_PREFIXES = Set.of(
+            "java.io.",
+            "java.nio.file.",
+            "java.net.",
+            "java.lang.reflect.",
+            "java.lang.invoke.",
+            "java.util.concurrent.",
+            "javax.script.",
+            "sun.",
+            "jdk.",
+            "org.",
+            "com."
+    );
+    private static final Set<String> FORBIDDEN_JAVA_IDENTIFIERS = Set.of(
+            "Runtime",
+            "Process",
+            "ProcessBuilder",
+            "Class",
+            "ClassLoader",
+            "ServiceLoader",
+            "Thread",
+            "ThreadLocal",
+            "Timer",
+            "File",
+            "Path",
+            "Paths",
+            "Files",
+            "URL",
+            "URI",
+            "Socket",
+            "ServerSocket",
+            "HttpClient",
+            "Method",
+            "Field",
+            "Constructor",
+            "AccessibleObject",
+            "MethodHandles",
+            "ScriptEngine",
+            "ScriptEngineManager",
+            "Executor",
+            "Executors",
+            "CompletableFuture"
+    );
+    private static final Set<String> FORBIDDEN_JAVA_QUALIFIED_PREFIXES = Set.of(
+            "java.io.",
+            "java.nio.file.",
+            "java.net.",
+            "java.lang.reflect.",
+            "java.lang.invoke.",
+            "java.util.concurrent.",
+            "javax.script.",
+            "sun.",
+            "jdk."
+    );
+    private static final Set<String> FORBIDDEN_JAVA_METHOD_SELECTS = Set.of(
+            "System.exit",
+            "System.getenv",
+            "System.getProperty",
+            "System.getProperties",
+            "System.setProperty",
+            "System.setProperties",
+            "Runtime.getRuntime",
+            "Class.forName",
+            "Thread.sleep"
+    );
 
     private final GeneratedSourceWriter writer;
 
@@ -266,102 +366,275 @@ public final class TrustedSourceEmitter {
     }
 
     private static void validateJavaSource(String source, String relativePath) {
-        if (source.matches("(?s).*\\bpackage\\s+[A-Za-z0-9_.]+\\s*;.*")) {
-            throw new IllegalStateException("Trusted Java source must not declare a package: " + relativePath);
+        var compiler = ToolProvider.getSystemJavaCompiler();
+        if (compiler == null) {
+            throw new IllegalStateException("Trusted Java source AST validation requires a JDK compiler: " + relativePath);
         }
-        Map<String, String> forbidden = Map.ofEntries(
-                Map.entry("java.io import", "(?m)^\\s*import\\s+(static\\s+)?java\\.io\\."),
-                Map.entry("java.nio.file import", "(?m)^\\s*import\\s+(static\\s+)?java\\.nio\\.file\\."),
-                Map.entry("java.net import", "(?m)^\\s*import\\s+(static\\s+)?java\\.net\\."),
-                Map.entry("Runtime", "\\b(java\\.lang\\.)?Runtime\\b|Runtime\\.getRuntime\\s*\\("),
-                Map.entry("Process", "\\b(java\\.lang\\.)?Process\\b"),
-                Map.entry("ProcessBuilder", "\\b(java\\.lang\\.)?ProcessBuilder\\b|new\\s+ProcessBuilder\\s*\\("),
-                Map.entry("System.getenv", "System\\.getenv\\s*\\("),
-                Map.entry("System.getProperty", "System\\.getProperty\\s*\\("),
-                Map.entry("System.getProperties", "System\\.getProperties\\s*\\("),
-                Map.entry("System.setProperty", "System\\.setProperty\\s*\\("),
-                Map.entry("System.exit", "System\\.exit\\s*\\("),
-                Map.entry("reflection import", "(?m)^\\s*import\\s+(static\\s+)?java\\.lang\\.reflect\\."),
-                Map.entry("Class type", "\\b(java\\.lang\\.)?Class\\b|\\bClass\\.forName\\s*\\("),
-                Map.entry("ClassLoader", "\\bClassLoader\\b"),
-                Map.entry("ServiceLoader", "\\bServiceLoader\\b|(?m)^\\s*import\\s+(static\\s+)?java\\.util\\.ServiceLoader\\b"),
-                Map.entry("Thread", "\\bThread\\b|new\\s+Thread\\s*\\("),
-                Map.entry("ThreadLocal", "\\bThreadLocal\\b"),
-                Map.entry("Timer", "\\bTimer\\b|(?m)^\\s*import\\s+(static\\s+)?java\\.util\\.Timer\\b"),
-                Map.entry("concurrency import", "(?m)^\\s*import\\s+(static\\s+)?java\\.util\\.concurrent\\."),
-                Map.entry("javax.script import", "(?m)^\\s*import\\s+(static\\s+)?javax\\.script\\."),
-                Map.entry("sun import", "(?m)^\\s*import\\s+(static\\s+)?sun\\."),
-                Map.entry("jdk import", "(?m)^\\s*import\\s+(static\\s+)?jdk\\."),
-                Map.entry("static initializer", "\\bstatic\\s*\\{"),
-                Map.entry("native method", "\\bnative\\b")
-        );
-        for (Map.Entry<String, String> pattern : forbidden.entrySet()) {
-            if (Pattern.compile(pattern.getValue()).matcher(source).find()) {
-                throw new IllegalStateException("Forbidden Java source use in " + relativePath + ": " + pattern.getKey());
+        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+        try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, Locale.ROOT, StandardCharsets.UTF_8)) {
+            JavaFileObject sourceFile = new InMemoryTrustedJavaSource(relativePath, source);
+            JavacTask task = (JavacTask) compiler.getTask(
+                    null,
+                    fileManager,
+                    diagnostics,
+                    List.of("-proc:none"),
+                    null,
+                    List.of(sourceFile)
+            );
+            Iterable<? extends CompilationUnitTree> units = task.parse();
+            List<String> violations = new ArrayList<>();
+            for (CompilationUnitTree unit : units) {
+                if (unit.getPackageName() != null) {
+                    violations.add("package declaration");
+                }
+                for (ImportTree importTree : unit.getImports()) {
+                    validateJavaImport(relativePath, importTree, violations);
+                }
+                new TrustedJavaSourcePolicyVisitor(violations).scan(unit, null);
+            }
+            if (!violations.isEmpty()) {
+                throw new IllegalStateException("Forbidden Java source use in " + relativePath + ": " + String.join("; ", violations));
             }
         }
-        var matcher = Pattern.compile("(?m)^\\s*import\\s+([A-Za-z0-9_.*]+)\\s*;").matcher(source);
-        while (matcher.find()) {
-            String importName = matcher.group(1);
-            if (importName.endsWith(".*") || !ALLOWED_JAVA_IMPORTS.contains(importName)) {
-                throw new IllegalStateException("Import is not allowlisted in " + relativePath + ": " + importName);
+        catch (IOException ex) {
+            throw new IllegalStateException("Trusted Java source AST validation failed for " + relativePath + ": " + ex.getMessage(), ex);
+        }
+        String syntaxErrors = diagnostics.getDiagnostics().stream()
+                .filter(diagnostic -> diagnostic.getKind() == Diagnostic.Kind.ERROR)
+                .map(diagnostic -> "line " + diagnostic.getLineNumber() + ": " + diagnostic.getMessage(Locale.ROOT))
+                .reduce((left, right) -> left + "; " + right)
+                .orElse("");
+        if (!syntaxErrors.isBlank()) {
+            throw new IllegalStateException("Trusted Java source syntax error in " + relativePath + ": " + syntaxErrors);
+        }
+    }
+
+    private static void validateJavaImport(String relativePath, ImportTree importTree, List<String> violations) {
+        String importName = importTree.getQualifiedIdentifier().toString();
+        if (importTree.isStatic()) {
+            violations.add("static import " + importName);
+            return;
+        }
+        if (importName.endsWith(".*")) {
+            violations.add("wildcard import " + importName);
+            return;
+        }
+        for (String prefix : FORBIDDEN_JAVA_IMPORT_PREFIXES) {
+            if (importName.startsWith(prefix)) {
+                violations.add("forbidden import " + importName);
+                return;
             }
+        }
+        if (!ALLOWED_JAVA_IMPORTS.contains(importName)) {
+            violations.add("non-allowlisted import " + importName);
+        }
+    }
+
+    private static boolean forbiddenQualifiedUse(String value) {
+        for (String prefix : FORBIDDEN_JAVA_QUALIFIED_PREFIXES) {
+            if (value.startsWith(prefix) || value.contains("." + prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean forbiddenMethodSelect(String value) {
+        for (String select : FORBIDDEN_JAVA_METHOD_SELECTS) {
+            if (value.equals(select) || value.endsWith("." + select)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final class TrustedJavaSourcePolicyVisitor extends TreeScanner<Void, Void> {
+        private final List<String> violations;
+
+        private TrustedJavaSourcePolicyVisitor(List<String> violations) {
+            this.violations = violations;
+        }
+
+        @Override
+        public Void visitBlock(BlockTree node, Void unused) {
+            if (node.isStatic()) {
+                violations.add("static initializer");
+            }
+            return super.visitBlock(node, unused);
+        }
+
+        @Override
+        public Void visitMethod(MethodTree node, Void unused) {
+            ModifiersTree modifiers = node.getModifiers();
+            EnumSet<Modifier> forbidden = EnumSet.of(Modifier.NATIVE, Modifier.SYNCHRONIZED);
+            for (Modifier modifier : modifiers.getFlags()) {
+                if (forbidden.contains(modifier)) {
+                    violations.add("forbidden method modifier " + modifier.name().toLowerCase(Locale.ROOT));
+                }
+            }
+            return super.visitMethod(node, unused);
+        }
+
+        @Override
+        public Void visitIdentifier(IdentifierTree node, Void unused) {
+            String name = node.getName().toString();
+            if (FORBIDDEN_JAVA_IDENTIFIERS.contains(name)) {
+                violations.add("forbidden identifier " + name);
+            }
+            return super.visitIdentifier(node, unused);
+        }
+
+        @Override
+        public Void visitMemberSelect(MemberSelectTree node, Void unused) {
+            String selected = node.toString();
+            if (forbiddenQualifiedUse(selected)) {
+                violations.add("forbidden qualified use " + selected);
+            }
+            if (FORBIDDEN_JAVA_IDENTIFIERS.contains(node.getIdentifier().toString())) {
+                violations.add("forbidden member " + node.getIdentifier());
+            }
+            return super.visitMemberSelect(node, unused);
+        }
+
+        @Override
+        public Void visitNewClass(NewClassTree node, Void unused) {
+            String type = node.getIdentifier().toString();
+            if (FORBIDDEN_JAVA_IDENTIFIERS.contains(type) || forbiddenQualifiedUse(type)) {
+                violations.add("forbidden constructor " + type);
+            }
+            return super.visitNewClass(node, unused);
+        }
+
+        @Override
+        public Void visitMethodInvocation(MethodInvocationTree node, Void unused) {
+            String select = node.getMethodSelect().toString();
+            if (forbiddenMethodSelect(select) || forbiddenQualifiedUse(select) || select.endsWith(".getClass")) {
+                violations.add("forbidden method call " + select);
+            }
+            return super.visitMethodInvocation(node, unused);
+        }
+    }
+
+    private static final class InMemoryTrustedJavaSource extends SimpleJavaFileObject {
+        private final String source;
+
+        private InMemoryTrustedJavaSource(String relativePath, String source) {
+            super(URI.create("string:///" + relativePath.replace('\\', '/')), Kind.SOURCE);
+            this.source = source;
+        }
+
+        @Override
+        public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+            return source;
         }
     }
 
     private static void validatePanelSource(String source, String relativePath) {
+        sanitizePanelAssets(source, relativePath, "validation");
+    }
+
+    private static PanelAssets externalizePanelAssets(String source, String resourcePrefix) {
+        return sanitizePanelAssets(source, resourcePrefix, resourcePrefix);
+    }
+
+    private static PanelAssets sanitizePanelAssets(String source, String relativePath, String resourcePrefix) {
+        Document document = Jsoup.parse(source, "", Parser.htmlParser());
+        document.outputSettings(new Document.OutputSettings().prettyPrint(false));
+        StringBuilder css = new StringBuilder();
+        StringBuilder js = new StringBuilder();
+        validatePanelDom(document, relativePath);
+        for (Element style : document.select("style")) {
+            css.append(style.data()).append("\n");
+            style.remove();
+        }
+        for (Element script : document.select("script")) {
+            if (script.hasAttr("src")) {
+                throw new IllegalStateException("Forbidden panel source use in " + relativePath + ": script src");
+            }
+            js.append(script.data()).append("\n");
+            script.remove();
+        }
+        validatePanelCss(css.toString(), relativePath);
+        validatePanelJavaScript(js.toString(), relativePath);
+
+        Document cleaned = new Cleaner(PANEL_HTML_SAFELIST).clean(document);
+        cleaned.outputSettings(new Document.OutputSettings().prettyPrint(false));
+        if (!"validation".equals(resourcePrefix)) {
+            cleaned.head().appendElement("link")
+                    .attr("rel", "stylesheet")
+                    .attr("href", "/generated/trusted-source/panel/" + resourcePrefix + ".css");
+            cleaned.body().appendElement("script")
+                    .attr("src", "/generated/trusted-source/panel/" + resourcePrefix + ".js");
+        }
+        String html = cleaned.outerHtml();
+        if (Jsoup.parse(html).select("style,script:not([src])").size() > 0) {
+            throw new IllegalStateException("Trusted panel sanitizer left inline style/script in generated HTML.");
+        }
+        return new PanelAssets(html, css.toString(), js.toString());
+    }
+
+    private static void validatePanelDom(Document document, String relativePath) {
+        for (Element element : document.getAllElements()) {
+            String tag = element.normalName();
+            if (Set.of("iframe", "object", "embed", "base", "meta", "svg", "math").contains(tag)) {
+                throw new IllegalStateException("Forbidden panel source use in " + relativePath + ": element " + tag);
+            }
+            for (org.jsoup.nodes.Attribute attribute : element.attributes()) {
+                String name = attribute.getKey().toLowerCase(Locale.ROOT);
+                String value = attribute.getValue().trim();
+                if (name.startsWith("on")) {
+                    throw new IllegalStateException("Forbidden panel source use in " + relativePath + ": inline event handler " + name);
+                }
+                if (Set.of("src", "href", "action", "formaction", "poster").contains(name) && isForbiddenPanelUrl(value)) {
+                    throw new IllegalStateException("Forbidden panel source use in " + relativePath + ": unsafe URL attribute " + name);
+                }
+                if ("style".equals(name)) {
+                    validatePanelCss(value, relativePath);
+                }
+            }
+        }
+    }
+
+    private static boolean isForbiddenPanelUrl(String value) {
+        String normalized = value.toLowerCase(Locale.ROOT).replaceAll("\\p{Cntrl}", "").trim();
+        return normalized.startsWith("http://")
+                || normalized.startsWith("https://")
+                || normalized.startsWith("//")
+                || normalized.startsWith("javascript:")
+                || normalized.startsWith("data:text/html")
+                || normalized.startsWith("/.") 
+                || (normalized.startsWith("/") && !normalized.startsWith("/generated/"));
+    }
+
+    private static void validatePanelCss(String css, String relativePath) {
         Map<String, String> forbidden = Map.ofEntries(
-                Map.entry("external script/style/image/form URL", "(?i)\\b(src|href|action)\\s*=\\s*['\"]\\s*(https?:)?//"),
-                Map.entry("iframe/object/embed/base", "(?i)<\\s*(iframe|object|embed|base)\\b"),
                 Map.entry("css import", "(?i)@import\\s+"),
-                Map.entry("css url", "(?i)url\\s*\\(\\s*['\"]?\\s*(https?:)?//"),
+                Map.entry("css external url", "(?i)url\\s*\\(\\s*['\"]?\\s*(https?:)?//"),
+                Map.entry("css javascript url", "(?i)url\\s*\\(\\s*['\"]?\\s*javascript:")
+        );
+        for (Map.Entry<String, String> pattern : forbidden.entrySet()) {
+            if (Pattern.compile(pattern.getValue()).matcher(css).find()) {
+                throw new IllegalStateException("Forbidden panel source use in " + relativePath + ": " + pattern.getKey());
+            }
+        }
+    }
+
+    private static void validatePanelJavaScript(String javascript, String relativePath) {
+        Map<String, String> forbidden = Map.ofEntries(
                 Map.entry("external fetch URL", "(?i)\\bfetch\\s*\\(\\s*['\"]\\s*(https?:)?//"),
                 Map.entry("non-generated same-origin fetch", "(?i)\\bfetch\\s*\\(\\s*['\"]/(?!generated/)"),
                 Map.entry("websocket URL", "(?i)\\bnew\\s+WebSocket\\s*\\(\\s*['\"]\\s*(wss?:)?//"),
                 Map.entry("eval", "\\beval\\s*\\("),
                 Map.entry("Function constructor", "\\bnew\\s+Function\\s*\\("),
                 Map.entry("dynamic import", "\\bimport\\s*\\("),
-                Map.entry("inline event handler", "(?i)\\son[a-z]+\\s*="),
-                Map.entry("javascript URL", "(?i)javascript:")
+                Map.entry("document cookie", "(?i)\\bdocument\\.cookie\\b"),
+                Map.entry("local storage write", "(?i)\\blocalStorage\\.setItem\\s*\\(")
         );
         for (Map.Entry<String, String> pattern : forbidden.entrySet()) {
-            if (Pattern.compile(pattern.getValue()).matcher(source).find()) {
+            if (Pattern.compile(pattern.getValue()).matcher(javascript).find()) {
                 throw new IllegalStateException("Forbidden panel source use in " + relativePath + ": " + pattern.getKey());
             }
         }
-    }
-
-    private static PanelAssets externalizePanelAssets(String source, String resourcePrefix) {
-        StringBuilder css = new StringBuilder();
-        StringBuilder js = new StringBuilder();
-        Pattern stylePattern = Pattern.compile("(?is)<style\\b[^>]*>(.*?)</style>");
-        var styleMatcher = stylePattern.matcher(source);
-        String withoutStyles = styleMatcher.replaceAll(match -> {
-            css.append(match.group(1)).append("\n");
-            return "";
-        });
-        Pattern inlineScriptPattern = Pattern.compile("(?is)<script(?![^>]*\\bsrc\\s*=)[^>]*>(.*?)</script>");
-        var scriptMatcher = inlineScriptPattern.matcher(withoutStyles);
-        String html = scriptMatcher.replaceAll(match -> {
-            js.append(match.group(1)).append("\n");
-            return "";
-        });
-        String cssLink = "<link rel=\"stylesheet\" href=\"/generated/trusted-source/panel/" + resourcePrefix + ".css\">";
-        String jsScript = "<script src=\"/generated/trusted-source/panel/" + resourcePrefix + ".js\"></script>";
-        if (html.toLowerCase(Locale.ROOT).contains("</head>")) {
-            html = html.replaceFirst("(?i)</head>", cssLink + "\n</head>");
-        } else {
-            html = cssLink + "\n" + html;
-        }
-        if (html.toLowerCase(Locale.ROOT).contains("</body>")) {
-            html = html.replaceFirst("(?i)</body>", jsScript + "\n</body>");
-        } else {
-            html = html + "\n" + jsScript;
-        }
-        if (Pattern.compile("(?is)<style\\b|<script(?![^>]*\\bsrc\\s*=)").matcher(html).find()) {
-            throw new IllegalStateException("Trusted panel externalization left inline style/script in generated HTML.");
-        }
-        return new PanelAssets(html, css.toString(), js.toString());
     }
 
     private static String procedureContextSource() {

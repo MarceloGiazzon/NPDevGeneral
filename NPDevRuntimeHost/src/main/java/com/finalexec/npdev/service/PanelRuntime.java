@@ -140,14 +140,19 @@ public class PanelRuntime {
         List<Map<String, Object>> dataSourceSummaries = new ArrayList<>();
         for (CompiledPanelDataSource dataSource : panel.dataSources()) {
             Object value = loadDataSource(dataSource, safeInput, effectiveContext);
+            boolean fallback = isFallbackDataSource(value);
             data.put(dataSource.name(), value);
-            dataSourceSummaries.add(Map.of(
-                    "name", safe(dataSource.name()),
-                    "concept", safe(resolveDataSourceConcept(dataSource)),
-                    "query", safe(dataSource.query()),
-                    "procedure", safe(dataSource.procedure()),
-                    "recordCount", value instanceof Collection<?> collection ? collection.size() : 1
-            ));
+            Map<String, Object> summary = new LinkedHashMap<>();
+            summary.put("name", safe(dataSource.name()));
+            summary.put("concept", safe(resolveDataSourceConcept(dataSource)));
+            summary.put("query", safe(dataSource.query()));
+            summary.put("procedure", safe(dataSource.procedure()));
+            summary.put("recordCount", value instanceof Collection<?> collection ? collection.size() : 0);
+            summary.put("fallback", fallback);
+            if (fallback && value instanceof Map<?, ?> fallbackMap) {
+                summary.put("fallbackCode", safe(String.valueOf(fallbackMap.get("code"))));
+            }
+            dataSourceSummaries.add(summary);
         }
 
         Map<String, Object> response = new LinkedHashMap<>();
@@ -165,6 +170,7 @@ public class PanelRuntime {
         response.put("data", data);
         response.put("fields", panelFields(panel));
         response.put("actions", panelActions(panel));
+        response.put("fallbackUi", dataSourceSummaries.stream().anyMatch(item -> Boolean.TRUE.equals(item.get("fallback"))));
         response.put("layout", panel.layout() == null ? Map.of() : Map.of(
                 "type", safe(panel.layout().type()),
                 "fields", panel.layout().fields()
@@ -239,16 +245,35 @@ public class PanelRuntime {
             ExecutionContext context
     ) {
         if (hasText(dataSource.procedure())) {
-            ProcedureExecutionResult result = executeProcedure(dataSource.procedure(), input, context);
-            return result.state().containsKey("return") ? result.state().get("return") : result.state();
+            try {
+                ProcedureExecutionResult result = executeProcedure(dataSource.procedure(), input, context);
+                return result.state().containsKey("return") ? result.state().get("return") : result.state();
+            } catch (IllegalArgumentException | IllegalStateException ex) {
+                return fallbackDataSource(
+                        "PANEL_PROCEDURE_UNAVAILABLE",
+                        "Panel procedure data source is unavailable; rendering fallback metadata instead.",
+                        ex.getMessage()
+                );
+            }
         }
         String conceptName = resolveDataSourceConcept(dataSource);
         if (hasText(conceptName)) {
+            if (conceptGateway == null) {
+                return fallbackDataSource(
+                        "CONCEPT_GATEWAY_UNAVAILABLE",
+                        "Panel data source is unavailable; rendering fallback metadata instead.",
+                        "ConceptGateway is required for executable panel data."
+                );
+            }
             return requireConceptGateway().list(new ConceptListRequest(conceptName, null), context).stream()
                     .map(PanelRuntime::toRecordMap)
                     .toList();
         }
-        return List.of();
+        return fallbackDataSource(
+                "PANEL_DATASOURCE_UNBOUND",
+                "Panel data source has no supported concept, query, or procedure binding.",
+                ""
+        );
     }
 
     private Object executeConceptMutation(
@@ -491,6 +516,23 @@ public class PanelRuntime {
 
     private static Map<String, Object> safeInput(Map<String, Object> input) {
         return input == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(input));
+    }
+
+    private static Map<String, Object> fallbackDataSource(String code, String message, String detail) {
+        Map<String, Object> fallback = new LinkedHashMap<>();
+        fallback.put("fallback", true);
+        fallback.put("status", "UNAVAILABLE");
+        fallback.put("code", safe(code));
+        fallback.put("message", safe(message));
+        fallback.put("detail", safe(detail));
+        return Map.copyOf(fallback);
+    }
+
+    private static boolean isFallbackDataSource(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return false;
+        }
+        return Boolean.TRUE.equals(map.get("fallback"));
     }
 
     private static ExecutionContext interactiveContext(ExecutionContext context) {

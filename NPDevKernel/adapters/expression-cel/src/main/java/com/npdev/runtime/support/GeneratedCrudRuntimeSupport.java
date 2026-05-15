@@ -3,6 +3,8 @@ package com.npdev.runtime.support;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.compiled.CompiledEntity;
+import com.npdev.dsl.v1.compiled.CompiledEvent;
+import com.npdev.dsl.v1.compiled.CompiledEventField;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledLifecycle;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -738,10 +740,42 @@ public final class GeneratedCrudRuntimeSupport {
             payload.put(toLowerCamel(conceptName) + "Id", id);
         }
 
+        appendDeclaredEventPayloadFields(transition.getEvent().trim(), updatedSnapshot, fallbackPayload, payload);
+
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("entity", conceptName);
         metadata.put("transition", previous + "->" + nextStatus);
         publishRuntimeEvent(transition.getEvent().trim(), payload, metadata);
+    }
+
+    private void appendDeclaredEventPayloadFields(
+            String eventName,
+            Object updatedSnapshot,
+            Map<String, Object> fallbackPayload,
+            Map<String, Object> payload
+    ) {
+        if (eventName == null || eventName.isBlank() || payload == null) {
+            return;
+        }
+        Optional<CompiledEvent> eventOpt = compiledModel.getEvents().stream()
+                .filter(event -> event != null && eventName.equals(event.getName()))
+                .findFirst();
+        if (eventOpt.isEmpty()) {
+            return;
+        }
+        for (CompiledEventField field : eventOpt.get().getPayloadFields()) {
+            if (field == null || field.getName() == null || field.getName().isBlank()) {
+                continue;
+            }
+            String fieldName = field.getName().trim();
+            if (payload.containsKey(fieldName)) {
+                continue;
+            }
+            Object value = readLifecycleValue(updatedSnapshot, fallbackPayload, fieldName);
+            if (value != null) {
+                payload.put(fieldName, value);
+            }
+        }
     }
 
     private void publishRuntimeEvent(String eventName, Map<String, Object> payload, Map<String, Object> metadata) {

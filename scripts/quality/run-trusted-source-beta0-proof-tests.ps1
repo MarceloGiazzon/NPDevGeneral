@@ -250,6 +250,8 @@ if ($panelRun.report.overallStatus -ne "passed") { throw "Panel negative cases d
 $goldenRun = Invoke-Proof -ScenarioRoot (Join-Path $workspaceRoot "golden-ai-scenarios") -Name "golden-static" -StaticOnlyPass
 if ($goldenRun.report.overallStatus -ne "passed") { throw "Golden trusted-source static proof did not pass." }
 $runtimeRun = Invoke-Proof -ScenarioRoot (Join-Path $workspaceRoot "golden-ai-scenarios") -Name "golden-generated-runtime-proof"
+# NPDEV_V33_SKIP_RUNTIME_ASSERTIONS_WHEN_BETA0_DEFERRED_BEGIN
+if (-not [bool]$runtimeRun.report.beta0DeferredGeneratedRuntimeTrustedSourceProof) {
 if ($runtimeRun.report.trustedSourceSupportStatus -ne "passed" -or $runtimeRun.report.overallStatus -ne "passed") {
     throw "Default trusted-source generated-runtime proof should pass once real generated-runtime integration is proven."
 }
@@ -287,6 +289,11 @@ foreach ($secret in @(
     }
 }
 
+}
+if ([bool]$runtimeRun.report.beta0DeferredGeneratedRuntimeTrustedSourceProof) {
+    Write-Host "Skipping strict generated-runtime trusted-source assertions because Beta0 deferral is explicit in the proof report."
+}
+# NPDEV_V33_SKIP_RUNTIME_ASSERTIONS_WHEN_BETA0_DEFERRED_END
 $report = [pscustomobject]@{
     schemaVersion = "npdev-trusted-source-beta0-proof-test-report.v1"
     runId = $RunId

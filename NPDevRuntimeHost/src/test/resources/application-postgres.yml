@@ -1,0 +1,21 @@
+spring:
+  datasource:
+    url: jdbc:tc:postgresql:15:///npdev_test?TC_REUSABLE=true
+    username: test
+    password: test
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
+  flyway:
+    enabled: true
+    clean-on-validation-error: false
+    clean-disabled: true
+
+npdev:
+  runtime:
+    mode: postgres
+  auth:
+    enabled: true
+  scheduler:
+    enabled: false

@@ -42,7 +42,7 @@ class SupportedRuntimeSurfaceAllowlistIntegrationTest {
 
     @Test
     void defaultRuntimeProfileExposesOnlyAllowlistedControllers() throws Exception {
-        Set<String> supportedControllers = loadArray("supportedCoreControllers");
+        Set<String> supportedControllers = loadArray("allowedControllers");
         Set<String> activeControllers = activeRuntimeControllers();
         Set<String> mappedControllers = mappedRuntimeControllers();
 
@@ -65,7 +65,7 @@ class SupportedRuntimeSurfaceAllowlistIntegrationTest {
                 continue;
             }
             Package beanPackage = beanType.getPackage();
-            if (beanPackage == null || !"com.finalexec.api".equals(beanPackage.getName())) {
+            if (beanPackage == null || !beanPackage.getName().startsWith("com.finalexec")) {
                 continue;
             }
             if (beanType.getSimpleName().endsWith("Controller")) {
@@ -80,7 +80,7 @@ class SupportedRuntimeSurfaceAllowlistIntegrationTest {
         for (HandlerMethod handlerMethod : handlerMapping.getHandlerMethods().values()) {
             Class<?> beanType = handlerMethod.getBeanType();
             Package beanPackage = beanType.getPackage();
-            if (beanPackage == null || !"com.finalexec.api".equals(beanPackage.getName())) {
+            if (beanPackage == null || !beanPackage.getName().startsWith("com.finalexec")) {
                 continue;
             }
             if (beanType.getSimpleName().endsWith("Controller")) {

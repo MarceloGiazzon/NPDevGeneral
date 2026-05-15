@@ -1,7 +1,12 @@
 {
   "schemaVersion": "ai-expected-behavior.v1",
   "scenarioId": "custom-panel-unsupported",
-  "comparisonMode": "exact",
-  "expectedClass": "PASS_PANEL",
-  "assertions": []
+  "comparisonMode": "expanded-beta0",
+  "expectedClass": "PASS_CUSTOM_PANEL_MINIMAL",
+  "assertions": [
+    {
+      "path": "actual.overallStatus",
+      "equals": "passed"
+    }
+  ]
 }

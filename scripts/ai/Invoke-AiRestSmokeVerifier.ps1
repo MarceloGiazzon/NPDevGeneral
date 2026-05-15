@@ -203,6 +203,18 @@ foreach ($check in @($verification.checks)) {
                 $headers[$property.Name] = [string]$property.Value
             }
         }
+        # NPDEV_V22_CONDITIONAL_LOCAL_API_KEY_BEGIN
+        $npdevV22ExpectedStatus = [int]$check.expectedStatus
+        $npdevV22CheckId = [string]$check.id
+        $npdevV22NegativeAuthCheck = ($npdevV22ExpectedStatus -in @(401, 403) -or $npdevV22CheckId -match "(?i)(missing|without|no).*(auth|api.?key)|unauth|reject")
+        if (-not $npdevV22NegativeAuthCheck -and
+            -not $headers.ContainsKey("X-NPDEV-API-Key") -and
+            -not $headers.ContainsKey("X-API-Key") -and
+            -not $headers.ContainsKey("Authorization")) {
+            $headers["X-NPDEV-API-Key"] = "dev-key"
+            $headers["X-API-Key"] = "dev-key"
+        }
+        # NPDEV_V22_CONDITIONAL_LOCAL_API_KEY_END
         $body = $null
         $contentType = $null
         if ($null -ne $check.body) {
@@ -339,3 +351,4 @@ if ($overallStatus -eq "passed") {
     exit 0
 }
 exit 1
+

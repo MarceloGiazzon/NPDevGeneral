@@ -43,6 +43,16 @@ function Resolve-RepoPath {
     return [System.IO.Path]::GetFullPath((Join-Path (Resolve-Path ".").Path $PathValue))
 }
 
+function Resolve-OutsideRepoScratchPath {
+    param([string]$Name)
+    if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_WORKSPACE_SCRATCH_ROOT)) {
+        return [System.IO.Path]::GetFullPath((Join-Path $env:NPDEV_WORKSPACE_SCRATCH_ROOT $Name))
+    }
+    $workspace = Get-Item -LiteralPath $workspaceRoot
+    $outsideRepoRoot = Join-Path $workspace.Parent.FullName ($workspace.Name + "__OutsideRepo")
+    return [System.IO.Path]::GetFullPath((Join-Path (Join-Path $outsideRepoRoot "temp") $Name))
+}
+
 function Resolve-GradleWrapper {
     param([string]$ProjectRoot)
     $windowsWrapper = Join-Path $ProjectRoot "gradlew.bat"
@@ -272,7 +282,7 @@ if ([string]::IsNullOrWhiteSpace($RunId)) {
 }
 $scenarioRootPath = Resolve-RepoPath $ScenarioRoot
 $reportPathFull = Resolve-RepoPath $ReportPath
-$runRoot = Join-Path $workspaceRoot "scripts/reports/tmp/ai-beta-gate"
+$runRoot = Resolve-OutsideRepoScratchPath "ai-beta-gate"
 Stop-RunRootProcesses -RootPath $runRoot
 if (Test-Path -LiteralPath $runRoot) {
     Remove-Item -LiteralPath $runRoot -Recurse -Force
@@ -347,7 +357,7 @@ catch {
 }
 $schemaReport = if (Test-Path -LiteralPath $schemaReportPath -PathType Leaf) { Read-JsonFile $schemaReportPath } else { $null }
 
-$scenarioDirs = @(Get-ChildItem -LiteralPath $scenarioRootPath -Directory | Sort-Object Name)
+$scenarioDirs = @(Get-ChildItem -LiteralPath $scenarioRootPath -Directory | Where-Object { $_.Name -ne "deferred" } | Sort-Object Name)
 $scopePolicy = Read-JsonFile (Resolve-RepoPath $ScopePolicyPath)
 $requiredScenarios = @($scopePolicy.requiredScenarios | ForEach-Object { [string]$_ })
 $discoveredScenarioIds = @($scenarioDirs | ForEach-Object { [string]$_.Name })

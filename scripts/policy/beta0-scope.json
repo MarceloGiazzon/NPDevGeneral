@@ -46,8 +46,7 @@
     "command-policy-direct-pwsh",
     "command-policy-direct-node",
     "verification-external-curl",
-    "unknown-ai-schema-property",
-    "trusted-source-path-traversal"
+    "unknown-ai-schema-property"
   ],
   "requiredScenarios": [
     "tenant-workflow-ops",
@@ -67,9 +66,16 @@
     "command-policy-direct-pwsh",
     "command-policy-direct-node",
     "verification-external-curl",
-    "unknown-ai-schema-property",
-    "trusted-source-path-traversal"
+    "unknown-ai-schema-property"
   ],
+  "deferredScenarios": {
+    "trustedSource": [
+      "create-users-panel-procedure",
+      "trusted-source-path-traversal"
+    ],
+    "deferredRoot": "golden-ai-scenarios/deferred/trusted-source",
+    "decision": "CP3 Path B: trusted-source scenarios are excluded from active Beta0 evidence until full current proofs are active and fresh."
+  },
   "aiMayGenerate": {
     "aiModel": true,
     "aiConfig": true,
@@ -81,7 +87,7 @@
     "rolePermissionContract": true,
     "verificationPlan": true,
     "structuredCommandRequest": true,
-    "trustedSourceEntrypointReference": true,
+    "trustedSourceEntrypointReference": false,
     "arbitraryShellCommands": false,
     "inlineCustomHtml": false,
     "inlineCustomJavaScript": false,
@@ -90,7 +96,8 @@
     "unboundedSql": false
   },
   "trustedSourcePolicy": {
-    "enabled": true,
+    "enabled": false,
+    "activeEvidenceStatus": "deferred-by-cp3-path-b",
     "allowedPanelLanguages": [
       "html+javascript",
       "html",

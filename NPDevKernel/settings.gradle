@@ -8,6 +8,7 @@ include 'dsl'
 project(':dsl').projectDir = file('../NPDevContract/dsl')
 include 'adapters:audit-inproc'
 include 'adapters:audit-postgres'
+include 'adapters:postgres-test-support'
 include 'adapters:auth-context-jwt'
 include 'adapters:authz-default'
 include 'adapters:bulkhead-inproc'

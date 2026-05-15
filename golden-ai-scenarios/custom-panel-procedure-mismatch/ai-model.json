@@ -6,11 +6,11 @@
   },
   "entities": [
     {
-      "name": "User",
+      "name": "Learner",
       "fields": [
         {
-          "name": "email",
-          "type": "email",
+          "name": "status",
+          "type": "string",
           "required": true
         }
       ]
@@ -18,8 +18,8 @@
   ],
   "flows": [
     {
-      "name": "CreateUser",
-      "entity": "User",
+      "name": "CreateLearner",
+      "entity": "Learner",
       "operation": "create"
     }
   ]

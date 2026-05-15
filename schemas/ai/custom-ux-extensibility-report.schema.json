@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/custom-ux-extensibility-report.schema.json",
+  "title": "NPDev Custom UX Extensibility Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "overallStatus",
+    "lockedScope",
+    "minimalSupportScopeUsed",
+    "dynamicPluginComponentLoadingImplemented",
+    "customPanelContractDefined",
+    "safeCustomPanelMetadataAllowed",
+    "unsafeDynamicComponentOrScriptRejected",
+    "safeFallbackUiVerified",
+    "unsupportedSurfacesClearlyRejected",
+    "customPanelGoldenScenarioUpdated",
+    "invalidCustomPanelBindingRejected",
+    "aiSchemaValidationPassed",
+    "aiContractNormalizerPassed",
+    "scenarioCoherencePassed",
+    "panelRuntimeFallbackTestPassed",
+    "schemaCases",
+    "validationCommands",
+    "findings",
+    "doesNotSolve"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "npdev-custom-ux-extensibility-report.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "scriptPath": { "const": "scripts/quality/run-custom-ux-extensibility-check.ps1" },
+    "workspaceRoot": { "type": "string", "minLength": 1 },
+    "overallStatus": { "enum": [ "passed", "failed" ] },
+    "lockedScope": { "const": "minimal-support" },
+    "minimalSupportScopeUsed": { "type": "boolean" },
+    "dynamicPluginComponentLoadingImplemented": { "const": false },
+    "customPanelContractDefined": { "type": "boolean" },
+    "safeCustomPanelMetadataAllowed": { "type": "boolean" },
+    "unsafeDynamicComponentOrScriptRejected": { "type": "boolean" },
+    "safeFallbackUiVerified": { "type": "boolean" },
+    "unsupportedSurfacesClearlyRejected": { "type": "boolean" },
+    "customPanelGoldenScenarioUpdated": { "type": "boolean" },
+    "invalidCustomPanelBindingRejected": { "type": "boolean" },
+    "aiSchemaValidationPassed": { "type": "boolean" },
+    "aiContractNormalizerPassed": { "type": "boolean" },
+    "scenarioCoherencePassed": { "type": "boolean" },
+    "panelRuntimeFallbackTestPassed": { "type": "boolean" },
+    "schemaCases": { "type": "array", "minItems": 4 },
+    "validationCommands": { "type": "array", "minItems": 5 },
+    "findings": { "type": "array" },
+    "doesNotSolve": { "type": "array", "minItems": 1 }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "overallStatus": { "const": "passed" } },
+        "required": [ "overallStatus" ]
+      },
+      "then": {
+        "properties": {
+          "minimalSupportScopeUsed": { "const": true },
+          "customPanelContractDefined": { "const": true },
+          "safeCustomPanelMetadataAllowed": { "const": true },
+          "unsafeDynamicComponentOrScriptRejected": { "const": true },
+          "safeFallbackUiVerified": { "const": true },
+          "unsupportedSurfacesClearlyRejected": { "const": true },
+          "customPanelGoldenScenarioUpdated": { "const": true },
+          "invalidCustomPanelBindingRejected": { "const": true },
+          "aiSchemaValidationPassed": { "const": true },
+          "aiContractNormalizerPassed": { "const": true },
+          "scenarioCoherencePassed": { "const": true },
+          "panelRuntimeFallbackTestPassed": { "const": true }
+        }
+      }
+    }
+  ]
+}

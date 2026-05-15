@@ -31,6 +31,12 @@ subprojects {
 
     tasks.withType(Test).configureEach {
         useJUnitPlatform()
+        if (System.getProperty('os.name', '').toLowerCase().contains('win')
+                && System.getenv('DOCKER_HOST') == null) {
+            environment 'DOCKER_HOST', 'npipe:////./pipe/dockerDesktopLinuxEngine'
+            systemProperty 'docker.host', 'npipe:////./pipe/dockerDesktopLinuxEngine'
+            systemProperty 'docker.client.strategy', 'org.testcontainers.dockerclient.NpipeSocketClientProviderStrategy'
+        }
     }
 }
 

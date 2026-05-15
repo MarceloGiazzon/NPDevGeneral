@@ -61,7 +61,7 @@ function Assert-CleanupTarget([string]$TargetPath, [string]$Category) {
             }
         }
         "named-dir" {
-            if ($leaf -notin @("build", "target", "dist", "coverage", "node_modules", "RunOutput")) {
+            if ($leaf -notin @(".gradle", "build", "target", "dist", "coverage", "node_modules", "RunOutput")) {
                 throw ("Refusing unexpected named cleanup path: " + $relative)
             }
         }
@@ -140,7 +140,7 @@ if (-not $OnlyIdeMetadata) {
         if ($dir.FullName -like "*\.git\*" -or $dir.FullName -like "*\.npdev-gradle\*") {
             continue
         }
-        if ($dir.Name -in @("build", "target", "dist", "coverage", "node_modules", "RunOutput")) {
+        if ($dir.Name -in @(".gradle", "build", "target", "dist", "coverage", "node_modules", "RunOutput")) {
             Add-CleanupTarget -Targets $targets -PathValue $dir.FullName -Category "named-dir"
         }
     }

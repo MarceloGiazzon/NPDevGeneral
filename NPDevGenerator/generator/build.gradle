@@ -13,9 +13,15 @@ dependencies {
     implementation 'com.github.spullara.mustache.java:compiler:0.9.14'
     implementation 'org.slf4j:slf4j-simple:2.0.16'
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
+    implementation 'org.jsoup:jsoup:1.17.2'
 
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
+    testImplementation 'org.testcontainers:postgresql:1.21.4'
+    testImplementation 'org.postgresql:postgresql:42.7.4'
+    testImplementation 'org.flywaydb:flyway-core:10.10.0'
+    testImplementation 'org.flywaydb:flyway-database-postgresql:10.10.0'
 }
 
 tasks.named('run') {

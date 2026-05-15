@@ -191,7 +191,11 @@ New-Report "auth-role-smoke-report.json" "npdev-auth-role-smoke-report.v1" ($sec
 
 $gitStatus = (& git status --porcelain=v1 2>$null | Out-String).Trim()
 $commit = (& git rev-parse HEAD 2>$null | Out-String).Trim()
-New-Report "workspace-cleanliness-report.json" "npdev-workspace-cleanliness-report.v1" $true ([pscustomobject]@{ commit = $commit; dirty = -not [string]::IsNullOrWhiteSpace($gitStatus); dirtyStatusDiagnosticOnly = $true }) @() | Out-Null
+$workspaceSlimnessScript = Join-Path $workspaceRoot "scripts/hygiene/Test-WorkspaceSlimness.ps1"
+& $workspaceSlimnessScript `
+    -WorkspaceRoot $workspaceRoot `
+    -ReportPath "scripts/reports/out/workspace-cleanliness-report.json" `
+    -RunId $RunId | Out-Null
 New-Report "stale-report-check-report.json" "npdev-stale-report-check-report.v1" $true ([pscustomobject]@{ blockingReportsFresh = $true; blockingReportsMatchExpandedContract = $true; staleNarrowReportsRejected = $true }) @() | Out-Null
 New-Report "provenance-report.json" "npdev-provenance-report.v1" $true ([pscustomobject]@{ commit = $commit; officialEvidencePlatform = $scope.officialEvidencePlatform; expandedBeta0ContractVersion = $scope.expandedBeta0ContractVersion }) @() | Out-Null
 

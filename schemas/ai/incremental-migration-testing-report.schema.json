@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/incremental-migration-testing-report.schema.json",
+  "title": "NPDev Incremental Migration Testing Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "overallStatus",
+    "postgresTestcontainersHarnessPassed",
+    "upgradeScenarioCount",
+    "baselineSchemaApplied",
+    "preMigrationDataInserted",
+    "newMigrationApplied",
+    "dataPreservationVerified",
+    "flywaySchemaHistoryVerified",
+    "unsafeBackfillFailsGracefully",
+    "migrationDiffCliSupported",
+    "checks",
+    "findings",
+    "doesNotSolve"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "npdev-incremental-migration-testing-report.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "scriptPath": { "const": "scripts/quality/run-incremental-migration-testing-check.ps1" },
+    "workspaceRoot": { "type": "string", "minLength": 1 },
+    "overallStatus": { "enum": ["passed", "failed"] },
+    "postgresTestcontainersHarnessPassed": { "type": "boolean" },
+    "upgradeScenarioCount": { "type": "integer", "minimum": 0 },
+    "baselineSchemaApplied": { "type": "boolean" },
+    "preMigrationDataInserted": { "type": "boolean" },
+    "newMigrationApplied": { "type": "boolean" },
+    "dataPreservationVerified": { "type": "boolean" },
+    "flywaySchemaHistoryVerified": { "type": "boolean" },
+    "unsafeBackfillFailsGracefully": { "type": "boolean" },
+    "migrationDiffCliSupported": { "type": "boolean" },
+    "checks": { "type": "array", "items": { "type": "object" } },
+    "findings": { "type": "array", "items": { "type": "object" } },
+    "doesNotSolve": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "overallStatus": { "const": "passed" } }, "required": ["overallStatus"] },
+      "then": {
+        "properties": {
+          "postgresTestcontainersHarnessPassed": { "const": true },
+          "upgradeScenarioCount": { "minimum": 5 },
+          "baselineSchemaApplied": { "const": true },
+          "preMigrationDataInserted": { "const": true },
+          "newMigrationApplied": { "const": true },
+          "dataPreservationVerified": { "const": true },
+          "flywaySchemaHistoryVerified": { "const": true },
+          "unsafeBackfillFailsGracefully": { "const": true },
+          "migrationDiffCliSupported": { "const": true }
+        }
+      }
+    }
+  ]
+}

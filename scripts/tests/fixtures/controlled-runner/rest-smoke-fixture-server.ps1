@@ -21,16 +21,25 @@ try {
             $statusCode = 200
             $payload = [ordered]@{ status = "UP" }
         }
-        elseif ($request.HttpMethod -eq "POST" -and $request.Url.AbsolutePath -eq "/api/users") {
+        elseif ($request.HttpMethod -eq "POST" -and $request.Url.AbsolutePath -in @("/api/users", "/api/learners")) {
             $reader = [System.IO.StreamReader]::new($request.InputStream, $request.ContentEncoding)
             $bodyText = $reader.ReadToEnd()
             $reader.Dispose()
             $body = if ([string]::IsNullOrWhiteSpace($bodyText)) { [pscustomobject]@{} } else { $bodyText | ConvertFrom-Json }
             $statusCode = 201
-            $payload = [ordered]@{
-                id = "user-1"
-                email = [string]$body.email
-                displayName = [string]$body.displayName
+            if ($request.Url.AbsolutePath -eq "/api/learners") {
+                $payload = [ordered]@{
+                    id = "learner-1"
+                    name = [string]$body.name
+                    email = [string]$body.email
+                }
+            }
+            else {
+                $payload = [ordered]@{
+                    id = "user-1"
+                    email = [string]$body.email
+                    displayName = [string]$body.displayName
+                }
             }
         }
         else {

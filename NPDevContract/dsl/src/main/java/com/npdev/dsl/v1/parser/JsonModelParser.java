@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.ast.*;
 import com.npdev.dsl.v1.validation.JsonModelSchemaValidator;
+import com.npdev.dsl.v1.validation.ValidationDiagnostic;
+import com.npdev.dsl.v1.validation.ValidationLayer;
+import com.npdev.dsl.v1.validation.ValidationSeverity;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -46,6 +49,40 @@ public final class JsonModelParser {
         }
 
         JsonNode root = mapper.readTree(Files.readAllBytes(modelJsonPath));
+        String schemaTarget = readText(root, "$schema");
+        if (isDeprecatedSchemaTarget(schemaTarget)) {
+            throw new DeprecationException(new ValidationDiagnostic(
+                    ValidationLayer.STRUCTURAL,
+                    ValidationSeverity.ERROR,
+                    "LEGACY_SCHEMA_TARGET",
+                    "Model references a deprecated schema target. Use model.schema.json with schemaVersion '" + CURRENT_SCHEMA_VERSION + "'.",
+                    "NPDevContract",
+                    "$schema",
+                    null,
+                    null,
+                    "schema",
+                    null,
+                    "Replace the $schema value with NPDevContract/schemas/model.schema.json.",
+                    "legacy-schema-target"
+            ));
+        }
+        if (root.has("entities")) {
+            throw new DeprecationException(new ValidationDiagnostic(
+                    ValidationLayer.STRUCTURAL,
+                    ValidationSeverity.ERROR,
+                    "LEGACY_ENTITIES_ROOT",
+                    "Official DSL models must use root 'concepts'. Root 'entities' is no longer supported.",
+                    "NPDevContract",
+                    "$.entities",
+                    null,
+                    null,
+                    "concepts",
+                    null,
+                    "Rename root 'entities' to 'concepts' or run: npdev migrate legacy-model --input old.json --output new.json.",
+                    "legacy-entities-root"
+            ));
+        }
+        schemaValidator.validate(root, modelJsonPath.toAbsolutePath().normalize().toString());
         String namespace = firstNonBlank(readText(root, "namespace"), readText(root, "model"));
         if (namespace == null || namespace.isBlank()) {
             throw new IOException("Missing/blank required field: namespace (or alias: model)");
@@ -61,14 +98,6 @@ public final class JsonModelParser {
         if (schemaVersion != null && !schemaVersion.isBlank() && !CURRENT_SCHEMA_VERSION.equals(schemaVersion)) {
             throw new IOException("Unsupported schemaVersion '" + schemaVersion + "'. Supported value: \"" + CURRENT_SCHEMA_VERSION + "\".");
         }
-        String schemaTarget = readText(root, "$schema");
-        if (isDeprecatedSchemaTarget(schemaTarget)) {
-            throw new IOException("Model references deprecated schema target '" + schemaTarget + "'. Use model.schema.json with schemaVersion '" + CURRENT_SCHEMA_VERSION + "'.");
-        }
-        if (root.has("entities")) {
-            throw new DeprecationException("The V1 Contract requires 'concepts'. 'entities' is no longer supported.");
-        }
-        schemaValidator.validate(root, modelJsonPath.toAbsolutePath().normalize().toString());
         String version = requiredText(root, "version");
 
         List<ConceptAst> concepts = new ArrayList<>();
@@ -1688,7 +1717,8 @@ public final class JsonModelParser {
             return false;
         }
         String normalized = schemaTarget.replace('\\', '/').toLowerCase(Locale.ROOT);
-        return normalized.endsWith("/model-1.0.0.schema.json") || normalized.endsWith("model-1.0.0.schema.json");
+        String legacyModelSchemaName = "model-" + "1.0.0" + ".schema.json";
+        return normalized.endsWith("/" + legacyModelSchemaName) || normalized.endsWith(legacyModelSchemaName);
     }
 
     private record ParsedRule(String type, List<String> fields, String expression) {

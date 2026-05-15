@@ -689,6 +689,30 @@ public final class CelInvariantEngine implements InvariantEngine {
             return ExpressionResult.failure("blank expression");
         }
 
+        List<String> disjuncts = splitLogicalExpression(expression, "||");
+        if (disjuncts.size() > 1) {
+            ExpressionResult lastFailure = null;
+            for (String disjunct : disjuncts) {
+                ExpressionResult result = evaluateExpression(payload, disjunct, state);
+                if (result.ok()) {
+                    return ExpressionResult.success();
+                }
+                lastFailure = result;
+            }
+            return lastFailure == null ? ExpressionResult.failure("expected at least one expression to pass") : lastFailure;
+        }
+
+        List<String> conjuncts = splitLogicalExpression(expression, "&&");
+        if (conjuncts.size() > 1) {
+            for (String conjunct : conjuncts) {
+                ExpressionResult result = evaluateExpression(payload, conjunct, state);
+                if (!result.ok()) {
+                    return result;
+                }
+            }
+            return ExpressionResult.success();
+        }
+
         ConflictInvocation conflictInvocation = parseConflictInvocation(expression);
         if (conflictInvocation != null) {
             return evaluateConflictExpression(payload, conflictInvocation);
@@ -961,6 +985,9 @@ public final class CelInvariantEngine implements InvariantEngine {
         }
 
         String functionPrefix = "conflicts(";
+        if (trimmed.startsWith("overlapsProvider(")) {
+            functionPrefix = "overlapsProvider(";
+        }
         if (!trimmed.startsWith(functionPrefix) || !trimmed.endsWith(")")) {
             return null;
         }
@@ -985,6 +1012,53 @@ public final class CelInvariantEngine implements InvariantEngine {
 
         String exclude = args.size() == 4 ? args.get(3) : null;
         return new ConflictInvocation(negated, args.get(0), args.get(1), args.get(2), exclude);
+    }
+
+    private static List<String> splitLogicalExpression(String expression, String operator) {
+        if (expression == null || expression.isBlank()) {
+            return List.of();
+        }
+        List<String> parts = new ArrayList<>();
+        int start = 0;
+        int depth = 0;
+        char quote = 0;
+        for (int i = 0; i <= expression.length() - operator.length(); i++) {
+            char ch = expression.charAt(i);
+            if (quote != 0) {
+                if (ch == quote) {
+                    quote = 0;
+                }
+                continue;
+            }
+            if (ch == '"' || ch == '\'') {
+                quote = ch;
+                continue;
+            }
+            if (ch == '(') {
+                depth++;
+                continue;
+            }
+            if (ch == ')' && depth > 0) {
+                depth--;
+                continue;
+            }
+            if (depth == 0 && expression.startsWith(operator, i)) {
+                String part = expression.substring(start, i).trim();
+                if (!part.isEmpty()) {
+                    parts.add(part);
+                }
+                i += operator.length() - 1;
+                start = i + 1;
+            }
+        }
+        if (parts.isEmpty()) {
+            return List.of(expression.trim());
+        }
+        String tail = expression.substring(start).trim();
+        if (!tail.isEmpty()) {
+            parts.add(tail);
+        }
+        return parts;
     }
 
     private static ScopeExistsInvocation parseScopeExistsInvocation(String expression) {

@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/maturity-max-roadmap-boundary-report.schema.json",
+  "title": "NPDev Maturity Max Roadmap Boundary Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "overallStatus",
+    "checkpointCount",
+    "beta0RetagAllowed",
+    "newCheckpointRequiresHumanApproval",
+    "findingClassificationPolicyPresent",
+    "closureDefinitionPresent",
+    "currentMaturity",
+    "targetMaturity",
+    "checks",
+    "blockers",
+    "notSolved"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-maturity-max-roadmap-boundary-report.v1"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scriptPath": {
+      "const": "scripts/quality/run-maturity-max-roadmap-boundary-check.ps1"
+    },
+    "workspaceRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "overallStatus": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "checkpointCount": {
+      "const": 16
+    },
+    "beta0RetagAllowed": {
+      "const": false
+    },
+    "newCheckpointRequiresHumanApproval": {
+      "const": true
+    },
+    "findingClassificationPolicyPresent": {
+      "const": true
+    },
+    "closureDefinitionPresent": {
+      "const": true
+    },
+    "currentMaturity": {
+      "type": "object",
+      "required": [
+        "scoreOutOf10",
+        "percent",
+        "label"
+      ],
+      "properties": {
+        "scoreOutOf10": {
+          "const": 7.8
+        },
+        "percent": {
+          "const": 78
+        },
+        "label": {
+          "const": "7.8/10 (~78%)"
+        }
+      },
+      "additionalProperties": true
+    },
+    "targetMaturity": {
+      "type": "object",
+      "required": [
+        "scoreOutOf10Min",
+        "scoreOutOf10Max",
+        "percentMin",
+        "percentMax",
+        "label"
+      ],
+      "properties": {
+        "scoreOutOf10Min": {
+          "const": 9.2
+        },
+        "scoreOutOf10Max": {
+          "const": 9.5
+        },
+        "percentMin": {
+          "const": 92
+        },
+        "percentMax": {
+          "const": 95
+        },
+        "label": {
+          "const": "9.2-9.5/10 (~92-95%)"
+        }
+      },
+      "additionalProperties": true
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "passed",
+          "reason",
+          "evidence"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notSolved": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "overallStatus": {
+            "const": "passed"
+          }
+        },
+        "required": [
+          "overallStatus"
+        ]
+      },
+      "then": {
+        "properties": {
+          "blockers": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ]
+}

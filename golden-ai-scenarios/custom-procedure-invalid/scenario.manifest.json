@@ -10,8 +10,6 @@
     "verification": "ai-verification-report.json",
     "expectedBehavior": "expected-behavior.json",
     "model": "model.json",
-    "config": "config.json",
-    "customProcedure": "custom-procedure.json",
-    "expectedProcedureBehavior": "expected-procedure-behavior.json"
+    "config": "config.json"
   }
 }

@@ -49,7 +49,6 @@ function Test-AllowedGeneratedEvidenceDirtyPath {
     param([string]$PathValue)
     $normalized = ([string]$PathValue) -replace "\\", "/"
     if ($normalized -match "^scripts/reports/out/[^/]+\.(json|log)$") { return $true }
-    if ($normalized -match "^scripts/reports/tmp/") { return $true }
     return $false
 }
 
@@ -82,7 +81,18 @@ function Get-DirtyClassification {
     }
 }
 
+function Resolve-OutsideRepoScratchPath {
+    param([string]$Name)
+    if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_WORKSPACE_SCRATCH_ROOT)) {
+        return [System.IO.Path]::GetFullPath((Join-Path $env:NPDEV_WORKSPACE_SCRATCH_ROOT $Name))
+    }
+    $workspace = Get-Item -LiteralPath $workspaceRoot
+    $outsideRepoRoot = Join-Path $workspace.Parent.FullName ($workspace.Name + "__OutsideRepo")
+    return [System.IO.Path]::GetFullPath((Join-Path (Join-Path $outsideRepoRoot "temp") $Name))
+}
+
 $workspaceRoot = (Resolve-Path ".").Path
+$schemaValidationRoot = Resolve-OutsideRepoScratchPath "report-schema-validation"
 if ([string]::IsNullOrWhiteSpace($RunId)) {
     $RunId = "beta0-final-closure-" + (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmssfff")
 }
@@ -189,7 +199,7 @@ $finalReport = [pscustomobject]@{
     allowedGeneratedEvidenceDirty = [bool]$dirty.allowedGeneratedEvidenceDirty
     allowedGeneratedEvidenceDirtyFileCount = [int]$dirty.allowedGeneratedEvidenceDirtyFileCount
     allowedGeneratedEvidenceDirtyPaths = @($dirty.allowedGeneratedEvidenceDirtyPaths)
-    generatedReportDirtinessPolicy = "dirty paths under scripts/reports/out/*.json, scripts/reports/out/*.log, and scripts/reports/tmp/** are generated evidence and do not block beta0TagAllowed; any other dirty path blocks."
+    generatedReportDirtinessPolicy = "dirty paths under scripts/reports/out/*.json and scripts/reports/out/*.log are generated evidence and do not block beta0TagAllowed; workspace temp output must live outside NPDev_General."
     requiredReports = $reportResults
     blockers = @($blockers)
 }
@@ -197,7 +207,7 @@ $finalReport = [pscustomobject]@{
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ReportPath) | Out-Null
 $finalReport | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $ReportPath -Encoding UTF8
 
-$schemaResultPath = "scripts/reports/tmp/report-schema-validation/beta0-final-closure-report-self.json"
+$schemaResultPath = Join-Path $schemaValidationRoot "beta0-final-closure-report-self.json"
 $ErrorActionPreference = "Continue"
 pwsh -NoProfile -File scripts/quality/Invoke-JsonSchemaValidation.ps1 `
     -SchemaPath "schemas/ai/beta0-final-closure-report.schema.json" `

@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/phase2-residual-fidelity-report.schema.json",
+  "title": "NPDev Phase-2 Residual Fidelity Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "overallStatus",
+    "postgresTestSupportReuseEnabled",
+    "postgresTestSupportCrossPlatform",
+    "traceStoreUsesRealPostgres",
+    "traceStoreH2ReferenceCount",
+    "traceStoreTestcontainersValidationPassed",
+    "traceStoreTestResultPath",
+    "linuxCiIncludesTraceStore",
+    "tenantIsolationItRenamed",
+    "standaloneIntegrationNameViolations",
+    "runtimeHostE2EInLinuxCi",
+    "runtimeHostExecutionProofScope",
+    "runtimeHostExecutionProofMovedToCheckpoint",
+    "runtimeHostExecutionProofMovedByHumanOverride",
+    "testcontainersDocsComplete",
+    "checks",
+    "blockers",
+    "notSolved"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-phase2-residual-fidelity-report.v1"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scriptPath": {
+      "const": "scripts/quality/run-phase2-residual-fidelity-check.ps1"
+    },
+    "workspaceRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "overallStatus": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "postgresTestSupportReuseEnabled": {
+      "const": true
+    },
+    "postgresTestSupportCrossPlatform": {
+      "const": true
+    },
+    "traceStoreUsesRealPostgres": {
+      "const": true
+    },
+    "traceStoreH2ReferenceCount": {
+      "const": 0
+    },
+    "traceStoreTestcontainersValidationPassed": {
+      "const": true
+    },
+    "traceStoreTestResultPath": {
+      "const": "NPDevKernel/adapters/tracestore-postgres/build/test-results/test/TEST-com.npdev.adapters.tracestore.postgres.PostgresTraceStoreTest.xml"
+    },
+    "linuxCiIncludesTraceStore": {
+      "const": true
+    },
+    "tenantIsolationItRenamed": {
+      "const": true
+    },
+    "standaloneIntegrationNameViolations": {
+      "const": 0
+    },
+    "runtimeHostE2EInLinuxCi": {
+      "const": true
+    },
+    "runtimeHostExecutionProofScope": {
+      "const": "ci-wiring-only"
+    },
+    "runtimeHostExecutionProofMovedToCheckpoint": {
+      "const": 2
+    },
+    "runtimeHostExecutionProofMovedByHumanOverride": {
+      "const": true
+    },
+    "testcontainersDocsComplete": {
+      "const": true
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notSolved": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "overallStatus": {
+            "const": "passed"
+          }
+        },
+        "required": [
+          "overallStatus"
+        ]
+      },
+      "then": {
+        "properties": {
+          "blockers": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ]
+}

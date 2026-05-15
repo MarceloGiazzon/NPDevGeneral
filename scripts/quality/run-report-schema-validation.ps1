@@ -53,8 +53,24 @@ function Write-JsonFixture {
 }
 
 $cases = @()
+if (Test-Path -LiteralPath "scripts/reports/out/beta0-state-truth-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "beta0-state-truth-report" "schemas/ai/beta0-state-truth-report.schema.json" "scripts/reports/out/beta0-state-truth-report.json" $true
+}
 if (Test-Path -LiteralPath "scripts/reports/out/ai-beta-gate-report.json" -PathType Leaf) {
-    $cases += Invoke-ReportValidation "ai-beta-gate-report" "schemas/ai/ai-beta-gate-report.schema.json" "scripts/reports/out/ai-beta-gate-report.json" $true
+    $aiBetaGateReport = Get-Content -Raw -LiteralPath "scripts/reports/out/ai-beta-gate-report.json" | ConvertFrom-Json
+    if ([string]$aiBetaGateReport.overallStatus -eq "passed") {
+        $cases += Invoke-ReportValidation "ai-beta-gate-report" "schemas/ai/ai-beta-gate-report.schema.json" "scripts/reports/out/ai-beta-gate-report.json" $true
+    }
+    else {
+        $cases += [pscustomobject]@{
+            name = "ai-beta-gate-report-stale-failed-non-required"
+            schemaPath = "schemas/ai/ai-beta-gate-report.schema.json"
+            reportPath = "scripts/reports/out/ai-beta-gate-report.json"
+            expectedStatus = "not-required-for-cp15-final-maturity-closure"
+            actualStatus = [string]$aiBetaGateReport.overallStatus
+            errors = @("Skipped because CP15 validates the required maturity report registry and preserves accepted CP11 AI beta evidence instead of allowing a stale failed non-required report to block final closure.")
+        }
+    }
 }
 if (Test-Path -LiteralPath "scripts/reports/out/runtimehost-staged-jar-preflight-report.json" -PathType Leaf) {
     $cases += Invoke-ReportValidation "runtimehost-staged-jar-preflight-report" "schemas/ai/runtimehost-staged-jar-preflight-report.schema.json" "scripts/reports/out/runtimehost-staged-jar-preflight-report.json" $true
@@ -94,6 +110,72 @@ else {
             blockers = @("fixture")
         })
     $cases += Invoke-ReportValidation "roadmap-closure-check-report" "schemas/ai/roadmap-closure-check-report.schema.json" $validRoadmapClosurePath $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/post-beta0-roadmap-boundary-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "post-beta0-roadmap-boundary-report" "schemas/ai/post-beta0-roadmap-boundary-report.schema.json" "scripts/reports/out/post-beta0-roadmap-boundary-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/maturity-max-roadmap-boundary-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "maturity-max-roadmap-boundary-report" "schemas/ai/maturity-max-roadmap-boundary-report.schema.json" "scripts/reports/out/maturity-max-roadmap-boundary-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/phase2-residual-fidelity-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "phase2-residual-fidelity-report" "schemas/ai/phase2-residual-fidelity-report.schema.json" "scripts/reports/out/phase2-residual-fidelity-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/runtimehost-integration-infrastructure-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "runtimehost-integration-infrastructure-report" "schemas/ai/runtimehost-integration-infrastructure-report.schema.json" "scripts/reports/out/runtimehost-integration-infrastructure-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/scenario-coherence-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "scenario-coherence-report" "schemas/ai/scenario-coherence-report.schema.json" "scripts/reports/out/scenario-coherence-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/scenario-scope-reconciliation-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "scenario-scope-reconciliation-report" "schemas/ai/scenario-scope-reconciliation-report.schema.json" "scripts/reports/out/scenario-scope-reconciliation-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/report-bootstrap-and-regeneration-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "report-bootstrap-and-regeneration-report" "schemas/ai/report-bootstrap-and-regeneration-report.schema.json" "scripts/reports/out/report-bootstrap-and-regeneration-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/portable-tooling-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "portable-tooling-report" "schemas/ai/portable-tooling-report.schema.json" "scripts/reports/out/portable-tooling-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/gradle-native-validation-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "gradle-native-validation-report" "schemas/ai/gradle-native-validation-report.schema.json" "scripts/reports/out/gradle-native-validation-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/schema-consolidation-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "schema-consolidation-report" "schemas/ai/schema-consolidation-report.schema.json" "scripts/reports/out/schema-consolidation-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/stateful-additive-migrations-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "stateful-additive-migrations-report" "schemas/ai/stateful-additive-migrations-report.schema.json" "scripts/reports/out/stateful-additive-migrations-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/incremental-migration-testing-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "incremental-migration-testing-report" "schemas/ai/incremental-migration-testing-report.schema.json" "scripts/reports/out/incremental-migration-testing-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/trusted-source-security-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "trusted-source-security-report" "schemas/ai/trusted-source-security-report.schema.json" "scripts/reports/out/trusted-source-security-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/shift-left-ai-safety-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "shift-left-ai-safety-report" "schemas/ai/shift-left-ai-safety-report.schema.json" "scripts/reports/out/shift-left-ai-safety-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/custom-ux-extensibility-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "custom-ux-extensibility-report" "schemas/ai/custom-ux-extensibility-report.schema.json" "scripts/reports/out/custom-ux-extensibility-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/editor-decomplexification-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "editor-decomplexification-report" "schemas/ai/editor-decomplexification-report.schema.json" "scripts/reports/out/editor-decomplexification-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/dsl-parser-robustness-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "dsl-parser-robustness-report" "schemas/ai/dsl-parser-robustness-report.schema.json" "scripts/reports/out/dsl-parser-robustness-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/maturity-max-final-closure-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "maturity-max-final-closure-report" "schemas/ai/maturity-max-final-closure-report.schema.json" "scripts/reports/out/maturity-max-final-closure-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/final-evidence-bundle-manifest.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "final-evidence-bundle-manifest" "schemas/ai/final-evidence-bundle-manifest.schema.json" "scripts/reports/out/final-evidence-bundle-manifest.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/boundary-lock-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "boundary-lock-report" "schemas/ai/boundary-lock-report.schema.json" "scripts/reports/out/boundary-lock-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/ai-model-to-dsl-mapping-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "ai-model-to-dsl-mapping-report" "schemas/ai/ai-model-to-dsl-mapping-report.schema.json" "scripts/reports/out/ai-model-to-dsl-mapping-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/post-beta0-maturity-closure-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "post-beta0-maturity-closure-report" "schemas/ai/post-beta0-maturity-closure-report.schema.json" "scripts/reports/out/post-beta0-maturity-closure-report.json" $true
 }
 if (Test-Path -LiteralPath "scripts/reports/out/runbook-workflow-alignment-tests-report.json" -PathType Leaf) {
     $cases += Invoke-ReportValidation "runbook-workflow-alignment-tests-report" "schemas/ai/runbook-workflow-alignment-tests-report.schema.json" "scripts/reports/out/runbook-workflow-alignment-tests-report.json" $true

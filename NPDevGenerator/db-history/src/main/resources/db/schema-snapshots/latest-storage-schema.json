@@ -11,7 +11,7 @@
       "name" : "email",
       "sqlType" : "VARCHAR",
       "required" : true,
-      "unique" : false
+      "unique" : true
     }, {
       "name" : "id",
       "sqlType" : "UUID",
@@ -19,11 +19,6 @@
       "unique" : true
     }, {
       "name" : "name",
-      "sqlType" : "VARCHAR",
-      "required" : true,
-      "unique" : false
-    }, {
-      "name" : "tenant_id",
       "sqlType" : "VARCHAR",
       "required" : true,
       "unique" : false

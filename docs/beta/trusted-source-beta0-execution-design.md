@@ -4,6 +4,8 @@ Checkpoint: Items #18/#19 design only.
 
 Status: proposed for human approval. This document does not approve release eligibility and does not implement trusted-source execution.
 
+CP3 scope reconciliation uses Path B. Active trusted-source golden scenarios are deferred under `golden-ai-scenarios/deferred/trusted-source/`, the active beta scope no longer requires trusted-source scenario evidence, and this design remains review material rather than active execution proof.
+
 ## Scope Decision
 
 Trusted-source panels and procedures should be treated as Beta0-deferred until this design is approved and the implementation checkpoint proves the pipeline end to end.

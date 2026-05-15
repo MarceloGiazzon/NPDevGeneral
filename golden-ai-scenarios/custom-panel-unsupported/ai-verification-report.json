@@ -11,14 +11,17 @@
       "expectedStatus": 200
     },
     {
-      "id": "create-user",
+      "id": "create-learner",
       "type": "http",
       "method": "POST",
-      "path": "/api/users",
+      "path": "/api/learners",
       "body": {
-        "email": "beta0@example.com"
+        "email": "beta0@example.com",
+        "name": "Beta Zero",
+        "status": "active"
       },
       "expectedStatus": 201
     }
   ]
 }
+

@@ -286,9 +286,60 @@
         "tenantScoped": {
           "type": "boolean"
         },
+        "metadata": {
+          "$ref": "#/$defs/customPanelMetadata"
+        },
         "implementation": {
           "$ref": "#/$defs/trustedPanelImplementation"
         }
+      },
+      "additionalProperties": false
+    },
+    "customPanelMetadata": {
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[^<>`$]*$"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 240,
+          "pattern": "^[^<>`$]*$"
+        },
+        "emptyStateMessage": {
+          "type": "string",
+          "maxLength": 160,
+          "pattern": "^[^<>`$]*$"
+        },
+        "icon": {
+          "enum": [
+            "table",
+            "form",
+            "summary",
+            "workflow",
+            "status"
+          ]
+        },
+        "variant": {
+          "enum": [
+            "default",
+            "compact",
+            "readonly"
+          ]
+        }
+      },
+      "not": {
+        "anyOf": [
+          { "required": [ "script" ] },
+          { "required": [ "component" ] },
+          { "required": [ "componentUrl" ] },
+          { "required": [ "dynamicComponent" ] },
+          { "required": [ "externalUrl" ] },
+          { "required": [ "html" ] }
+        ]
       },
       "additionalProperties": false
     },
@@ -434,6 +485,32 @@
           "$ref": "#/$defs/trustedProcedureImplementation"
         }
       },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "bulk-command"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "maxAffectedRows": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              "sideEffectType": {
+                "const": "bulk"
+              }
+            }
+          }
+        }
+      ],
       "additionalProperties": false
     },
     "trustedProcedureImplementation": {
@@ -630,7 +707,10 @@
           "minItems": 1,
           "items": {
             "type": "string",
-            "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$"
+            "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$",
+            "not": {
+              "pattern": "(bypass|all-tenants|cross-tenant|all:all)"
+            }
           }
         }
       },

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://npdev.local/schema/npdev-model-1.0.0.schema.json",
+  "$id": "https://npdev.local/schema/npdev-model.schema.json",
   "title": "NPDev DSL 1.0.0 Model",
   "type": "object",
   "required": [

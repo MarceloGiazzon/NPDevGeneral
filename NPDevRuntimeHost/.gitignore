@@ -11,5 +11,4 @@ runtime-data/
 *.tmp
 *.bak
 *.iml
-build.gradle
 npdev-build-info.properties

@@ -5,10 +5,7 @@ import { buildSemanticDiff } from "../diff/semanticDiff";
 import { getBaselineBundle, listBaselineOptions } from "./baselineRegistry";
 import { buildConfigValidationDiagnostics, buildModelValidationDiagnostics } from "../validation/authoringValidation";
 import {
-  buildPipelineCommandPreview,
   buildRecommendedHandoffDir,
-  downloadPipelineHandoffPackage,
-  savePipelineHandoffPackageToChosenDirectory,
   summarizePipelinePreflight
 } from "../pipeline/pipelineHandoff";
 import {
@@ -21,6 +18,8 @@ import {
   saveBundleSnapshot,
   saveBundleToChosenDirectory
 } from "./bundleIoService";
+import SemanticDiffPanel from "./SemanticDiffPanel";
+import PipelineHandoffSection from "./PipelineHandoffSection";
 
 type ImportExportWorkspaceProps = {
   documentSession: AuthoringDocumentSession | null;
@@ -263,143 +262,15 @@ export default function ImportExportWorkspace({
         <SemanticDiffPanel title="Baseline diff" summaries={baselineDiff} emptyMessage="Choose a baseline to compare semantic changes." />
       </section>
 
-      <section className="authoring-editor-section">
-        <div className="authoring-editor-section__header">
-          <div>
-            <h3>Generation handoff to NP pipeline</h3>
-            <p>
-              This exports a handoff package for the normal NP projection path. It validates the current authoring
-              bundle first, stages canonical files, and points to the standard PowerShell bridge without touching
-              `FinalExec` directly.
-            </p>
-          </div>
-        </div>
-
-        <div className="authoring-form-grid">
-          <label>
-            Recommended handoff folder
-            <input value={handoffDirHint} onChange={(event) => setHandoffDirHint(event.target.value)} />
-          </label>
-
-          <label>
-            Artifact output root
-            <input value={currentBundle.config.artifact.root} readOnly />
-          </label>
-        </div>
-
-        <div className="authoring-preview-grid">
-          <article className="authoring-preview-card">
-            <div className="authoring-preview-card__header">
-              <strong>Preflight</strong>
-              <span>{pipelinePreflight.ready ? "Ready" : "Blocked"}</span>
-            </div>
-            <p>
-              {pipelinePreflight.ready
-                ? "Model and config are clear enough to hand off into the normal NP export path."
-                : "Fix blocking validation errors before creating a projection handoff package."}
-            </p>
-            <small>
-              Errors: {pipelinePreflight.errorCount} | Warnings: {pipelinePreflight.warningCount}
-            </small>
-          </article>
-
-          <article className="authoring-preview-card">
-            <div className="authoring-preview-card__header">
-              <strong>Normal NP command</strong>
-              <span>Projection boundary preserved</span>
-            </div>
-            <pre className="json-pane small">
-              {buildPipelineCommandPreview(handoffDirHint || buildRecommendedHandoffDir(currentBundle), currentBundle.config.artifact.root)}
-            </pre>
-          </article>
-        </div>
-
-        <div className="authoring-inline-actions">
-          <button
-            type="button"
-            disabled={!pipelinePreflight.ready}
-            onClick={() => {
-              downloadPipelineHandoffPackage(
-                currentBundle,
-                bundleLabel,
-                handoffDirHint || buildRecommendedHandoffDir(currentBundle),
-                pipelineDiagnostics
-              );
-              setStatusMessage("Downloaded authoring handoff package for the normal NP pipeline.");
-            }}
-          >
-            Download handoff package
-          </button>
-          <button
-            type="button"
-            className="authoring-secondary-inline"
-            disabled={!pipelinePreflight.ready}
-            onClick={async () => {
-              const result = await savePipelineHandoffPackageToChosenDirectory(
-                currentBundle,
-                bundleLabel,
-                handoffDirHint || buildRecommendedHandoffDir(currentBundle),
-                pipelineDiagnostics
-              );
-              setStatusMessage(
-                result === "saved"
-                  ? "Saved authoring handoff package to the chosen folder."
-                  : "Chosen-folder save is not supported here. Use download instead."
-              );
-            }}
-          >
-            Save handoff package to folder
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function SemanticDiffPanel({
-  title,
-  summaries,
-  emptyMessage
-}: {
-  title: string;
-  summaries: ReturnType<typeof buildSemanticDiff>;
-  emptyMessage: string;
-}): JSX.Element {
-  const totalChanges = summaries.reduce((total, summary) => total + summary.changes.length, 0);
-
-  return (
-    <div className="authoring-preview-stack">
-      <article className="authoring-preview-card">
-        <div className="authoring-preview-card__header">
-          <strong>{title}</strong>
-          <span>{totalChanges} changes</span>
-        </div>
-        {totalChanges === 0 ? (
-          <p>{emptyMessage}</p>
-        ) : (
-          summaries.map((summary) => (
-            <div key={summary.title} className="authoring-diff-section">
-              <strong>{summary.title}</strong>
-              {summary.changes.length === 0 ? (
-                <p>No changes.</p>
-              ) : (
-                <div className="authoring-editor-stack">
-                  {summary.changes.map((change) => (
-                    <article key={`${change.path}-${change.kind}`} className="authoring-diff-card">
-                      <div className="authoring-preview-card__header">
-                        <strong>{change.path}</strong>
-                        <span>{change.kind}</span>
-                      </div>
-                      {change.before !== undefined ? <p>Before: {change.before}</p> : null}
-                      {change.after !== undefined ? <p>After: {change.after}</p> : null}
-                    </article>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))
-        )}
-      </article>
+      <PipelineHandoffSection
+        currentBundle={currentBundle}
+        bundleLabel={bundleLabel}
+        handoffDirHint={handoffDirHint}
+        pipelineDiagnostics={pipelineDiagnostics}
+        pipelinePreflight={pipelinePreflight}
+        onChangeHandoffDirHint={setHandoffDirHint}
+        onStatusMessage={setStatusMessage}
+      />
     </div>
   );
 }
