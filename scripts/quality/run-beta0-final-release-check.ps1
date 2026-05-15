@@ -38,6 +38,43 @@ function Invoke-Gate {
     return $result
 }
 
+function Invoke-PostVerificationWorkspaceCleanup {
+    $startedAt = (Get-Date).ToUniversalTime()
+    $cleanupCommand = "scripts/hygiene/clean-rebuildable-artifacts.ps1"
+    $slimnessCommand = "scripts/hygiene/Test-WorkspaceSlimness.ps1"
+
+    $ErrorActionPreference = "Continue"
+    & pwsh -NoProfile -File $cleanupCommand
+    $cleanupExitCode = $LASTEXITCODE
+    if ($null -eq $cleanupExitCode) { $cleanupExitCode = 0 }
+
+    $slimnessExitCode = $null
+    if ($cleanupExitCode -eq 0) {
+        & pwsh -NoProfile -File $slimnessCommand -RunId $RunId
+        $slimnessExitCode = $LASTEXITCODE
+        if ($null -eq $slimnessExitCode) { $slimnessExitCode = 0 }
+    }
+    $ErrorActionPreference = "Stop"
+
+    $finishedAt = (Get-Date).ToUniversalTime()
+    $status = if ($cleanupExitCode -eq 0 -and $slimnessExitCode -eq 0) { "passed" } else { "failed" }
+    $script:gateResults += [pscustomobject]@{
+        name = "post-verification-workspace-cleanup"
+        command = ($cleanupCommand + "; " + $slimnessCommand + " -RunId " + $RunId)
+        status = $status
+        exitCode = if ($cleanupExitCode -ne 0) { $cleanupExitCode } else { $slimnessExitCode }
+        blocking = $true
+        expectedNonzero = $false
+        startedAt = $startedAt.ToString("o")
+        finishedAt = $finishedAt.ToString("o")
+        durationSeconds = [int]([DateTimeOffset]$finishedAt - [DateTimeOffset]$startedAt).TotalSeconds
+    }
+
+    if ($status -ne "passed") {
+        throw "Post-verification workspace cleanup failed."
+    }
+}
+
 $workspaceRoot = (Resolve-Path ".").Path
 if ([string]::IsNullOrWhiteSpace($RunId)) {
     $RunId = "beta0-final-release-check-" + (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmssfff")
@@ -101,6 +138,8 @@ catch {
         Write-Warning $_.Exception.Message
     }
 }
+
+Invoke-PostVerificationWorkspaceCleanup
 
 Invoke-Gate -Name "beta-release-gate-initial-final" -Command "scripts/quality/run-beta-release-gate.ps1" -AlwaysContinue $true | Out-Null
 Invoke-Gate -Name "final-regression-coverage-audit-refresh" -Command "scripts/quality/run-final-regression-coverage-audit.ps1" -AlwaysContinue $true | Out-Null
