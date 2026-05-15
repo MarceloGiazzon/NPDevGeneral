@@ -5,10 +5,16 @@ param(
     [string]$DockerExecutable = "docker",
     [string]$DockerfilePath = "Dockerfile.ai-beta",
     [int]$BuildTimeoutSeconds = 1800,
-    [int]$RunTimeoutSeconds = 3600
+    [int]$RunTimeoutSeconds = 3600,
+    [int]$ProgressIntervalSeconds = 30
 )
 
 $ErrorActionPreference = "Stop"
+
+function Write-DockerProofMessage {
+    param([string]$Message)
+    Write-Host ("[" + (Get-Date).ToString("HH:mm:ss") + "] docker-linux-proof: " + $Message)
+}
 
 function Resolve-UnderRoot {
     param([string]$Root, [string]$PathValue)
@@ -86,12 +92,15 @@ function Invoke-LoggedCommand {
     $exitCode = $null
     $timedOut = $false
     $errorMessage = $null
+    $progressIntervalSeconds = [Math]::Max(1, $ProgressIntervalSeconds)
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $StdoutPath) | Out-Null
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $StderrPath) | Out-Null
     Remove-Item -LiteralPath $StdoutPath, $StderrPath -Force -ErrorAction SilentlyContinue
 
     try {
         $argumentLine = Join-ProcessArguments $Arguments
+        Write-DockerProofMessage ("START " + $Name + " -> " + $Executable + " " + $argumentLine)
+        Write-DockerProofMessage ("Logs: " + (Convert-ToRepoPath -Root $workspaceRoot -PathValue $StdoutPath) + " | " + (Convert-ToRepoPath -Root $workspaceRoot -PathValue $StderrPath))
         $process = Start-Process `
             -FilePath $Executable `
             -ArgumentList $argumentLine `
@@ -100,18 +109,35 @@ function Invoke-LoggedCommand {
             -PassThru `
             -RedirectStandardOutput $StdoutPath `
             -RedirectStandardError $StderrPath
-        if (-not $process.WaitForExit([Math]::Max(1, $TimeoutSeconds) * 1000)) {
-            $timedOut = $true
-            try {
-                Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        while ($true) {
+            $elapsedBeforeWaitSeconds = [int]([DateTimeOffset](Get-Date).ToUniversalTime() - [DateTimeOffset]$startedAt).TotalSeconds
+            $remainingSeconds = [Math]::Max(1, $TimeoutSeconds - $elapsedBeforeWaitSeconds)
+            $waitSeconds = [Math]::Min($progressIntervalSeconds, $remainingSeconds)
+            if ($process.WaitForExit($waitSeconds * 1000)) {
+                $exitCode = [int]$process.ExitCode
+                break
             }
-            catch {
+
+            $elapsedSeconds = [int]([DateTimeOffset](Get-Date).ToUniversalTime() - [DateTimeOffset]$startedAt).TotalSeconds
+            if ($elapsedSeconds -ge $TimeoutSeconds) {
+                $timedOut = $true
+                try {
+                    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+                }
+                catch {
+                }
+                $exitCode = $null
+                $errorMessage = "Command timed out after " + $TimeoutSeconds + " second(s)."
+                Write-DockerProofMessage ("TIMEOUT " + $Name + " after " + $elapsedSeconds + "s")
+                break
             }
-            $exitCode = $null
-            $errorMessage = "Command timed out after " + $TimeoutSeconds + " second(s)."
-        }
-        else {
-            $exitCode = [int]$process.ExitCode
+
+            $tail = @(Get-LogTail -PathValue $StderrPath -LineCount 3)
+            if ($tail.Count -eq 0) {
+                $tail = @(Get-LogTail -PathValue $StdoutPath -LineCount 3)
+            }
+            $lastLine = if ($tail.Count -gt 0) { [string]$tail[$tail.Count - 1] } else { "no log output yet" }
+            Write-DockerProofMessage ("RUNNING " + $Name + " (" + $elapsedSeconds + "s elapsed, timeout " + $TimeoutSeconds + "s). Last log: " + $lastLine)
         }
     }
     catch {
@@ -121,6 +147,8 @@ function Invoke-LoggedCommand {
 
     $finishedAt = (Get-Date).ToUniversalTime()
     $status = if (-not $timedOut -and [string]::IsNullOrWhiteSpace($errorMessage) -and $null -ne $exitCode -and $exitCode -eq 0) { "passed" } else { "failed" }
+    $durationSeconds = [int]([DateTimeOffset]$finishedAt - [DateTimeOffset]$startedAt).TotalSeconds
+    Write-DockerProofMessage ("END   " + $Name + " => " + $status + " (exit " + $exitCode + ", " + $durationSeconds + "s)")
     return [pscustomobject]@{
         name = $Name
         executable = $Executable
@@ -133,7 +161,7 @@ function Invoke-LoggedCommand {
         status = $status
         startedAt = $startedAt.ToString("o")
         finishedAt = $finishedAt.ToString("o")
-        durationSeconds = [int]([DateTimeOffset]$finishedAt - [DateTimeOffset]$startedAt).TotalSeconds
+        durationSeconds = $durationSeconds
         stdoutPath = Convert-ToRepoPath -Root $workspaceRoot -PathValue $StdoutPath
         stderrPath = Convert-ToRepoPath -Root $workspaceRoot -PathValue $StderrPath
         stdoutTail = Get-LogTail -PathValue $StdoutPath
@@ -167,6 +195,8 @@ $workspaceRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot)
 if ([string]::IsNullOrWhiteSpace($RunId)) {
     $RunId = "docker-linux-proof-" + (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmssfff")
 }
+Write-DockerProofMessage ("Starting. RunId: " + $RunId)
+Write-DockerProofMessage ("Workspace: " + $workspaceRoot)
 
 $script:failures = @()
 $commands = @()
@@ -202,6 +232,7 @@ if ([string]$workflowCompatibility.status -ne "passed") {
 
 $safeRunId = ($RunId.ToLowerInvariant() -replace '[^a-z0-9_.-]', '-')
 $imageTag = "npdev-ai-beta:" + $safeRunId
+Write-DockerProofMessage ("Image tag: " + $imageTag)
 
 $version = Invoke-LoggedCommand `
     -Name "docker-version" `

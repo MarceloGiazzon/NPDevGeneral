@@ -6,20 +6,31 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Write-ReleaseCheckMessage {
+    param([string]$Message)
+    Write-Host ("[" + (Get-Date).ToString("HH:mm:ss") + "] " + $Message)
+}
+
 function Invoke-Gate {
     param(
         [string]$Name,
         [string]$Command,
+        [int]$Index = 0,
+        [int]$Total = 0,
         [bool]$AlwaysContinue = $false,
         [bool]$ExpectedNonzero = $false
     )
     $startedAt = (Get-Date).ToUniversalTime()
+    $prefix = if ($Index -gt 0 -and $Total -gt 0) { "Gate " + $Index + "/" + $Total + " " } else { "" }
+    Write-ReleaseCheckMessage ($prefix + "START " + $Name + " -> " + $Command)
     $ErrorActionPreference = "Continue"
     & pwsh -NoProfile -File $Command -RunId $RunId
     $exitCode = $LASTEXITCODE
     $ErrorActionPreference = "Stop"
     $finishedAt = (Get-Date).ToUniversalTime()
+    $durationSeconds = [int]([DateTimeOffset]$finishedAt - [DateTimeOffset]$startedAt).TotalSeconds
     $status = if ($exitCode -eq 0) { "passed" } elseif ($ExpectedNonzero) { "failed-as-expected" } else { "failed" }
+    Write-ReleaseCheckMessage ($prefix + "END   " + $Name + " => " + $status + " (exit " + $exitCode + ", " + $durationSeconds + "s)")
     $result = [pscustomobject]@{
         name = $Name
         command = ($Command + " -RunId " + $RunId)
@@ -29,7 +40,7 @@ function Invoke-Gate {
         expectedNonzero = $ExpectedNonzero
         startedAt = $startedAt.ToString("o")
         finishedAt = $finishedAt.ToString("o")
-        durationSeconds = [int]([DateTimeOffset]$finishedAt - [DateTimeOffset]$startedAt).TotalSeconds
+        durationSeconds = $durationSeconds
     }
     $script:gateResults += $result
     if ($exitCode -ne 0 -and -not $ContinueOnFailure -and -not $AlwaysContinue) {
@@ -43,16 +54,20 @@ function Invoke-PostVerificationWorkspaceCleanup {
     $cleanupCommand = "scripts/hygiene/clean-rebuildable-artifacts.ps1"
     $slimnessCommand = "scripts/hygiene/Test-WorkspaceSlimness.ps1"
 
+    Write-ReleaseCheckMessage "Post-verification cleanup START -> scripts/hygiene/clean-rebuildable-artifacts.ps1"
     $ErrorActionPreference = "Continue"
     & pwsh -NoProfile -File $cleanupCommand
     $cleanupExitCode = $LASTEXITCODE
     if ($null -eq $cleanupExitCode) { $cleanupExitCode = 0 }
+    Write-ReleaseCheckMessage ("Post-verification cleanup END   => exit " + $cleanupExitCode)
 
     $slimnessExitCode = $null
     if ($cleanupExitCode -eq 0) {
+        Write-ReleaseCheckMessage "Workspace slimness START -> scripts/hygiene/Test-WorkspaceSlimness.ps1"
         & pwsh -NoProfile -File $slimnessCommand -RunId $RunId
         $slimnessExitCode = $LASTEXITCODE
         if ($null -eq $slimnessExitCode) { $slimnessExitCode = 0 }
+        Write-ReleaseCheckMessage ("Workspace slimness END   => exit " + $slimnessExitCode)
     }
     $ErrorActionPreference = "Stop"
 
@@ -79,13 +94,17 @@ $workspaceRoot = (Resolve-Path ".").Path
 if ([string]::IsNullOrWhiteSpace($RunId)) {
     $RunId = "beta0-final-release-check-" + (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmssfff")
 }
+Write-ReleaseCheckMessage ("Beta 0 final release check starting. RunId: " + $RunId)
+Write-ReleaseCheckMessage ("Workspace: " + $workspaceRoot)
 $gateResults = @()
 $failedEarly = $false
 $outRoot = Join-Path $workspaceRoot "scripts/reports/out"
 if (Test-Path -LiteralPath $outRoot -PathType Container) {
+    Write-ReleaseCheckMessage ("Clearing previous JSON reports from " + $outRoot)
     Get-ChildItem -LiteralPath $outRoot -Filter "*.json" -File | Remove-Item -Force
 }
 else {
+    Write-ReleaseCheckMessage ("Creating reports directory " + $outRoot)
     New-Item -ItemType Directory -Force -Path $outRoot | Out-Null
 }
 
@@ -123,10 +142,11 @@ $orderedGates = @(
 )
 
 try {
-    foreach ($gate in $orderedGates) {
+    for ($i = 0; $i -lt $orderedGates.Count; $i++) {
+        $gate = $orderedGates[$i]
         $alwaysContinue = $gate.PSObject.Properties.Name -contains "alwaysContinue" -and [bool]$gate.alwaysContinue
         $expectedNonzero = $gate.PSObject.Properties.Name -contains "expectedNonzero" -and [bool]$gate.expectedNonzero
-        Invoke-Gate -Name $gate.name -Command $gate.command -AlwaysContinue $alwaysContinue -ExpectedNonzero $expectedNonzero | Out-Null
+        Invoke-Gate -Name $gate.name -Command $gate.command -Index ($i + 1) -Total $orderedGates.Count -AlwaysContinue $alwaysContinue -ExpectedNonzero $expectedNonzero | Out-Null
     }
 }
 catch {
@@ -141,12 +161,18 @@ catch {
 
 Invoke-PostVerificationWorkspaceCleanup
 
-Invoke-Gate -Name "beta-release-gate-initial-final" -Command "scripts/quality/run-beta-release-gate.ps1" -AlwaysContinue $true | Out-Null
-Invoke-Gate -Name "final-regression-coverage-audit-refresh" -Command "scripts/quality/run-final-regression-coverage-audit.ps1" -AlwaysContinue $true | Out-Null
-Invoke-Gate -Name "report-schema-validation-post-audit-refresh" -Command "scripts/quality/run-report-schema-validation.ps1" -AlwaysContinue $true | Out-Null
-Invoke-Gate -Name "report-provenance-tests-post-audit-refresh" -Command "scripts/quality/run-report-provenance-tests.ps1" -AlwaysContinue $true | Out-Null
-Invoke-Gate -Name "beta-release-gate" -Command "scripts/quality/run-beta-release-gate.ps1" -AlwaysContinue $true | Out-Null
-Invoke-Gate -Name "beta0-final-closure-gate" -Command "scripts/quality/run-beta0-final-closure-gate.ps1" -AlwaysContinue $true | Out-Null
+$finalGates = @(
+    [pscustomobject]@{ name = "beta-release-gate-initial-final"; command = "scripts/quality/run-beta-release-gate.ps1" },
+    [pscustomobject]@{ name = "final-regression-coverage-audit-refresh"; command = "scripts/quality/run-final-regression-coverage-audit.ps1" },
+    [pscustomobject]@{ name = "report-schema-validation-post-audit-refresh"; command = "scripts/quality/run-report-schema-validation.ps1" },
+    [pscustomobject]@{ name = "report-provenance-tests-post-audit-refresh"; command = "scripts/quality/run-report-provenance-tests.ps1" },
+    [pscustomobject]@{ name = "beta-release-gate"; command = "scripts/quality/run-beta-release-gate.ps1" },
+    [pscustomobject]@{ name = "beta0-final-closure-gate"; command = "scripts/quality/run-beta0-final-closure-gate.ps1" }
+)
+for ($i = 0; $i -lt $finalGates.Count; $i++) {
+    $gate = $finalGates[$i]
+    Invoke-Gate -Name $gate.name -Command $gate.command -Index ($i + 1) -Total $finalGates.Count -AlwaysContinue $true | Out-Null
+}
 
 $closureReportPath = "scripts/reports/out/beta0-final-closure-report.json"
 $closureReport = if (Test-Path -LiteralPath $closureReportPath -PathType Leaf) {
@@ -181,6 +207,7 @@ $report = [pscustomobject]@{
 
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ReportPath) | Out-Null
 $report | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $ReportPath -Encoding UTF8
+Write-ReleaseCheckMessage ("Final release check report written: " + $ReportPath)
 
 if ($overallStatus -eq "passed") {
     Write-Host ("Beta 0 final release check passed. Report: " + $ReportPath)
