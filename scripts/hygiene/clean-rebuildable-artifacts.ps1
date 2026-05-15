@@ -51,6 +51,47 @@ function Test-PathInsideWorkspace([string]$TargetPath) {
     return $target.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
+function Get-OutsideRepoArtifactRoot {
+    $workspace = Get-Item -LiteralPath $WorkspaceRoot
+    $outsideRepoRoot = Join-Path $workspace.Parent.FullName ($workspace.Name + "__OutsideRepo")
+    $artifactRoot = Join-Path $outsideRepoRoot ("workspace-artifacts\" + (Get-Date).ToString("yyyyMMdd_HHmmss") + "\workspace-archives")
+    return Normalize-NPDevPath $artifactRoot
+}
+
+function Assert-OutsideRepoTarget([string]$TargetPath) {
+    $workspace = Get-Item -LiteralPath $WorkspaceRoot
+    $outsideRepoRoot = Normalize-NPDevPath (Join-Path $workspace.Parent.FullName ($workspace.Name + "__OutsideRepo"))
+    $target = Normalize-NPDevPath $TargetPath
+    $root = $outsideRepoRoot
+    if (-not $root.EndsWith("\")) {
+        $root += "\"
+    }
+    if (-not $target.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw ("Refusing to move archive outside the outside-repo artifact root: " + $target)
+    }
+}
+
+function Get-WorkspaceArchiveTargets {
+    $archives = @(Get-ChildItem -LiteralPath $WorkspaceRoot -Recurse -Force -File -Include "*.zip", "*.7z", "*.rar" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch "\\.git\\" })
+
+    return @($archives | ForEach-Object {
+            $normalizedPath = Normalize-NPDevPath $_.FullName
+            if (-not (Test-PathInsideWorkspace $normalizedPath)) {
+                throw ("Refusing to relocate archive outside workspace: " + $normalizedPath)
+            }
+
+            [pscustomobject]@{
+                path = $normalizedPath
+                relativePath = Get-NPDevWorkspaceRelativePath $WorkspaceRoot $normalizedPath
+                category = "workspace-archive"
+                isDirectory = $false
+                fileCount = 1
+                sizeBytes = [int64]$_.Length
+            }
+        })
+}
+
 function Assert-RebuildableTarget([string]$TargetPath, [string]$Category) {
     $target = Normalize-NPDevPath $TargetPath
     if (-not (Test-PathInsideWorkspace $target)) {
@@ -146,9 +187,47 @@ foreach ($candidate in $extraTargets) {
     }
 }
 
+$archiveTargets = [System.Collections.Generic.List[object]]::new()
+foreach ($target in @(Get-WorkspaceArchiveTargets)) {
+    [void]$archiveTargets.Add($target)
+}
+$relocatedArchiveTargets = [System.Collections.Generic.List[object]]::new()
+$failedArchiveRelocations = [System.Collections.Generic.List[object]]::new()
+$archiveArtifactRoot = if ($archiveTargets.Count -gt 0) { Get-OutsideRepoArtifactRoot } else { "" }
+foreach ($candidate in $archiveTargets) {
+    if ($DryRun) {
+        continue
+    }
+    if (-not (Test-Path -LiteralPath $candidate.path -PathType Leaf)) {
+        continue
+    }
+
+    try {
+        $destination = Join-Path $archiveArtifactRoot $candidate.relativePath
+        Assert-OutsideRepoTarget -TargetPath $destination
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+        Move-Item -LiteralPath $candidate.path -Destination $destination
+        [void]$relocatedArchiveTargets.Add([pscustomobject]@{
+                path = $candidate.path
+                relativePath = $candidate.relativePath
+                destination = Normalize-NPDevPath $destination
+                sizeBytes = $candidate.sizeBytes
+            })
+    }
+    catch {
+        [void]$failedArchiveRelocations.Add([pscustomobject]@{
+                relativePath = $candidate.relativePath
+                category = $candidate.category
+                error = $_.Exception.Message
+            })
+    }
+}
+
 $extraSizeMeasure = $extraTargets | Measure-Object -Property sizeBytes -Sum
 $extraBytes = if ($null -eq $extraSizeMeasure -or $null -eq $extraSizeMeasure.Sum) { 0 } else { [int64]$extraSizeMeasure.Sum }
-$failedCount = @($workspaceCleanupReport.failedRemovals).Count + $failedExtraRemovals.Count
+$archiveSizeMeasure = $archiveTargets | Measure-Object -Property sizeBytes -Sum
+$archiveBytes = if ($null -eq $archiveSizeMeasure -or $null -eq $archiveSizeMeasure.Sum) { 0 } else { [int64]$archiveSizeMeasure.Sum }
+$failedCount = @($workspaceCleanupReport.failedRemovals).Count + $failedExtraRemovals.Count + $failedArchiveRelocations.Count
 
 $report = [pscustomobject]@{
     generatedAt = (Get-Date).ToString("o")
@@ -163,12 +242,19 @@ $report = [pscustomobject]@{
         extraTargets = $extraTargets.Count
         extraTargetsRemoved = $removedExtraTargets.Count
         totalExtraSizeMB = [math]::Round($extraBytes / 1MB, 2)
+        archiveTargets = $archiveTargets.Count
+        archiveTargetsRelocated = $relocatedArchiveTargets.Count
+        totalArchiveSizeMB = [math]::Round($archiveBytes / 1MB, 2)
+        archiveArtifactRoot = $archiveArtifactRoot
         failedRemovals = $failedCount
     }
     baseCleanup = $workspaceCleanupReport
     extraTargets = $extraTargets
     removedExtraTargets = $removedExtraTargets
     failedExtraRemovals = $failedExtraRemovals
+    archiveTargets = $archiveTargets
+    relocatedArchiveTargets = $relocatedArchiveTargets
+    failedArchiveRelocations = $failedArchiveRelocations
 }
 
 Write-NPDevJsonFile $ReportPath $report
@@ -180,5 +266,5 @@ elseif ($failedCount -gt 0) {
     Write-NPDevWarn ("Rebuildable artifact cleanup completed with " + $failedCount + " failed removal(s). Report: " + $ReportPath)
 }
 else {
-    Write-NPDevOk ("Rebuildable artifact cleanup removed workspace state plus " + $removedExtraTargets.Count + " RuntimeHost-specific target(s). Report: " + $ReportPath)
+    Write-NPDevOk ("Rebuildable artifact cleanup removed workspace state plus " + $removedExtraTargets.Count + " RuntimeHost-specific target(s) and relocated " + $relocatedArchiveTargets.Count + " archive(s). Report: " + $ReportPath)
 }
