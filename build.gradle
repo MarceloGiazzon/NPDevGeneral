@@ -347,7 +347,9 @@ tasks.register('validateReports') {
                 ['report-bootstrap-and-regeneration', 'schemas/ai/report-bootstrap-and-regeneration-report.schema.json', 'scripts/reports/out/report-bootstrap-and-regeneration-report.json'],
                 ['scenario-scope-reconciliation', 'schemas/ai/scenario-scope-reconciliation-report.schema.json', 'scripts/reports/out/scenario-scope-reconciliation-report.json'],
                 ['runtimehost-integration-infrastructure', 'schemas/ai/runtimehost-integration-infrastructure-report.schema.json', 'scripts/reports/out/runtimehost-integration-infrastructure-report.json'],
-                ['phase2-residual-fidelity', 'schemas/ai/phase2-residual-fidelity-report.schema.json', 'scripts/reports/out/phase2-residual-fidelity-report.json']
+                ['phase2-residual-fidelity', 'schemas/ai/phase2-residual-fidelity-report.schema.json', 'scripts/reports/out/phase2-residual-fidelity-report.json'],
+                ['maturity-score', 'schemas/ai/maturity-score-report.schema.json', 'scripts/reports/out/maturity-score-report.json'],
+                ['script-inventory', 'schemas/ai/script-inventory-report.schema.json', 'scripts/reports/out/script-inventory-report.json']
         ]
         def failures = []
         def validated = []

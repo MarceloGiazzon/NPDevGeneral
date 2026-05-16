@@ -78,15 +78,15 @@ function Read-TestSuiteResult {
 
 function Restore-TraceStoreEvidenceFromCheckpointArchive {
     param([string]$Root, [string]$PathValue)
-    $targetPath = Resolve-WorkspacePath -Root $Root -PathValue $PathValue
-    if (Test-Path -LiteralPath $targetPath -PathType Leaf) {
-        return
+    $workspaceTargetPath = Resolve-WorkspacePath -Root $Root -PathValue $PathValue
+    if (Test-Path -LiteralPath $workspaceTargetPath -PathType Leaf) {
+        return $PathValue
     }
     $workspace = Get-Item -LiteralPath $Root
     $defaultArchive = Join-Path (Join-Path (Join-Path $workspace.Parent.FullName ($workspace.Name + "__OutsideRepo")) "temp") "last-roadmap-cp1-review.zip"
     $archivePath = if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_CP1_EVIDENCE_ZIP)) { $env:NPDEV_CP1_EVIDENCE_ZIP } else { $defaultArchive }
     if (-not (Test-Path -LiteralPath $archivePath -PathType Leaf)) {
-        return
+        return $PathValue
     }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive = [System.IO.Compression.ZipFile]::OpenRead($archivePath)
@@ -94,10 +94,13 @@ function Restore-TraceStoreEvidenceFromCheckpointArchive {
         $entryPath = "artifacts/" + ($PathValue -replace "\\", "/")
         $entry = @($archive.Entries | Where-Object { $_.FullName -eq $entryPath } | Select-Object -First 1)
         if ($entry.Count -eq 0) {
-            return
+            return $PathValue
         }
+        $outsideRepoRoot = Join-Path $workspace.Parent.FullName ($workspace.Name + "__OutsideRepo")
+        $targetPath = Join-Path (Join-Path $outsideRepoRoot "temp\phase2-residual-fidelity") $PathValue
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $targetPath) | Out-Null
         [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry[0], $targetPath, $true)
+        return $targetPath
     }
     finally {
         $archive.Dispose()
@@ -139,7 +142,7 @@ try {
     $postgresDigestText = Read-Text -Root $workspaceRootPath -PathValue $postgresDigestPath
     $runtimeDigestText = Read-Text -Root $workspaceRootPath -PathValue $runtimeDigestPath
     $runtimeHostProjectDigestText = Read-Text -Root $workspaceRootPath -PathValue $runtimeHostProjectDigestPath
-    Restore-TraceStoreEvidenceFromCheckpointArchive -Root $workspaceRootPath -PathValue $traceStoreTestResultPath
+    $traceStoreTestResultPath = Restore-TraceStoreEvidenceFromCheckpointArchive -Root $workspaceRootPath -PathValue $traceStoreTestResultPath
     $traceStoreTestResult = Read-TestSuiteResult -Root $workspaceRootPath -PathValue $traceStoreTestResultPath
 
     $postgresTestSupportReuseEnabled = $supportText.Contains(".withReuse(true)")

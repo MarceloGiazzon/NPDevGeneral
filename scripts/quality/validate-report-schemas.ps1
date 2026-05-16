@@ -1,6 +1,7 @@
 param(
     [string]$RunId = "",
-    [string]$ReportPath = "scripts/reports/out/required-report-schema-validation-report.json"
+    [string]$ReportPath = "scripts/reports/out/required-report-schema-validation-report.json",
+    [switch]$RequireAllMaturityReports
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,27 +13,29 @@ function Read-JsonFile {
 
 function New-RequiredReportRegistry {
     return @(
-        [pscustomobject]@{ name = "beta0-state-truth"; reportPath = "scripts/reports/out/beta0-state-truth-report.json"; schemaPath = "schemas/ai/beta0-state-truth-report.schema.json" },
-        [pscustomobject]@{ name = "maturity-max-roadmap-boundary"; reportPath = "scripts/reports/out/maturity-max-roadmap-boundary-report.json"; schemaPath = "schemas/ai/maturity-max-roadmap-boundary-report.schema.json" },
-        [pscustomobject]@{ name = "phase2-residual-fidelity"; reportPath = "scripts/reports/out/phase2-residual-fidelity-report.json"; schemaPath = "schemas/ai/phase2-residual-fidelity-report.schema.json" },
-        [pscustomobject]@{ name = "runtimehost-integration-infrastructure"; reportPath = "scripts/reports/out/runtimehost-integration-infrastructure-report.json"; schemaPath = "schemas/ai/runtimehost-integration-infrastructure-report.schema.json" },
-        [pscustomobject]@{ name = "scenario-scope-reconciliation"; reportPath = "scripts/reports/out/scenario-scope-reconciliation-report.json"; schemaPath = "schemas/ai/scenario-scope-reconciliation-report.schema.json" },
-        [pscustomobject]@{ name = "postgres-fidelity"; reportPath = "scripts/reports/out/postgres-fidelity-report.json"; schemaPath = "schemas/ai/postgres-fidelity-report.schema.json" },
-        [pscustomobject]@{ name = "runtimehost-postgres-profile-fidelity"; reportPath = "scripts/reports/out/runtimehost-postgres-profile-fidelity-report.json"; schemaPath = "schemas/ai/runtimehost-postgres-profile-fidelity-report.schema.json" },
-        [pscustomobject]@{ name = "runtime-e2e-fidelity"; reportPath = "scripts/reports/out/runtime-e2e-fidelity-report.json"; schemaPath = "schemas/ai/runtime-e2e-fidelity-report.schema.json" },
-        [pscustomobject]@{ name = "scenario-coherence"; reportPath = "scripts/reports/out/scenario-coherence-report.json"; schemaPath = "schemas/ai/scenario-coherence-report.schema.json" },
-        [pscustomobject]@{ name = "boundary-lock"; reportPath = "scripts/reports/out/boundary-lock-report.json"; schemaPath = "schemas/ai/boundary-lock-report.schema.json" },
-        [pscustomobject]@{ name = "ai-model-to-dsl-mapping"; reportPath = "scripts/reports/out/ai-model-to-dsl-mapping-report.json"; schemaPath = "schemas/ai/ai-model-to-dsl-mapping-report.schema.json" },
-        [pscustomobject]@{ name = "post-beta0-maturity-closure"; reportPath = "scripts/reports/out/post-beta0-maturity-closure-report.json"; schemaPath = "schemas/ai/post-beta0-maturity-closure-report.schema.json" },
-        [pscustomobject]@{ name = "schema-consolidation"; reportPath = "scripts/reports/out/schema-consolidation-report.json"; schemaPath = "schemas/ai/schema-consolidation-report.schema.json" },
-        [pscustomobject]@{ name = "stateful-additive-migrations"; reportPath = "scripts/reports/out/stateful-additive-migrations-report.json"; schemaPath = "schemas/ai/stateful-additive-migrations-report.schema.json" },
-        [pscustomobject]@{ name = "incremental-migration-testing"; reportPath = "scripts/reports/out/incremental-migration-testing-report.json"; schemaPath = "schemas/ai/incremental-migration-testing-report.schema.json" },
-        [pscustomobject]@{ name = "trusted-source-security"; reportPath = "scripts/reports/out/trusted-source-security-report.json"; schemaPath = "schemas/ai/trusted-source-security-report.schema.json" },
-        [pscustomobject]@{ name = "shift-left-ai-safety"; reportPath = "scripts/reports/out/shift-left-ai-safety-report.json"; schemaPath = "schemas/ai/shift-left-ai-safety-report.schema.json" },
-        [pscustomobject]@{ name = "custom-ux-extensibility"; reportPath = "scripts/reports/out/custom-ux-extensibility-report.json"; schemaPath = "schemas/ai/custom-ux-extensibility-report.schema.json" },
-        [pscustomobject]@{ name = "editor-decomplexification"; reportPath = "scripts/reports/out/editor-decomplexification-report.json"; schemaPath = "schemas/ai/editor-decomplexification-report.schema.json" },
-        [pscustomobject]@{ name = "dsl-parser-robustness"; reportPath = "scripts/reports/out/dsl-parser-robustness-report.json"; schemaPath = "schemas/ai/dsl-parser-robustness-report.schema.json" },
-        [pscustomobject]@{ name = "maturity-max-final-closure"; reportPath = "scripts/reports/out/maturity-max-final-closure-report.json"; schemaPath = "schemas/ai/maturity-max-final-closure-report.schema.json" }
+        [pscustomobject]@{ name = "beta0-state-truth"; reportPath = "scripts/reports/out/beta0-state-truth-report.json"; schemaPath = "schemas/ai/beta0-state-truth-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "maturity-max-roadmap-boundary"; reportPath = "scripts/reports/out/maturity-max-roadmap-boundary-report.json"; schemaPath = "schemas/ai/maturity-max-roadmap-boundary-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "phase2-residual-fidelity"; reportPath = "scripts/reports/out/phase2-residual-fidelity-report.json"; schemaPath = "schemas/ai/phase2-residual-fidelity-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "maturity-score"; reportPath = "scripts/reports/out/maturity-score-report.json"; schemaPath = "schemas/ai/maturity-score-report.schema.json"; requiredForCheckpoint1 = $true },
+        [pscustomobject]@{ name = "script-inventory"; reportPath = "scripts/reports/out/script-inventory-report.json"; schemaPath = "schemas/ai/script-inventory-report.schema.json"; requiredForCheckpoint1 = $true },
+        [pscustomobject]@{ name = "runtimehost-integration-infrastructure"; reportPath = "scripts/reports/out/runtimehost-integration-infrastructure-report.json"; schemaPath = "schemas/ai/runtimehost-integration-infrastructure-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "scenario-scope-reconciliation"; reportPath = "scripts/reports/out/scenario-scope-reconciliation-report.json"; schemaPath = "schemas/ai/scenario-scope-reconciliation-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "postgres-fidelity"; reportPath = "scripts/reports/out/postgres-fidelity-report.json"; schemaPath = "schemas/ai/postgres-fidelity-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "runtimehost-postgres-profile-fidelity"; reportPath = "scripts/reports/out/runtimehost-postgres-profile-fidelity-report.json"; schemaPath = "schemas/ai/runtimehost-postgres-profile-fidelity-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "runtime-e2e-fidelity"; reportPath = "scripts/reports/out/runtime-e2e-fidelity-report.json"; schemaPath = "schemas/ai/runtime-e2e-fidelity-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "scenario-coherence"; reportPath = "scripts/reports/out/scenario-coherence-report.json"; schemaPath = "schemas/ai/scenario-coherence-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "boundary-lock"; reportPath = "scripts/reports/out/boundary-lock-report.json"; schemaPath = "schemas/ai/boundary-lock-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "ai-model-to-dsl-mapping"; reportPath = "scripts/reports/out/ai-model-to-dsl-mapping-report.json"; schemaPath = "schemas/ai/ai-model-to-dsl-mapping-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "post-beta0-maturity-closure"; reportPath = "scripts/reports/out/post-beta0-maturity-closure-report.json"; schemaPath = "schemas/ai/post-beta0-maturity-closure-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "schema-consolidation"; reportPath = "scripts/reports/out/schema-consolidation-report.json"; schemaPath = "schemas/ai/schema-consolidation-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "stateful-additive-migrations"; reportPath = "scripts/reports/out/stateful-additive-migrations-report.json"; schemaPath = "schemas/ai/stateful-additive-migrations-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "incremental-migration-testing"; reportPath = "scripts/reports/out/incremental-migration-testing-report.json"; schemaPath = "schemas/ai/incremental-migration-testing-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "trusted-source-security"; reportPath = "scripts/reports/out/trusted-source-security-report.json"; schemaPath = "schemas/ai/trusted-source-security-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "shift-left-ai-safety"; reportPath = "scripts/reports/out/shift-left-ai-safety-report.json"; schemaPath = "schemas/ai/shift-left-ai-safety-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "custom-ux-extensibility"; reportPath = "scripts/reports/out/custom-ux-extensibility-report.json"; schemaPath = "schemas/ai/custom-ux-extensibility-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "editor-decomplexification"; reportPath = "scripts/reports/out/editor-decomplexification-report.json"; schemaPath = "schemas/ai/editor-decomplexification-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "dsl-parser-robustness"; reportPath = "scripts/reports/out/dsl-parser-robustness-report.json"; schemaPath = "schemas/ai/dsl-parser-robustness-report.schema.json"; requiredForCheckpoint1 = $false },
+        [pscustomobject]@{ name = "maturity-max-final-closure"; reportPath = "scripts/reports/out/maturity-max-final-closure-report.json"; schemaPath = "schemas/ai/maturity-max-final-closure-report.schema.json"; requiredForCheckpoint1 = $false }
     )
 }
 
@@ -81,6 +84,7 @@ function Invoke-RequiredReportSchemaValidation {
         name = $RequiredReport.name
         reportPath = $RequiredReport.reportPath
         schemaPath = $RequiredReport.schemaPath
+        required = ($RequireAllMaturityReports -or [bool]$RequiredReport.requiredForCheckpoint1)
         exists = (Test-Path -Path $RequiredReport.reportPath -PathType Leaf)
         reportStatus = $status
         schemaStatus = $schemaStatus
@@ -101,9 +105,9 @@ New-Item -ItemType Directory -Force -Path $validationRoot | Out-Null
 
 $requiredReports = New-RequiredReportRegistry
 $results = @($requiredReports | ForEach-Object { Invoke-RequiredReportSchemaValidation $_ $validationRoot })
-$missing = @($results | Where-Object { -not $_.exists })
-$failed = @($results | Where-Object { $_.exists -and $_.reportStatus -ne "passed" })
-$schemaInvalid = @($results | Where-Object { $_.schemaStatus -ne "passed" })
+$missing = @($results | Where-Object { $_.required -and -not $_.exists })
+$failed = @($results | Where-Object { $_.required -and $_.exists -and $_.reportStatus -ne "passed" })
+$schemaInvalid = @($results | Where-Object { $_.required -and $_.schemaStatus -ne "passed" })
 $overallStatus = if ($missing.Count -eq 0 -and $failed.Count -eq 0 -and $schemaInvalid.Count -eq 0) { "passed" } else { "failed" }
 
 $report = [pscustomobject]@{

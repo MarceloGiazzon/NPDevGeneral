@@ -106,7 +106,7 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ReportPath) | Out
 $provisionalReport | ConvertTo-Json -Depth 60 | Set-Content -LiteralPath $ReportPath -Encoding UTF8
 
 $commands += Invoke-ClosureCommand "npdev-report-bootstrap" "./npdev report bootstrap" (Join-Path $outputRoot "03-npdev-report-bootstrap.txt")
-$commands += Invoke-ClosureCommand "required-report-schema-validation" "pwsh -NoProfile -File scripts/quality/validate-report-schemas.ps1" (Join-Path $outputRoot "04-required-report-schema-validation.txt")
+$commands += Invoke-ClosureCommand "required-report-schema-validation" "pwsh -NoProfile -File scripts/quality/validate-report-schemas.ps1 -RequireAllMaturityReports" (Join-Path $outputRoot "04-required-report-schema-validation.txt")
 $commands += Invoke-ClosureCommand "final-evidence-bundle-manifest" "pwsh -NoProfile -File scripts/quality/generate-final-evidence-bundle.ps1" (Join-Path $outputRoot "05-final-evidence-bundle-manifest.txt")
 $commands += Invoke-ClosureCommand "report-schema-validation" "pwsh -NoProfile -File scripts/quality/run-report-schema-validation.ps1" (Join-Path $outputRoot "06-report-schema-validation.txt")
 

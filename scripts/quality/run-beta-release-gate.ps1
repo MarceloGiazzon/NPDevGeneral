@@ -169,6 +169,7 @@ function Test-AllowedGeneratedEvidenceDirtyPath {
     param([string]$PathValue)
     $normalized = ([string]$PathValue) -replace "\\", "/"
     if ($normalized -match "^scripts/reports/out/[^/]+\.(json|log)$") { return $true }
+    if ($normalized -match "^scripts/reports/releases/") { return $true }
     return $false
 }
 
@@ -655,7 +656,7 @@ $manifest = [pscustomobject]@{
         allowedGeneratedEvidenceDirtyFileCount = [int]$dirty.allowedGeneratedEvidenceDirtyFileCount
         allowedGeneratedEvidenceDirtyPaths = @($dirty.allowedGeneratedEvidenceDirtyPaths)
         dirtyPaths = @($dirty.dirtyPaths)
-        generatedReportDirtinessPolicy = "dirty paths under scripts/reports/out/*.json and scripts/reports/out/*.log are generated evidence and do not block official eligibility; workspace temp output must live outside NPDev_General."
+        generatedReportDirtinessPolicy = "dirty paths under scripts/reports/out/*.json, scripts/reports/out/*.log, and scripts/reports/releases/** are generated release evidence and do not block official eligibility; workspace temp output must live outside NPDev_General."
         workspaceFingerprint = $workspaceFingerprint
     }
     candidateReady = $candidateReady

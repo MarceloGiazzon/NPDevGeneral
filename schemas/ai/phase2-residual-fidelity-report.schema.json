@@ -71,7 +71,8 @@
       "const": true
     },
     "traceStoreTestResultPath": {
-      "const": "NPDevKernel/adapters/tracestore-postgres/build/test-results/test/TEST-com.npdev.adapters.tracestore.postgres.PostgresTraceStoreTest.xml"
+      "type": "string",
+      "minLength": 1
     },
     "linuxCiIncludesTraceStore": {
       "const": true

@@ -120,6 +120,12 @@ if (Test-Path -LiteralPath "scripts/reports/out/maturity-max-roadmap-boundary-re
 if (Test-Path -LiteralPath "scripts/reports/out/phase2-residual-fidelity-report.json" -PathType Leaf) {
     $cases += Invoke-ReportValidation "phase2-residual-fidelity-report" "schemas/ai/phase2-residual-fidelity-report.schema.json" "scripts/reports/out/phase2-residual-fidelity-report.json" $true
 }
+if (Test-Path -LiteralPath "scripts/reports/out/maturity-score-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "maturity-score-report" "schemas/ai/maturity-score-report.schema.json" "scripts/reports/out/maturity-score-report.json" $true
+}
+if (Test-Path -LiteralPath "scripts/reports/out/script-inventory-report.json" -PathType Leaf) {
+    $cases += Invoke-ReportValidation "script-inventory-report" "schemas/ai/script-inventory-report.schema.json" "scripts/reports/out/script-inventory-report.json" $true
+}
 if (Test-Path -LiteralPath "scripts/reports/out/runtimehost-integration-infrastructure-report.json" -PathType Leaf) {
     $cases += Invoke-ReportValidation "runtimehost-integration-infrastructure-report" "schemas/ai/runtimehost-integration-infrastructure-report.schema.json" "scripts/reports/out/runtimehost-integration-infrastructure-report.json" $true
 }

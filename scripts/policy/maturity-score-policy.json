@@ -1,0 +1,173 @@
+{
+  "schemaVersion": "npdev-maturity-score-policy.v1",
+  "scoreScale": "percent",
+  "maxClaimWithoutExplicitCapExplanation": 95,
+  "profiles": [
+    "beta0",
+    "product"
+  ],
+  "areas": [
+    {
+      "id": "release-evidence-truth",
+      "name": "Release evidence truth",
+      "weight": 15,
+      "reports": [
+        "scripts/reports/out/beta-release-gate-report.json",
+        "scripts/reports/out/beta0-final-closure-report.json",
+        "scripts/reports/out/report-schema-validation-report.json",
+        "scripts/reports/out/report-provenance-tests-report.json",
+        "scripts/reports/out/workspace-cleanliness-report.json"
+      ]
+    },
+    {
+      "id": "cross-platform-reproducibility",
+      "name": "Cross-platform reproducibility",
+      "weight": 12,
+      "reports": [
+        "scripts/reports/out/docker-linux-parity-report.json",
+        "scripts/reports/out/docker-linux-proof-tests-report.json",
+        "scripts/reports/out/ai-beta-reproducibility-report.json"
+      ]
+    },
+    {
+      "id": "runtimehost-integration",
+      "name": "RuntimeHost integration",
+      "weight": 15,
+      "reports": [
+        "scripts/reports/out/runtimehost-staged-jar-preflight-report.json",
+        "scripts/reports/out/runtime-null-context-tests-report.json",
+        "scripts/reports/out/phase2-residual-fidelity-report.json",
+        "scripts/reports/out/runtimehost-integration-infrastructure-report.json"
+      ]
+    },
+    {
+      "id": "ai-model-to-dsl-generated-app-flow",
+      "name": "AI model to DSL to generated app flow",
+      "weight": 12,
+      "reports": [
+        "scripts/reports/out/ai-beta-gate-report.json",
+        "scripts/reports/out/ai-model-to-dsl-mapping-report.json",
+        "scripts/reports/out/sample-matrix-report.json",
+        "scripts/reports/out/generated-app-build-report.json",
+        "scripts/reports/out/generated-app-boot-report.json"
+      ]
+    },
+    {
+      "id": "schema-dsl-strictness",
+      "name": "Schema and DSL strictness",
+      "weight": 10,
+      "reports": [
+        "scripts/reports/out/ai-schema-validation-report.json",
+        "scripts/reports/out/schema-validation-report.json",
+        "scripts/reports/out/schema-consolidation-report.json",
+        "scripts/reports/out/dsl-parser-robustness-report.json",
+        "scripts/reports/out/stateful-additive-migrations-report.json",
+        "scripts/reports/out/incremental-migration-testing-report.json"
+      ]
+    },
+    {
+      "id": "security-trusted-source",
+      "name": "Security and trusted source",
+      "weight": 10,
+      "reports": [
+        "scripts/reports/out/ai-command-policy-report.json",
+        "scripts/reports/out/controlled-command-runner-tests-report.json",
+        "scripts/reports/out/trusted-source-beta0-proof-report.json",
+        "scripts/reports/out/trusted-source-security-report.json"
+      ]
+    },
+    {
+      "id": "custom-procedure-panel-support",
+      "name": "Custom procedure and custom panel support",
+      "weight": 8,
+      "reports": [
+        "scripts/reports/out/custom-panel-validation-report.json",
+        "scripts/reports/out/custom-procedure-validation-report.json",
+        "scripts/reports/out/custom-ux-extensibility-report.json"
+      ]
+    },
+    {
+      "id": "frontend-editor-usability",
+      "name": "Frontend and editor usability",
+      "weight": 8,
+      "reports": [
+        "scripts/reports/out/frontend-gate-report.json",
+        "scripts/reports/out/frontend-gate-tests-report.json",
+        "scripts/reports/out/editor-decomplexification-report.json"
+      ]
+    },
+    {
+      "id": "ci-speed-maintainability",
+      "name": "CI speed and maintainability",
+      "weight": 5,
+      "reports": [
+        "scripts/reports/out/portable-tooling-report.json",
+        "scripts/reports/out/gradle-native-validation-report.json",
+        "scripts/reports/out/post-beta0-maturity-closure-report.json"
+      ]
+    },
+    {
+      "id": "human-product-validation",
+      "name": "Human and product validation",
+      "weight": 5,
+      "reports": [
+        "scripts/reports/out/post-beta0-maturity-closure-report.json",
+        "scripts/reports/out/final-regression-coverage-audit-report.json"
+      ]
+    }
+  ],
+  "caps": [
+    {
+      "id": "trusted-source-deferred",
+      "profiles": {
+        "product": 94
+      },
+      "reason": "Trusted-source scenarios are deferred by Beta0 Path B and cannot support a near-100 product claim."
+    },
+    {
+      "id": "custom-procedure-or-panel-incomplete",
+      "profiles": {
+        "product": 95
+      },
+      "reason": "Custom procedure and custom panel support must be fully implemented or explicitly excluded before product maturity can exceed this cap."
+    },
+    {
+      "id": "fixture-only-sample-gaps",
+      "profiles": {
+        "beta0": 96,
+        "product": 94
+      },
+      "reason": "Fixture-only sample gaps reduce sample-completeness confidence until resolved or explicitly justified."
+    },
+    {
+      "id": "missing-real-participant-validation",
+      "profiles": {
+        "product": 97
+      },
+      "reason": "Real participant validation is required for 99%+ product maturity."
+    },
+    {
+      "id": "missing-independent-audit",
+      "profiles": {
+        "product": 98
+      },
+      "reason": "Independent audit sign-off is required for 99%+ product maturity."
+    },
+    {
+      "id": "unproven-branch-protection",
+      "profiles": {
+        "beta0": 98,
+        "product": 98
+      },
+      "reason": "Required CI branch protection must be externally proven before release confidence can exceed this cap."
+    },
+    {
+      "id": "phase2-residual-fidelity-not-passing",
+      "profiles": {
+        "beta0": 95,
+        "product": 92
+      },
+      "reason": "Checkpoint 1 Postgres/Linux residual fidelity evidence must pass before higher maturity claims are allowed."
+    }
+  ]
+}

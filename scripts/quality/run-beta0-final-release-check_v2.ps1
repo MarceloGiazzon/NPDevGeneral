@@ -4,7 +4,9 @@ param(
     [string]$RunId = "",
     [switch]$SkipFastPreflight,
     [string]$PreflightReportPath = "scripts/reports/out/beta0-final-release-preflight-report.json",
-    [string]$WorkspaceRoot = ""
+    [string]$WorkspaceRoot = "",
+    [string]$ReleaseEvidenceArchiveRoot = "",
+    [switch]$SkipReleaseEvidencePublish
 )
 
 $ErrorActionPreference = "Stop"
@@ -113,6 +115,7 @@ function Test-AllowedGeneratedEvidenceDirtyPath {
     param([string]$PathValue)
     $normalized = ([string]$PathValue) -replace "\\", "/"
     if ($normalized -match "^scripts/reports/out/[^/]+\.(json|log)$") { return $true }
+    if ($normalized -match "^scripts/reports/releases/") { return $true }
     return $false
 }
 
@@ -196,7 +199,7 @@ function Write-PreflightReport {
         durationSeconds = [int]([DateTimeOffset]$FinishedAt - [DateTimeOffset]$StartedAt).TotalSeconds
         checks = @($Checks)
         blockers = @($Blockers)
-        generatedEvidenceDirtinessPolicy = "Dirty paths under scripts/reports/out/*.json and scripts/reports/out/*.log are generated evidence and do not block the fast preflight; source/temp files inside the repository do block it."
+        generatedEvidenceDirtinessPolicy = "Dirty paths under scripts/reports/out/*.json, scripts/reports/out/*.log, and scripts/reports/releases/** are generated release evidence and do not block the fast preflight; source/temp files inside the repository do block it."
     }
 
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Path) | Out-Null
@@ -454,6 +457,178 @@ function Write-EarlyFailureReleaseCheckReport {
 }
 
 
+
+function Get-Beta0RelativePathIfUnderWorkspace {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$WorkspaceRootValue,
+        [Parameter(Mandatory = $true)]
+        [string]$PathValue
+    )
+
+    $workspaceFull = [System.IO.Path]::GetFullPath($WorkspaceRootValue)
+    $pathFull = [System.IO.Path]::GetFullPath($PathValue)
+    if (-not $workspaceFull.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
+        $workspaceFull = $workspaceFull + [System.IO.Path]::DirectorySeparatorChar
+    }
+
+    if ($pathFull.StartsWith($workspaceFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return (($pathFull.Substring($workspaceFull.Length)) -replace "\\", "/")
+    }
+
+    return $pathFull
+}
+
+function Resolve-Beta0PathAgainstWorkspace {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$WorkspaceRootValue,
+        [Parameter(Mandatory = $true)]
+        [string]$PathValue
+    )
+
+    if ([System.IO.Path]::IsPathRooted($PathValue)) {
+        return [System.IO.Path]::GetFullPath($PathValue)
+    }
+
+    return [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRootValue $PathValue))
+}
+
+function Copy-Beta0DirectoryContents {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SourceDirectory,
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationDirectory
+    )
+
+    if (-not (Test-Path -LiteralPath $SourceDirectory -PathType Container)) {
+        throw ("Source directory not found: " + $SourceDirectory)
+    }
+
+    New-Item -ItemType Directory -Force -Path $DestinationDirectory | Out-Null
+    Get-ChildItem -LiteralPath $SourceDirectory -Force | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $DestinationDirectory -Recurse -Force
+    }
+}
+
+function Copy-Beta0RequiredEvidenceFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SourcePath,
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationPath,
+        [Parameter(Mandatory = $true)]
+        [string]$Label
+    )
+
+    if (-not (Test-Path -LiteralPath $SourcePath -PathType Leaf)) {
+        throw ($Label + " not found: " + $SourcePath)
+    }
+
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $DestinationPath) | Out-Null
+    Copy-Item -LiteralPath $SourcePath -Destination $DestinationPath -Force
+}
+
+function Publish-Beta0FinalReleaseEvidence {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$WorkspaceRootValue,
+        [Parameter(Mandatory = $true)]
+        [string]$RunIdValue,
+        [Parameter(Mandatory = $true)]
+        [string]$ReportsOutRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$ReportPathValue,
+        [Parameter(Mandatory = $true)]
+        [string]$ReleaseEvidenceArchiveRootValue
+    )
+
+    $archiveRoot = Resolve-Beta0PathAgainstWorkspace -WorkspaceRootValue $WorkspaceRootValue -PathValue $ReleaseEvidenceArchiveRootValue
+    $safeRunId = ([string]$RunIdValue) -replace '[\\/:*?"<>|]', '-'
+    if ([string]::IsNullOrWhiteSpace($safeRunId)) {
+        $safeRunId = "beta0-final-release-" + (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmssfff")
+    }
+
+    $releaseEvidenceRoot = Join-Path $archiveRoot $safeRunId
+    $structuredReportsOutRoot = Join-Path $releaseEvidenceRoot "scripts\reports\out"
+
+    if (Test-Path -LiteralPath $releaseEvidenceRoot) {
+        throw ("Release evidence root already exists; refusing to delete or overwrite existing evidence: " + $releaseEvidenceRoot)
+    }
+
+    New-Item -ItemType Directory -Force -Path $releaseEvidenceRoot | Out-Null
+    Copy-Beta0DirectoryContents -SourceDirectory $ReportsOutRoot -DestinationDirectory $structuredReportsOutRoot
+
+    $manifestSource = Join-Path $ReportsOutRoot "beta-release-evidence-manifest.json"
+    $betaReportSource = Join-Path $ReportsOutRoot "beta-release-gate-report.json"
+    $finalReportSource = Resolve-Beta0PathAgainstWorkspace -WorkspaceRootValue $WorkspaceRootValue -PathValue $ReportPathValue
+    $closureReportSource = Join-Path $ReportsOutRoot "beta0-final-closure-report.json"
+
+    Copy-Beta0RequiredEvidenceFile -SourcePath $manifestSource -DestinationPath (Join-Path $releaseEvidenceRoot "evidence-manifest.json") -Label "Release evidence manifest"
+    Copy-Beta0RequiredEvidenceFile -SourcePath $manifestSource -DestinationPath (Join-Path $releaseEvidenceRoot "beta-release-evidence-manifest.json") -Label "Release evidence manifest"
+    Copy-Beta0RequiredEvidenceFile -SourcePath $betaReportSource -DestinationPath (Join-Path $releaseEvidenceRoot "beta-release-gate-report.json") -Label "Beta release gate report"
+    Copy-Beta0RequiredEvidenceFile -SourcePath $finalReportSource -DestinationPath (Join-Path $releaseEvidenceRoot "beta0-final-release-check-report.json") -Label "Beta0 final release check report"
+
+    if (Test-Path -LiteralPath $closureReportSource -PathType Leaf) {
+        Copy-Item -LiteralPath $closureReportSource -Destination (Join-Path $releaseEvidenceRoot "beta0-final-closure-report.json") -Force
+    }
+
+    $publishReport = [pscustomobject]@{
+        schemaVersion = "npdev-beta0-release-evidence-publish-report.v1"
+        runId = $RunIdValue
+        generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+        workspaceRoot = $WorkspaceRootValue
+        reportsOutSource = (Get-Beta0RelativePathIfUnderWorkspace -WorkspaceRootValue $WorkspaceRootValue -PathValue $ReportsOutRoot)
+        releaseEvidenceRoot = (Get-Beta0RelativePathIfUnderWorkspace -WorkspaceRootValue $WorkspaceRootValue -PathValue $releaseEvidenceRoot)
+        statezipExistingEvidenceRoot = "last"
+        statezipExpectedStructuredReportsOut = "scripts/reports/out"
+        status = "published"
+        requiredFlatFiles = @(
+            "evidence-manifest.json",
+            "beta-release-evidence-manifest.json",
+            "beta-release-gate-report.json",
+            "beta0-final-release-check-report.json"
+        )
+    }
+
+    $publishReportPath = Join-Path $releaseEvidenceRoot "release-evidence-publish-report.json"
+    $publishReport | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $publishReportPath -Encoding UTF8
+    Copy-Item -LiteralPath $publishReportPath -Destination (Join-Path $structuredReportsOutRoot "release-evidence-publish-report.json") -Force
+
+    return $releaseEvidenceRoot
+}
+
+function Invoke-PostEvidenceWorkspaceCleanlinessValidation {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RunIdValue
+    )
+
+    $startedAt = (Get-Date).ToUniversalTime()
+    $command = "scripts/hygiene/Test-WorkspaceSlimness.ps1"
+    $reportPath = "scripts/reports/out/workspace-cleanliness-report.json"
+    Write-ReleaseCheckMessage "Post-evidence workspace cleanliness START -> scripts/hygiene/Test-WorkspaceSlimness.ps1"
+    $ErrorActionPreference = "Continue"
+    & pwsh -NoProfile -File $command -RunId $RunIdValue -ReportPath $reportPath -CleanTransientReportTemp:$false
+    $exitCode = $LASTEXITCODE
+    if ($null -eq $exitCode) { $exitCode = 0 }
+    $ErrorActionPreference = "Stop"
+    $finishedAt = (Get-Date).ToUniversalTime()
+    $status = if ($exitCode -eq 0) { "passed" } else { "failed" }
+    Write-ReleaseCheckMessage ("Post-evidence workspace cleanliness END   => " + $status + " (exit " + $exitCode + ")")
+
+    return [pscustomobject]@{
+        status = $status
+        exitCode = $exitCode
+        reportPath = $reportPath
+        command = $command + " -RunId " + $RunIdValue + " -ReportPath " + $reportPath + " -CleanTransientReportTemp:`$false"
+        startedAt = $startedAt.ToString("o")
+        finishedAt = $finishedAt.ToString("o")
+        durationSeconds = [int]([DateTimeOffset]$finishedAt - [DateTimeOffset]$startedAt).TotalSeconds
+    }
+}
+
 function Resolve-Beta0WorkspaceRoot {
     param([string]$ExplicitWorkspaceRoot)
 
@@ -478,6 +653,11 @@ function Resolve-Beta0WorkspaceRoot {
 
 $workspaceRoot = Resolve-Beta0WorkspaceRoot -ExplicitWorkspaceRoot $WorkspaceRoot
 Set-Location -LiteralPath $workspaceRoot
+if ([string]::IsNullOrWhiteSpace($ReleaseEvidenceArchiveRoot)) {
+    $workspaceItem = Get-Item -LiteralPath $workspaceRoot
+    $outsideRepoRoot = Join-Path $workspaceItem.Parent.FullName ($workspaceItem.Name + "__OutsideRepo")
+    $ReleaseEvidenceArchiveRoot = Join-Path $outsideRepoRoot "release-evidence\releases"
+}
 if ([string]::IsNullOrWhiteSpace($RunId)) {
     $RunId = "beta0-final-release-check-" + (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmssfff")
 }
@@ -605,15 +785,77 @@ $report = [pscustomobject]@{
     provenanceReady = $provenanceReady
     officialReleaseEligible = $officialReleaseEligible
     beta0TagAllowed = $beta0TagAllowed
+    releaseEvidencePublishRequired = (-not $SkipReleaseEvidencePublish)
+    releaseEvidencePublishStatus = if ($SkipReleaseEvidencePublish) { "skipped" } else { "not-run" }
+    releaseEvidencePublished = $false
+    releaseEvidenceRoot = $null
+    releaseEvidencePublishError = $null
+    postEvidenceCleanlinessValidationRequired = (-not $SkipReleaseEvidencePublish)
+    postEvidenceCleanlinessStatus = if ($SkipReleaseEvidencePublish) { "skipped" } else { "not-run" }
+    postEvidenceCleanlinessReportPath = "scripts/reports/out/workspace-cleanliness-report.json"
+    postEvidenceCleanlinessError = $null
     gates = $gateResults
 }
 
-New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ReportPath) | Out-Null
-$report | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $ReportPath -Encoding UTF8
+$resolvedReportPath = Resolve-Beta0PathAgainstWorkspace -WorkspaceRootValue $workspaceRoot -PathValue $ReportPath
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedReportPath) | Out-Null
+$report | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $resolvedReportPath -Encoding UTF8
 Write-ReleaseCheckMessage ("Final release check report written: " + $ReportPath)
+
+if ($overallStatus -eq "passed" -and -not $SkipReleaseEvidencePublish) {
+    try {
+        Write-ReleaseCheckMessage ("Publishing aggregate release evidence START -> " + $ReleaseEvidenceArchiveRoot)
+        $publishedReleaseEvidenceRoot = Publish-Beta0FinalReleaseEvidence `
+            -WorkspaceRootValue $workspaceRoot `
+            -RunIdValue $RunId `
+            -ReportsOutRoot $outRoot `
+            -ReportPathValue $resolvedReportPath `
+            -ReleaseEvidenceArchiveRootValue $ReleaseEvidenceArchiveRoot
+
+        $report.releaseEvidencePublishStatus = "passed"
+        $report.releaseEvidencePublished = $true
+        $report.releaseEvidenceRoot = (Get-Beta0RelativePathIfUnderWorkspace -WorkspaceRootValue $workspaceRoot -PathValue $publishedReleaseEvidenceRoot)
+        $cleanlinessResult = Invoke-PostEvidenceWorkspaceCleanlinessValidation -RunIdValue $RunId
+        $report.postEvidenceCleanlinessStatus = $cleanlinessResult.status
+        $report.postEvidenceCleanlinessReportPath = $cleanlinessResult.reportPath
+        if ($cleanlinessResult.status -ne "passed") {
+            throw ("Post-evidence workspace cleanliness validation failed. Report: " + $cleanlinessResult.reportPath)
+        }
+        $report.generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+        $report | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $resolvedReportPath -Encoding UTF8
+
+        $publishedStructuredReportPath = Join-Path $publishedReleaseEvidenceRoot "scripts\reports\out\beta0-final-release-check-report.json"
+        $publishedFlatReportPath = Join-Path $publishedReleaseEvidenceRoot "beta0-final-release-check-report.json"
+        Copy-Item -LiteralPath $resolvedReportPath -Destination $publishedStructuredReportPath -Force
+        Copy-Item -LiteralPath $resolvedReportPath -Destination $publishedFlatReportPath -Force
+        $currentCleanlinessReportPath = Resolve-Beta0PathAgainstWorkspace -WorkspaceRootValue $workspaceRoot -PathValue "scripts/reports/out/workspace-cleanliness-report.json"
+        if (Test-Path -LiteralPath $currentCleanlinessReportPath -PathType Leaf) {
+            Copy-Item -LiteralPath $currentCleanlinessReportPath -Destination (Join-Path $publishedReleaseEvidenceRoot "scripts\reports\out\workspace-cleanliness-report.json") -Force
+        }
+
+        Write-ReleaseCheckMessage ("Publishing aggregate release evidence END   => passed (" + $report.releaseEvidenceRoot + ")")
+    }
+    catch {
+        $overallStatus = "failed"
+        $report.overallStatus = "failed"
+        $report.releaseEvidencePublishStatus = "failed"
+        $report.releaseEvidencePublished = $false
+        $report.releaseEvidencePublishError = $_.Exception.Message
+        if ($report.postEvidenceCleanlinessStatus -ne "passed") {
+            $report.postEvidenceCleanlinessError = $_.Exception.Message
+        }
+        $report.generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+        $report | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $resolvedReportPath -Encoding UTF8
+        Write-Error ("Beta 0 final release check passed gates, but failed to publish aggregate release evidence for statezip. Report: " + $ReportPath + " Error: " + $_.Exception.Message)
+        exit 1
+    }
+}
 
 if ($overallStatus -eq "passed") {
     Write-Host ("Beta 0 final release check passed. Report: " + $ReportPath)
+    if ($report.releaseEvidencePublished) {
+        Write-Host ("Aggregate release evidence published. Statezip can use: -ExistingEvidenceRoot 'last'")
+    }
     exit 0
 }
 
