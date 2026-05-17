@@ -610,7 +610,7 @@ function Invoke-PostEvidenceWorkspaceCleanlinessValidation {
     $reportPath = "scripts/reports/out/workspace-cleanliness-report.json"
     Write-ReleaseCheckMessage "Post-evidence workspace cleanliness START -> scripts/hygiene/Test-WorkspaceSlimness.ps1"
     $ErrorActionPreference = "Continue"
-    & pwsh -NoProfile -File $command -RunId $RunIdValue -ReportPath $reportPath -CleanTransientReportTemp:$false
+    & pwsh -NoProfile -File $command -RunId $RunIdValue -ReportPath $reportPath
     $exitCode = $LASTEXITCODE
     if ($null -eq $exitCode) { $exitCode = 0 }
     $ErrorActionPreference = "Stop"
@@ -622,7 +622,7 @@ function Invoke-PostEvidenceWorkspaceCleanlinessValidation {
         status = $status
         exitCode = $exitCode
         reportPath = $reportPath
-        command = $command + " -RunId " + $RunIdValue + " -ReportPath " + $reportPath + " -CleanTransientReportTemp:`$false"
+        command = $command + " -RunId " + $RunIdValue + " -ReportPath " + $reportPath
         startedAt = $startedAt.ToString("o")
         finishedAt = $finishedAt.ToString("o")
         durationSeconds = [int]([DateTimeOffset]$finishedAt - [DateTimeOffset]$startedAt).TotalSeconds
