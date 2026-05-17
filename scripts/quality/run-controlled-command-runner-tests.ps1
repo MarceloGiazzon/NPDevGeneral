@@ -67,6 +67,17 @@ function Invoke-StructuredRunner {
     }
 }
 
+function Get-FreeLoopbackPort {
+    $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    try {
+        $listener.Start()
+        return [int]$listener.LocalEndpoint.Port
+    }
+    finally {
+        $listener.Stop()
+    }
+}
+
 $allowed = Invoke-Runner -Name "allowed" -Executable "pwsh" -Arguments @("-NoProfile", "-File", "scripts/tests/fixtures/controlled-runner/allowed-build.ps1")
 if ($allowed.exitCode -ne 0 -or $allowed.result.status -ne "passed" -or $allowed.result.stdout -notmatch "BUILD_OK") {
     throw "Allowed command did not pass."
@@ -205,13 +216,22 @@ if ($structuredGradle.exitCode -ne 0 -or $structuredGradle.result.status -ne "pa
     throw "Structured gradle-task request did not pass through the controlled runner."
 }
 
-$restPort = 18182
+$restPort = Get-FreeLoopbackPort
 $readyPath = Join-Path $testRoot "structured-rest-smoke.ready"
-$server = Start-Process -FilePath "pwsh" -ArgumentList @("-NoProfile", "-File", "scripts/tests/fixtures/controlled-runner/rest-smoke-fixture-server.ps1", "-Port", [string]$restPort, "-ReadyPath", $readyPath) -WorkingDirectory $workspaceRoot -PassThru -WindowStyle Hidden
+$serverStdoutPath = Join-Path $testRoot "structured-rest-smoke-server.stdout.log"
+$serverStderrPath = Join-Path $testRoot "structured-rest-smoke-server.stderr.log"
+$server = Start-Process -FilePath "pwsh" -ArgumentList @("-NoProfile", "-File", "scripts/tests/fixtures/controlled-runner/rest-smoke-fixture-server.ps1", "-Port", [string]$restPort, "-ReadyPath", $readyPath) -WorkingDirectory $workspaceRoot -PassThru -WindowStyle Hidden -RedirectStandardOutput $serverStdoutPath -RedirectStandardError $serverStderrPath
 try {
     $deadline = (Get-Date).AddSeconds(10)
     while (-not (Test-Path -LiteralPath $readyPath -PathType Leaf)) {
-        if ((Get-Date) -gt $deadline) { throw "Structured REST smoke fixture server did not become ready." }
+        if ($server.HasExited) {
+            $stderr = if (Test-Path -LiteralPath $serverStderrPath -PathType Leaf) { Get-Content -Raw -LiteralPath $serverStderrPath } else { "" }
+            throw ("Structured REST smoke fixture server exited before ready on port " + $restPort + ". " + $stderr)
+        }
+        if ((Get-Date) -gt $deadline) {
+            $stderr = if (Test-Path -LiteralPath $serverStderrPath -PathType Leaf) { Get-Content -Raw -LiteralPath $serverStderrPath } else { "" }
+            throw ("Structured REST smoke fixture server did not become ready on port " + $restPort + ". " + $stderr)
+        }
         Start-Sleep -Milliseconds 100
     }
     $structuredRestSmoke = Invoke-StructuredRunner -Name "structured-rest-smoke-allowed" -Request ([ordered]@{
