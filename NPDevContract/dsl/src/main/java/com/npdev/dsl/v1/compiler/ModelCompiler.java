@@ -17,6 +17,7 @@ import com.npdev.dsl.v1.ast.EventAst;
 import com.npdev.dsl.v1.ast.EventPayloadAst;
 import com.npdev.dsl.v1.ast.EnumOptionAst;
 import com.npdev.dsl.v1.ast.FlowAst;
+import com.npdev.dsl.v1.ast.GeneratedActionDescriptorAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.OrchestrationActionAst;
 import com.npdev.dsl.v1.ast.SchemaAst;
@@ -52,6 +53,7 @@ import com.npdev.dsl.v1.compiled.CompiledEventField;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowStep;
+import com.npdev.dsl.v1.compiled.CompiledGeneratedActionDescriptorSpec;
 import com.npdev.dsl.v1.compiled.CompiledInvariant;
 import com.npdev.dsl.v1.compiled.CompiledLifecycle;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -303,7 +305,8 @@ public final class ModelCompiler {
                     flowSteps,
                     toCompiledSchema(flowAst.getInputSchema()),
                     toCompiledSchema(flowAst.getOutputSchema()),
-                    toCompiledActionMetadata(flowAst.getAction())
+                    toCompiledActionMetadata(flowAst.getAction()),
+                    flowAst.isStartEndpoint()
             ));
         }
 
@@ -384,6 +387,7 @@ public final class ModelCompiler {
                     sortedStrings(procedureAst.permissionRequirements()),
                     procedureAst.tracePolicy(),
                     procedureAst.auditPolicy(),
+                    compileGeneratedActionDescriptor(procedureAst),
                     sortObjectMap(procedureAst.metadata())
             ));
         }
@@ -566,6 +570,100 @@ public final class ModelCompiler {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
 
+    private static CompiledGeneratedActionDescriptorSpec compileGeneratedActionDescriptor(ProcedureAst procedureAst) {
+        GeneratedActionDescriptorAst explicit = procedureAst.actionDescriptor();
+        if (explicit != null) {
+            String actionName = firstNonBlank(explicit.actionName(), procedureAst.name());
+            String sideEffectConcept = blankToNull(explicit.sideEffectConcept());
+            List<String> affectedConcepts = copyStrings(explicit.affectedConcepts());
+            if (affectedConcepts.isEmpty() && sideEffectConcept != null) {
+                affectedConcepts = List.of(sideEffectConcept);
+            }
+            return new CompiledGeneratedActionDescriptorSpec(
+                    actionName,
+                    affectedConcepts,
+                    sideEffectConcept,
+                    firstNonBlank(explicit.eventNameOnSuccess(), defaultGeneratedActionEvent(actionName)),
+                    firstNonBlank(explicit.auditResourceType(), "GENERATED_ACTION"),
+                    firstNonBlank(explicit.idempotencyPolicy(), "record"),
+                    firstNonBlank(explicit.tracePolicy(), "record"),
+                    firstNonBlank(explicit.correlationPolicy(), "claim"),
+                    true
+            );
+        }
+
+        Map<String, Object> metadata = procedureAst.metadata();
+        String actionName = firstNonBlank(metadataText(metadata, "actionName"), procedureAst.name());
+        String sideEffectConcept = firstNonBlank(metadataText(metadata, "sideEffectConcept"), inferLegacyConceptName(procedureAst.name()));
+        List<String> affectedConcepts = splitMetadataList(metadataText(metadata, "affectedConcepts"));
+        if (affectedConcepts.isEmpty()) {
+            affectedConcepts = List.of(sideEffectConcept);
+        }
+        return new CompiledGeneratedActionDescriptorSpec(
+                actionName,
+                affectedConcepts,
+                sideEffectConcept,
+                firstNonBlank(metadataText(metadata, "eventNameOnSuccess"), defaultGeneratedActionEvent(actionName)),
+                firstNonBlank(metadataText(metadata, "auditResourceType"), "GENERATED_ACTION"),
+                firstNonBlank(metadataText(metadata, "idempotencyPolicy"), "record"),
+                firstNonBlank(metadataText(metadata, "tracePolicy"), "record"),
+                firstNonBlank(metadataText(metadata, "correlationPolicy"), "claim"),
+                false
+        );
+    }
+
+    private static String metadataText(Map<String, Object> metadata, String key) {
+        if (metadata == null || key == null) {
+            return "";
+        }
+        Object value = metadata.get(key);
+        return value == null ? "" : String.valueOf(value).trim();
+    }
+
+    private static List<String> splitMetadataList(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (String token : raw.split(",")) {
+            String item = token == null ? "" : token.trim();
+            if (!item.isBlank()) {
+                out.add(item);
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private static String blankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isBlank() ? null : trimmed;
+    }
+
+    private static String defaultGeneratedActionEvent(String actionName) {
+        String token = actionName == null || actionName.isBlank() ? "action" : actionName.trim();
+        token = token.replaceAll("([a-z])([A-Z])", "$1-$2")
+                .replaceAll("[^A-Za-z0-9]+", "-")
+                .replaceAll("^-|-$", "")
+                .toLowerCase(Locale.ROOT);
+        return "generated.action." + (token.isBlank() ? "action" : token) + ".completed";
+    }
+
+    private static String inferLegacyConceptName(String actionName) {
+        String cleaned = actionName == null ? "" : actionName.trim();
+        if (cleaned.isBlank()) {
+            return "GeneratedAction";
+        }
+        for (String prefix : List.of("Create", "Add", "Register", "Upsert", "Update", "Save")) {
+            if (cleaned.startsWith(prefix) && cleaned.length() > prefix.length()) {
+                return cleaned.substring(prefix.length());
+            }
+        }
+        return cleaned;
+    }
+
     private static CompiledLifecycle toCompiledLifecycle(LifecycleAst lifecycleAst) {
         if (lifecycleAst == null) {
             return null;
@@ -722,6 +820,9 @@ public final class ModelCompiler {
         for (StepAst stepAst : steps) {
             CompiledCapabilityCall capabilityCall = null;
             String stepType = normalize(stepAst.getType());
+            if (stepAst.getGeneratedActionName() != null && !stepAst.getGeneratedActionName().isBlank()) {
+                stepType = "generatedAction";
+            }
             String resolvedScope = stepAst.getScope();
             List<String> resolvedInvariantRefs = stepAst.getInvariants();
 
@@ -761,7 +862,8 @@ public final class ModelCompiler {
                         : toCompiledPolicy(stepAst.getCapabilityPolicy());
                 capabilityCall = new CompiledCapabilityCall(
                         capabilityName,
-                        capabilityTypesByName.get(normalize(capabilityName)),
+                        resolveCapabilityTypeForStep(stepType, capabilityName, capabilityTypesByName),
+                        resolveAdapterIdForStep(stepType),
                         operationName,
                         argsRefs,
                         stepAst.getInput(),
@@ -823,7 +925,8 @@ public final class ModelCompiler {
                     stepAst.getOutput(),
                     stepAst.getReturnValue(),
                     capabilityCall,
-                    toCompiledActionMetadata(stepAst.getAction())
+                    toCompiledActionMetadata(stepAst.getAction()),
+                    stepAst.getGeneratedActionName()
             ));
         }
         return out;
@@ -1097,6 +1200,8 @@ public final class ModelCompiler {
 
     private static boolean isCapabilityLikeStep(String stepType) {
         return "capability".equals(stepType)
+                || "generatedAction".equalsIgnoreCase(stepType)
+                || "generatedaction".equals(stepType)
                 || "createEntity".equalsIgnoreCase(stepType)
                 || "updateEntity".equalsIgnoreCase(stepType)
                 || "createConcept".equalsIgnoreCase(stepType)
@@ -1107,6 +1212,9 @@ public final class ModelCompiler {
         if (isConceptPersistenceStep(stepType)) {
             return "persistence";
         }
+        if ("generatedAction".equalsIgnoreCase(stepType) || "generatedaction".equals(stepType)) {
+            return stepAst.getCapability();
+        }
         return stepAst.getCapability();
     }
 
@@ -1114,7 +1222,28 @@ public final class ModelCompiler {
         if (isConceptPersistenceStep(stepType)) {
             return "save";
         }
+        if ("generatedAction".equalsIgnoreCase(stepType) || "generatedaction".equals(stepType)) {
+            return "run";
+        }
         return stepAst.getOperation();
+    }
+
+    private static String resolveCapabilityTypeForStep(
+            String stepType,
+            String capabilityName,
+            Map<String, String> capabilityTypesByName
+    ) {
+        if ("generatedAction".equalsIgnoreCase(stepType) || "generatedaction".equals(stepType)) {
+            return "GeneratedActionCapability";
+        }
+        return capabilityTypesByName.get(normalize(capabilityName));
+    }
+
+    private static String resolveAdapterIdForStep(String stepType) {
+        if ("generatedAction".equalsIgnoreCase(stepType) || "generatedaction".equals(stepType)) {
+            return "generated-action";
+        }
+        return null;
     }
 
     private static boolean isConceptPersistenceStep(String stepType) {

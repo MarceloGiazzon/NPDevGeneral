@@ -1,164 +1,143 @@
 package com.npdev.generator.api;
 
 import com.npdev.dsl.v1.compiled.CompiledModel;
-import com.npdev.generator.emitters.ConfigEmitter;
+import com.npdev.generator.emitters.BusinessUiEmitter;
 import com.npdev.generator.emitters.ControllerEmitter;
 import com.npdev.generator.emitters.DtoEmitter;
 import com.npdev.generator.emitters.EntityEmitter;
-import com.npdev.generator.emitters.FlywayEmitter;
 import com.npdev.generator.emitters.GeneratedFolderSignatureEmitter;
 import com.npdev.generator.emitters.MetadataManifestAssetEmitter;
 import com.npdev.generator.emitters.PluginRequirementAssetEmitter;
-import com.npdev.generator.emitters.RepositoryEmitter;
 import com.npdev.generator.emitters.RuntimeApiEmitter;
 import com.npdev.generator.emitters.ServiceEmitter;
 import com.npdev.generator.emitters.TrustedSourceEmitter;
-import com.npdev.generator.migration.MigrationDiffEngine;
-import com.npdev.generator.migration.MigrationPlan;
-import com.npdev.generator.migration.MigrationScriptEmitter;
-import com.npdev.generator.migration.StatefulMigrationOptions;
-import com.npdev.generator.migration.StatefulMigrationPlanner;
-import com.npdev.generator.migration.StorageSchemaFromCompiledModel;
-import com.npdev.generator.migration.StorageSchemaSnapshot;
-import com.npdev.generator.migration.StorageSchemaSnapshotStore;
+import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
+import com.npdev.generator.dbconfig.SchemaRealizationEmitter;
+import com.npdev.generator.dbconfig.DatabaseEngine;
+import com.npdev.generator.dbconfig.SchemaLifecyclePolicy;
+import com.npdev.generator.dbconfig.SchemaLifecycleStrategy;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.templates.TemplateEngine;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
+import java.util.List;
 
 public final class GeneratorFacade {
 
     private final TemplateEngine templates;
     private final GeneratedSourceWriter writer;
-    private final StorageSchemaFromCompiledModel storageSchemaFromCompiledModel;
-    private final StorageSchemaSnapshotStore snapshotStore;
-    private final MigrationDiffEngine migrationDiffEngine;
-    private final MigrationScriptEmitter migrationScriptEmitter;
-    private final StatefulMigrationPlanner statefulMigrationPlanner;
-
     public GeneratorFacade(TemplateEngine templates, GeneratedSourceWriter writer) {
-        this(
-                templates,
-                writer,
-                new StorageSchemaFromCompiledModel(),
-                new StorageSchemaSnapshotStore(),
-                new MigrationDiffEngine(),
-                new MigrationScriptEmitter(),
-                new StatefulMigrationPlanner()
-        );
-    }
-
-    GeneratorFacade(
-            TemplateEngine templates,
-            GeneratedSourceWriter writer,
-            StorageSchemaFromCompiledModel storageSchemaFromCompiledModel,
-            StorageSchemaSnapshotStore snapshotStore,
-            MigrationDiffEngine migrationDiffEngine,
-            MigrationScriptEmitter migrationScriptEmitter,
-            StatefulMigrationPlanner statefulMigrationPlanner
-    ) {
         this.templates = templates;
         this.writer = writer;
-        this.storageSchemaFromCompiledModel = storageSchemaFromCompiledModel;
-        this.snapshotStore = snapshotStore;
-        this.migrationDiffEngine = migrationDiffEngine;
-        this.migrationScriptEmitter = migrationScriptEmitter;
-        this.statefulMigrationPlanner = statefulMigrationPlanner;
     }
 
-    public void generate(CompiledModel model, Path outRoot, Path canonicalMigrationsDir) throws Exception {
-        generate(model, outRoot, canonicalMigrationsDir, null);
+    public void generate(CompiledModel model, Path outRoot, Path schemaRealizationDir) throws Exception {
+        generate(model, outRoot, schemaRealizationDir, null, legacyInMemoryPlan(model, outRoot, schemaRealizationDir, null));
     }
 
-    public void generate(
-            CompiledModel model,
-            Path outRoot,
-            Path canonicalMigrationsDir,
-            Path modelSourcePath
-    ) throws Exception {
-        generate(model, outRoot, canonicalMigrationsDir, modelSourcePath, StatefulMigrationOptions.disabled());
+    public void generate(CompiledModel model, Path outRoot, Path schemaRealizationDir, Path modelSourcePath) throws Exception {
+        generate(model, outRoot, schemaRealizationDir, modelSourcePath, legacyInMemoryPlan(model, outRoot, schemaRealizationDir, modelSourcePath));
+    }
+
+    public void generate(CompiledModel model, Path outRoot, Path schemaRealizationDir, GeneratedDatabasePlan databasePlan) throws Exception {
+        generate(model, outRoot, schemaRealizationDir, null, databasePlan);
     }
 
     public void generate(
             CompiledModel model,
             Path outRoot,
-            Path canonicalMigrationsDir,
+            Path schemaRealizationDir,
             Path modelSourcePath,
-            StatefulMigrationOptions statefulMigrationOptions
+            GeneratedDatabasePlan databasePlan
     ) throws Exception {
         new EntityEmitter(templates, writer).emit(model);
-        new RepositoryEmitter(templates, writer).emit(model);
         new DtoEmitter(templates, writer).emit(model);
         new ServiceEmitter(templates, writer).emit(model);
         new ControllerEmitter(templates, writer).emit(model);
 
-        new ConfigEmitter(templates, writer).emit(model);
         new RuntimeApiEmitter(templates, writer).emit(model, modelSourcePath);
+        new BusinessUiEmitter(templates, writer).emit(model);
         new TrustedSourceEmitter(writer).emit(model, modelSourcePath);
         new MetadataManifestAssetEmitter(writer).emit(model, modelSourcePath);
 
         // Stage 3: emit deterministic plugin requirement asset derived from the model source.
         new PluginRequirementAssetEmitter(writer).emit(modelSourcePath);
 
-        // Supported database delivery path:
-        // emit repeatable schema-realization SQL into the canonical committed folder.
-        // This avoids version drift while keeping recreate-style app assembly deterministic.
-        new FlywayEmitter().emitRepeatableSchema(model, canonicalMigrationsDir);
-
-        emitPhase8PersistenceArtifacts(model, canonicalMigrationsDir, statefulMigrationOptions);
+        new SchemaRealizationEmitter().emit(model, outRoot, databasePlan, modelSourcePath);
         new GeneratedFolderSignatureEmitter().emit(outRoot);
     }
 
-    private void emitPhase8PersistenceArtifacts(
+    private static GeneratedDatabasePlan legacyInMemoryPlan(
             CompiledModel model,
-            Path canonicalMigrationsDir,
-            StatefulMigrationOptions statefulMigrationOptions
-    ) throws Exception {
-        if (model == null || canonicalMigrationsDir == null) {
-            return;
+            Path outRoot,
+            Path schemaRealizationDir,
+            Path modelSourcePath
+    ) {
+        Path definitionHint = firstNonNull(modelSourcePath, schemaRealizationDir, outRoot, Path.of("."))
+                .toAbsolutePath()
+                .normalize();
+        List<String> fingerprintInputs = List.of(
+                "legacyGeneratorFacade=true",
+                "engine=" + DatabaseEngine.IN_MEMORY.externalName(),
+                "storageMode=" + DatabaseEngine.IN_MEMORY.storageMode(),
+                "namespace=" + (model == null ? "" : model.getNamespace()),
+                "modelSourcePath=" + (modelSourcePath == null ? "" : modelSourcePath.toAbsolutePath().normalize())
+        );
+        return new GeneratedDatabasePlan(
+                "legacy-generator-facade",
+                DatabaseEngine.IN_MEMORY,
+                DatabaseEngine.IN_MEMORY.storageMode(),
+                false,
+                "",
+                "",
+                "none",
+                "",
+                "",
+                "",
+                "",
+                0,
+                0,
+                "",
+                "",
+                "",
+                "",
+                "",
+                0,
+                "",
+                "",
+                true,
+                true,
+                new SchemaLifecyclePolicy(
+                        SchemaLifecycleStrategy.KEEP_EXISTING_IF_COMPATIBLE,
+                        false,
+                        "",
+                        SchemaLifecyclePolicy.NPDEV_STORE_SCOPE
+                ),
+                "sha256:" + sha256(String.join("\n", fingerprintInputs)),
+                definitionHint,
+                fingerprintInputs
+        );
+    }
+
+    private static Path firstNonNull(Path first, Path second, Path third, Path fallback) {
+        if (first != null) {
+            return first;
         }
-
-        if (statefulMigrationOptions != null && statefulMigrationOptions.additiveOnly()) {
-            statefulMigrationPlanner.plan(model, canonicalMigrationsDir, statefulMigrationOptions);
-            return;
+        if (second != null) {
+            return second;
         }
+        return third == null ? fallback : third;
+    }
 
-        Path dbRoot = canonicalMigrationsDir.getParent();
-        if (dbRoot == null) {
-            return;
-        }
-
-        Path snapshotDir = dbRoot.resolve("schema-snapshots");
-        Path planDir = dbRoot.resolve("migration-plans");
-
-        Files.createDirectories(snapshotDir);
-        Files.createDirectories(planDir);
-
-        Path latestSnapshotFile = snapshotDir.resolve("latest-storage-schema.json");
-
-        StorageSchemaSnapshot previous = snapshotStore.loadIfExists(latestSnapshotFile);
-        StorageSchemaSnapshot current = storageSchemaFromCompiledModel.from(model).normalized();
-
-        String snapshotHash = snapshotStore.computeCanonicalHash(current);
-
-        MigrationPlan plan = migrationDiffEngine.diff(previous, current).normalized();
-
-        // Always persist the latest schema snapshot and one content-addressed snapshot.
-        snapshotStore.save(latestSnapshotFile, current);
-        snapshotStore.save(snapshotDir.resolve("storage-schema-" + snapshotHash + ".json"), current);
-
-        // Internal schema-diff evidence remains repository-side only.
-        // These artifacts explain evolution but do not enable supported stateful upgrade management.
-        String planFileName = "NPDEV_" + snapshotHash + "__model_delta.sql";
-        if (!plan.isEmpty()) {
-            migrationScriptEmitter.emit(planDir, planFileName, plan);
-        }
-
-        // Also write a stable "latest" plan for quick inspection and deterministic diffing.
-        Path latestPlanFile = planDir.resolve("latest-model-delta.sql");
-        if (!plan.isEmpty() || !Files.exists(latestPlanFile)) {
-            migrationScriptEmitter.emit(planDir, "latest-model-delta.sql", plan);
+    private static String sha256(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception exception) {
+            throw new IllegalStateException("Unable to compute legacy schema fingerprint", exception);
         }
     }
 }

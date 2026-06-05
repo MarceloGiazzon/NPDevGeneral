@@ -1171,6 +1171,9 @@
         "action": {
           "$ref": "#/$defs/actionMetadata"
         },
+        "startEndpoint": {
+          "type": "boolean"
+        },
         "hooks": {
           "type": "array",
           "items": {
@@ -1590,6 +1593,8 @@
             "capability",
             "capabilityCall",
             "callCapability",
+            "generatedAction",
+            "generated_action",
             "event",
             "emitEvent",
             "scheduleEvent",
@@ -1694,6 +1699,10 @@
         "action": {
           "$ref": "#/$defs/actionMetadata"
         },
+        "actionName": {
+          "type": "string",
+          "minLength": 1
+        },
         "then": {
           "type": "array",
           "items": {
@@ -1792,6 +1801,23 @@
                   "op"
                 ]
               }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "generatedAction",
+                  "generated_action"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "actionName"
             ]
           }
         },
@@ -2137,8 +2163,61 @@
             "write"
           ]
         },
+        "actionDescriptor": {
+          "$ref": "#/$defs/generatedActionDescriptor"
+        },
         "metadata": {
           "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "generatedActionDescriptor": {
+      "type": "object",
+      "properties": {
+        "actionName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "affectedConcepts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "sideEffectConcept": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventNameOnSuccess": {
+          "type": "string",
+          "minLength": 1
+        },
+        "auditResourceType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "idempotencyPolicy": {
+          "type": "string",
+          "enum": [
+            "record",
+            "disabled"
+          ]
+        },
+        "tracePolicy": {
+          "type": "string",
+          "enum": [
+            "record",
+            "disabled"
+          ]
+        },
+        "correlationPolicy": {
+          "type": "string",
+          "enum": [
+            "claim",
+            "disabled"
+          ]
         }
       },
       "additionalProperties": false
@@ -2778,6 +2857,7 @@
   },
   "additionalProperties": false
 }
+
 
 
 

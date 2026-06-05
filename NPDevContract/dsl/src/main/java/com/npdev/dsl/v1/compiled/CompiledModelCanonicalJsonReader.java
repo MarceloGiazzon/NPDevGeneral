@@ -324,7 +324,8 @@ public final class CompiledModelCanonicalJsonReader {
                 steps,
                 toSchema(node.get("inputSchema")),
                 toSchema(node.get("outputSchema")),
-                toActionMetadata(node.get("action"))
+                toActionMetadata(node.get("action")),
+                booleanValue(node, "startEndpoint")
         );
     }
 
@@ -360,7 +361,8 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "mapToRef"),
                 optionalText(node, "returnValueRef"),
                 toCapabilityCall(node.get("capabilityCall")),
-                toActionMetadata(node.get("action"))
+                toActionMetadata(node.get("action")),
+                optionalText(node, "generatedActionName")
         );
     }
 
@@ -371,6 +373,7 @@ public final class CompiledModelCanonicalJsonReader {
         return new CompiledCapabilityCall(
                 optionalText(node, "capabilityName"),
                 optionalText(node, "capabilityType"),
+                optionalText(node, "adapterId"),
                 optionalText(node, "operation"),
                 toStringList(node.get("argsRefs")),
                 optionalText(node, "inputRef"),
@@ -493,7 +496,25 @@ public final class CompiledModelCanonicalJsonReader {
                 toStringList(node.get("permissionRequirements")),
                 optionalText(node, "tracePolicy"),
                 optionalText(node, "auditPolicy"),
+                toGeneratedActionDescriptor(node.get("actionDescriptor")),
                 toObjectMap(node.get("metadata"))
+        );
+    }
+
+    private static CompiledGeneratedActionDescriptorSpec toGeneratedActionDescriptor(JsonNode node) {
+        if (node == null || node.isNull() || !node.isObject() || node.isEmpty()) {
+            return null;
+        }
+        return new CompiledGeneratedActionDescriptorSpec(
+                optionalText(node, "actionName"),
+                toStringList(node.get("affectedConcepts")),
+                optionalText(node, "sideEffectConcept"),
+                optionalText(node, "eventNameOnSuccess"),
+                optionalText(node, "auditResourceType"),
+                optionalText(node, "idempotencyPolicy"),
+                optionalText(node, "tracePolicy"),
+                optionalText(node, "correlationPolicy"),
+                booleanValue(node, "explicit")
         );
     }
 

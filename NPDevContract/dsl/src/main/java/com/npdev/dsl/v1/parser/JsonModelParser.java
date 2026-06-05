@@ -82,7 +82,6 @@ public final class JsonModelParser {
                     "legacy-entities-root"
             ));
         }
-        schemaValidator.validate(root, modelJsonPath.toAbsolutePath().normalize().toString());
         String namespace = firstNonBlank(readText(root, "namespace"), readText(root, "model"));
         if (namespace == null || namespace.isBlank()) {
             throw new IOException("Missing/blank required field: namespace (or alias: model)");
@@ -94,6 +93,8 @@ public final class JsonModelParser {
         if (!SUPPORTED_DSL_VERSION.equals(dslVersion)) {
             throw new IOException("Unsupported dslVersion '" + dslVersion + "'. Supported value: \"" + SUPPORTED_DSL_VERSION + "\".");
         }
+        schemaValidator.validate(root, modelJsonPath.toAbsolutePath().normalize().toString());
+
         String schemaVersion = readText(root, "schemaVersion");
         if (schemaVersion != null && !schemaVersion.isBlank() && !CURRENT_SCHEMA_VERSION.equals(schemaVersion)) {
             throw new IOException("Unsupported schemaVersion '" + schemaVersion + "'. Supported value: \"" + CURRENT_SCHEMA_VERSION + "\".");
@@ -342,6 +343,7 @@ public final class JsonModelParser {
                 SchemaAst inputSchema = parseSchema(flowNode.get("inputSchema"), "flows[" + flowName + "].inputSchema");
                 SchemaAst outputSchema = parseSchema(flowNode.get("outputSchema"), "flows[" + flowName + "].outputSchema");
                 ActionMetadataAst action = parseActionMetadata(flowNode.get("action"), "flows[" + flowName + "].action");
+                Boolean startEndpoint = readOptionalBoolean(flowNode, "startEndpoint");
                 flows.add(new FlowAst(
                         flowName,
                         concept,
@@ -351,7 +353,8 @@ public final class JsonModelParser {
                         steps,
                         inputSchema,
                         outputSchema,
-                        action
+                        action,
+                        Boolean.TRUE.equals(startEndpoint)
                 ));
             }
         }
@@ -521,10 +524,31 @@ public final class JsonModelParser {
                     parseTextArray(procedureNode.get("permissionRequirements")),
                     readText(procedureNode, "tracePolicy"),
                     readText(procedureNode, "auditPolicy"),
+                    parseGeneratedActionDescriptor(procedureNode.get("actionDescriptor"), "procedures[" + name + "].actionDescriptor"),
                     parseObjectMap(procedureNode.get("metadata"))
             ));
         }
         return out;
+    }
+
+    private static GeneratedActionDescriptorAst parseGeneratedActionDescriptor(JsonNode node, String fieldPath)
+            throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException(fieldPath + " must be an object");
+        }
+        return new GeneratedActionDescriptorAst(
+                readText(node, "actionName"),
+                parseTextArray(node.get("affectedConcepts")),
+                readText(node, "sideEffectConcept"),
+                readText(node, "eventNameOnSuccess"),
+                readText(node, "auditResourceType"),
+                readText(node, "idempotencyPolicy"),
+                readText(node, "tracePolicy"),
+                readText(node, "correlationPolicy")
+        );
     }
 
     private static List<ProcedureParameterAst> parseProcedureParameters(JsonNode node, String fieldPath)
@@ -970,6 +994,7 @@ public final class JsonModelParser {
         List<String> args = parseTextArray(stepNode.get("args"));
         String event = readText(stepNode, "event");
         String payload = firstNonBlank(readText(stepNode, "payload"), readText(stepNode, "from"));
+        String generatedActionName = readText(stepNode, "actionName");
         Map<String, String> data = parseStringMap(stepNode.get("data"));
         String condition = readText(stepNode, "condition");
         String awaitEvent = "await".equals(type)
@@ -1016,6 +1041,15 @@ public final class JsonModelParser {
             if ((input == null || input.isBlank()) && !args.isEmpty()) {
                 input = args.get(0);
             }
+        } else if ("generatedAction".equals(type)) {
+            if (generatedActionName == null || generatedActionName.isBlank()) {
+                throw new IOException("Flow " + flowName + " step " + stepName + " actionName is required for generatedAction");
+            }
+            capability = "generated.action." + generatedActionName.trim();
+            operation = "run";
+            if ((input == null || input.isBlank()) && !args.isEmpty()) {
+                input = args.get(0);
+            }
         } else if ("return".equals(type)) {
             if (returnValue == null || returnValue.isBlank()) {
                 returnValue = "last";
@@ -1046,7 +1080,8 @@ public final class JsonModelParser {
                 awaitPayloadMatch,
                 delaySeconds,
                 returnValue,
-                action
+                action,
+                generatedActionName
         );
     }
 
@@ -1606,6 +1641,7 @@ public final class JsonModelParser {
         return switch (normalized) {
             case "validate", "enforceinvariants", "invariant" -> "invariant";
             case "capabilitycall", "callcapability", "capability" -> "capability";
+            case "generatedaction", "generated_action" -> "generatedAction";
             case "createentity", "createconcept", "conceptcreate" -> "createConcept";
             case "updateentity", "updateconcept", "conceptupdate" -> "updateConcept";
             case "emitevent", "event" -> "event";
@@ -1724,3 +1760,4 @@ public final class JsonModelParser {
     private record ParsedRule(String type, List<String> fields, String expression) {
     }
 }
+

@@ -9,6 +9,7 @@ application {
 dependencies {
     implementation project(':dsl')
     implementation project(':core')
+    implementation project(':kernel')
 
     implementation 'com.github.spullara.mustache.java:compiler:0.9.14'
     implementation 'org.slf4j:slf4j-simple:2.0.16'
@@ -17,6 +18,17 @@ dependencies {
 
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation project(':adapters:audit-inproc')
+    testImplementation project(':adapters:audit-postgres')
+    testImplementation project(':adapters:events-inproc')
+    testImplementation project(':adapters:eventstore-postgres')
+    testImplementation project(':adapters:flowinstance-inproc')
+    testImplementation project(':adapters:flowinstance-postgres')
+    testImplementation project(':adapters:idempotency-inproc')
+    testImplementation project(':adapters:idempotency-postgres')
+    testImplementation project(':adapters:tracing-inproc')
+    testImplementation project(':adapters:tracestore-postgres')
+    testImplementation 'com.h2database:h2:2.2.224'
     testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
     testImplementation 'org.testcontainers:postgresql:1.21.4'
     testImplementation 'org.postgresql:postgresql:42.7.4'

@@ -67,7 +67,8 @@ class TrustedSourceEmitterTest {
         assertTrue(Files.isRegularFile(out.resolve("src/main/resources/trusted-source/panel/user-admin-panel.css")));
         assertTrue(Files.isRegularFile(out.resolve("src/main/resources/trusted-source/panel/user-admin-panel.js")));
         String controller = Files.readString(out.resolve("src/main/java/com/npdev/generated/trusted/GeneratedTrustedSourceRuntimeController.java"));
-        assertTrue(controller.contains("new CreateUsersProcedure().execute(trustedContext)"));
+        assertTrue(controller.contains("actionKernelRunner.run("));
+        assertTrue(!controller.contains("new CreateUsersProcedure().execute"));
         assertTrue(controller.contains("RuntimeContextService"));
         assertTrue(controller.contains("@GetMapping(value = \"/generated/trusted-source/state/{conceptName}\""));
         assertTrue(controller.contains("rejectIfUnauthorized(context, Map.of(), \"ADMIN\", false, 0)"));

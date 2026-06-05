@@ -28,6 +28,7 @@ public final class CompiledFlowStep {
     private final String returnValueRef;
     private final CompiledCapabilityCall capabilityCall;
     private final CompiledActionMetadata action;
+    private final String generatedActionName;
 
     public CompiledFlowStep(
             String name,
@@ -94,6 +95,35 @@ public final class CompiledFlowStep {
             CompiledCapabilityCall capabilityCall,
             CompiledActionMetadata action
     ) {
+        this(name, type, checkpoint, scope, invariants, eventName, payloadRef, eventDataRefs, condition, thenSteps,
+                elseSteps, awaitEventName, awaitRef, awaitMatchCorrelation, awaitPayloadMatch, delaySeconds,
+                mapFromRef, mapToRef, returnValueRef, capabilityCall, action, null);
+    }
+
+    public CompiledFlowStep(
+            String name,
+            String type,
+            String checkpoint,
+            String scope,
+            List<String> invariants,
+            String eventName,
+            String payloadRef,
+            Map<String, String> eventDataRefs,
+            String condition,
+            List<CompiledFlowStep> thenSteps,
+            List<CompiledFlowStep> elseSteps,
+            String awaitEventName,
+            String awaitRef,
+            Boolean awaitMatchCorrelation,
+            Map<String, String> awaitPayloadMatch,
+            Long delaySeconds,
+            String mapFromRef,
+            String mapToRef,
+            String returnValueRef,
+            CompiledCapabilityCall capabilityCall,
+            CompiledActionMetadata action,
+            String generatedActionName
+    ) {
         this.name = name;
         this.type = type;
         this.checkpoint = checkpoint;
@@ -115,6 +145,7 @@ public final class CompiledFlowStep {
         this.returnValueRef = returnValueRef;
         this.capabilityCall = capabilityCall;
         this.action = action;
+        this.generatedActionName = generatedActionName;
     }
 
     public String getName() { return name; }
@@ -168,4 +199,6 @@ public final class CompiledFlowStep {
     public CompiledCapabilityCall getCapabilityCall() { return capabilityCall; }
 
     public CompiledActionMetadata getAction() { return action; }
+
+    public String getGeneratedActionName() { return generatedActionName; }
 }

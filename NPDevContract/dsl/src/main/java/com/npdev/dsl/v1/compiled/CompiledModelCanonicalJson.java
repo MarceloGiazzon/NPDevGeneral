@@ -306,6 +306,7 @@ public final class CompiledModelCanonicalJson {
             node.put("name", safe(flow.getName()));
             node.put("concept", safe(flow.getConcept()));
             node.put("mode", safe(flow.getMode()));
+            node.put("startEndpoint", flow.isStartEndpoint());
             node.set("inputSchema", toSchema(flow.getInputSchema()));
             node.set("outputSchema", toSchema(flow.getOutputSchema()));
             node.set("action", toActionMetadata(flow.getAction()));
@@ -367,10 +368,28 @@ public final class CompiledModelCanonicalJson {
             node.set("permissionRequirements", toStringArray(procedure.permissionRequirements()));
             node.put("tracePolicy", safe(procedure.tracePolicy()));
             node.put("auditPolicy", safe(procedure.auditPolicy()));
+            node.set("actionDescriptor", toGeneratedActionDescriptor(procedure.actionDescriptor()));
             node.set("metadata", toObjectMap(procedure.metadata()));
             procedures.add(node);
         }
         return procedures;
+    }
+
+    private static ObjectNode toGeneratedActionDescriptor(CompiledGeneratedActionDescriptorSpec descriptor) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        if (descriptor == null) {
+            return node;
+        }
+        node.put("actionName", safe(descriptor.actionName()));
+        node.set("affectedConcepts", toStringArray(descriptor.affectedConcepts()));
+        node.put("sideEffectConcept", safe(descriptor.sideEffectConcept()));
+        node.put("eventNameOnSuccess", safe(descriptor.eventNameOnSuccess()));
+        node.put("auditResourceType", safe(descriptor.auditResourceType()));
+        node.put("idempotencyPolicy", safe(descriptor.idempotencyPolicy()));
+        node.put("tracePolicy", safe(descriptor.tracePolicy()));
+        node.put("correlationPolicy", safe(descriptor.correlationPolicy()));
+        node.put("explicit", descriptor.explicit());
+        return node;
     }
 
     private static ArrayNode toProcedureParameters(List<CompiledProcedureParameter> parameters) {
@@ -686,6 +705,7 @@ public final class CompiledModelCanonicalJson {
             stepNode.put("mapFromRef", safe(flowStep.getMapFromRef()));
             stepNode.put("mapToRef", safe(flowStep.getMapToRef()));
             stepNode.put("returnValueRef", safe(flowStep.getReturnValueRef()));
+            stepNode.put("generatedActionName", safe(flowStep.getGeneratedActionName()));
             stepNode.set("capabilityCall", toCapabilityCall(flowStep.getCapabilityCall()));
             steps.add(stepNode);
         }
@@ -715,6 +735,7 @@ public final class CompiledModelCanonicalJson {
         ObjectNode node = JsonNodeFactory.instance.objectNode();
         node.put("capabilityName", safe(capabilityCall.getCapabilityName()));
         node.put("capabilityType", safe(capabilityCall.getCapabilityType()));
+        node.put("adapterId", safe(capabilityCall.getAdapterId()));
         node.put("operation", safe(capabilityCall.getOperation()));
         node.set("argsRefs", toStringArray(capabilityCall.getArgsRefs()));
         node.put("inputRef", safe(capabilityCall.getInputRef()));
