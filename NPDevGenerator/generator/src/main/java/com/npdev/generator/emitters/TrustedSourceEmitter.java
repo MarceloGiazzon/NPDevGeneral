@@ -3078,6 +3078,158 @@ public final class TrustedSourceEmitter {
                   const text = await response.text();
                   return { status: response.ok ? 'ok' : 'error', error: text || ('HTTP ' + response.status) };
                 }
+                // Item 17 Flow UI Visibility bridge start
+                function npdevFlowUiEscape(value) {
+                  if (value === undefined) {
+                    return 'unavailable: not returned by runtime';
+                  }
+                  if (value === null) {
+                    return 'unavailable: runtime returned null';
+                  }
+                  return String(value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+                }
+                function npdevFlowUiValue(response, key) {
+                  if (!response || !Object.prototype.hasOwnProperty.call(response, key)) {
+                    return 'unavailable: not returned by runtime';
+                  }
+                  if (response[key] === null) {
+                    return 'unavailable: runtime returned null';
+                  }
+                  return response[key];
+                }
+                function npdevFlowUiFirstValue(response, keys) {
+                  for (const key of keys) {
+                    const value = npdevFlowUiValue(response, key);
+                    if (String(value).indexOf('unavailable:') !== 0) {
+                      return value;
+                    }
+                  }
+                  return npdevFlowUiValue(response, keys[0]);
+                }
+                function npdevFlowUiHeaders() {
+                  const headers = { 'Content-Type': 'application/json' };
+                  const apiKey = window.NPDevApiKey || (window.localStorage && window.localStorage.getItem('npdev.apiKey')) || '';
+                  if (apiKey) {
+                    headers['X-Api-Key'] = apiKey;
+                  }
+                  return headers;
+                }
+                async function npdevFlowUiPost(url, payload) {
+                  const response = await fetch(url, {
+                    method: 'POST',
+                    headers: npdevFlowUiHeaders(),
+                    body: JSON.stringify(payload || {})
+                  });
+                  let body = {};
+                  try {
+                    body = await response.json();
+                  } catch (error) {
+                    body = {
+                      status: 'failed',
+                      error: 'unavailable: runtime response was not JSON',
+                      reason: String(error && error.message ? error.message : error)
+                    };
+                  }
+                  if (!response.ok) {
+                    body.httpStatus = response.status;
+                    body.status = body.status || 'failed';
+                    body.error = body.error || body.reason || 'flow request failed';
+                  }
+                  return body;
+                }
+                function npdevFlowUiEvidenceId(response) {
+                  return npdevFlowUiValue(response, 'flowInstanceId') !== 'unavailable: not returned by runtime'
+                    ? npdevFlowUiValue(response, 'flowInstanceId')
+                    : npdevFlowUiValue(response, 'executionId');
+                }
+                function npdevFlowUiRow(attributeName, label, value) {
+                  return '<div class="npdev-flow-result-row" ' + attributeName + '="' + npdevFlowUiEscape(value) + '">' +
+                    '<strong>' + npdevFlowUiEscape(label) + ':</strong> ' + npdevFlowUiEscape(value) +
+                    '</div>';
+                }
+                function npdevFlowUiLinks(response) {
+                  const executionId = npdevFlowUiEvidenceId(response);
+                  const correlationId = npdevFlowUiValue(response, 'correlationId');
+                  let html = '';
+                  if (executionId && String(executionId).indexOf('unavailable:') !== 0) {
+                    html += '<a data-npdev-flow-evidence-link href="/generated/actions/executions/' +
+                      encodeURIComponent(executionId) + '">View flow/execution evidence</a>';
+                  }
+                  if (correlationId && String(correlationId).indexOf('unavailable:') !== 0) {
+                    html += '<a data-npdev-flow-correlation-evidence-link href="/generated/actions/correlations/' +
+                      encodeURIComponent(correlationId) + '">View correlation evidence</a>';
+                  }
+                  if (!html) {
+                    html = '<span data-npdev-flow-evidence-link-status>' +
+                      'Evidence link unavailable: executionId/flowInstanceId/correlationId not returned by runtime' +
+                      '</span>';
+                  }
+                  return '<div class="npdev-flow-result-links">' + html + '</div>';
+                }
+                function npdevFlowUiAutoRender(response) {
+                  if (typeof document === 'undefined' || !document.body || !window.NPDev.renderFlowResult) {
+                    return;
+                  }
+                  let container = document.querySelector('[data-npdev-flow-result-target]');
+                  if (!container) {
+                    container = document.createElement('section');
+                    container.setAttribute('data-npdev-flow-result-auto', 'true');
+                    document.body.appendChild(container);
+                  }
+                  window.NPDev.renderFlowResult(container, response);
+                }
+                window.NPDev.renderFlowResultHtml = function(response) {
+                  response = response || {};
+                  const flowStatus = npdevFlowUiFirstValue(response, ['flowStatus', 'flowInstanceStatus', 'status']);
+                  const statusClass = String(flowStatus).toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
+                  return '<section class="npdev-flow-result npdev-flow-result-' + npdevFlowUiEscape(statusClass) + '" data-npdev-flow-result>' +
+                    '<h3>Flow execution result</h3>' +
+                    npdevFlowUiRow('data-npdev-flow-name', 'Flow name', npdevFlowUiValue(response, 'flowName')) +
+                    npdevFlowUiRow('data-npdev-flow-instance-id', 'Flow instance ID', npdevFlowUiFirstValue(response, ['flowInstanceId', 'executionId'])) +
+                    npdevFlowUiRow('data-npdev-flow-status', 'Flow status', flowStatus) +
+                    npdevFlowUiRow('data-npdev-execution-id', 'Execution ID', npdevFlowUiValue(response, 'executionId')) +
+                    npdevFlowUiRow('data-npdev-correlation-id', 'Correlation ID', npdevFlowUiValue(response, 'correlationId')) +
+                    npdevFlowUiRow('data-npdev-waiting-status', 'Waiting status', npdevFlowUiValue(response, 'waitingStatus')) +
+                    npdevFlowUiRow('data-npdev-resume-status', 'Resume status', npdevFlowUiValue(response, 'resumeStatus')) +
+                    npdevFlowUiRow('data-npdev-capability-id', 'Capability ID', npdevFlowUiValue(response, 'capabilityId')) +
+                    npdevFlowUiRow('data-npdev-dispatch-status', 'Capability dispatch status', npdevFlowUiValue(response, 'capabilityDispatchStatus')) +
+                    npdevFlowUiRow('data-npdev-event-status', 'Event status', npdevFlowUiValue(response, 'eventStatus')) +
+                    npdevFlowUiRow('data-npdev-trace-status', 'Trace status', npdevFlowUiValue(response, 'traceStatus')) +
+                    npdevFlowUiRow('data-npdev-audit-status', 'Audit status', npdevFlowUiValue(response, 'auditStatus')) +
+                    npdevFlowUiRow('data-npdev-idempotency-status', 'Idempotency status', npdevFlowUiValue(response, 'idempotencyStatus')) +
+                    npdevFlowUiRow('data-npdev-correlation-status', 'Correlation status', npdevFlowUiValue(response, 'correlationStatus')) +
+                    npdevFlowUiRow('data-npdev-created-count', 'Created count', npdevFlowUiValue(response, 'createdCount')) +
+                    npdevFlowUiRow('data-npdev-side-effect-before', 'Side effect before', npdevFlowUiValue(response, 'sideEffectCountBefore')) +
+                    npdevFlowUiRow('data-npdev-side-effect-after', 'Side effect after', npdevFlowUiValue(response, 'sideEffectCountAfter')) +
+                    npdevFlowUiRow('data-npdev-flow-message', 'Message', npdevFlowUiValue(response, 'message')) +
+                    npdevFlowUiRow('data-npdev-flow-error', 'Error', npdevFlowUiValue(response, 'error')) +
+                    npdevFlowUiLinks(response) +
+                    '</section>';
+                };
+                window.NPDev.renderFlowResult = function(container, response) {
+                  const target = typeof container === 'string' ? document.querySelector(container) : container;
+                  if (!target) {
+                    throw new Error('Flow result container not found');
+                  }
+                  target.innerHTML = window.NPDev.renderFlowResultHtml(response || {});
+                  return target;
+                };
+                window.NPDev.startFlow = async function(flowName, payload) {
+                  const body = await npdevFlowUiPost('/generated/flows/' + encodeURIComponent(flowName) + '/start', payload || {});
+                  npdevFlowUiAutoRender(body);
+                  return body;
+                };
+                window.NPDev.resumeFlow = async function(flowName, eventName, payload) {
+                  const body = await npdevFlowUiPost('/generated/flows/' + encodeURIComponent(flowName) + '/events/' + encodeURIComponent(eventName), payload || {});
+                  npdevFlowUiAutoRender(body);
+                  return body;
+                };
+                // Item 17 Flow UI Visibility bridge end
                 window.NPDev.callProcedure = async function(name, payload) {
                   const headers = { 'Content-Type': 'application/json' };
                   const apiKey = window.NPDevApiKey || (window.localStorage && window.localStorage.getItem('npdev.apiKey')) || '';
@@ -3396,5 +3548,10 @@ public final class TrustedSourceEmitter {
     ) {
     }
 }
+
+
+
+
+
 
 

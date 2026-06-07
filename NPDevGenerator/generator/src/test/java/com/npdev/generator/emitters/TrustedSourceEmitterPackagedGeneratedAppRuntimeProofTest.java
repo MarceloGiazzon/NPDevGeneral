@@ -166,18 +166,6 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
             assertTrue(bridgeJs.contains("data-npdev-execution-evidence-link"), bridgeJs);
             assertTrue(bridgeJs.contains("data-npdev-correlation-evidence-link"), bridgeJs);
             assertTrue(bridgeJs.contains("data-npdev-evidence-link-status"), bridgeJs);
-            String uiRenderProof = runNodeRendererProof(evidenceRoot, bridgeJs, action, repeat);
-            Files.writeString(evidenceRoot.resolve("ui-render-proof-output.txt"), uiRenderProof, StandardCharsets.UTF_8);
-            Files.writeString(evidenceRoot.resolve("packaged-app-ui-proof-output.txt"),
-                    "Temporary generated app path: " + finalAppRoot + System.lineSeparator()
-                            + "Packaged app built with bootJar and booted from: " + jar + System.lineSeparator()
-                            + "Generated panel route served over HTTP: /item12-panel -> contains npdev-panel-runtime.js" + System.lineSeparator()
-                            + "Generated bridge resource served over HTTP: /generated/trusted-source/npdev-panel-runtime.js" + System.lineSeparator()
-                            + "Action endpoint response metadata includes capabilityId=" + action.get("capabilityId") + System.lineSeparator()
-                            + "Generated bridge includes execution/correlation evidence link hooks" + System.lineSeparator()
-                            + "UI/resource rendering proof: PASS" + System.lineSeparator(),
-                    StandardCharsets.UTF_8);
-
             Map<String, Object> evidence = getJson(client, port, "/item12/proof/evidence");
             assertEquals("H2/JDBC packaged runtime proof", evidence.get("proofType"));
             assertEquals(1, number(evidence.get("businessRows")), () -> "evidence: " + evidence);
@@ -248,6 +236,21 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
             assertEquals(1, number(waitingResume.get("createdCount")), () -> "waiting resume response: " + waitingResume);
             assertTrue(String.valueOf(waitingResume.get("capabilityDispatchStatus")).startsWith("resumed: external event -> KernelRunner.resumeExecution"),
                     () -> "waiting resume response: " + waitingResume);
+
+            String uiRenderProof = runNodeRendererProof(evidenceRoot, bridgeJs, action, repeat, flowStart, waitingStart, waitingResume);
+            Files.writeString(evidenceRoot.resolve("ui-render-proof-output.txt"), uiRenderProof, StandardCharsets.UTF_8);
+            Files.writeString(evidenceRoot.resolve("ui-flow-render-proof-output.txt"), uiRenderProof, StandardCharsets.UTF_8);
+            Files.writeString(evidenceRoot.resolve("packaged-app-ui-proof-output.txt"),
+                    "Temporary generated app path: " + finalAppRoot + System.lineSeparator()
+                            + "Packaged app built with bootJar and booted from: " + jar + System.lineSeparator()
+                            + "Generated panel route served over HTTP: /item12-panel -> contains npdev-panel-runtime.js" + System.lineSeparator()
+                            + "Generated bridge resource served over HTTP: /generated/trusted-source/npdev-panel-runtime.js" + System.lineSeparator()
+                            + "Action endpoint response metadata includes capabilityId=" + action.get("capabilityId") + System.lineSeparator()
+                            + "Generated bridge includes execution/correlation evidence link hooks" + System.lineSeparator()
+                            + "Flow start response rendered by served JS renderer: PASS" + System.lineSeparator()
+                            + "Waiting/resume response rendered by served JS renderer: PASS" + System.lineSeparator()
+                            + "UI/resource rendering proof: PASS" + System.lineSeparator(),
+                    StandardCharsets.UTF_8);
 
             Map<String, Object> waitingViewer = getJson(client, port, "/generated/actions/correlations/corr-item16-waiting-flow-1");
             assertEquals("corr-item16-waiting-flow-1", waitingViewer.get("correlationId"), () -> "waiting viewer: " + waitingViewer);
@@ -1033,7 +1036,10 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
             Path evidenceRoot,
             String bridgeJs,
             Map<String, Object> action,
-            Map<String, Object> repeat
+            Map<String, Object> repeat,
+            Map<String, Object> flowStart,
+            Map<String, Object> waitingStart,
+            Map<String, Object> waitingResume
     ) throws Exception {
         Path bridge = evidenceRoot.resolve("served-npdev-panel-runtime.js");
         Files.writeString(bridge, bridgeJs, StandardCharsets.UTF_8);
@@ -1044,6 +1050,9 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                 const bridge = fs.readFileSync(process.argv[2], 'utf8');
                 const success = %s;
                 const repeat = %s;
+                const flowStart = %s;
+                const waitingStart = %s;
+                const waitingResume = %s;
                 const failure = {
                   status: 'failed',
                   executionId: 'exec-error',
@@ -1082,6 +1091,7 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                 const context = { window: {}, document };
                 vm.runInNewContext(bridge, context);
                 const render = context.window.NPDev.renderActionResultHtml;
+                const renderFlow = context.window.NPDev.renderFlowResultHtml;
                 function assertVisible(condition, message) {
                   if (!condition) {
                     throw new Error(message);
@@ -1116,6 +1126,50 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                 const repeatHtml = render(repeat);
                 const failureHtml = render(failure);
                 const missingHtml = render(missing);
+                assertVisible(typeof context.window.NPDev.startFlow === 'function', 'startFlow API missing from served JS');
+                assertVisible(typeof context.window.NPDev.resumeFlow === 'function', 'resumeFlow API missing from served JS');
+                assertVisible(typeof renderFlow === 'function', 'renderFlowResultHtml API missing from served JS');
+                const flowStartHtml = renderFlow(flowStart);
+                const waitingStartHtml = renderFlow(waitingStart);
+                const waitingResumeHtml = renderFlow(waitingResume);
+                const flowMissingHtml = renderFlow({ status: 'ok', flowName: null });
+                const requiredFlowHooks = [
+                  'data-npdev-flow-result',
+                  'data-npdev-flow-name',
+                  'data-npdev-flow-instance-id',
+                  'data-npdev-flow-status',
+                  'data-npdev-execution-id',
+                  'data-npdev-correlation-id',
+                  'data-npdev-waiting-status',
+                  'data-npdev-resume-status',
+                  'data-npdev-capability-id',
+                  'data-npdev-dispatch-status',
+                  'data-npdev-event-status',
+                  'data-npdev-trace-status',
+                  'data-npdev-audit-status',
+                  'data-npdev-idempotency-status',
+                  'data-npdev-correlation-status',
+                  'data-npdev-created-count',
+                  'data-npdev-side-effect-before',
+                  'data-npdev-side-effect-after',
+                  'data-npdev-flow-message',
+                  'data-npdev-flow-error',
+                  'data-npdev-flow-evidence-link',
+                  'data-npdev-flow-correlation-evidence-link'
+                ];
+                for (const hook of requiredFlowHooks) {
+                  requireContains(flowStartHtml, hook, 'flow start hook');
+                }
+                requireContains(flowStartHtml, 'CreateItem12UserFlow', 'flow start name');
+                requireContains(flowStartHtml, 'COMPLETED', 'flow start status');
+                requireContains(flowStartHtml, '/generated/actions/correlations/corr-item15-flow-1', 'flow start correlation evidence link');
+                requireContains(waitingStartHtml, 'AwaitThenCreateItem12UserFlow', 'waiting flow name');
+                requireContains(waitingStartHtml, 'WAITING_EVENT', 'waiting flow status');
+                requireContains(waitingResumeHtml, 'AwaitThenCreateItem12UserFlow', 'waiting resume flow name');
+                requireContains(waitingResumeHtml, 'COMPLETED', 'waiting resume completed status');
+                requireContains(waitingResumeHtml, '/generated/actions/correlations/corr-item16-waiting-flow-1', 'waiting resume correlation evidence link');
+                requireContains(flowMissingHtml, 'unavailable: runtime returned null', 'flow null visibility');
+                requireContains(flowMissingHtml, 'unavailable: not returned by runtime', 'flow missing visibility');
                 for (const hook of requiredHooks) {
                   requireContains(successHtml, hook, 'success hook');
                 }
@@ -1141,10 +1195,16 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                 console.log('generated UI renders idempotency reuse/prevented metadata: PASS');
                 console.log('stable data-npdev-* hooks are present: PASS');
                 console.log('generated UI renders evidence links and missing-link reason: PASS');
+                console.log('generated UI renders real flow start response metadata: PASS');
+                console.log('generated UI renders real waiting/resume flow response metadata: PASS');
+                console.log('stable data-npdev-flow-* hooks are present: PASS');
                 console.log('unavailable/disabled/failed statuses are visible, not hidden: PASS');
                 """.formatted(
                         OBJECT_MAPPER.writeValueAsString(action),
-                        OBJECT_MAPPER.writeValueAsString(repeat)
+                        OBJECT_MAPPER.writeValueAsString(repeat),
+                        OBJECT_MAPPER.writeValueAsString(flowStart),
+                        OBJECT_MAPPER.writeValueAsString(waitingStart),
+                        OBJECT_MAPPER.writeValueAsString(waitingResume)
                 ), StandardCharsets.UTF_8);
         CommandResult result = runCommand(
                 List.of("node", script.toString(), bridge.toString()),
@@ -1313,6 +1373,8 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
     private record CommandResult(int exitCode, String output) {
     }
 }
+
+
 
 
 
