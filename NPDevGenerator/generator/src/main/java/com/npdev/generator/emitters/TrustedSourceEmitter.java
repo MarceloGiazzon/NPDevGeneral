@@ -1351,6 +1351,7 @@ public final class TrustedSourceEmitter {
                 import java.util.List;
                 import java.util.Map;
                 import java.util.Optional;
+                import java.util.concurrent.ConcurrentHashMap;
                 import java.util.UUID;
 
                 @Service
@@ -2167,10 +2168,72 @@ public final class TrustedSourceEmitter {
                         out.put("evidenceViewerUrl", evidenceViewerUrl);
                         out.put("message", message);
                         out.put("error", error);
+                        Object flowStartIdempotencyStatus = result.get("flowStartIdempotencyStatus");
+                        if (flowStartIdempotencyStatus != null) {
+                            out.put("flowStartIdempotencyStatus", String.valueOf(flowStartIdempotencyStatus));
+                        }
                         if (!result.isEmpty()) {
                             out.put("result", result);
                         }
                         return out;
+                    }
+
+                    public GeneratedFlowExecutionResponse withFlowStartIdempotencyStatus(String statusValue) {
+                        Map<String, Object> copy = new LinkedHashMap<>(result);
+                        copy.put("flowStartIdempotencyStatus", clean(statusValue));
+                        return new GeneratedFlowExecutionResponse(
+                                status,
+                                flowName,
+                                flowInstanceId,
+                                flowStatus,
+                                executionId,
+                                correlationId,
+                                actionName,
+                                procedureName,
+                                capabilityId,
+                                capabilityDispatchStatus,
+                                createdCount,
+                                sideEffectCountBefore,
+                                sideEffectCountAfter,
+                                eventStatus,
+                                auditStatus,
+                                traceStatus,
+                                idempotencyStatus,
+                                correlationStatus,
+                                evidenceViewerUrl,
+                                message,
+                                error,
+                                copy
+                        );
+                    }
+
+                    public GeneratedFlowExecutionResponse asFlowStartIdempotencyReplay() {
+                        Map<String, Object> copy = new LinkedHashMap<>(result);
+                        copy.put("flowStartIdempotencyStatus", "reused: generated flow-start idempotency guard returned existing response before KernelRunner dispatch");
+                        return new GeneratedFlowExecutionResponse(
+                                status,
+                                flowName,
+                                flowInstanceId,
+                                flowStatus,
+                                executionId,
+                                correlationId,
+                                actionName,
+                                procedureName,
+                                capabilityId,
+                                "prevented: generated flow-start idempotency guard reused existing response before KernelRunner dispatch",
+                                0,
+                                sideEffectCountAfter,
+                                sideEffectCountAfter,
+                                eventStatus,
+                                auditStatus,
+                                traceStatus,
+                                "reused: generated flow-start idempotency guard",
+                                correlationStatus,
+                                evidenceViewerUrl,
+                                "flow start idempotency replay",
+                                error,
+                                copy
+                        );
                     }
 
                     private static String clean(String value) {
@@ -2198,15 +2261,43 @@ public final class TrustedSourceEmitter {
                 import java.util.List;
                 import java.util.Map;
                 import java.util.Optional;
+                import java.util.concurrent.ConcurrentHashMap;
 
                 @Service
                 public class GeneratedFlowCodaRunner {
                     private final KernelFacade kernelFacade;
                     private final ConceptGateway conceptGateway;
+                    private final Map<String, GeneratedFlowExecutionResponse> flowStartIdempotencyCache = new ConcurrentHashMap<>();
 
                     public GeneratedFlowCodaRunner(KernelFacade kernelFacade, ConceptGateway conceptGateway) {
                         this.kernelFacade = kernelFacade;
                         this.conceptGateway = conceptGateway;
+                    }
+
+                    private static String flowStartIdempotencyKey(
+                            String flowName,
+                            GeneratedFlowExecutionRequest request
+                    ) {
+                        if (request == null || request.idempotencyKey().isBlank()) {
+                            return "";
+                        }
+                        String safeFlowName = flowName == null ? "" : flowName.trim();
+                        return safeFlowName + "::" + request.idempotencyKey();
+                    }
+
+                    private GeneratedFlowExecutionResponse rememberFlowStartResponse(
+                            String flowStartIdempotencyKey,
+                            GeneratedFlowExecutionResponse response
+                    ) {
+                        if (response == null) {
+                            return null;
+                        }
+                        if (flowStartIdempotencyKey == null || flowStartIdempotencyKey.isBlank()) {
+                            return response.withFlowStartIdempotencyStatus("unavailable: no idempotencyKey supplied");
+                        }
+                        GeneratedFlowExecutionResponse recorded = response.withFlowStartIdempotencyStatus("recorded: generated flow-start idempotency guard");
+                        GeneratedFlowExecutionResponse existing = flowStartIdempotencyCache.putIfAbsent(flowStartIdempotencyKey, recorded);
+                        return existing == null ? recorded : existing.asFlowStartIdempotencyReplay();
                     }
 
                     public GeneratedFlowExecutionResponse start(
@@ -2219,8 +2310,15 @@ public final class TrustedSourceEmitter {
                                 ? new GeneratedFlowExecutionRequest("", "", "", Map.of())
                                 : request;
                         ExecutionContext safeContext = context == null ? ExecutionContext.anonymous() : context;
+                        String flowStartIdempotencyKey = flowStartIdempotencyKey(descriptor == null ? flowName : descriptor.flowName(), safeRequest);
+                        if (!flowStartIdempotencyKey.isBlank()) {
+                            GeneratedFlowExecutionResponse cached = flowStartIdempotencyCache.get(flowStartIdempotencyKey);
+                            if (cached != null) {
+                                return cached.asFlowStartIdempotencyReplay();
+                            }
+                        }
                         if (descriptor == null) {
-                            return new GeneratedFlowExecutionResponse(
+                            GeneratedFlowExecutionResponse response = new GeneratedFlowExecutionResponse(
                                     "rejected",
                                     flowName,
                                     "",
@@ -2244,6 +2342,7 @@ public final class TrustedSourceEmitter {
                                     "unknown-flow",
                                     Map.of()
                             );
+                            return rememberFlowStartResponse(flowStartIdempotencyKey, response);
                         }
                         GeneratedActionDescriptor actionDescriptor = GeneratedActionRegistry.find(descriptor.actionName());
                         String sideEffectConcept = actionDescriptor == null ? "" : actionDescriptor.sideEffectConcept();
@@ -2288,7 +2387,7 @@ public final class TrustedSourceEmitter {
                                 enrichedResult.put("resumeEndpoint", "/generated/flows/" + urlToken(descriptor.flowName()) + "/resume");
                                 enrichedResult.put("eventEndpointTemplate", "/generated/flows/" + urlToken(descriptor.flowName()) + "/events/{eventName}");
                             }
-                            return new GeneratedFlowExecutionResponse(
+                            GeneratedFlowExecutionResponse response = new GeneratedFlowExecutionResponse(
                                     responseStatus,
                                     descriptor.flowName(),
                                     executionId,
@@ -2320,6 +2419,7 @@ public final class TrustedSourceEmitter {
                                     waiting ? "" : result.getError() == null ? "" : result.getError(),
                                     enrichedResult
                             );
+                            return rememberFlowStartResponse(flowStartIdempotencyKey, response);
                         } catch (RuntimeException exception) {
                             return new GeneratedFlowExecutionResponse(
                                     "error",

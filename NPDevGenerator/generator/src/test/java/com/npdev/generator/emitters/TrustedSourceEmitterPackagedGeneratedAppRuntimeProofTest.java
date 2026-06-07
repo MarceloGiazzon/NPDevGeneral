@@ -194,18 +194,23 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
             assertEquals(1, number(flowStart.get("createdCount")), () -> "flow start response: " + flowStart);
             assertEquals(1, number(flowStart.get("sideEffectCountBefore")), () -> "flow start response: " + flowStart);
             assertEquals(2, number(flowStart.get("sideEffectCountAfter")), () -> "flow start response: " + flowStart);
+            assertTrue(String.valueOf(flowStart.get("flowStartIdempotencyStatus")).startsWith("recorded: generated flow-start idempotency guard"),
+                    () -> "flow start response: " + flowStart);
 
             Map<String, Object> flowRepeat = postJson(client, port, "/generated/flows/CreateItem12UserFlow/start", Map.of(
                     "executionId", "exec-item15-flow-request-2",
                     "correlationId", "corr-item15-flow-1",
                     "idempotencyKey", "idem-item15-flow-1"
             ));
+            assertEquals(flowStart.get("executionId"), flowRepeat.get("executionId"), () -> "flow repeat should replay original execution id: " + flowRepeat);
+            assertTrue(String.valueOf(flowRepeat.get("flowStartIdempotencyStatus")).startsWith("reused: generated flow-start idempotency guard"),
+                    () -> "flow repeat response: " + flowRepeat);
             assertEquals("ok", flowRepeat.get("status"), () -> "flow repeat response: " + flowRepeat);
             assertEquals("COMPLETED", flowRepeat.get("flowInstanceStatus"), () -> "flow repeat response: " + flowRepeat);
             assertEquals(0, number(flowRepeat.get("createdCount")), () -> "flow repeat response: " + flowRepeat);
             assertEquals(2, number(flowRepeat.get("sideEffectCountBefore")), () -> "flow repeat response: " + flowRepeat);
             assertEquals(2, number(flowRepeat.get("sideEffectCountAfter")), () -> "flow repeat response: " + flowRepeat);
-            assertTrue(String.valueOf(flowRepeat.get("capabilityDispatchStatus")).startsWith("prevented: action idempotency reused"),
+            assertTrue(String.valueOf(flowRepeat.get("capabilityDispatchStatus")).startsWith("prevented: generated flow-start idempotency guard"),
                     () -> "flow repeat response: " + flowRepeat);
 
             Map<String, Object> waitingStart = postJson(client, port, "/generated/flows/AwaitThenCreateItem12UserFlow/start", Map.of(
@@ -219,6 +224,22 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
             assertEquals(0, number(waitingStart.get("createdCount")), () -> "waiting start response: " + waitingStart);
             assertTrue(String.valueOf(waitingStart.get("capabilityDispatchStatus")).startsWith("waiting: KernelRunner persisted WAITING_EVENT"),
                     () -> "waiting start response: " + waitingStart);
+            assertTrue(String.valueOf(waitingStart.get("flowStartIdempotencyStatus")).startsWith("recorded: generated flow-start idempotency guard"),
+                    () -> "waiting start response: " + waitingStart);
+
+            Map<String, Object> waitingStartRepeat = postJson(client, port, "/generated/flows/AwaitThenCreateItem12UserFlow/start", Map.of(
+                    "executionId", "exec-item16-waiting-flow-repeat-1",
+                    "correlationId", "corr-item16-waiting-flow-1",
+                    "idempotencyKey", "idem-item16-waiting-flow-1"
+            ));
+            assertEquals("waiting", waitingStartRepeat.get("status"), () -> "waiting repeat response: " + waitingStartRepeat);
+            assertEquals("WAITING_EVENT", waitingStartRepeat.get("flowInstanceStatus"), () -> "waiting repeat response: " + waitingStartRepeat);
+            assertEquals(waitingStart.get("executionId"), waitingStartRepeat.get("executionId"), () -> "waiting repeat should replay original execution id: " + waitingStartRepeat);
+            assertEquals(0, number(waitingStartRepeat.get("createdCount")), () -> "waiting repeat response: " + waitingStartRepeat);
+            assertTrue(String.valueOf(waitingStartRepeat.get("capabilityDispatchStatus")).startsWith("prevented: generated flow-start idempotency guard"),
+                    () -> "waiting repeat response: " + waitingStartRepeat);
+            assertTrue(String.valueOf(waitingStartRepeat.get("flowStartIdempotencyStatus")).startsWith("reused: generated flow-start idempotency guard"),
+                    () -> "waiting repeat response: " + waitingStartRepeat);
 
             String waitingExecutionId = String.valueOf(waitingStart.get("executionId"));
             assertTrue(!(waitingExecutionId == null || waitingExecutionId.isBlank() || "null".equals(waitingExecutionId)),
@@ -273,14 +294,20 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                             + "Flow correlation viewer endpoint: " + flowEvidenceCorrelation + System.lineSeparator()
                             + "Waiting flow correlation viewer endpoint: " + waitingFlowEvidenceCorrelation + System.lineSeparator(),
                     StandardCharsets.UTF_8);
+            Files.writeString(evidenceRoot.resolve("flow-start-idempotency-proof-output.txt"),
+                    "Initial flow start: " + flowStart + System.lineSeparator()
+                            + "Repeated flow start: " + flowRepeat + System.lineSeparator()
+                            + "Initial waiting flow start: " + waitingStart + System.lineSeparator()
+                            + "Repeated waiting flow start: " + waitingStartRepeat + System.lineSeparator(),
+                    StandardCharsets.UTF_8);
 
             Map<String, Object> flowEvidence = getJson(client, port, "/item12/proof/evidence");
             assertEquals("H2/JDBC packaged runtime proof", flowEvidence.get("proofType"));
             assertTrue(number(flowEvidence.get("businessRows")) >= 3, () -> "flow evidence: " + flowEvidence);
-            assertTrue(number(flowEvidence.get("npdevFlowInstanceRows")) >= 2, () -> "flow evidence: " + flowEvidence);
+            assertTrue(number(flowEvidence.get("npdevFlowInstanceRows")) >= 1, () -> "flow evidence after flow-start replay should keep one completed-flow instance row: " + flowEvidence);
             assertTrue(number(flowEvidence.get("flowEventRows")) >= 1, () -> "flow evidence: " + flowEvidence);
-            assertTrue(number(flowEvidence.get("flowTraceRows")) >= 2, () -> "flow evidence: " + flowEvidence);
-            assertTrue(number(flowEvidence.get("flowAuditRows")) >= 2, () -> "flow evidence: " + flowEvidence);
+            assertTrue(number(flowEvidence.get("flowTraceRows")) >= 1, () -> "flow evidence after flow-start replay should not require duplicate completed-flow trace rows: " + flowEvidence);
+            assertTrue(number(flowEvidence.get("flowAuditRows")) >= 1, () -> "flow evidence after flow-start replay should not require duplicate completed-flow audit rows: " + flowEvidence);
             assertTrue(number(flowEvidence.get("flowIdempotencyRows")) >= 1, () -> "flow evidence: " + flowEvidence);
             assertTrue(number(flowEvidence.get("flowCorrelationOwnerRows")) >= 1, () -> "flow evidence: " + flowEvidence);
             assertTrue(number(flowEvidence.get("waitingFlowInstanceRows")) >= 1, () -> "waiting flow evidence: " + flowEvidence);
