@@ -2188,6 +2188,7 @@ public final class TrustedSourceEmitter {
                 import com.npdev.kernel.ExecutionContext;
                 import com.npdev.kernel.ExecutionResult;
                 import com.npdev.kernel.ExecutionStatus;
+                import com.npdev.kernel.events.EventEnvelope;
                 import com.npdev.kernel.concepts.ConceptGateway;
                 import com.npdev.kernel.concepts.ConceptListRequest;
                 import com.npdev.kernel.execution.FlowInstance;
@@ -2269,16 +2270,26 @@ public final class TrustedSourceEmitter {
                             String evidenceUrl = correlationId.isBlank()
                                     ? ""
                                     : "/generated/actions/correlations/" + urlToken(correlationId);
+                            boolean waiting = result.getStatus() == ExecutionStatus.WAITING_EVENT || "WAITING_EVENT".equals(flowStatus);
                             String dispatchStatus = flowStatus.equals("COMPLETED")
                                     ? "dispatched: KernelRunner -> CapabilityDispatcher -> GeneratedActionCapabilityAdapter"
+                                    : waiting
+                                    ? "waiting: KernelRunner persisted WAITING_EVENT before generated action dispatch"
                                     : "failed: KernelRunner capability dispatch did not complete";
                             if (flowStatus.equals("COMPLETED")
                                     && !safeRequest.idempotencyKey().isBlank()
                                     && createdCount == 0) {
                                 dispatchStatus = "prevented: action idempotency reused before generated action adapter dispatch";
                             }
+                            String responseStatus = waiting ? "waiting" : result.getStatus() == ExecutionStatus.OK ? "ok" : "error";
+                            Map<String, Object> enrichedResult = new LinkedHashMap<>(actionResult);
+                            if (waiting) {
+                                enrichedResult.put("waitingStatus", "WAITING_EVENT");
+                                enrichedResult.put("resumeEndpoint", "/generated/flows/" + urlToken(descriptor.flowName()) + "/resume");
+                                enrichedResult.put("eventEndpointTemplate", "/generated/flows/" + urlToken(descriptor.flowName()) + "/events/{eventName}");
+                            }
                             return new GeneratedFlowExecutionResponse(
-                                    result.getStatus() == ExecutionStatus.OK ? "ok" : "error",
+                                    responseStatus,
                                     descriptor.flowName(),
                                     executionId,
                                     flowStatus,
@@ -2291,17 +2302,23 @@ public final class TrustedSourceEmitter {
                                     createdCount,
                                     sideEffectCountBefore,
                                     sideEffectCountAfter,
-                                    "written: kernel flow/action evidence available through JDBC proof",
+                                    waiting
+                                            ? "unavailable: flow is waiting before generated action success event"
+                                            : "written: kernel flow/action evidence available through JDBC proof",
                                     "written: KernelFacade executeFlow audit path",
-                                    "written: KernelRunner flow trace path",
+                                    waiting
+                                            ? "written: KernelRunner WAITING_EVENT trace path"
+                                            : "written: KernelRunner flow trace path",
                                     safeRequest.idempotencyKey().isBlank()
                                             ? "unavailable: no idempotencyKey supplied"
+                                            : waiting
+                                            ? "deferred: action idempotency pending resume"
                                             : "recorded: KernelRunner capability idempotency policy",
                                     "owned: KernelRunner correlation ownership path",
                                     evidenceUrl,
-                                    result.getStatus() == ExecutionStatus.OK ? "flow completed" : "flow failed",
-                                    result.getError() == null ? "" : result.getError(),
-                                    actionResult
+                                    waiting ? "flow waiting for event" : result.getStatus() == ExecutionStatus.OK ? "flow completed" : "flow failed",
+                                    waiting ? "" : result.getError() == null ? "" : result.getError(),
+                                    enrichedResult
                             );
                         } catch (RuntimeException exception) {
                             return new GeneratedFlowExecutionResponse(
@@ -2329,6 +2346,179 @@ public final class TrustedSourceEmitter {
                                     "flow failed",
                                     exception.getClass().getSimpleName() + ": " + clean(exception.getMessage()),
                                     Map.of()
+                            );
+                        }
+                    }
+
+                    public GeneratedFlowExecutionResponse publishEventAndResume(
+                            String flowName,
+                            String eventName,
+                            Map<String, Object> body,
+                            ExecutionContext context
+                    ) {
+                        GeneratedFlowDescriptor descriptor = GeneratedFlowRegistry.find(flowName);
+                        ExecutionContext safeContext = context == null ? ExecutionContext.anonymous() : context;
+                        Map<String, Object> input = body == null ? Map.of() : new LinkedHashMap<>(body);
+                        String executionId = stringValue(input.remove("executionId"));
+                        String correlationId = stringValue(input.remove("correlationId"));
+                        String idempotencyKey = stringValue(input.remove("idempotencyKey"));
+                        String causationId = firstNonBlank(stringValue(input.remove("causationId")), executionId);
+                        String requestedEventName = firstNonBlank(eventName, stringValue(input.remove("eventName")));
+                        if (descriptor == null) {
+                            return new GeneratedFlowExecutionResponse(
+                                    "rejected",
+                                    flowName,
+                                    executionId,
+                                    "not_found",
+                                    executionId,
+                                    correlationId,
+                                    "",
+                                    "",
+                                    "",
+                                    "unavailable: flow not found before resume event",
+                                    0,
+                                    0,
+                                    0,
+                                    "unavailable: flow not found",
+                                    "unavailable: flow not found",
+                                    "unavailable: flow not found",
+                                    "unavailable: flow not found",
+                                    "unavailable: flow not found",
+                                    "",
+                                    "unknown-flow",
+                                    "unknown-flow",
+                                    Map.of()
+                            );
+                        }
+                        if (requestedEventName.isBlank()) {
+                            return new GeneratedFlowExecutionResponse(
+                                    "rejected",
+                                    descriptor.flowName(),
+                                    executionId,
+                                    "missing_event",
+                                    executionId,
+                                    correlationId,
+                                    descriptor.actionName(),
+                                    "",
+                                    "generated.action." + descriptor.actionName(),
+                                    "unavailable: resume eventName missing",
+                                    0,
+                                    0,
+                                    0,
+                                    "unavailable: event not published",
+                                    "unavailable: eventName missing",
+                                    "unavailable: eventName missing",
+                                    "unavailable: eventName missing",
+                                    "unavailable: eventName missing",
+                                    "",
+                                    "missing-event-name",
+                                    "missing-event-name",
+                                    Map.of("resumeStatus", "missing_event")
+                            );
+                        }
+                        GeneratedActionDescriptor actionDescriptor = GeneratedActionRegistry.find(descriptor.actionName());
+                        String sideEffectConcept = actionDescriptor == null ? "" : actionDescriptor.sideEffectConcept();
+                        int sideEffectCountBefore = countSideEffects(sideEffectConcept, safeContext);
+                        try {
+                            EventEnvelope envelope = kernelFacade.publishExternalEvent(
+                                    requestedEventName,
+                                    correlationId,
+                                    causationId,
+                                    input,
+                                    safeContext
+                            );
+                            String effectiveCorrelationId = firstNonBlank(envelope.correlationId(), correlationId);
+                            Optional<FlowInstance> instance = executionId.isBlank()
+                                    ? Optional.empty()
+                                    : kernelFacade.findExecution(executionId, safeContext);
+                            ExecutionResult resumeExecutionResult = null;
+                            if (instance.isPresent()
+                                    && "WAITING_EVENT".equals(instance.get().status().name())
+                                    && !executionId.isBlank()) {
+                                resumeExecutionResult = kernelFacade.resumeExecution(executionId, safeContext);
+                                instance = kernelFacade.findExecution(executionId, safeContext);
+                            }
+                            int sideEffectCountAfter = countSideEffects(sideEffectConcept, safeContext);
+                            int createdCount = Math.max(0, sideEffectCountAfter - sideEffectCountBefore);
+                            String flowStatus = instance.map(row -> row.status().name())
+                                    .orElse(resumeExecutionResult == null ? "event_published" : statusValue(resumeExecutionResult));
+                            if (resumeExecutionResult != null
+                                    && resumeExecutionResult.getStatus() == ExecutionStatus.OK
+                                    && !"COMPLETED".equals(flowStatus)) {
+                                flowStatus = "COMPLETED";
+                            }
+                            String evidenceUrl = effectiveCorrelationId.isBlank()
+                                    ? ""
+                                    : "/generated/actions/correlations/" + urlToken(effectiveCorrelationId);
+                            Map<String, Object> resumeResult = new LinkedHashMap<>();
+                            resumeResult.put("resumeStatus", resumeExecutionResult == null ? "event_published" : statusValue(resumeExecutionResult));
+                            resumeResult.put("eventId", envelope.eventId());
+                            resumeResult.put("eventName", envelope.eventName());
+                            resumeResult.put("eventCorrelationId", effectiveCorrelationId);
+                            resumeResult.put("resumedFlowInstanceStatus", flowStatus);
+                            resumeResult.put("actionSideEffectCreatedCount", createdCount);
+                            if (!idempotencyKey.isBlank()) {
+                                resumeResult.put("idempotencyKey", idempotencyKey);
+                            }
+                            boolean completed = "COMPLETED".equals(flowStatus) || (resumeExecutionResult != null && resumeExecutionResult.getStatus() == ExecutionStatus.OK);
+                            return new GeneratedFlowExecutionResponse(
+                                    completed ? "ok" : "waiting",
+                                    descriptor.flowName(),
+                                    executionId,
+                                    flowStatus,
+                                    executionId,
+                                    effectiveCorrelationId,
+                                    descriptor.actionName(),
+                                    actionDescriptor == null ? "" : actionDescriptor.procedureName(),
+                                    actionDescriptor == null ? "generated.action." + descriptor.actionName() : actionDescriptor.capabilityId(),
+                                    completed
+                                            ? "resumed: external event -> KernelRunner.resumeExecution -> CapabilityDispatcher -> GeneratedActionCapabilityAdapter"
+                                            : "published: external event stored; flow remains waiting or executionId not supplied",
+                                    createdCount,
+                                    sideEffectCountBefore,
+                                    sideEffectCountAfter,
+                                    "written: KernelFacade.publishExternalEvent stored resume event",
+                                    "written: KernelFacade publish/resume audit path",
+                                    completed
+                                            ? "written: KernelRunner resume trace path"
+                                            : "written: event publish trace/audit path; completion readback unavailable",
+                                    idempotencyKey.isBlank()
+                                            ? "unavailable: no idempotencyKey supplied"
+                                            : completed
+                                            ? "recorded: resumed generated action idempotency policy"
+                                            : "deferred: action idempotency pending completed resume",
+                                    "owned: KernelRunner correlation ownership path",
+                                    evidenceUrl,
+                                    completed ? "flow resumed and completed" : "resume event published",
+                                    "",
+                                    resumeResult
+                            );
+                        } catch (RuntimeException exception) {
+                            return new GeneratedFlowExecutionResponse(
+                                    "error",
+                                    descriptor.flowName(),
+                                    executionId,
+                                    "FAILED",
+                                    executionId,
+                                    correlationId,
+                                    descriptor.actionName(),
+                                    actionDescriptor == null ? "" : actionDescriptor.procedureName(),
+                                    actionDescriptor == null ? "generated.action." + descriptor.actionName() : actionDescriptor.capabilityId(),
+                                    "failed: " + exception.getClass().getSimpleName(),
+                                    0,
+                                    sideEffectCountBefore,
+                                    sideEffectCountBefore,
+                                    "failed: resume event publication failed",
+                                    "failed: KernelFacade publish/resume threw",
+                                    "failed: KernelRunner publish/resume threw",
+                                    idempotencyKey.isBlank()
+                                            ? "unavailable: no idempotencyKey supplied"
+                                            : "failed: resume failed before idempotency proof",
+                                    "unavailable: resume failed before correlation proof",
+                                    "",
+                                    "flow resume failed",
+                                    exception.getClass().getSimpleName() + ": " + clean(exception.getMessage()),
+                                    Map.of("resumeStatus", "failed")
                             );
                         }
                     }
@@ -2672,6 +2862,40 @@ public final class TrustedSourceEmitter {
                         return ResponseEntity.status(httpStatusFor(response)).body(response.toMap());
                     }
 
+                    @PostMapping(value = "/generated/flows/{flowName}/events/{eventName}", produces = MediaType.APPLICATION_JSON_VALUE)
+                    public ResponseEntity<Map<String, Object>> publishFlowEvent(
+                            @PathVariable String flowName,
+                            @PathVariable String eventName,
+                            @RequestBody(required = false) Map<String, Object> body,
+                            HttpServletRequest request
+                    ) {
+                        ExecutionContext context = runtimeContextService.currentContext(request);
+                        GeneratedFlowExecutionResponse response = flowCodaRunner.publishEventAndResume(
+                                flowName,
+                                eventName,
+                                body == null ? Map.of() : body,
+                                context
+                        );
+                        return ResponseEntity.status(httpStatusFor(response)).body(response.toMap());
+                    }
+
+                    @PostMapping(value = "/generated/flows/{flowName}/resume", produces = MediaType.APPLICATION_JSON_VALUE)
+                    public ResponseEntity<Map<String, Object>> resumeFlowWithEvent(
+                            @PathVariable String flowName,
+                            @RequestBody(required = false) Map<String, Object> body,
+                            HttpServletRequest request
+                    ) {
+                        ExecutionContext context = runtimeContextService.currentContext(request);
+                        Map<String, Object> input = body == null ? Map.of() : body;
+                        GeneratedFlowExecutionResponse response = flowCodaRunner.publishEventAndResume(
+                                flowName,
+                                stringValue(input.get("eventName")),
+                                input,
+                                context
+                        );
+                        return ResponseEntity.status(httpStatusFor(response)).body(response.toMap());
+                    }
+
                     @GetMapping(value = "/generated/actions/executions/{executionId}", produces = MediaType.APPLICATION_JSON_VALUE)
                     public ResponseEntity<Map<String, Object>> actionExecutionEvidence(
                             @PathVariable String executionId,
@@ -2964,6 +3188,10 @@ public final class TrustedSourceEmitter {
                         if ("ok".equalsIgnoreCase(response.status())) {
                             return HttpStatus.OK;
                         }
+                        if ("waiting".equalsIgnoreCase(response.status())
+                                || "WAITING_EVENT".equalsIgnoreCase(response.flowStatus())) {
+                            return HttpStatus.OK;
+                        }
                         if ("rejected".equalsIgnoreCase(response.status())) {
                             if ("unknown-flow".equalsIgnoreCase(response.error())) {
                                 return HttpStatus.NOT_FOUND;
@@ -3168,3 +3396,5 @@ public final class TrustedSourceEmitter {
     ) {
     }
 }
+
+

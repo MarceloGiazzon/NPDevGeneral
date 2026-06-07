@@ -696,7 +696,7 @@ private final EventBus eventBus;
             eventStore.append(envelope);
         }
         eventBus.publish(envelope);
-        resumeFlow(effectiveCorrelationId, envelope);
+        resumeWaitingExecutionsFor(envelope, null, effectiveCorrelationId, effectiveContext);
         return envelope;
     }
 
@@ -845,6 +845,11 @@ private final EventBus eventBus;
     }
 
     public ExecutionResult resumeExecution(String executionId) {
+        return resumeExecution(executionId, ExecutionContext.anonymous());
+    }
+
+    public ExecutionResult resumeExecution(String executionId, ExecutionContext executionContext) {
+        ExecutionContext resumeContext = normalizeExecutionContext(executionContext);
         if (executionId == null || executionId.isBlank()) {
             return ExecutionResult.failed(
                     "<unknown>",
@@ -903,7 +908,7 @@ private final EventBus eventBus;
                 existing,
                 existing.currentStepIndex(),
                 existing.executionId(),
-                ExecutionContext.of(existing.tenantId(), existing.actorId())
+                resumeContext
         );
     }
 
@@ -916,7 +921,7 @@ private final EventBus eventBus;
         if (lookupCorrelationId == null) {
             lookupCorrelationId = eventEnvelope.correlationId();
         }
-        return resumeWaitingExecutionsFor(eventEnvelope, null, lookupCorrelationId);
+        return resumeWaitingExecutionsFor(eventEnvelope, null, lookupCorrelationId, ExecutionContext.anonymous());
     }
 
     public int resumeAllWaitingExecutions() {
@@ -1624,7 +1629,7 @@ private final EventBus eventBus;
                             ));
                         }
                         eventBus.publish(envelope);
-                        resumeWaitingExecutionsFor(envelope, executionId, envelope.correlationId());
+                        resumeWaitingExecutionsFor(envelope, executionId, envelope.correlationId(), effectiveContext);
                         emittedEvents.add(envelope);
                         state.put("lastEvent", envelope);
                         state.put("causationId", executionId);
@@ -1744,7 +1749,7 @@ private final EventBus eventBus;
                             ));
                         }
                         eventBus.publish(envelope);
-                        resumeWaitingExecutionsFor(envelope, executionId, envelope.correlationId());
+                        resumeWaitingExecutionsFor(envelope, executionId, envelope.correlationId(), effectiveContext);
                         emittedEvents.add(envelope);
                         state.put("lastEvent", envelope);
                         state.put("causationId", executionId);
@@ -1982,7 +1987,8 @@ private final EventBus eventBus;
     private FlowEngine.ResumeOutcome resumeWaitingExecutionsFor(
             EventEnvelope envelope,
             String currentExecutionId,
-            String lookupCorrelationId
+            String lookupCorrelationId,
+            ExecutionContext resumeExecutionContext
     ) {
         if (envelope == null) {
             return FlowEngine.ResumeOutcome.noMatch();
@@ -2011,7 +2017,10 @@ private final EventBus eventBus;
             }
             matchedWaiters++;
             try {
-                ExecutionResult result = resumeExecution(instance.executionId());
+                ExecutionResult result = resumeExecution(
+                        instance.executionId(),
+                        resumeExecutionContext == null ? ExecutionContext.anonymous() : resumeExecutionContext
+                );
                 if (result.getStatus() == ExecutionStatus.WAITING_EVENT) {
                     // Event-driven mismatches must be a no-op. Backoff is only for scheduled scans.
                     continue;
@@ -3965,3 +3974,10 @@ CapabilityCall call = new CapabilityCall(
         }
     }
 }
+
+
+
+
+
+
+

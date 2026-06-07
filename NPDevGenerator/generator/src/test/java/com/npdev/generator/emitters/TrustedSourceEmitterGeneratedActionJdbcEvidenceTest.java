@@ -505,6 +505,12 @@ final class TrustedSourceEmitterGeneratedActionJdbcEvidenceTest {
                         out.put("warnings", List.of());
                         return out;
                     }
+
+                    public ExecutionResult resumeExecution(String executionId, ExecutionContext executionContext) {
+                        String safeExecutionId = executionId == null || executionId.isBlank() ? "exec-flow" : executionId;
+                        String safeCorrelationId = executionContext == null ? "corr-flow" : executionContext.correlationId();
+                        return ExecutionResult.ok("resume", Map.of(), List.of(), safeExecutionId, safeCorrelationId, safeExecutionId);
+                    }
                 }
                 """);
         write(outputRoot, "src/main/java/validation/GeneratedActionJdbcEvidenceHarness.java", """
@@ -760,3 +766,4 @@ final class TrustedSourceEmitterGeneratedActionJdbcEvidenceTest {
         return HexFormat.of().formatHex(digest.digest(Files.readAllBytes(path)));
     }
 }
+

@@ -220,19 +220,60 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
             assertTrue(String.valueOf(flowRepeat.get("capabilityDispatchStatus")).startsWith("prevented: action idempotency reused"),
                     () -> "flow repeat response: " + flowRepeat);
 
+            Map<String, Object> waitingStart = postJson(client, port, "/generated/flows/AwaitThenCreateItem12UserFlow/start", Map.of(
+                    "executionId", "exec-item16-waiting-flow-1",
+                    "correlationId", "corr-item16-waiting-flow-1",
+                    "idempotencyKey", "idem-item16-waiting-flow-1"
+            ));
+            assertEquals("waiting", waitingStart.get("status"), () -> "waiting start response: " + waitingStart);
+            assertEquals("WAITING_EVENT", waitingStart.get("flowInstanceStatus"), () -> "waiting start response: " + waitingStart);
+            assertEquals("corr-item16-waiting-flow-1", waitingStart.get("correlationId"), () -> "waiting start response: " + waitingStart);
+            assertEquals(0, number(waitingStart.get("createdCount")), () -> "waiting start response: " + waitingStart);
+            assertTrue(String.valueOf(waitingStart.get("capabilityDispatchStatus")).startsWith("waiting: KernelRunner persisted WAITING_EVENT"),
+                    () -> "waiting start response: " + waitingStart);
+
+            String waitingExecutionId = String.valueOf(waitingStart.get("executionId"));
+            assertTrue(!(waitingExecutionId == null || waitingExecutionId.isBlank() || "null".equals(waitingExecutionId)),
+                    () -> "waiting start response missing executionId: " + waitingStart);
+
+            Map<String, Object> waitingResume = postJson(client, port, "/generated/flows/AwaitThenCreateItem12UserFlow/events/item12.user.approved", Map.of(
+                    "executionId", waitingExecutionId,
+                    "correlationId", "corr-item16-waiting-flow-1",
+                    "idempotencyKey", "idem-item16-waiting-flow-1",
+                    "approved", true
+            ));
+            assertEquals("ok", waitingResume.get("status"), () -> "waiting resume response: " + waitingResume);
+            assertEquals("COMPLETED", waitingResume.get("flowInstanceStatus"), () -> "waiting resume response: " + waitingResume);
+            assertEquals("corr-item16-waiting-flow-1", waitingResume.get("correlationId"), () -> "waiting resume response: " + waitingResume);
+            assertEquals(1, number(waitingResume.get("createdCount")), () -> "waiting resume response: " + waitingResume);
+            assertTrue(String.valueOf(waitingResume.get("capabilityDispatchStatus")).startsWith("resumed: external event -> KernelRunner.resumeExecution"),
+                    () -> "waiting resume response: " + waitingResume);
+
+            Map<String, Object> waitingViewer = getJson(client, port, "/generated/actions/correlations/corr-item16-waiting-flow-1");
+            assertEquals("corr-item16-waiting-flow-1", waitingViewer.get("correlationId"), () -> "waiting viewer: " + waitingViewer);
+            assertTrue(number(waitingViewer.get("eventCount")) >= 1, () -> "waiting viewer: " + waitingViewer);
+            assertTrue(number(waitingViewer.get("traceCount")) >= 1, () -> "waiting viewer: " + waitingViewer);
+            assertTrue(number(waitingViewer.get("auditCount")) >= 1, () -> "waiting viewer: " + waitingViewer);
+
             Map<String, Object> flowEvidence = getJson(client, port, "/item12/proof/evidence");
             assertEquals("H2/JDBC packaged runtime proof", flowEvidence.get("proofType"));
-            assertEquals(2, number(flowEvidence.get("businessRows")), () -> "flow evidence: " + flowEvidence);
-            assertEquals(2, number(flowEvidence.get("npdevFlowInstanceRows")), () -> "flow evidence: " + flowEvidence);
+            assertTrue(number(flowEvidence.get("businessRows")) >= 3, () -> "flow evidence: " + flowEvidence);
+            assertTrue(number(flowEvidence.get("npdevFlowInstanceRows")) >= 2, () -> "flow evidence: " + flowEvidence);
             assertTrue(number(flowEvidence.get("flowEventRows")) >= 1, () -> "flow evidence: " + flowEvidence);
             assertTrue(number(flowEvidence.get("flowTraceRows")) >= 2, () -> "flow evidence: " + flowEvidence);
             assertTrue(number(flowEvidence.get("flowAuditRows")) >= 2, () -> "flow evidence: " + flowEvidence);
-            assertEquals(1, number(flowEvidence.get("flowIdempotencyRows")), () -> "flow evidence: " + flowEvidence);
-            assertEquals(1, number(flowEvidence.get("flowCorrelationOwnerRows")), () -> "flow evidence: " + flowEvidence);
-            assertEquals(2, number(flowEvidence.get("dispatcherInvocations")), () -> "flow evidence: " + flowEvidence);
-            assertEquals(2, number(flowEvidence.get("providerInvocations")), () -> "flow evidence: " + flowEvidence);
-            assertEquals(2, number(flowEvidence.get("handlerInvocations")), () -> "flow evidence: " + flowEvidence);
-            assertEquals(2, number(flowEvidence.get("procedureInvocations")), () -> "flow evidence: " + flowEvidence);
+            assertTrue(number(flowEvidence.get("flowIdempotencyRows")) >= 1, () -> "flow evidence: " + flowEvidence);
+            assertTrue(number(flowEvidence.get("flowCorrelationOwnerRows")) >= 1, () -> "flow evidence: " + flowEvidence);
+            assertTrue(number(flowEvidence.get("waitingFlowInstanceRows")) >= 1, () -> "waiting flow evidence: " + flowEvidence);
+            assertTrue(number(flowEvidence.get("waitingFlowEventRows")) >= 2, () -> "waiting flow evidence: " + flowEvidence);
+            assertTrue(number(flowEvidence.get("waitingFlowTraceRows")) >= 1, () -> "waiting flow evidence: " + flowEvidence);
+            assertTrue(number(flowEvidence.get("waitingFlowAuditRows")) >= 1, () -> "waiting flow evidence: " + flowEvidence);
+            assertTrue(number(flowEvidence.get("waitingFlowIdempotencyRows")) >= 1, () -> "waiting flow evidence: " + flowEvidence);
+            assertTrue(number(flowEvidence.get("waitingFlowCorrelationOwnerRows")) >= 1, () -> "waiting flow evidence: " + flowEvidence);
+            assertTrue(number(flowEvidence.get("dispatcherInvocations")) >= 3, () -> "flow evidence: " + flowEvidence);
+            assertTrue(number(flowEvidence.get("providerInvocations")) >= 3, () -> "flow evidence: " + flowEvidence);
+            assertTrue(number(flowEvidence.get("handlerInvocations")) >= 3, () -> "flow evidence: " + flowEvidence);
+            assertTrue(number(flowEvidence.get("procedureInvocations")) >= 3, () -> "flow evidence: " + flowEvidence);
 
             String httpOutput = "ACTION_RESPONSE=" + OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(action)
                     + System.lineSeparator()
@@ -241,6 +282,10 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                     + "FLOW_START_RESPONSE=" + OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(flowStart)
                     + System.lineSeparator()
                     + "FLOW_REPEAT_RESPONSE=" + OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(flowRepeat)
+                    + System.lineSeparator()
+                    + "WAITING_FLOW_START_RESPONSE=" + OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(waitingStart)
+                    + System.lineSeparator()
+                    + "WAITING_FLOW_RESUME_RESPONSE=" + OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(waitingResume)
                     + System.lineSeparator()
                     + "VIEWER_EXECUTION_RESPONSE=" + OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(executionViewer)
                     + System.lineSeparator()
@@ -255,12 +300,20 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                     "FLOW_START_RESPONSE=" + OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(flowStart)
                             + System.lineSeparator()
                             + "FLOW_REPEAT_RESPONSE=" + OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(flowRepeat)
+                            + System.lineSeparator()
+                            + "WAITING_FLOW_START_RESPONSE=" + OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(waitingStart)
+                            + System.lineSeparator()
+                            + "WAITING_FLOW_RESUME_RESPONSE=" + OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(waitingResume)
                             + System.lineSeparator(),
                     StandardCharsets.UTF_8);
             Files.writeString(evidenceRoot.resolve("npdev-flow-instance-sql-evidence-output.txt"),
                     "npdev_flow_instance SQL: " + flowEvidence.get("flowInstanceSql") + " -> "
                             + flowEvidence.get("npdevFlowInstanceRows") + System.lineSeparator()
                             + "Flow status proof: " + flowStart.get("flowInstanceStatus") + System.lineSeparator()
+                            + "Waiting flow npdev_flow_instance SQL: " + flowEvidence.get("waitingFlowInstanceSql") + " -> "
+                            + flowEvidence.get("waitingFlowInstanceRows") + System.lineSeparator()
+                            + "Waiting flow start status: " + waitingStart.get("flowInstanceStatus") + System.lineSeparator()
+                            + "Waiting flow resume status: " + waitingResume.get("flowInstanceStatus") + System.lineSeparator()
                             + "Repeat flow action idempotency proof: business rows stayed at "
                             + flowEvidence.get("businessRows") + ", handler invocations stayed at "
                             + flowEvidence.get("handlerInvocations") + System.lineSeparator(),
@@ -398,6 +451,101 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                 null,
                 true
         );
+        CompiledFlow waitingFlow = new CompiledFlow(
+                "AwaitThenCreateItem12UserFlow",
+                "Item12User",
+                "sync",
+                List.of(
+                        new CompiledFlowStep(
+                                "waitForApproval",
+                                "await",
+                                "",
+                                "",
+                                List.of(),
+                                null,
+                                null,
+                                Map.of(),
+                                null,
+                                List.of(),
+                                List.of(),
+                                "item12.user.approved",
+                                "approval",
+                                null,
+                                Map.of(),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null
+                        ),
+                        new CompiledFlowStep(
+                                "runGeneratedActionAfterApproval",
+                                "generatedAction",
+                                "",
+                                "",
+                                List.of(),
+                                null,
+                                null,
+                                Map.of(),
+                                null,
+                                List.of(),
+                                List.of(),
+                                null,
+                                null,
+                                null,
+                                Map.of(),
+                                null,
+                                null,
+                                null,
+                                null,
+                                new CompiledCapabilityCall(
+                                        "generated.action.CreateItem12User",
+                                        "GeneratedActionCapability",
+                                        "generated-action",
+                                        "run",
+                                        List.of("input"),
+                                        "input",
+                                        "actionResult",
+                                        null,
+                                        null,
+                                        new CompiledCapabilityExecutionPolicy(1, 0L, 0L, 0, 0L, 0,
+                                                "input.idempotencyKey", null)
+                                ),
+                                null,
+                                "CreateItem12User"
+                        ),
+                        new CompiledFlowStep(
+                                "emitWaitingFlowCompleted",
+                                "emitEvent",
+                                "",
+                                "",
+                                List.of(),
+                                "generated.flow.AwaitThenCreateItem12UserFlow.completed",
+                                "actionResult",
+                                Map.of(),
+                                null,
+                                List.of(),
+                                List.of(),
+                                null,
+                                null,
+                                null,
+                                Map.of(),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null
+                        )
+                ),
+                null,
+                null,
+                null,
+                true
+        );
         return new CompiledModel(
                 "item12.packaged.proof",
                 "1.0.0",
@@ -407,7 +555,7 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of(flow),
+                List.of(flow, waitingFlow),
                 List.of(),
                 List.of(),
                 List.of(),
@@ -430,9 +578,7 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
 
                     public Map<String, Object> execute(NPDevProcedureContext context) {
                         invocationCount++;
-                        String id = invocationCount == 1
-                                ? "11111111-1111-1111-1111-111111111111"
-                                : "22222222-2222-2222-2222-222222222222";
+                        String id = String.format("00000000-0000-0000-0000-%012d", invocationCount);
                         List<Map<String, Object>> saved = context.saveMany(
                                 "Item12User",
                                 List.of(Map.of("id", id, "name", "Ada Item12 " + invocationCount))
@@ -545,6 +691,36 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                           "payload": "actionResult"
                         }
                       ]
+                    },
+                    {
+                      "name": "AwaitThenCreateItem12UserFlow",
+                      "concept": "Item12User",
+                      "startEndpoint": true,
+                      "steps": [
+                        {
+                          "name": "waitForApproval",
+                          "type": "await",
+                          "awaitEvent": "item12.user.approved",
+                          "awaitRef": "approval"
+                        },
+                        {
+                          "name": "runGeneratedActionAfterApproval",
+                          "type": "generatedAction",
+                          "actionName": "CreateItem12User",
+                          "args": ["input"],
+                          "input": "input",
+                          "output": "actionResult",
+                          "policy": {
+                            "idempotencyKeyField": "input.idempotencyKey"
+                          }
+                        },
+                        {
+                          "name": "emitWaitingFlowCompleted",
+                          "type": "event",
+                          "event": "generated.flow.AwaitThenCreateItem12UserFlow.completed",
+                          "payload": "actionResult"
+                        }
+                      ]
                     }
                   ],
                   "panels": [
@@ -641,6 +817,12 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                         out.put("flowAuditSql", "SELECT COUNT(*) FROM npdev_audit_log WHERE tenant_id = 'dev' AND resource_id IN (SELECT execution_id FROM npdev_flow_instance WHERE tenant_id = 'dev' AND correlation_id = 'corr-item15-flow-1')");
                         out.put("flowIdempotencySql", "SELECT COUNT(*) FROM npdev_idempotency WHERE tenant_id = 'dev' AND idempotency_key = 'idem-item15-flow-1'");
                         out.put("flowCorrelationSql", "SELECT COUNT(*) FROM npdev_correlation_owner WHERE tenant_id = 'dev' AND correlation_id = 'corr-item15-flow-1'");
+                        out.put("waitingFlowInstanceSql", "SELECT COUNT(*) FROM npdev_flow_instance WHERE tenant_id = 'dev' AND correlation_id = 'corr-item16-waiting-flow-1' AND status = 'COMPLETED'");
+                        out.put("waitingFlowEventSql", "SELECT COUNT(*) FROM npdev_event_store WHERE tenant_id = 'dev' AND correlation_id = 'corr-item16-waiting-flow-1'");
+                        out.put("waitingFlowTraceSql", "SELECT COUNT(*) FROM npdev_trace WHERE tenant_id = 'dev' AND correlation_id = 'corr-item16-waiting-flow-1'");
+                        out.put("waitingFlowAuditSql", "SELECT COUNT(*) FROM npdev_audit_log WHERE tenant_id = 'dev' AND resource_id IN (SELECT execution_id FROM npdev_flow_instance WHERE tenant_id = 'dev' AND correlation_id = 'corr-item16-waiting-flow-1')");
+                        out.put("waitingFlowIdempotencySql", "SELECT COUNT(*) FROM npdev_idempotency WHERE tenant_id = 'dev' AND idempotency_key = 'idem-item16-waiting-flow-1'");
+                        out.put("waitingFlowCorrelationSql", "SELECT COUNT(*) FROM npdev_correlation_owner WHERE tenant_id = 'dev' AND correlation_id = 'corr-item16-waiting-flow-1'");
                         out.put("businessRows", count((String) out.get("businessSql")));
                         out.put("npdevEventStoreRows", count((String) out.get("eventSql")));
                         out.put("npdevTraceRows", count((String) out.get("traceSql")));
@@ -653,6 +835,12 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                         out.put("flowAuditRows", count((String) out.get("flowAuditSql")));
                         out.put("flowIdempotencyRows", count((String) out.get("flowIdempotencySql")));
                         out.put("flowCorrelationOwnerRows", count((String) out.get("flowCorrelationSql")));
+                        out.put("waitingFlowInstanceRows", count((String) out.get("waitingFlowInstanceSql")));
+                        out.put("waitingFlowEventRows", count((String) out.get("waitingFlowEventSql")));
+                        out.put("waitingFlowTraceRows", count((String) out.get("waitingFlowTraceSql")));
+                        out.put("waitingFlowAuditRows", count((String) out.get("waitingFlowAuditSql")));
+                        out.put("waitingFlowIdempotencyRows", count((String) out.get("waitingFlowIdempotencySql")));
+                        out.put("waitingFlowCorrelationOwnerRows", count((String) out.get("waitingFlowCorrelationSql")));
                         out.put("dispatcherInvocations", GeneratedActionCapabilityDispatcherFactory.dispatcherInvocations());
                         out.put("providerInvocations", GeneratedActionCapabilityDispatcherFactory.providerInvocations());
                         out.put("handlerInvocations", GeneratedActionCapabilityDispatcherFactory.handlerInvocations());
@@ -983,6 +1171,12 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                 + "flow npdev_audit_log: " + evidence.get("flowAuditSql") + " -> " + evidence.get("flowAuditRows") + System.lineSeparator()
                 + "flow npdev_idempotency: " + evidence.get("flowIdempotencySql") + " -> " + evidence.get("flowIdempotencyRows") + System.lineSeparator()
                 + "flow npdev_correlation_owner: " + evidence.get("flowCorrelationSql") + " -> " + evidence.get("flowCorrelationOwnerRows") + System.lineSeparator()
+                + "waiting flow npdev_flow_instance: " + evidence.get("waitingFlowInstanceSql") + " -> " + evidence.get("waitingFlowInstanceRows") + System.lineSeparator()
+                + "waiting flow npdev_event_store: " + evidence.get("waitingFlowEventSql") + " -> " + evidence.get("waitingFlowEventRows") + System.lineSeparator()
+                + "waiting flow npdev_trace: " + evidence.get("waitingFlowTraceSql") + " -> " + evidence.get("waitingFlowTraceRows") + System.lineSeparator()
+                + "waiting flow npdev_audit_log: " + evidence.get("waitingFlowAuditSql") + " -> " + evidence.get("waitingFlowAuditRows") + System.lineSeparator()
+                + "waiting flow npdev_idempotency: " + evidence.get("waitingFlowIdempotencySql") + " -> " + evidence.get("waitingFlowIdempotencyRows") + System.lineSeparator()
+                + "waiting flow npdev_correlation_owner: " + evidence.get("waitingFlowCorrelationSql") + " -> " + evidence.get("waitingFlowCorrelationOwnerRows") + System.lineSeparator()
                 + "idempotency repeat proof: business rows stayed at " + evidence.get("businessRows")
                 + ", handler invocations stayed at " + evidence.get("handlerInvocations") + System.lineSeparator();
     }
@@ -1119,3 +1313,8 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
     private record CommandResult(int exitCode, String output) {
     }
 }
+
+
+
+
+

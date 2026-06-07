@@ -89,10 +89,16 @@ final class TrustedSourceEmitterGeneratedActionTest {
         String controller = Files.readString(trustedRoot.resolve("GeneratedTrustedSourceRuntimeController.java"));
         assertTrue(controller.contains("/generated/actions/{actionName}/run"));
         assertTrue(controller.contains("/generated/flows/{flowName}/start"));
+        assertTrue(controller.contains("/generated/flows/{flowName}/events/{eventName}"),
+                "Generated flow event endpoint must be exposed for waiting/resume slice");
+        assertTrue(controller.contains("/generated/flows/{flowName}/resume"),
+                "Generated flow resume endpoint must be exposed for waiting/resume slice");
         assertTrue(controller.contains("actionKernelRunner.run("),
                 "Controller endpoints must enter GeneratedActionKernelRunner");
         assertTrue(controller.contains("flowCodaRunner.start("),
                 "Generated flow endpoint must enter GeneratedFlowCodaRunner");
+        assertTrue(controller.contains("flowCodaRunner.publishEventAndResume("),
+                "Generated flow resume endpoints must enter GeneratedFlowCodaRunner");
         assertFalse(controller.contains("new CreateUserProcedure().execute"),
                 "Controller must not directly invoke trusted procedures");
         assertTrue(controller.contains("/generated/procedures/{procedureName}"),
@@ -147,6 +153,14 @@ final class TrustedSourceEmitterGeneratedActionTest {
                 "Generated flow runner must delegate to KernelFacade.executeFlow");
         assertTrue(flowRunner.contains("kernelFacade.findExecution("),
                 "Generated flow runner must read persisted FlowInstance evidence through KernelFacade");
+        assertTrue(flowRunner.contains("kernelFacade.publishExternalEvent("),
+                "Generated flow runner must publish resume events through KernelFacade for waiting/resume");
+        assertTrue(flowRunner.contains("WAITING_EVENT"),
+                "Generated flow runner must expose truthful waiting status for await-event flows");
+        assertTrue(flowRunner.contains("waiting: KernelRunner persisted WAITING_EVENT before generated action dispatch"),
+                "Generated flow runner must not overclaim action dispatch while waiting");
+        assertTrue(flowRunner.contains("resumed: external event -> KernelRunner.resumeExecution -> CapabilityDispatcher"),
+                "Generated flow resume path must prove event-driven resume through KernelRunner and CapabilityDispatcher");
         assertTrue(flowRunner.contains("countSideEffects("),
                 "Generated flow runner must measure business side effects around kernel execution");
         assertFalse(flowRunner.contains("FlowInstance.start("),
@@ -539,6 +553,11 @@ final class TrustedSourceEmitterGeneratedActionTest {
                         traceStore.save(trace);
                         return traceStore.findByExecutionId(executionId).isPresent() ? "written: executionId=" + executionId : "failed: trace readback missing";
                     }
+                    public ExecutionResult resumeExecution(String executionId, ExecutionContext executionContext) {
+                        String safeExecutionId = executionId == null || executionId.isBlank() ? "exec-flow" : executionId;
+                        String safeCorrelationId = executionContext == null ? "corr-flow" : executionContext.correlationId();
+                        return ExecutionResult.ok("resume", Map.of(), List.of(), safeExecutionId, safeCorrelationId, safeExecutionId);
+                    }
                     public Map<String, Object> evidenceSnapshot(String correlationId, String executionId, String actionName, String idempotencyKey, ExecutionContext executionContext) {
                         return Map.of(
                                 "events", eventStore.readByCorrelation(correlationId, executionContext.tenantId()).size(),
@@ -767,3 +786,4 @@ final class TrustedSourceEmitterGeneratedActionTest {
         return HexFormat.of().formatHex(digest.digest(Files.readAllBytes(path)));
     }
 }
+

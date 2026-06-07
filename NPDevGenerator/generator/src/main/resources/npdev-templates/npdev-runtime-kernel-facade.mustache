@@ -201,7 +201,7 @@ public class KernelFacade {
             throw forbidden();
         }
         try {
-            ExecutionResult result = kernelRunner.resumeExecution(executionId);
+            ExecutionResult result = kernelRunner.resumeExecution(executionId, ctx);
             audit(
                     ctx,
                     "RESUME_EXECUTION",
@@ -2012,3 +2012,4 @@ public class KernelFacade {
     ) {
     }
 }
+
