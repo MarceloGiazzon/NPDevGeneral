@@ -2269,7 +2269,7 @@ public final class TrustedSourceEmitter {
                             String executionId = firstNonBlank(result.getExecutionId(), safeRequest.executionId());
                             String evidenceUrl = correlationId.isBlank()
                                     ? ""
-                                    : "/generated/actions/correlations/" + urlToken(correlationId);
+                                    : "/generated/flows/correlations/" + urlToken(correlationId);
                             boolean waiting = result.getStatus() == ExecutionStatus.WAITING_EVENT || "WAITING_EVENT".equals(flowStatus);
                             String dispatchStatus = flowStatus.equals("COMPLETED")
                                     ? "dispatched: KernelRunner -> CapabilityDispatcher -> GeneratedActionCapabilityAdapter"
@@ -2449,7 +2449,7 @@ public final class TrustedSourceEmitter {
                             }
                             String evidenceUrl = effectiveCorrelationId.isBlank()
                                     ? ""
-                                    : "/generated/actions/correlations/" + urlToken(effectiveCorrelationId);
+                                    : "/generated/flows/correlations/" + urlToken(effectiveCorrelationId);
                             Map<String, Object> resumeResult = new LinkedHashMap<>();
                             resumeResult.put("resumeStatus", resumeExecutionResult == null ? "event_published" : statusValue(resumeExecutionResult));
                             resumeResult.put("eventId", envelope.eventId());
@@ -2913,6 +2913,62 @@ public final class TrustedSourceEmitter {
                         ExecutionContext context = runtimeContextService.currentContext(request);
                         return ResponseEntity.ok(kernelFacade.generatedActionEvidenceByCorrelation(correlationId, context));
                     }
+                    // Item 18 Flow Evidence Viewer Extension start
+                    @GetMapping(value = "/generated/flows/executions/{executionId}", produces = MediaType.APPLICATION_JSON_VALUE)
+                    public ResponseEntity<Map<String, Object>> flowExecutionEvidence(
+                            @PathVariable String executionId,
+                            HttpServletRequest request
+                    ) {
+                        Map<String, Object> evidence = actionExecutionEvidence(executionId, request).getBody();
+                        Map<String, Object> flowEvidence = new java.util.LinkedHashMap<>();
+                        flowEvidence.put("viewerType", "flow-execution");
+                        flowEvidence.put("evidenceStatus", evidence == null ? "unavailable" : "available");
+                        flowEvidence.put("executionId", executionId);
+                        flowEvidence.put("flowInstanceId", evidence == null ? null : evidence.getOrDefault("flowInstanceId", executionId));
+                        flowEvidence.put("flowStatus", evidence == null ? "unavailable: not returned by runtime" : evidence.getOrDefault("flowStatus", evidence.getOrDefault("flowInstanceStatus", evidence.getOrDefault("status", "unavailable: not returned by runtime"))));
+                        flowEvidence.put("sourceEvidenceEndpoint", "/generated/actions/executions/" + executionId);
+                        flowEvidence.put("sourceEvidenceStatus", evidence == null ? "unavailable: delegated action evidence returned null" : "available");
+                        flowEvidence.put("evidence", evidence == null ? java.util.Map.of() : evidence);
+                        flowEvidence.put("truth", "flow evidence viewer alias over accepted generated action/evidence surface");
+                        return ResponseEntity.ok(flowEvidence);
+                    }
+
+                    @GetMapping(value = "/generated/flows/instances/{flowInstanceId}", produces = MediaType.APPLICATION_JSON_VALUE)
+                    public ResponseEntity<Map<String, Object>> flowInstanceEvidence(
+                            @PathVariable String flowInstanceId,
+                            HttpServletRequest request
+                    ) {
+                        Map<String, Object> evidence = actionExecutionEvidence(flowInstanceId, request).getBody();
+                        Map<String, Object> flowEvidence = new java.util.LinkedHashMap<>();
+                        flowEvidence.put("viewerType", "flow-instance");
+                        flowEvidence.put("evidenceStatus", evidence == null ? "unavailable" : "available");
+                        flowEvidence.put("flowInstanceId", flowInstanceId);
+                        flowEvidence.put("executionId", evidence == null ? flowInstanceId : evidence.getOrDefault("executionId", flowInstanceId));
+                        flowEvidence.put("flowStatus", evidence == null ? "unavailable: not returned by runtime" : evidence.getOrDefault("flowStatus", evidence.getOrDefault("flowInstanceStatus", evidence.getOrDefault("status", "unavailable: not returned by runtime"))));
+                        flowEvidence.put("sourceEvidenceEndpoint", "/generated/actions/executions/" + flowInstanceId);
+                        flowEvidence.put("sourceEvidenceStatus", evidence == null ? "unavailable: delegated action evidence returned null" : "available");
+                        flowEvidence.put("evidence", evidence == null ? java.util.Map.of() : evidence);
+                        flowEvidence.put("truth", "flow instance evidence viewer alias over accepted generated action/evidence surface");
+                        return ResponseEntity.ok(flowEvidence);
+                    }
+
+                    @GetMapping(value = "/generated/flows/correlations/{correlationId}", produces = MediaType.APPLICATION_JSON_VALUE)
+                    public ResponseEntity<Map<String, Object>> flowCorrelationEvidence(
+                            @PathVariable String correlationId,
+                            HttpServletRequest request
+                    ) {
+                        Map<String, Object> evidence = actionCorrelationEvidence(correlationId, request).getBody();
+                        Map<String, Object> flowEvidence = new java.util.LinkedHashMap<>();
+                        flowEvidence.put("viewerType", "flow-correlation");
+                        flowEvidence.put("evidenceStatus", evidence == null ? "unavailable" : "available");
+                        flowEvidence.put("correlationId", correlationId);
+                        flowEvidence.put("sourceEvidenceEndpoint", "/generated/actions/correlations/" + correlationId);
+                        flowEvidence.put("sourceEvidenceStatus", evidence == null ? "unavailable: delegated correlation evidence returned null" : "available");
+                        flowEvidence.put("evidence", evidence == null ? java.util.Map.of() : evidence);
+                        flowEvidence.put("truth", "flow correlation evidence viewer alias over accepted generated action/correlation evidence surface");
+                        return ResponseEntity.ok(flowEvidence);
+                    }
+                    // Item 18 Flow Evidence Viewer Extension end
                 """);
 
         for (TrustedPanel panel : panels) {
@@ -2928,8 +2984,8 @@ public final class TrustedSourceEmitter {
                     .append("        String html = StreamUtils.copyToString(new ClassPathResource(")
                     .append(quote("trusted-source/panel/" + panel.resourceName()))
                     .append(").getInputStream(), StandardCharsets.UTF_8);\n")
-                    .append("        String bridge = \"<script src=\\\"/generated/trusted-source/npdev-panel-runtime.js\\\"></script>\";\n")
-                    .append("        if (html.contains(\"</head>\")) {\n")
+                                        .append("        String bridge = \"<script src=\\\"/generated/trusted-source/npdev-panel-runtime.js\\\"></script>\";\n")
+.append("        if (html.contains(\"</head>\")) {\n")
                     .append("            html = html.replace(\"</head>\", bridge + \"</head>\");\n")
                     .append("        } else {\n")
                     .append("            html = bridge + html;\n")
@@ -3157,11 +3213,11 @@ public final class TrustedSourceEmitter {
                   const correlationId = npdevFlowUiValue(response, 'correlationId');
                   let html = '';
                   if (executionId && String(executionId).indexOf('unavailable:') !== 0) {
-                    html += '<a data-npdev-flow-evidence-link href="/generated/actions/executions/' +
+                    html += '<a data-npdev-flow-evidence-link href="/generated/flows/executions/' +
                       encodeURIComponent(executionId) + '">View flow/execution evidence</a>';
                   }
                   if (correlationId && String(correlationId).indexOf('unavailable:') !== 0) {
-                    html += '<a data-npdev-flow-correlation-evidence-link href="/generated/actions/correlations/' +
+                    html += '<a data-npdev-flow-correlation-evidence-link href="/generated/flows/correlations/' +
                       encodeURIComponent(correlationId) + '">View correlation evidence</a>';
                   }
                   if (!html) {

@@ -253,10 +253,26 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                     StandardCharsets.UTF_8);
 
             Map<String, Object> waitingViewer = getJson(client, port, "/generated/actions/correlations/corr-item16-waiting-flow-1");
+            Map<String, Object> flowEvidenceExecution = getJson(client, port, "/generated/flows/executions/" + String.valueOf(flowStart.get("executionId")));
+            Map<String, Object> flowEvidenceInstance = getJson(client, port, "/generated/flows/instances/" + String.valueOf(flowStart.get("flowInstanceId")));
+            Map<String, Object> flowEvidenceCorrelation = getJson(client, port, "/generated/flows/correlations/corr-item15-flow-1");
+            Map<String, Object> waitingFlowEvidenceCorrelation = getJson(client, port, "/generated/flows/correlations/corr-item16-waiting-flow-1");
             assertEquals("corr-item16-waiting-flow-1", waitingViewer.get("correlationId"), () -> "waiting viewer: " + waitingViewer);
             assertTrue(number(waitingViewer.get("eventCount")) >= 1, () -> "waiting viewer: " + waitingViewer);
             assertTrue(number(waitingViewer.get("traceCount")) >= 1, () -> "waiting viewer: " + waitingViewer);
             assertTrue(number(waitingViewer.get("auditCount")) >= 1, () -> "waiting viewer: " + waitingViewer);
+            assertEquals("flow-execution", String.valueOf(flowEvidenceExecution.get("viewerType")), "flow execution viewer should identify viewer type");
+            assertEquals("flow-instance", String.valueOf(flowEvidenceInstance.get("viewerType")), "flow instance viewer should identify viewer type");
+            assertEquals("flow-correlation", String.valueOf(flowEvidenceCorrelation.get("viewerType")), "flow correlation viewer should identify viewer type");
+            assertEquals("flow-correlation", String.valueOf(waitingFlowEvidenceCorrelation.get("viewerType")), "waiting flow correlation viewer should identify viewer type");
+            assertEquals("available", String.valueOf(flowEvidenceExecution.get("sourceEvidenceStatus")), "flow execution viewer should delegate to available source evidence");
+            assertEquals("available", String.valueOf(flowEvidenceCorrelation.get("sourceEvidenceStatus")), "flow correlation viewer should delegate to available source evidence");
+            Files.writeString(evidenceRoot.resolve("flow-evidence-viewer-proof-output.txt"),
+                    "Flow execution viewer endpoint: " + flowEvidenceExecution + System.lineSeparator()
+                            + "Flow instance viewer endpoint: " + flowEvidenceInstance + System.lineSeparator()
+                            + "Flow correlation viewer endpoint: " + flowEvidenceCorrelation + System.lineSeparator()
+                            + "Waiting flow correlation viewer endpoint: " + waitingFlowEvidenceCorrelation + System.lineSeparator(),
+                    StandardCharsets.UTF_8);
 
             Map<String, Object> flowEvidence = getJson(client, port, "/item12/proof/evidence");
             assertEquals("H2/JDBC packaged runtime proof", flowEvidence.get("proofType"));
@@ -1162,12 +1178,12 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                 }
                 requireContains(flowStartHtml, 'CreateItem12UserFlow', 'flow start name');
                 requireContains(flowStartHtml, 'COMPLETED', 'flow start status');
-                requireContains(flowStartHtml, '/generated/actions/correlations/corr-item15-flow-1', 'flow start correlation evidence link');
+                requireContains(flowStartHtml, '/generated/flows/correlations/corr-item15-flow-1', 'flow start correlation evidence link');
                 requireContains(waitingStartHtml, 'AwaitThenCreateItem12UserFlow', 'waiting flow name');
                 requireContains(waitingStartHtml, 'WAITING_EVENT', 'waiting flow status');
                 requireContains(waitingResumeHtml, 'AwaitThenCreateItem12UserFlow', 'waiting resume flow name');
                 requireContains(waitingResumeHtml, 'COMPLETED', 'waiting resume completed status');
-                requireContains(waitingResumeHtml, '/generated/actions/correlations/corr-item16-waiting-flow-1', 'waiting resume correlation evidence link');
+                requireContains(waitingResumeHtml, '/generated/flows/correlations/corr-item16-waiting-flow-1', 'waiting resume correlation evidence link');
                 requireContains(flowMissingHtml, 'unavailable: runtime returned null', 'flow null visibility');
                 requireContains(flowMissingHtml, 'unavailable: not returned by runtime', 'flow missing visibility');
                 for (const hook of requiredHooks) {
