@@ -114,7 +114,7 @@
           "bindingKey": "customExtension.run.plugin:custom-procedure",
           "implementation": {
             "kind": "runtimeRef",
-            "ref": "customProcedureCapabilityAdapter"
+            "ref": "genericCustomProcedureCapabilityAdapter"
           }
         }
       ]

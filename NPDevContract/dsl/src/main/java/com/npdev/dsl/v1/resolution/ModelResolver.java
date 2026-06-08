@@ -773,7 +773,8 @@ public final class ModelResolver {
                 steps,
                 flow.getInputSchema(),
                 flow.getOutputSchema(),
-                cloneActionMetadata(flow.getAction())
+                cloneActionMetadata(flow.getAction()),
+                flow.isStartEndpoint()
         );
     }
 
@@ -821,7 +822,8 @@ public final class ModelResolver {
                 mergedSteps,
                 base.getInputSchema(),
                 base.getOutputSchema(),
-                firstNonNullAction(specialization.getAction(), base.getAction())
+                firstNonNullAction(specialization.getAction(), base.getAction()),
+                specialization.isStartEndpoint() || base.isStartEndpoint()
         );
     }
 
@@ -929,7 +931,8 @@ public final class ModelResolver {
                 step.getAwaitPayloadMatch(),
                 step.getDelaySeconds(),
                 step.getReturnValue(),
-                cloneActionMetadata(step.getAction())
+                cloneActionMetadata(step.getAction()),
+                step.getGeneratedActionName()
         );
     }
 

@@ -14,30 +14,30 @@ public final class FlywayEmitter {
 
     /**
      * Generates one repeatable Flyway migration:
-     *   R__npdev_schema.sql
+     *   R__npdev_business_concepts.sql
      *
-     * Why repeatable?
-     * - It's ideal for generated schema because it can be re-generated safely.
-     * - Flyway will re-run it when checksum changes.
-     * - Avoids V1/V2 mismatch errors entirely.
-     *
-     * Notes:
-     * - This is geared toward additive/constraint-enforcing evolution.
-     * - Destructive changes (drop columns) are intentionally not generated.
+     * Runtime migrations and business migrations intentionally share the Flyway
+     * location but not the same files. Runtime tables store execution/audit/trace
+     * data; these tables store generated business concept data.
      */
     public Path emitRepeatableSchema(CompiledModel model, Path canonicalMigrationsDir) throws Exception {
         Files.createDirectories(canonicalMigrationsDir);
 
-        Path file = canonicalMigrationsDir.resolve("R__npdev_schema.sql");
+        Files.deleteIfExists(canonicalMigrationsDir.resolve("R__npdev_schema.sql"));
+        Path file = canonicalMigrationsDir.resolve("R__npdev_business_concepts.sql");
 
         StringBuilder sb = new StringBuilder();
-        sb.append("-- NPDev generated repeatable schema migration\n");
-        sb.append("-- File: R__npdev_schema.sql\n");
+        sb.append("-- NPDev generated repeatable business concept schema migration\n");
+        sb.append("-- File: R__npdev_business_concepts.sql\n");
+        sb.append("-- Storage boundary:\n");
+        sb.append("--  - NPDev runtime tables store execution, audit, trace, scheduling, and reliability data.\n");
+        sb.append("--  - These generated concept tables store business application data.\n");
         sb.append("-- Strategy:\n");
         sb.append("--  - CREATE TABLE IF NOT EXISTS\n");
         sb.append("--  - ALTER TABLE ADD COLUMN IF NOT EXISTS\n");
         sb.append("--  - SET NOT NULL for required fields\n");
         sb.append("--  - CREATE UNIQUE INDEX IF NOT EXISTS for unique fields\n");
+        sb.append("--  - CREATE INDEX IF NOT EXISTS for reference-like fields\n");
         sb.append("--\n");
         sb.append("-- WARNING:\n");
         sb.append("--  - If required fields exist with NULLs, SET NOT NULL may fail.\n");
@@ -45,65 +45,67 @@ public final class FlywayEmitter {
 
         for (CompiledConcept e : model.getConcepts()) {
             String table = safeTable(e);
+            CompiledField idField = idField(e);
+            String idColumn = toSnake(idField.getName());
 
-            // 1) Ensure table exists (minimal definition)
             sb.append("CREATE TABLE IF NOT EXISTS ").append(table).append(" (\n");
-            sb.append("  id UUID PRIMARY KEY\n");
+            sb.append("  ").append(idColumn).append(" ").append(mapType(idField)).append(" PRIMARY KEY\n");
             sb.append(");\n\n");
 
-            // 2) Ensure columns exist (ADD COLUMN IF NOT EXISTS)
             for (CompiledField f : e.getFields()) {
-                if (f.getName() == null) continue;
-                if ("id".equalsIgnoreCase(f.getName())) continue;
-
-                String col = toSnake(f.getName());
-                String sqlType = mapType(f);
-
+                if (f == null || f.getName() == null || f.isId()) {
+                    continue;
+                }
                 sb.append("ALTER TABLE ").append(table)
                         .append(" ADD COLUMN IF NOT EXISTS ")
-                        .append(col).append(" ").append(sqlType).append(";\n");
+                        .append(toSnake(f.getName())).append(" ").append(mapType(f)).append(";\n");
             }
 
             sb.append("\n");
 
-            // 3) Enforce NOT NULL for required fields
             for (CompiledField f : e.getFields()) {
-                if (f.getName() == null) continue;
-                if ("id".equalsIgnoreCase(f.getName())) continue;
-
+                if (f == null || f.getName() == null || f.isId()) {
+                    continue;
+                }
                 boolean required = false;
                 try { required = f.isRequired(); } catch (Exception ignored) {}
-
                 if (required) {
-                    String col = toSnake(f.getName());
                     sb.append("ALTER TABLE ").append(table)
-                            .append(" ALTER COLUMN ").append(col)
+                            .append(" ALTER COLUMN ").append(toSnake(f.getName()))
                             .append(" SET NOT NULL;\n");
                 }
             }
 
             sb.append("\n");
 
-            // 4) Enforce uniqueness via portable indexes.
-            // Generated services still perform case-insensitive String uniqueness checks before persistence.
             for (CompiledField f : e.getFields()) {
-                if (f.getName() == null) continue;
-                if ("id".equalsIgnoreCase(f.getName())) continue;
-
+                if (f == null || f.getName() == null || f.isId()) {
+                    continue;
+                }
                 boolean unique = false;
                 try { unique = f.isUnique(); } catch (Exception ignored) {}
-
-                if (!unique) continue;
-
-                String col = toSnake(f.getName());
-                String indexName = "ux_" + table + "_" + col;
-
-                if (indexName.length() > 60) {
-                    indexName = indexName.substring(0, 60);
+                if (!unique) {
+                    continue;
                 }
-
+                String col = toSnake(f.getName());
                 sb.append("CREATE UNIQUE INDEX IF NOT EXISTS ")
-                        .append(indexName)
+                        .append(truncateIdentifier("ux_" + table + "_" + col))
+                        .append(" ON ")
+                        .append(table)
+                        .append(" (")
+                        .append(col)
+                        .append(");\n");
+            }
+
+            sb.append("\n");
+
+            for (CompiledField f : e.getFields()) {
+                if (f == null || f.getName() == null || f.isId() || !isReferenceLike(f)) {
+                    continue;
+                }
+                String col = toSnake(f.getName());
+                sb.append("CREATE INDEX IF NOT EXISTS ")
+                        .append(truncateIdentifier("idx_" + table + "_" + col))
                         .append(" ON ")
                         .append(table)
                         .append(" (")
@@ -125,11 +127,28 @@ public final class FlywayEmitter {
         return file;
     }
 
+    private static CompiledField idField(CompiledConcept e) {
+        CompiledField found = null;
+        for (CompiledField field : e.getFields()) {
+            if (field == null || !field.isId()) {
+                continue;
+            }
+            if (found != null) {
+                throw new IllegalStateException("Concept " + e.getName() + " must have exactly one id field.");
+            }
+            found = field;
+        }
+        if (found == null) {
+            throw new IllegalStateException("Concept " + e.getName() + " must have exactly one id field.");
+        }
+        return found;
+    }
+
     private String safeTable(CompiledConcept e) {
         String t = null;
         try { t = e.getTableName(); } catch (Exception ignored) {}
         if (t == null || t.trim().isEmpty()) t = e.getName().toLowerCase(Locale.ROOT) + "s";
-        return t;
+        return t.trim().toLowerCase(Locale.ROOT);
     }
 
     private String toSnake(String s) {
@@ -140,6 +159,23 @@ public final class FlywayEmitter {
             out.append(Character.toLowerCase(c));
         }
         return out.toString();
+    }
+
+    private static boolean isReferenceLike(CompiledField field) {
+        String dslType = field.getDslType();
+        if (dslType != null && "reference".equalsIgnoreCase(dslType.trim())) {
+            return true;
+        }
+        String name = field.getName();
+        String javaType = field.getJavaType();
+        return name != null
+                && name.endsWith("Id")
+                && javaType != null
+                && javaType.toLowerCase(Locale.ROOT).contains("uuid");
+    }
+
+    private static String truncateIdentifier(String value) {
+        return value.length() > 60 ? value.substring(0, 60) : value;
     }
 
     private String mapType(CompiledField field) {

@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/promotion-workflow.schema.json",
+  "title": "NPDev Promotion Workflow",
+  "description": "Promotion state for moving a Box or Object from idea to released.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "currentStage",
+    "nextStage",
+    "requiredActions",
+    "history"
+  ],
+  "properties": {
+    "currentStage": {
+      "$ref": "#/$defs/stage"
+    },
+    "nextStage": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/stage"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "requiredActions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/historyItem"
+      }
+    }
+  },
+  "$defs": {
+    "stage": {
+      "type": "string",
+      "enum": [
+        "S0",
+        "S1",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S6",
+        "S7",
+        "S8",
+        "Idea",
+        "Declared",
+        "Generated",
+        "Customized",
+        "Runnable",
+        "Tested",
+        "EvidenceBacked",
+        "ReleaseApproved",
+        "Released"
+      ]
+    },
+    "historyItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "at",
+        "fromStage",
+        "toStage",
+        "actor",
+        "reason",
+        "evidence"
+      ],
+      "properties": {
+        "at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "fromStage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/stage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "toStage": {
+          "$ref": "#/$defs/stage"
+        },
+        "actor": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

@@ -26,13 +26,19 @@ public final class EntityEmitter extends AbstractEmitter {
 
             List<Map<String, Object>> fields = new ArrayList<>();
             boolean hasJsonFields = false;
+            CompiledField idField = idField(entity);
+            ctx.put("idFieldName", idField.getName());
+            ctx.put("idFieldCapName", cap(idField.getName()));
+            ctx.put("idFieldIsNamedId", "id".equals(idField.getName()));
+            ctx.put("idJavaType", idField.getJavaType());
 
             for (CompiledField f : entity.getFields()) {
                 Map<String, Object> fm = new HashMap<>();
                 fm.put("name", f.getName());
                 fm.put("capName", cap(f.getName()));
+                fm.put("columnName", toSnake(f.getName()));
                 fm.put("javaType", f.getJavaType());
-                fm.put("id", "id".equalsIgnoreCase(f.getName()));
+                fm.put("id", f.isId());
                 boolean jsonField = isJsonField(f.getDslType());
                 fm.put("jsonField", jsonField);
                 hasJsonFields = hasJsonFields || jsonField;
@@ -54,9 +60,36 @@ public final class EntityEmitter extends AbstractEmitter {
         }
     }
 
+    private static CompiledField idField(CompiledConcept entity) {
+        CompiledField found = null;
+        for (CompiledField field : entity.getFields()) {
+            if (field == null || !field.isId()) {
+                continue;
+            }
+            if (found != null) {
+                throw new IllegalStateException("Concept " + entity.getName() + " must have exactly one id field.");
+            }
+            found = field;
+        }
+        if (found == null) {
+            throw new IllegalStateException("Concept " + entity.getName() + " must have exactly one id field.");
+        }
+        return found;
+    }
+
     private String cap(String s) {
         if (s == null || s.isEmpty()) return s;
         return Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    private static String toSnake(String s) {
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (Character.isUpperCase(c) && i > 0) out.append('_');
+            out.append(Character.toLowerCase(c));
+        }
+        return out.toString();
     }
 
     private static boolean isJsonField(String dslType) {

@@ -31,6 +31,7 @@ public final class StepAst {
     private final Long delaySeconds;
     private final String returnValue;
     private final ActionMetadataAst action;
+    private final String generatedActionName;
 
     public StepAst(
             String name,
@@ -127,6 +128,38 @@ public final class StepAst {
             String returnValue,
             ActionMetadataAst action
     ) {
+        this(name, type, checkpoint, scope, invariants, capability, operation, capabilityPolicy, input, output, args,
+                event, payload, data, condition, thenSteps, elseSteps, awaitEvent, awaitRef, awaitMatchCorrelation,
+                awaitPayloadMatch, delaySeconds, returnValue, action, null);
+    }
+
+    public StepAst(
+            String name,
+            String type,
+            String checkpoint,
+            String scope,
+            List<String> invariants,
+            String capability,
+            String operation,
+            CapabilityPolicyAst capabilityPolicy,
+            String input,
+            String output,
+            List<String> args,
+            String event,
+            String payload,
+            Map<String, String> data,
+            String condition,
+            List<StepAst> thenSteps,
+            List<StepAst> elseSteps,
+            String awaitEvent,
+            String awaitRef,
+            Boolean awaitMatchCorrelation,
+            Map<String, String> awaitPayloadMatch,
+            Long delaySeconds,
+            String returnValue,
+            ActionMetadataAst action,
+            String generatedActionName
+    ) {
         this.name = name;
         this.type = type;
         this.checkpoint = checkpoint;
@@ -151,6 +184,7 @@ public final class StepAst {
         this.delaySeconds = delaySeconds;
         this.returnValue = returnValue;
         this.action = action;
+        this.generatedActionName = generatedActionName;
     }
 
     public String getName() { return name; }
@@ -212,4 +246,6 @@ public final class StepAst {
     public String getReturnValue() { return returnValue; }
 
     public ActionMetadataAst getAction() { return action; }
+
+    public String getGeneratedActionName() { return generatedActionName; }
 }

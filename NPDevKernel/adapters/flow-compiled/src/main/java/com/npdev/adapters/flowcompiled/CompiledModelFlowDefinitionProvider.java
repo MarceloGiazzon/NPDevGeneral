@@ -97,7 +97,7 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
                         toCheckpoint(step.getCheckpoint()),
                         step.getInvariants()
                 ));
-                case "capability", "createentity", "updateentity", "createconcept", "updateconcept" -> {
+                case "capability", "generatedaction", "createentity", "updateentity", "createconcept", "updateconcept" -> {
                     CompiledCapabilityCall call = step.getCapabilityCall();
                     if (call == null) {
                         throw new IllegalArgumentException("Capability step must contain capability call: " + name);
@@ -119,7 +119,7 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
                         }
                     }
                     String capabilityName = call.getCapabilityName();
-                    String adapterId = adapterIdByCapability.get(normalize(capabilityName));
+                    String adapterId = nonBlank(call.getAdapterId(), adapterIdByCapability.get(normalize(capabilityName)));
                     if (adapterId == null || adapterId.isBlank()) {
                         out.add(FlowStepDefinition.capabilityCall(
                                 name,
@@ -147,7 +147,7 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
                             outputSchema
                     ));
                 }
-                case "event" -> out.add(FlowStepDefinition.emitEvent(
+                case "event", "emitevent" -> out.add(FlowStepDefinition.emitEvent(
                         name,
                         step.getEventName(),
                         step.getPayloadRef(),

@@ -33,7 +33,7 @@ public final class DtoEmitter extends AbstractEmitter {
                 fm.put("capName", cap(f.getName()));
                 fm.put("javaType", javaType);
                 fm.put("boxedJavaType", boxedJavaType);
-                boolean isId = "id".equalsIgnoreCase(f.getName());
+                boolean isId = f.isId();
                 fm.put("id", isId);
                 boolean required = false;
                 try { required = f.isRequired(); } catch (Exception ignored) {}

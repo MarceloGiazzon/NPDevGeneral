@@ -80,6 +80,13 @@
         "$ref": "#/$defs/role"
       },
       "default": []
+    },
+    "enums": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/namedEnum"
+      },
+      "default": []
     }
   },
   "$defs": {
@@ -104,7 +111,8 @@
         "boolean",
         "date",
         "datetime",
-        "uuid"
+        "uuid",
+        "enum"
       ]
     },
     "entity": {
@@ -144,6 +152,50 @@
               "unique": {
                 "type": "boolean",
                 "default": false
+              },
+              "enumName": {
+                "$ref": "#/$defs/classIdentifier"
+              },
+              "enumRef": {
+                "$ref": "#/$defs/classIdentifier"
+              },
+              "enumValues": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "$ref": "#/$defs/enumOption"
+                    }
+                  ]
+                }
+              },
+              "values": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "$ref": "#/$defs/enumOption"
+                    }
+                  ]
+                }
+              },
+              "default": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
               }
             },
             "additionalProperties": false
@@ -201,6 +253,42 @@
         "required": {
           "type": "boolean",
           "default": false
+        },
+        "enumName": {
+          "$ref": "#/$defs/classIdentifier"
+        },
+        "enumRef": {
+          "$ref": "#/$defs/classIdentifier"
+        },
+        "enumValues": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "$ref": "#/$defs/enumOption"
+              }
+            ]
+          }
+        },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "$ref": "#/$defs/enumOption"
+              }
+            ]
+          }
         }
       },
       "additionalProperties": false
@@ -333,12 +421,36 @@
       },
       "not": {
         "anyOf": [
-          { "required": [ "script" ] },
-          { "required": [ "component" ] },
-          { "required": [ "componentUrl" ] },
-          { "required": [ "dynamicComponent" ] },
-          { "required": [ "externalUrl" ] },
-          { "required": [ "html" ] }
+          {
+            "required": [
+              "script"
+            ]
+          },
+          {
+            "required": [
+              "component"
+            ]
+          },
+          {
+            "required": [
+              "componentUrl"
+            ]
+          },
+          {
+            "required": [
+              "dynamicComponent"
+            ]
+          },
+          {
+            "required": [
+              "externalUrl"
+            ]
+          },
+          {
+            "required": [
+              "html"
+            ]
+          }
         ]
       },
       "additionalProperties": false
@@ -712,6 +824,82 @@
               "pattern": "(bypass|all-tenants|cross-tenant|all:all)"
             }
           }
+        }
+      },
+      "additionalProperties": false
+    },
+    "enumOption": {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "order": {
+          "type": "integer"
+        },
+        "group": {
+          "type": "string",
+          "minLength": 1
+        },
+        "default": {
+          "type": "boolean",
+          "default": false
+        },
+        "deprecated": {
+          "type": "boolean",
+          "default": false
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "iconHint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "badgeHint": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "namedEnum": {
+      "type": "object",
+      "required": [
+        "name",
+        "values"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/classIdentifier"
+        },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "$ref": "#/$defs/enumOption"
+              }
+            ]
+          }
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "additionalProperties": false

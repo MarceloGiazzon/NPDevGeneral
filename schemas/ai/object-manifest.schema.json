@@ -1,0 +1,611 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/object-manifest.schema.json",
+  "title": "NPDev Object Manifest",
+  "description": "Schema for NPDev code-bearing Objects: PanelObject and ProcedureObject.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifestVersion",
+    "object",
+    "identity",
+    "resources",
+    "bindings",
+    "interactions",
+    "truth",
+    "promotion",
+    "regenerationPolicy",
+    "audit"
+  ],
+  "properties": {
+    "manifestVersion": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "object": {
+      "$ref": "#/$defs/objectHeader"
+    },
+    "identity": {
+      "$ref": "#/$defs/identity"
+    },
+    "resources": {
+      "$ref": "#/$defs/resources"
+    },
+    "bindings": {
+      "$ref": "#/$defs/bindings"
+    },
+    "interactions": {
+      "$ref": "#/$defs/interactions"
+    },
+    "truth": {
+      "$ref": "truth-classification.schema.json"
+    },
+    "promotion": {
+      "$ref": "promotion-workflow.schema.json"
+    },
+    "regenerationPolicy": {
+      "$ref": "#/$defs/regenerationPolicy"
+    },
+    "audit": {
+      "$ref": "#/$defs/audit"
+    },
+    "panel": {
+      "$ref": "#/$defs/panelObject"
+    },
+    "procedure": {
+      "$ref": "#/$defs/procedureObject"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "object": {
+            "properties": {
+              "type": {
+                "const": "PanelObject"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "panel"
+        ],
+        "properties": {
+          "resources": {
+            "required": [
+              "frontend"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "object": {
+            "properties": {
+              "type": {
+                "const": "ProcedureObject"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "procedure"
+        ],
+        "properties": {
+          "resources": {
+            "required": [
+              "backend"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "objectHeader": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "name",
+        "title",
+        "description",
+        "purpose",
+        "ownerBoxId",
+        "tags"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "PanelObject",
+            "ProcedureObject"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerBoxId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "applicationId",
+        "stableKey",
+        "humanName",
+        "technicalName",
+        "namespace"
+      ],
+      "properties": {
+        "applicationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stableKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "humanName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "technicalName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "namespace": {
+          "type": "string"
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "frontend": {
+          "$ref": "#/$defs/frontendResources"
+        },
+        "backend": {
+          "$ref": "#/$defs/backendResources"
+        },
+        "shared": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "frontendResources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "html",
+        "css",
+        "js",
+        "assets"
+      ],
+      "properties": {
+        "html": {
+          "type": "string",
+          "minLength": 1
+        },
+        "css": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "js": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "assets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mountRoute": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mountTarget": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "bundleMode": {
+          "type": "string",
+          "enum": [
+            "CopyAndRegister",
+            "Embed",
+            "ExternalReference",
+            "GeneratedAdapter"
+          ]
+        }
+      }
+    },
+    "backendResources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "language",
+        "sourceRoot",
+        "mainClass",
+        "testRoot",
+        "compileMode"
+      ],
+      "properties": {
+        "language": {
+          "type": "string",
+          "enum": [
+            "Java"
+          ]
+        },
+        "sourceRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mainClass": {
+          "type": "string",
+          "minLength": 1
+        },
+        "testRoot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "compileMode": {
+          "type": "string",
+          "enum": [
+            "IncludeInGeneratedApp",
+            "CompileAsPlugin",
+            "ReferenceOnly",
+            "AdvisoryOnly"
+          ]
+        }
+      }
+    },
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "readsEntities",
+        "writesEntities",
+        "usesRules",
+        "callsIntegrations",
+        "callsProcedures",
+        "startsFlows",
+        "requiresRoles",
+        "requiresTenant"
+      ],
+      "properties": {
+        "readsEntities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "writesEntities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "usesRules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "callsIntegrations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "callsProcedures": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "startsFlows": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "requiresRoles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "requiresTenant": {
+          "type": "boolean"
+        }
+      }
+    },
+    "interactions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actions",
+        "events",
+        "inputs",
+        "outputs"
+      ],
+      "properties": {
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "panelObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pattern",
+        "route",
+        "mountTarget",
+        "boundEntities",
+        "actions",
+        "customSections"
+      ],
+      "properties": {
+        "pattern": {
+          "type": "string"
+        },
+        "route": {
+          "type": "string"
+        },
+        "mountTarget": {
+          "type": "string"
+        },
+        "boundEntities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "customSections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "procedureObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputs",
+        "outputs",
+        "effects",
+        "dataAccess",
+        "integrationCalls",
+        "procedureCalls",
+        "rulesUsed",
+        "executionPolicy"
+      ],
+      "properties": {
+        "inputs": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dataAccess": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reads",
+            "writes"
+          ],
+          "properties": {
+            "reads": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "writes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "integrationCalls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "procedureCalls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "rulesUsed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "executionPolicy": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "regenerationPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canRegenerate",
+        "protectManualFiles",
+        "preserveCustomizationPoints",
+        "onConflict",
+        "conflictPolicy"
+      ],
+      "properties": {
+        "canRegenerate": {
+          "type": "boolean"
+        },
+        "protectManualFiles": {
+          "type": "boolean"
+        },
+        "preserveCustomizationPoints": {
+          "type": "boolean"
+        },
+        "onConflict": {
+          "type": "string",
+          "enum": [
+            "AskUser",
+            "KeepCustom",
+            "ReplaceGenerated",
+            "Block"
+          ]
+        },
+        "conflictPolicy": {
+          "type": "string"
+        }
+      }
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "createdBy",
+        "reviewedBy",
+        "createdAt",
+        "updatedAt",
+        "changeLog"
+      ],
+      "properties": {
+        "createdBy": {
+          "type": "string",
+          "enum": [
+            "Human",
+            "AI",
+            "Import",
+            "Generator"
+          ]
+        },
+        "reviewedBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "createdAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "changeLog": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      }
+    }
+  }
+}

@@ -25,11 +25,19 @@ public final class InMemoryPersistenceCapabilityAdapter implements PersistenceCa
     public Object save(Object concept, Object entity) {
         String conceptKey = normalizeConcept(concept);
         Map<String, Object> record = mutableRecord(entity);
+        String conceptIdField = inferredRuntimeIdField(concept);
 
         Object id = record.get("id");
+        if (id == null && conceptIdField != null) {
+            id = record.get(conceptIdField);
+        }
         if (id == null) {
             id = UUID.randomUUID().toString();
+        }
+        if (conceptIdField == null || "id".equals(conceptIdField)) {
             record.put("id", id);
+        } else {
+            record.putIfAbsent(conceptIdField, id);
         }
 
         storeByConcept
@@ -106,6 +114,14 @@ public final class InMemoryPersistenceCapabilityAdapter implements PersistenceCa
     private static String normalizeConcept(Object concept) {
         String value = Objects.toString(concept, "default").trim().toLowerCase();
         return value.isBlank() ? "default" : value;
+    }
+
+    private static String inferredRuntimeIdField(Object concept) {
+        String raw = Objects.toString(concept, "default").trim();
+        if (raw.isBlank() || "default".equalsIgnoreCase(raw)) {
+            return "id";
+        }
+        return raw.substring(0, 1).toLowerCase() + raw.substring(1) + "Id";
     }
 
     private static Map<String, Object> mutableRecord(Object entity) {

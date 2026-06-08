@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/generated-backend-procedure-endpoint.schema.json",
+  "title": "NPDev Generated Backend Procedure Endpoint",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "endpointAdapterId",
+    "applicationId",
+    "mode",
+    "enabledByDefault",
+    "generatedBy",
+    "generatedAppRoot",
+    "backendRoot",
+    "procedureId",
+    "endpointPath",
+    "sourceProcedure",
+    "generatedSources",
+    "requestSamples",
+    "responseSamples",
+    "executionPolicy",
+    "truthPolicy",
+    "releaseGatePolicy",
+    "evidencePolicy",
+    "nonGoals"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0" },
+    "endpointAdapterId": { "type": "string", "const": "salesflow.generated-backend-procedure-endpoint" },
+    "applicationId": { "type": "string", "const": "app.salesflow" },
+    "mode": { "type": "string", "const": "GeneratedLocalPrototype" },
+    "enabledByDefault": { "type": "boolean", "const": false },
+    "generatedBy": { "type": "string", "const": "scripts/box-object/run-box-object-generator-adapter.ps1" },
+    "generatedAppRoot": { "type": "string", "const": "build/box-object/real-generator-adapter/generated-app" },
+    "backendRoot": { "type": "string", "const": "build/box-object/real-generator-adapter/generated-app/backend" },
+    "procedureId": { "type": "string", "const": "procedure.generate-monthly-invoices" },
+    "endpointPath": { "type": "string", "const": "/api/npdev/procedures/procedure.generate-monthly-invoices" },
+    "sourceProcedure": { "type": "string", "minLength": 1 },
+    "generatedSources": { "type": "array", "minItems": 11, "items": { "type": "string" } },
+    "requestSamples": { "type": "array", "minItems": 4, "items": { "type": "string" } },
+    "responseSamples": { "type": "array", "minItems": 4, "items": { "type": "string" } },
+    "executionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requiresAuth", "requiresTenant", "allowedRoles", "aiExecution"],
+      "properties": {
+        "requiresAuth": { "type": "boolean", "const": true },
+        "requiresTenant": { "type": "boolean", "const": true },
+        "allowedRoles": { "type": "array", "contains": { "const": "BillingManager" }, "items": { "type": "string" } },
+        "aiExecution": { "type": "string", "const": "RequiresHumanApproval" }
+      }
+    },
+    "truthPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxTruthClaim", "noAutoPromotion", "noT5", "noT6"],
+      "properties": {
+        "maxTruthClaim": { "type": "string", "enum": ["LocalPrototype", "T3"] },
+        "noAutoPromotion": { "type": "boolean", "const": true },
+        "noT5": { "type": "boolean", "const": true },
+        "noT6": { "type": "boolean", "const": true }
+      }
+    },
+    "releaseGatePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["impact"],
+      "properties": { "impact": { "type": "string", "const": "NoImpact" } }
+    },
+    "evidencePolicy": { "type": "object" },
+    "nonGoals": { "type": "array", "items": { "type": "string" } }
+  }
+}

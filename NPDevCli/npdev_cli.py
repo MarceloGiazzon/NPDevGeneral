@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import json
 import os
 import re
@@ -49,7 +50,10 @@ def validate_json_schema(schema: Path, instance: Path) -> dict:
     if not validator_script.exists():
         raise CliError(f"JSON Schema validator wrapper not found: {validator_script}")
     if not node_modules.exists():
-        subprocess.run(["npm", "--prefix", str(validator_root), "install", "--silent"], cwd=root, check=True)
+        npm = shutil.which("npm.cmd" if os.name == "nt" else "npm") or shutil.which("npm")
+        if not npm:
+            raise CliError("npm is required to install the canonical JSON Schema validator dependencies")
+        subprocess.run([npm, "--prefix", str(validator_root), "install", "--silent"], cwd=root, check=True)
     completed = subprocess.run(
         [
             "node",

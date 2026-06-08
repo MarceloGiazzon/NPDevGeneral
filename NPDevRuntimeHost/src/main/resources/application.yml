@@ -2,6 +2,9 @@ server:
   port: 8080
 
 spring:
+  config:
+    import: "optional:classpath:application-npdev-db.properties"
+
   datasource:
     url: jdbc:postgresql://localhost:5432/finalexec
     username: finalexec
@@ -19,7 +22,7 @@ spring:
 
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    locations: classpath:db/schema-realization
 
 logging:
   level:

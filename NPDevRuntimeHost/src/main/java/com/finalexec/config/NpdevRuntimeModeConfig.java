@@ -1,27 +1,31 @@
 package com.finalexec.config;
 
 import com.npdev.adapters.audit.inproc.InProcAuditLogStore;
-import com.npdev.adapters.audit.postgres.PostgresAuditLogStore;
+import com.npdev.adapters.audit.jdbc.JdbcAuditLogStore;
 import com.npdev.adapters.bulkhead.inproc.InProcBulkheadStore;
 import com.npdev.adapters.bulkhead.postgres.PostgresAdvisoryBulkheadStore;
 import com.npdev.adapters.circuit.inproc.InProcCircuitBreakerStateStore;
-import com.npdev.adapters.circuit.postgres.PostgresCircuitBreakerStateStore;
-import com.npdev.adapters.eventstore.postgres.PostgresEventStore;
+import com.npdev.adapters.circuit.jdbc.JdbcCircuitBreakerStateStore;
+import com.npdev.adapters.eventstore.jdbc.JdbcEventStore;
 import com.npdev.adapters.events.inproc.InProcEventStore;
 import com.npdev.adapters.flowinstance.inproc.InProcCorrelationOwnershipStore;
 import com.npdev.adapters.flowinstance.inproc.InProcFlowInstanceStore;
-import com.npdev.adapters.flowinstance.postgres.PostgresCorrelationOwnershipStore;
-import com.npdev.adapters.flowinstance.postgres.PostgresFlowInstanceStore;
+import com.npdev.adapters.flowinstance.jdbc.JdbcCorrelationOwnershipStore;
+import com.npdev.adapters.flowinstance.jdbc.JdbcFlowInstanceStore;
 import com.npdev.adapters.idempotency.inproc.InProcIdempotencyStore;
-import com.npdev.adapters.idempotency.postgres.PostgresIdempotencyStore;
+import com.npdev.adapters.idempotency.jdbc.JdbcIdempotencyStore;
 import com.npdev.adapters.runtime.validation.RuntimeSettings;
 import com.npdev.adapters.tracestore.PersistentExecutionTracer;
-import com.npdev.adapters.tracestore.postgres.PostgresTraceStore;
+import com.npdev.adapters.tracestore.jdbc.JdbcTraceStore;
 import com.npdev.adapters.tracing.inproc.InProcExecutionTracer;
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.finalexec.db.JdbcBusinessConceptStore;
 import com.npdev.kernel.capability.CapabilityPolicyOverrides;
+import com.npdev.kernel.inproc.InMemoryConceptStore;
 import com.npdev.kernel.ports.AuditLogStore;
 import com.npdev.kernel.ports.BulkheadStore;
 import com.npdev.kernel.ports.CircuitBreakerStateStore;
+import com.npdev.kernel.ports.ConceptStore;
 import com.npdev.kernel.ports.CorrelationOwnershipStore;
 import com.npdev.kernel.ports.EventStore;
 import com.npdev.kernel.ports.ExecutionTracer;
@@ -30,9 +34,10 @@ import com.npdev.kernel.ports.IdempotencyStore;
 import com.npdev.kernel.ports.JsonCodec;
 import com.npdev.kernel.ports.TraceStore;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Profile;
 
 import javax.sql.DataSource;
 
@@ -40,105 +45,121 @@ import javax.sql.DataSource;
 public class NpdevRuntimeModeConfig {
 
     @Bean
-    @Profile("!postgres")
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "in-memory", matchIfMissing = true)
     public EventStore inProcEventStore() {
         return new InProcEventStore();
     }
 
     @Bean
-    @Profile("postgres")
-    public EventStore postgresEventStore(DataSource dataSource) {
-        return new PostgresEventStore(dataSource);
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
+    public EventStore jdbcEventStore(DataSource dataSource) {
+        return new JdbcEventStore(dataSource);
     }
 
     @Bean
-    @Profile("!postgres")
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "in-memory", matchIfMissing = true)
     public InProcExecutionTracer inProcExecutionTracer() {
         return new InProcExecutionTracer();
     }
 
     @Bean
-    @Profile("!postgres")
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "in-memory", matchIfMissing = true)
     public FlowInstanceStore inProcFlowInstanceStore() {
         return new InProcFlowInstanceStore();
     }
 
     @Bean
-    @Profile("!postgres")
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "in-memory", matchIfMissing = true)
     public CorrelationOwnershipStore inProcCorrelationOwnershipStore() {
         return new InProcCorrelationOwnershipStore();
     }
 
     @Bean
-    @Profile("postgres")
-    public FlowInstanceStore postgresFlowInstanceStore(DataSource dataSource) {
-        return new PostgresFlowInstanceStore(dataSource);
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
+    public FlowInstanceStore jdbcFlowInstanceStore(DataSource dataSource) {
+        return new JdbcFlowInstanceStore(dataSource);
     }
 
     @Bean
-    @Profile("postgres")
-    public CorrelationOwnershipStore postgresCorrelationOwnershipStore(DataSource dataSource) {
-        return new PostgresCorrelationOwnershipStore(dataSource);
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
+    public CorrelationOwnershipStore jdbcCorrelationOwnershipStore(DataSource dataSource) {
+        return new JdbcCorrelationOwnershipStore(dataSource);
     }
 
     @Bean
-    @Profile("postgres")
-    public TraceStore postgresTraceStore(DataSource dataSource) {
-        return new PostgresTraceStore(dataSource);
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
+    public TraceStore jdbcTraceStore(DataSource dataSource) {
+        return new JdbcTraceStore(dataSource);
     }
 
     @Bean
-    @Profile("!postgres")
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "in-memory", matchIfMissing = true)
     public AuditLogStore inProcAuditLogStore() {
         return new InProcAuditLogStore();
     }
 
     @Bean
-    @Profile("postgres")
-    public AuditLogStore postgresAuditLogStore(DataSource dataSource) {
-        return new PostgresAuditLogStore(dataSource);
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
+    public AuditLogStore jdbcAuditLogStore(DataSource dataSource) {
+        return new JdbcAuditLogStore(dataSource);
     }
 
     @Bean
-    @Profile("!postgres")
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "in-memory", matchIfMissing = true)
     public CircuitBreakerStateStore inProcCircuitBreakerStateStore() {
         return new InProcCircuitBreakerStateStore();
     }
 
     @Bean
-    @Profile("postgres")
-    public CircuitBreakerStateStore postgresCircuitBreakerStateStore(DataSource dataSource) {
-        return new PostgresCircuitBreakerStateStore(dataSource);
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
+    public CircuitBreakerStateStore jdbcCircuitBreakerStateStore(DataSource dataSource) {
+        return new JdbcCircuitBreakerStateStore(dataSource);
     }
 
     @Bean
-    @Profile("!postgres")
-    public BulkheadStore inProcBulkheadStore() {
+    public BulkheadStore bulkheadStore(
+            @Value("${npdev.database.engine:InMemory}") String engine,
+            @Value("${npdev.storage.mode:in-memory}") String storageMode,
+            ObjectProvider<DataSource> dataSourceProvider
+    ) {
+        if ("jdbc".equalsIgnoreCase(storageMode) && "Postgres".equalsIgnoreCase(engine)) {
+            DataSource dataSource = dataSourceProvider.getIfAvailable();
+            if (dataSource == null) {
+                throw new IllegalStateException("DataSource is required for Postgres bulkhead store.");
+            }
+            return new PostgresAdvisoryBulkheadStore(dataSource);
+        }
         return new InProcBulkheadStore();
     }
 
     @Bean
-    @Profile("postgres")
-    public BulkheadStore postgresBulkheadStore(DataSource dataSource) {
-        return new PostgresAdvisoryBulkheadStore(dataSource);
-    }
-
-    @Bean
-    @Profile("!postgres")
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "in-memory", matchIfMissing = true)
     public IdempotencyStore inProcIdempotencyStore() {
         return new InProcIdempotencyStore();
     }
 
     @Bean
-    @Profile("postgres")
-    public IdempotencyStore postgresIdempotencyStore(DataSource dataSource) {
-        return new PostgresIdempotencyStore(dataSource);
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
+    public IdempotencyStore jdbcIdempotencyStore(DataSource dataSource) {
+        return new JdbcIdempotencyStore(dataSource);
     }
 
     @Bean
-    @Profile("postgres")
-    public ExecutionTracer postgresExecutionTracer(TraceStore traceStore) {
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
+    public ExecutionTracer jdbcExecutionTracer(TraceStore traceStore) {
         return new PersistentExecutionTracer(traceStore);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "in-memory", matchIfMissing = true)
+    public ConceptStore inMemoryConceptStore() {
+        return new InMemoryConceptStore();
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
+    public ConceptStore jdbcConceptStore(DataSource dataSource, CompiledModel compiledModel) {
+        return new JdbcBusinessConceptStore(dataSource, compiledModel);
     }
 
     @Bean

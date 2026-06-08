@@ -23,7 +23,8 @@ public final class CompiledPluginRequirementGraphBuilder {
             "webhookcapability",
             "apicapability",
             "messagingcapability",
-            "eventpublicationcapability"
+            "eventpublicationcapability",
+            "eventbuscapability"
     );
 
     public CompiledPluginRequirementGraph build(ModelAst modelAst) {

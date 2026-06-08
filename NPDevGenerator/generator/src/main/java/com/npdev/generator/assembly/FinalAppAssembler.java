@@ -77,18 +77,16 @@ public final class FinalAppAssembler {
                 normalized
         );
 
-        int migrationCount = copyGeneratedMigrations(normalized);
-        boolean modelDiffBaselineInstalled = copyModelDiffBaseline(normalized);
+        int schemaRealizationCount = countSchemaRealizationArtifacts(generatedMount);
         writeAiBetaLocalProfile(normalized, generatedMount);
-        writeSchemaRealizationManifest(normalized, migrationCount, modelDiffBaselineInstalled);
+        writeSchemaRealizationManifest(normalized, schemaRealizationCount);
 
         return new AssemblyResult(
                 normalized.finalAppRoot(),
                 generatedMount,
                 hostStats.filesCopied(),
                 generatedStats.filesCopied(),
-                migrationCount,
-                modelDiffBaselineInstalled
+                schemaRealizationCount
         );
     }
 
@@ -333,63 +331,23 @@ public final class FinalAppAssembler {
         Files.copy(source, destinationRoot.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
     }
 
-    private static int copyGeneratedMigrations(Options options) throws IOException {
-        Path sourceDir = options.canonicalMigrationsDir();
-        if (sourceDir == null || !Files.isDirectory(sourceDir)) {
-            return 0;
-        }
-
-        Path destinationDir = options.finalAppRoot()
+    private static int countSchemaRealizationArtifacts(Path generatedMount) throws IOException {
+        Path realizationDir = generatedMount
                 .resolve("src")
                 .resolve("main")
                 .resolve("resources")
                 .resolve("db")
-                .resolve("migration");
-        Files.createDirectories(destinationDir);
-
-        int copied = 0;
-        try (var stream = Files.list(sourceDir)) {
-            for (Path source : stream
+                .resolve("schema-realization");
+        if (!Files.isDirectory(realizationDir)) {
+            return 0;
+        }
+        try (var stream = Files.walk(realizationDir)) {
+            return (int) stream
                     .filter(Files::isRegularFile)
-                    .filter(path -> path.getFileName().toString().startsWith("R__"))
-                    .filter(path -> path.getFileName().toString().endsWith(".sql"))
-                    .toList()) {
-                Files.copy(
-                        source,
-                        destinationDir.resolve(source.getFileName().toString()),
-                        StandardCopyOption.REPLACE_EXISTING
-                );
-                copied++;
-            }
+                    .filter(path -> path.getFileName().toString().endsWith(".sql")
+                            || path.getFileName().toString().endsWith(".json"))
+                    .count();
         }
-        return copied;
-    }
-
-    private static boolean copyModelDiffBaseline(Options options) throws IOException {
-        Path migrationsDir = options.canonicalMigrationsDir();
-        if (migrationsDir == null) {
-            return false;
-        }
-
-        Path dbRoot = migrationsDir.getParent();
-        if (dbRoot == null) {
-            return false;
-        }
-
-        Path source = dbRoot.resolve("schema-snapshots").resolve("latest-storage-schema.json");
-        if (!Files.isRegularFile(source)) {
-            return false;
-        }
-
-        Path destination = options.finalAppRoot()
-                .resolve("src")
-                .resolve("main")
-                .resolve("resources")
-                .resolve("npdev")
-                .resolve("model-diff-baseline.json");
-        Files.createDirectories(destination.getParent());
-        Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING);
-        return true;
     }
 
     private static void writeAiBetaLocalProfile(Options options, Path generatedMount) throws IOException {
@@ -486,8 +444,7 @@ public final class FinalAppAssembler {
 
     private static void writeSchemaRealizationManifest(
             Options options,
-            int schemaRealizationSqlCount,
-            boolean modelDiffBaselineInstalled
+            int schemaRealizationSqlCount
     ) throws IOException {
         Path destination = schemaRealizationManifestPath(options);
         Files.createDirectories(destination.getParent());
@@ -502,15 +459,16 @@ public final class FinalAppAssembler {
         manifest.put("schemaRealizationEnabled", true);
         manifest.put("upgradeManagementSupported", false);
         manifest.put("upgradeManagementStatus", "unsupported");
-        manifest.put("canonicalRuntimeSchemaSqlPath", "src/main/resources/db/migration");
-        manifest.put("schemaRealizationSqlFilePattern", "R__*.sql");
+        manifest.put("canonicalRuntimeSchemaSqlPath", "src/main/resources/db/schema-realization");
+        manifest.put("businessSchemaRealizationSqlFilePattern", "V*__npdev_schema_realization.sql");
         manifest.put("schemaRealizationSqlCount", schemaRealizationSqlCount);
+        manifest.put("runtimeSchemaSqlPattern", "V*.sql");
+        manifest.put("storageBoundary", Map.of(
+                "runtimeTables", "NPDev execution, audit, trace, scheduling, and reliability data",
+                "businessTables", "Generated model concept data"
+        ));
         manifest.put("generatedArtifactMount", options.generatedFolderName());
-        manifest.put(
-                "modelDiffBaselinePath",
-                modelDiffBaselineInstalled ? "src/main/resources/npdev/model-diff-baseline.json" : ""
-        );
-        manifest.put("internalAnalysisArtifacts", List.of("db/migration-plans", "db/schema-snapshots"));
+        manifest.put("internalAnalysisArtifacts", List.of());
         manifest.put(
                 "notes",
                 List.of(
@@ -596,8 +554,7 @@ public final class FinalAppAssembler {
             Path generatedMount,
             int runtimeHostFilesCopied,
             int generatedFilesCopied,
-            int generatedMigrationsCopied,
-            boolean modelDiffBaselineInstalled
+            int schemaRealizationArtifactsCopied
     ) {
     }
 }

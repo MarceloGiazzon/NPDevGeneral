@@ -31,6 +31,7 @@ public final class ServiceEmitter extends AbstractEmitter {
             List<Map<String, Object>> allowedMutationTopics = allowedMutationTopics(model, entity);
             String persistenceAdapter = resolveBindingAdapter(model, "persistence", "repository");
             String eventBusAdapter = resolveBindingAdapter(model, "eventBus", "inproc");
+            CompiledField idField = idField(entity);
 
             if (!"repository".equalsIgnoreCase(persistenceAdapter)) {
                 throw new IllegalStateException(
@@ -46,7 +47,7 @@ public final class ServiceEmitter extends AbstractEmitter {
             }
 
             for (CompiledField f : entity.getFields()) {
-                boolean isId = f.getName() != null && f.getName().equalsIgnoreCase("id");
+                boolean isId = f.isId();
                 if (isId) continue;
 
                 String javaType = f.getJavaType();
@@ -83,6 +84,8 @@ public final class ServiceEmitter extends AbstractEmitter {
             ctx.put("packageName", "com.npdev.generated.services");
             ctx.put("conceptName", entity.getName());
             ctx.put("entityName", entity.getClassName());
+            ctx.put("idFieldName", idField.getName());
+            ctx.put("idFieldCapName", cap(idField.getName()));
             ctx.put("entityPackage", "com.npdev.generated.entities");
             ctx.put("repoPackage", "com.npdev.generated.repositories");
             ctx.put("dtoPackage", "com.npdev.generated.dtos");
@@ -113,6 +116,23 @@ public final class ServiceEmitter extends AbstractEmitter {
                     templates.render("service-custom.mustache", ctx)
             );
         }
+    }
+
+    private static CompiledField idField(CompiledConcept entity) {
+        CompiledField found = null;
+        for (CompiledField field : entity.getFields()) {
+            if (field == null || !field.isId()) {
+                continue;
+            }
+            if (found != null) {
+                throw new IllegalStateException("Concept " + entity.getName() + " must have exactly one id field.");
+            }
+            found = field;
+        }
+        if (found == null) {
+            throw new IllegalStateException("Concept " + entity.getName() + " must have exactly one id field.");
+        }
+        return found;
     }
 
     private String cap(String s) {

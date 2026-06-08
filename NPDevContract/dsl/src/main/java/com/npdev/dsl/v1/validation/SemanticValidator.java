@@ -291,8 +291,14 @@ public final class SemanticValidator {
                     }
                 } else if ((f.getReferenceTarget() != null && !f.getReferenceTarget().isBlank())
                         || f.getReferenceSemantics() != null) {
-                    errors.add("Entity " + e.getName() + " field " + f.getName()
-                            + ": ref/reference is only allowed when type is reference");
+                    validateScalarReferenceLookupMetadata(
+                            e.getName(),
+                            f,
+                            normalizedType,
+                            entitiesByLower,
+                            effectiveCache,
+                            errors
+                    );
                 }
 
                 validateFieldValueBehavior(e.getName(), f, fieldNames, errors);
@@ -338,7 +344,7 @@ public final class SemanticValidator {
             validateLifecycle(e, effective, errors);
         }
 
-        validateFlows(effectiveModel, entitiesByLower, effectiveCache, allowUnboundFlowCapabilities, errors);
+        validateFlows(effectiveModel, entitiesByLower, effectiveCache, allowUnboundFlowCapabilities, errors, semanticWarnings);
         validateOrchestrationRules(effectiveModel, errors);
         validateQueries(effectiveModel, entitiesByLower, errors);
         validateRuleProfiles(effectiveModel, entitiesByLower, errors);
@@ -346,6 +352,11 @@ public final class SemanticValidator {
         validatePanels(effectiveModel, entitiesByLower, errors);
         errors = canonicalizeConceptTerminology(errors);
         semanticWarnings = canonicalizeConceptTerminology(semanticWarnings);
+        for (String semanticWarning : semanticWarnings) {
+            if (!warnings.contains(semanticWarning)) {
+                warnings.add(semanticWarning);
+            }
+        }
 
         List<ValidationDiagnostic> diagnostics = new ArrayList<>();
         for (String error : errors) {
@@ -1192,6 +1203,86 @@ public final class SemanticValidator {
         }
     }
 
+    private static void validateScalarReferenceLookupMetadata(
+            String entityName,
+            FieldAst field,
+            String normalizedType,
+            Map<String, EntityAst> entitiesByLower,
+            Map<String, EffectiveEntity> effectiveCache,
+            List<String> errors
+    ) {
+        if (field.isId()) {
+            errors.add("Entity " + entityName + " field " + field.getName()
+                    + ": reference lookup metadata is not allowed on id fields");
+            return;
+        }
+
+        if (!isScalarLookupReferenceType(normalizedType)) {
+            errors.add("Entity " + entityName + " field " + field.getName()
+                    + ": ref/reference metadata on non-reference fields is supported only for scalar id fields");
+            return;
+        }
+
+        String target = normalize(field.getReferenceTarget());
+        if (target.isBlank()) {
+            errors.add("Entity " + entityName + " field " + field.getName()
+                    + ": reference lookup metadata must declare ref (or reference.target)");
+            return;
+        }
+
+        EntityAst targetEntityAst = entitiesByLower.get(target);
+        if (targetEntityAst == null) {
+            errors.add("Entity " + entityName + " field " + field.getName()
+                    + ": reference target not found: " + field.getReferenceTarget());
+            return;
+        }
+
+        EffectiveEntity effectiveTarget = resolveEffective(
+                targetEntityAst,
+                entitiesByLower,
+                effectiveCache,
+                new HashSet<>(),
+                errors
+        );
+        validateScalarReferenceTargetId(entityName, field, normalizedType, effectiveTarget, errors);
+        validateReferenceSemantics(entityName, field, effectiveTarget, errors);
+    }
+
+    private static boolean isScalarLookupReferenceType(String normalizedType) {
+        return "uuid".equals(normalizedType)
+                || "string".equals(normalizedType)
+                || "integer".equals(normalizedType)
+                || "long".equals(normalizedType);
+    }
+
+    private static void validateScalarReferenceTargetId(
+            String entityName,
+            FieldAst field,
+            String normalizedType,
+            EffectiveEntity targetEntity,
+            List<String> errors
+    ) {
+        List<FieldAst> targetIdFields = targetEntity.fields().stream()
+                .filter(FieldAst::isId)
+                .toList();
+
+        if (targetIdFields.size() != 1) {
+            errors.add("Entity " + entityName + " field " + field.getName()
+                    + ": scalar reference target " + field.getReferenceTarget()
+                    + " must declare exactly one id field");
+            return;
+        }
+
+        FieldAst targetId = targetIdFields.get(0);
+        String targetIdType = normalize(targetId.getType());
+        if (!normalizedType.equals(targetIdType)) {
+            errors.add("Entity " + entityName + " field " + field.getName()
+                    + ": scalar reference type " + normalizedType
+                    + " must match target id type " + field.getReferenceTarget() + "." + targetId.getName()
+                    + " (" + targetIdType + ")");
+        }
+    }
+
     private static void validateReferenceSemantics(
             String entityName,
             FieldAst field,
@@ -1466,7 +1557,8 @@ public final class SemanticValidator {
             Map<String, EntityAst> entitiesByLower,
             Map<String, EffectiveEntity> effectiveCache,
             boolean allowUnboundFlowCapabilities,
-            List<String> errors
+            List<String> errors,
+            List<String> warnings
     ) {
         Set<String> flowNames = new HashSet<>();
         Map<String, Set<String>> operationsByCapability = resolveCapabilityOperations(modelAst);
@@ -1510,11 +1602,59 @@ public final class SemanticValidator {
                     new HashSet<>(),
                     errors
             );
+            warnCreateOrUpdateFlowWithoutPersistenceSemantics(flow, warnings);
         }
 
         if (!allowUnboundFlowCapabilities) {
             validateReferencedCapabilityBindings(modelAst, referencedCapabilities, errors);
         }
+    }
+
+    private static void warnCreateOrUpdateFlowWithoutPersistenceSemantics(FlowAst flow, List<String> warnings) {
+        if (flow == null || warnings == null) {
+            return;
+        }
+        String mode = normalize(flow.getMode());
+        if (!"create".equals(mode) && !"update".equals(mode)) {
+            return;
+        }
+        if (hasPersistenceSemantics(flow.getSteps())) {
+            return;
+        }
+        warnings.add("Flow " + flow.getName() + ": input mode '" + flow.getMode()
+                + "' does not imply persistence by name or mode alone. Declare an explicit createConcept, "
+                + "updateConcept, saveConcept, or persistence.save step to persist business data.");
+    }
+
+    private static boolean hasPersistenceSemantics(List<StepAst> steps) {
+        if (steps == null || steps.isEmpty()) {
+            return false;
+        }
+        for (StepAst step : steps) {
+            if (step == null) {
+                continue;
+            }
+            String type = normalize(step.getType());
+            if ("createconcept".equals(type)
+                    || "updateconcept".equals(type)
+                    || "saveconcept".equals(type)
+                    || "createentity".equals(type)
+                    || "updateentity".equals(type)
+                    || "saveentity".equals(type)) {
+                return true;
+            }
+            String capability = normalize(step.getCapability());
+            String operation = normalize(step.getOperation());
+            if (("capability".equals(type) || "capabilitycall".equals(type))
+                    && "persistence".equals(capability)
+                    && ("save".equals(operation) || "delete".equals(operation))) {
+                return true;
+            }
+            if (hasPersistenceSemantics(step.getThenSteps()) || hasPersistenceSemantics(step.getElseSteps())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void validateFlowSteps(

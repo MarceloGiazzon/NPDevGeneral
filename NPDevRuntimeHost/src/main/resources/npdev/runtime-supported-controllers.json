@@ -21,7 +21,8 @@
     "RealPublicationExecutorController",
     "RollbackExecutionController",
     "PublicationRollbackExecutorController",
-    "SupportDiagnosticsController"
+    "SupportDiagnosticsController",
+    "StorageSummaryController"
   ],
   "deferredControllers": [
     "HelloController",
@@ -36,12 +37,15 @@
   "testOnlyControllers": [],
   "supportedCoreServiceComponents": [
     "BetaSecurityRoleEvaluator",
+    "ArtifactLocalJavaSourceCapabilityHandler",
     "CanonicalSourceArtifactStore",
     "CanonicalSourceMutationExecutorService",
     "CanonicalSourceValidationService",
     "CrossTenantGovernanceService",
+    "DynamicCapabilityHandler",
     "ExecutionMonitorService",
     "FileRuntimePluginExecutionSummaryStore",
+    "GenericMountedCapabilityHandler",
     "PanelRuntime",
     "PermissionAwareUiMetadataService",
     "PublicationChainReferenceResolver",

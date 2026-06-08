@@ -2,6 +2,8 @@ package com.npdev.generator.emitters;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledMetadataCanonicalJson;
 import com.npdev.dsl.v1.compiled.CompiledModelCanonicalJson;
@@ -215,6 +217,8 @@ writer.writeRelative(
         if (modelSourcePath != null && Files.exists(modelSourcePath)) {
             writer.writeRelative("src/main/resources/npdev/model.json", readModelSource(modelSourcePath));
         }
+        GeneratedPluginMountPlan pluginMountPlan = GeneratedPluginMountPlan.fromModelSource(modelSourcePath);
+
         writer.writeRelative(
                 "src/main/resources/npdev/compiled-model.json",
                 CompiledModelCanonicalJson.toJson(model)
@@ -226,11 +230,11 @@ writer.writeRelative(
 
         writer.writeRelative(
                 "src/main/resources/npdev/bindings/dev.bindings.json",
-                readBindingManifest("dev.bindings.json")
+                emitBindingManifest("dev.bindings.json", pluginMountPlan)
         );
         writer.writeRelative(
                 "src/main/resources/npdev/bindings/alt.bindings.json",
-                readBindingManifest("alt.bindings.json")
+                emitBindingManifest("alt.bindings.json", pluginMountPlan)
         );
         writer.writeRelative(
                 "src/main/resources/npdev/security/dev.permissions.json",
@@ -246,11 +250,15 @@ writer.writeRelative(
         );
         writer.writeRelative(
                 "src/main/resources/npdev/plugins/default.plugin-manifest.json",
-                readPluginManifest("default.plugin-manifest.json")
+                emitPluginManifest("default.plugin-manifest.json", pluginMountPlan)
+        );
+        writer.writeRelative(
+                "src/main/resources/npdev/plugins/dev.plugin-manifest.json",
+                emitPluginManifest("dev.plugin-manifest.json", pluginMountPlan)
         );
         writer.writeRelative(
                 "src/main/resources/npdev/plugins/warning.plugin-manifest.json",
-                readPluginManifest("warning.plugin-manifest.json")
+                emitPluginManifest("warning.plugin-manifest.json", pluginMountPlan)
         );
         for (String fileName : listPluginPackageDescriptorFiles()) {
             writer.writeRelative(
@@ -258,10 +266,18 @@ writer.writeRelative(
                     readPluginPackageDescriptor(fileName)
             );
         }
+        for (GeneratedPluginMountPlan.PackageGroup packageGroup : pluginMountPlan.packageGroups()) {
+            GeneratedPluginMountPlan.Mount representative = packageGroup.representative();
+            writer.writeRelative(
+                    "src/main/resources/npdev/plugin-packages/" + representative.packageFileName(),
+                    emitGeneratedPluginPackageDescriptor(packageGroup)
+            );
+        }
         writer.writeRelative(
                 "src/main/resources/npdev/plugin-packages/index.json",
-                readPluginPackageIndex()
+                readPluginPackageIndex(pluginMountPlan)
         );
+        emitJavaSourceMounts(pluginMountPlan);
     }
 
     private static String readModelSource(Path modelSourcePath) {
@@ -319,6 +335,42 @@ writer.writeRelative(
             return Files.readString(manifestPath, StandardCharsets.UTF_8);
         } catch (IOException exception) {
             throw new RuntimeException("Failed reading binding manifest: " + manifestPath, exception);
+        }
+    }
+
+    private static String emitBindingManifest(String fileName, GeneratedPluginMountPlan pluginMountPlan) {
+        String source = readBindingManifest(fileName);
+        if (pluginMountPlan.isEmpty()) {
+            return source;
+        }
+        try {
+            ObjectNode root = (ObjectNode) OBJECT_MAPPER.readTree(stripJsonBom(source));
+            ArrayNode bindings = root.withArray("bindings");
+            Set<String> existing = new LinkedHashSet<>();
+            for (JsonNode binding : bindings) {
+                existing.add(bindingKey(
+                        binding.path("capability").asText(),
+                        binding.path("adapterId").asText()
+                ));
+            }
+            for (GeneratedPluginMountPlan.Mount mount : pluginMountPlan.mounts()) {
+                String key = bindingKey(mount.capability(), mount.adapterId());
+                if (existing.contains(key)) {
+                    continue;
+                }
+                ObjectNode binding = OBJECT_MAPPER.createObjectNode();
+                binding.put("capability", mount.capability());
+                binding.put("capabilityType", mount.capabilityType());
+                binding.put("adapterId", mount.adapterId());
+                binding.put("adapterClass", "");
+                binding.put("environment", "");
+                binding.put("tenantId", "");
+                bindings.add(binding);
+                existing.add(key);
+            }
+            return prettyJson(root);
+        } catch (IOException exception) {
+            throw new RuntimeException("Failed emitting generated binding manifest: " + fileName, exception);
         }
     }
 
@@ -665,6 +717,61 @@ writer.writeRelative(
         }
     }
 
+    private static String emitPluginManifest(String fileName, GeneratedPluginMountPlan pluginMountPlan) {
+        String source = readPluginManifest(fileName);
+        if (pluginMountPlan.isEmpty()) {
+            return source;
+        }
+        try {
+            ObjectNode root = (ObjectNode) OBJECT_MAPPER.readTree(stripJsonBom(source));
+            ArrayNode plugins = root.withArray("plugins");
+            Set<String> existingAdapters = new LinkedHashSet<>();
+            for (JsonNode plugin : plugins) {
+                for (JsonNode adapter : plugin.path("adapters")) {
+                    existingAdapters.add(adapterContributionKey(
+                            adapter.path("capability").asText(),
+                            adapter.path("operation").asText(),
+                            adapter.path("adapterId").asText()
+                    ));
+                }
+            }
+            for (GeneratedPluginMountPlan.PackageGroup packageGroup : pluginMountPlan.packageGroups()) {
+                ArrayNode adapters = OBJECT_MAPPER.createArrayNode();
+                for (GeneratedPluginMountPlan.Mount mount : packageGroup.mounts()) {
+                    String key = adapterContributionKey(mount.capability(), mount.operation(), mount.adapterId());
+                    if (existingAdapters.contains(key)) {
+                        continue;
+                    }
+                    ObjectNode adapter = OBJECT_MAPPER.createObjectNode();
+                    adapter.put("capability", mount.capability());
+                    adapter.put("operation", mount.operation());
+                    adapter.put("adapterId", mount.adapterId());
+                    adapter.put("bindingKey", mount.bindingKey());
+                    ObjectNode implementation = OBJECT_MAPPER.createObjectNode();
+                    implementation.put("kind", "runtimeRef");
+                    implementation.put("ref", mount.runtimeRef());
+                    adapter.set("implementation", implementation);
+                    adapters.add(adapter);
+                    existingAdapters.add(key);
+                }
+                if (adapters.isEmpty()) {
+                    continue;
+                }
+                GeneratedPluginMountPlan.Mount representative = packageGroup.representative();
+                ObjectNode plugin = OBJECT_MAPPER.createObjectNode();
+                plugin.put("pluginId", representative.pluginId());
+                plugin.put("displayName", representative.displayName());
+                plugin.put("version", representative.version());
+                plugin.put("enabled", true);
+                plugin.set("adapters", adapters);
+                plugins.add(plugin);
+            }
+            return prettyJson(root);
+        } catch (IOException exception) {
+            throw new RuntimeException("Failed emitting generated plugin manifest: " + fileName, exception);
+        }
+    }
+
     private static String readPluginPackageDescriptor(String fileName) {
         Path descriptorPath = resolveProjectResourcePath("PluginPackages", fileName);
         if (descriptorPath == null) {
@@ -677,8 +784,16 @@ writer.writeRelative(
         }
     }
 
-    private static String readPluginPackageIndex() {
-        String resources = listPluginPackageDescriptorFiles().stream()
+    private static String readPluginPackageIndex(GeneratedPluginMountPlan pluginMountPlan) {
+        List<String> packageFiles = new ArrayList<>(listPluginPackageDescriptorFiles());
+        for (GeneratedPluginMountPlan.PackageGroup packageGroup : pluginMountPlan.packageGroups()) {
+            packageFiles.add(packageGroup.representative().packageFileName());
+        }
+        packageFiles = packageFiles.stream()
+                .distinct()
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList();
+        String resources = packageFiles.stream()
                 .map(fileName -> "    \"npdev/plugin-packages/" + fileName + "\"")
                 .collect(java.util.stream.Collectors.joining("," + System.lineSeparator()));
         return """
@@ -689,6 +804,254 @@ writer.writeRelative(
   ]
 }
 """.formatted(resources);
+    }
+
+    private static String emitGeneratedPluginPackageDescriptor(GeneratedPluginMountPlan.PackageGroup packageGroup) {
+        GeneratedPluginMountPlan.Mount representative = packageGroup.representative();
+        if (representative.mountKind() == GeneratedPluginMountPlan.MountKind.JAVA_SOURCE) {
+            return emitJavaSourcePluginPackageDescriptor(packageGroup);
+        }
+        ObjectNode root = OBJECT_MAPPER.createObjectNode();
+        root.put("packageFormatVersion", "1.0");
+        root.put("packageId", representative.packageId());
+        root.put("displayName", "Generated " + representative.capability() + " capability package");
+        root.put("version", "1.0.0");
+        root.put("description", "Generated package descriptor for model-defined capability " + representative.capability() + ".");
+        root.put("provider", "NPDev Generator");
+
+        ObjectNode compatibility = OBJECT_MAPPER.createObjectNode();
+        compatibility.put("npdevRuntimeApiVersion", "1.0");
+        compatibility.put("minBootstrapVersion", "1.0.0");
+        root.set("compatibility", compatibility);
+
+        ObjectNode trust = OBJECT_MAPPER.createObjectNode();
+        trust.put("mode", "internal");
+        trust.put("source", "generated-model");
+        trust.put("level", "trusted");
+        root.set("trust", trust);
+
+        ObjectNode signature = OBJECT_MAPPER.createObjectNode();
+        signature.put("algorithm", "sha256");
+        signature.put("digest", "generated-model-deterministic-placeholder");
+        signature.put("status", "generated");
+        signature.put("verifiedBy", "npdev-generator");
+        root.set("signature", signature);
+
+        ObjectNode provenance = OBJECT_MAPPER.createObjectNode();
+        provenance.put("sourceType", "model.json");
+        provenance.put("sourceLocation", "model.json");
+        provenance.put("attestation", "generated-from-model-customCapabilities");
+        root.set("provenance", provenance);
+
+        ArrayNode artifacts = OBJECT_MAPPER.createArrayNode();
+        ObjectNode artifact = OBJECT_MAPPER.createObjectNode();
+        artifact.put("kind", "runtimeRefBundle");
+        artifact.put("path", "built-in://generic-mounted-capability");
+        artifacts.add(artifact);
+        root.set("artifacts", artifacts);
+
+        ArrayNode capabilities = OBJECT_MAPPER.createArrayNode();
+        for (GeneratedPluginMountPlan.Mount mount : packageGroup.mounts()) {
+            ObjectNode capability = OBJECT_MAPPER.createObjectNode();
+            capability.put("capability", mount.capability());
+            capability.put("operation", mount.operation());
+            capability.put("adapterId", mount.adapterId());
+            capabilities.add(capability);
+        }
+        root.set("capabilities", capabilities);
+
+        ObjectNode pluginManifest = OBJECT_MAPPER.createObjectNode();
+        pluginManifest.put("path", "npdev/plugins/default.plugin-manifest.json");
+        root.set("pluginManifest", pluginManifest);
+
+        return prettyJson(root);
+    }
+
+    private static String emitJavaSourcePluginPackageDescriptor(GeneratedPluginMountPlan.PackageGroup packageGroup) {
+        GeneratedPluginMountPlan.Mount representative = packageGroup.representative();
+        GeneratedPluginMountPlan.JavaSourceDescriptor descriptor = representative.javaSource();
+        ObjectNode root = OBJECT_MAPPER.createObjectNode();
+        root.put("packageFormatVersion", "1.0");
+        root.put("packageId", descriptor.packageId());
+        root.put("displayName", descriptor.displayName());
+        root.put("version", descriptor.version());
+        root.put("description", "Artifact-local Java source package for model-defined capability " + representative.capability() + ".");
+        root.put("provider", "External artifact bundle");
+
+        ObjectNode compatibility = OBJECT_MAPPER.createObjectNode();
+        compatibility.put("npdevRuntimeApiVersion", "1.0");
+        compatibility.put("minBootstrapVersion", "1.0.0");
+        root.set("compatibility", compatibility);
+
+        ObjectNode trust = OBJECT_MAPPER.createObjectNode();
+        trust.put("mode", "local-dev");
+        trust.put("source", "external-artifact-bundle");
+        trust.put("level", "developer-supplied");
+        root.set("trust", trust);
+
+        ObjectNode signature = OBJECT_MAPPER.createObjectNode();
+        signature.put("algorithm", "sha256");
+        signature.put("digest", "artifact-local-java-source");
+        signature.put("status", "generated");
+        signature.put("verifiedBy", "npdev-generator");
+        root.set("signature", signature);
+
+        ObjectNode provenance = OBJECT_MAPPER.createObjectNode();
+        provenance.put("sourceType", "capability.plugin.json");
+        provenance.put("sourceLocation", descriptor.artifactRoot().relativize(descriptor.descriptorPath()).toString().replace('\\', '/'));
+        provenance.put("attestation", "generated-from-artifact-local-java-source");
+        root.set("provenance", provenance);
+
+        ArrayNode artifacts = OBJECT_MAPPER.createArrayNode();
+        ObjectNode artifact = OBJECT_MAPPER.createObjectNode();
+        artifact.put("kind", "javaSource");
+        artifact.put("path", descriptor.sourceRoot());
+        artifacts.add(artifact);
+        root.set("artifacts", artifacts);
+
+        ArrayNode capabilities = OBJECT_MAPPER.createArrayNode();
+        for (GeneratedPluginMountPlan.Mount mount : packageGroup.mounts()) {
+            ObjectNode capability = OBJECT_MAPPER.createObjectNode();
+            capability.put("capability", mount.capability());
+            capability.put("operation", mount.operation());
+            capability.put("adapterId", mount.adapterId());
+            capabilities.add(capability);
+        }
+        root.set("capabilities", capabilities);
+
+        ObjectNode pluginManifest = OBJECT_MAPPER.createObjectNode();
+        pluginManifest.put("path", "npdev/plugins/default.plugin-manifest.json");
+        root.set("pluginManifest", pluginManifest);
+
+        return prettyJson(root);
+    }
+
+    private void emitJavaSourceMounts(GeneratedPluginMountPlan pluginMountPlan) {
+        List<GeneratedPluginMountPlan.JavaSourcePackageGroup> javaSourceGroups = pluginMountPlan.javaSourcePackageGroups();
+        if (javaSourceGroups.isEmpty()) {
+            return;
+        }
+        emitJavaSourceFiles(javaSourceGroups);
+        writer.writeRelative(
+                "src/main/java/com/npdev/generated/runtime/config/GeneratedJavaSourceCapabilityProviders.java",
+                javaSourceProvidersSource(javaSourceGroups)
+        );
+    }
+
+    private void emitJavaSourceFiles(List<GeneratedPluginMountPlan.JavaSourcePackageGroup> javaSourceGroups) {
+        Set<String> emitted = new LinkedHashSet<>();
+        for (GeneratedPluginMountPlan.JavaSourcePackageGroup group : javaSourceGroups) {
+            GeneratedPluginMountPlan.JavaSourceDescriptor descriptor = group.descriptor();
+            try (java.util.stream.Stream<Path> stream = Files.walk(descriptor.resolvedSourceRoot())) {
+                List<Path> sources = stream
+                        .filter(path -> Files.isRegularFile(path) && path.toString().endsWith(".java"))
+                        .sorted(Comparator.comparing(path -> descriptor.resolvedSourceRoot().relativize(path).toString(), String.CASE_INSENSITIVE_ORDER))
+                        .toList();
+                for (Path source : sources) {
+                    Path relative = descriptor.resolvedSourceRoot().relativize(source);
+                    String destination = "src/main/java/" + relative.toString().replace('\\', '/');
+                    if (!emitted.add(destination.toLowerCase(Locale.ROOT))) {
+                        throw new IllegalStateException("Duplicate artifact-local Java source destination: " + destination);
+                    }
+                    writer.writeRelative(destination, Files.readString(source, StandardCharsets.UTF_8));
+                }
+            } catch (IOException exception) {
+                throw new RuntimeException("Failed emitting artifact-local Java source for " + descriptor.capability(), exception);
+            }
+        }
+    }
+
+    private static String javaSourceProvidersSource(List<GeneratedPluginMountPlan.JavaSourcePackageGroup> javaSourceGroups) {
+        StringBuilder source = new StringBuilder();
+        source.append("""
+                package com.npdev.generated.runtime.config;
+
+                import com.finalexec.npdev.service.ArtifactLocalJavaSourceCapabilityHandler;
+                import com.finalexec.npdev.service.RuntimePluginRealizationProvider;
+                import org.springframework.context.annotation.Bean;
+                import org.springframework.context.annotation.Configuration;
+
+                import java.util.Map;
+
+                @Configuration
+                public class GeneratedJavaSourceCapabilityProviders {
+
+                """);
+        Set<String> methodNames = new LinkedHashSet<>();
+        for (GeneratedPluginMountPlan.JavaSourcePackageGroup group : javaSourceGroups) {
+            GeneratedPluginMountPlan.JavaSourceDescriptor descriptor = group.descriptor();
+            String methodName = uniqueMethodName(methodNames, javaIdentifierPart(descriptor.runtimeRef()) + "Provider");
+            source.append("    @Bean\n");
+            source.append("    public RuntimePluginRealizationProvider ").append(methodName).append("() {\n");
+            source.append("        return new RuntimePluginRealizationProvider() {\n");
+            source.append("            @Override\n");
+            source.append("            public String runtimeRef() {\n");
+            source.append("                return \"").append(javaEscape(descriptor.runtimeRef())).append("\";\n");
+            source.append("            }\n\n");
+            source.append("            @Override\n");
+            source.append("            public Object realize() {\n");
+            source.append("                return new ArtifactLocalJavaSourceCapabilityHandler(\n");
+            source.append("                        new ").append(descriptor.mainClass()).append("(),\n");
+            source.append("                        Map.ofEntries(");
+            List<Map.Entry<String, String>> entries = descriptor.methodByOperation().entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey(String.CASE_INSENSITIVE_ORDER))
+                    .toList();
+            for (int index = 0; index < entries.size(); index++) {
+                Map.Entry<String, String> entry = entries.get(index);
+                if (index > 0) {
+                    source.append(", ");
+                }
+                source.append("Map.entry(\"")
+                        .append(javaEscape(entry.getKey()))
+                        .append("\", \"")
+                        .append(javaEscape(entry.getValue()))
+                        .append("\")");
+            }
+            source.append(")\n");
+            source.append("                );\n");
+            source.append("            }\n");
+            source.append("        };\n");
+            source.append("    }\n\n");
+        }
+        source.append("}\n");
+        return source.toString();
+    }
+
+    private static String uniqueMethodName(Set<String> used, String base) {
+        String candidate = base;
+        int suffix = 2;
+        while (!used.add(candidate.toLowerCase(Locale.ROOT))) {
+            candidate = base + suffix;
+            suffix++;
+        }
+        return candidate;
+    }
+
+    private static String javaIdentifierPart(String value) {
+        String normalized = value == null ? "" : value.trim();
+        StringBuilder builder = new StringBuilder();
+        boolean capitalizeNext = false;
+        for (int index = 0; index < normalized.length(); index++) {
+            char ch = normalized.charAt(index);
+            if (Character.isLetterOrDigit(ch) || ch == '_') {
+                if (builder.length() == 0 && Character.isDigit(ch)) {
+                    builder.append('_');
+                }
+                builder.append(capitalizeNext ? Character.toUpperCase(ch) : ch);
+                capitalizeNext = false;
+            } else {
+                capitalizeNext = builder.length() > 0;
+            }
+        }
+        return builder.length() == 0 ? "javaSourceRuntimeRef" : builder.toString();
+    }
+
+    private static String javaEscape(String value) {
+        return value == null ? "" : value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\r", "\\r")
+                .replace("\n", "\\n");
     }
 
     private static java.util.List<String> listPluginPackageDescriptorFiles() {
@@ -705,6 +1068,33 @@ writer.writeRelative(
                     .toList();
         } catch (IOException exception) {
             throw new RuntimeException("Failed listing plugin package descriptors: " + pluginPackagesDirectory, exception);
+        }
+    }
+
+    private static String adapterContributionKey(String capability, String operation, String adapterId) {
+        return normalizeKey(capability) + "|" + normalizeKey(operation) + "|" + normalizeKey(adapterId);
+    }
+
+    private static String bindingKey(String capability, String adapterId) {
+        return normalizeKey(capability) + "|" + normalizeKey(adapterId);
+    }
+
+    private static String normalizeKey(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static String stripJsonBom(String json) {
+        if (json != null && !json.isEmpty() && json.charAt(0) == '\uFEFF') {
+            return json.substring(1);
+        }
+        return json;
+    }
+
+    private static String prettyJson(JsonNode node) {
+        try {
+            return OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(node) + System.lineSeparator();
+        } catch (IOException exception) {
+            throw new RuntimeException("Failed writing generated JSON", exception);
         }
     }
 

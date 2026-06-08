@@ -6,6 +6,8 @@ import com.finalexec.npdev.service.ClasspathArtifactRealizationProvider;
 import com.finalexec.npdev.service.FileRuntimePluginExecutionSummaryStore;
 import com.finalexec.npdev.service.FilesystemArtifactRealizationProvider;
 import com.finalexec.npdev.service.GenericCustomProcedureCapabilityAdapter;
+import com.finalexec.npdev.service.GenericMountedCapabilityHandler;
+import com.finalexec.npdev.service.JavaSourceArtifactRealizationProvider;
 import com.finalexec.npdev.service.PluginExecutionPolicyEvaluator;
 import com.finalexec.npdev.service.PluginManifestSchemaValidator;
 import com.finalexec.npdev.service.PluginPackageSchemaValidator;
@@ -221,6 +223,13 @@ public class NpdevPluginConfig {
     }
 
     @Bean
+    public RuntimePluginArtifactRealizationProvider javaSourceArtifactRealizationProvider(
+            RuntimePluginRuntimeRefResolver runtimePluginRuntimeRefResolver
+    ) {
+        return new JavaSourceArtifactRealizationProvider(runtimePluginRuntimeRefResolver);
+    }
+
+    @Bean
     public RuntimePluginPackageRealizationService runtimePluginPackageRealizationService(
             RuntimePluginPackageCatalog runtimePluginPackageCatalog,
             RuntimePluginProfileResolver.ResolvedRuntimePluginProfile runtimePluginProfile,
@@ -259,12 +268,16 @@ public class NpdevPluginConfig {
 
     @Bean
     public RuntimePluginRealizationProvider persistencePostgresRuntimePluginRealizationProvider(
-            ObjectProvider<DataSource> dataSourceProvider
+            ObjectProvider<DataSource> dataSourceProvider,
+            @Value("${npdev.storage.mode:in-memory}") String storageMode
     ) {
         return namedRuntimePluginRealizationProvider(
                 "persistencePostgresCapabilityAdapter",
                 () -> {
                     DataSource dataSource = dataSourceProvider.getIfAvailable();
+                    if ("in-memory".equalsIgnoreCase(storageMode)) {
+                        return new InMemoryPersistenceCapabilityAdapter();
+                    }
                     if (dataSource == null) {
                         throw new IllegalStateException("DataSource is required for postgres persistence adapter");
                     }
@@ -286,6 +299,14 @@ public class NpdevPluginConfig {
         return namedRuntimePluginRealizationProvider(
                 "genericCustomProcedureCapabilityAdapter",
                 GenericCustomProcedureCapabilityAdapter::new
+        );
+    }
+
+    @Bean
+    public RuntimePluginRealizationProvider genericMountedCapabilityRuntimePluginRealizationProvider() {
+        return namedRuntimePluginRealizationProvider(
+                "genericMountedCapabilityHandler",
+                GenericMountedCapabilityHandler::new
         );
     }
 

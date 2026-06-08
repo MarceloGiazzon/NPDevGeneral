@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/user-db-definition.schema.json",
+  "title": "NPDev User DB Definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["database", "schemaLifecycle"],
+  "properties": {
+    "database": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["engine", "createInternalTables", "createBusinessTables"],
+      "properties": {
+        "engine": { "enum": ["Postgres", "InMemory", "H2Local", "H2Server"] },
+        "host": { "type": "string", "minLength": 1 },
+        "port": { "type": "integer", "minimum": 1 },
+        "databaseName": { "type": "string", "minLength": 1 },
+        "schemaName": { "type": "string", "minLength": 1 },
+        "jdbcUrl": { "type": "string", "minLength": 1 },
+        "h2FilePath": { "type": "string", "minLength": 1 },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "createInternalTables": { "type": "boolean" },
+        "createBusinessTables": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "engine": { "const": "Postgres" } }, "required": ["engine"] },
+          "then": { "required": ["host", "port", "username", "password"] }
+        },
+        {
+          "if": { "properties": { "engine": { "const": "H2Local" } }, "required": ["engine"] },
+          "then": { "required": ["username", "password"] }
+        },
+        {
+          "if": { "properties": { "engine": { "const": "H2Server" } }, "required": ["engine"] },
+          "then": {
+            "required": ["username", "password"],
+            "anyOf": [
+              { "required": ["jdbcUrl"] },
+              { "required": ["host", "port"] }
+            ]
+          }
+        }
+      ]
+    },
+    "schemaLifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "allowDestructiveRecreate", "destructiveRecreateConfirmation", "scope"],
+      "properties": {
+        "strategy": {
+          "enum": ["DropAndRecreateOnStructureChange", "RecreateOnAppStart", "KeepExistingIfCompatible"]
+        },
+        "allowDestructiveRecreate": { "type": "boolean" },
+        "destructiveRecreateConfirmation": { "type": "string" },
+        "scope": { "enum": ["NpdevOwnedTablesOnly", "NpdevOwnedLogicalStoresOnly"] }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "strategy": { "const": "DropAndRecreateOnStructureChange" } },
+            "required": ["strategy"]
+          },
+          "then": {
+            "properties": {
+              "allowDestructiveRecreate": { "const": true },
+              "destructiveRecreateConfirmation": { "const": "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED" },
+              "scope": { "const": "NpdevOwnedTablesOnly" }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

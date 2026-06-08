@@ -2,13 +2,17 @@ package com.finalexec.npdev.service.internal;
 
 import com.finalexec.npdev.service.*;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -24,11 +28,11 @@ public class PublicationStateStore {
             Paths.get("runtime-data", "real-publication-executions");
 
     private final ObjectMapper objectMapper;
-    private final JdbcTemplate jdbcTemplate;
+    private final ObjectProvider<JdbcTemplate> jdbcTemplateProvider;
 
-    public PublicationStateStore(ObjectMapper objectMapper, JdbcTemplate jdbcTemplate) {
+    public PublicationStateStore(ObjectMapper objectMapper, ObjectProvider<JdbcTemplate> jdbcTemplateProvider) {
         this.objectMapper = objectMapper;
-        this.jdbcTemplate = jdbcTemplate;
+        this.jdbcTemplateProvider = jdbcTemplateProvider;
     }
 
     public Map<String, Object> rollbackPublicationState(
@@ -100,24 +104,76 @@ public class PublicationStateStore {
     }
 
     private boolean updatePublicationDatabaseState(String realPublicationExecutionId, String rollbackReference) {
+        JdbcTemplate jdbcTemplate = jdbcTemplateProvider.getIfAvailable();
+        if (jdbcTemplate == null) {
+            return false;
+        }
+        Map<String, Object> payload = readPublicationPayload(jdbcTemplate, realPublicationExecutionId);
+        if (payload == null) {
+            return false;
+        }
+        payload.put("publicationRollbackReference", rollbackReference);
+        Timestamp now = currentTimestamp();
+        String payloadJson;
+        try {
+            payloadJson = objectMapper.writeValueAsString(payload);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to serialize publication execution payload.", exception);
+        }
         int updated = jdbcTemplate.update(
-                """
-                UPDATE npdev_publication_execution
-                SET publication_status = 'ROLLED_BACK',
-                    publication_outcome = 'PUBLICATION_STATE_RESTORED',
-                    execution_payload = jsonb_set(
-                        execution_payload,
-                        '{publicationRollbackReference}',
-                        to_jsonb(?::text),
-                        true
-                    ),
-                    completed_at = COALESCE(completed_at, NOW()),
-                    updated_at = NOW()
-                WHERE publication_execution_id = CAST(? AS uuid)
-                """,
-                rollbackReference,
+                PublicationExecutionRollbackSql.update(),
+                payloadJson,
+                now,
+                now,
                 realPublicationExecutionId
         );
         return updated > 0;
+    }
+
+    private Map<String, Object> readPublicationPayload(JdbcTemplate jdbcTemplate, String realPublicationExecutionId) {
+        try {
+            String payloadJson = jdbcTemplate.queryForObject(
+                    PublicationExecutionRollbackSql.selectPayload(),
+                    String.class,
+                    realPublicationExecutionId
+            );
+            if (payloadJson == null || payloadJson.isBlank()) {
+                return new LinkedHashMap<>();
+            }
+            return objectMapper.readValue(payloadJson, new TypeReference<LinkedHashMap<String, Object>>() {});
+        } catch (EmptyResultDataAccessException exception) {
+            return null;
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to read publication execution payload.", exception);
+        }
+    }
+
+    static final class PublicationExecutionRollbackSql {
+        private PublicationExecutionRollbackSql() {
+        }
+
+        static String selectPayload() {
+            return """
+                    SELECT execution_payload
+                    FROM npdev_publication_execution
+                    WHERE publication_execution_id = ?
+                    """;
+        }
+
+        static String update() {
+            return """
+                    UPDATE npdev_publication_execution
+                    SET publication_status = 'ROLLED_BACK',
+                        publication_outcome = 'PUBLICATION_STATE_RESTORED',
+                        execution_payload = ?,
+                        completed_at = CASE WHEN completed_at IS NULL THEN ? ELSE completed_at END,
+                        updated_at = ?
+                    WHERE publication_execution_id = ?
+                    """;
+        }
+    }
+
+    private Timestamp currentTimestamp() {
+        return Timestamp.from(OffsetDateTime.now(ZoneOffset.UTC).toInstant());
     }
 }

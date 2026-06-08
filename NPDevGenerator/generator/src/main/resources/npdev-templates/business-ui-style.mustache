@@ -1,0 +1,300 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, Segoe UI, Roboto, Arial, sans-serif;
+  background: #f5f7fa;
+  color: #18202a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  border: 1px solid #c8d0da;
+  background: #ffffff;
+  color: #18202a;
+  border-radius: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: #7d8da1;
+}
+
+button.primary {
+  background: #1769aa;
+  border-color: #1769aa;
+  color: #ffffff;
+}
+
+button.danger {
+  color: #9f1d1d;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+input,
+select {
+  border: 1px solid #c8d0da;
+  border-radius: 6px;
+  min-height: 36px;
+  padding: 6px 10px;
+  background: #ffffff;
+  color: #18202a;
+}
+
+.app-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid #d8dee7;
+  background: #ffffff;
+}
+
+.app-bar h1 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.status {
+  min-height: 20px;
+  margin-top: 4px;
+  color: #4c5a69;
+  font-size: 14px;
+}
+
+.status.is-error {
+  color: #a32424;
+}
+
+.api-key-field {
+  display: grid;
+  gap: 4px;
+  min-width: 260px;
+  color: #4c5a69;
+  font-size: 13px;
+}
+
+.workspace {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.concept-panel {
+  background: #ffffff;
+  border: 1px solid #d8dee7;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.panel-header,
+.filters,
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.panel-header {
+  border-bottom: 1px solid #e7ebf0;
+}
+
+.panel-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.panel-actions,
+.row-actions,
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filters {
+  justify-content: flex-start;
+  border-bottom: 1px solid #e7ebf0;
+}
+
+.filters input {
+  width: min(360px, 100%);
+}
+
+.records {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.records th,
+.records td {
+  padding: 11px 12px;
+  border-bottom: 1px solid #e7ebf0;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.records th {
+  color: #4c5a69;
+  font-size: 13px;
+  background: #f9fafc;
+}
+
+.records th.sortable {
+  cursor: pointer;
+}
+
+.records .row-actions {
+  justify-content: flex-end;
+}
+
+.empty {
+  padding: 24px;
+  color: #6b7786;
+  text-align: center;
+}
+
+.pager {
+  justify-content: flex-end;
+  color: #4c5a69;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(24, 32, 42, .42);
+}
+
+.modal {
+  width: min(720px, 100%);
+  max-height: min(760px, 92vh);
+  overflow: auto;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(24, 32, 42, .25);
+}
+
+.modal-header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 16px;
+  background: #ffffff;
+  border-bottom: 1px solid #e7ebf0;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.record-form,
+.details {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.record-form label,
+.detail-row {
+  display: grid;
+  gap: 6px;
+}
+
+.detail-row {
+  grid-template-columns: 180px 1fr;
+  align-items: start;
+}
+
+.detail-row span {
+  overflow-wrap: anywhere;
+}
+
+.reference-raw {
+  display: block;
+  margin-top: 3px;
+  color: #617085;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.modal-actions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 760px) {
+  .app-bar,
+  .panel-header,
+  .filters,
+  .pager {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .api-key-field {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .records {
+    min-width: 720px;
+  }
+
+  .concept-panel {
+    overflow-x: auto;
+  }
+
+  .detail-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lookup-control {
+  display: grid;
+  gap: 6px;
+}
+
+.lookup-search,
+.lookup-select {
+  width: 100%;
+}
+
+.lookup-hint {
+  color: #617085;
+  font-size: 12px;
+  min-height: 16px;
+  overflow-wrap: anywhere;
+}

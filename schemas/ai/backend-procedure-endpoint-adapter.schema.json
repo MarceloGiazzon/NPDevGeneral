@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/backend-procedure-endpoint-adapter.schema.json",
+  "title": "NPDev Backend Procedure Endpoint Adapter Prototype",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "adapterId",
+    "applicationId",
+    "mode",
+    "enabledByDefault",
+    "procedureId",
+    "panelIds",
+    "plannedEndpoint",
+    "implementationRoot",
+    "sourceProcedure",
+    "generatedAdapter",
+    "requestSamples",
+    "responseSamples",
+    "executionPolicy",
+    "truthPolicy",
+    "releaseGatePolicy",
+    "evidencePolicy",
+    "nonGoals"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "adapterId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "applicationId": {
+      "type": "string",
+      "const": "app.salesflow"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "LocalPrototype",
+        "AdvisoryPrototype"
+      ]
+    },
+    "enabledByDefault": {
+      "type": "boolean",
+      "const": false
+    },
+    "procedureId": {
+      "type": "string",
+      "const": "procedure.generate-monthly-invoices"
+    },
+    "panelIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "plannedEndpoint": {
+      "type": "string",
+      "const": "/api/npdev/procedures/procedure.generate-monthly-invoices"
+    },
+    "implementationRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceProcedure": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAdapter": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requestSamples": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "type": "string"
+      }
+    },
+    "responseSamples": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "type": "string"
+      }
+    },
+    "executionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requiresAuth",
+        "requiresTenant",
+        "allowedRoles",
+        "aiExecution"
+      ],
+      "properties": {
+        "requiresAuth": {
+          "type": "boolean",
+          "const": true
+        },
+        "requiresTenant": {
+          "type": "boolean",
+          "const": true
+        },
+        "allowedRoles": {
+          "type": "array",
+          "contains": {
+            "const": "BillingManager"
+          },
+          "items": {
+            "type": "string"
+          }
+        },
+        "aiExecution": {
+          "type": "string",
+          "const": "RequiresHumanApproval"
+        }
+      }
+    },
+    "truthPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxTruthClaim",
+        "noAutoPromotion",
+        "noT5",
+        "noT6"
+      ],
+      "properties": {
+        "maxTruthClaim": {
+          "type": "string",
+          "enum": [
+            "LocalPrototype",
+            "T3"
+          ]
+        },
+        "noAutoPromotion": {
+          "type": "boolean",
+          "const": true
+        },
+        "noT5": {
+          "type": "boolean",
+          "const": true
+        },
+        "noT6": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "releaseGatePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "impact"
+      ],
+      "properties": {
+        "impact": {
+          "type": "string",
+          "const": "NoImpact"
+        }
+      }
+    },
+    "evidencePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidencePath",
+        "localPrototypeEvidenceOnly"
+      ],
+      "properties": {
+        "evidencePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "localPrototypeEvidenceOnly": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "nonGoals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

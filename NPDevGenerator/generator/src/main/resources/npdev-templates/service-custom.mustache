@@ -2,17 +2,17 @@ package {{packageName}};
 
 import com.npdev.runtime.support.GeneratedCrudRuntimeSupport;
 import com.npdev.kernel.concepts.ConceptGateway;
-import {{repoPackage}}.{{entityName}}Repository;
+import com.npdev.kernel.ports.ConceptStore;
 import org.springframework.stereotype.Service;
 
 @Service
 public class {{entityName}}Service extends {{entityName}}ServiceBase {
 
     public {{entityName}}Service(
-            {{entityName}}Repository repo,
             GeneratedCrudRuntimeSupport runtimeSupport,
-            ConceptGateway conceptGateway
+            ConceptGateway conceptGateway,
+            ConceptStore conceptStore
     ) {
-        super(repo, runtimeSupport, conceptGateway);
+        super(runtimeSupport, conceptGateway, conceptStore);
     }
 }

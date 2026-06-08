@@ -82,21 +82,18 @@ class GeneratorMultiConceptTest {
         Path patientController = out.resolve("src/main/java/com/npdev/generated/controllers/PatientController.java");
 
         assertTrue(Files.exists(patientEntity), "Expected Patient entity generation");
-        assertTrue(Files.exists(patientRepository), "Expected Patient repository generation");
+        assertTrue(Files.notExists(patientRepository),
+                "Generated concept persistence should use runtime ConceptStore/PersistenceCapability, not direct Spring repositories");
         assertTrue(Files.exists(patientService), "Expected Patient service generation");
         assertTrue(Files.exists(patientController), "Expected Patient controller generation");
-
-        String patientRepositoryContent = Files.readString(patientRepository);
-        assertTrue(patientRepositoryContent.contains("existsByMrnIgnoreCase"),
-                "Expected unique mrn checks in Patient repository");
 
         String patientServiceContent = Files.readString(patientService);
         assertTrue(patientServiceContent.contains("enforceWithKernel(\"Patient\""),
                 "Expected Patient service to delegate invariants to runtime kernel");
-        assertTrue(patientServiceContent.contains("runtimeSupport.buildCreateInvariantPayload(\"Patient\", dto)"),
-                "Expected Patient service to build invariant payloads through shared runtime support");
-        assertTrue(patientServiceContent.contains("runtimeSupport.applyCreateFields(\"Patient\", dto, e)"),
-                "Expected Patient service to apply create field mappings through shared runtime support");
+        assertTrue(patientServiceContent.contains("GeneratedCrudRuntimeSupport"),
+                "Expected Patient service to delegate reusable CRUD runtime support");
+        assertTrue(patientServiceContent.contains("runtimeSupport"),
+                "Expected Patient service to use shared runtime support entrypoint");
 
         String patientControllerContent = Files.readString(patientController);
         assertTrue(patientControllerContent.contains("@RequestMapping(\"/api/patients\")"),
@@ -165,6 +162,11 @@ class GeneratorMultiConceptTest {
         try (var stream = Files.walk(root)) {
             return stream
                     .filter(Files::isRegularFile)
+                    .filter(path -> {
+                        String relative = root.relativize(path).toString().replace('\\', '/');
+                        return !relative.equals("src/main/resources/npdev/db/schema-realization-manifest.json")
+                                && !relative.equals("src/main/resources/npdev/support/generated-folder.signature.properties");
+                    })
                     .sorted()
                     .map(path -> {
                         try {

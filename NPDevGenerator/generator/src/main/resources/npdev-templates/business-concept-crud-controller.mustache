@@ -1,0 +1,493 @@
+package {{controllerPackage}};
+
+import {{servicePackage}}.*;
+
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.BiFunction;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
+
+@RestController
+@RequestMapping("/api/concepts")
+public class GeneratedConceptCrudController {
+    private static final int DEFAULT_PAGE_SIZE = 20;
+    private static final int MAX_PAGE_SIZE = 100;
+
+    private final Map<String, ConceptBinding<?>> concepts;
+
+    public GeneratedConceptCrudController(
+{{#concepts}}
+            {{className}}Service {{serviceVariable}},
+{{/concepts}}
+            org.springframework.context.ApplicationContext unused
+    ) {
+        Map<String, ConceptBinding<?>> bindings = new LinkedHashMap<>();
+{{#concepts}}
+        ConceptMetadata {{serviceVariable}}Metadata = new ConceptMetadata(
+                "{{conceptName}}",
+                "{{displayName}}",
+                "{{tableName}}",
+                "{{idField}}",
+                "{{endpointBase}}"
+        );
+{{#fields}}
+        {{serviceVariable}}Metadata.addField(new FieldMetadata(
+                "{{name}}",
+                "{{label}}",
+                "{{columnName}}",
+                "{{type}}",
+                {{required}},
+                {{id}},
+                {{readOnly}},
+                {{sortable}},
+                {{filterable}},
+                "{{widget}}",
+                {{{enumValues}}}
+        ));
+{{/fields}}
+        bindings.put("{{conceptName}}", ConceptBinding.of(
+                {{serviceVariable}}Metadata,
+                {{serviceVariable}}::list,
+                {{serviceVariable}}::getById,
+                {{serviceVariable}}::create,
+                {{serviceVariable}}::update,
+                {{serviceVariable}}::delete
+        ));
+{{/concepts}}
+        this.concepts = Collections.unmodifiableMap(bindings);
+    }
+
+    @GetMapping("/{conceptName}")
+    public ResponseEntity<?> list(
+            @PathVariable String conceptName,
+            @RequestParam(name = "page", required = false) Integer page,
+            @RequestParam(name = "size", required = false) Integer size,
+            @RequestParam(name = "sort", required = false) String sort,
+            @RequestParam(name = "direction", required = false) String direction,
+            @RequestParam(name = "filter", required = false) String filter,
+            @RequestParam(name = "where", required = false) String where
+    ) {
+        ConceptBinding<?> binding = concepts.get(conceptName);
+        if (binding == null) {
+            return badRequest("unknown_concept", "Unknown concept: " + conceptName);
+        }
+        int safePage = sanitizePage(page);
+        int safeSize = sanitizeSize(size);
+        String sortField = normalizeSortField(binding.metadata(), sort);
+        if (sortField == null) {
+            return badRequest("invalid_sort", "Unknown or unsortable sort field: " + sort);
+        }
+        String safeDirection = normalizeDirection(direction);
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Object record : binding.list().get()) {
+            rows.add(toRecord(binding.metadata(), record));
+        }
+        FilterResult filteredByWhere = applyWhere(binding.metadata(), rows, where);
+        if (filteredByWhere.error() != null) {
+            return badRequest("invalid_filter", filteredByWhere.error());
+        }
+        rows = filterRows(binding.metadata(), filteredByWhere.rows(), filter);
+        rows.sort(rowComparator(sortField, safeDirection));
+
+        int total = rows.size();
+        int from = Math.min(total, safePage * safeSize);
+        int to = Math.min(total, from + safeSize);
+        List<Map<String, Object>> content = rows.subList(from, to);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("content", content);
+        response.put("page", safePage);
+        response.put("size", safeSize);
+        response.put("totalElements", total);
+        response.put("sort", sortField);
+        response.put("direction", safeDirection);
+        response.put("filter", filter == null ? "" : filter.trim());
+        response.put("where", where == null ? "" : where.trim());
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{conceptName}/{id}")
+    public ResponseEntity<?> getById(@PathVariable String conceptName, @PathVariable String id) {
+        ConceptBinding<?> binding = concepts.get(conceptName);
+        if (binding == null) {
+            return badRequest("unknown_concept", "Unknown concept: " + conceptName);
+        }
+        UUID parsedId = parseUuid(id);
+        if (parsedId == null) {
+            return badRequest("invalid_id", "Invalid id for concept " + conceptName + ": " + id);
+        }
+        Optional<?> found = binding.getById().apply(parsedId);
+        return found
+                .map(value -> ResponseEntity.ok(toRecord(binding.metadata(), value)))
+                .orElseGet(() -> ResponseEntity.status(404).body(error("not_found", "Record not found: " + id)));
+    }
+
+    @PostMapping("/{conceptName}")
+    public ResponseEntity<?> create(
+            @PathVariable String conceptName,
+            @RequestBody(required = false) Map<String, Object> body
+    ) {
+        ConceptBinding<?> binding = concepts.get(conceptName);
+        if (binding == null) {
+            return badRequest("unknown_concept", "Unknown concept: " + conceptName);
+        }
+        try {
+            Object created = binding.create().apply(body == null ? Map.of() : body);
+            return ResponseEntity.ok(toRecord(binding.metadata(), created));
+        } catch (IllegalArgumentException exception) {
+            return badRequest("invalid_request", exception.getMessage());
+        } catch (com.npdev.runtime.support.GeneratedCrudRuntimeSupport.InvariantViolationException exception) {
+            return ResponseEntity.status(exception.statusCode()).body(exception.toResponseBody());
+        } catch (DataIntegrityViolationException exception) {
+            return ResponseEntity.status(409).body(error("constraint_violation", readableConstraintMessage(exception)));
+        }
+    }
+
+    @PutMapping("/{conceptName}/{id}")
+    public ResponseEntity<?> update(
+            @PathVariable String conceptName,
+            @PathVariable String id,
+            @RequestBody(required = false) Map<String, Object> body
+    ) {
+        ConceptBinding<?> binding = concepts.get(conceptName);
+        if (binding == null) {
+            return badRequest("unknown_concept", "Unknown concept: " + conceptName);
+        }
+        UUID parsedId = parseUuid(id);
+        if (parsedId == null) {
+            return badRequest("invalid_id", "Invalid id for concept " + conceptName + ": " + id);
+        }
+        try {
+            Optional<?> updated = binding.update().apply(parsedId, body == null ? Map.of() : body);
+            return updated
+                    .map(value -> ResponseEntity.ok(toRecord(binding.metadata(), value)))
+                    .orElseGet(() -> ResponseEntity.status(404).body(error("not_found", "Record not found: " + id)));
+        } catch (IllegalArgumentException exception) {
+            return badRequest("invalid_request", exception.getMessage());
+        } catch (com.npdev.runtime.support.GeneratedCrudRuntimeSupport.InvariantViolationException exception) {
+            return ResponseEntity.status(exception.statusCode()).body(exception.toResponseBody());
+        } catch (DataIntegrityViolationException exception) {
+            return ResponseEntity.status(409).body(error("constraint_violation", readableConstraintMessage(exception)));
+        }
+    }
+
+    @DeleteMapping("/{conceptName}/{id}")
+    public ResponseEntity<?> delete(@PathVariable String conceptName, @PathVariable String id) {
+        ConceptBinding<?> binding = concepts.get(conceptName);
+        if (binding == null) {
+            return badRequest("unknown_concept", "Unknown concept: " + conceptName);
+        }
+        UUID parsedId = parseUuid(id);
+        if (parsedId == null) {
+            return badRequest("invalid_id", "Invalid id for concept " + conceptName + ": " + id);
+        }
+        try {
+            boolean deleted = binding.delete().test(parsedId);
+            if (!deleted) {
+                return ResponseEntity.status(404).body(error("not_found", "Record not found: " + id));
+            }
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException exception) {
+            return badRequest("invalid_request", exception.getMessage());
+        } catch (com.npdev.runtime.support.GeneratedCrudRuntimeSupport.InvariantViolationException exception) {
+            return ResponseEntity.status(exception.statusCode()).body(exception.toResponseBody());
+        } catch (DataIntegrityViolationException exception) {
+            return ResponseEntity.status(409).body(error("constraint_violation", readableConstraintMessage(exception)));
+        }
+    }
+
+    private static int sanitizePage(Integer page) {
+        return page == null ? 0 : Math.max(0, page);
+    }
+
+    private static int sanitizeSize(Integer size) {
+        if (size == null) {
+            return DEFAULT_PAGE_SIZE;
+        }
+        return Math.max(1, Math.min(MAX_PAGE_SIZE, size));
+    }
+
+    private static String normalizeSortField(ConceptMetadata metadata, String requestedSort) {
+        String sort = requestedSort == null || requestedSort.isBlank() ? metadata.idField() : requestedSort.trim();
+        FieldMetadata field = metadata.field(sort);
+        if (field == null || !field.sortable()) {
+            return null;
+        }
+        return field.name();
+    }
+
+    private static String normalizeDirection(String direction) {
+        return "desc".equalsIgnoreCase(direction == null ? "" : direction.trim()) ? "desc" : "asc";
+    }
+
+    private static List<Map<String, Object>> filterRows(
+            ConceptMetadata metadata,
+            List<Map<String, Object>> rows,
+            String filter
+    ) {
+        if (filter == null || filter.isBlank()) {
+            return rows;
+        }
+        String needle = filter.trim().toLowerCase(Locale.ROOT);
+        List<String> filterableFields = metadata.fields().stream()
+                .filter(FieldMetadata::filterable)
+                .map(FieldMetadata::name)
+                .toList();
+        if (filterableFields.isEmpty()) {
+            return rows;
+        }
+        List<Map<String, Object>> filtered = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            for (String field : filterableFields) {
+                Object value = row.get(field);
+                if (value != null && String.valueOf(value).toLowerCase(Locale.ROOT).contains(needle)) {
+                    filtered.add(row);
+                    break;
+                }
+            }
+        }
+        return filtered;
+    }
+
+
+    private static FilterResult applyWhere(
+            ConceptMetadata metadata,
+            List<Map<String, Object>> rows,
+            String where
+    ) {
+        if (where == null || where.isBlank()) {
+            return new FilterResult(rows, null);
+        }
+        List<WhereClause> clauses = new ArrayList<>();
+        for (String rawClause : where.split("[;,]")) {
+            if (rawClause == null || rawClause.isBlank()) {
+                continue;
+            }
+            WhereClause parsed = parseWhereClause(rawClause.trim());
+            if (parsed == null) {
+                return new FilterResult(rows, "Invalid where clause: " + rawClause.trim());
+            }
+            FieldMetadata field = metadata.field(parsed.field());
+            if (field == null) {
+                return new FilterResult(rows, "Unknown where field: " + parsed.field());
+            }
+            if (!field.enumValues().isEmpty()
+                    && !"contains".equals(parsed.operator())
+                    && field.enumValues().stream().noneMatch(value -> value.equals(parsed.value()))) {
+                return new FilterResult(rows, "Invalid enum value for where field " + parsed.field()
+                        + ": " + parsed.value() + " (allowed: " + field.enumValues() + ")");
+            }
+            clauses.add(parsed);
+        }
+        if (clauses.isEmpty()) {
+            return new FilterResult(rows, null);
+        }
+        List<Map<String, Object>> filtered = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            boolean keep = true;
+            for (WhereClause clause : clauses) {
+                if (!matchesWhere(row.get(clause.field()), clause.operator(), clause.value())) {
+                    keep = false;
+                    break;
+                }
+            }
+            if (keep) {
+                filtered.add(row);
+            }
+        }
+        return new FilterResult(filtered, null);
+    }
+
+    private static WhereClause parseWhereClause(String rawClause) {
+        String field;
+        String operator;
+        String value;
+        String[] colonParts = rawClause.split(":", 3);
+        if (colonParts.length == 3) {
+            field = colonParts[0].trim();
+            operator = colonParts[1].trim().toLowerCase(Locale.ROOT);
+            value = colonParts[2].trim();
+        } else {
+            int equalsIndex = rawClause.indexOf('=');
+            if (equalsIndex < 1) {
+                return null;
+            }
+            field = rawClause.substring(0, equalsIndex).trim();
+            operator = "eq";
+            value = rawClause.substring(equalsIndex + 1).trim();
+        }
+        if (field.isBlank() || value.isBlank() || !List.of("eq", "ne", "contains").contains(operator)) {
+            return null;
+        }
+        return new WhereClause(field, operator, value);
+    }
+
+    private static boolean matchesWhere(Object rawValue, String operator, String expected) {
+        String actual = rawValue == null ? "" : String.valueOf(rawValue);
+        return switch (operator) {
+            case "eq" -> actual.equalsIgnoreCase(expected);
+            case "ne" -> !actual.equalsIgnoreCase(expected);
+            case "contains" -> actual.toLowerCase(Locale.ROOT).contains(expected.toLowerCase(Locale.ROOT));
+            default -> false;
+        };
+    }
+
+    private static Comparator<Map<String, Object>> rowComparator(String sortField, String direction) {
+        Comparator<Map<String, Object>> comparator = (left, right) -> compareValues(left.get(sortField), right.get(sortField));
+        if ("desc".equals(direction)) {
+            comparator = comparator.reversed();
+        }
+        return comparator;
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static int compareValues(Object left, Object right) {
+        if (left == null && right == null) {
+            return 0;
+        }
+        if (left == null) {
+            return 1;
+        }
+        if (right == null) {
+            return -1;
+        }
+        if (left instanceof Comparable comparable && left.getClass().isInstance(right)) {
+            return comparable.compareTo(right);
+        }
+        return String.valueOf(left).compareToIgnoreCase(String.valueOf(right));
+    }
+
+    private static Map<String, Object> toRecord(ConceptMetadata metadata, Object source) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (FieldMetadata field : metadata.fields()) {
+            out.put(field.name(), readValue(source, field.name()));
+        }
+        return out;
+    }
+
+    private static Object readValue(Object source, String fieldName) {
+        if (source == null || fieldName == null || fieldName.isBlank()) {
+            return null;
+        }
+        String suffix = fieldName.substring(0, 1).toUpperCase(Locale.ROOT) + fieldName.substring(1);
+        for (String methodName : List.of("get" + suffix, "is" + suffix)) {
+            try {
+                return source.getClass().getMethod(methodName).invoke(source);
+            } catch (Exception ignored) {
+                // Keep reflection localized to generic response projection.
+            }
+        }
+        return null;
+    }
+
+    private static UUID parseUuid(String id) {
+        if (id == null || id.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(id.trim());
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
+    private static ResponseEntity<Map<String, Object>> badRequest(String code, String message) {
+        return ResponseEntity.badRequest().body(error(code, message));
+    }
+
+    private static Map<String, Object> error(String code, String message) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("code", code);
+        out.put("message", message == null || message.isBlank() ? code : message);
+        return out;
+    }
+
+    private static String readableConstraintMessage(DataIntegrityViolationException exception) {
+        String message = exception.getMostSpecificCause() == null
+                ? exception.getMessage()
+                : exception.getMostSpecificCause().getMessage();
+        return message == null || message.isBlank()
+                ? "Delete or save failed because of a database constraint."
+                : message;
+    }
+
+    private record ConceptMetadata(
+            String conceptName,
+            String displayName,
+            String tableName,
+            String idField,
+            String endpointBase,
+            List<FieldMetadata> fields,
+            Map<String, FieldMetadata> fieldsByName
+    ) {
+        ConceptMetadata(String conceptName, String displayName, String tableName, String idField, String endpointBase) {
+            this(conceptName, displayName, tableName, idField, endpointBase, new ArrayList<>(), new LinkedHashMap<>());
+        }
+
+        void addField(FieldMetadata field) {
+            fields.add(field);
+            fieldsByName.put(field.name(), field);
+        }
+
+        FieldMetadata field(String name) {
+            return fieldsByName.get(name);
+        }
+    }
+
+    private record FieldMetadata(
+            String name,
+            String label,
+            String columnName,
+            String type,
+            boolean required,
+            boolean id,
+            boolean readOnly,
+            boolean sortable,
+            boolean filterable,
+            String widget,
+            List<String> enumValues
+    ) {
+    }
+
+    private record FilterResult(List<Map<String, Object>> rows, String error) {
+    }
+
+    private record WhereClause(String field, String operator, String value) {
+    }
+
+    private record ConceptBinding<T>(
+            ConceptMetadata metadata,
+            Supplier<List<T>> list,
+            Function<UUID, Optional<T>> getById,
+            Function<Map<String, Object>, T> create,
+            BiFunction<UUID, Map<String, Object>, Optional<T>> update,
+            Predicate<UUID> delete
+    ) {
+        static <T> ConceptBinding<T> of(
+                ConceptMetadata metadata,
+                Supplier<List<T>> list,
+                Function<UUID, Optional<T>> getById,
+                Function<Map<String, Object>, T> create,
+                BiFunction<UUID, Map<String, Object>, Optional<T>> update,
+                Predicate<UUID> delete
+        ) {
+            return new ConceptBinding<>(metadata, list, getById, create, update, delete);
+        }
+    }
+}

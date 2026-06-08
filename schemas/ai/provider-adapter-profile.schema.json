@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/provider-adapter-profile.schema.json",
+  "title": "NPDev Provider Adapter Profile",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "providerAdapterProfileId",
+    "applicationId",
+    "mode",
+    "enabledByDefault",
+    "providerInterfaceReport",
+    "adapterProfile",
+    "localAdapters",
+    "runtimeBehavior",
+    "evidencePolicy",
+    "truthPolicy",
+    "releaseGatePolicy",
+    "nonGoals"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev.provider-adapter-profile.v1"
+    },
+    "providerAdapterProfileId": {
+      "type": "string"
+    },
+    "applicationId": {
+      "const": "app.salesflow"
+    },
+    "mode": {
+      "const": "LocalProviderAdapterImplementation"
+    },
+    "enabledByDefault": {
+      "const": false
+    },
+    "providerInterfaceReport": {
+      "type": "string"
+    },
+    "adapterProfile": {
+      "type": "object",
+      "required": [
+        "profileName",
+        "profileKind",
+        "productionProviderProfile"
+      ],
+      "properties": {
+        "profileName": {
+          "type": "string"
+        },
+        "profileKind": {
+          "const": "LocalDefault"
+        },
+        "productionProviderProfile": {
+          "const": false
+        }
+      }
+    },
+    "localAdapters": {
+      "type": "array",
+      "minItems": 9,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "implements",
+          "requiredForPhase29"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "implements": {
+            "type": "string"
+          },
+          "requiredForPhase29": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "runtimeBehavior": {
+      "type": "object",
+      "required": [
+        "mustUseProviderContext",
+        "mustUseAdapterProfile",
+        "mustPreserveValidProcedureExecution",
+        "mustPreserveDeniedStatusBehavior",
+        "mustRecordEvidenceThroughSink"
+      ],
+      "properties": {
+        "mustUseProviderContext": {
+          "const": true
+        },
+        "mustUseAdapterProfile": {
+          "const": true
+        },
+        "mustPreserveValidProcedureExecution": {
+          "const": true
+        },
+        "mustPreserveDeniedStatusBehavior": {
+          "const": true
+        },
+        "mustRecordEvidenceThroughSink": {
+          "const": true
+        }
+      }
+    },
+    "evidencePolicy": {
+      "type": "object",
+      "required": [
+        "runtimeEvidenceRequired",
+        "evidenceSinkRequired"
+      ],
+      "properties": {
+        "runtimeEvidenceRequired": {
+          "const": true
+        },
+        "evidenceSinkRequired": {
+          "const": true
+        }
+      }
+    },
+    "truthPolicy": {
+      "type": "object",
+      "required": [
+        "noAutoPromotion",
+        "noT5",
+        "noT6"
+      ],
+      "properties": {
+        "noAutoPromotion": {
+          "const": true
+        },
+        "noT5": {
+          "const": true
+        },
+        "noT6": {
+          "const": true
+        }
+      }
+    },
+    "releaseGatePolicy": {
+      "type": "object",
+      "required": [
+        "impact"
+      ],
+      "properties": {
+        "impact": {
+          "const": "NoImpact"
+        }
+      }
+    },
+    "nonGoals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

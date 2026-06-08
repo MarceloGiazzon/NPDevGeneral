@@ -7,6 +7,7 @@ import java.util.List;
 public final class CompiledCapabilityCall {
     private final String capabilityName;
     private final String capabilityType;
+    private final String adapterId;
     private final String operation;
     private final List<String> argsRefs;
     private final String inputRef;
@@ -23,7 +24,7 @@ public final class CompiledCapabilityCall {
             String inputRef,
             String outputRef
     ) {
-        this(capabilityName, capabilityType, operation, argsRefs, inputRef, outputRef, null, null,
+        this(capabilityName, capabilityType, null, operation, argsRefs, inputRef, outputRef, null, null,
                 CompiledCapabilityExecutionPolicy.defaults());
     }
 
@@ -38,8 +39,25 @@ public final class CompiledCapabilityCall {
             CompiledSchema outputSchema,
             CompiledCapabilityExecutionPolicy executionPolicy
     ) {
+        this(capabilityName, capabilityType, null, operation, argsRefs, inputRef, outputRef, inputSchema, outputSchema,
+                executionPolicy);
+    }
+
+    public CompiledCapabilityCall(
+            String capabilityName,
+            String capabilityType,
+            String adapterId,
+            String operation,
+            List<String> argsRefs,
+            String inputRef,
+            String outputRef,
+            CompiledSchema inputSchema,
+            CompiledSchema outputSchema,
+            CompiledCapabilityExecutionPolicy executionPolicy
+    ) {
         this.capabilityName = capabilityName;
         this.capabilityType = capabilityType;
+        this.adapterId = adapterId;
         this.operation = operation;
         this.argsRefs = argsRefs == null ? List.of() : new ArrayList<>(argsRefs);
         this.inputRef = inputRef;
@@ -56,6 +74,8 @@ public final class CompiledCapabilityCall {
     public String getCapabilityName() { return capabilityName; }
 
     public String getCapabilityType() { return capabilityType; }
+
+    public String getAdapterId() { return adapterId; }
 
     public String getOperation() { return operation; }
 

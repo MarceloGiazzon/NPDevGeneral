@@ -372,9 +372,10 @@ class AiModelToDslMappingTest {
     }
 
     private static List<Path> scenarioDirs() throws IOException {
-        try (Stream<Path> stream = Files.list(SCENARIO_ROOT)) {
+        try (Stream<Path> stream = Files.walk(SCENARIO_ROOT)) {
             return stream
                     .filter(Files::isDirectory)
+                    .filter(path -> Files.isRegularFile(path.resolve("scenario.manifest.json")))
                     .sorted(Comparator.comparing(path -> path.getFileName().toString()))
                     .collect(Collectors.toList());
         }

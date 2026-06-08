@@ -54,21 +54,30 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
     public Object save(Object concept, Object entity) {
         String table = tableName(concept);
         Map<String, Object> runtimeRecord = mutableRecord(entity);
+        String conceptIdField = inferredRuntimeIdField(concept, table);
 
         Object id = runtimeRecord.get("id");
+        if (id == null && conceptIdField != null) {
+            id = runtimeRecord.get(conceptIdField);
+        }
         if (id == null || String.valueOf(id).isBlank()) {
             id = UUID.randomUUID().toString();
+        }
+        if (conceptIdField == null || "id".equals(conceptIdField)) {
             runtimeRecord.put("id", id);
+        } else {
+            runtimeRecord.putIfAbsent(conceptIdField, id);
         }
 
         try (Connection connection = dataSource.getConnection()) {
             TableColumns tableColumns = resolveTableColumns(connection, table);
             Map<String, Object> sqlRecord = normalizeRecordForSave(table, runtimeRecord, tableColumns);
+            String idColumn = resolveIdColumn(table, tableColumns);
 
             List<String> columns = new ArrayList<>(sqlRecord.keySet());
-            ensureIdFirst(columns);
+            ensureColumnFirst(columns, idColumn);
 
-            String sql = buildUpsertSql(connection, table, columns);
+            String sql = buildUpsertSql(connection, table, columns, idColumn);
             System.out.println(String.format(
                     "NPDEV-PG-SAVE :: concept=%s table=%s columns=%s sql=%s recordKeys=%s",
                     concept,
@@ -100,17 +109,20 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
             return null;
         }
         String table = tableName(concept);
-        String sql = "select * from " + table + " where id = ?";
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
+        try (Connection c = dataSource.getConnection()) {
+            TableColumns tableColumns = resolveTableColumns(c, table);
+            String idColumn = resolveIdColumn(table, tableColumns);
+            String sql = "select * from " + table + " where " + idColumn + " = ?";
 
-            ps.setObject(1, coerceValueForColumn("id", id));
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) {
-                    return null;
+            try (PreparedStatement ps = c.prepareStatement(sql)) {
+                ps.setObject(1, coerceValueForColumn(idColumn, id));
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) {
+                        return null;
+                    }
+                    return rowToMap(rs);
                 }
-                return rowToMap(rs);
             }
 
         } catch (SQLException e) {
@@ -169,13 +181,16 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
             return false;
         }
         String table = tableName(concept);
-        String sql = "delete from " + table + " where id = ?";
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
+        try (Connection c = dataSource.getConnection()) {
+            TableColumns tableColumns = resolveTableColumns(c, table);
+            String idColumn = resolveIdColumn(table, tableColumns);
+            String sql = "delete from " + table + " where " + idColumn + " = ?";
 
-            ps.setObject(1, coerceValueForColumn("id", id));
-            return ps.executeUpdate() > 0;
+            try (PreparedStatement ps = c.prepareStatement(sql)) {
+                ps.setObject(1, coerceValueForColumn(idColumn, id));
+                return ps.executeUpdate() > 0;
+            }
 
         } catch (SQLException e) {
             throw new IllegalStateException("Postgres persistence delete failed for table " + table + ": " + e.getMessage(), e);
@@ -279,11 +294,26 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
             throw unknownFieldException(table, unknownFields, tableColumns);
         }
 
-        if (!sqlRecord.containsKey("id")) {
-            throw new IllegalArgumentException("Persistence save requires an 'id' field for table " + table);
+        String idColumn = resolveIdColumn(table, tableColumns);
+        if (!sqlRecord.containsKey(idColumn)) {
+            throw new IllegalArgumentException(
+                    "Persistence save requires id field/column '" + idColumn + "' for table " + table);
         }
 
         return sqlRecord;
+    }
+
+    private static String resolveIdColumn(String table, TableColumns tableColumns) {
+        if (tableColumns == null || !tableColumns.isAvailable()) {
+            return "id";
+        }
+        String idColumn = resolveColumn(table, "id", tableColumns);
+        if (idColumn == null || idColumn.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Persistence table " + table + " has no resolvable id column. Allowed database columns: "
+                            + tableColumns.columnNames());
+        }
+        return idColumn;
     }
 
     private static Map<String, Object> normalizeCriteria(String table, Map<String, Object> runtimeCriteria, TableColumns tableColumns) {
@@ -340,6 +370,13 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
             return tableColumns.columnName(dbColumn);
         }
 
+        if ("id".equalsIgnoreCase(runtimeField)) {
+            String inferredIdColumn = toDbColumn(inferredRuntimeIdField(null, table));
+            if (tableColumns.hasColumn(inferredIdColumn)) {
+                return tableColumns.columnName(inferredIdColumn);
+            }
+        }
+
         String runtimeAlias = toRuntimeField(runtimeField);
         if (tableColumns.hasRuntimeField(runtimeAlias)) {
             return tableColumns.columnNameForRuntimeField(runtimeAlias);
@@ -380,6 +417,28 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
         return c + "s";
     }
 
+    private static String inferredRuntimeIdField(Object concept, String table) {
+        String raw = concept == null ? "" : Objects.toString(concept, "").trim();
+        String base;
+        if (!raw.isBlank()) {
+            base = raw.substring(0, 1).toLowerCase(Locale.ROOT) + raw.substring(1);
+        } else {
+            String normalizedTable = table == null ? "" : table.trim().toLowerCase(Locale.ROOT);
+            if (normalizedTable.endsWith("ies") && normalizedTable.length() > 3) {
+                base = normalizedTable.substring(0, normalizedTable.length() - 3) + "y";
+            } else if (normalizedTable.endsWith("s") && normalizedTable.length() > 1) {
+                base = normalizedTable.substring(0, normalizedTable.length() - 1);
+            } else {
+                base = normalizedTable;
+            }
+            base = toRuntimeField(base);
+        }
+        if (base.isBlank() || "default".equalsIgnoreCase(base)) {
+            return "id";
+        }
+        return base + "Id";
+    }
+
     private static Map<String, Object> mutableRecord(Object entity) {
         if (!(entity instanceof Map<?, ?> map)) {
             throw new IllegalArgumentException("Persistence save expects a map-like entity");
@@ -409,9 +468,9 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
         return out;
     }
 
-    private static void ensureIdFirst(List<String> columns) {
-        columns.remove("id");
-        columns.add(0, "id");
+    private static void ensureColumnFirst(List<String> columns, String firstColumn) {
+        columns.remove(firstColumn);
+        columns.add(0, firstColumn);
     }
 
     private static String toDbColumn(String name) {
@@ -455,11 +514,11 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
         return sb.toString();
     }
 
-    private static String buildUpsertSql(Connection connection, String table, List<String> columns) {
+    private static String buildUpsertSql(Connection connection, String table, List<String> columns, String idColumn) {
         if (isH2Connection(connection)) {
-            return buildH2UpsertSql(table, columns);
+            return buildH2UpsertSql(table, columns, idColumn);
         }
-        return buildPostgresUpsertSql(table, columns);
+        return buildPostgresUpsertSql(table, columns, idColumn);
     }
 
     private static boolean isH2Connection(Connection connection) {
@@ -476,17 +535,17 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
         }
     }
 
-    private static String buildPostgresUpsertSql(String table, List<String> columns) {
+    private static String buildPostgresUpsertSql(String table, List<String> columns, String idColumn) {
         StringBuilder sb = new StringBuilder();
         sb.append("insert into ").append(table).append(" (");
         sb.append(String.join(", ", columns));
         sb.append(") values (");
         sb.append(String.join(", ", Collections.nCopies(columns.size(), "?")));
-        sb.append(") on conflict (id) do update set ");
+        sb.append(") on conflict (").append(idColumn).append(") do update set ");
 
         List<String> sets = new ArrayList<>();
         for (String col : columns) {
-            if ("id".equalsIgnoreCase(col)) {
+            if (idColumn.equalsIgnoreCase(col)) {
                 continue;
             }
             sets.add(col + " = excluded." + col);
@@ -495,11 +554,11 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
         return sb.toString();
     }
 
-    private static String buildH2UpsertSql(String table, List<String> columns) {
+    private static String buildH2UpsertSql(String table, List<String> columns, String idColumn) {
         StringBuilder sb = new StringBuilder();
         sb.append("merge into ").append(table).append(" (");
         sb.append(String.join(", ", columns));
-        sb.append(") key(id) values (");
+        sb.append(") key(").append(idColumn).append(") values (");
         sb.append(String.join(", ", Collections.nCopies(columns.size(), "?")));
         sb.append(")");
         return sb.toString();

@@ -1,19 +1,23 @@
 package {{packageName}};
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.runtime.support.GeneratedCrudRuntimeSupport;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptGatewaySemanticException;
+import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptWriteRequest;
 import {{entityPackage}}.{{entityName}};
 import com.npdev.kernel.ports.PersistenceCapability;
-import {{repoPackage}}.{{entityName}}Repository;
+import com.npdev.kernel.ports.ConceptStore;
 import {{dtoPackage}}.{{entityName}}CreateRequest;
 import {{dtoPackage}}.{{entityName}}UpdateRequest;
 
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -23,50 +27,35 @@ import java.util.UUID;
 
 public class {{entityName}}ServiceBase {
 
-    protected final {{entityName}}Repository repo;
     protected final PersistenceCapability<{{entityName}}, UUID> persistence;
     protected final GeneratedCrudRuntimeSupport runtimeSupport;
     protected final ConceptGateway conceptGateway;
+    protected final ConceptStore conceptStore;
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
     private static final Set<String> ALLOWED_MUTATION_TOPICS = buildAllowedMutationTopics();
+    private static final String ID_FIELD_NAME = "{{idFieldName}}";
+    private static final String CONCEPT_NAME = "{{conceptName}}";
+    private static final String DEFAULT_TENANT_ID = "default";
+    private static final Set<String> ALL_FIELD_NAMES = buildAllFieldNames();
+    private static final Set<String> REQUIRED_CREATE_FIELD_NAMES = buildRequiredCreateFieldNames();
+    private static final Map<String, Set<String>> ENUM_VALUES_BY_FIELD = buildEnumValuesByField();
 
     public {{entityName}}ServiceBase(
-            {{entityName}}Repository repo,
             GeneratedCrudRuntimeSupport runtimeSupport,
-            ConceptGateway conceptGateway
+            ConceptGateway conceptGateway,
+            ConceptStore conceptStore
     ) {
-        this.repo = repo;
         this.runtimeSupport = runtimeSupport;
         this.conceptGateway = conceptGateway;
+        this.conceptStore = conceptStore;
         this.persistence = GeneratedCrudRuntimeSupport.persistenceCapability(
-                repo::findById,
-                repo::findAll,
-                repo::save,
-                repo::existsById,
-                repo::deleteById,
-                (fieldName, value, excludeId) -> {
-                    if (fieldName == null || value == null) return false;
-
-{{#uniqueFields}}
-                    if ("{{name}}".equalsIgnoreCase(fieldName)) {
-{{#isString}}
-                        String normalized = value.toString().trim();
-                        if (normalized.isEmpty()) return false;
-                        if (excludeId == null) {
-                            return repo.existsBy{{capName}}IgnoreCase(normalized);
-                        }
-                        return repo.existsBy{{capName}}IgnoreCaseAndIdNot(normalized, excludeId);
-{{/isString}}
-{{^isString}}
-                        {{boxedJavaType}} typed = ({{boxedJavaType}}) value;
-                        if (excludeId == null) {
-                            return repo.existsBy{{capName}}(typed);
-                        }
-                        return repo.existsBy{{capName}}AndIdNot(typed, excludeId);
-{{/isString}}
-                    }
-{{/uniqueFields}}
-                    return false;
-                }
+                this::findByIdFromConceptStore,
+                this::findAllFromConceptStore,
+                this::saveToConceptStore,
+                id -> findByIdFromConceptStore(id).isPresent(),
+                this::deleteFromConceptStore,
+                this::existsUniqueInConceptStore
         );
     }
 
@@ -83,14 +72,23 @@ public class {{entityName}}ServiceBase {
         if (dto == null) {
             throw new IllegalArgumentException("Request body is required");
         }
-        Map<String, Object> createPayload = runtimeSupport.buildCreateInvariantPayload("{{entityName}}", dto);
-        UUID generatedId = runtimeSupport.ensureGeneratedId(createPayload);
+        return createFromSource(dto);
+    }
+
+    @Transactional
+    public {{entityName}} create(Map<String, Object> request) {
+        return createFromSource(validateMapRequest(request, false, null));
+    }
+
+    private {{entityName}} createFromSource(Object source) {
+        Map<String, Object> createPayload = runtimeSupport.buildCreateInvariantPayload("{{entityName}}", source);
+        UUID generatedId = runtimeSupport.ensureGeneratedId("{{entityName}}", createPayload);
         enforceWithKernel("{{entityName}}", createPayload);
         enforceWithConceptGateway("{{conceptName}}", generatedId, createPayload);
 
         {{entityName}} e = new {{entityName}}();
-        runtimeSupport.assignGeneratedId(e, generatedId);
-        runtimeSupport.applyCreateFields("{{entityName}}", dto, e);
+        runtimeSupport.assignGeneratedId("{{entityName}}", e, generatedId);
+        runtimeSupport.applyCreateFields("{{entityName}}", source, e);
 
         {{entityName}} created = persistence.save(e);
 {{#emitCreatedEvent}}
@@ -104,16 +102,24 @@ public class {{entityName}}ServiceBase {
         if (dto == null) {
             throw new IllegalArgumentException("Request body is required");
         }
+        return updateFromSource(id, dto);
+    }
 
+    @Transactional
+    public Optional<{{entityName}}> update(UUID id, Map<String, Object> request) {
+        return updateFromSource(id, validateMapRequest(request, true, id));
+    }
+
+    private Optional<{{entityName}}> updateFromSource(UUID id, Object source) {
         Optional<{{entityName}}> opt = persistence.findById(id);
         if (opt.isEmpty()) return Optional.empty();
 
         {{entityName}} existing = opt.get();
         String previousLifecycleStatus = runtimeSupport.captureLifecycleStatus("{{entityName}}", existing);
-        Map<String, Object> updatePayload = runtimeSupport.buildUpdateInvariantPayload("{{entityName}}", id, existing, dto);
+        Map<String, Object> updatePayload = runtimeSupport.buildUpdateInvariantPayload("{{entityName}}", id, existing, source);
         enforceWithKernel("{{entityName}}", updatePayload);
         enforceWithConceptGateway("{{conceptName}}", id, updatePayload);
-        runtimeSupport.applyUpdateFields("{{entityName}}", dto, existing);
+        runtimeSupport.applyUpdateFields("{{entityName}}", source, existing);
 
         {{entityName}} updated = persistence.save(existing);
         runtimeSupport.publishLifecycleTransitionEvent("{{entityName}}", previousLifecycleStatus, updated, updatePayload);
@@ -146,6 +152,102 @@ public class {{entityName}}ServiceBase {
         topics.add("{{value}}");
 {{/allowedMutationTopics}}
         return topics;
+    }
+
+    private static Set<String> buildAllFieldNames() {
+        Set<String> fields = new LinkedHashSet<>();
+        fields.add(ID_FIELD_NAME);
+{{#fields}}
+        fields.add("{{name}}");
+{{/fields}}
+        return fields;
+    }
+
+    private static Set<String> buildRequiredCreateFieldNames() {
+        Set<String> fields = new LinkedHashSet<>();
+{{#fields}}
+{{#required}}
+        fields.add("{{name}}");
+{{/required}}
+{{/fields}}
+        return fields;
+    }
+
+    private static Map<String, Set<String>> buildEnumValuesByField() {
+        Map<String, Set<String>> values = new LinkedHashMap<>();
+{{#fields}}
+{{#hasEnumValues}}
+        values.put("{{name}}", new LinkedHashSet<>({{enumValues}}));
+{{/hasEnumValues}}
+{{/fields}}
+        return values;
+    }
+
+    private static Map<String, Object> validateMapRequest(Map<String, Object> request, boolean update, UUID pathId) {
+        if (request == null) {
+            throw new IllegalArgumentException("Request body is required");
+        }
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : request.entrySet()) {
+            String fieldName = entry.getKey();
+            if (fieldName == null || fieldName.isBlank()) {
+                throw new IllegalArgumentException("Unknown blank field in request body");
+            }
+            if (!ALL_FIELD_NAMES.contains(fieldName)) {
+                throw new IllegalArgumentException("Unknown field for {{conceptName}}: " + fieldName);
+            }
+            validateEnumValue(fieldName, entry.getValue());
+            normalized.put(fieldName, entry.getValue());
+        }
+        if (update && normalized.containsKey(ID_FIELD_NAME)) {
+            UUID bodyId = toUuid(normalized.get(ID_FIELD_NAME));
+            if (bodyId == null) {
+                throw new IllegalArgumentException("Invalid id field '" + ID_FIELD_NAME + "' in request body");
+            }
+            if (pathId != null && !pathId.equals(bodyId)) {
+                throw new IllegalArgumentException("Body id field '" + ID_FIELD_NAME
+                        + "' must match path id. pathId=" + pathId + " bodyId=" + bodyId);
+            }
+        }
+        if (!update) {
+            for (String requiredField : REQUIRED_CREATE_FIELD_NAMES) {
+                Object value = normalized.get(requiredField);
+                if (value == null || (value instanceof String text && text.trim().isEmpty())) {
+                    throw new IllegalArgumentException("Required field is missing for {{conceptName}}: " + requiredField);
+                }
+            }
+        }
+        return normalized;
+    }
+
+    private static void validateEnumValue(String fieldName, Object value) {
+        Set<String> allowedValues = ENUM_VALUES_BY_FIELD.get(fieldName);
+        if (allowedValues == null || allowedValues.isEmpty() || value == null) {
+            return;
+        }
+        String normalized = String.valueOf(value).trim();
+        if (normalized.isEmpty()) {
+            return;
+        }
+        boolean match = allowedValues.stream().anyMatch(candidate -> candidate.equals(normalized));
+        if (!match) {
+            throw new IllegalArgumentException("Invalid enum value for {{conceptName}}." + fieldName
+                    + ": " + normalized + " (allowed: " + allowedValues + ")");
+        }
+    }
+
+    private static UUID toUuid(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof UUID uuid) {
+            return uuid;
+        }
+        try {
+            return UUID.fromString(String.valueOf(value).trim());
+        } catch (Exception exception) {
+            return null;
+        }
     }
 
     private void enforceWithKernel(String entityName, Map<String, Object> payload) {
@@ -208,6 +310,72 @@ public class {{entityName}}ServiceBase {
 
     private ExecutionContext generatedCrudExecutionContext() {
         return ExecutionContext.anonymous().withTag("executionMode", "headless");
+    }
+
+    private Optional<{{entityName}}> findByIdFromConceptStore(UUID id) {
+        if (id == null) {
+            return Optional.empty();
+        }
+        return conceptStore.findById(DEFAULT_TENANT_ID, CONCEPT_NAME, String.valueOf(id))
+                .map(this::entityFromRecord);
+    }
+
+    private List<{{entityName}}> findAllFromConceptStore() {
+        return conceptStore.findAll(DEFAULT_TENANT_ID, CONCEPT_NAME).stream()
+                .map(this::entityFromRecord)
+                .toList();
+    }
+
+    private {{entityName}} saveToConceptStore({{entityName}} entity) {
+        UUID id = entity.getId();
+        if (id == null) {
+            throw new IllegalArgumentException("Generated CRUD cannot save {{conceptName}} without an id.");
+        }
+        conceptStore.save(new ConceptRecord(CONCEPT_NAME, String.valueOf(id), DEFAULT_TENANT_ID, mapFromEntity(entity)));
+        return entity;
+    }
+
+    private void deleteFromConceptStore(UUID id) {
+        if (id != null) {
+            conceptStore.deleteById(DEFAULT_TENANT_ID, CONCEPT_NAME, String.valueOf(id));
+        }
+    }
+
+    private boolean existsUniqueInConceptStore(String fieldName, Object value, UUID excludeId) {
+        if (fieldName == null || fieldName.isBlank() || value == null) {
+            return false;
+        }
+        String normalizedField = fieldName.trim();
+        for (ConceptRecord record : conceptStore.findAll(DEFAULT_TENANT_ID, CONCEPT_NAME)) {
+            if (excludeId != null && String.valueOf(excludeId).equalsIgnoreCase(record.id())) {
+                continue;
+            }
+            Object existingValue = record.data().get(normalizedField);
+            if (uniqueValuesEqual(existingValue, value)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private {{entityName}} entityFromRecord(ConceptRecord record) {
+        Map<String, Object> data = new LinkedHashMap<>(record.data());
+        data.putIfAbsent(ID_FIELD_NAME, record.id());
+        return OBJECT_MAPPER.convertValue(data, {{entityName}}.class);
+    }
+
+    private Map<String, Object> mapFromEntity({{entityName}} entity) {
+        return new LinkedHashMap<>(OBJECT_MAPPER.convertValue(entity, MAP_TYPE));
+    }
+
+    private static boolean uniqueValuesEqual(Object left, Object right) {
+        if (left == null || right == null) {
+            return false;
+        }
+        if (left instanceof String || right instanceof String) {
+            return String.valueOf(left).trim().equalsIgnoreCase(String.valueOf(right).trim());
+        }
+        return left.equals(right) || String.valueOf(left).equals(String.valueOf(right));
     }
 
     private void publishMutationEvent(String action, UUID id, {{entityName}} snapshot) {

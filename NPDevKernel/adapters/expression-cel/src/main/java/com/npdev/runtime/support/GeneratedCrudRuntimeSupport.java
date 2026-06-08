@@ -37,6 +37,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -380,6 +381,26 @@ public final class GeneratedCrudRuntimeSupport {
         return generatedId;
     }
 
+    public UUID ensureGeneratedId(String entityName, Map<String, Object> payload) {
+        if (payload == null) {
+            return UUID.randomUUID();
+        }
+        String idField = idFieldName(entityName);
+        UUID existing = toUuid(readMapValue(payload, idField));
+        if (existing == null) {
+            existing = toUuid(readMapValue(payload, "id"));
+        }
+        if (existing != null) {
+            payload.put(idField, existing);
+            payload.put("id", existing);
+            return existing;
+        }
+        UUID generatedId = UUID.randomUUID();
+        payload.put(idField, generatedId);
+        payload.put("id", generatedId);
+        return generatedId;
+    }
+
     public void assignGeneratedId(Object entity, UUID generatedId) {
         if (entity == null || generatedId == null) {
             return;
@@ -389,6 +410,18 @@ public final class GeneratedCrudRuntimeSupport {
             return;
         }
         writeObjectValue(entity, "id", generatedId);
+    }
+
+    public void assignGeneratedId(String entityName, Object entity, UUID generatedId) {
+        if (entity == null || generatedId == null) {
+            return;
+        }
+        String idField = idFieldName(entityName);
+        Object currentId = readObjectValue(entity, idField);
+        if (currentId != null) {
+            return;
+        }
+        writeObjectValue(entity, idField, generatedId);
     }
 
     public void applyCreateFields(String entityName, Object source, Object target) {
@@ -1822,20 +1855,13 @@ public final class GeneratedCrudRuntimeSupport {
         if (dataSource == null) {
             return List.of();
         }
-        String sql = "SELECT id, schedule_key, orchestration_name, action_index, source_event_name, source_event_id, "
-                + "trigger_correlation_id, event_name, due_at, status, attempt_count, created_at, updated_at, "
-                + "processed_at, payload "
-                + "FROM " + SCHEDULE_TABLE + " "
-                + "WHERE status = ? "
-                + (forceDue ? "" : "AND due_at <= ? ")
-                + "ORDER BY due_at ASC, created_at ASC "
-                + "LIMIT ?";
+        String sql = ScheduledEventSql.selectDue(forceDue);
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             int parameterIndex = 1;
             statement.setString(parameterIndex++, SCHEDULE_STATUS_PENDING);
             if (!forceDue) {
-                statement.setObject(parameterIndex++, runtimeClock.nowUtc());
+                statement.setTimestamp(parameterIndex++, toTimestamp(runtimeClock.nowUtc()));
             }
             statement.setInt(parameterIndex, limit);
             try (ResultSet rows = statement.executeQuery()) {
@@ -1858,14 +1884,14 @@ public final class GeneratedCrudRuntimeSupport {
         if (dataSource == null || scheduleId == null) {
             return false;
         }
-        String sql = "UPDATE " + SCHEDULE_TABLE + " "
-                + "SET status = ?, updated_at = NOW() "
-                + "WHERE id = ? AND status = ?";
+        String sql = ScheduledEventSql.claim();
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
+            Timestamp now = toTimestamp(runtimeClock.nowUtc());
             statement.setString(1, SCHEDULE_STATUS_PROCESSING);
-            statement.setObject(2, scheduleId);
-            statement.setString(3, SCHEDULE_STATUS_PENDING);
+            statement.setTimestamp(2, now);
+            statement.setString(3, scheduleId.toString());
+            statement.setString(4, SCHEDULE_STATUS_PENDING);
             return statement.executeUpdate() > 0;
         } catch (Exception exception) {
             LOG.log(Level.WARNING, "Failed to claim scheduled event " + scheduleId, exception);
@@ -1877,14 +1903,14 @@ public final class GeneratedCrudRuntimeSupport {
         if (dataSource == null || scheduleId == null) {
             return;
         }
-        String sql = "UPDATE " + SCHEDULE_TABLE + " "
-                + "SET status = ?, attempt_count = attempt_count + 1, "
-                + "processed_at = NOW(), updated_at = NOW() "
-                + "WHERE id = ?";
+        String sql = ScheduledEventSql.markProcessed();
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
+            Timestamp now = toTimestamp(runtimeClock.nowUtc());
             statement.setString(1, SCHEDULE_STATUS_PROCESSED);
-            statement.setObject(2, scheduleId);
+            statement.setTimestamp(2, now);
+            statement.setTimestamp(3, now);
+            statement.setString(4, scheduleId.toString());
             statement.executeUpdate();
         } catch (Exception exception) {
             LOG.log(Level.WARNING, "Failed to mark scheduled event processed " + scheduleId, exception);
@@ -1895,13 +1921,13 @@ public final class GeneratedCrudRuntimeSupport {
         if (dataSource == null || scheduleId == null) {
             return;
         }
-        String sql = "UPDATE " + SCHEDULE_TABLE + " "
-                + "SET status = ?, attempt_count = attempt_count + 1, updated_at = NOW() "
-                + "WHERE id = ?";
+        String sql = ScheduledEventSql.markFailed();
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
+            Timestamp now = toTimestamp(runtimeClock.nowUtc());
             statement.setString(1, SCHEDULE_STATUS_FAILED);
-            statement.setObject(2, scheduleId);
+            statement.setTimestamp(2, now);
+            statement.setString(3, scheduleId.toString());
             statement.executeUpdate();
         } catch (Exception exception) {
             LOG.log(Level.WARNING, "Failed to mark scheduled event failed " + scheduleId, exception);
@@ -1923,15 +1949,11 @@ public final class GeneratedCrudRuntimeSupport {
         if (dataSource == null) {
             throw new SQLException("scheduler datasource unavailable");
         }
-        String sql = "INSERT INTO " + SCHEDULE_TABLE + " ("
-                + "id, schedule_key, orchestration_name, action_index, source_event_name, source_event_id, "
-                + "trigger_correlation_id, event_name, due_at, payload, status, attempt_count, created_at, updated_at"
-                + ") VALUES ("
-                + "?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS JSONB), ?, 0, NOW(), NOW()"
-                + ")";
+        String sql = ScheduledEventSql.insert();
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, id);
+            Timestamp now = toTimestamp(runtimeClock.nowUtc());
+            statement.setString(1, id.toString());
             statement.setString(2, scheduleKey);
             statement.setString(3, orchestrationName);
             statement.setInt(4, actionIndex);
@@ -1939,10 +1961,56 @@ public final class GeneratedCrudRuntimeSupport {
             statement.setString(6, sourceEventId);
             statement.setString(7, correlationId);
             statement.setString(8, eventName);
-            statement.setObject(9, dueAt);
+            statement.setTimestamp(9, toTimestamp(dueAt));
             statement.setString(10, payloadJson);
             statement.setString(11, SCHEDULE_STATUS_PENDING);
+            statement.setTimestamp(12, now);
+            statement.setTimestamp(13, now);
             statement.executeUpdate();
+        }
+    }
+
+    static final class ScheduledEventSql {
+        private ScheduledEventSql() {
+        }
+
+        static String selectDue(boolean forceDue) {
+            return "SELECT id, schedule_key, orchestration_name, action_index, source_event_name, source_event_id, "
+                    + "trigger_correlation_id, event_name, due_at, status, attempt_count, created_at, updated_at, "
+                    + "processed_at, payload "
+                    + "FROM " + SCHEDULE_TABLE + " "
+                    + "WHERE status = ? "
+                    + (forceDue ? "" : "AND due_at <= ? ")
+                    + "ORDER BY due_at ASC, created_at ASC "
+                    + "LIMIT ?";
+        }
+
+        static String claim() {
+            return "UPDATE " + SCHEDULE_TABLE + " "
+                    + "SET status = ?, updated_at = ? "
+                    + "WHERE id = ? AND status = ?";
+        }
+
+        static String markProcessed() {
+            return "UPDATE " + SCHEDULE_TABLE + " "
+                    + "SET status = ?, attempt_count = attempt_count + 1, "
+                    + "processed_at = ?, updated_at = ? "
+                    + "WHERE id = ?";
+        }
+
+        static String markFailed() {
+            return "UPDATE " + SCHEDULE_TABLE + " "
+                    + "SET status = ?, attempt_count = attempt_count + 1, updated_at = ? "
+                    + "WHERE id = ?";
+        }
+
+        static String insert() {
+            return "INSERT INTO " + SCHEDULE_TABLE + " ("
+                    + "id, schedule_key, orchestration_name, action_index, source_event_name, source_event_id, "
+                    + "trigger_correlation_id, event_name, due_at, payload, status, attempt_count, created_at, updated_at"
+                    + ") VALUES ("
+                    + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?"
+                    + ")";
         }
     }
 
@@ -3227,6 +3295,24 @@ public final class GeneratedCrudRuntimeSupport {
                 .orElseThrow(() -> new IllegalArgumentException("Unknown entity for runtime support: " + entityName));
     }
 
+    private String idFieldName(String entityName) {
+        CompiledEntity entity = requireEntity(entityName);
+        String found = null;
+        for (CompiledField field : entity.getFields()) {
+            if (field == null || !field.isId()) {
+                continue;
+            }
+            if (found != null) {
+                throw new IllegalArgumentException("Entity " + entityName + " must have exactly one id field");
+            }
+            found = field.getName();
+        }
+        if (found == null || found.isBlank()) {
+            throw new IllegalArgumentException("Entity " + entityName + " must have exactly one id field");
+        }
+        return found;
+    }
+
     private void applyEntityFields(String entityName, Object source, Object target, boolean patchMode) {
         if (target == null) {
             return;
@@ -3307,6 +3393,49 @@ public final class GeneratedCrudRuntimeSupport {
         }
         if (UUID.class.equals(boxedTargetType)) {
             return toUuid(value);
+        }
+        if (LocalDate.class.equals(boxedTargetType)) {
+            return toLocalDate(value);
+        }
+        if (LocalDateTime.class.equals(boxedTargetType)) {
+            return toLocalDateTime(value);
+        }
+        if (OffsetDateTime.class.equals(boxedTargetType)) {
+            return toOffsetDateTime(value);
+        }
+        return null;
+    }
+
+    private static LocalDate toLocalDate(Object value) {
+        if (value instanceof LocalDate localDate) {
+            return localDate;
+        }
+        if (value instanceof java.sql.Date sqlDate) {
+            return sqlDate.toLocalDate();
+        }
+        if (value instanceof String text) {
+            try {
+                return LocalDate.parse(text.trim(), DateTimeFormatter.ISO_LOCAL_DATE);
+            } catch (DateTimeParseException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static LocalDateTime toLocalDateTime(Object value) {
+        if (value instanceof LocalDateTime localDateTime) {
+            return localDateTime;
+        }
+        if (value instanceof OffsetDateTime offsetDateTime) {
+            return offsetDateTime.toLocalDateTime();
+        }
+        if (value instanceof String text) {
+            try {
+                return LocalDateTime.parse(text.trim(), DateTimeFormatter.ISO_DATE_TIME);
+            } catch (DateTimeParseException ignored) {
+                return null;
+            }
         }
         return null;
     }
@@ -3654,6 +3783,10 @@ public final class GeneratedCrudRuntimeSupport {
             }
         }
         return null;
+    }
+
+    private static Timestamp toTimestamp(OffsetDateTime value) {
+        return value == null ? null : Timestamp.from(value.toInstant());
     }
 
     private static String normalizeType(String dslType) {

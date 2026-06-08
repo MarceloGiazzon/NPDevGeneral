@@ -1,0 +1,768 @@
+(function () {
+  "use strict";
+
+  const STORAGE_KEY = "npdev.businessUi.apiKey";
+  const state = {
+    manifest: null,
+    panels: {},
+    lookupTimers: {},
+    referenceLabels: {}
+  };
+
+  const el = {
+    app: document.getElementById("app"),
+    appTitle: document.getElementById("appTitle"),
+    status: document.getElementById("status"),
+    apiKey: document.getElementById("apiKey"),
+    modalRoot: document.getElementById("modalRoot")
+  };
+
+  function text(value) {
+    return value === null || value === undefined ? "" : String(value);
+  }
+
+  function setStatus(message, error) {
+    el.status.textContent = message || "";
+    el.status.classList.toggle("is-error", Boolean(error));
+  }
+
+  function headers() {
+    const result = { "Content-Type": "application/json" };
+    const apiKey = el.apiKey.value.trim();
+    if (apiKey) {
+      result[state.manifest.auth.headerName || "X-Api-Key"] = apiKey;
+    }
+    return result;
+  }
+
+  async function fetchJson(url, options) {
+    const response = await fetch(url, options || {});
+    const contentType = response.headers.get("content-type") || "";
+    const payload = contentType.includes("application/json") ? await response.json() : await response.text();
+    if (!response.ok) {
+      throw new Error(errorMessage(payload, response.status));
+    }
+    return payload;
+  }
+
+  function errorMessage(payload, status) {
+    if (payload && typeof payload === "object") {
+      return payload.message || payload.error || payload.code || "HTTP " + status;
+    }
+    return payload ? String(payload) : "HTTP " + status;
+  }
+
+  function panelState(concept) {
+    if (!state.panels[concept.conceptName]) {
+      const defaultSort = concept.list && concept.list.defaultSort ? concept.list.defaultSort : {};
+      state.panels[concept.conceptName] = {
+        page: 0,
+        size: concept.list && concept.list.pageSize ? concept.list.pageSize : 20,
+        sort: defaultSort.field || concept.idField,
+        direction: defaultSort.direction || "asc",
+        filter: "",
+        records: [],
+        totalElements: 0,
+        loading: false
+      };
+    }
+    return state.panels[concept.conceptName];
+  }
+
+  function listUrl(concept) {
+    const panel = panelState(concept);
+    const params = new URLSearchParams();
+    params.set("page", String(panel.page));
+    params.set("size", String(panel.size));
+    params.set("sort", panel.sort);
+    params.set("direction", panel.direction);
+    if (panel.filter) {
+      params.set("filter", panel.filter);
+    }
+    return concept.endpointBase + "?" + params.toString();
+  }
+
+  async function loadPanel(concept) {
+    const panel = panelState(concept);
+    panel.loading = true;
+    render();
+    try {
+      const payload = await fetchJson(listUrl(concept), {
+        method: "GET",
+        headers: headers()
+      });
+      panel.records = Array.isArray(payload.content) ? payload.content : [];
+      panel.totalElements = Number(payload.totalElements || panel.records.length);
+      panel.loading = false;
+      setStatus(concept.displayName + " loaded.", false);
+      render();
+      await hydrateReferenceLabels(concept, panel.records);
+    } catch (error) {
+      panel.loading = false;
+      setStatus(error.message, true);
+    }
+    render();
+  }
+
+  function render() {
+    if (!state.manifest) {
+      return;
+    }
+    el.appTitle.textContent = state.manifest.appName || "Business Data";
+    el.app.innerHTML = "";
+    state.manifest.concepts.forEach(function (concept) {
+      el.app.appendChild(renderPanel(concept));
+    });
+  }
+
+  function renderPanel(concept) {
+    const panel = panelState(concept);
+    const section = document.createElement("section");
+    section.className = "concept-panel";
+
+    const header = document.createElement("div");
+    header.className = "panel-header";
+    const title = document.createElement("h2");
+    title.textContent = concept.displayName;
+    header.appendChild(title);
+
+    const actions = document.createElement("div");
+    actions.className = "panel-actions";
+    actions.appendChild(button("New", "primary", function () { openForm(concept, "create", null); }));
+    actions.appendChild(button("Refresh", "", function () { loadPanel(concept); }));
+    actions.appendChild(button("Clear", "", function () {
+      panel.filter = "";
+      panel.page = 0;
+      loadPanel(concept);
+    }));
+    header.appendChild(actions);
+    section.appendChild(header);
+
+    const filters = document.createElement("div");
+    filters.className = "filters";
+    const input = document.createElement("input");
+    input.type = "search";
+    input.value = panel.filter;
+    input.placeholder = "Filter";
+    input.addEventListener("input", function () {
+      panel.filter = input.value;
+    });
+    input.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        panel.page = 0;
+        loadPanel(concept);
+      }
+    });
+    filters.appendChild(input);
+    filters.appendChild(button("Search", "", function () {
+      panel.page = 0;
+      loadPanel(concept);
+    }));
+    section.appendChild(filters);
+
+    if (panel.loading) {
+      const loading = document.createElement("div");
+      loading.className = "empty";
+      loading.textContent = "Loading";
+      section.appendChild(loading);
+      return section;
+    }
+
+    section.appendChild(renderTable(concept, panel));
+    section.appendChild(renderPager(concept, panel));
+    return section;
+  }
+
+  function renderTable(concept, panel) {
+    const table = document.createElement("table");
+    table.className = "records";
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    visibleFields(concept).forEach(function (field) {
+      const th = document.createElement("th");
+      th.textContent = field.label || field.name;
+      if (field.sortable) {
+        th.className = "sortable";
+        if (panel.sort === field.name) {
+          th.textContent += panel.direction === "desc" ? " v" : " ^";
+        }
+        th.addEventListener("click", function () {
+          if (panel.sort === field.name) {
+            panel.direction = panel.direction === "asc" ? "desc" : "asc";
+          } else {
+            panel.sort = field.name;
+            panel.direction = "asc";
+          }
+          panel.page = 0;
+          loadPanel(concept);
+        });
+      }
+      headRow.appendChild(th);
+    });
+    const actionHead = document.createElement("th");
+    actionHead.textContent = "";
+    headRow.appendChild(actionHead);
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    if (panel.records.length === 0) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = visibleFields(concept).length + 1;
+      td.className = "empty";
+      td.textContent = "No records";
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    } else {
+      panel.records.forEach(function (record) {
+        const tr = document.createElement("tr");
+        visibleFields(concept).forEach(function (field) {
+          const td = document.createElement("td");
+          renderFieldValue(td, field, record[field.name], false);
+          tr.appendChild(td);
+        });
+        const td = document.createElement("td");
+        td.className = "row-actions";
+        td.appendChild(button("View", "", function () { openDetails(concept, record); }));
+        td.appendChild(button("Edit", "", function () { openForm(concept, "edit", record); }));
+        td.appendChild(button("Delete", "danger", function () { deleteRecord(concept, record); }));
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+      });
+    }
+    table.appendChild(tbody);
+    return table;
+  }
+
+  function renderPager(concept, panel) {
+    const pager = document.createElement("div");
+    pager.className = "pager";
+    const start = panel.totalElements === 0 ? 0 : panel.page * panel.size + 1;
+    const end = Math.min(panel.totalElements, (panel.page + 1) * panel.size);
+    const label = document.createElement("span");
+    label.textContent = start + "-" + end + " of " + panel.totalElements;
+    pager.appendChild(label);
+    const prev = button("Previous", "", function () {
+      panel.page = Math.max(0, panel.page - 1);
+      loadPanel(concept);
+    });
+    prev.disabled = panel.page === 0;
+    pager.appendChild(prev);
+    const next = button("Next", "", function () {
+      panel.page += 1;
+      loadPanel(concept);
+    });
+    next.disabled = (panel.page + 1) * panel.size >= panel.totalElements;
+    pager.appendChild(next);
+    return pager;
+  }
+
+  function visibleFields(concept) {
+    const columns = concept.list && Array.isArray(concept.list.columns) ? concept.list.columns : [];
+    const byName = Object.fromEntries(concept.fields.map(function (field) { return [field.name, field]; }));
+    return columns.map(function (name) { return byName[name]; }).filter(Boolean);
+  }
+
+  function formFields(concept, mode) {
+    return concept.fields.filter(function (field) {
+      return mode === "edit" ? !field.readOnly : !field.readOnly;
+    });
+  }
+
+  function referenceFields(concept) {
+    return (concept.fields || []).filter(function (field) {
+      return isReferenceField(field);
+    });
+  }
+
+  function isReferenceField(field) {
+    return Boolean(field && field.reference && field.reference.endpointBase && field.reference.targetIdField);
+  }
+
+  function referenceCacheKey(reference, rawId) {
+    return [
+      text(reference.targetConcept),
+      text(reference.targetIdField),
+      text(rawId)
+    ].join("|");
+  }
+
+  function invalidateReferenceLabelsForConcept(conceptName) {
+    const prefix = text(conceptName) + "|";
+    Object.keys(state.referenceLabels).forEach(function (key) {
+      if (key.startsWith(prefix)) {
+        delete state.referenceLabels[key];
+      }
+    });
+  }
+
+  function conceptReferencesTarget(concept, targetConceptName) {
+    return referenceFields(concept).some(function (field) {
+      return text(field.reference.targetConcept) === text(targetConceptName);
+    });
+  }
+
+  async function hydrateReferenceLabels(concept, records) {
+    const tasks = [];
+    referenceFields(concept).forEach(function (field) {
+      const seen = new Set();
+      (records || []).forEach(function (record) {
+        const rawId = text(record[field.name]).trim();
+        if (!rawId || seen.has(rawId)) {
+          return;
+        }
+        seen.add(rawId);
+        tasks.push(loadReferenceLabel(field, rawId));
+      });
+    });
+    if (tasks.length === 0) {
+      return;
+    }
+    await Promise.all(tasks);
+  }
+
+  async function loadReferenceLabel(field, rawId) {
+    const reference = field.reference || {};
+    if (!reference.endpointBase || !reference.targetIdField || !rawId) {
+      return "";
+    }
+    const key = referenceCacheKey(reference, rawId);
+    const existing = state.referenceLabels[key];
+    if (existing) {
+      if (existing.status === "pending") {
+        await existing.promise;
+      }
+      const updated = state.referenceLabels[key];
+      return updated && updated.label ? updated.label : "";
+    }
+
+    const promise = fetchJson(reference.endpointBase + "/" + encodeURIComponent(rawId), {
+      method: "GET",
+      headers: headers()
+    }).then(function (row) {
+      const label = lookupLabel(reference, row);
+      state.referenceLabels[key] = {
+        status: "resolved",
+        label: label || rawId,
+        row: row
+      };
+      return state.referenceLabels[key].label;
+    }).catch(function (error) {
+      const missing = /not found|404/i.test(error.message || "");
+      state.referenceLabels[key] = {
+        status: missing ? "missing" : "failed",
+        label: missing ? "<missing: " + rawId + ">" : rawId,
+        error: error.message || "Reference label lookup failed."
+      };
+      if (!missing) {
+        setStatus("Reference label lookup failed for " + (field.label || field.name) + ": " + state.referenceLabels[key].error, true);
+      }
+      return state.referenceLabels[key].label;
+    });
+
+    state.referenceLabels[key] = {
+      status: "pending",
+      label: rawId,
+      promise: promise
+    };
+    return promise;
+  }
+
+  function referenceLabel(field, rawId) {
+    if (!isReferenceField(field) || !rawId) {
+      return formatValue(rawId);
+    }
+    const entry = state.referenceLabels[referenceCacheKey(field.reference, rawId)];
+    return entry && entry.label ? entry.label : rawId;
+  }
+
+  function renderFieldValue(target, field, value, includeRawId) {
+    target.innerHTML = "";
+    const rawValue = text(value).trim();
+    if (!isReferenceField(field)) {
+      target.textContent = formatValue(value);
+      return;
+    }
+    if (!rawValue) {
+      target.textContent = "-";
+      return;
+    }
+
+    const label = referenceLabel(field, rawValue);
+    target.textContent = label;
+    if (field.tableDisplay && field.tableDisplay.showRawIdTooltip) {
+      target.title = rawValue;
+    }
+    target.dataset.rawId = rawValue;
+    if (includeRawId && label !== rawValue) {
+      const raw = document.createElement("small");
+      raw.className = "reference-raw";
+      raw.textContent = "ID: " + rawValue;
+      target.appendChild(raw);
+    }
+  }
+
+  function openDetails(concept, record) {
+    const content = document.createElement("div");
+    content.className = "details";
+    concept.fields.forEach(function (field) {
+      const row = document.createElement("div");
+      row.className = "detail-row";
+      const label = document.createElement("strong");
+      label.textContent = field.label || field.name;
+      const value = document.createElement("span");
+      renderFieldValue(value, field, record[field.name], true);
+      row.appendChild(label);
+      row.appendChild(value);
+      content.appendChild(row);
+    });
+    openModal(concept.displayName, content);
+  }
+
+  function openForm(concept, mode, record) {
+    const form = document.createElement("form");
+    form.className = "record-form";
+    formFields(concept, mode).forEach(function (field) {
+      const label = document.createElement("label");
+      label.textContent = (field.label || field.name) + (field.required ? " *" : "");
+      const input = createInput(field, record ? record[field.name] : "");
+      label.appendChild(input);
+      form.appendChild(label);
+    });
+    const footer = document.createElement("div");
+    footer.className = "modal-actions";
+    footer.appendChild(button("Cancel", "", closeModal));
+    const submit = button(mode === "edit" ? "Save" : "Create", "primary", function () {});
+    submit.type = "submit";
+    footer.appendChild(submit);
+    form.appendChild(footer);
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      submitForm(concept, mode, record, form);
+    });
+    openModal(mode === "edit" ? "Edit " + concept.displayName : "New " + concept.displayName, form);
+  }
+
+  function createInput(field, value) {
+    if (field.widget === "lookup" && field.reference) {
+      return createLookupInput(field, value);
+    }
+    if (field.enumValues && field.enumValues.length) {
+      return createEnumSelect(field, value);
+    }
+    if (field.type === "boolean") {
+      const input = document.createElement("input");
+      input.name = field.name;
+      input.type = "checkbox";
+      input.checked = Boolean(value);
+      return input;
+    }
+    const input = document.createElement("input");
+    input.name = field.name;
+    if (field.widget === "datetime-local" || field.type === "datetime") {
+      input.type = "datetime-local";
+    } else {
+      input.type = field.widget === "date" || field.type === "date" ? "date" : "text";
+    }
+    input.value = value === null || value === undefined ? "" : String(value);
+    return input;
+  }
+
+
+  function createEnumSelect(field, value) {
+    const select = document.createElement("select");
+    select.name = field.name;
+    select.appendChild(new Option("", ""));
+
+    const options = Array.isArray(field.enumOptions) && field.enumOptions.length
+      ? field.enumOptions
+      : field.enumValues.map(function (option) {
+          return {
+            value: option,
+            label: option,
+            deprecated: false,
+            default: false,
+            group: "",
+            description: ""
+          };
+        });
+
+    options.forEach(function (option) {
+      if (!option || option.value === null || option.value === undefined || option.value === "") {
+        return;
+      }
+      const label = option.label || option.value;
+      const element = new Option(label, option.value);
+      if (option.deprecated) {
+        element.disabled = true;
+        element.textContent = label + " (deprecated)";
+      }
+      if (option.group) {
+        element.dataset.group = option.group;
+      }
+      if (option.description) {
+        element.title = option.description;
+      }
+      select.appendChild(element);
+    });
+
+    const current = text(value);
+    const defaultValue = text(field.defaultEnumValue);
+    select.value = current || defaultValue || "";
+    return select;
+  }
+
+  function createLookupInput(field, value) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "lookup-control";
+
+    const hidden = document.createElement("input");
+    hidden.type = "hidden";
+    hidden.name = field.name;
+    hidden.value = text(value);
+    wrapper.appendChild(hidden);
+
+    const search = document.createElement("input");
+    search.type = "search";
+    search.className = "lookup-search";
+    search.placeholder = "Search " + (field.reference.targetConcept || "records");
+    wrapper.appendChild(search);
+
+    const select = document.createElement("select");
+    select.className = "lookup-select";
+    wrapper.appendChild(select);
+
+    const hint = document.createElement("small");
+    hint.className = "lookup-hint";
+    wrapper.appendChild(hint);
+
+    select.addEventListener("change", function () {
+      hidden.value = select.value;
+      const selected = select.options[select.selectedIndex];
+      hint.textContent = selected && selected.value ? selected.textContent : "";
+    });
+
+    search.addEventListener("input", function () {
+      const key = field.name + ":" + Date.now();
+      hidden.value = "";
+      select.value = "";
+      hint.textContent = "";
+      clearTimeout(state.lookupTimers[field.name]);
+      state.lookupTimers[field.name] = setTimeout(function () {
+        loadLookupOptions(field, search.value, "", select, hint);
+      }, 250);
+      state.lookupTimers[field.name + ":last"] = key;
+    });
+
+    loadLookupOptions(field, "", hidden.value, select, hint);
+    return wrapper;
+  }
+
+  async function loadLookupOptions(field, filter, currentValue, select, hint) {
+    const reference = field.reference || {};
+    if (!reference.endpointBase || !reference.targetIdField) {
+      hint.textContent = "Lookup metadata is incomplete.";
+      return;
+    }
+    select.disabled = true;
+    hint.textContent = "Loading options";
+    try {
+      const normalizedFilter = filter && filter.trim() ? filter.trim() : "";
+      const params = new URLSearchParams();
+      params.set("page", "0");
+      params.set("size", "20");
+      params.set("sort", reference.displayField || reference.targetIdField);
+      params.set("direction", "asc");
+      if (normalizedFilter) {
+        params.set("filter", normalizedFilter);
+      }
+      const where = whereExpression(reference.defaultFilterExpression);
+      if (where) {
+        params.set("where", where);
+      }
+      const payload = await fetchJson(reference.endpointBase + "?" + params.toString(), {
+        method: "GET",
+        headers: headers()
+      });
+      const rows = Array.isArray(payload.content) ? payload.content : [];
+      select.innerHTML = "";
+      select.appendChild(new Option("", ""));
+      rows.forEach(function (row) {
+        const id = text(row[reference.targetIdField]);
+        const label = lookupLabel(reference, row);
+        select.appendChild(new Option(label, id));
+      });
+      if (rows.length === 0) {
+        const emptyLabel = normalizedFilter ? "No matches" : "No options";
+        const option = new Option(emptyLabel, "");
+        option.disabled = true;
+        select.appendChild(option);
+        select.value = "";
+        select.disabled = false;
+        hint.textContent = emptyLabel;
+        return;
+      }
+      if (currentValue && !normalizedFilter && !rows.some(function (row) { return text(row[reference.targetIdField]) === text(currentValue); })) {
+        const resolvedLabel = await loadReferenceLabel(field, text(currentValue));
+        select.appendChild(new Option(resolvedLabel || text(currentValue), text(currentValue)));
+      }
+      select.value = text(currentValue);
+      select.disabled = false;
+      const selected = select.options[select.selectedIndex];
+      hint.textContent = selected && selected.value ? selected.textContent : "";
+    } catch (error) {
+      select.disabled = true;
+      hint.textContent = error.message;
+      setStatus(error.message, true);
+    }
+  }
+
+  function whereExpression(defaultFilterExpression) {
+    if (!defaultFilterExpression || !defaultFilterExpression.field || !defaultFilterExpression.operator) {
+      return "";
+    }
+    return defaultFilterExpression.field + ":" + defaultFilterExpression.operator + ":" + text(defaultFilterExpression.value);
+  }
+
+  function lookupLabel(reference, row) {
+    if (reference.displayTemplate) {
+      const mustache = reference.displayTemplate.replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, function (_, name) {
+        return text(row[name]);
+      });
+      return mustache.replace(/\{\s*([A-Za-z0-9_]+)\s*\}/g, function (_, name) {
+        return text(row[name]);
+      });
+    }
+    const displayFields = Array.isArray(reference.displayFields) && reference.displayFields.length
+      ? reference.displayFields
+      : [reference.displayField || reference.targetIdField];
+    const parts = displayFields.map(function (fieldName) { return text(row[fieldName]); }).filter(Boolean);
+    return parts.length ? parts.join(" / ") : text(row[reference.targetIdField]);
+  }
+
+  async function submitForm(concept, mode, record, form) {
+    const payload = {};
+    for (const field of formFields(concept, mode)) {
+      const control = form.elements[field.name];
+      const value = control.type === "checkbox" ? control.checked : text(control.value).trim();
+      if (field.required && (value === "" || value === null || value === undefined)) {
+        setStatus((field.label || field.name) + " is required.", true);
+        return;
+      }
+      if (value !== "" || field.required || control.type === "checkbox") {
+        payload[field.name] = value;
+      }
+    }
+    const id = record ? record[concept.idField] : null;
+    try {
+      await fetchJson(mode === "edit" ? concept.endpointBase + "/" + encodeURIComponent(id) : concept.endpointBase, {
+        method: mode === "edit" ? "PUT" : "POST",
+        headers: headers(),
+        body: JSON.stringify(payload)
+      });
+      closeModal();
+      setStatus(mode === "edit" ? "Record updated." : "Record created.", false);
+      await reloadAfterMutation(concept);
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  }
+
+  async function deleteRecord(concept, record) {
+    const id = record[concept.idField];
+    if (!window.confirm("Delete this record?")) {
+      return;
+    }
+    try {
+      await fetch(concept.endpointBase + "/" + encodeURIComponent(id), {
+        method: "DELETE",
+        headers: headers()
+      }).then(async function (response) {
+        if (!response.ok) {
+          const contentType = response.headers.get("content-type") || "";
+          const payload = contentType.includes("application/json") ? await response.json() : await response.text();
+          throw new Error(errorMessage(payload, response.status));
+        }
+      });
+      setStatus("Record deleted.", false);
+      await reloadAfterMutation(concept);
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  }
+
+  async function reloadAfterMutation(concept) {
+    invalidateReferenceLabelsForConcept(concept.conceptName);
+    const conceptsToReload = {};
+    conceptsToReload[concept.conceptName] = concept;
+    (state.manifest.concepts || []).forEach(function (candidate) {
+      if (conceptReferencesTarget(candidate, concept.conceptName)) {
+        conceptsToReload[candidate.conceptName] = candidate;
+      }
+    });
+    await Promise.all(Object.keys(conceptsToReload).map(function (name) {
+      return loadPanel(conceptsToReload[name]);
+    }));
+  }
+
+  function openModal(title, content) {
+    el.modalRoot.innerHTML = "";
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    const modal = document.createElement("div");
+    modal.className = "modal";
+    const header = document.createElement("div");
+    header.className = "modal-header";
+    const heading = document.createElement("h3");
+    heading.textContent = title;
+    header.appendChild(heading);
+    header.appendChild(button("Close", "", closeModal));
+    modal.appendChild(header);
+    modal.appendChild(content);
+    backdrop.appendChild(modal);
+    el.modalRoot.appendChild(backdrop);
+  }
+
+  function closeModal() {
+    el.modalRoot.innerHTML = "";
+  }
+
+  function button(label, className, onClick) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    if (className) {
+      b.className = className;
+    }
+    b.addEventListener("click", onClick);
+    return b;
+  }
+
+  function formatValue(value) {
+    if (value === null || value === undefined || value === "") {
+      return "-";
+    }
+    return String(value);
+  }
+
+  async function bootstrap() {
+    const storedKey = localStorage.getItem(STORAGE_KEY);
+    if (storedKey) {
+      el.apiKey.value = storedKey;
+    }
+    el.apiKey.addEventListener("input", function () {
+      localStorage.setItem(STORAGE_KEY, el.apiKey.value.trim());
+    });
+    state.manifest = await fetchJson("./generated-ui-manifest.json");
+    if (state.manifest.auth && state.manifest.auth.devKeyHint) {
+      el.apiKey.placeholder = "dev/smoke: " + state.manifest.auth.devKeyHint;
+    }
+    render();
+    await Promise.all(state.manifest.concepts.map(loadPanel));
+  }
+
+  bootstrap().catch(function (error) {
+    setStatus(error.message, true);
+  });
+})();

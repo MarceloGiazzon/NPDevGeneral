@@ -1,0 +1,507 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/generator-adapter-contract.schema.json",
+  "title": "NPDev Generator Adapter Contract",
+  "description": "Contract for additive, opt-in Box/Object/Truth generator adapter planning.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractId",
+    "applicationId",
+    "mode",
+    "enabledByDefault",
+    "inputs",
+    "adapters",
+    "outputRoots",
+    "mappings",
+    "preservationPolicy",
+    "truthPolicy",
+    "evidencePolicy",
+    "promotionPolicy",
+    "releaseGatePolicy",
+    "diagnostics",
+    "nonGoals"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "contractId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "applicationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "Advisory",
+        "Staged",
+        "Active"
+      ]
+    },
+    "enabledByDefault": {
+      "type": "boolean",
+      "default": false
+    },
+    "inputs": {
+      "$ref": "#/$defs/inputs"
+    },
+    "adapters": {
+      "type": "array",
+      "minItems": 7,
+      "items": {
+        "$ref": "#/$defs/adapter"
+      }
+    },
+    "outputRoots": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/outputRoot"
+      }
+    },
+    "mappings": {
+      "$ref": "#/$defs/mappings"
+    },
+    "preservationPolicy": {
+      "$ref": "#/$defs/preservationPolicy"
+    },
+    "truthPolicy": {
+      "$ref": "#/$defs/truthPolicy"
+    },
+    "evidencePolicy": {
+      "$ref": "#/$defs/evidencePolicy"
+    },
+    "promotionPolicy": {
+      "$ref": "#/$defs/promotionPolicy"
+    },
+    "releaseGatePolicy": {
+      "$ref": "#/$defs/releaseGatePolicy"
+    },
+    "diagnostics": {
+      "$ref": "#/$defs/diagnostics"
+    },
+    "nonGoals": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "$defs": {
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "graphPath",
+        "customizationRegistryPath",
+        "truthReportPath",
+        "resourceReportPath",
+        "closureReportPath",
+        "panelRoutesPath",
+        "procedureRegistryPath"
+      ],
+      "properties": {
+        "graphPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "customizationRegistryPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "truthReportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resourceReportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "closureReportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "panelRoutesPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "procedureRegistryPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "enabled",
+        "mode",
+        "responsibilities",
+        "resourceHandling"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "GraphAdapter",
+            "PanelObjectAdapter",
+            "ProcedureObjectAdapter",
+            "CustomizationProtectionAdapter",
+            "TruthPropagationAdapter",
+            "EvidenceAdapter",
+            "PromotionAdapter"
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "Advisory",
+            "Staged",
+            "Active"
+          ]
+        },
+        "responsibilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "resourceHandling": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/resourceHandling"
+          }
+        }
+      }
+    },
+    "outputRoot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "purpose",
+        "generatedOnly"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generatedOnly": {
+          "type": "boolean"
+        }
+      }
+    },
+    "mappings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "panelObjects",
+        "procedureObjects",
+        "writeTargets"
+      ],
+      "properties": {
+        "panelObjects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/panelMapping"
+          }
+        },
+        "procedureObjects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/procedureMapping"
+          }
+        },
+        "writeTargets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "panelMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "panelObjectId",
+        "route",
+        "resources",
+        "handling",
+        "bridgeMode"
+      ],
+      "properties": {
+        "panelObjectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "route": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resources": {
+          "$ref": "#/$defs/frontendResources"
+        },
+        "handling": {
+          "$ref": "#/$defs/resourceHandling"
+        },
+        "bridgeMode": {
+          "type": "string",
+          "enum": [
+            "StubOnly",
+            "ContractPending",
+            "Runtime"
+          ]
+        }
+      }
+    },
+    "procedureMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "procedureObjectId",
+        "mainClass",
+        "handling",
+        "endpointMode"
+      ],
+      "properties": {
+        "procedureObjectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mainClass": {
+          "type": "string",
+          "minLength": 1
+        },
+        "handling": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/resourceHandling"
+          }
+        },
+        "endpointMode": {
+          "type": "string",
+          "enum": [
+            "ContractPending",
+            "GeneratedEndpoint",
+            "Runtime"
+          ]
+        }
+      }
+    },
+    "frontendResources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "html",
+        "css",
+        "js",
+        "assets"
+      ],
+      "properties": {
+        "html": {
+          "type": "string",
+          "minLength": 1
+        },
+        "css": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "js": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "assets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "resourceHandling": {
+      "type": "string",
+      "enum": [
+        "Copy",
+        "Mount",
+        "Reference",
+        "Compile",
+        "Register",
+        "ValidateOnly"
+      ]
+    },
+    "preservationPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "overwritePolicy",
+        "protectedResourcesNeverSilentlyOverwritten",
+        "sourceManifestsReadOnly",
+        "generatedOutputPolicy"
+      ],
+      "properties": {
+        "overwritePolicy": {
+          "type": "string",
+          "enum": [
+            "NeverOverwriteProtected",
+            "ReplaceGeneratedOnly",
+            "AskUser",
+            "FailOnConflict"
+          ]
+        },
+        "protectedResourcesNeverSilentlyOverwritten": {
+          "type": "boolean",
+          "const": true
+        },
+        "sourceManifestsReadOnly": {
+          "type": "boolean",
+          "const": true
+        },
+        "generatedOutputPolicy": {
+          "type": "string",
+          "enum": [
+            "NeverOverwriteProtected",
+            "ReplaceGeneratedOnly",
+            "AskUser",
+            "FailOnConflict"
+          ]
+        }
+      }
+    },
+    "truthPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "promotionPolicy",
+        "noT6WithoutReleaseEvidence"
+      ],
+      "properties": {
+        "promotionPolicy": {
+          "type": "array",
+          "contains": {
+            "enum": [
+              "EvidenceRequired",
+              "NoAutoPromotion"
+            ]
+          },
+          "items": {
+            "type": "string",
+            "enum": [
+              "EvidenceRequired",
+              "NoAutoPromotion",
+              "AdvisoryOnly"
+            ]
+          }
+        },
+        "noT6WithoutReleaseEvidence": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "evidencePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requiredForRuntimeClaims",
+        "requiredForReleaseClaims"
+      ],
+      "properties": {
+        "requiredForRuntimeClaims": {
+          "type": "boolean"
+        },
+        "requiredForReleaseClaims": {
+          "type": "boolean"
+        }
+      }
+    },
+    "promotionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "currentStage",
+        "nextStage",
+        "adapterCanPromoteRelease"
+      ],
+      "properties": {
+        "currentStage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "nextStage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "adapterCanPromoteRelease": {
+          "type": "boolean",
+          "const": false
+        }
+      }
+    },
+    "releaseGatePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "releaseGatesChanged"
+      ],
+      "properties": {
+        "policy": {
+          "type": "string",
+          "enum": [
+            "NoImpact",
+            "AdvisoryOnly",
+            "CandidateBlocking",
+            "ReleaseBlocking"
+          ],
+          "default": "NoImpact"
+        },
+        "releaseGatesChanged": {
+          "type": "boolean",
+          "const": false
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reportPath"
+      ],
+      "properties": {
+        "reportPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

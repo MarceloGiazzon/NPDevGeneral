@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/security-threat-model.schema.json",
+  "title": "NPDev Executable Security Threat Model",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "securityThreatModelId",
+    "applicationId",
+    "mode",
+    "enabledByDefault",
+    "auditSinkReport",
+    "threatCases",
+    "executionPolicy",
+    "sandboxPolicy",
+    "truthPolicy",
+    "releaseGatePolicy",
+    "nonGoals"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev.security-threat-model.v1"
+    },
+    "securityThreatModelId": {
+      "type": "string"
+    },
+    "applicationId": {
+      "const": "app.salesflow"
+    },
+    "mode": {
+      "const": "ExecutableSecurityThreatModel"
+    },
+    "enabledByDefault": {
+      "const": false
+    },
+    "auditSinkReport": {
+      "type": "string"
+    },
+    "threatCases": {
+      "type": "array",
+      "minItems": 9,
+      "items": {
+        "type": "object",
+        "required": [
+          "threatId",
+          "expectedStatus",
+          "requiredForPhase34"
+        ],
+        "properties": {
+          "threatId": {
+            "type": "string"
+          },
+          "expectedStatus": {
+            "type": "string"
+          },
+          "requiredForPhase34": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "executionPolicy": {
+      "type": "object",
+      "required": [
+        "compiledJavaRequired",
+        "staticOnlyForbidden",
+        "auditIntegrityRequired"
+      ],
+      "properties": {
+        "compiledJavaRequired": {
+          "const": true
+        },
+        "staticOnlyForbidden": {
+          "const": true
+        },
+        "auditIntegrityRequired": {
+          "const": true
+        }
+      }
+    },
+    "sandboxPolicy": {
+      "type": "object",
+      "required": [
+        "overwriteTestsUseSandbox",
+        "pathTraversalTestsUseSandbox"
+      ],
+      "properties": {
+        "overwriteTestsUseSandbox": {
+          "const": true
+        },
+        "pathTraversalTestsUseSandbox": {
+          "const": true
+        }
+      }
+    },
+    "truthPolicy": {
+      "type": "object",
+      "required": [
+        "noAutoPromotion",
+        "noT5",
+        "noT6"
+      ],
+      "properties": {
+        "noAutoPromotion": {
+          "const": true
+        },
+        "noT5": {
+          "const": true
+        },
+        "noT6": {
+          "const": true
+        }
+      }
+    },
+    "releaseGatePolicy": {
+      "type": "object",
+      "required": [
+        "impact"
+      ],
+      "properties": {
+        "impact": {
+          "const": "NoImpact"
+        }
+      }
+    },
+    "nonGoals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

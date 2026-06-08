@@ -13,7 +13,7 @@ public class {{entityName}} {
 {{#fields}}
 {{#id}}
     @Id
-    @Column(nullable = false)
+    @Column(name = "{{columnName}}", nullable = false)
     private {{javaType}} {{name}};
 {{/id}}
 {{^id}}
@@ -21,10 +21,10 @@ public class {{entityName}} {
     @JdbcTypeCode(SqlTypes.JSON)
 {{/jsonField}}
 {{#required}}
-    @Column(nullable = false)
+    @Column(name = "{{columnName}}", nullable = false)
 {{/required}}
 {{^required}}
-    @Column
+    @Column(name = "{{columnName}}")
 {{/required}}
     private {{javaType}} {{name}};
 {{/id}}
@@ -41,4 +41,14 @@ public class {{entityName}} {
     }
 
 {{/fields}}
+{{^idFieldIsNamedId}}
+    public {{idJavaType}} getId() {
+        return this.{{idFieldName}};
+    }
+
+    public void setId({{idJavaType}} id) {
+        this.{{idFieldName}} = id;
+    }
+
+{{/idFieldIsNamedId}}
 }

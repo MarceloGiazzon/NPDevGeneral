@@ -22,11 +22,14 @@ import com.npdev.kernel.capabilities.CapabilityBindingResolver;
 import com.npdev.kernel.capabilities.RuntimeOverrideCapabilityBindingResolver;
 import com.npdev.kernel.capabilities.RuntimeOverridesManifest;
 import com.npdev.kernel.capability.CapabilityPolicyOverrides;
-import com.npdev.kernel.concepts.ConceptGateways;
 import com.npdev.kernel.concepts.ConceptGateway;
+import com.npdev.kernel.concepts.DefaultConceptGateway;
+import com.npdev.kernel.concepts.InMemoryConceptGatewayTraceSink;
+import com.npdev.kernel.ports.AuditLogStore;
 import com.npdev.kernel.ports.BulkheadStore;
 import com.npdev.kernel.ports.CapabilityDispatcher;
 import com.npdev.kernel.ports.CircuitBreakerStateStore;
+import com.npdev.kernel.ports.ConceptStore;
 import com.npdev.kernel.ports.CorrelationOwnershipStore;
 import com.npdev.kernel.ports.EventBus;
 import com.npdev.kernel.ports.EventStore;
@@ -48,6 +51,7 @@ import com.npdev.runtime.support.OrchestrationExecutionRegistry;
 import com.npdev.runtime.support.RuntimeClock;
 import com.npdev.runtime.support.SystemRuntimeClock;
 import jakarta.persistence.EntityManager;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -73,8 +77,15 @@ public class NpdevCapabilityBindingConfig {
     }
 
     @Bean
-    public ConceptGateway conceptGateway(CompiledModel compiledModel) {
-        return ConceptGateways.inMemory(RuntimeConceptGatewaySemanticPolicies.fromCompiledModel(compiledModel));
+    public ConceptGateway conceptGateway(CompiledModel compiledModel, ConceptStore conceptStore) {
+        return new DefaultConceptGateway(
+                conceptStore,
+                PermissionEvaluator.allowAll(),
+                com.npdev.kernel.ports.TenantIsolationPolicy.STRICT_EQUALS,
+                AuditLogStore.noop(),
+                RuntimeConceptGatewaySemanticPolicies.fromCompiledModel(compiledModel),
+                new InMemoryConceptGatewayTraceSink()
+        );
     }
 
     @Bean
@@ -209,11 +220,11 @@ public class NpdevCapabilityBindingConfig {
                 ));
 
         for (CompiledCapabilityBinding binding : compiledModel.getBindings()) {
+            if ("eventbus".equalsIgnoreCase(binding.getCapability())) {
+                continue;
+            }
             CompiledCapability capability = capabilitiesByName.get(binding.getCapability());
             if (capability == null) {
-                if ("eventbus".equalsIgnoreCase(binding.getCapability())) {
-                    continue;
-                }
                 throw new IllegalStateException("Binding references unknown capability: " + binding.getCapability());
             }
 
@@ -281,10 +292,10 @@ public class NpdevCapabilityBindingConfig {
     public GeneratedCrudRuntimeSupport generatedCrudRuntimeSupport(
             CompiledModel compiledModel,
             KernelRunner kernelRunner,
-            EntityManager entityManager,
+            ObjectProvider<EntityManager> entityManagerProvider,
             CapabilityDispatcher capabilityDispatcher,
             CapabilityRegistry capabilityRegistry,
-            DataSource dataSource,
+            ObjectProvider<DataSource> dataSourceProvider,
             RuntimeClock runtimeClock,
             OrchestrationExecutionRegistry orchestrationExecutionRegistry,
             RuntimeInvariantEngineFactory runtimeInvariantEngineFactory
@@ -292,10 +303,10 @@ public class NpdevCapabilityBindingConfig {
         return new GeneratedCrudRuntimeSupport(
                 compiledModel,
                 kernelRunner,
-                entityManager,
+                entityManagerProvider.getIfAvailable(),
                 capabilityDispatcher,
                 capabilityRegistry,
-                dataSource,
+                dataSourceProvider.getIfAvailable(),
                 runtimeClock,
                 orchestrationExecutionRegistry,
                 runtimeInvariantEngineFactory

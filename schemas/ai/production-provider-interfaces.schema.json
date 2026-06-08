@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/production-provider-interfaces.schema.json",
+  "title": "NPDev Production Provider Interfaces",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "providerInterfaceId",
+    "applicationId",
+    "mode",
+    "enabledByDefault",
+    "phase27SeamsInput",
+    "providerInterfaces",
+    "localDefaults",
+    "generatedBackendIntegration",
+    "compilePolicy",
+    "truthPolicy",
+    "releaseGatePolicy",
+    "nonGoals"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev.production-provider-interfaces.v1"
+    },
+    "providerInterfaceId": {
+      "type": "string"
+    },
+    "applicationId": {
+      "const": "app.salesflow"
+    },
+    "mode": {
+      "const": "ProductionProviderInterfaceLayer"
+    },
+    "enabledByDefault": {
+      "const": false
+    },
+    "phase27SeamsInput": {
+      "type": "string"
+    },
+    "providerInterfaces": {
+      "type": "array",
+      "minItems": 9,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "purpose",
+          "requiredForPhase28"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "requiredForPhase28": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "localDefaults": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "implements"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "implements": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "generatedBackendIntegration": {
+      "type": "object",
+      "required": [
+        "mustReferenceProviderLayer",
+        "mustCompile",
+        "mustPreserveExistingLocalBehavior",
+        "mustPreserveRuntimeEvidenceCompatibility"
+      ],
+      "properties": {
+        "mustReferenceProviderLayer": {
+          "const": true
+        },
+        "mustCompile": {
+          "const": true
+        },
+        "mustPreserveExistingLocalBehavior": {
+          "const": true
+        },
+        "mustPreserveRuntimeEvidenceCompatibility": {
+          "const": true
+        }
+      }
+    },
+    "compilePolicy": {
+      "type": "object",
+      "required": [
+        "compileGeneratedBackend",
+        "compileProviderInterfaces"
+      ],
+      "properties": {
+        "compileGeneratedBackend": {
+          "const": true
+        },
+        "compileProviderInterfaces": {
+          "const": true
+        }
+      }
+    },
+    "truthPolicy": {
+      "type": "object",
+      "required": [
+        "noAutoPromotion",
+        "noT5",
+        "noT6"
+      ],
+      "properties": {
+        "noAutoPromotion": {
+          "const": true
+        },
+        "noT5": {
+          "const": true
+        },
+        "noT6": {
+          "const": true
+        }
+      }
+    },
+    "releaseGatePolicy": {
+      "type": "object",
+      "required": [
+        "impact"
+      ],
+      "properties": {
+        "impact": {
+          "const": "NoImpact"
+        }
+      }
+    },
+    "nonGoals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

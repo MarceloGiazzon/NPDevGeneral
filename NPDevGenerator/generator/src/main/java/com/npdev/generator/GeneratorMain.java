@@ -11,9 +11,9 @@ import com.npdev.dsl.v1.validation.SemanticValidator;
 import com.npdev.dsl.v1.validation.ValidationResult;
 import com.npdev.generator.assembly.FinalAppAssembler;
 import com.npdev.generator.api.GeneratorFacade;
-import com.npdev.generator.migration.MigrationRiskThreshold;
-import com.npdev.generator.migration.StatefulMigrationOptions;
-import com.npdev.generator.migration.StatefulMigrationPlanner;
+import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
+import com.npdev.generator.dbconfig.OperationalRunbookEmitter;
+import com.npdev.generator.dbconfig.UserDatabaseDefinitionLoader;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.strategy.RegenerationPolicy;
 import com.npdev.generator.templates.TemplateEngine;
@@ -40,13 +40,11 @@ public final class GeneratorMain {
         boolean cleanOut = resolveCleanOutput(a, config);
 
         // Clean only the disposable output folder (generated Java/resources).
-        // Canonical migrations live elsewhere and are NOT cleaned.
-        if (cleanOut && !a.migrationPlanOnly) {
+        if (cleanOut) {
             cleanOutputRoot(outRoot);
         }
 
-        // Canonical migrations directory (committed in GPT repo).
-        Path migrationsDir = resolveMigrationsDir(a.migrationsDir);
+        Path schemaRealizationDir = resolveSchemaRealizationDir(a.schemaRealizationDir, outRoot);
 
         JsonModelParser parser = new JsonModelParser();
         ModelAst ast = parser.parse(modelPath);
@@ -66,19 +64,12 @@ public final class GeneratorMain {
         }
 
         CompiledModel compiled = new ModelCompiler().compile(ast);
-        StatefulMigrationOptions migrationOptions = new StatefulMigrationOptions(
-                a.migrationMode,
-                a.migrationPlanOnly,
-                a.migrationRiskThreshold,
-                a.migrationDecisionReportPath == null ? null : Path.of(a.migrationDecisionReportPath).toAbsolutePath().normalize()
-        );
-
-        if (a.migrationPlanOnly) {
-            var result = new StatefulMigrationPlanner().plan(compiled, migrationsDir, migrationOptions);
-            System.out.println("Migration plan OK. Dry-run SQL: " + result.dryRunSqlPath());
-            System.out.println("Migration decision: " + result.decisionReportPath());
-            return;
-        }
+        GeneratedDatabasePlan databasePlan = new UserDatabaseDefinitionLoader()
+                .load(Path.of(a.dbDefinitionPath), compiled);
+        System.out.println("DB definition: " + databasePlan.definitionPath());
+        System.out.println("DB engine: " + databasePlan.engine().externalName());
+        System.out.println("Storage mode: " + databasePlan.storageMode());
+        System.out.println("Schema fingerprint: " + databasePlan.schemaFingerprint());
 
         TemplateEngine templates = new TemplateEngine("npdev-templates/");
 
@@ -88,24 +79,24 @@ public final class GeneratorMain {
         new GeneratorFacade(templates, writer).generate(
                 compiled,
                 outRoot,
-                migrationsDir,
+                schemaRealizationDir,
                 modelPath,
-                migrationOptions
+                databasePlan
         );
 
         writer.flushSummary();
 
         System.out.println("Generation OK. Output: " + outRoot);
-        System.out.println("Schema realization SQL: " + migrationsDir);
+        System.out.println("Schema realization: " + schemaRealizationDir);
 
-        FinalAppAssemblyRequest assemblyRequest = resolveFinalAppAssemblyRequest(a, config, outRoot, migrationsDir);
+        FinalAppAssemblyRequest assemblyRequest = resolveFinalAppAssemblyRequest(a, config, outRoot, schemaRealizationDir);
         if (assemblyRequest.shouldAssemble()) {
             FinalAppAssembler.AssemblyResult assemblyResult = new FinalAppAssembler().assemble(
                     new FinalAppAssembler.Options(
                             assemblyRequest.runtimeHostRoot(),
                             outRoot,
                             assemblyRequest.finalAppRoot(),
-                            migrationsDir,
+                            schemaRealizationDir,
                             assemblyRequest.generatedFolderName(),
                             assemblyRequest.metaFolderName(),
                             assemblyRequest.deleteBeforeMount()
@@ -115,17 +106,25 @@ public final class GeneratorMain {
             System.out.println("Final app assembly OK. Root: " + assemblyResult.finalAppRoot());
             System.out.println("Generated mount: " + assemblyResult.generatedMount());
             System.out.println("Schema realization manifest: " + assemblyRequest.finalAppRoot()
+                    .resolve("npdev-generated")
                     .resolve("src")
                     .resolve("main")
                     .resolve("resources")
                     .resolve("npdev")
-                    .resolve("support")
-                    .resolve("schema-realization.manifest.json")
+                    .resolve("db")
+                    .resolve("schema-realization-manifest.json")
                     .toAbsolutePath()
                     .normalize());
             System.out.println("RuntimeHost files copied: " + assemblyResult.runtimeHostFilesCopied());
             System.out.println("Generated files copied: " + assemblyResult.generatedFilesCopied());
-            System.out.println("Schema realization SQL copied: " + assemblyResult.generatedMigrationsCopied());
+            System.out.println("Schema realization artifacts copied: " + assemblyResult.schemaRealizationArtifactsCopied());
+            Path opsRoot = new OperationalRunbookEmitter().emit(
+                    compiled,
+                    config,
+                    assemblyResult.finalAppRoot(),
+                    databasePlan
+            );
+            System.out.println("Generated operations runbook: " + opsRoot);
         }
     }
 
@@ -285,21 +284,17 @@ public final class GeneratorMain {
         );
     }
 
-    private static Path resolveMigrationsDir(String migrationsDirArg) throws IOException {
-        Path cwd = Path.of("").toAbsolutePath();
-
-        Path migrationsDir;
-        if (migrationsDirArg != null && !migrationsDirArg.isBlank()) {
-            migrationsDir = Path.of(migrationsDirArg);
+    private static Path resolveSchemaRealizationDir(String schemaRealizationDirArg, Path outRoot) throws IOException {
+        Path schemaRealizationDir;
+        if (schemaRealizationDirArg != null && !schemaRealizationDirArg.isBlank()) {
+            schemaRealizationDir = Path.of(schemaRealizationDirArg);
         } else {
-            // Default: committed canonical folder for schema-realization SQL inside GPT repo
-            migrationsDir = cwd.resolve("db-history")
-                    .resolve("src").resolve("main").resolve("resources")
-                    .resolve("db").resolve("migration");
+            schemaRealizationDir = outRoot.resolve("src").resolve("main").resolve("resources")
+                    .resolve("db").resolve("schema-realization");
         }
 
-        Files.createDirectories(migrationsDir);
-        return migrationsDir.toAbsolutePath().normalize();
+        Files.createDirectories(schemaRealizationDir);
+        return schemaRealizationDir.toAbsolutePath().normalize();
     }
 
     private static Path resolveSampleOutputRoot(Path modelPath) {
@@ -452,9 +447,10 @@ public final class GeneratorMain {
         final String configPath;
         final String modelPath;
         final String outPath;
+        final String dbDefinitionPath;
         final boolean cleanOut;
         final boolean cleanOutExplicit;
-        final String migrationsDir;
+        final String schemaRealizationDir;
         final String runtimeHostRoot;
         final String finalAppRoot;
         final boolean assembleFinalApp;
@@ -463,18 +459,15 @@ public final class GeneratorMain {
         final boolean cleanFinalAppExplicit;
         final String generatedFolderName;
         final String metaFolderName;
-        final String migrationMode;
-        final boolean migrationPlanOnly;
-        final MigrationRiskThreshold migrationRiskThreshold;
-        final String migrationDecisionReportPath;
 
         private Args(
                 String configPath,
                 String modelPath,
                 String outPath,
+                String dbDefinitionPath,
                 boolean cleanOut,
                 boolean cleanOutExplicit,
-                String migrationsDir,
+                String schemaRealizationDir,
                 String runtimeHostRoot,
                 String finalAppRoot,
                 boolean assembleFinalApp,
@@ -482,18 +475,15 @@ public final class GeneratorMain {
                 boolean cleanFinalApp,
                 boolean cleanFinalAppExplicit,
                 String generatedFolderName,
-                String metaFolderName,
-                String migrationMode,
-                boolean migrationPlanOnly,
-                MigrationRiskThreshold migrationRiskThreshold,
-                String migrationDecisionReportPath
+                String metaFolderName
         ) {
             this.configPath = configPath;
             this.modelPath = modelPath;
             this.outPath = outPath;
+            this.dbDefinitionPath = dbDefinitionPath;
             this.cleanOut = cleanOut;
             this.cleanOutExplicit = cleanOutExplicit;
-            this.migrationsDir = migrationsDir;
+            this.schemaRealizationDir = schemaRealizationDir;
             this.runtimeHostRoot = runtimeHostRoot;
             this.finalAppRoot = finalAppRoot;
             this.assembleFinalApp = assembleFinalApp;
@@ -502,23 +492,19 @@ public final class GeneratorMain {
             this.cleanFinalAppExplicit = cleanFinalAppExplicit;
             this.generatedFolderName = generatedFolderName;
             this.metaFolderName = metaFolderName;
-            this.migrationMode = migrationMode;
-            this.migrationPlanOnly = migrationPlanOnly;
-            this.migrationRiskThreshold = migrationRiskThreshold;
-            this.migrationDecisionReportPath = migrationDecisionReportPath;
         }
 
         static Args parse(String[] args) {
             String config = null;
             String model = null;
             String out = null;
+            String dbDefinition = null;
 
             // Professional default: do NOT clean unless explicitly requested.
             boolean clean = false;
             boolean cleanExplicit = false;
 
-            // Optional: explicit canonical migrations directory
-            String migDir = null;
+            String schemaRealizationDir = null;
             String runtimeHost = null;
             String finalApp = null;
             boolean assemble = false;
@@ -527,29 +513,22 @@ public final class GeneratorMain {
             boolean cleanFinalExplicit = false;
             String generatedFolder = null;
             String metaFolder = null;
-            String migrationMode = "disabled";
-            boolean migrationPlanOnly = false;
-            MigrationRiskThreshold migrationRiskThreshold = MigrationRiskThreshold.SAFE_ADDITIVE;
-            String migrationDecisionReportPath = null;
 
             for (int i = 0; i < args.length; i++) {
                 String cur = args[i];
 
-                if (cur.startsWith("--migrationMode=")) {
-                    migrationMode = cur.substring("--migrationMode=".length());
-                    validateMigrationMode(migrationMode);
-                } else if (cur.startsWith("--migrationRiskThreshold=")) {
-                    migrationRiskThreshold = MigrationRiskThreshold.parse(cur.substring("--migrationRiskThreshold=".length()));
-                } else if (cur.startsWith("--migrationDecisionReport=")) {
-                    migrationDecisionReportPath = cur.substring("--migrationDecisionReport=".length());
+                if (cur.startsWith("--migration") || cur.startsWith("--enableMigrations")) {
+                    throw migrationsDisabled(cur);
                 } else if ("--config".equals(cur) && i + 1 < args.length) {
                     config = args[++i];
                 } else if ("--model".equals(cur) && i + 1 < args.length) {
                     model = args[++i];
                 } else if ("--out".equals(cur) && i + 1 < args.length) {
                     out = args[++i];
-                } else if ("--migrationsDir".equals(cur) && i + 1 < args.length) {
-                    migDir = args[++i];
+                } else if ("--dbDefinitionPath".equals(cur) && i + 1 < args.length) {
+                    dbDefinition = args[++i];
+                } else if ("--schemaRealizationDir".equals(cur) && i + 1 < args.length) {
+                    schemaRealizationDir = args[++i];
                 } else if ("--runtimeHostTemplate".equals(cur) && i + 1 < args.length) {
                     runtimeHost = args[++i];
                 } else if ("--finalAppOut".equals(cur) && i + 1 < args.length) {
@@ -576,30 +555,21 @@ public final class GeneratorMain {
                 } else if ("--no-cleanFinalApp".equals(cur)) {
                     cleanFinal = false;
                     cleanFinalExplicit = true;
-                } else if ("--migrationPlanOnly".equals(cur)) {
-                    migrationPlanOnly = true;
-                    if ("disabled".equalsIgnoreCase(migrationMode)) {
-                        migrationMode = "additive-only";
-                    }
-                } else if ("--enableMigrations".equals(cur) || "--migrationManagement".equals(cur)) {
-                    throw migrationsDisabled(cur);
-                } else if ("--migrationMode".equals(cur) && i + 1 < args.length) {
-                    migrationMode = args[++i];
-                    validateMigrationMode(migrationMode);
-                } else if ("--migrationRiskThreshold".equals(cur) && i + 1 < args.length) {
-                    migrationRiskThreshold = MigrationRiskThreshold.parse(args[++i]);
-                } else if ("--migrationDecisionReport".equals(cur) && i + 1 < args.length) {
-                    migrationDecisionReportPath = args[++i];
                 }
+            }
+
+            if (normalize(dbDefinition) == null) {
+                throw new IllegalArgumentException("--dbDefinitionPath is required");
             }
 
             return new Args(
                     config,
                     model,
                     out,
+                    dbDefinition,
                     clean,
                     cleanExplicit,
-                    migDir,
+                    schemaRealizationDir,
                     runtimeHost,
                     finalApp,
                     assemble,
@@ -607,21 +577,8 @@ public final class GeneratorMain {
                     cleanFinal,
                     cleanFinalExplicit,
                     generatedFolder,
-                    metaFolder,
-                    migrationMode,
-                    migrationPlanOnly,
-                    migrationRiskThreshold,
-                    migrationDecisionReportPath
+                    metaFolder
             );
-        }
-
-        private static void validateMigrationMode(String migrationMode) {
-            if ("disabled".equalsIgnoreCase(migrationMode)
-                    || "off".equalsIgnoreCase(migrationMode)
-                    || "additive-only".equalsIgnoreCase(migrationMode)) {
-                return;
-            }
-            throw migrationsDisabled("--migrationMode=" + migrationMode);
         }
     }
 

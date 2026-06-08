@@ -233,6 +233,23 @@ public final class SandboxedPluginExecutionEngine implements AutoCloseable {
                 return result;
             }
 
+            if (handler instanceof DynamicCapabilityHandler dynamicCapabilityHandler) {
+                CapabilityResult result = dynamicCapabilityHandler.invoke(effectiveCall, contextState);
+                if (result == null) {
+                    return CapabilityResult.failure(
+                            "PLUGIN_EXECUTION_NULL_RESULT",
+                            "Sandboxed plugin returned null CapabilityResult",
+                            CapabilityErrorKind.PERMANENT,
+                            Map.of(
+                                    "capability", call.capability(),
+                                    "operation", call.operation(),
+                                    "adapterId", call.adapterId()
+                            )
+                    );
+                }
+                return result;
+            }
+
             Method method = resolveOperation(handler, effectiveCall.operation(), effectiveCall.args().size());
             method.setAccessible(true);
             if (method.getParameterCount() == 0) {
