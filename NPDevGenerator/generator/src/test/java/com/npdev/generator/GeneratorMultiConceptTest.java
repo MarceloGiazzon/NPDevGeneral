@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GeneratorMultiConceptTest {
@@ -94,6 +95,18 @@ class GeneratorMultiConceptTest {
                 "Expected Patient service to delegate reusable CRUD runtime support");
         assertTrue(patientServiceContent.contains("runtimeSupport"),
                 "Expected Patient service to use shared runtime support entrypoint");
+        assertTrue(patientServiceContent.contains("runtimeSupport.resolveCurrentCrudContext"),
+                "Expected Patient service to resolve real ExecutionContext via runtime support");
+        assertTrue(patientServiceContent.contains("runtimeSupport.checkCrudPermission"),
+                "Expected Patient service to check permissions via runtime support");
+        assertTrue(patientServiceContent.contains("runtimeSupport.auditCrudMutation"),
+                "Expected Patient service to emit audit records via runtime support");
+        assertTrue(patientServiceContent.contains("runtimeSupport.checkCrudIdempotency"),
+                "Expected Patient service to check idempotency via runtime support");
+        assertTrue(patientServiceContent.contains("runtimeSupport.recordCrudIdempotencySuccess"),
+                "Expected Patient service to record idempotency success via runtime support");
+        assertFalse(patientServiceContent.contains("ExecutionContext.anonymous().withTag(\"executionMode\", \"headless\")"),
+                "Expected Patient service to use real context, not hardcoded anonymous headless context");
 
         String patientControllerContent = Files.readString(patientController);
         assertTrue(patientControllerContent.contains("@RequestMapping(\"/api/patients\")"),

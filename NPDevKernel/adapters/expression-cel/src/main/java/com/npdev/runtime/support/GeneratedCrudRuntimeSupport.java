@@ -20,11 +20,21 @@ import com.npdev.kernel.FlowStepDefinition;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.KernelRunner;
 import com.npdev.kernel.events.EventEnvelope;
+import com.npdev.kernel.audit.AuditRecord;
+import com.npdev.kernel.capability.IdempotencyRecord;
+import com.npdev.kernel.ports.AuditLogStore;
 import com.npdev.kernel.ports.CapabilityDispatcher;
+import com.npdev.kernel.ports.IdempotencyStore;
 import com.npdev.kernel.ports.InvariantEngine;
 import com.npdev.kernel.ports.InvariantScopeProvider;
+import com.npdev.kernel.ports.PermissionEvaluator;
 import com.npdev.kernel.ports.PersistenceCapability;
 import com.npdev.kernel.ports.RuntimeInvariantEngineFactory;
+import com.npdev.kernel.security.PermissionDecision;
+import com.npdev.kernel.security.PermissionRequirement;
+import com.npdev.kernel.security.PermissionSubject;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
@@ -190,6 +200,9 @@ public final class GeneratedCrudRuntimeSupport {
     private final RuntimeClock runtimeClock;
     private final OrchestrationExecutionRegistry orchestrationExecutionRegistry;
     private final RuntimeInvariantEngineFactory runtimeInvariantEngineFactory;
+    private final AuditLogStore auditLogStore;
+    private final PermissionEvaluator permissionEvaluator;
+    private final IdempotencyStore idempotencyStore;
 
     public GeneratedCrudRuntimeSupport(CompiledModel compiledModel, KernelRunner kernelRunner) {
         this(compiledModel, kernelRunner, null, null, null, null);
@@ -268,6 +281,25 @@ public final class GeneratedCrudRuntimeSupport {
             OrchestrationExecutionRegistry orchestrationExecutionRegistry,
             RuntimeInvariantEngineFactory runtimeInvariantEngineFactory
     ) {
+        this(compiledModel, kernelRunner, entityManager, capabilityDispatcher, capabilityRegistry,
+                dataSource, runtimeClock, orchestrationExecutionRegistry, runtimeInvariantEngineFactory,
+                null, null, null);
+    }
+
+    public GeneratedCrudRuntimeSupport(
+            CompiledModel compiledModel,
+            KernelRunner kernelRunner,
+            EntityManager entityManager,
+            CapabilityDispatcher capabilityDispatcher,
+            CapabilityRegistry capabilityRegistry,
+            DataSource dataSource,
+            RuntimeClock runtimeClock,
+            OrchestrationExecutionRegistry orchestrationExecutionRegistry,
+            RuntimeInvariantEngineFactory runtimeInvariantEngineFactory,
+            AuditLogStore auditLogStore,
+            PermissionEvaluator permissionEvaluator,
+            IdempotencyStore idempotencyStore
+    ) {
         if (compiledModel == null) {
             throw new IllegalArgumentException("compiledModel is required");
         }
@@ -287,6 +319,9 @@ public final class GeneratedCrudRuntimeSupport {
         this.runtimeInvariantEngineFactory = runtimeInvariantEngineFactory == null
                 ? missingRuntimeInvariantEngineFactory()
                 : runtimeInvariantEngineFactory;
+        this.auditLogStore = auditLogStore == null ? AuditLogStore.noop() : auditLogStore;
+        this.permissionEvaluator = permissionEvaluator == null ? PermissionEvaluator.allowAll() : permissionEvaluator;
+        this.idempotencyStore = idempotencyStore == null ? IdempotencyStore.noop() : idempotencyStore;
         initializeOrchestrationSubscribers();
     }
 
@@ -4072,5 +4107,110 @@ public final class GeneratedCrudRuntimeSupport {
                 .replaceAll("[^A-Za-z0-9]+", "_")
                 .toLowerCase(Locale.ROOT);
         return snake.replaceAll("^_+|_+$", "");
+    }
+
+    // -------------------------------------------------------------------------
+    // CRUD kernel-port integration: context, permission, audit, idempotency
+    // -------------------------------------------------------------------------
+
+    public ExecutionContext resolveCurrentCrudContext() {
+        return resolveCurrentExecutionContext();
+    }
+
+    public String extractCrudIdempotencyKey() {
+        try {
+            RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+            if (!(attributes instanceof ServletRequestAttributes servletAttributes)) {
+                return null;
+            }
+            String key = servletAttributes.getRequest().getHeader("X-Idempotency-Key");
+            return (key == null || key.isBlank()) ? null : key.trim();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    public void checkCrudPermission(String conceptName, String operation, ExecutionContext ctx) {
+        ExecutionContext safeCtx = ctx == null ? ExecutionContext.anonymous() : ctx;
+        PermissionSubject subject = new PermissionSubject(
+                safeCtx.actorId(), safeCtx.tenantId(),
+                new ArrayList<>(safeCtx.roles()), List.of()
+        );
+        PermissionRequirement requirement = new PermissionRequirement(
+                operation.toLowerCase(Locale.ROOT) + ":" + conceptName.toLowerCase(Locale.ROOT),
+                conceptName, conceptName
+        );
+        PermissionDecision decision = permissionEvaluator.evaluate(subject, requirement);
+        if (decision != null && !decision.allowed()) {
+            appendCrudAudit(conceptName, operation, null, "DENY", safeCtx);
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "forbidden: " + conceptName + "." + operation);
+        }
+    }
+
+    public void auditCrudMutation(String conceptName, String operation, String resourceId,
+                                  String outcome, ExecutionContext ctx) {
+        appendCrudAudit(conceptName, operation, resourceId, outcome, ctx);
+    }
+
+    public Optional<String> checkCrudIdempotency(String tenantId, String conceptName,
+                                                  String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank() || conceptName == null) {
+            return Optional.empty();
+        }
+        String safeTenant = (tenantId == null || tenantId.isBlank()) ? "default" : tenantId;
+        try {
+            Optional<IdempotencyRecord> record = idempotencyStore.find(
+                    safeTenant, "crud." + conceptName, "create", idempotencyKey
+            );
+            if (record.isPresent() && record.get().success()) {
+                String stored = record.get().resultJsonRedacted();
+                return Optional.of(stored == null ? "" : stored);
+            }
+            return Optional.empty();
+        } catch (Exception ignored) {
+            return Optional.empty();
+        }
+    }
+
+    public void recordCrudIdempotencySuccess(String tenantId, String conceptName,
+                                              String resourceId, String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank() || conceptName == null) {
+            return;
+        }
+        String safeTenant = (tenantId == null || tenantId.isBlank()) ? "default" : tenantId;
+        try {
+            idempotencyStore.saveSuccess(
+                    safeTenant, "crud." + conceptName, "create", idempotencyKey,
+                    resourceId == null ? "" : resourceId,
+                    System.currentTimeMillis()
+            );
+        } catch (Exception ignored) {
+            // Idempotency recording must never break primary execution.
+        }
+    }
+
+    private void appendCrudAudit(String conceptName, String operation, String resourceId,
+                                  String outcome, ExecutionContext ctx) {
+        try {
+            ExecutionContext safeCtx = ctx == null ? ExecutionContext.anonymous() : ctx;
+            String safeResourceType = (conceptName == null || conceptName.isBlank())
+                    ? "UNKNOWN" : conceptName.toUpperCase(Locale.ROOT);
+            String safeOperation = (operation == null || operation.isBlank()) ? "UNKNOWN" : operation;
+            auditLogStore.append(AuditRecord.create(
+                    safeCtx.tenantId(),
+                    safeCtx.actorId(),
+                    safeCtx.roles(),
+                    "CRUD_" + safeOperation.toUpperCase(Locale.ROOT),
+                    safeResourceType,
+                    resourceId == null ? "<none>" : resourceId,
+                    outcome == null ? "UNKNOWN" : outcome,
+                    "crud_" + safeOperation.toLowerCase(Locale.ROOT),
+                    Map.of("conceptName", safeResourceType),
+                    Map.of("operation", safeOperation)
+            ));
+        } catch (Exception ignored) {
+            // Audit must never break primary execution.
+        }
     }
 }

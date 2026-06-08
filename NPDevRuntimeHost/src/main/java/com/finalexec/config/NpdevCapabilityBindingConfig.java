@@ -77,12 +77,16 @@ public class NpdevCapabilityBindingConfig {
     }
 
     @Bean
-    public ConceptGateway conceptGateway(CompiledModel compiledModel, ConceptStore conceptStore) {
+    public ConceptGateway conceptGateway(
+            CompiledModel compiledModel,
+            ConceptStore conceptStore,
+            AuditLogStore auditLogStore
+    ) {
         return new DefaultConceptGateway(
                 conceptStore,
                 PermissionEvaluator.allowAll(),
                 com.npdev.kernel.ports.TenantIsolationPolicy.STRICT_EQUALS,
-                AuditLogStore.noop(),
+                auditLogStore,
                 RuntimeConceptGatewaySemanticPolicies.fromCompiledModel(compiledModel),
                 new InMemoryConceptGatewayTraceSink()
         );
@@ -298,7 +302,10 @@ public class NpdevCapabilityBindingConfig {
             ObjectProvider<DataSource> dataSourceProvider,
             RuntimeClock runtimeClock,
             OrchestrationExecutionRegistry orchestrationExecutionRegistry,
-            RuntimeInvariantEngineFactory runtimeInvariantEngineFactory
+            RuntimeInvariantEngineFactory runtimeInvariantEngineFactory,
+            AuditLogStore auditLogStore,
+            PermissionEvaluator permissionEvaluator,
+            IdempotencyStore idempotencyStore
     ) {
         return new GeneratedCrudRuntimeSupport(
                 compiledModel,
@@ -309,7 +316,10 @@ public class NpdevCapabilityBindingConfig {
                 dataSourceProvider.getIfAvailable(),
                 runtimeClock,
                 orchestrationExecutionRegistry,
-                runtimeInvariantEngineFactory
+                runtimeInvariantEngineFactory,
+                auditLogStore,
+                permissionEvaluator,
+                idempotencyStore
         );
     }
 
