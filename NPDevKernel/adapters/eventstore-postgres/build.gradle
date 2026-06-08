@@ -1,7 +1,6 @@
 dependencies {
     implementation project(':kernel')
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
-    implementation 'org.postgresql:postgresql:42.7.4'
 
     testImplementation project(':adapters:postgres-test-support')
 }

@@ -39,5 +39,5 @@ tasks.register('generatorQualityGate') {
     description = 'Runs the independent NPDevGenerator verification build.'
     dependsOn ':generator:test'
     dependsOn ':tools:npdev-cli:test'
-    dependsOn ':npdev-migrations:jar'
 }
+

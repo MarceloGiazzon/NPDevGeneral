@@ -281,8 +281,7 @@ tasks.register('reportRuntimeSupportedSurface') {
  * Runtime resource policy:
  * - application.* must come only from src/main/resources
  * - generated resources may provide npdev metadata/static assets/templates
- * - runtime schema-realization SQL comes from src/main/resources/db/migration
- * - generated db/migration content is forbidden
+ * - runtime schema-realization SQL comes from db/schema-realization
  * - schema-realization analysis artifacts must never go into runtime classpath
  * - stateful upgrade management remains unsupported in the generated app
  */
@@ -293,76 +292,62 @@ tasks.named('processResources', Copy) {
         delete(destinationDir)
     }
 
-    // Generated resources first, but NEVER generated runtime schema-realization SQL
+    // Generated resources first, including generated schema-realization artifacts.
     from('npdev-generated/src/main/resources') {
         exclude('**/application.yml')
         exclude('**/application.yaml')
         exclude('**/application.properties')
-        exclude('db/migration/**')
-        exclude('db/migration-plans/**')
         exclude('db/schema-snapshots/**')
     }
 
     // Handwritten resources last and authoritative.
-    // This includes canonical runtime schema-realization SQL.
     from('src/main/resources') {
-        exclude('db/migration-plans/**')
         exclude('db/schema-snapshots/**')
     }
 }
 
-tasks.register('enforceSingleMigrationSource') {
+tasks.register('enforceSingleSchemaRealizationSource') {
     group = 'verification'
-    description = 'Ensures runtime schema-realization SQL comes from src/main/resources/db/migration only.'
+    description = 'Ensures generated apps contain schema-realization artifacts.'
 
     doLast {
-        File generatedMigrationDir = file('npdev-generated/src/main/resources/db/migration')
-        if (generatedMigrationDir.exists()) {
-            def generatedFiles = fileTree(generatedMigrationDir).files
-            if (!generatedFiles.isEmpty()) {
-                throw new GradleException(
-                        "Generated runtime schema-realization SQL detected: ${generatedMigrationDir}. " +
-                        "Canonical runtime source is src/main/resources/db/migration."
-                )
-            }
-        }
-
         def migrationJars = fileTree(dir: 'libs', include: ['npdev-migrations-*.jar']).files
         if (!migrationJars.isEmpty()) {
             throw new GradleException(
                     "Schema-realization helper jar(s) found in libs/: ${migrationJars}. " +
-                        "Canonical runtime source is src/main/resources/db/migration, so stateful upgrade tooling must not be packaged into FinalExec."
+                        "Canonical runtime source is src/main/resources/db/schema-realization, so stateful upgrade tooling must not be packaged into FinalExec."
             )
         }
 
-        File canonicalDir = file('src/main/resources/db/migration')
-        if (!canonicalDir.exists()) {
+        File realizationDir = file('npdev-generated/src/main/resources/db/schema-realization')
+        if (!realizationDir.exists()) {
             throw new GradleException(
-                    "Canonical schema-realization directory not found: ${canonicalDir}"
+                    "Generated schema-realization directory not found: ${realizationDir}"
             )
         }
 
-        def canonicalFiles = fileTree(canonicalDir).matching {
+        def realizationFiles = fileTree(realizationDir).matching {
             include('**/*.sql')
+            include('**/*.json')
         }.files
 
-        if (canonicalFiles.isEmpty()) {
+        if (realizationFiles.isEmpty()) {
             throw new GradleException(
-                    "No canonical schema-realization SQL files found in ${canonicalDir}"
+                    "No generated schema-realization artifacts found in ${realizationDir}"
             )
         }
 
-        println "Canonical schema-realization source: src/main/resources/db/migration"
-        println "Canonical schema-realization SQL files found: ${canonicalFiles.size()}"
+        println "Generated schema-realization source: npdev-generated/src/main/resources/db/schema-realization"
+        println "Generated schema-realization artifacts found: ${realizationFiles.size()}"
     }
 }
 
 tasks.named('bootRun') {
-    dependsOn 'enforceSingleMigrationSource'
+    dependsOn 'enforceSingleSchemaRealizationSource'
 }
 
 tasks.named('test') {
-    dependsOn 'enforceSingleMigrationSource'
+    dependsOn 'enforceSingleSchemaRealizationSource'
     useJUnitPlatform()
     def activeProfiles = providers.gradleProperty('spring.profiles.active')
             .orElse(providers.environmentVariable('SPRING_PROFILES_ACTIVE'))
@@ -420,27 +405,27 @@ tasks.named('compileIntegrationTestJava') {
     dependsOn tasks.named('verifyGeneratedRuntimeMount')
 }
 
-tasks.register('runtimeMigrationPreflight') {
+tasks.register('runtimeSchemaRealizationPreflight') {
     group = 'verification'
-    description = 'Preflights Flyway migration assets before runtime startup.'
+    description = 'Preflights schema-realization SQL assets before runtime startup.'
 
     doLast {
-        def migrationDir = file('src/main/resources/db/migration')
-        if (!migrationDir.isDirectory()) {
-            throw new GradleException("Missing Flyway migration directory: ${migrationDir}")
+        def realizationDir = file('npdev-generated/src/main/resources/db/schema-realization')
+        if (!realizationDir.isDirectory()) {
+            throw new GradleException("Missing schema-realization directory: ${realizationDir}")
         }
-        def sqlFiles = fileTree(migrationDir) { include '*.sql' }.files.sort { it.name }
+        def sqlFiles = fileTree(realizationDir) { include '*.sql' }.files.sort { it.name }
         if (sqlFiles.isEmpty()) {
-            throw new GradleException("No Flyway SQL migrations found in ${migrationDir}")
+            throw new GradleException("No schema-realization SQL files found in ${realizationDir}")
         }
         def destructivePattern = ~/(?i)\b(drop|truncate|delete\s+from|alter\s+table\s+\S+\s+drop)\b/
         def destructiveHits = sqlFiles.findAll { file ->
             file.getText('UTF-8') =~ destructivePattern
         }
         if (!destructiveHits.isEmpty()) {
-            throw new GradleException("Runtime migration preflight rejected destructive SQL: ${destructiveHits*.name}")
+            throw new GradleException("Runtime schema-realization preflight rejected destructive SQL: ${destructiveHits*.name}")
         }
-        println "Runtime migration preflight OK. Flyway SQL files checked: ${sqlFiles.size()}"
+        println "Runtime schema-realization preflight OK. SQL files checked: ${sqlFiles.size()}"
     }
 }
 
