@@ -5,6 +5,10 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
+import com.npdev.generator.bonds.BondModelSupport;
+import com.npdev.generator.bonds.BondModelSupport.Bond;
+import com.npdev.generator.bonds.BondModelSupport.Cardinality;
 import com.npdev.kernel.dbschema.InternalColumnDefinition;
 import com.npdev.kernel.dbschema.InternalColumnType;
 import com.npdev.kernel.dbschema.InternalIndexDefinition;
@@ -18,6 +22,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public final class SchemaRealizationEmitter {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
@@ -56,9 +61,11 @@ public final class SchemaRealizationEmitter {
             }
         }
         if (plan.createBusinessTables()) {
+            Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
             for (CompiledConcept concept : model.getConcepts()) {
-                appendBusinessTable(sql, concept, plan.engine());
+                appendBusinessTable(sql, concept, plan.engine(), conceptsByName);
             }
+            appendBonds(sql, model, plan.engine(), conceptsByName);
         }
         Files.writeString(schemaDir.resolve("V1__npdev_schema_realization.sql"), sql.toString(), StandardCharsets.UTF_8);
     }
@@ -95,16 +102,28 @@ public final class SchemaRealizationEmitter {
         sql.append("\n");
     }
 
-    private static void appendBusinessTable(StringBuilder sql, CompiledConcept concept, DatabaseEngine engine) {
+    private static void appendBusinessTable(StringBuilder sql, CompiledConcept concept, DatabaseEngine engine,
+            Map<String, CompiledConcept> conceptsByName) {
         String table = UserDatabaseDefinitionLoader.safeTable(concept);
         List<String> lines = new ArrayList<>();
         String idColumn = null;
         for (CompiledField field : concept.getFields()) {
+            Optional<Bond> bond = BondModelSupport.resolveBond(concept, field, conceptsByName);
+            // A many-to-many bond has no scalar column; its set lives in a junction table (below).
+            if (bond.isPresent() && bond.get().cardinality() == Cardinality.MANY_TO_MANY) {
+                continue;
+            }
             String column = UserDatabaseDefinitionLoader.toSnake(field.getName());
+            // A bond column takes the bound anchor's SQL type (e.g. a natural-key via sku -> VARCHAR),
+            // not the reference default (UUID), so the column matches both the FK target and the
+            // generated entity field type (which Hibernate ddl-auto=validate checks at startup).
+            String sqlType = bond.isPresent()
+                    ? bond.get().effectiveSqlType()
+                    : UserDatabaseDefinitionLoader.mapType(field);
             StringBuilder line = new StringBuilder("  ")
                     .append(column)
                     .append(" ")
-                    .append(renderType(UserDatabaseDefinitionLoader.mapType(field), engine));
+                    .append(renderType(sqlType, engine));
             if (field.isRequired() || field.isId()) {
                 line.append(" NOT NULL");
             }
@@ -121,8 +140,21 @@ public final class SchemaRealizationEmitter {
         sql.append("CREATE TABLE IF NOT EXISTS ").append(table).append(" (\n");
         sql.append(String.join(",\n", lines)).append("\n);\n\n");
         for (CompiledField field : concept.getFields()) {
-            if (field.isUnique()) {
-                String column = UserDatabaseDefinitionLoader.toSnake(field.getName());
+            if (!field.isUnique()) {
+                continue;
+            }
+            String column = UserDatabaseDefinitionLoader.toSnake(field.getName());
+            if (isConnectableAnchor(field) && !field.isId()) {
+                // A connectable natural-key anchor is an FK target. On H2 a unique INDEX is not a
+                // valid FK target (error 90057 "UNIQUE (col) not found"); a UNIQUE CONSTRAINT is,
+                // and it backs uniqueness too. Plain unique fields keep a unique index.
+                sql.append("ALTER TABLE ").append(table)
+                        .append(" ADD CONSTRAINT IF NOT EXISTS ")
+                        .append(truncate("uq_" + table + "_" + column))
+                        .append(" UNIQUE (")
+                        .append(column)
+                        .append(");\n");
+            } else {
                 sql.append("CREATE UNIQUE INDEX IF NOT EXISTS ")
                         .append(truncate("ux_" + table + "_" + column))
                         .append(" ON ")
@@ -131,6 +163,75 @@ public final class SchemaRealizationEmitter {
                         .append(column)
                         .append(");\n");
             }
+        }
+        sql.append("\n");
+    }
+
+    private static boolean isConnectableAnchor(CompiledField field) {
+        return field != null && "anchor".equalsIgnoreCase(field.getConnectable());
+    }
+
+    /**
+     * Emits referential integrity for bonds, mirroring {@code FlywayEmitter}: junction tables for
+     * many-to-many bonds, and foreign keys (with the authored ON DELETE policy and, for natural-key
+     * anchors, ON UPDATE CASCADE) for scalar bonds. Emitted after all tables and their unique
+     * indexes exist so every referenced anchor column is already present.
+     */
+    private static void appendBonds(StringBuilder sql, CompiledModel model, DatabaseEngine engine,
+            Map<String, CompiledConcept> conceptsByName) {
+        List<Bond> bonds = BondModelSupport.allBonds(model);
+        if (bonds.isEmpty()) {
+            return;
+        }
+
+        // Junction tables (N:M bonds).
+        for (Bond bond : bonds) {
+            if (bond.cardinality() != Cardinality.MANY_TO_MANY) {
+                continue;
+            }
+            CompiledField sourceId = BondModelSupport.idField(bond.sourceConcept());
+            String junctionTable = bond.junctionTable();
+            String sourceColumn = SqlIdentifierSupport.sourceJunctionColumn(sourceId);
+            String targetColumn = SqlIdentifierSupport.targetJunctionColumn(bond.anchorField());
+            sql.append("CREATE TABLE IF NOT EXISTS ").append(junctionTable).append(" (\n")
+                    .append("  ").append(sourceColumn).append(" ").append(renderType(UserDatabaseDefinitionLoader.mapType(sourceId), engine)).append(" NOT NULL,\n")
+                    .append("  ").append(targetColumn).append(" ").append(renderType(bond.effectiveSqlType(), engine)).append(" NOT NULL,\n")
+                    .append("  PRIMARY KEY (").append(sourceColumn).append(", ").append(targetColumn).append(")\n")
+                    .append(");\n");
+            sql.append("CREATE INDEX IF NOT EXISTS ")
+                    .append(SqlIdentifierSupport.safeSqlIdentifier("idx_" + junctionTable + "_" + sourceColumn))
+                    .append(" ON ").append(junctionTable).append(" (").append(sourceColumn).append(");\n");
+            sql.append("CREATE INDEX IF NOT EXISTS ")
+                    .append(SqlIdentifierSupport.safeSqlIdentifier("idx_" + junctionTable + "_" + targetColumn))
+                    .append(" ON ").append(junctionTable).append(" (").append(targetColumn).append(");\n");
+            // Source-side FK is always CASCADE: a junction row is membership owned by its source.
+            sql.append("ALTER TABLE ").append(junctionTable)
+                    .append(" ADD CONSTRAINT IF NOT EXISTS ")
+                    .append(SqlIdentifierSupport.safeSqlIdentifier("fk_" + junctionTable + "_" + sourceColumn))
+                    .append(" FOREIGN KEY (").append(sourceColumn).append(")")
+                    .append(" REFERENCES ").append(bond.sourceTable()).append(" (").append(SqlIdentifierSupport.columnName(sourceId)).append(")")
+                    .append(" ON DELETE CASCADE;\n");
+            sql.append("ALTER TABLE ").append(junctionTable)
+                    .append(" ADD CONSTRAINT IF NOT EXISTS ")
+                    .append(SqlIdentifierSupport.safeSqlIdentifier("fk_" + junctionTable + "_" + targetColumn))
+                    .append(" FOREIGN KEY (").append(targetColumn).append(")")
+                    .append(" REFERENCES ").append(bond.targetTable()).append(" (").append(bond.anchorColumn()).append(")")
+                    .append(bond.onUpdateSqlClause())
+                    .append(" ON DELETE ").append(bond.onDeleteSql()).append(";\n\n");
+        }
+
+        // Foreign keys for scalar (N:1 / 1:1) bonds.
+        for (Bond bond : bonds) {
+            if (bond.cardinality() == Cardinality.MANY_TO_MANY) {
+                continue;
+            }
+            String constraint = SqlIdentifierSupport.safeSqlIdentifier("fk_" + bond.sourceTable() + "_" + bond.sourceColumn());
+            sql.append("ALTER TABLE ").append(bond.sourceTable())
+                    .append(" ADD CONSTRAINT IF NOT EXISTS ").append(constraint)
+                    .append(" FOREIGN KEY (").append(bond.sourceColumn()).append(")")
+                    .append(" REFERENCES ").append(bond.targetTable()).append(" (").append(bond.anchorColumn()).append(")")
+                    .append(bond.onUpdateSqlClause())
+                    .append(" ON DELETE ").append(bond.onDeleteSql()).append(";\n");
         }
         sql.append("\n");
     }

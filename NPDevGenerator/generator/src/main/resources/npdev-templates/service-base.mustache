@@ -67,6 +67,15 @@ public class {{entityName}}ServiceBase {
         return persistence.findAll();
     }
 
+{{#referenceFinders}}
+    public List<{{entityName}}> listBy{{capName}}(Object value) {
+        return findAllFromConceptStore().stream()
+                .filter(entity -> uniqueValuesEqual(mapFromEntity(entity).get("{{name}}"), value))
+                .toList();
+    }
+
+{{/referenceFinders}}
+
     @Transactional
     public {{entityName}} create({{entityName}}CreateRequest dto) {
         if (dto == null) {
@@ -104,7 +113,7 @@ public class {{entityName}}ServiceBase {
         runtimeSupport.assignGeneratedId("{{entityName}}", e, generatedId);
         runtimeSupport.applyCreateFields("{{entityName}}", source, e);
 
-        {{entityName}} created = persistence.save(e);
+        {{entityName}} created = saveWithIntegrityMapping(e);
         runtimeSupport.auditCrudMutation("{{conceptName}}", "CREATE", String.valueOf(created.getId()), "ALLOW", crudCtx);
         runtimeSupport.recordCrudIdempotencySuccess(crudCtx.tenantId(), "{{conceptName}}", String.valueOf(created.getId()), idempotencyKey);
 {{#emitCreatedEvent}}
@@ -139,7 +148,7 @@ public class {{entityName}}ServiceBase {
         enforceWithConceptGateway("{{conceptName}}", id, updatePayload);
         runtimeSupport.applyUpdateFields("{{entityName}}", source, existing);
 
-        {{entityName}} updated = persistence.save(existing);
+        {{entityName}} updated = saveWithIntegrityMapping(existing);
         runtimeSupport.auditCrudMutation("{{conceptName}}", "UPDATE", String.valueOf(updated.getId()), "ALLOW", crudCtx);
         runtimeSupport.publishLifecycleTransitionEvent("{{entityName}}", previousLifecycleStatus, updated, updatePayload);
 {{#emitUpdatedEvent}}
@@ -154,7 +163,7 @@ public class {{entityName}}ServiceBase {
         runtimeSupport.checkCrudPermission("{{conceptName}}", "DELETE", crudCtx);
         if (!persistence.existsById(id)) return false;
         enforceDeleteWithConceptGateway("{{conceptName}}", id);
-        persistence.deleteById(id);
+        deleteWithIntegrityMapping(id);
         runtimeSupport.auditCrudMutation("{{conceptName}}", "DELETE", String.valueOf(id), "ALLOW", crudCtx);
 {{#emitDeletedEvent}}
         publishMutationEvent("deleted", id, null);
@@ -162,6 +171,27 @@ public class {{entityName}}ServiceBase {
         return true;
     }
 
+{{#manyToManyBonds}}
+    public List<Object> list{{capName}}Members(UUID id) {
+        return runtimeSupport.listBondMembers("{{conceptName}}", id, "{{name}}");
+    }
+
+    @Transactional
+    public void add{{capName}}Member(UUID id, Object targetAnchor) {
+        runtimeSupport.addBondMember("{{conceptName}}", id, "{{name}}", targetAnchor);
+    }
+
+    @Transactional
+    public void remove{{capName}}Member(UUID id, Object targetAnchor) {
+        runtimeSupport.removeBondMember("{{conceptName}}", id, "{{name}}", targetAnchor);
+    }
+
+    @Transactional
+    public void replace{{capName}}Members(UUID id, List<?> targetAnchors) {
+        runtimeSupport.replaceBondMembers("{{conceptName}}", id, "{{name}}", targetAnchors);
+    }
+
+{{/manyToManyBonds}}
     public static final class UniqueViolation extends RuntimeException {
         public UniqueViolation(String message) {
             super(message);
@@ -284,6 +314,24 @@ public class {{entityName}}ServiceBase {
         }
     }
 
+    private {{entityName}} saveWithIntegrityMapping({{entityName}} entity) {
+        try {
+            return persistence.save(entity);
+        } catch (RuntimeException exception) {
+            throw GeneratedCrudRuntimeSupport.mapDataIntegrityViolation("{{conceptName}}", null, exception)
+                    .orElseThrow(() -> exception);
+        }
+    }
+
+    private void deleteWithIntegrityMapping(UUID id) {
+        try {
+            persistence.deleteById(id);
+        } catch (RuntimeException exception) {
+            throw GeneratedCrudRuntimeSupport.mapDataIntegrityViolation("{{conceptName}}", null, exception)
+                    .orElseThrow(() -> exception);
+        }
+    }
+
     private void enforceWithConceptGateway(String conceptName, UUID id, Map<String, Object> payload) {
         if (conceptGateway == null) {
             throw new IllegalStateException("ConceptGateway is required for generated CRUD mutations.");
@@ -304,6 +352,9 @@ public class {{entityName}}ServiceBase {
                             false
                     )
             ));
+        } catch (RuntimeException exception) {
+            throw GeneratedCrudRuntimeSupport.mapDataIntegrityViolation(conceptName, null, exception)
+                    .orElseThrow(() -> exception);
         }
     }
 
@@ -327,6 +378,9 @@ public class {{entityName}}ServiceBase {
                             false
                     )
             ));
+        } catch (RuntimeException exception) {
+            throw GeneratedCrudRuntimeSupport.mapDataIntegrityViolation(conceptName, null, exception)
+                    .orElseThrow(() -> exception);
         }
     }
 

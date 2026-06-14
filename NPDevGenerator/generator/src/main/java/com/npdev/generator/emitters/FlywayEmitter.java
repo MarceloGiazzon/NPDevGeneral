@@ -3,12 +3,21 @@ package com.npdev.generator.emitters;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledReferenceSemantics;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
+import com.npdev.dsl.v1.compiled.SqlTypeSupport;
+import com.npdev.generator.bonds.BondModelSupport;
+import com.npdev.generator.bonds.BondModelSupport.Bond;
+import com.npdev.generator.bonds.BondModelSupport.Cardinality;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public final class FlywayEmitter {
 
@@ -43,35 +52,37 @@ public final class FlywayEmitter {
         sb.append("--  - If required fields exist with NULLs, SET NOT NULL may fail.\n");
         sb.append("--  - Destructive changes (DROP COLUMN) are not generated.\n\n");
 
+        Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
+
         for (CompiledConcept e : model.getConcepts()) {
             String table = safeTable(e);
-            CompiledField idField = idField(e);
-            String idColumn = toSnake(idField.getName());
+            CompiledField idField = BondModelSupport.idField(e);
+            String idColumn = SqlIdentifierSupport.columnName(idField);
 
             sb.append("CREATE TABLE IF NOT EXISTS ").append(table).append(" (\n");
             sb.append("  ").append(idColumn).append(" ").append(mapType(idField)).append(" PRIMARY KEY\n");
             sb.append(");\n\n");
 
             for (CompiledField f : e.getFields()) {
-                if (f == null || f.getName() == null || f.isId()) {
+                if (f == null || f.getName() == null || f.isId() || isManyToManyBond(e, f, conceptsByName)) {
                     continue;
                 }
                 sb.append("ALTER TABLE ").append(table)
                         .append(" ADD COLUMN IF NOT EXISTS ")
-                        .append(toSnake(f.getName())).append(" ").append(mapType(f)).append(";\n");
+                        .append(SqlIdentifierSupport.columnName(f)).append(" ").append(columnType(f, conceptsByName)).append(";\n");
             }
 
             sb.append("\n");
 
             for (CompiledField f : e.getFields()) {
-                if (f == null || f.getName() == null || f.isId()) {
+                if (f == null || f.getName() == null || f.isId() || isManyToManyBond(e, f, conceptsByName)) {
                     continue;
                 }
                 boolean required = false;
                 try { required = f.isRequired(); } catch (Exception ignored) {}
                 if (required) {
                     sb.append("ALTER TABLE ").append(table)
-                            .append(" ALTER COLUMN ").append(toSnake(f.getName()))
+                            .append(" ALTER COLUMN ").append(SqlIdentifierSupport.columnName(f))
                             .append(" SET NOT NULL;\n");
                 }
             }
@@ -79,7 +90,7 @@ public final class FlywayEmitter {
             sb.append("\n");
 
             for (CompiledField f : e.getFields()) {
-                if (f == null || f.getName() == null || f.isId()) {
+                if (f == null || f.getName() == null || f.isId() || isManyToManyBond(e, f, conceptsByName)) {
                     continue;
                 }
                 boolean unique = false;
@@ -87,25 +98,37 @@ public final class FlywayEmitter {
                 if (!unique) {
                     continue;
                 }
-                String col = toSnake(f.getName());
-                sb.append("CREATE UNIQUE INDEX IF NOT EXISTS ")
-                        .append(truncateIdentifier("ux_" + table + "_" + col))
-                        .append(" ON ")
-                        .append(table)
-                        .append(" (")
-                        .append(col)
-                        .append(");\n");
+                String col = SqlIdentifierSupport.columnName(f);
+                if (isConnectableAnchor(f)) {
+                    // A connectable natural-key anchor is an FK target. On H2 a unique INDEX is not a
+                    // valid FK target (error 90057); a UNIQUE CONSTRAINT is, and it backs uniqueness
+                    // too. Plain unique fields keep a unique index.
+                    sb.append("ALTER TABLE ").append(table)
+                            .append(" ADD CONSTRAINT IF NOT EXISTS ")
+                            .append(SqlIdentifierSupport.safeSqlIdentifier("uq_" + table + "_" + col))
+                            .append(" UNIQUE (")
+                            .append(col)
+                            .append(");\n");
+                } else {
+                    sb.append("CREATE UNIQUE INDEX IF NOT EXISTS ")
+                            .append(SqlIdentifierSupport.safeSqlIdentifier("ux_" + table + "_" + col))
+                            .append(" ON ")
+                            .append(table)
+                            .append(" (")
+                            .append(col)
+                            .append(");\n");
+                }
             }
 
             sb.append("\n");
 
             for (CompiledField f : e.getFields()) {
-                if (f == null || f.getName() == null || f.isId() || !isReferenceLike(f)) {
+                if (f == null || f.getName() == null || f.isId() || isManyToManyBond(e, f, conceptsByName) || !isReferenceLike(f)) {
                     continue;
                 }
-                String col = toSnake(f.getName());
+                String col = SqlIdentifierSupport.columnName(f);
                 sb.append("CREATE INDEX IF NOT EXISTS ")
-                        .append(truncateIdentifier("idx_" + table + "_" + col))
+                        .append(SqlIdentifierSupport.safeSqlIdentifier("idx_" + table + "_" + col))
                         .append(" ON ")
                         .append(table)
                         .append(" (")
@@ -115,6 +138,67 @@ public final class FlywayEmitter {
 
             sb.append("\n-- ----\n\n");
         }
+
+        List<Bond> bonds = BondModelSupport.allBonds(model);
+
+        // Junction tables for pure-pointer N:M bonds. The authored field is not a
+        // scalar column; the set lives entirely in this synthesized table.
+        sb.append("-- Junction tables (N:M bonds)\n");
+        for (Bond bond : bonds) {
+            if (bond.cardinality() != Cardinality.MANY_TO_MANY) {
+                continue;
+            }
+            CompiledField sourceId = BondModelSupport.idField(bond.sourceConcept());
+            String junctionTable = bond.junctionTable();
+            String sourceColumn = SqlIdentifierSupport.sourceJunctionColumn(sourceId);
+            String targetColumn = SqlIdentifierSupport.targetJunctionColumn(bond.anchorField());
+            sb.append("CREATE TABLE IF NOT EXISTS ").append(junctionTable).append(" (\n")
+                    .append("  ").append(sourceColumn).append(" ").append(mapType(sourceId)).append(" NOT NULL,\n")
+                    .append("  ").append(targetColumn).append(" ").append(bond.effectiveSqlType()).append(" NOT NULL,\n")
+                    .append("  PRIMARY KEY (").append(sourceColumn).append(", ").append(targetColumn).append(")\n")
+                    .append(");\n");
+            sb.append("CREATE INDEX IF NOT EXISTS ")
+                    .append(SqlIdentifierSupport.safeSqlIdentifier("idx_" + junctionTable + "_" + sourceColumn))
+                    .append(" ON ").append(junctionTable).append(" (").append(sourceColumn).append(");\n");
+            sb.append("CREATE INDEX IF NOT EXISTS ")
+                    .append(SqlIdentifierSupport.safeSqlIdentifier("idx_" + junctionTable + "_" + targetColumn))
+                    .append(" ON ").append(junctionTable).append(" (").append(targetColumn).append(");\n");
+            // Source-side FK is always CASCADE: a junction row is membership owned by its
+            // source, so deleting the source must remove its memberships. The authored
+            // onDelete policy governs only the TARGET side below.
+            sb.append("ALTER TABLE ").append(junctionTable)
+                    .append(" ADD CONSTRAINT IF NOT EXISTS ")
+                    .append(SqlIdentifierSupport.safeSqlIdentifier("fk_" + junctionTable + "_" + sourceColumn))
+                    .append(" FOREIGN KEY (").append(sourceColumn).append(")")
+                    .append(" REFERENCES ").append(bond.sourceTable()).append(" (").append(SqlIdentifierSupport.columnName(sourceId)).append(")")
+                    .append(" ON DELETE CASCADE;\n");
+            sb.append("ALTER TABLE ").append(junctionTable)
+                    .append(" ADD CONSTRAINT IF NOT EXISTS ")
+                    .append(SqlIdentifierSupport.safeSqlIdentifier("fk_" + junctionTable + "_" + targetColumn))
+                    .append(" FOREIGN KEY (").append(targetColumn).append(")")
+                    .append(" REFERENCES ").append(bond.targetTable()).append(" (").append(bond.anchorColumn()).append(")")
+                    .append(bond.onUpdateSqlClause())
+                    .append(" ON DELETE ").append(bond.onDeleteSql()).append(";\n\n");
+        }
+
+        // Foreign keys (bonds) emitted last: every target table and its PK/unique
+        // anchor column already exists above, so the references resolve. DB is the
+        // source of truth for referential integrity; the app maps violations to a
+        // clean domain error.
+        sb.append("-- Foreign keys (bonds)\n");
+        for (Bond bond : bonds) {
+            if (bond.cardinality() == Cardinality.MANY_TO_MANY) {
+                continue;
+            }
+            String constraint = SqlIdentifierSupport.safeSqlIdentifier("fk_" + bond.sourceTable() + "_" + bond.sourceColumn());
+            sb.append("ALTER TABLE ").append(bond.sourceTable())
+                    .append(" ADD CONSTRAINT IF NOT EXISTS ").append(constraint)
+                    .append(" FOREIGN KEY (").append(bond.sourceColumn()).append(")")
+                    .append(" REFERENCES ").append(bond.targetTable()).append(" (").append(bond.anchorColumn()).append(")")
+                    .append(bond.onUpdateSqlClause())
+                    .append(" ON DELETE ").append(bond.onDeleteSql()).append(";\n");
+        }
+        sb.append("\n");
 
         Files.writeString(
                 file,
@@ -127,38 +211,85 @@ public final class FlywayEmitter {
         return file;
     }
 
-    private static CompiledField idField(CompiledConcept e) {
-        CompiledField found = null;
-        for (CompiledField field : e.getFields()) {
-            if (field == null || !field.isId()) {
-                continue;
-            }
-            if (found != null) {
-                throw new IllegalStateException("Concept " + e.getName() + " must have exactly one id field.");
-            }
-            found = field;
-        }
-        if (found == null) {
-            throw new IllegalStateException("Concept " + e.getName() + " must have exactly one id field.");
-        }
-        return found;
+    private static boolean isManyToManyBond(
+            CompiledConcept source,
+            CompiledField field,
+            Map<String, CompiledConcept> conceptsByName
+    ) {
+        return BondModelSupport.resolveBond(source, field, conceptsByName)
+                .map(bond -> bond.cardinality() == Cardinality.MANY_TO_MANY)
+                .orElse(false);
     }
 
     private String safeTable(CompiledConcept e) {
-        String t = null;
-        try { t = e.getTableName(); } catch (Exception ignored) {}
-        if (t == null || t.trim().isEmpty()) t = e.getName().toLowerCase(Locale.ROOT) + "s";
-        return t.trim().toLowerCase(Locale.ROOT);
+        return SqlIdentifierSupport.tableName(e);
     }
 
     private String toSnake(String s) {
-        StringBuilder out = new StringBuilder();
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (Character.isUpperCase(c) && i > 0) out.append('_');
-            out.append(Character.toLowerCase(c));
+        return SqlIdentifierSupport.toSnake(s);
+    }
+
+    /** A field explicitly marked as a connectable bond anchor (an FK-referenceable natural key). */
+    private static boolean isConnectableAnchor(CompiledField field) {
+        return field != null && "anchor".equalsIgnoreCase(field.getConnectable());
+    }
+
+    /** A field that declares a real bond target (not the {@code *Id}-uuid heuristic). */
+    private static boolean isDeclaredReference(CompiledField field) {
+        CompiledReferenceSemantics rs = field.getReferenceSemantics();
+        if (rs != null && rs.getTarget() != null && !rs.getTarget().isBlank()) {
+            return true;
         }
-        return out.toString();
+        return field.getReferenceTarget() != null && !field.getReferenceTarget().isBlank();
+    }
+
+    /** Resolves the anchor field a port binds to (its {@code via}, or the target id). */
+    private CompiledField resolveAnchorField(CompiledField field, Map<String, CompiledConcept> conceptsByName) {
+        CompiledReferenceSemantics rs = field.getReferenceSemantics();
+        String targetName = rs != null && rs.getTarget() != null && !rs.getTarget().isBlank()
+                ? rs.getTarget()
+                : field.getReferenceTarget();
+        if (targetName == null || targetName.isBlank()) {
+            return null;
+        }
+        CompiledConcept target = conceptsByName.get(targetName.toLowerCase(Locale.ROOT));
+        if (target == null) {
+            return null;
+        }
+        String via = rs == null ? null : rs.getVia();
+        if (via == null || via.isBlank()) {
+            return idFieldOrNull(target);
+        }
+        return fieldByName(target, via);
+    }
+
+    /** Column SQL type: for a declared bond, match the bound anchor's type; otherwise the field's own type. */
+    private String columnType(CompiledField field, Map<String, CompiledConcept> conceptsByName) {
+        if (isDeclaredReference(field)) {
+            CompiledField anchor = resolveAnchorField(field, conceptsByName);
+            if (anchor != null) {
+                return mapType(anchor);
+            }
+        }
+        return mapType(field);
+    }
+
+    private static CompiledField idFieldOrNull(CompiledConcept concept) {
+        for (CompiledField field : concept.getFields()) {
+            if (field != null && field.isId()) {
+                return field;
+            }
+        }
+        return null;
+    }
+
+    private static CompiledField fieldByName(CompiledConcept concept, String name) {
+        for (CompiledField field : concept.getFields()) {
+            if (field != null && name.equalsIgnoreCase(field.getName())) {
+                return field;
+            }
+        }
+        return null;
     }
 
     private static boolean isReferenceLike(CompiledField field) {
@@ -175,34 +306,10 @@ public final class FlywayEmitter {
     }
 
     private static String truncateIdentifier(String value) {
-        return value.length() > 60 ? value.substring(0, 60) : value;
+        return SqlIdentifierSupport.safeSqlIdentifier(value);
     }
 
     private String mapType(CompiledField field) {
-        String dslType = field == null ? null : field.getDslType();
-        if (dslType != null && !dslType.isBlank()) {
-            String normalizedDslType = dslType.trim().toLowerCase(Locale.ROOT);
-            if ("reference".equals(normalizedDslType) || "uuid".equals(normalizedDslType)) return "UUID";
-            if ("int".equals(normalizedDslType) || "integer".equals(normalizedDslType)) return "INTEGER";
-            if ("long".equals(normalizedDslType)) return "BIGINT";
-            if ("boolean".equals(normalizedDslType)) return "BOOLEAN";
-            if ("date".equals(normalizedDslType)) return "DATE";
-            if ("datetime".equals(normalizedDslType)) return "TIMESTAMP WITH TIME ZONE";
-            if ("enum".equals(normalizedDslType)) return "VARCHAR(255)";
-            if ("object".equals(normalizedDslType) || "array".equals(normalizedDslType)) return "JSONB";
-        }
-
-        String javaType = field == null ? null : field.getJavaType();
-        if (javaType == null) return "VARCHAR(255)";
-        String lower = javaType.trim().toLowerCase(Locale.ROOT);
-        if (lower.contains("uuid")) return "UUID";
-        if (lower.contains("string")) return "VARCHAR(255)";
-        if (lower.equals("int") || lower.contains("integer")) return "INTEGER";
-        if (lower.equals("long") || lower.contains("long")) return "BIGINT";
-        if (lower.contains("boolean")) return "BOOLEAN";
-        if (lower.contains("bigdecimal")) return "NUMERIC(19,2)";
-        if (lower.contains("localdate")) return "DATE";
-        if (lower.contains("instant") || lower.contains("offsetdatetime")) return "TIMESTAMP WITH TIME ZONE";
-        return "VARCHAR(255)";
+        return SqlTypeSupport.sqlType(field);
     }
 }
