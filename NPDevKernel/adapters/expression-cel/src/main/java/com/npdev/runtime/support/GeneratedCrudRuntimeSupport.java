@@ -11,8 +11,10 @@ import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledOrchestration;
 import com.npdev.dsl.v1.compiled.CompiledOrchestrationAction;
 import com.npdev.dsl.v1.compiled.CompiledOrchestrationTrigger;
+import com.npdev.dsl.v1.compiled.CompiledReferenceSemantics;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.compiled.CompiledStateTransition;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityRegistry;
 import com.npdev.kernel.CapabilityResult;
@@ -465,6 +467,96 @@ public final class GeneratedCrudRuntimeSupport {
 
     public void applyUpdateFields(String entityName, Object source, Object target) {
         applyEntityFields(entityName, source, target, true);
+    }
+
+    public List<Object> listBondMembers(String sourceConceptName, Object sourceId, String fieldName) {
+        BondRuntimeShape shape = requireBondRuntimeShape(sourceConceptName, fieldName);
+        if (dataSource == null) {
+            return List.of();
+        }
+        String sql = "SELECT " + shape.targetColumn() + " FROM " + shape.junctionTable()
+                + " WHERE CAST(" + shape.sourceColumn() + " AS VARCHAR) = ? ORDER BY " + shape.targetColumn();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, String.valueOf(normalizeByDslType(shape.sourceIdField().getDslType(), sourceId)));
+            try (ResultSet rows = statement.executeQuery()) {
+                List<Object> out = new ArrayList<>();
+                while (rows.next()) {
+                    out.add(rows.getObject(1));
+                }
+                return List.copyOf(out);
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed listing bond members for "
+                    + sourceConceptName + "." + fieldName, exception);
+        }
+    }
+
+    public void addBondMember(String sourceConceptName, Object sourceId, String fieldName, Object targetAnchorValue) {
+        BondRuntimeShape shape = requireBondRuntimeShape(sourceConceptName, fieldName);
+        requireDataSourceForBond(shape);
+        String sql = "INSERT INTO " + shape.junctionTable()
+                + " (" + shape.sourceColumn() + ", " + shape.targetColumn() + ") VALUES (?, ?)";
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setObject(1, normalizeByDslType(shape.sourceIdField().getDslType(), sourceId));
+            statement.setObject(2, normalizeByDslType(shape.targetAnchorField().getDslType(), targetAnchorValue));
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw mapDataIntegrityViolation(sourceConceptName, fieldName, exception)
+                    .orElseThrow(() -> new IllegalStateException("Failed adding bond member for "
+                            + sourceConceptName + "." + fieldName, exception));
+        }
+    }
+
+    public void removeBondMember(String sourceConceptName, Object sourceId, String fieldName, Object targetAnchorValue) {
+        BondRuntimeShape shape = requireBondRuntimeShape(sourceConceptName, fieldName);
+        requireDataSourceForBond(shape);
+        String sql = "DELETE FROM " + shape.junctionTable()
+                + " WHERE CAST(" + shape.sourceColumn() + " AS VARCHAR) = ?"
+                + " AND CAST(" + shape.targetColumn() + " AS VARCHAR) = ?";
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, String.valueOf(normalizeByDslType(shape.sourceIdField().getDslType(), sourceId)));
+            statement.setString(2, String.valueOf(normalizeByDslType(shape.targetAnchorField().getDslType(), targetAnchorValue)));
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw mapDataIntegrityViolation(sourceConceptName, fieldName, exception)
+                    .orElseThrow(() -> new IllegalStateException("Failed removing bond member for "
+                            + sourceConceptName + "." + fieldName, exception));
+        }
+    }
+
+    public void replaceBondMembers(String sourceConceptName, Object sourceId, String fieldName, Collection<?> targetAnchorValues) {
+        BondRuntimeShape shape = requireBondRuntimeShape(sourceConceptName, fieldName);
+        requireDataSourceForBond(shape);
+        String deleteSql = "DELETE FROM " + shape.junctionTable()
+                + " WHERE CAST(" + shape.sourceColumn() + " AS VARCHAR) = ?";
+        String insertSql = "INSERT INTO " + shape.junctionTable()
+                + " (" + shape.sourceColumn() + ", " + shape.targetColumn() + ") VALUES (?, ?)";
+        Object normalizedSourceId = normalizeByDslType(shape.sourceIdField().getDslType(), sourceId);
+        try (Connection connection = dataSource.getConnection()) {
+            boolean previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try (PreparedStatement delete = connection.prepareStatement(deleteSql)) {
+                delete.setString(1, String.valueOf(normalizedSourceId));
+                delete.executeUpdate();
+            }
+            try (PreparedStatement insert = connection.prepareStatement(insertSql)) {
+                for (Object targetAnchorValue : targetAnchorValues == null ? List.of() : targetAnchorValues) {
+                    insert.setObject(1, normalizedSourceId);
+                    insert.setObject(2, normalizeByDslType(shape.targetAnchorField().getDslType(), targetAnchorValue));
+                    insert.addBatch();
+                }
+                insert.executeBatch();
+            }
+            connection.commit();
+            connection.setAutoCommit(previousAutoCommit);
+        } catch (SQLException exception) {
+            throw mapDataIntegrityViolation(sourceConceptName, fieldName, exception)
+                    .orElseThrow(() -> new IllegalStateException("Failed replacing bond members for "
+                            + sourceConceptName + "." + fieldName, exception));
+        }
     }
 
     public List<Map<String, Object>> listScheduledEvents(Integer limit, Integer offset) {
@@ -1837,8 +1929,8 @@ public final class GeneratedCrudRuntimeSupport {
         }
     }
 
-    private void insertMappedRow(EventCreateOrchestration orchestration, Map<String, Object> payload) {
-        if (entityManager == null
+    private void insertMappedRow(EventCreateOrchestration orchestration, Map<String, Object> payload) throws SQLException {
+        if (dataSource == null
                 || orchestration == null
                 || payload == null
                 || payload.isEmpty()) {
@@ -1854,15 +1946,26 @@ public final class GeneratedCrudRuntimeSupport {
                 values.append(", ");
             }
             columns.append(toSnake(entries.get(index).getKey()));
-            values.append(":p").append(index);
+            values.append("?");
         }
         String sql = "INSERT INTO " + orchestration.targetTable()
                 + " (" + columns + ") VALUES (" + values + ")";
-        Query query = entityManager.createNativeQuery(sql);
-        for (int index = 0; index < entries.size(); index++) {
-            query.setParameter("p" + index, entries.get(index).getValue());
+        // An event-triggered orchestration runs outside the originating request's JPA transaction,
+        // so it persists through its own short JDBC transaction. Using the shared EntityManager here
+        // is not allowed (it surfaced as TransactionRequiredException); the DataSource path mirrors
+        // the bond membership writes in this class.
+        try (Connection connection = dataSource.getConnection()) {
+            boolean previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try (PreparedStatement insert = connection.prepareStatement(sql)) {
+                for (int index = 0; index < entries.size(); index++) {
+                    insert.setObject(index + 1, entries.get(index).getValue());
+                }
+                insert.executeUpdate();
+            }
+            connection.commit();
+            connection.setAutoCommit(previousAutoCommit);
         }
-        query.executeUpdate();
     }
 
     private static boolean isUniqueViolation(Exception exception) {
@@ -1884,6 +1987,62 @@ public final class GeneratedCrudRuntimeSupport {
             return isUniqueViolation(causeException);
         }
         return false;
+    }
+
+    public static Optional<InvariantViolationException> mapDataIntegrityViolation(
+            String conceptName,
+            String fieldName,
+            Exception exception
+    ) {
+        if (exception == null) {
+            return Optional.empty();
+        }
+        String safeConcept = conceptName == null || conceptName.isBlank() ? null : conceptName;
+        String safeField = fieldName == null || fieldName.isBlank() ? null : fieldName;
+        if (isUniqueViolation(exception)) {
+            return Optional.of(new InvariantViolationException(List.of(new InvariantViolationDetail(
+                    "unique_integrity_failed",
+                    safeConcept,
+                    "database_unique_constraint",
+                    safeField,
+                    "A unique value already exists for " + (safeConcept == null ? "this concept" : safeConcept),
+                    true
+            ))));
+        }
+        if (isForeignKeyViolation(exception)) {
+            return Optional.of(new InvariantViolationException(List.of(new InvariantViolationDetail(
+                    "reference_integrity_failed",
+                    safeConcept,
+                    "database_reference_constraint",
+                    safeField,
+                    "A referenced record does not exist or is restricted by a bond",
+                    false
+            ))));
+        }
+        return Optional.empty();
+    }
+
+    private static boolean isForeignKeyViolation(Throwable exception) {
+        if (exception == null) {
+            return false;
+        }
+        if (exception instanceof SQLException sqlException) {
+            String sqlState = sqlException.getSQLState();
+            if ("23503".equals(sqlState)) {
+                return true;
+            }
+        }
+        String message = exception.getMessage();
+        if (message != null) {
+            String normalized = message.toLowerCase(Locale.ROOT);
+            if (normalized.contains("foreign key")
+                    || normalized.contains("referential integrity")
+                    || normalized.contains("violates referential")
+                    || normalized.contains("constraint violation")) {
+                return true;
+            }
+        }
+        return isForeignKeyViolation(exception.getCause());
     }
 
     private List<ScheduledEventRecord> selectDueScheduledEvents(boolean forceDue, int limit) {
@@ -2399,6 +2558,17 @@ public final class GeneratedCrudRuntimeSupport {
         return immutablePayload(normalized);
     }
 
+    private Object normalizeFieldValue(CompiledEntity owner, CompiledField field, Object rawValue) {
+        String dslType = normalizeType(field == null ? null : field.getDslType());
+        if ("reference".equals(dslType)) {
+            CompiledField anchor = resolveReferenceAnchor(field).orElse(null);
+            if (anchor != null) {
+                return normalizeByDslType(anchor.getDslType(), rawValue);
+            }
+        }
+        return normalizeFieldValue(field, rawValue);
+    }
+
     private static Object normalizeFieldValue(CompiledField field, Object rawValue) {
         String dslType = normalizeType(field == null ? null : field.getDslType());
         if ("uuid".equals(dslType) || "reference".equals(dslType)) {
@@ -2409,6 +2579,25 @@ public final class GeneratedCrudRuntimeSupport {
             return rawValue;
         }
         return toJavaJsonValue(rawValue);
+    }
+
+    private static Object normalizeByDslType(String dslType, Object rawValue) {
+        if (rawValue == null) {
+            return null;
+        }
+        String normalized = normalizeType(dslType);
+        return switch (normalized) {
+            case "uuid", "reference" -> toUuid(rawValue);
+            case "int", "integer" -> toInteger(rawValue);
+            case "long" -> toLong(rawValue);
+            case "boolean" -> toBoolean(rawValue);
+            case "date" -> rawValue instanceof LocalDate ? rawValue : String.valueOf(rawValue).trim();
+            case "datetime" -> {
+                OffsetDateTime dateTime = toOffsetDateTime(rawValue);
+                yield dateTime == null ? rawValue : dateTime;
+            }
+            default -> rawValue instanceof String text ? text.trim() : rawValue;
+        };
     }
 
     private static Object toJavaJsonValue(Object value) {
@@ -2465,7 +2654,7 @@ public final class GeneratedCrudRuntimeSupport {
             }
             Object existingValue = readObjectValue(existingSource, field.getName());
             if (existingValue != null) {
-                values.put(field.getName(), normalizeFieldValue(field, existingValue));
+                values.put(field.getName(), normalizeFieldValue(entity, field, existingValue));
             }
         }
 
@@ -2475,11 +2664,11 @@ public final class GeneratedCrudRuntimeSupport {
             }
             Object explicitValue = readObjectValue(explicitSource, field.getName());
             if (explicitValue != null) {
-                values.put(field.getName(), normalizeFieldValue(field, explicitValue));
+                values.put(field.getName(), normalizeFieldValue(entity, field, explicitValue));
             } else if (!patchMode && readObjectValue(existingSource, field.getName()) == null && field.isId()) {
                 Object idValue = readObjectValue(explicitSource, field.getName());
                 if (idValue != null) {
-                    values.put(field.getName(), normalizeFieldValue(field, idValue));
+                    values.put(field.getName(), normalizeFieldValue(entity, field, idValue));
                 }
             }
         }
@@ -2504,7 +2693,7 @@ public final class GeneratedCrudRuntimeSupport {
                 Object currentValue = readMapValue(values, fieldName);
 
                 if (currentValue == null && schema.getDefaultValue() != null) {
-                    Object normalizedDefault = normalizeFieldValue(field, cloneSchemaDefaultValue(schema.getDefaultValue()));
+                    Object normalizedDefault = normalizeFieldValue(entity, field, cloneSchemaDefaultValue(schema.getDefaultValue()));
                     values.put(fieldName, normalizedDefault);
                     currentValue = normalizedDefault;
                     changed = true;
@@ -2513,7 +2702,7 @@ public final class GeneratedCrudRuntimeSupport {
                 if (currentValue == null && schema.getDefaultExpression() != null && !schema.getDefaultExpression().isBlank()) {
                     Object evaluated = evaluateSchemaExpression(schema.getDefaultExpression(), values);
                     if (evaluated != null) {
-                        Object normalizedDefault = normalizeFieldValue(field, evaluated);
+                        Object normalizedDefault = normalizeFieldValue(entity, field, evaluated);
                         values.put(fieldName, normalizedDefault);
                         currentValue = normalizedDefault;
                         changed = true;
@@ -2522,7 +2711,7 @@ public final class GeneratedCrudRuntimeSupport {
 
                 if (schema.getDerivedExpression() != null && !schema.getDerivedExpression().isBlank()) {
                     Object evaluated = evaluateSchemaExpression(schema.getDerivedExpression(), values);
-                    Object normalizedDerived = normalizeFieldValue(field, evaluated);
+                    Object normalizedDerived = normalizeFieldValue(entity, field, evaluated);
                     if (!Objects.equals(currentValue, normalizedDerived)) {
                         if (normalizedDerived == null) {
                             values.remove(fieldName);
@@ -2856,13 +3045,6 @@ public final class GeneratedCrudRuntimeSupport {
             return;
         }
 
-        UUID referenceId = toUuid(value);
-        if (referenceId == null) {
-            violations.add("Entity " + entityName + ": reference field '" + field.getName()
-                    + "' must be a UUID");
-            return;
-        }
-
         Optional<CompiledEntity> targetEntityOpt = findEntity(targetEntityName);
         if (targetEntityOpt.isEmpty()) {
             violations.add("Entity " + entityName + ": reference target '" + targetEntityName
@@ -2870,9 +3052,25 @@ public final class GeneratedCrudRuntimeSupport {
             return;
         }
 
-        if (!existsById(targetEntityOpt.get(), referenceId)) {
+        CompiledEntity targetEntity = targetEntityOpt.get();
+        CompiledField anchor = resolveReferenceAnchor(field, targetEntity).orElse(null);
+        if (anchor == null) {
+            violations.add("Entity " + entityName + ": reference field '" + field.getName()
+                    + "' has no resolvable target anchor");
+            return;
+        }
+
+        Object anchorValue = normalizeByDslType(anchor.getDslType(), value);
+        if (anchorValue == null) {
+            violations.add("Entity " + entityName + ": reference field '" + field.getName()
+                    + "' must match anchor " + targetEntityName + "." + anchor.getName());
+            return;
+        }
+
+        if (!existsByAnchor(targetEntity, anchor, anchorValue)) {
             violations.add("Entity " + entityName + ": reference '" + field.getName()
-                    + "' points to non-existent " + targetEntityName + " id " + referenceId);
+                    + "' points to non-existent " + targetEntityName + "." + anchor.getName()
+                    + " " + anchorValue);
         }
     }
 
@@ -3348,6 +3546,123 @@ public final class GeneratedCrudRuntimeSupport {
         return found;
     }
 
+    private Optional<CompiledField> resolveReferenceAnchor(CompiledField referenceField) {
+        if (referenceField == null) {
+            return Optional.empty();
+        }
+        String targetEntityName = referenceTargetName(referenceField);
+        if (targetEntityName == null || targetEntityName.isBlank()) {
+            return Optional.empty();
+        }
+        Optional<CompiledEntity> target = findEntity(targetEntityName);
+        return target.flatMap(entity -> resolveReferenceAnchor(referenceField, entity));
+    }
+
+    private Optional<CompiledField> resolveReferenceAnchor(CompiledField referenceField, CompiledEntity targetEntity) {
+        if (referenceField == null || targetEntity == null) {
+            return Optional.empty();
+        }
+        CompiledReferenceSemantics semantics = referenceField.getReferenceSemantics();
+        String via = semantics == null ? null : semantics.getVia();
+        if (via == null || via.isBlank()) {
+            return idField(targetEntity);
+        }
+        for (CompiledField candidate : targetEntity.getFields()) {
+            if (candidate != null && via.equalsIgnoreCase(candidate.getName())) {
+                return Optional.of(candidate);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private Optional<CompiledField> idField(CompiledEntity entity) {
+        if (entity == null) {
+            return Optional.empty();
+        }
+        CompiledField found = null;
+        for (CompiledField field : entity.getFields()) {
+            if (field == null || !field.isId()) {
+                continue;
+            }
+            if (found != null) {
+                return Optional.empty();
+            }
+            found = field;
+        }
+        return Optional.ofNullable(found);
+    }
+
+    private static String referenceTargetName(CompiledField referenceField) {
+        if (referenceField == null) {
+            return "";
+        }
+        CompiledReferenceSemantics semantics = referenceField.getReferenceSemantics();
+        if (semantics != null && semantics.getTarget() != null && !semantics.getTarget().isBlank()) {
+            return semantics.getTarget();
+        }
+        return referenceField.getReferenceTarget();
+    }
+
+    private BondRuntimeShape requireBondRuntimeShape(String sourceConceptName, String fieldName) {
+        CompiledEntity sourceEntity = requireEntity(sourceConceptName);
+        CompiledField sourceField = null;
+        for (CompiledField field : sourceEntity.getFields()) {
+            if (field != null && fieldName != null && fieldName.equalsIgnoreCase(field.getName())) {
+                sourceField = field;
+                break;
+            }
+        }
+        if (sourceField == null) {
+            throw new IllegalArgumentException("Unknown bond field " + sourceConceptName + "." + fieldName);
+        }
+        CompiledReferenceSemantics semantics = sourceField.getReferenceSemantics();
+        if (semantics == null || !semantics.isMultiple()) {
+            throw new IllegalArgumentException("Bond field is not a multiple reference: "
+                    + sourceConceptName + "." + fieldName);
+        }
+        CompiledEntity targetEntity = findEntity(referenceTargetName(sourceField))
+                .orElseThrow(() -> new IllegalArgumentException("Unknown bond target for "
+                        + sourceConceptName + "." + fieldName));
+        CompiledField sourceId = idField(sourceEntity)
+                .orElseThrow(() -> new IllegalArgumentException("Source concept has no id field: " + sourceConceptName));
+        CompiledField targetAnchor = resolveReferenceAnchor(sourceField, targetEntity)
+                .orElseThrow(() -> new IllegalArgumentException("Bond target anchor is not resolvable for "
+                        + sourceConceptName + "." + fieldName));
+
+        // Junction table + column naming is shared with the generator through Contract naming
+        // support so runtime membership operations query the same DDL that Flyway emits.
+        String junctionTable = SqlIdentifierSupport.junctionTableName(sourceEntity, sourceField);
+        return new BondRuntimeShape(
+                sourceEntity,
+                sourceField,
+                targetEntity,
+                sourceId,
+                targetAnchor,
+                junctionTable,
+                SqlIdentifierSupport.sourceJunctionColumn(sourceId),
+                SqlIdentifierSupport.targetJunctionColumn(targetAnchor)
+        );
+    }
+
+    private void requireDataSourceForBond(BondRuntimeShape shape) {
+        if (dataSource == null) {
+            throw new IllegalStateException("JDBC DataSource is required for bond set operations: "
+                    + shape.sourceEntity().getName() + "." + shape.sourceField().getName());
+        }
+    }
+
+    private record BondRuntimeShape(
+            CompiledEntity sourceEntity,
+            CompiledField sourceField,
+            CompiledEntity targetEntity,
+            CompiledField sourceIdField,
+            CompiledField targetAnchorField,
+            String junctionTable,
+            String sourceColumn,
+            String targetColumn
+    ) {
+    }
+
     private void applyEntityFields(String entityName, Object source, Object target, boolean patchMode) {
         if (target == null) {
             return;
@@ -3510,10 +3825,7 @@ public final class GeneratedCrudRuntimeSupport {
         if (entityManager == null || entity == null || id == null) {
             return false;
         }
-        String table = entity.getTableName();
-        if (table == null || table.isBlank()) {
-            table = entity.getName() == null ? "" : entity.getName().toLowerCase(Locale.ROOT) + "s";
-        }
+        String table = tableName(entity);
         if (table.isBlank()) {
             return false;
         }
@@ -3523,6 +3835,32 @@ public final class GeneratedCrudRuntimeSupport {
                     "SELECT 1 FROM " + table + " WHERE CAST(id AS VARCHAR) = :id"
             );
             query.setParameter("id", id.toString());
+            query.setMaxResults(1);
+            List<?> rows = query.getResultList();
+            return rows != null && !rows.isEmpty();
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private boolean existsByAnchor(CompiledEntity entity, CompiledField anchor, Object value) {
+        if (entityManager == null || entity == null || anchor == null || value == null) {
+            return false;
+        }
+        String table = entity.getTableName();
+        if (table == null || table.isBlank()) {
+            table = entity.getName() == null ? "" : entity.getName().toLowerCase(Locale.ROOT) + "s";
+        }
+        String column = toSnake(anchor.getName());
+        if (table.isBlank() || column.isBlank()) {
+            return false;
+        }
+
+        try {
+            Query query = entityManager.createNativeQuery(
+                    "SELECT 1 FROM " + table + " WHERE CAST(" + column + " AS VARCHAR) = :value"
+            );
+            query.setParameter("value", String.valueOf(value));
             query.setMaxResults(1);
             List<?> rows = query.getResultList();
             return rows != null && !rows.isEmpty();
@@ -4099,14 +4437,15 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     private static String toSnake(String value) {
-        if (value == null || value.isBlank()) {
-            return "";
-        }
-        String snake = value
-                .replaceAll("([a-z0-9])([A-Z])", "$1_$2")
-                .replaceAll("[^A-Za-z0-9]+", "_")
-                .toLowerCase(Locale.ROOT);
-        return snake.replaceAll("^_+|_+$", "");
+        return SqlIdentifierSupport.toSnake(value);
+    }
+
+    private static String tableName(CompiledEntity entity) {
+        return SqlIdentifierSupport.tableName(entity);
+    }
+
+    private static String truncateIdentifier(String value) {
+        return SqlIdentifierSupport.safeSqlIdentifier(value);
     }
 
     // -------------------------------------------------------------------------
