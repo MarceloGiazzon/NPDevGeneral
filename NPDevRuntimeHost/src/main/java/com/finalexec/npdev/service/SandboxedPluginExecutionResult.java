@@ -82,11 +82,23 @@ public record SandboxedPluginExecutionResult(
         details.put("timeoutMs", timeoutMs);
         details.put("executionDurationMs", executionDurationMs);
         details.put("sandboxStatus", status.name());
+        // Map.copyOf rejects null values. The realization fields above (selectedPackageId,
+        // artifactKind, ...) are null for direct runtime-ref adapters such as persistence, so a raw
+        // copy throws a NullPointerException here. That NPE masks the real failure: the dispatcher
+        // re-wraps it as a generic CAPABILITY_INVOCATION_FAILED/PERMANENT, which surfaces as
+        // system_exception and discards the adapter's CONTRACT classification (e.g. a bond/FK
+        // integrity violation). Drop null entries so the genuine failure and its kind survive.
+        Map<String, Object> safeDetails = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : details.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null) {
+                safeDetails.put(entry.getKey(), entry.getValue());
+            }
+        }
         return CapabilityResult.failure(
                 errorCode.isBlank() ? "PLUGIN_EXECUTION_FAILED" : errorCode,
                 errorMessage.isBlank() ? "Sandboxed plugin execution failed" : errorMessage,
                 errorKind == null ? CapabilityErrorKind.PERMANENT : errorKind,
-                Map.copyOf(details)
+                Map.copyOf(safeDetails)
         );
     }
 
