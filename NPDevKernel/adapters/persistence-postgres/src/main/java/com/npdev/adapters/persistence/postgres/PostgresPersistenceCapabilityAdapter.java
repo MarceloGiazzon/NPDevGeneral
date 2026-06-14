@@ -63,11 +63,11 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
         if (id == null || String.valueOf(id).isBlank()) {
             id = UUID.randomUUID().toString();
         }
-        if (conceptIdField == null || "id".equals(conceptIdField)) {
-            runtimeRecord.put("id", id);
-        } else {
-            runtimeRecord.putIfAbsent(conceptIdField, id);
-        }
+        // Always normalize the id onto the canonical runtime "id" key. The schema-aware
+        // resolveColumn maps "id" to whatever the table's real primary-key column is (e.g.
+        // "id" or "user_id"), so injecting a concept-derived field like "contactId" only
+        // produces a phantom column that normalizeRecordForSave rejects.
+        runtimeRecord.put("id", id);
 
         try (Connection connection = dataSource.getConnection()) {
             TableColumns tableColumns = resolveTableColumns(connection, table);
@@ -99,8 +99,34 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
             }
 
         } catch (SQLException e) {
+            if (isIntegrityConstraintViolation(e)) {
+                // SQLState class 23 = integrity constraint violation (foreign key / unique / not null
+                // / check). Surface it as IllegalArgumentException so the kernel classifies the
+                // capability failure as a CONTRACT violation (a bad/missing reference supplied by the
+                // caller) instead of a generic system_exception. The DB still rejects the write — this
+                // only sharpens the error code reported to the caller (e.g. a bond to a missing row).
+                throw new IllegalArgumentException(
+                        "Referential/constraint violation persisting table " + table + ": " + e.getMessage(), e);
+            }
             throw new IllegalStateException("Postgres persistence save failed for table " + table + ": " + e.getMessage(), e);
         }
+    }
+
+    private static boolean isIntegrityConstraintViolation(SQLException exception) {
+        for (SQLException current = exception; current != null; current = current.getNextException()) {
+            String sqlState = current.getSQLState();
+            if (sqlState != null && sqlState.startsWith("23")) {
+                return true;
+            }
+        }
+        String message = exception.getMessage() == null
+                ? ""
+                : exception.getMessage().toLowerCase(java.util.Locale.ROOT);
+        return message.contains("referential integrity")
+                || message.contains("foreign key")
+                || message.contains("unique index or primary key")
+                || message.contains("unique constraint")
+                || message.contains("constraint violation");
     }
 
     @Override

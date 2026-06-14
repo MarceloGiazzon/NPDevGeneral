@@ -439,14 +439,34 @@ public final class SandboxedPluginExecutionEngine implements AutoCloseable {
     }
 
     private static CapabilityErrorKind classifyInvocationError(Throwable throwable) {
-        if (throwable instanceof IllegalArgumentException
-                || throwable instanceof ClassCastException
-                || throwable instanceof UnsupportedOperationException) {
+        // Unwrap reflective/async wrappers (an adapter invoked via reflection inside a Future arrives
+        // as InvocationTargetException/ExecutionException wrapping the real cause). Without this, a
+        // contract failure thrown by an adapter — e.g. IllegalArgumentException for a FK/unique
+        // integrity violation — would be read as the generic wrapper and fall through to PERMANENT
+        // (system_exception) instead of CONTRACT (capability_contract).
+        Throwable root = throwable;
+        int guard = 0;
+        while (root != null
+                && (root instanceof java.lang.reflect.InvocationTargetException
+                        || root instanceof java.util.concurrent.ExecutionException
+                        || root instanceof java.util.concurrent.CompletionException)
+                && root.getCause() != null
+                && root.getCause() != root
+                && guard++ < 16) {
+            root = root.getCause();
+        }
+        if (root == null) {
+            root = throwable;
+        }
+
+        if (root instanceof IllegalArgumentException
+                || root instanceof ClassCastException
+                || root instanceof UnsupportedOperationException) {
             return CapabilityErrorKind.CONTRACT;
         }
 
-        String typeName = throwable.getClass().getName().toLowerCase();
-        String message = throwable.getMessage() == null ? "" : throwable.getMessage().toLowerCase();
+        String typeName = root.getClass().getName().toLowerCase();
+        String message = root.getMessage() == null ? "" : root.getMessage().toLowerCase();
         if (typeName.contains("auth")
                 || typeName.contains("forbidden")
                 || message.contains("unauthorized")

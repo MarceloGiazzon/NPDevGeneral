@@ -988,7 +988,13 @@ private final EventBus eventBus;
             }
 
             try {
-                ExecutionResult result = resumeExecution(waitingInstance.executionId());
+                // Resume under the waiting instance's own tenant/actor. The awaited event is
+                // tenant-scoped, so resuming with an anonymous context would look it up under the
+                // default tenant and never match a tenant-scoped event, leaving the flow stuck.
+                ExecutionResult result = resumeExecution(
+                        waitingInstance.executionId(),
+                        ExecutionContext.of(waitingInstance.tenantId(), waitingInstance.actorId())
+                );
                 if (result.getStatus() == ExecutionStatus.WAITING_EVENT) {
                     FlowInstance latest = flowInstanceStore.findByExecutionId(waitingInstance.executionId())
                             .orElse(waitingInstance);
@@ -1445,6 +1451,12 @@ private final EventBus eventBus;
                                     );
                                 }
                             }
+                            // A database integrity violation (a bond/FK to a missing row, or a unique
+                            // conflict) is a caller CONTRACT failure, not a system error. The persistence
+                            // adapter surfaces it with a stable message signature; recover the CONTRACT
+                            // classification here in case an intermediate sandbox/dispatch wrapper widened
+                            // it to a generic kind (which would otherwise report system_exception).
+                            capabilityError = reclassifyIntegrityViolation(capabilityError);
                             traceFailedStep(
                                     traceMeta,
                                     step,
@@ -2524,6 +2536,33 @@ private final EventBus eventBus;
             return policy.retryMaxDelayMs();
         }
         return Math.min(computed, Math.max(policy.retryBaseDelayMs(), policy.retryMaxDelayMs()));
+    }
+
+    private static CapabilityError reclassifyIntegrityViolation(CapabilityError error) {
+        if (error == null
+                || error.kind() == CapabilityErrorKind.CONTRACT
+                || !isIntegrityViolationMessage(error.message())) {
+            return error;
+        }
+        return new CapabilityError(
+                error.code(),
+                error.message(),
+                CapabilityErrorKind.CONTRACT,
+                error.details()
+        );
+    }
+
+    private static boolean isIntegrityViolationMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String normalized = message.toLowerCase(java.util.Locale.ROOT);
+        return normalized.contains("referential integrity")
+                || normalized.contains("integrity constraint")
+                || normalized.contains("referential/constraint violation")
+                || normalized.contains("foreign key")
+                || normalized.contains("unique index or primary key")
+                || normalized.contains("unique constraint");
     }
 
     private CapabilityResult invokeCapabilityWithPolicy(
