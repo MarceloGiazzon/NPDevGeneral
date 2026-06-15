@@ -5,6 +5,7 @@ import com.npdev.dsl.v1.compiled.CompiledPluginRequirement;
 import com.npdev.dsl.v1.compiled.CompiledPluginRequirementGraph;
 import com.npdev.dsl.v1.compiled.CompiledPluginRequirementGraphBuilder;
 import com.npdev.dsl.v1.parser.JsonModelParser;
+import com.npdev.dsl.v1.parser.ResolvedModelSource;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -52,13 +53,23 @@ public final class GeneratedPluginMountPlan {
     }
 
     public static GeneratedPluginMountPlan fromModelSource(Path modelSourcePath) {
+        return fromModelSource(null, modelSourcePath);
+    }
+
+    public static GeneratedPluginMountPlan fromModelSource(ResolvedModelSource resolvedModelSource, Path modelSourcePath) {
         if (modelSourcePath == null || !Files.exists(modelSourcePath)) {
-            return empty();
+            if (resolvedModelSource == null) {
+                return empty();
+            }
         }
         try {
-            ModelAst modelAst = new JsonModelParser().parse(modelSourcePath);
+            ModelAst modelAst = resolvedModelSource == null
+                    ? new JsonModelParser().parse(modelSourcePath)
+                    : new JsonModelParser().parse(resolvedModelSource);
             CompiledPluginRequirementGraph graph = new CompiledPluginRequirementGraphBuilder().build(modelAst);
-            Path artifactRoot = modelSourcePath.toAbsolutePath().normalize().getParent();
+            Path artifactRoot = resolvedModelSource == null
+                    ? modelSourcePath.toAbsolutePath().normalize().getParent()
+                    : resolvedModelSource.canonicalRootDirectory();
             Map<String, Mount> byKey = new LinkedHashMap<>();
             for (CompiledPluginRequirement requirement : graph.getRequirements()) {
                 if (!isMountCandidate(requirement)) {

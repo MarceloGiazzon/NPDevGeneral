@@ -3,6 +3,10 @@ package com.npdev.generator.emitters;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
+import com.npdev.generator.bonds.BondModelSupport;
+import com.npdev.generator.bonds.BondModelSupport.Bond;
+import com.npdev.generator.bonds.BondModelSupport.Cardinality;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.templates.TemplateEngine;
 
@@ -10,6 +14,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public final class EntityEmitter extends AbstractEmitter {
 
@@ -18,6 +23,7 @@ public final class EntityEmitter extends AbstractEmitter {
     }
 
     public void emit(CompiledModel model) {
+        Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
         for (CompiledConcept entity : model.getConcepts()) {
             Map<String, Object> ctx = new HashMap<>();
             ctx.put("packageName", "com.npdev.generated.entities");
@@ -33,11 +39,15 @@ public final class EntityEmitter extends AbstractEmitter {
             ctx.put("idJavaType", idField.getJavaType());
 
             for (CompiledField f : entity.getFields()) {
+                Optional<Bond> bond = BondModelSupport.resolveBond(entity, f, conceptsByName);
+                if (bond.map(value -> value.cardinality() == Cardinality.MANY_TO_MANY).orElse(false)) {
+                    continue;
+                }
                 Map<String, Object> fm = new HashMap<>();
                 fm.put("name", f.getName());
                 fm.put("capName", cap(f.getName()));
-                fm.put("columnName", toSnake(f.getName()));
-                fm.put("javaType", f.getJavaType());
+                fm.put("columnName", SqlIdentifierSupport.columnName(f));
+                fm.put("javaType", bond.map(Bond::effectiveJavaType).orElse(f.getJavaType()));
                 fm.put("id", f.isId());
                 boolean jsonField = isJsonField(f.getDslType());
                 fm.put("jsonField", jsonField);
@@ -80,16 +90,6 @@ public final class EntityEmitter extends AbstractEmitter {
     private String cap(String s) {
         if (s == null || s.isEmpty()) return s;
         return Character.toUpperCase(s.charAt(0)) + s.substring(1);
-    }
-
-    private static String toSnake(String s) {
-        StringBuilder out = new StringBuilder();
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (Character.isUpperCase(c) && i > 0) out.append('_');
-            out.append(Character.toLowerCase(c));
-        }
-        return out.toString();
     }
 
     private static boolean isJsonField(String dslType) {

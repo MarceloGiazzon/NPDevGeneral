@@ -9,4 +9,5 @@ dependencies {
     testImplementation project(':dsl')
     testImplementation 'org.springframework:spring-web:6.1.12'
     testImplementation 'jakarta.servlet:jakarta.servlet-api:6.0.0'
+    testImplementation 'com.h2database:h2:2.2.224'
 }

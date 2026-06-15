@@ -17,6 +17,7 @@ import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
 import com.npdev.dsl.v1.compiled.CompiledProcedure;
+import com.npdev.dsl.v1.parser.ResolvedModelSource;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.templates.TemplateEngine;
 
@@ -46,6 +47,10 @@ public final class RuntimeApiEmitter extends AbstractEmitter {
     }
 
     public void emit(CompiledModel model, Path modelSourcePath) {
+        emit(model, null, modelSourcePath);
+    }
+
+    public void emit(CompiledModel model, ResolvedModelSource resolvedModelSource, Path modelSourcePath) {
         writer.deleteRelativeIfExists("src/main/java/com/npdev/generated/runtime/adapters/InProcEventStoreAdapter.java");
 
         Map<String, Object> ctx = new HashMap<>();
@@ -214,10 +219,13 @@ writer.writeRelative(
                 templates.render("npdev-runtime-actuator-properties.mustache", ctx)
         );
 
-        if (modelSourcePath != null && Files.exists(modelSourcePath)) {
+        if (resolvedModelSource != null) {
+            writer.writeRelative("src/main/resources/npdev/model.json", resolvedModelSource.resolvedModelJson());
+            writer.writeRelative("src/main/resources/npdev/model-source-manifest.json", emitModelSourceManifest(resolvedModelSource));
+        } else if (modelSourcePath != null && Files.exists(modelSourcePath)) {
             writer.writeRelative("src/main/resources/npdev/model.json", readModelSource(modelSourcePath));
         }
-        GeneratedPluginMountPlan pluginMountPlan = GeneratedPluginMountPlan.fromModelSource(modelSourcePath);
+        GeneratedPluginMountPlan pluginMountPlan = GeneratedPluginMountPlan.fromModelSource(resolvedModelSource, modelSourcePath);
 
         writer.writeRelative(
                 "src/main/resources/npdev/compiled-model.json",
@@ -225,7 +233,9 @@ writer.writeRelative(
         );
         writer.writeRelative(
                 "src/main/resources/npdev/compiled-metadata.json",
-                CompiledMetadataCanonicalJson.toJson(modelSourcePath, model)
+                resolvedModelSource == null
+                        ? CompiledMetadataCanonicalJson.toJson(modelSourcePath, model)
+                        : CompiledMetadataCanonicalJson.toJson(resolvedModelSource.resolvedRoot(), model)
         );
 
         writer.writeRelative(
@@ -238,7 +248,7 @@ writer.writeRelative(
         );
         writer.writeRelative(
                 "src/main/resources/npdev/security/dev.permissions.json",
-                generatePermissionManifest(model, modelSourcePath)
+                generatePermissionManifest(model, resolvedModelSource, modelSourcePath)
         );
         writer.writeRelative(
                 "src/main/resources/npdev/security/dev.ui-metadata-policy.json",
@@ -286,6 +296,27 @@ writer.writeRelative(
         } catch (IOException e) {
             throw new RuntimeException("Failed reading model source: " + modelSourcePath, e);
         }
+    }
+
+    private static String emitModelSourceManifest(ResolvedModelSource source) {
+        String included = source.includedFiles().stream()
+                .sorted(Comparator.comparing(path -> path.toString().toLowerCase(Locale.ROOT)))
+                .map(path -> "    \"" + jsonEscape(path.toString().replace('\\', '/')) + "\"")
+                .collect(Collectors.joining("," + System.lineSeparator()));
+        return """
+{
+  "manifestVersion": "1.0.0",
+  "rootModel": "%s",
+  "canonicalRootDirectory": "%s",
+  "includedFiles": [
+%s
+  ]
+}
+""".formatted(
+                jsonEscape(source.rootModelPath().toString().replace('\\', '/')),
+                jsonEscape(source.canonicalRootDirectory().toString().replace('\\', '/')),
+                included
+        );
     }
 
     private static String readCanonicalUiSelectionJson() {
@@ -374,7 +405,11 @@ writer.writeRelative(
         }
     }
 
-    private static String generatePermissionManifest(CompiledModel model, Path modelSourcePath) {
+    private static String generatePermissionManifest(
+            CompiledModel model,
+            ResolvedModelSource resolvedModelSource,
+            Path modelSourcePath
+    ) {
         Set<String> permissions = new LinkedHashSet<>();
         permissions.add("flow.execute");
         permissions.add("capability.invoke");
@@ -403,7 +438,7 @@ writer.writeRelative(
             }
         }
 
-        AiBetaSecurityMetadata aiSecurity = readAiBetaSecurityMetadata(modelSourcePath);
+        AiBetaSecurityMetadata aiSecurity = readAiBetaSecurityMetadata(resolvedModelSource, modelSourcePath);
         permissions.addAll(aiSecurity.allDeclaredPermissions());
 
         List<PermissionGrantSpec> grants = new ArrayList<>();
@@ -480,12 +515,25 @@ writer.writeRelative(
         }
     }
 
-    private static AiBetaSecurityMetadata readAiBetaSecurityMetadata(Path modelSourcePath) {
+    private static AiBetaSecurityMetadata readAiBetaSecurityMetadata(ResolvedModelSource resolvedModelSource, Path modelSourcePath) {
+        if (resolvedModelSource != null) {
+            return readAiBetaSecurityMetadata(resolvedModelSource.resolvedRoot(), "resolved model source");
+        }
         if (modelSourcePath == null || !Files.isRegularFile(modelSourcePath)) {
             return AiBetaSecurityMetadata.empty();
         }
         try {
-            JsonNode root = OBJECT_MAPPER.readTree(modelSourcePath.toFile());
+            return readAiBetaSecurityMetadata(OBJECT_MAPPER.readTree(modelSourcePath.toFile()), modelSourcePath.toString());
+        } catch (IOException exception) {
+            throw new RuntimeException("Failed reading AI beta security metadata from " + modelSourcePath, exception);
+        }
+    }
+
+    private static AiBetaSecurityMetadata readAiBetaSecurityMetadata(JsonNode root, String sourceLabel) {
+        if (root == null) {
+            return AiBetaSecurityMetadata.empty();
+        }
+        try {
             JsonNode metadata = root.path("metadata");
             Map<String, Set<String>> permissionsByRole = new HashMap<>();
             for (JsonNode roleNode : metadata.path("roles")) {
@@ -520,8 +568,8 @@ writer.writeRelative(
                 }
             }
             return new AiBetaSecurityMetadata(Map.copyOf(permissionsByRole), List.copyOf(users));
-        } catch (IOException exception) {
-            throw new RuntimeException("Failed reading AI beta security metadata from " + modelSourcePath, exception);
+        } catch (RuntimeException exception) {
+            throw new RuntimeException("Failed reading AI beta security metadata from " + sourceLabel, exception);
         }
     }
 

@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
+import com.npdev.dsl.v1.compiled.SqlTypeSupport;
 import com.npdev.kernel.dbschema.InternalColumnDefinition;
 import com.npdev.kernel.dbschema.InternalTableDefinition;
 import com.npdev.kernel.dbschema.NpdevInternalTables;
@@ -293,7 +295,7 @@ public final class UserDatabaseDefinitionLoader {
             for (CompiledConcept concept : model.getConcepts()) {
                 inputs.add("business.table=" + safeTable(concept));
                 for (CompiledField field : concept.getFields()) {
-                    inputs.add("business.column=" + safeTable(concept) + "." + toSnake(field.getName()) + ":"
+                    inputs.add("business.column=" + safeTable(concept) + "." + SqlIdentifierSupport.columnName(field) + ":"
                             + mapType(field) + ":required=" + field.isRequired() + ":unique=" + field.isUnique());
                 }
             }
@@ -302,39 +304,15 @@ public final class UserDatabaseDefinitionLoader {
     }
 
     static String mapType(CompiledField field) {
-        String dslType = field == null ? null : field.getDslType();
-        if (dslType != null && !dslType.isBlank()) {
-            return switch (dslType.trim().toLowerCase(Locale.ROOT)) {
-                case "uuid", "reference" -> "UUID";
-                case "int", "integer" -> "INTEGER";
-                case "long" -> "BIGINT";
-                case "boolean" -> "BOOLEAN";
-                case "date" -> "DATE";
-                case "datetime" -> "TIMESTAMP WITH TIME ZONE";
-                case "enum", "string" -> "VARCHAR(255)";
-                case "object", "array" -> "JSON";
-                default -> "VARCHAR(255)";
-            };
-        }
-        return "VARCHAR(255)";
+        return SqlTypeSupport.sqlType(field);
     }
 
     static String safeTable(CompiledConcept concept) {
-        String table = concept.getTableName();
-        if (table == null || table.isBlank()) {
-            table = toSnake(concept.getName()) + "s";
-        }
-        return table.toLowerCase(Locale.ROOT);
+        return SqlIdentifierSupport.tableName(concept);
     }
 
     static String toSnake(String value) {
-        if (value == null || value.isBlank()) {
-            return "";
-        }
-        return value.replaceAll("([a-z0-9])([A-Z])", "$1_$2")
-                .replaceAll("[^A-Za-z0-9]+", "_")
-                .replaceAll("^_+|_+$", "")
-                .toLowerCase(Locale.ROOT);
+        return SqlIdentifierSupport.toSnake(value);
     }
 
     private static String slug(String value) {

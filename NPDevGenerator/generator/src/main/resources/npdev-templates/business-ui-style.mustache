@@ -11,6 +11,47 @@
 
 body {
   margin: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.layout {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.side-nav {
+  width: 200px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid #d8dee7;
+  background: #ffffff;
+  padding: 12px 8px;
+}
+
+.side-nav a {
+  display: block;
+  padding: 7px 12px;
+  border-radius: 6px;
+  color: #18202a;
+  text-decoration: none;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.side-nav a:hover {
+  background: #f0f4f8;
+}
+
+.side-nav a.active {
+  background: #e8f0fb;
+  color: #1769aa;
+  font-weight: 600;
 }
 
 button,
@@ -97,9 +138,12 @@ select {
 }
 
 .workspace {
+  flex: 1;
+  overflow-y: auto;
   display: grid;
   gap: 18px;
   padding: 20px;
+  align-content: start;
 }
 
 .concept-panel {
@@ -256,6 +300,10 @@ select {
 }
 
 @media (max-width: 760px) {
+  .side-nav {
+    display: none;
+  }
+
   .app-bar,
   .panel-header,
   .filters,
@@ -297,4 +345,55 @@ select {
   font-size: 12px;
   min-height: 16px;
   overflow-wrap: anywhere;
+}
+
+.array-table-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.array-editor-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+.array-editor-table th,
+.array-editor-table td {
+  padding: 6px 8px;
+  border: 1px solid #e7ebf0;
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+.array-editor-table th {
+  background: #f9fafc;
+  color: #4c5a69;
+  font-weight: 600;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.array-editor-table input {
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 6px;
+  font-size: 13px;
+  border: 1px solid #c8d0da;
+  border-radius: 4px;
+}
+
+.array-editor-table td:last-child {
+  width: 36px;
+  text-align: center;
+}
+
+.array-preview {
+  table-layout: auto;
+}
+
+.array-preview th,
+.array-preview td {
+  font-size: 12px;
+  padding: 6px 8px;
 }

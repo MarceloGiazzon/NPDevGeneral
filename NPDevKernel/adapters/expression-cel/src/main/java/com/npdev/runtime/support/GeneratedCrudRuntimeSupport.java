@@ -1077,13 +1077,7 @@ public final class GeneratedCrudRuntimeSupport {
             }
         }
         uniqueFields.sort(String.CASE_INSENSITIVE_ORDER);
-        String table = targetEntity.getTableName();
-        if (table == null || table.isBlank()) {
-            String entityName = targetEntity.getName() == null
-                    ? ""
-                    : targetEntity.getName().trim().toLowerCase(Locale.ROOT);
-            table = entityName.endsWith("s") ? entityName : entityName + "s";
-        }
+        String table = tableName(targetEntity);
         if (table == null || table.isBlank()) {
             return null;
         }
@@ -1912,7 +1906,8 @@ public final class GeneratedCrudRuntimeSupport {
                 sql.append(" AND ");
             }
             sql.append("CAST(")
-                    .append(toSnake(checks.get(index).getKey()))
+                    .append(columnName(orchestration.fieldsByName().get(normalize(checks.get(index).getKey())),
+                            checks.get(index).getKey()))
                     .append(" AS VARCHAR) = :u")
                     .append(index);
         }
@@ -1945,7 +1940,8 @@ public final class GeneratedCrudRuntimeSupport {
                 columns.append(", ");
                 values.append(", ");
             }
-            columns.append(toSnake(entries.get(index).getKey()));
+            columns.append(columnName(orchestration.fieldsByName().get(normalize(entries.get(index).getKey())),
+                    entries.get(index).getKey()));
             values.append("?");
         }
         String sql = "INSERT INTO " + orchestration.targetTable()
@@ -3829,11 +3825,13 @@ public final class GeneratedCrudRuntimeSupport {
         if (table.isBlank()) {
             return false;
         }
+        Optional<CompiledField> idField = idField(entity);
+        if (idField.isEmpty()) {
+            return false;
+        }
 
         try {
-            Query query = entityManager.createNativeQuery(
-                    "SELECT 1 FROM " + table + " WHERE CAST(id AS VARCHAR) = :id"
-            );
+            Query query = entityManager.createNativeQuery(existsByIdSql(entity, idField.get()));
             query.setParameter("id", id.toString());
             query.setMaxResults(1);
             List<?> rows = query.getResultList();
@@ -3847,11 +3845,8 @@ public final class GeneratedCrudRuntimeSupport {
         if (entityManager == null || entity == null || anchor == null || value == null) {
             return false;
         }
-        String table = entity.getTableName();
-        if (table == null || table.isBlank()) {
-            table = entity.getName() == null ? "" : entity.getName().toLowerCase(Locale.ROOT) + "s";
-        }
-        String column = toSnake(anchor.getName());
+        String table = tableName(entity);
+        String column = columnName(anchor);
         if (table.isBlank() || column.isBlank()) {
             return false;
         }
@@ -3897,20 +3892,19 @@ public final class GeneratedCrudRuntimeSupport {
             return false;
         }
         CompiledEntity entity = entityOpt.get();
-        String table = entity.getTableName();
-        if (table == null || table.isBlank()) {
-            table = entity.getName() == null ? "" : entity.getName().toLowerCase(Locale.ROOT) + "s";
-        }
+        String table = tableName(entity);
         if (table.isBlank()) {
             return false;
         }
 
-        String resourceColumn = toSnake(resourceFieldPath);
-        String startsAtColumn = toSnake(startsAtFieldPath);
-        String durationColumn = toSnake(durationMinutesFieldPath);
-        if (resourceColumn.isBlank() || startsAtColumn.isBlank() || durationColumn.isBlank()) {
+        String resourceColumn = columnName(entity, resourceFieldPath);
+        String startsAtColumn = columnName(entity, startsAtFieldPath);
+        String durationColumn = columnName(entity, durationMinutesFieldPath);
+        Optional<CompiledField> idField = idField(entity);
+        if (resourceColumn.isBlank() || startsAtColumn.isBlank() || durationColumn.isBlank() || idField.isEmpty()) {
             return false;
         }
+        String idColumn = columnName(idField.get());
 
         Object effectiveExcludeId = resolveConflictExcludeId(excludeIdValue, payload);
         UUID resourceId = toUuid(resourceIdValue);
@@ -3923,10 +3917,10 @@ public final class GeneratedCrudRuntimeSupport {
 
         try {
             Query query = entityManager.createNativeQuery(
-                    "SELECT id, " + startsAtColumn + ", " + durationColumn + " "
+                    "SELECT " + idColumn + ", " + startsAtColumn + ", " + durationColumn + " "
                             + "FROM " + table + " "
                             + "WHERE CAST(" + resourceColumn + " AS VARCHAR) = :resourceId "
-                            + "  AND (:excludeId = '' OR CAST(id AS VARCHAR) <> :excludeId)"
+                            + "  AND (:excludeId = '' OR CAST(" + idColumn + " AS VARCHAR) <> :excludeId)"
             );
             query.setParameter("resourceId", resourceId.toString());
             query.setParameter("excludeId", excludeId == null ? "" : excludeId.toString());
@@ -3976,15 +3970,12 @@ public final class GeneratedCrudRuntimeSupport {
         }
 
         CompiledEntity entity = entityOpt.get();
-        String table = entity.getTableName();
-        if (table == null || table.isBlank()) {
-            table = entity.getName() == null ? "" : entity.getName().toLowerCase(Locale.ROOT) + "s";
-        }
+        String table = tableName(entity);
         if (table.isBlank()) {
             return false;
         }
 
-        String column = toSnake(trimmedFieldPath);
+        String column = columnName(entity, trimmedFieldPath);
         if (column.isBlank()) {
             return false;
         }
@@ -4394,18 +4385,17 @@ public final class GeneratedCrudRuntimeSupport {
         if (entityManager == null || entity == null || id == null) {
             return null;
         }
-        String table = entity.getTableName();
+        String table = tableName(entity);
         if (table == null || table.isBlank()) {
             return null;
         }
-        String statusColumn = toSnake(statusField);
-        if (statusColumn.isBlank()) {
+        String statusColumn = columnName(entity, statusField);
+        Optional<CompiledField> idField = idField(entity);
+        if (statusColumn.isBlank() || idField.isEmpty()) {
             return null;
         }
         try {
-            Query query = entityManager.createNativeQuery(
-                    "SELECT " + statusColumn + " FROM " + table + " WHERE CAST(id AS VARCHAR) = :id"
-            );
+            Query query = entityManager.createNativeQuery(fetchCurrentStatusSql(entity, idField.get(), statusColumn));
             query.setParameter("id", id.toString());
             query.setMaxResults(1);
             List<?> rows = query.getResultList();
@@ -4436,12 +4426,40 @@ public final class GeneratedCrudRuntimeSupport {
         return false;
     }
 
-    private static String toSnake(String value) {
-        return SqlIdentifierSupport.toSnake(value);
-    }
-
     private static String tableName(CompiledEntity entity) {
         return SqlIdentifierSupport.tableName(entity);
+    }
+
+    private static String columnName(CompiledField field) {
+        return SqlIdentifierSupport.columnName(field);
+    }
+
+    private static String columnName(CompiledField field, String fallbackName) {
+        String column = columnName(field);
+        return column == null || column.isBlank()
+                ? SqlIdentifierSupport.safeSqlIdentifier(fallbackName)
+                : column;
+    }
+
+    private static String columnName(CompiledEntity entity, String fieldName) {
+        if (entity != null && fieldName != null) {
+            for (CompiledField field : entity.getFields()) {
+                if (field != null && fieldName.equalsIgnoreCase(field.getName())) {
+                    return columnName(field);
+                }
+            }
+        }
+        return SqlIdentifierSupport.safeSqlIdentifier(fieldName);
+    }
+
+    static String existsByIdSql(CompiledEntity entity, CompiledField idField) {
+        return "SELECT 1 FROM " + tableName(entity)
+                + " WHERE CAST(" + columnName(idField) + " AS VARCHAR) = :id";
+    }
+
+    static String fetchCurrentStatusSql(CompiledEntity entity, CompiledField idField, String statusColumn) {
+        return "SELECT " + statusColumn + " FROM " + tableName(entity)
+                + " WHERE CAST(" + columnName(idField) + " AS VARCHAR) = :id";
     }
 
     private static String truncateIdentifier(String value) {

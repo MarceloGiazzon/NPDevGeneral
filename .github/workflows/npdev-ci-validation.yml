@@ -1,10 +1,10 @@
 name: NPDev CI Validation
 
+# Manual-only: this heavy validation (full test matrix, Playwright, Postgres
+# Testcontainers, RuntimeHost integration) runs on demand via the "Run workflow"
+# button, not on every PR/push. Re-add the pull_request/push triggers below to
+# restore automatic runs.
 on:
-  pull_request:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 concurrency:
@@ -38,11 +38,11 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: DSL contract tests
+      - name: DSL contract check
         working-directory: NPDevContract/dsl
         timeout-minutes: 15
         run: |
-          ./gradlew test --no-daemon --console=plain
+          ./gradlew check --no-daemon --console=plain
 
       - name: Kernel inproc adapter tests
         working-directory: NPDevKernel
@@ -269,6 +269,12 @@ jobs:
           & pwsh -NoProfile -ExecutionPolicy Bypass `
             -File "$env:NPDEV_WORKSPACE\scripts\quality\run-runtime-surface-evidence.ps1" `
             -WorkspaceRoot "$env:NPDEV_WORKSPACE"
+
+      - name: DSL contract check
+        working-directory: NPDevContract\dsl
+        timeout-minutes: 15
+        run: |
+          .\gradlew check --no-daemon --console=plain
 
       - name: Preflight generator source completeness
         timeout-minutes: 5

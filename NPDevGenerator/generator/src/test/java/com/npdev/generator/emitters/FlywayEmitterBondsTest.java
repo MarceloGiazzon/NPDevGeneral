@@ -16,6 +16,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -77,22 +78,32 @@ class FlywayEmitterBondsTest {
         assertTrue(sql.contains("ADD COLUMN IF NOT EXISTS owner_id UUID;"),
                 "owner_id should stay UUID. SQL:\n" + sql);
 
-        // A connectable anchor must be a UNIQUE CONSTRAINT (not just an index) so it is a valid FK
-        // target on H2 (a unique index alone triggers H2 error 90057). It also backs uniqueness.
-        assertTrue(sql.contains("ALTER TABLE products ADD CONSTRAINT IF NOT EXISTS uq_products_sku_id UNIQUE (sku_id);"),
-                "connectable anchor skuId needs a UNIQUE constraint. SQL:\n" + sql);
+        // A connectable natural-key anchor must emit a UNIQUE CONSTRAINT, not a unique index.
+        // H2 rejects a unique index as an FK target (error 90057); a UNIQUE CONSTRAINT works.
+        // The constraint is wrapped in a DO $$ guard (idempotent repeatable migration).
+        assertTrue(sql.contains("uq_products_sku_id"),
+                "connectable anchor must emit UNIQUE CONSTRAINT name uq_products_sku_id. SQL:\n" + sql);
+        assertTrue(sql.contains("ADD CONSTRAINT uq_products_sku_id UNIQUE (sku_id)"),
+                "connectable anchor must use ADD CONSTRAINT, not CREATE UNIQUE INDEX. SQL:\n" + sql);
         assertFalse(sql.contains("CREATE UNIQUE INDEX IF NOT EXISTS ux_products_sku_id"),
-                "connectable anchor should use a UNIQUE constraint, not a unique index. SQL:\n" + sql);
+                "connectable anchor must NOT use a unique index (H2 error 90057). SQL:\n" + sql);
 
-        // Real foreign keys, with the right anchor column and ON DELETE policy.
+        // Constraints wrapped in DO $$ for idempotency; must use INFORMATION_SCHEMA (not
+        // pg_constraint which is PostgreSQL-only and absent in H2 PostgreSQL mode).
+        assertTrue(sql.contains("DO $$"), sql);
+        assertTrue(sql.contains("INFORMATION_SCHEMA.TABLE_CONSTRAINTS"),
+                "DO $$ guard must query INFORMATION_SCHEMA, not pg_constraint. SQL:\n" + sql);
+        assertFalse(sql.contains("pg_constraint"),
+                "pg_constraint is a PostgreSQL-only catalog absent in H2; must not appear. SQL:\n" + sql);
         assertTrue(sql.contains(
-                        "ALTER TABLE invoices ADD CONSTRAINT IF NOT EXISTS fk_invoices_product_id"
+                        "ALTER TABLE invoices ADD CONSTRAINT fk_invoices_product_id"
                         + " FOREIGN KEY (product_id) REFERENCES products (sku_id) ON UPDATE CASCADE ON DELETE CASCADE;"),
                 "expected cascade FK to products(sku_id). SQL:\n" + sql);
         assertTrue(sql.contains(
-                        "ALTER TABLE invoices ADD CONSTRAINT IF NOT EXISTS fk_invoices_owner_id"
+                        "ALTER TABLE invoices ADD CONSTRAINT fk_invoices_owner_id"
                         + " FOREIGN KEY (owner_id) REFERENCES products (id) ON DELETE RESTRICT;"),
                 "expected restrict FK to products(id). SQL:\n" + sql);
+        assertFalse(sql.contains("ADD CONSTRAINT IF NOT EXISTS"), sql);
     }
 
     @Test
@@ -131,10 +142,20 @@ class FlywayEmitterBondsTest {
         assertTrue(sql.contains("source_id UUID NOT NULL"), sql);
         assertTrue(sql.contains("target_sku_id VARCHAR(255) NOT NULL"), sql);
         assertTrue(sql.contains("PRIMARY KEY (source_id, target_sku_id)"), sql);
+        assertTrue(sql.contains("DO $$"), sql);
+        assertTrue(sql.contains("INFORMATION_SCHEMA.TABLE_CONSTRAINTS"),
+                "DO $$ guard must query INFORMATION_SCHEMA, not pg_constraint. SQL:\n" + sql);
+        assertFalse(sql.contains("pg_constraint"),
+                "pg_constraint is a PostgreSQL-only catalog absent in H2; must not appear. SQL:\n" + sql);
+        assertTrue(sql.contains("ALTER TABLE invoices_product_id ADD CONSTRAINT fk_invoices_product_id_source_id"
+                + " FOREIGN KEY (source_id) REFERENCES invoices (id) ON DELETE CASCADE;"), sql);
+        assertTrue(sql.contains("ALTER TABLE invoices_product_id ADD CONSTRAINT fk_invoices_product_id_target_sku_id"
+                + " FOREIGN KEY (target_sku_id) REFERENCES products (sku_id) ON UPDATE CASCADE ON DELETE CASCADE;"), sql);
         assertTrue(sql.contains("REFERENCES invoices (id) ON DELETE CASCADE"), sql);
         assertTrue(sql.contains("REFERENCES products (sku_id) ON UPDATE CASCADE ON DELETE CASCADE"), sql);
         assertTrue(!sql.contains("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS product_id"),
                 "N:M port should not be emitted as a scalar column. SQL:\n" + sql);
+        assertFalse(sql.contains("ADD CONSTRAINT IF NOT EXISTS"), sql);
     }
 
     /**
@@ -195,13 +216,14 @@ class FlywayEmitterBondsTest {
 
         // Integrity policy matches each bond's nature.
         assertTrue(sql.contains(
-                        "ALTER TABLE invoices ADD CONSTRAINT IF NOT EXISTS fk_invoices_user_id"
+                        "ALTER TABLE invoices ADD CONSTRAINT fk_invoices_user_id"
                         + " FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT;"),
                 "mandatory bond should restrict deletes. SQL:\n" + sql);
         assertTrue(sql.contains(
-                        "ALTER TABLE invoices ADD CONSTRAINT IF NOT EXISTS fk_invoices_product_id"
+                        "ALTER TABLE invoices ADD CONSTRAINT fk_invoices_product_id"
                         + " FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE SET NULL;"),
                 "optional bond should null out on delete. SQL:\n" + sql);
+        assertFalse(sql.contains("ADD CONSTRAINT IF NOT EXISTS"), sql);
     }
 
     @Test
@@ -239,6 +261,77 @@ class FlywayEmitterBondsTest {
         assertTrue(sql.contains("ADD COLUMN IF NOT EXISTS product_sku VARCHAR(255);"), sql);
         assertTrue(sql.contains("REFERENCES cat_products (sku_id) ON UPDATE CASCADE ON DELETE RESTRICT"), sql);
         assertTrue(!sql.contains("::"), sql);
+        assertFalse(sql.contains("ADD CONSTRAINT IF NOT EXISTS"), sql);
+    }
+
+    @Test
+    void invalidViaAnchorFailsDuringGeneration() {
+        CompiledConcept product = new CompiledConcept(
+                "Product", "Product", "products",
+                List.of(new CompiledField("id", "uuid", "java.util.UUID", true, true, false))
+        );
+        CompiledReferenceSemantics missingVia = new CompiledReferenceSemantics(
+                "Product", false, null, List.of(), List.of(), null, null, List.of(), null, null,
+                "missingSku", "restrict");
+        CompiledConcept invoice = new CompiledConcept(
+                "Invoice", "Invoice", "invoices",
+                List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("productSku", "reference", "String", false, false, false,
+                                List.of(), "Product", missingVia, null, null, List.of(), null, null)
+                )
+        );
+        Map<String, CompiledConcept> concepts = new LinkedHashMap<>();
+        concepts.put(product.getName(), product);
+        concepts.put(invoice.getName(), invoice);
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> new FlywayEmitter().emitRepeatableSchema(
+                        new CompiledModel("default", "v1", concepts),
+                        tempDir
+                )
+        );
+        assertTrue(error.getMessage().contains("Declared bond Invoice.productSku"), error.getMessage());
+        assertTrue(error.getMessage().contains("missingSku"), error.getMessage());
+    }
+
+    @Test
+    void invalidViaAnchorThatExistsButIsNotConnectableFailsDuringGeneration() {
+        CompiledConcept product = new CompiledConcept(
+                "Product", "Product", "products",
+                List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("name", "string", "String", false, false, false)
+                )
+        );
+        CompiledReferenceSemantics viaName = new CompiledReferenceSemantics(
+                "Product", false, null, List.of(), List.of(), null, null, List.of(), null, null,
+                "name", "restrict");
+        CompiledConcept order = new CompiledConcept(
+                "Order", "Order", "orders",
+                List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("productName", "reference", "String", false, false, false,
+                                List.of(), "Product", viaName, null, null, List.of(), null, null)
+                )
+        );
+        Map<String, CompiledConcept> concepts = new LinkedHashMap<>();
+        concepts.put(product.getName(), product);
+        concepts.put(order.getName(), order);
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> new FlywayEmitter().emitRepeatableSchema(
+                        new CompiledModel("default", "v1", concepts),
+                        tempDir
+                )
+        );
+
+        assertTrue(error.getMessage().contains("Order.productName"), error.getMessage());
+        assertTrue(error.getMessage().contains("Product.name"), error.getMessage());
+        assertTrue(error.getMessage().contains("connectable"), error.getMessage());
+        assertTrue(error.getMessage().contains("anchor"), error.getMessage());
     }
 
     @Test

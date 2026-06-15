@@ -1,6 +1,7 @@
 package com.npdev.generator.api;
 
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.parser.ResolvedModelSource;
 import com.npdev.generator.emitters.BusinessUiEmitter;
 import com.npdev.generator.emitters.ControllerEmitter;
 import com.npdev.generator.emitters.DtoEmitter;
@@ -35,7 +36,7 @@ public final class GeneratorFacade {
     }
 
     public void generate(CompiledModel model, Path outRoot, Path schemaRealizationDir) throws Exception {
-        generate(model, outRoot, schemaRealizationDir, null, legacyInMemoryPlan(model, outRoot, schemaRealizationDir, null));
+        generate(model, outRoot, schemaRealizationDir, (Path) null, legacyInMemoryPlan(model, outRoot, schemaRealizationDir, null));
     }
 
     public void generate(CompiledModel model, Path outRoot, Path schemaRealizationDir, Path modelSourcePath) throws Exception {
@@ -43,7 +44,7 @@ public final class GeneratorFacade {
     }
 
     public void generate(CompiledModel model, Path outRoot, Path schemaRealizationDir, GeneratedDatabasePlan databasePlan) throws Exception {
-        generate(model, outRoot, schemaRealizationDir, null, databasePlan);
+        generate(model, outRoot, schemaRealizationDir, (Path) null, databasePlan);
     }
 
     public void generate(
@@ -53,18 +54,46 @@ public final class GeneratorFacade {
             Path modelSourcePath,
             GeneratedDatabasePlan databasePlan
     ) throws Exception {
+        generate(model, outRoot, schemaRealizationDir, null, modelSourcePath, databasePlan);
+    }
+
+    public void generate(
+            CompiledModel model,
+            Path outRoot,
+            Path schemaRealizationDir,
+            ResolvedModelSource resolvedModelSource,
+            GeneratedDatabasePlan databasePlan
+    ) throws Exception {
+        generate(
+                model,
+                outRoot,
+                schemaRealizationDir,
+                resolvedModelSource,
+                resolvedModelSource == null ? null : resolvedModelSource.rootModelPath(),
+                databasePlan
+        );
+    }
+
+    private void generate(
+            CompiledModel model,
+            Path outRoot,
+            Path schemaRealizationDir,
+            ResolvedModelSource resolvedModelSource,
+            Path modelSourcePath,
+            GeneratedDatabasePlan databasePlan
+    ) throws Exception {
         new EntityEmitter(templates, writer).emit(model);
         new DtoEmitter(templates, writer).emit(model);
         new ServiceEmitter(templates, writer).emit(model);
         new ControllerEmitter(templates, writer).emit(model);
 
-        new RuntimeApiEmitter(templates, writer).emit(model, modelSourcePath);
+        new RuntimeApiEmitter(templates, writer).emit(model, resolvedModelSource, modelSourcePath);
         new BusinessUiEmitter(templates, writer).emit(model);
         new TrustedSourceEmitter(writer).emit(model, modelSourcePath);
-        new MetadataManifestAssetEmitter(writer).emit(model, modelSourcePath);
+        new MetadataManifestAssetEmitter(writer).emit(model, resolvedModelSource, modelSourcePath);
 
         // Stage 3: emit deterministic plugin requirement asset derived from the model source.
-        new PluginRequirementAssetEmitter(writer).emit(modelSourcePath);
+        new PluginRequirementAssetEmitter(writer).emit(resolvedModelSource, modelSourcePath);
 
         new SchemaRealizationEmitter().emit(model, outRoot, databasePlan, modelSourcePath);
         new GeneratedFolderSignatureEmitter().emit(outRoot);

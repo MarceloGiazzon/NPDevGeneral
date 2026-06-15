@@ -6,6 +6,7 @@ import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
+import com.npdev.dsl.v1.compiled.SqlTypeSupport;
 import com.npdev.generator.bonds.BondModelSupport;
 import com.npdev.generator.bonds.BondModelSupport.Bond;
 import com.npdev.generator.bonds.BondModelSupport.Cardinality;
@@ -104,7 +105,7 @@ public final class SchemaRealizationEmitter {
 
     private static void appendBusinessTable(StringBuilder sql, CompiledConcept concept, DatabaseEngine engine,
             Map<String, CompiledConcept> conceptsByName) {
-        String table = UserDatabaseDefinitionLoader.safeTable(concept);
+        String table = SqlIdentifierSupport.tableName(concept);
         List<String> lines = new ArrayList<>();
         String idColumn = null;
         for (CompiledField field : concept.getFields()) {
@@ -113,13 +114,13 @@ public final class SchemaRealizationEmitter {
             if (bond.isPresent() && bond.get().cardinality() == Cardinality.MANY_TO_MANY) {
                 continue;
             }
-            String column = UserDatabaseDefinitionLoader.toSnake(field.getName());
+            String column = SqlIdentifierSupport.columnName(field);
             // A bond column takes the bound anchor's SQL type (e.g. a natural-key via sku -> VARCHAR),
             // not the reference default (UUID), so the column matches both the FK target and the
             // generated entity field type (which Hibernate ddl-auto=validate checks at startup).
             String sqlType = bond.isPresent()
                     ? bond.get().effectiveSqlType()
-                    : UserDatabaseDefinitionLoader.mapType(field);
+                    : SqlTypeSupport.sqlType(field);
             StringBuilder line = new StringBuilder("  ")
                     .append(column)
                     .append(" ")
@@ -143,17 +144,13 @@ public final class SchemaRealizationEmitter {
             if (!field.isUnique()) {
                 continue;
             }
-            String column = UserDatabaseDefinitionLoader.toSnake(field.getName());
+            String column = SqlIdentifierSupport.columnName(field);
             if (isConnectableAnchor(field) && !field.isId()) {
-                // A connectable natural-key anchor is an FK target. On H2 a unique INDEX is not a
-                // valid FK target (error 90057 "UNIQUE (col) not found"); a UNIQUE CONSTRAINT is,
-                // and it backs uniqueness too. Plain unique fields keep a unique index.
-                sql.append("ALTER TABLE ").append(table)
-                        .append(" ADD CONSTRAINT IF NOT EXISTS ")
-                        .append(truncate("uq_" + table + "_" + column))
-                        .append(" UNIQUE (")
-                        .append(column)
-                        .append(");\n");
+                String constraint = truncate("uq_" + table + "_" + column);
+                String constraintSql = "ALTER TABLE " + table
+                        + " ADD CONSTRAINT " + constraint
+                        + " UNIQUE (" + column + ")";
+                sql.append(addConstraintIfMissing(engine, table, constraint, constraintSql));
             } else {
                 sql.append("CREATE UNIQUE INDEX IF NOT EXISTS ")
                         .append(truncate("ux_" + table + "_" + column))
@@ -194,7 +191,7 @@ public final class SchemaRealizationEmitter {
             String sourceColumn = SqlIdentifierSupport.sourceJunctionColumn(sourceId);
             String targetColumn = SqlIdentifierSupport.targetJunctionColumn(bond.anchorField());
             sql.append("CREATE TABLE IF NOT EXISTS ").append(junctionTable).append(" (\n")
-                    .append("  ").append(sourceColumn).append(" ").append(renderType(UserDatabaseDefinitionLoader.mapType(sourceId), engine)).append(" NOT NULL,\n")
+                    .append("  ").append(sourceColumn).append(" ").append(renderType(SqlTypeSupport.sqlType(sourceId), engine)).append(" NOT NULL,\n")
                     .append("  ").append(targetColumn).append(" ").append(renderType(bond.effectiveSqlType(), engine)).append(" NOT NULL,\n")
                     .append("  PRIMARY KEY (").append(sourceColumn).append(", ").append(targetColumn).append(")\n")
                     .append(");\n");
@@ -205,19 +202,21 @@ public final class SchemaRealizationEmitter {
                     .append(SqlIdentifierSupport.safeSqlIdentifier("idx_" + junctionTable + "_" + targetColumn))
                     .append(" ON ").append(junctionTable).append(" (").append(targetColumn).append(");\n");
             // Source-side FK is always CASCADE: a junction row is membership owned by its source.
-            sql.append("ALTER TABLE ").append(junctionTable)
-                    .append(" ADD CONSTRAINT IF NOT EXISTS ")
-                    .append(SqlIdentifierSupport.safeSqlIdentifier("fk_" + junctionTable + "_" + sourceColumn))
-                    .append(" FOREIGN KEY (").append(sourceColumn).append(")")
-                    .append(" REFERENCES ").append(bond.sourceTable()).append(" (").append(SqlIdentifierSupport.columnName(sourceId)).append(")")
-                    .append(" ON DELETE CASCADE;\n");
-            sql.append("ALTER TABLE ").append(junctionTable)
-                    .append(" ADD CONSTRAINT IF NOT EXISTS ")
-                    .append(SqlIdentifierSupport.safeSqlIdentifier("fk_" + junctionTable + "_" + targetColumn))
-                    .append(" FOREIGN KEY (").append(targetColumn).append(")")
-                    .append(" REFERENCES ").append(bond.targetTable()).append(" (").append(bond.anchorColumn()).append(")")
-                    .append(bond.onUpdateSqlClause())
-                    .append(" ON DELETE ").append(bond.onDeleteSql()).append(";\n\n");
+            String sourceConstraint = SqlIdentifierSupport.safeSqlIdentifier("fk_" + junctionTable + "_" + sourceColumn);
+            String sourceConstraintSql = "ALTER TABLE " + junctionTable
+                    + " ADD CONSTRAINT " + sourceConstraint
+                    + " FOREIGN KEY (" + sourceColumn + ")"
+                    + " REFERENCES " + bond.sourceTable() + " (" + SqlIdentifierSupport.columnName(sourceId) + ")"
+                    + " ON DELETE CASCADE";
+            sql.append(addConstraintIfMissing(engine, junctionTable, sourceConstraint, sourceConstraintSql));
+            String targetConstraint = SqlIdentifierSupport.safeSqlIdentifier("fk_" + junctionTable + "_" + targetColumn);
+            String targetConstraintSql = "ALTER TABLE " + junctionTable
+                    + " ADD CONSTRAINT " + targetConstraint
+                    + " FOREIGN KEY (" + targetColumn + ")"
+                    + " REFERENCES " + bond.targetTable() + " (" + bond.anchorColumn() + ")"
+                    + bond.onUpdateSqlClause()
+                    + " ON DELETE " + bond.onDeleteSql();
+            sql.append(addConstraintIfMissing(engine, junctionTable, targetConstraint, targetConstraintSql)).append("\n");
         }
 
         // Foreign keys for scalar (N:1 / 1:1) bonds.
@@ -226,14 +225,53 @@ public final class SchemaRealizationEmitter {
                 continue;
             }
             String constraint = SqlIdentifierSupport.safeSqlIdentifier("fk_" + bond.sourceTable() + "_" + bond.sourceColumn());
-            sql.append("ALTER TABLE ").append(bond.sourceTable())
-                    .append(" ADD CONSTRAINT IF NOT EXISTS ").append(constraint)
-                    .append(" FOREIGN KEY (").append(bond.sourceColumn()).append(")")
-                    .append(" REFERENCES ").append(bond.targetTable()).append(" (").append(bond.anchorColumn()).append(")")
-                    .append(bond.onUpdateSqlClause())
-                    .append(" ON DELETE ").append(bond.onDeleteSql()).append(";\n");
+            String constraintSql = "ALTER TABLE " + bond.sourceTable()
+                    + " ADD CONSTRAINT " + constraint
+                    + " FOREIGN KEY (" + bond.sourceColumn() + ")"
+                    + " REFERENCES " + bond.targetTable() + " (" + bond.anchorColumn() + ")"
+                    + bond.onUpdateSqlClause()
+                    + " ON DELETE " + bond.onDeleteSql();
+            sql.append(addConstraintIfMissing(engine, bond.sourceTable(), constraint, constraintSql));
         }
         sql.append("\n");
+    }
+
+    private static String addConstraintIfMissing(
+            DatabaseEngine engine,
+            String tableName,
+            String constraintName,
+            String addConstraintSql
+    ) {
+        String statement = addConstraintSql.endsWith(";") ? addConstraintSql : addConstraintSql + ";";
+        if (engine != DatabaseEngine.POSTGRES) {
+            return statement + "\n";
+        }
+        // INFORMATION_SCHEMA.TABLE_CONSTRAINTS is standard SQL available in both PostgreSQL
+        // and H2 PostgreSQL-compatibility mode. pg_constraint/pg_class/pg_namespace are
+        // PostgreSQL-only system catalogs and must not be used even in the Postgres-only path,
+        // to keep both emitters byte-consistent and avoid drift when switching engines.
+        return """
+                DO $$
+                BEGIN
+                  IF NOT EXISTS (
+                    SELECT 1
+                    FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+                    WHERE CONSTRAINT_NAME = '%s'
+                      AND TABLE_NAME = '%s'
+                      AND TABLE_SCHEMA = current_schema()
+                  ) THEN
+                    %s
+                  END IF;
+                END $$;
+                """.formatted(
+                sqlLiteral(constraintName),
+                sqlLiteral(tableName),
+                statement
+        );
+    }
+
+    private static String sqlLiteral(String value) {
+        return value == null ? "" : value.replace("'", "''");
     }
 
     private static void emitManifest(CompiledModel model, Path resourcesRoot, GeneratedDatabasePlan plan, Path modelSourcePath) throws Exception {
@@ -241,7 +279,7 @@ public final class SchemaRealizationEmitter {
                 ? NpdevInternalTables.all().stream().map(InternalTableDefinition::name).toList()
                 : List.of();
         List<String> businessTables = plan.createBusinessTables()
-                ? model.getConcepts().stream().map(UserDatabaseDefinitionLoader::safeTable).toList()
+                ? model.getConcepts().stream().map(SqlIdentifierSupport::tableName).toList()
                 : List.of();
 
         Map<String, Object> manifest = new LinkedHashMap<>();
@@ -370,7 +408,7 @@ public final class SchemaRealizationEmitter {
     }
 
     private static String truncate(String value) {
-        return value.length() > 60 ? value.substring(0, 60) : value;
+        return SqlIdentifierSupport.safeSqlIdentifier(value);
     }
 
     private static Path resolveInternalSchemaSourcePath(Path hint) {

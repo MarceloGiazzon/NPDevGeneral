@@ -7,6 +7,8 @@ import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledEnumOption;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
+import com.npdev.dsl.v1.compiled.CompiledSchema;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.templates.TemplateEngine;
 
@@ -152,8 +154,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             Map<String, Object> node = new LinkedHashMap<>();
             node.put("conceptName", concept.getName());
             node.put("displayName", displayName(concept));
-            node.put("route", "/" + concept.getName());
-            node.put("tableName", concept.getTableName());
+            node.put("route", "/" + SqlIdentifierSupport.tableName(concept));
+            node.put("tableName", SqlIdentifierSupport.tableName(concept));
             node.put("idField", idField.getName());
             node.put("endpointBase", endpointBase(concept));
             node.put("fields", manifestFields(concept, conceptsByName(concepts)));
@@ -191,6 +193,13 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("readOnly", field.isId());
             node.put("sortable", isSortable(field));
             node.put("filterable", isFilterable(field));
+            node.put("showInDefaultWebUi", isShowInUi(field));
+            if ("array".equals(manifestType(field))) {
+                CompiledSchema schema = field.getSchema();
+                if (schema != null && schema.getItems() != null && !schema.getItems().getProperties().isEmpty()) {
+                    node.put("itemsSchema", buildItemsSchemaNode(schema.getItems()));
+                }
+            }
             Optional<Map<String, Object>> reference = referenceMetadata(field, conceptsByName);
             node.put("widget", reference.isPresent() ? "lookup" : widget(field, conceptsByName));
             node.put("enumValues", field.getEnumValues());
@@ -216,6 +225,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
 
     private static Map<String, Object> manifestList(CompiledConcept concept, CompiledField idField) {
         List<String> columns = concept.getFields().stream()
+                .filter(BusinessUiEmitter::isShowInUi)
                 .map(CompiledField::getName)
                 .toList();
         Map<String, Object> sort = new LinkedHashMap<>();
@@ -249,7 +259,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     }
 
     private static String endpointBase(CompiledConcept concept) {
-        return "/api/concepts/" + concept.getName();
+        return "/api/concepts/" + SqlIdentifierSupport.tableName(concept);
     }
 
     private static String displayName(CompiledConcept concept) {
@@ -305,6 +315,19 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         return "string".equals(type) || "enum".equals(type);
     }
 
+    private static boolean isShowInUi(CompiledField field) {
+        CompiledPresentationMetadata ui = field.getUi();
+        if (ui != null) {
+            Boolean explicit = ui.getShowInDefaultWebUi();
+            if (explicit != null) {
+                return explicit;
+            }
+        }
+        // array and object fields are complex structures; hide by default
+        String type = manifestType(field);
+        return !"array".equals(type) && !"object".equals(type);
+    }
+
 
     private static Optional<Map<String, Object>> referenceMetadata(
             CompiledField field,
@@ -334,10 +357,20 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         List<String> displayFields = effectiveReferenceDisplayFields(field, target, displayField, searchFields);
         List<String> pickerColumns = effectiveReferencePickerColumns(field, target, displayFields);
         String defaultFilter = referenceDefaultFilter(field);
+        String via = field.getReferenceSemantics() == null ? "" : firstNonBlank(field.getReferenceSemantics().getVia(), "");
+        String onDelete = field.getReferenceSemantics() == null ? "restrict" : firstNonBlank(field.getReferenceSemantics().getOnDelete(), "restrict");
+        CompiledField anchorField = via.isBlank() ? targetId : fieldByName(target, via);
+        if (anchorField == null) {
+            anchorField = targetId;
+        }
 
         Map<String, Object> reference = new LinkedHashMap<>();
         reference.put("targetConcept", target.getName());
         reference.put("targetIdField", targetId.getName());
+        reference.put("via", via);
+        reference.put("onDelete", onDelete);
+        reference.put("anchorField", anchorField.getName());
+        reference.put("anchorType", anchorField.getDslType());
         reference.put("endpointBase", endpointBase(target));
         reference.put("displayField", displayField);
         reference.put("displayFields", displayFields);
@@ -369,6 +402,18 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         }
 
         return inferReferenceTargetFromIdField(field, conceptsByName);
+    }
+
+    private static CompiledField fieldByName(CompiledConcept concept, String fieldName) {
+        if (concept == null || fieldName == null || fieldName.isBlank()) {
+            return null;
+        }
+        for (CompiledField field : concept.getFields()) {
+            if (field != null && fieldName.equalsIgnoreCase(field.getName())) {
+                return field;
+            }
+        }
+        return null;
     }
 
     private static boolean canInferReference(CompiledField field) {
@@ -564,6 +609,19 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         return idField(target).getName();
     }
 
+    private static Map<String, Object> buildItemsSchemaNode(CompiledSchema items) {
+        Map<String, Object> node = new LinkedHashMap<>();
+        node.put("type", items.getType() != null ? items.getType() : "object");
+        Map<String, Object> propsNode = new LinkedHashMap<>();
+        for (Map.Entry<String, CompiledSchema> entry : items.getProperties().entrySet()) {
+            Map<String, Object> propNode = new LinkedHashMap<>();
+            propNode.put("type", entry.getValue().getType() != null ? entry.getValue().getType() : "string");
+            propsNode.put(entry.getKey(), propNode);
+        }
+        node.put("properties", propsNode);
+        return node;
+    }
+
     private static String firstNonBlank(String first, String fallback) {
         if (first != null && !first.isBlank()) {
             return first.trim();
@@ -608,15 +666,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     }
 
     private static String toSnake(String value) {
-        StringBuilder out = new StringBuilder();
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (Character.isUpperCase(c) && i > 0) {
-                out.append('_');
-            }
-            out.append(Character.toLowerCase(c));
-        }
-        return out.toString();
+        return SqlIdentifierSupport.toSnake(value);
     }
 
     private static String javaString(String value) {

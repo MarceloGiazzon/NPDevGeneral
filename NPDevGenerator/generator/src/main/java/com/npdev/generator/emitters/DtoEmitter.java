@@ -3,6 +3,9 @@ package com.npdev.generator.emitters;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.generator.bonds.BondModelSupport;
+import com.npdev.generator.bonds.BondModelSupport.Bond;
+import com.npdev.generator.bonds.BondModelSupport.Cardinality;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.templates.TemplateEngine;
 
@@ -10,6 +13,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public final class DtoEmitter extends AbstractEmitter {
 
@@ -18,6 +22,7 @@ public final class DtoEmitter extends AbstractEmitter {
     }
 
     public void emit(CompiledModel model) {
+        Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
         for (CompiledConcept entity : model.getConcepts()) {
             String dtoPackage = "com.npdev.generated.dtos";
             List<Map<String, Object>> createFields = new ArrayList<>();
@@ -25,7 +30,11 @@ public final class DtoEmitter extends AbstractEmitter {
             List<Map<String, Object>> responseFields = new ArrayList<>();
 
             for (CompiledField f : entity.getFields()) {
-                String javaType = f.getJavaType();
+                Optional<Bond> bond = BondModelSupport.resolveBond(entity, f, conceptsByName);
+                if (bond.map(value -> value.cardinality() == Cardinality.MANY_TO_MANY).orElse(false)) {
+                    continue;
+                }
+                String javaType = bond.map(Bond::effectiveJavaType).orElse(f.getJavaType());
                 String boxedJavaType = boxedType(javaType);
 
                 Map<String, Object> fm = new HashMap<>();

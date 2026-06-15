@@ -4,6 +4,9 @@ import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledEvent;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.generator.bonds.BondModelSupport;
+import com.npdev.generator.bonds.BondModelSupport.Bond;
+import com.npdev.generator.bonds.BondModelSupport.Cardinality;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.templates.TemplateEngine;
 
@@ -14,6 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 public final class ServiceEmitter extends AbstractEmitter {
@@ -23,10 +27,13 @@ public final class ServiceEmitter extends AbstractEmitter {
     }
 
     public void emit(CompiledModel model) {
+        Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
         for (CompiledConcept entity : model.getConcepts()) {
 
             List<Map<String, Object>> fields = new ArrayList<>();
             List<Map<String, Object>> uniqueFields = new ArrayList<>();
+            List<Map<String, Object>> referenceFinders = new ArrayList<>();
+            List<Map<String, Object>> manyToManyBonds = new ArrayList<>();
             List<Map<String, Object>> expressionInvariants = new ArrayList<>();
             List<Map<String, Object>> allowedMutationTopics = allowedMutationTopics(model, entity);
             String persistenceAdapter = resolveBindingAdapter(model, "persistence", "repository");
@@ -47,10 +54,25 @@ public final class ServiceEmitter extends AbstractEmitter {
             }
 
             for (CompiledField f : entity.getFields()) {
+                Optional<Bond> bond = BondModelSupport.resolveBond(entity, f, conceptsByName);
+                if (bond.map(value -> value.cardinality() == Cardinality.MANY_TO_MANY).orElse(false)) {
+                    Map<String, Object> bm = new HashMap<>();
+                    bm.put("name", f.getName());
+                    bm.put("capName", cap(f.getName()));
+                    bm.put("targetJavaType", bond.map(Bond::effectiveJavaType).orElse("Object"));
+                    manyToManyBonds.add(bm);
+                    continue;
+                }
+                bond.ifPresent(value -> {
+                    Map<String, Object> rf = new HashMap<>();
+                    rf.put("name", f.getName());
+                    rf.put("capName", cap(f.getName()));
+                    referenceFinders.add(rf);
+                });
                 boolean isId = f.isId();
                 if (isId) continue;
 
-                String javaType = f.getJavaType();
+                String javaType = bond.map(Bond::effectiveJavaType).orElse(f.getJavaType());
                 String boxedJavaType = boxedType(javaType);
                 boolean isString = javaType != null && javaType.trim().equals("String");
                 boolean required = false;
@@ -91,6 +113,8 @@ public final class ServiceEmitter extends AbstractEmitter {
             ctx.put("dtoPackage", "com.npdev.generated.dtos");
             ctx.put("fields", fields);
             ctx.put("uniqueFields", uniqueFields);
+            ctx.put("referenceFinders", referenceFinders);
+            ctx.put("manyToManyBonds", manyToManyBonds);
             ctx.put("expressionInvariants", expressionInvariants);
             ctx.put("allowedMutationTopics", allowedMutationTopics);
             ctx.put("emitCreatedEvent", hasMutationTopic(allowedMutationTopics, entity.getClassName() + ".created"));

@@ -34,11 +34,11 @@ public final class InMemoryPersistenceCapabilityAdapter implements PersistenceCa
         if (id == null) {
             id = UUID.randomUUID().toString();
         }
-        if (conceptIdField == null || "id".equals(conceptIdField)) {
-            record.put("id", id);
-        } else {
-            record.putIfAbsent(conceptIdField, id);
-        }
+        // The in-memory store is keyed on the canonical "id" field. Always expose it
+        // so callers, findById, and delete all agree on the same key. Any concept-specific
+        // id field the record arrived with (e.g. "userId") is read above but never used to
+        // hide the canonical id.
+        record.put("id", id);
 
         storeByConcept
                 .computeIfAbsent(conceptKey, k -> new ConcurrentHashMap<>())

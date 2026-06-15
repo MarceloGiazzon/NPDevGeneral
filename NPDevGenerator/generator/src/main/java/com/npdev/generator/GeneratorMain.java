@@ -7,6 +7,8 @@ import com.npdev.dsl.v1.compiler.ModelCompiler;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.paths.CanonicalModelPaths;
 import com.npdev.dsl.v1.parser.JsonModelParser;
+import com.npdev.dsl.v1.parser.ModelSourceResolver;
+import com.npdev.dsl.v1.parser.ResolvedModelSource;
 import com.npdev.dsl.v1.validation.SemanticValidator;
 import com.npdev.dsl.v1.validation.ValidationResult;
 import com.npdev.generator.assembly.FinalAppAssembler;
@@ -46,8 +48,9 @@ public final class GeneratorMain {
 
         Path schemaRealizationDir = resolveSchemaRealizationDir(a.schemaRealizationDir, outRoot);
 
+        ResolvedModelSource resolvedModelSource = new ModelSourceResolver().resolve(modelPath);
         JsonModelParser parser = new JsonModelParser();
-        ModelAst ast = parser.parse(modelPath);
+        ModelAst ast = parser.parse(resolvedModelSource);
 
         ValidationResult validation = new SemanticValidator().validateWithWarnings(ast);
         if (!validation.getWarnings().isEmpty()) {
@@ -80,7 +83,7 @@ public final class GeneratorMain {
                 compiled,
                 outRoot,
                 schemaRealizationDir,
-                modelPath,
+                resolvedModelSource,
                 databasePlan
         );
 

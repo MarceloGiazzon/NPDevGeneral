@@ -3,7 +3,6 @@ package com.npdev.generator.emitters;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
-import com.npdev.dsl.v1.compiled.CompiledReferenceSemantics;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.dsl.v1.compiled.SqlTypeSupport;
 import com.npdev.generator.bonds.BondModelSupport;
@@ -69,7 +68,7 @@ public final class FlywayEmitter {
                 }
                 sb.append("ALTER TABLE ").append(table)
                         .append(" ADD COLUMN IF NOT EXISTS ")
-                        .append(SqlIdentifierSupport.columnName(f)).append(" ").append(columnType(f, conceptsByName)).append(";\n");
+                        .append(SqlIdentifierSupport.columnName(f)).append(" ").append(columnType(e, f, conceptsByName)).append(";\n");
             }
 
             sb.append("\n");
@@ -100,15 +99,13 @@ public final class FlywayEmitter {
                 }
                 String col = SqlIdentifierSupport.columnName(f);
                 if (isConnectableAnchor(f)) {
-                    // A connectable natural-key anchor is an FK target. On H2 a unique INDEX is not a
-                    // valid FK target (error 90057); a UNIQUE CONSTRAINT is, and it backs uniqueness
-                    // too. Plain unique fields keep a unique index.
-                    sb.append("ALTER TABLE ").append(table)
-                            .append(" ADD CONSTRAINT IF NOT EXISTS ")
-                            .append(SqlIdentifierSupport.safeSqlIdentifier("uq_" + table + "_" + col))
-                            .append(" UNIQUE (")
-                            .append(col)
-                            .append(");\n");
+                    // A connectable natural-key anchor is an FK target. H2 rejects a unique INDEX as
+                    // an FK target (error 90057); a UNIQUE CONSTRAINT satisfies both requirements.
+                    // Wrapped in a DO $$ guard so the repeatable migration is idempotent.
+                    String constraint = SqlIdentifierSupport.safeSqlIdentifier("uq_" + table + "_" + col);
+                    sb.append(addConstraintIfMissing(
+                            table, constraint,
+                            "ALTER TABLE " + table + " ADD CONSTRAINT " + constraint + " UNIQUE (" + col + ")"));
                 } else {
                     sb.append("CREATE UNIQUE INDEX IF NOT EXISTS ")
                             .append(SqlIdentifierSupport.safeSqlIdentifier("ux_" + table + "_" + col))
@@ -166,19 +163,21 @@ public final class FlywayEmitter {
             // Source-side FK is always CASCADE: a junction row is membership owned by its
             // source, so deleting the source must remove its memberships. The authored
             // onDelete policy governs only the TARGET side below.
-            sb.append("ALTER TABLE ").append(junctionTable)
-                    .append(" ADD CONSTRAINT IF NOT EXISTS ")
-                    .append(SqlIdentifierSupport.safeSqlIdentifier("fk_" + junctionTable + "_" + sourceColumn))
-                    .append(" FOREIGN KEY (").append(sourceColumn).append(")")
-                    .append(" REFERENCES ").append(bond.sourceTable()).append(" (").append(SqlIdentifierSupport.columnName(sourceId)).append(")")
-                    .append(" ON DELETE CASCADE;\n");
-            sb.append("ALTER TABLE ").append(junctionTable)
-                    .append(" ADD CONSTRAINT IF NOT EXISTS ")
-                    .append(SqlIdentifierSupport.safeSqlIdentifier("fk_" + junctionTable + "_" + targetColumn))
-                    .append(" FOREIGN KEY (").append(targetColumn).append(")")
-                    .append(" REFERENCES ").append(bond.targetTable()).append(" (").append(bond.anchorColumn()).append(")")
-                    .append(bond.onUpdateSqlClause())
-                    .append(" ON DELETE ").append(bond.onDeleteSql()).append(";\n\n");
+            String sourceConstraint = SqlIdentifierSupport.safeSqlIdentifier("fk_" + junctionTable + "_" + sourceColumn);
+            String sourceConstraintSql = "ALTER TABLE " + junctionTable
+                    + " ADD CONSTRAINT " + sourceConstraint
+                    + " FOREIGN KEY (" + sourceColumn + ")"
+                    + " REFERENCES " + bond.sourceTable() + " (" + SqlIdentifierSupport.columnName(sourceId) + ")"
+                    + " ON DELETE CASCADE";
+            sb.append(addConstraintIfMissing(junctionTable, sourceConstraint, sourceConstraintSql));
+            String targetConstraint = SqlIdentifierSupport.safeSqlIdentifier("fk_" + junctionTable + "_" + targetColumn);
+            String targetConstraintSql = "ALTER TABLE " + junctionTable
+                    + " ADD CONSTRAINT " + targetConstraint
+                    + " FOREIGN KEY (" + targetColumn + ")"
+                    + " REFERENCES " + bond.targetTable() + " (" + bond.anchorColumn() + ")"
+                    + bond.onUpdateSqlClause()
+                    + " ON DELETE " + bond.onDeleteSql();
+            sb.append(addConstraintIfMissing(junctionTable, targetConstraint, targetConstraintSql)).append("\n");
         }
 
         // Foreign keys (bonds) emitted last: every target table and its PK/unique
@@ -191,12 +190,13 @@ public final class FlywayEmitter {
                 continue;
             }
             String constraint = SqlIdentifierSupport.safeSqlIdentifier("fk_" + bond.sourceTable() + "_" + bond.sourceColumn());
-            sb.append("ALTER TABLE ").append(bond.sourceTable())
-                    .append(" ADD CONSTRAINT IF NOT EXISTS ").append(constraint)
-                    .append(" FOREIGN KEY (").append(bond.sourceColumn()).append(")")
-                    .append(" REFERENCES ").append(bond.targetTable()).append(" (").append(bond.anchorColumn()).append(")")
-                    .append(bond.onUpdateSqlClause())
-                    .append(" ON DELETE ").append(bond.onDeleteSql()).append(";\n");
+            String constraintSql = "ALTER TABLE " + bond.sourceTable()
+                    + " ADD CONSTRAINT " + constraint
+                    + " FOREIGN KEY (" + bond.sourceColumn() + ")"
+                    + " REFERENCES " + bond.targetTable() + " (" + bond.anchorColumn() + ")"
+                    + bond.onUpdateSqlClause()
+                    + " ON DELETE " + bond.onDeleteSql();
+            sb.append(addConstraintIfMissing(bond.sourceTable(), constraint, constraintSql));
         }
         sb.append("\n");
 
@@ -234,62 +234,15 @@ public final class FlywayEmitter {
         return field != null && "anchor".equalsIgnoreCase(field.getConnectable());
     }
 
-    /** A field that declares a real bond target (not the {@code *Id}-uuid heuristic). */
-    private static boolean isDeclaredReference(CompiledField field) {
-        CompiledReferenceSemantics rs = field.getReferenceSemantics();
-        if (rs != null && rs.getTarget() != null && !rs.getTarget().isBlank()) {
-            return true;
-        }
-        return field.getReferenceTarget() != null && !field.getReferenceTarget().isBlank();
-    }
-
-    /** Resolves the anchor field a port binds to (its {@code via}, or the target id). */
-    private CompiledField resolveAnchorField(CompiledField field, Map<String, CompiledConcept> conceptsByName) {
-        CompiledReferenceSemantics rs = field.getReferenceSemantics();
-        String targetName = rs != null && rs.getTarget() != null && !rs.getTarget().isBlank()
-                ? rs.getTarget()
-                : field.getReferenceTarget();
-        if (targetName == null || targetName.isBlank()) {
-            return null;
-        }
-        CompiledConcept target = conceptsByName.get(targetName.toLowerCase(Locale.ROOT));
-        if (target == null) {
-            return null;
-        }
-        String via = rs == null ? null : rs.getVia();
-        if (via == null || via.isBlank()) {
-            return idFieldOrNull(target);
-        }
-        return fieldByName(target, via);
-    }
-
     /** Column SQL type: for a declared bond, match the bound anchor's type; otherwise the field's own type. */
-    private String columnType(CompiledField field, Map<String, CompiledConcept> conceptsByName) {
-        if (isDeclaredReference(field)) {
-            CompiledField anchor = resolveAnchorField(field, conceptsByName);
-            if (anchor != null) {
-                return mapType(anchor);
-            }
-        }
-        return mapType(field);
-    }
-
-    private static CompiledField idFieldOrNull(CompiledConcept concept) {
-        for (CompiledField field : concept.getFields()) {
-            if (field != null && field.isId()) {
-                return field;
-            }
-        }
-        return null;
-    }
-
-    private static CompiledField fieldByName(CompiledConcept concept, String name) {
-        for (CompiledField field : concept.getFields()) {
-            if (field != null && name.equalsIgnoreCase(field.getName())) {
-                return field;
-            }
-        }
-        return null;
+    private String columnType(
+            CompiledConcept sourceConcept,
+            CompiledField field,
+            Map<String, CompiledConcept> conceptsByName
+    ) {
+        return BondModelSupport.resolveBond(sourceConcept, field, conceptsByName)
+                .map(Bond::effectiveSqlType)
+                .orElseGet(() -> mapType(field));
     }
 
     private static boolean isReferenceLike(CompiledField field) {
@@ -311,5 +264,35 @@ public final class FlywayEmitter {
 
     private String mapType(CompiledField field) {
         return SqlTypeSupport.sqlType(field);
+    }
+
+    private static String addConstraintIfMissing(String tableName, String constraintName, String addConstraintSql) {
+        String statement = addConstraintSql.endsWith(";") ? addConstraintSql : addConstraintSql + ";";
+        // INFORMATION_SCHEMA.TABLE_CONSTRAINTS is standard SQL and available in both PostgreSQL
+        // and H2 PostgreSQL-compatibility mode. pg_constraint/pg_class/pg_namespace are
+        // PostgreSQL-only system catalogs; H2 does not expose them, so using them would break
+        // every H2-backed FinalApp on the R__ repeatable migration.
+        return """
+                DO $$
+                BEGIN
+                  IF NOT EXISTS (
+                    SELECT 1
+                    FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+                    WHERE CONSTRAINT_NAME = '%s'
+                      AND TABLE_NAME = '%s'
+                      AND TABLE_SCHEMA = current_schema()
+                  ) THEN
+                    %s
+                  END IF;
+                END $$;
+                """.formatted(
+                sqlLiteral(constraintName),
+                sqlLiteral(tableName),
+                statement
+        );
+    }
+
+    private static String sqlLiteral(String value) {
+        return value == null ? "" : value.replace("'", "''");
     }
 }

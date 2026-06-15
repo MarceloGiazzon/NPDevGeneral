@@ -6,7 +6,12 @@ import org.springframework.web.bind.annotation.GetMapping;
 @Controller
 public class GeneratedBusinessUiRouteController {
 
-    @GetMapping({"/npdev-business-ui", "/npdev-business-ui/"})
+    @GetMapping("/npdev-business-ui")
+    public String businessUiRedirect() {
+        return "redirect:/npdev-business-ui/";
+    }
+
+    @GetMapping("/npdev-business-ui/")
     public String businessUiIndex() {
         return "forward:/npdev-business-ui/index.html";
     }

@@ -14,8 +14,20 @@
     appTitle: document.getElementById("appTitle"),
     status: document.getElementById("status"),
     apiKey: document.getElementById("apiKey"),
-    modalRoot: document.getElementById("modalRoot")
+    modalRoot: document.getElementById("modalRoot"),
+    sideNav: document.getElementById("sideNav")
   };
+
+  function sectionId(concept) {
+    return "concept-" + concept.conceptName.replace(/[^a-zA-Z0-9_-]/g, "-");
+  }
+
+  function humanize(str) {
+    return String(str)
+      .replace(/([A-Z])/g, " $1")
+      .replace(/^./, function (s) { return s.toUpperCase(); })
+      .trim();
+  }
 
   function text(value) {
     return value === null || value === undefined ? "" : String(value);
@@ -119,6 +131,7 @@
     const panel = panelState(concept);
     const section = document.createElement("section");
     section.className = "concept-panel";
+    section.id = sectionId(concept);
 
     const header = document.createElement("div");
     header.className = "panel-header";
@@ -266,7 +279,11 @@
 
   function formFields(concept, mode) {
     return concept.fields.filter(function (field) {
-      return mode === "edit" ? !field.readOnly : !field.readOnly;
+      if (field.type === "array" && field.itemsSchema && field.itemsSchema.properties) {
+        return !field.readOnly;
+      }
+      if (field.showInDefaultWebUi === false) return false;
+      return !field.readOnly;
     });
   }
 
@@ -379,6 +396,37 @@
 
   function renderFieldValue(target, field, value, includeRawId) {
     target.innerHTML = "";
+    if (field.type === "array" && Array.isArray(value)) {
+      if (value.length === 0) {
+        target.textContent = "-";
+        return;
+      }
+      const props = Object.keys(value[0]);
+      const table = document.createElement("table");
+      table.className = "records array-preview";
+      const thead = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      props.forEach(function (p) {
+        const th = document.createElement("th");
+        th.textContent = humanize(p);
+        headRow.appendChild(th);
+      });
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+      const tbody = document.createElement("tbody");
+      value.forEach(function (item) {
+        const tr = document.createElement("tr");
+        props.forEach(function (p) {
+          const td = document.createElement("td");
+          td.textContent = formatValue(item[p]);
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      target.appendChild(table);
+      return;
+    }
     const rawValue = text(value).trim();
     if (!isReferenceField(field)) {
       target.textContent = formatValue(value);
@@ -445,6 +493,9 @@
   }
 
   function createInput(field, value) {
+    if (field.type === "array" && field.itemsSchema) {
+      return createArrayTableInput(field, Array.isArray(value) ? value : []);
+    }
     if (field.widget === "lookup" && field.reference) {
       return createLookupInput(field, value);
     }
@@ -469,6 +520,75 @@
     return input;
   }
 
+
+  function createArrayTableInput(field, rows) {
+    const props = Object.keys(field.itemsSchema.properties || {});
+    const wrapper = document.createElement("div");
+    wrapper.className = "array-table-editor";
+
+    const hidden = document.createElement("input");
+    hidden.type = "hidden";
+    hidden.name = field.name;
+
+    function syncHidden() {
+      const out = [];
+      wrapper.querySelectorAll("tr.array-row").forEach(function (tr) {
+        const item = {};
+        props.forEach(function (prop) {
+          const inp = tr.querySelector("[data-prop=\"" + prop + "\"]");
+          item[prop] = inp ? text(inp.value).trim() : "";
+        });
+        out.push(item);
+      });
+      hidden.value = JSON.stringify(out);
+    }
+
+    const table = document.createElement("table");
+    table.className = "array-editor-table";
+
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    props.forEach(function (prop) {
+      const th = document.createElement("th");
+      th.textContent = humanize(prop);
+      headRow.appendChild(th);
+    });
+    headRow.appendChild(document.createElement("th"));
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+
+    function addRow(rowData) {
+      const tr = document.createElement("tr");
+      tr.className = "array-row";
+      props.forEach(function (prop) {
+        const td = document.createElement("td");
+        const inp = document.createElement("input");
+        inp.type = "text";
+        inp.dataset.prop = prop;
+        inp.value = rowData && rowData[prop] !== null && rowData[prop] !== undefined ? String(rowData[prop]) : "";
+        inp.addEventListener("input", syncHidden);
+        td.appendChild(inp);
+        tr.appendChild(td);
+      });
+      const tdDel = document.createElement("td");
+      tdDel.appendChild(button("×", "danger", function () { tr.remove(); syncHidden(); }));
+      tr.appendChild(tdDel);
+      tbody.appendChild(tr);
+      syncHidden();
+    }
+
+    (Array.isArray(rows) ? rows : []).forEach(addRow);
+    table.appendChild(tbody);
+
+    const addBtn = button("+ Add row", "", function () { addRow(null); });
+    wrapper.appendChild(table);
+    wrapper.appendChild(addBtn);
+    wrapper.appendChild(hidden);
+    syncHidden();
+    return wrapper;
+  }
 
   function createEnumSelect(field, value) {
     const select = document.createElement("select");
@@ -645,6 +765,16 @@
     const payload = {};
     for (const field of formFields(concept, mode)) {
       const control = form.elements[field.name];
+      if (field.type === "array") {
+        let arrValue;
+        try { arrValue = JSON.parse(control.value || "[]"); } catch (e) { arrValue = []; }
+        if (field.required && (!Array.isArray(arrValue) || arrValue.length === 0)) {
+          setStatus((field.label || field.name) + " must have at least one item.", true);
+          return;
+        }
+        payload[field.name] = arrValue;
+        continue;
+      }
       const value = control.type === "checkbox" ? control.checked : text(control.value).trim();
       if (field.required && (value === "" || value === null || value === undefined)) {
         setStatus((field.label || field.name) + " is required.", true);
@@ -757,9 +887,32 @@
     state.manifest = await fetchJson("./generated-ui-manifest.json");
     if (state.manifest.auth && state.manifest.auth.devKeyHint) {
       el.apiKey.placeholder = "dev/smoke: " + state.manifest.auth.devKeyHint;
+      if (!el.apiKey.value) {
+        el.apiKey.value = state.manifest.auth.devKeyHint;
+      }
     }
+    renderNav();
     render();
     await Promise.all(state.manifest.concepts.map(loadPanel));
+  }
+
+  function renderNav() {
+    if (!el.sideNav || !state.manifest) return;
+    el.sideNav.innerHTML = "";
+    state.manifest.concepts.forEach(function (concept, index) {
+      const a = document.createElement("a");
+      a.href = "#" + sectionId(concept);
+      a.textContent = concept.displayName;
+      if (index === 0) a.classList.add("active");
+      a.addEventListener("click", function (e) {
+        e.preventDefault();
+        const section = document.getElementById(sectionId(concept));
+        if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
+        el.sideNav.querySelectorAll("a").forEach(function (l) { l.classList.remove("active"); });
+        a.classList.add("active");
+      });
+      el.sideNav.appendChild(a);
+    });
   }
 
   bootstrap().catch(function (error) {

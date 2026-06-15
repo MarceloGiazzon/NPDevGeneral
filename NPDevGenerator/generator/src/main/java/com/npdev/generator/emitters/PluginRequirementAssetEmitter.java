@@ -6,6 +6,7 @@ import com.npdev.dsl.v1.compiled.CompiledPluginRequirement;
 import com.npdev.dsl.v1.compiled.CompiledPluginRequirementGraph;
 import com.npdev.dsl.v1.compiled.CompiledPluginRequirementGraphBuilder;
 import com.npdev.dsl.v1.parser.JsonModelParser;
+import com.npdev.dsl.v1.parser.ResolvedModelSource;
 import com.npdev.generator.output.GeneratedSourceWriter;
 
 import java.nio.file.Files;
@@ -33,11 +34,30 @@ public final class PluginRequirementAssetEmitter {
     }
 
     public void emit(Path modelSourcePath) throws Exception {
+        emit(null, modelSourcePath);
+    }
+
+    public void emit(ResolvedModelSource resolvedModelSource, Path modelSourcePath) throws Exception {
         if (modelSourcePath == null || !Files.exists(modelSourcePath)) {
-            return;
+            if (resolvedModelSource == null) {
+                return;
+            }
         }
 
-        ModelAst modelAst = new JsonModelParser().parse(modelSourcePath);
+        ModelAst modelAst;
+        if (resolvedModelSource != null) {
+            modelAst = new JsonModelParser().parse(resolvedModelSource);
+        } else {
+            modelAst = new JsonModelParser().parse(modelSourcePath);
+        }
+        CompiledPluginRequirementGraph graph = new CompiledPluginRequirementGraphBuilder().build(modelAst);
+        writer.writeRelative(OUTPUT_PATH, objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(toJson(graph)) + System.lineSeparator());
+    }
+
+    public void emit(ModelAst modelAst) throws Exception {
+        if (modelAst == null) {
+            return;
+        }
         CompiledPluginRequirementGraph graph = new CompiledPluginRequirementGraphBuilder().build(modelAst);
         writer.writeRelative(OUTPUT_PATH, objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(toJson(graph)) + System.lineSeparator());
     }
