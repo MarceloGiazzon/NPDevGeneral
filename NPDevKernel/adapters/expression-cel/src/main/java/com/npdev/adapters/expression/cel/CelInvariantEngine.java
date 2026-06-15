@@ -1,6 +1,6 @@
 package com.npdev.adapters.expression.cel;
 
-import com.npdev.dsl.v1.compiled.CompiledEntity;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledInvariant;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -160,8 +160,8 @@ public final class CelInvariantEngine implements InvariantEngine {
         Objects.requireNonNull(model, "model");
 
         Map<String, EntityRules> rules = new LinkedHashMap<>();
-        for (CompiledEntity entity : model.getEntities()) {
-            rules.put(entity.getName(), EntityRules.fromCompiledEntity(entity));
+        for (CompiledConcept entity : model.getConcepts()) {
+            rules.put(entity.getName(), EntityRules.fromCompiledConcept(entity));
         }
 
         return new CelInvariantEngine(rules, uniqueValueChecker, conflictChecker, scopeChecker);
@@ -284,7 +284,7 @@ public final class CelInvariantEngine implements InvariantEngine {
             orderedRefs = orderedRefs == null ? List.copyOf(rulesByRef.keySet()) : List.copyOf(orderedRefs);
         }
 
-        public static EntityRules fromCompiledEntity(CompiledEntity entity) {
+        public static EntityRules fromCompiledConcept(CompiledConcept entity) {
             Map<String, InvariantRule> compiledRules = new LinkedHashMap<>();
             List<String> orderedRefs = new ArrayList<>();
             Set<String> requiredFields = new LinkedHashSet<>();

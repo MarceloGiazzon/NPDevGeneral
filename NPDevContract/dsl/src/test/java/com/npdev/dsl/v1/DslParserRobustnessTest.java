@@ -67,7 +67,7 @@ class DslParserRobustnessTest {
     void canonicalAndOfficialPositiveModelsRetainCompiledAstBehavior() throws Exception {
         CompiledModel canonical = parseAndCompile(resolveCanonicalModel());
         assertEquals("canonical.clinicdemo", canonical.getNamespace());
-        assertEquals(4, canonical.getEntities().size());
+        assertEquals(4, canonical.getConcepts().size());
         assertTrue(new SemanticValidator().validate(new JsonModelParser().parse(resolveCanonicalModel())).isEmpty());
 
         for (Path sampleModel : List.of(
@@ -78,7 +78,7 @@ class DslParserRobustnessTest {
             ModelAst ast = new JsonModelParser().parse(sampleModel);
             assertTrue(new SemanticValidator().validate(ast).isEmpty(), "Expected semantic pass for " + sampleModel);
             CompiledModel compiled = new ModelCompiler().compile(ast);
-            assertEquals(1, compiled.getEntities().size(), "Primary official sample AST behavior drifted for " + sampleModel);
+            assertEquals(1, compiled.getConcepts().size(), "Primary official sample AST behavior drifted for " + sampleModel);
             assertFalse(compiled.getFlows().isEmpty(), "Official sample flow behavior drifted for " + sampleModel);
         }
     }

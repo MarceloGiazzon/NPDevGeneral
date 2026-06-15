@@ -64,12 +64,12 @@ class BondCompilePropagationTest {
     }
 
     private static void assertBondCarried(CompiledModel model, String stage) {
-        CompiledConcept product = (CompiledConcept) model.findEntity("Product").orElseThrow();
+        CompiledConcept product = model.findConcept("Product").orElseThrow();
         assertEquals("T3", product.getTruthLevel(), stage + ": concept truthLevel must survive");
         CompiledField sku = field(product, "skuId");
         assertEquals("anchor", sku.getConnectable(), stage + ": connectable anchor must survive");
 
-        CompiledConcept invoice = (CompiledConcept) model.findEntity("Invoice").orElseThrow();
+        CompiledConcept invoice = model.findConcept("Invoice").orElseThrow();
         assertEquals("T1", invoice.getTruthLevel(), stage + ": default truthLevel must be T1");
         CompiledField productRef = field(invoice, "productId");
         assertNotNull(productRef.getReferenceSemantics(), stage + ": reference semantics present");

@@ -88,9 +88,9 @@ class PackBondResolutionTest {
         assertTrue(errors.isEmpty(), "Expected pack bond model to validate, got: " + errors);
 
         CompiledModel compiled = new ModelCompiler().compile(ast);
-        CompiledConcept product = (CompiledConcept) compiled.findEntity("cat::Product").orElseThrow();
-        CompiledConcept variant = (CompiledConcept) compiled.findEntity("cat::Variant").orElseThrow();
-        CompiledConcept order = (CompiledConcept) compiled.findEntity("Order").orElseThrow();
+        CompiledConcept product = compiled.findConcept("cat::Product").orElseThrow();
+        CompiledConcept variant = compiled.findConcept("cat::Variant").orElseThrow();
+        CompiledConcept order = compiled.findConcept("Order").orElseThrow();
 
         assertEquals("CatProduct", product.getClassName());
         assertEquals("cat_products", product.getTableName());

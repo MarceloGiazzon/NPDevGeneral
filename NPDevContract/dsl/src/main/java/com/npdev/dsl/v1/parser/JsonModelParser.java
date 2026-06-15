@@ -156,7 +156,7 @@ public final class JsonModelParser {
         List<ProcedureAst> procedures = new ArrayList<>();
         List<PanelAst> panels = new ArrayList<>();
         List<String> parserWarnings = new ArrayList<>(sourceWarnings == null ? List.of() : sourceWarnings);
-        Map<String, EntityAst> conceptsByLowerName = new LinkedHashMap<>();
+        Map<String, ConceptAst> conceptsByLowerName = new LinkedHashMap<>();
 
         JsonNode conceptsNode = root.get("concepts");
         JsonNode domainTypesNode = root.get("domainTypes");
@@ -1139,7 +1139,7 @@ public final class JsonModelParser {
             JsonNode capabilitiesNode,
             String sourceLabel,
             List<CapabilityAst> target,
-            Map<String, EntityAst> conceptsByLowerName
+            Map<String, ConceptAst> conceptsByLowerName
     ) throws IOException {
         if (capabilitiesNode == null) {
             return target;
@@ -1226,7 +1226,7 @@ public final class JsonModelParser {
     private static SchemaAst parseCapabilityOperationSchema(
             JsonNode schemaNode,
             String fieldPath,
-            Map<String, EntityAst> conceptsByLowerName
+            Map<String, ConceptAst> conceptsByLowerName
     ) throws IOException {
         if (schemaNode == null || schemaNode.isNull()) {
             return null;
@@ -1254,10 +1254,10 @@ public final class JsonModelParser {
 
     private static SchemaAst schemaFromConceptRef(
             String conceptRef,
-            Map<String, EntityAst> conceptsByLowerName,
+            Map<String, ConceptAst> conceptsByLowerName,
             String fieldPath
     ) throws IOException {
-        EntityAst concept = conceptsByLowerName.get(conceptRef.toLowerCase(Locale.ROOT));
+        ConceptAst concept = conceptsByLowerName.get(conceptRef.toLowerCase(Locale.ROOT));
         if (concept == null) {
             throw new IOException(fieldPath + " references unknown concept/schema: " + conceptRef);
         }

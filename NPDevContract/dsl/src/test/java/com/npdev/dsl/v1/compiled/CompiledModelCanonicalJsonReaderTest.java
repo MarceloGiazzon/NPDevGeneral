@@ -156,7 +156,7 @@ class CompiledModelCanonicalJsonReaderTest {
                 ))
         );
 
-        CompiledEntity entity = new CompiledEntity(
+        CompiledConcept entity = new CompiledConcept(
                 "User",
                 "User",
                 "users",
@@ -278,7 +278,7 @@ class CompiledModelCanonicalJsonReaderTest {
                 ))
         );
 
-        Map<String, CompiledEntity> entities = new LinkedHashMap<>();
+        Map<String, CompiledConcept> entities = new LinkedHashMap<>();
         entities.put(entity.getName(), entity);
 
         CompiledModel original = new CompiledModel(
@@ -300,7 +300,7 @@ class CompiledModelCanonicalJsonReaderTest {
 
         CompiledModel restored = CompiledModelCanonicalJsonReader.fromJson(json);
 
-        CompiledEntity restoredEntity = restored.findEntity("User").orElseThrow();
+        CompiledConcept restoredEntity = restored.findConcept("User").orElseThrow();
         assertNotNull(restoredEntity.getLifecycle());
         assertEquals("status", restoredEntity.getLifecycle().getStatusField());
         assertEquals(1, restoredEntity.getLifecycle().getTransitions().size());
@@ -366,10 +366,10 @@ class CompiledModelCanonicalJsonReaderTest {
 
         CompiledModel restored = CompiledModelCanonicalJsonReader.fromJson(json);
 
-        assertTrue(restored.findEntity("User").isPresent(), "Reader should preserve the legacy entities alias.");
+        assertTrue(restored.findConcept("User").isPresent(), "Reader should preserve the legacy entities alias.");
     }
 
-    private static CompiledField findField(CompiledEntity entity, String fieldName) {
+    private static CompiledField findField(CompiledConcept entity, String fieldName) {
         return entity.getFields()
                 .stream()
                 .filter(field -> fieldName.equals(field.getName()))

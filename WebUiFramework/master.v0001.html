@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generic System • Enterprise Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap');
+        body { font-family: 'Inter', system_ui, sans-serif; }
+        .logo-font { font-family: 'Space Grotesk', sans-serif; }
+        .sidebar { transition: width 0.3s cubic-bezier(0.4, 0.0, 0.2, 1); }
+        .minimized .node-text, .minimized .node-badge { display: none; }
+        .restore-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 50;
+        }
+        .tree-node {
+            transition: all 0.2s;
+            cursor: pointer;
+            user-select: none;
+        }
+        .nested {
+            display: none;
+            padding-left: 1.75rem;
+        }
+        .expanded > .nested {
+            display: block;
+        }
+        .chevron {
+            transition: transform 0.2s;
+        }
+        .expanded .chevron {
+            transform: rotate(90deg);
+        }
+    </style>
+</head>
+<body class="bg-zinc-950 text-zinc-200 flex flex-col h-screen overflow-hidden">
+
+    <!-- HEADER -->
+    <header class="h-14 bg-zinc-900 border-b border-zinc-800 flex items-center px-4 justify-between z-50">
+        <div class="flex items-center gap-x-3">
+            <div class="flex items-center gap-x-2">
+                <div class="w-8 h-8 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl logo-font">G</div>
+                <span class="logo-font text-2xl font-semibold tracking-tight">GENESIS</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-x-6">
+            <div id="lang-switch" class="flex items-center gap-x-1.5 cursor-pointer hover:text-white transition-colors">
+                <i class="fa-solid fa-globe text-lg"></i>
+                <span id="current-lang" class="text-sm font-medium">EN</span>
+            </div>
+
+            <div class="flex items-center gap-x-3">
+                <div id="user-info" class="hidden items-center gap-x-2">
+                    <div class="w-7 h-7 bg-emerald-500 rounded-full flex items-center justify-center text-xs font-bold">JD</div>
+                    <div>
+                        <div class="text-sm font-medium">John Doe</div>
+                        <div class="text-xs text-zinc-500">Admin</div>
+                    </div>
+                </div>
+                
+                <button id="login-btn" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-xl text-sm font-medium flex items-center gap-x-2">
+                    <i class="fa-solid fa-right-to-bracket"></i> Login
+                </button>
+                
+                <button id="logout-btn" class="hidden px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium flex items-center gap-x-2">
+                    <i class="fa-solid fa-right-from-bracket"></i> Logout
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden relative">
+        <!-- LEFT SIDEBAR -->
+        <div id="left-sidebar" class="sidebar bg-zinc-900 border-r border-zinc-800 flex flex-col" style="width: 288px;">
+            <div class="h-11 border-b border-zinc-800 flex items-center px-3 justify-between bg-zinc-950">
+                <div class="text-xs uppercase tracking-widest font-medium text-zinc-400 node-text">Navigation</div>
+                <button class="sidebar-toggle-btn" data-target="left">≡</button>
+            </div>
+            <div class="flex-1 overflow-auto py-2 text-sm" id="tree-menu"></div>
+            <div class="p-3 border-t border-zinc-800 flex justify-center">
+                <button class="sidebar-toggle-btn" data-target="left"><i class="fa-solid fa-bars"></i></button>
+            </div>
+        </div>
+
+        <button id="left-restore" onclick="restoreSidebar('left')" 
+                class="restore-btn hidden left-0 bg-zinc-800 hover:bg-zinc-700 w-8 h-20 rounded-r-xl flex items-center justify-center text-zinc-400">
+            <i class="fa-solid fa-chevron-right"></i>
+        </button>
+
+        <!-- MAIN AREA -->
+        <div class="flex-1 flex flex-col min-w-0">
+            <div class="h-11 bg-zinc-900 border-b border-zinc-800 flex items-center px-4 gap-x-8 text-sm">
+                <div class="flex items-center gap-x-6">
+                    <a href="#" class="tab-link active flex items-center gap-x-2 text-blue-400">
+                        <i class="fa-solid fa-house"></i><span>Dashboard</span>
+                    </a>
+                </div>
+                <div class="flex-1"></div>
+                <div class="flex items-center gap-x-4 text-zinc-400">
+                    <button id="right-mode-main" class="hover:text-white">Tools</button>
+                </div>
+            </div>
+            
+            <div class="flex-1 p-8 overflow-auto bg-zinc-950">
+                <div class="max-w-5xl mx-auto">
+                    <h1 class="text-4xl font-semibold tracking-tight">Welcome back, John <span class="text-xs font-mono text-emerald-400 align-super ml-2">v0.3.9</span></h1>
+                    <p class="text-zinc-400 mt-2">Here's what's happening in your system today.</p>
+                </div>
+            </div>
+            
+            <footer class="h-11 bg-zinc-900 border-t border-zinc-800 flex items-center px-6 text-xs text-zinc-500">
+                <div class="flex-1">© 2026 Acme Corporation</div>
+            </footer>
+        </div>
+
+        <!-- RIGHT SIDEBAR -->
+        <div id="right-sidebar" class="sidebar bg-zinc-900 border-l border-zinc-800 flex flex-col" style="width: 320px;">
+            <div class="h-11 border-b border-zinc-800 flex items-center px-4 bg-zinc-950">
+                <div class="flex-1 text-xs uppercase tracking-widest font-medium text-zinc-400 node-text">Workspace</div>
+                <button class="sidebar-toggle-btn" data-target="right">≡</button>
+            </div>
+            
+            <div class="flex border-b border-zinc-800">
+                <button id="tab-0" class="right-tab flex-1 py-3 text-center text-sm font-medium border-b-2 border-blue-500 text-white">Preferences</button>
+                <button id="tab-1" class="right-tab flex-1 py-3 text-center text-sm font-medium text-zinc-400">Clipboard</button>
+                <button id="tab-2" class="right-tab flex-1 py-3 text-center text-sm font-medium text-zinc-400">Macros</button>
+            </div>
+            
+            <div class="flex-1 overflow-auto p-5" id="right-content"></div>
+        </div>
+
+        <button id="right-restore" onclick="restoreSidebar('right')" 
+                class="restore-btn hidden right-0 bg-zinc-800 hover:bg-zinc-700 w-8 h-20 rounded-l-xl flex items-center justify-center text-zinc-400">
+            <i class="fa-solid fa-chevron-left"></i>
+        </button>
+    </div>
+
+    <script>
+        let leftState = 'visible';
+        let rightState = 'visible';
+
+        function updateSidebar(side) {
+            const isLeft = side === 'left';
+            const sidebar = document.getElementById(isLeft ? 'left-sidebar' : 'right-sidebar');
+            const restore = document.getElementById(isLeft ? 'left-restore' : 'right-restore');
+            const state = isLeft ? leftState : rightState;
+            const full = isLeft ? '288px' : '320px';
+
+            if (state === 'visible') {
+                sidebar.style.width = full;
+                sidebar.classList.remove('minimized');
+                restore.classList.add('hidden');
+            } else if (state === 'minimized') {
+                sidebar.style.width = '64px';
+                sidebar.classList.add('minimized');
+                restore.classList.add('hidden');
+            } else {
+                sidebar.style.width = '0px';
+                restore.classList.remove('hidden');
+            }
+        }
+
+        function cycleState(side) {
+            if (side === 'left') {
+                leftState = leftState === 'visible' ? 'minimized' : leftState === 'minimized' ? 'hidden' : 'visible';
+            } else {
+                rightState = rightState === 'visible' ? 'minimized' : rightState === 'minimized' ? 'hidden' : 'visible';
+            }
+            updateSidebar(side);
+        }
+
+        function restoreSidebar(side) {
+            if (side === 'left') leftState = 'visible';
+            else rightState = 'visible';
+            updateSidebar(side);
+        }
+
+        function toggleNode(el) {
+            el.classList.toggle('expanded');
+        }
+
+        function populateDeepTree() {
+            const container = document.getElementById('tree-menu');
+            container.innerHTML = `
+                <div class="tree-node px-4 py-2.5 hover:bg-zinc-800 flex items-center gap-x-3" onclick="toggleNode(this)">
+                    <i class="fa-solid fa-gauge w-5"></i>
+                    <span class="node-text flex-1">Dashboard</span>
+                </div>
+
+                <div class="tree-node px-4 py-2.5 hover:bg-zinc-800 flex items-center gap-x-3" onclick="toggleNode(this)">
+                    <i class="fa-solid fa-users w-5"></i>
+                    <span class="node-text flex-1">Customers</span>
+                    <span class="node-badge ml-auto bg-blue-600 text-white text-[10px] px-1.5 rounded-full">42</span>
+                </div>
+                <div class="nested">
+                    <div class="tree-node px-4 py-2 hover:bg-zinc-800 flex items-center gap-x-3" onclick="toggleNode(this)">
+                        <i class="fa-solid fa-user w-5"></i><span class="node-text flex-1">All Contacts</span>
+                    </div>
+                    <div class="tree-node px-4 py-2 hover:bg-zinc-800 flex items-center gap-x-3" onclick="toggleNode(this)">
+                        <i class="fa-solid fa-building w-5"></i><span class="node-text flex-1">Companies</span>
+                    </div>
+                </div>
+
+                <div class="tree-node px-4 py-2.5 hover:bg-zinc-800 flex items-center gap-x-3" onclick="toggleNode(this)">
+                    <i class="fa-solid fa-box w-5"></i>
+                    <span class="node-text flex-1">Inventory</span>
+                </div>
+                <div class="nested">
+                    <div class="tree-node px-4 py-2 hover:bg-zinc-800 flex items-center gap-x-3" onclick="toggleNode(this)">
+                        <i class="fa-solid fa-list w-5"></i><span class="node-text flex-1">Products</span>
+                    </div>
+                    <div class="nested">
+                        <div class="tree-node px-4 py-2 hover:bg-zinc-800 flex items-center gap-x-3" onclick="toggleNode(this)">
+                            <i class="fa-solid fa-laptop w-5"></i><span class="node-text flex-1">Electronics</span>
+                        </div>
+                        <div class="nested">
+                            <div class="tree-node px-4 py-2 hover:bg-zinc-800 flex items-center gap-x-3" onclick="toggleNode(this)">
+                                <i class="fa-solid fa-mobile-screen w-5"></i><span class="node-text flex-1">Smartphones</span>
+                            </div>
+                            <div class="tree-node px-4 py-2 hover:bg-zinc-800 flex items-center gap-x-3" onclick="toggleNode(this)">
+                                <i class="fa-solid fa-laptop w-5"></i><span class="node-text flex-1">Laptops</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tree-node px-4 py-2 hover:bg-zinc-800 flex items-center gap-x-3" onclick="toggleNode(this)">
+                        <i class="fa-solid fa-truck w-5"></i><span class="node-text flex-1">Suppliers</span>
+                    </div>
+                </div>
+
+                <div class="tree-node px-4 py-2.5 hover:bg-zinc-800 flex items-center gap-x-3" onclick="toggleNode(this)">
+                    <i class="fa-solid fa-chart-pie w-5"></i>
+                    <span class="node-text flex-1">Analytics</span>
+                </div>
+
+                <div class="tree-node px-4 py-2.5 hover:bg-zinc-800 flex items-center gap-x-3" onclick="toggleNode(this)">
+                    <i class="fa-solid fa-cog w-5"></i>
+                    <span class="node-text flex-1">Settings</span>
+                    <span class="node-badge ml-auto bg-amber-500 text-white text-[10px] px-1.5 rounded-full">3</span>
+                </div>
+            `;
+        }
+
+        window.addEventListener('load', () => {
+            populateDeepTree();
+
+            document.querySelectorAll('.sidebar-toggle-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const target = btn.getAttribute('data-target');
+                    cycleState(target);
+                });
+            });
+
+            document.getElementById('right-mode-main').addEventListener('click', () => cycleState('right'));
+
+            // Language
+            document.getElementById('lang-switch').addEventListener('click', () => {
+                const el = document.getElementById('current-lang');
+                const langs = ['EN','ES','FR','DE'];
+                let idx = langs.indexOf(el.textContent);
+                el.textContent = langs[(idx + 1) % langs.length];
+            });
+
+            // Login
+            document.getElementById('login-btn').addEventListener('click', () => {
+                document.getElementById('login-btn').classList.toggle('hidden');
+                document.getElementById('logout-btn').classList.toggle('hidden');
+                document.getElementById('user-info').classList.toggle('hidden');
+            });
+        });
+    </script>
+</body>
+</html>

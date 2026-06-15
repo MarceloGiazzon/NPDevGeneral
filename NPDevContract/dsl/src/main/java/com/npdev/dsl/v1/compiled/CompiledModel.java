@@ -2,6 +2,7 @@ package com.npdev.dsl.v1.compiled;
 
 import java.util.*;
 
+@SuppressWarnings("deprecation")
 public final class CompiledModel {
     private final String namespace;
     private final String dslVersion;

@@ -1,7 +1,7 @@
 package com.npdev.runtime.support;
 
 import com.npdev.dsl.v1.compiled.CompiledConcept;
-import com.npdev.dsl.v1.compiled.CompiledEntity;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledReferenceSemantics;
@@ -28,7 +28,7 @@ class GeneratedCrudRuntimeNamingTest {
                 .findFirst()
                 .orElseThrow();
 
-        assertEquals("catalog_products", invokeStaticString("tableName", CompiledEntity.class, product));
+        assertEquals("catalog_products", invokeStaticString("tableName", CompiledConcept.class, product));
         assertEquals("sku_id", invokeStaticString("columnName", CompiledField.class, sku));
     }
 

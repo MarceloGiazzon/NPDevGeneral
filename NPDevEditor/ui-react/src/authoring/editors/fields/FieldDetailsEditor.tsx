@@ -76,7 +76,7 @@ export default function FieldDetailsEditor({
               }))
             }
           >
-            {["string", "integer", "number", "boolean", "uuid", "datetime", "enum", "reference", "object", "array"].map(
+            {["string", "int", "integer", "long", "boolean", "uuid", "date", "datetime", "enum", "reference", "object", "array"].map(
               (type) => (
                 <option key={type} value={type}>
                   {type}
@@ -139,6 +139,37 @@ export default function FieldDetailsEditor({
             }
           />
           ID field
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={Boolean(selectedField.unique)}
+            onChange={(event) =>
+              onUpdateField(selectedField.name, (field) => {
+                const unique = event.target.checked;
+                return {
+                  ...field,
+                  unique,
+                  connectable: unique ? field.connectable : undefined
+                };
+              })
+            }
+          />
+          Unique
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={selectedField.connectable === "anchor"}
+            onChange={(event) =>
+              onUpdateField(selectedField.name, (field) => ({
+                ...field,
+                unique: event.target.checked && !field.id ? true : field.unique,
+                connectable: event.target.checked ? "anchor" : undefined
+              }))
+            }
+          />
+          Anchor
         </label>
       </div>
 

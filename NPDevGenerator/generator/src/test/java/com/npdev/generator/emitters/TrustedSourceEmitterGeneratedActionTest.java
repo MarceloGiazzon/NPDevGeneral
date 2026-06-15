@@ -3,7 +3,7 @@ package com.npdev.generator.emitters;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.npdev.dsl.v1.compiled.CompiledEntity;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityCall;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityExecutionPolicy;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
@@ -346,7 +346,7 @@ final class TrustedSourceEmitterGeneratedActionTest {
                 "trusted-test",
                 "1.0.0",
                 "1.0.0",
-                Map.<String, CompiledEntity>of(),
+                Map.<String, CompiledConcept>of(),
                 List.of(),
                 List.of(),
                 List.of(),

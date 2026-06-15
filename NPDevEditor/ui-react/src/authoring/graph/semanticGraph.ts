@@ -12,6 +12,7 @@ export type SemanticGraphEdge = {
   from: string;
   to: string;
   label: string;
+  warning?: boolean;
 };
 
 export type SemanticGraphModel = {
@@ -31,14 +32,23 @@ export function buildSemanticGraph(
       id: `concept:${entity.name}`,
       label: entity.name,
       kind: "concept",
-      summary: `${entity.fields.length} fields, ${(entity.invariants ?? []).length} invariants`
+      summary: `${entity.truthLevel ?? "T1"} · ${entity.fields.length} fields, ${(entity.invariants ?? []).length} invariants`
     });
 
     for (const field of entity.fields.filter((entry) => entry.type === "reference" && entry.reference?.target)) {
+      const target = document.concepts.find((candidate) => candidate.name === field.reference?.target);
+      const upwardTruthEdge = truthRank(entity.truthLevel) > truthRank(target?.truthLevel);
       edges.push({
         from: `concept:${entity.name}`,
         to: `concept:${field.reference?.target}`,
-        label: `reference:${field.name}`
+        label: [
+          `reference:${field.name}`,
+          field.reference?.via ? `via:${field.reference.via}` : "via:id",
+          field.reference?.onDelete ? `delete:${field.reference.onDelete}` : "delete:restrict",
+          field.reference?.multiple ? "multiple" : "",
+          upwardTruthEdge ? "truth-warning" : ""
+        ].filter(Boolean).join(" · "),
+        warning: upwardTruthEdge
       });
     }
   }
@@ -109,4 +119,12 @@ export function buildSemanticGraph(
   }
 
   return { nodes, edges };
+}
+
+function truthRank(level?: string): number {
+  if (!level) {
+    return 1;
+  }
+  const match = /^T([0-6])$/i.exec(level.trim());
+  return match ? Number.parseInt(match[1], 10) : 1;
 }

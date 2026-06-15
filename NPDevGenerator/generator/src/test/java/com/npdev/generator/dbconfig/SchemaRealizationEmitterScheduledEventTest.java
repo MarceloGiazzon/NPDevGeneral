@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.npdev.dsl.v1.compiled.CompiledEntity;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 
 import java.nio.file.Files;
@@ -58,7 +58,7 @@ final class SchemaRealizationEmitterScheduledEventTest {
                 tempDir.resolve("database.json"),
                 List.of("test")
         );
-        CompiledModel model = new CompiledModel("test", "1.0.0", "1.0.0", Map.<String, CompiledEntity>of());
+        CompiledModel model = new CompiledModel("test", "1.0.0", "1.0.0", Map.<String, CompiledConcept>of());
 
         new SchemaRealizationEmitter().emit(model, outRoot, plan, tempDir.resolve("model.json"));
 

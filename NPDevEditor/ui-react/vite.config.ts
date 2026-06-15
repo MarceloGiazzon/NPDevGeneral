@@ -8,6 +8,12 @@ const uiRoot = fileURLToPath(new URL(".", import.meta.url));
 const workspaceRoot = path.resolve(uiRoot, "..", "..");
 const sourceRoot = path.resolve(uiRoot, "src");
 const boundaryPath = path.resolve(uiRoot, "ui-boundary.json");
+const npdevBuildRoot = process.env.NPDEV_BUILD_ROOT
+  ? path.resolve(process.env.NPDEV_BUILD_ROOT)
+  : path.resolve(workspaceRoot, "..", "Build");
+const uiDistDir = process.env.NPDEV_UI_DIST_DIR
+  ? path.resolve(process.env.NPDEV_UI_DIST_DIR)
+  : path.resolve(npdevBuildRoot, "ui", "npdev-editor-ui-react", "dist");
 
 type UiBoundaryStatus = "allowed" | "deferred" | "test-only";
 
@@ -61,6 +67,7 @@ function enforceUiBoundary() {
 
 export default defineConfig({
   base: "/npdev-ui-react/",
+  cacheDir: path.resolve(npdevBuildRoot, "vite", "npdev-editor-ui-react"),
   resolve: {
     alias: {
       "@npdev-samples": path.resolve(workspaceRoot, "NPDevSamples")
@@ -82,7 +89,7 @@ export default defineConfig({
   },
   build: {
     sourcemap: false,
-    outDir: "dist",
+    outDir: uiDistDir,
     emptyOutDir: true,
     rollupOptions: {
       output: {

@@ -1,7 +1,7 @@
 package com.npdev.generator.dbconfig;
 
 import com.npdev.dsl.v1.compiled.CompiledConcept;
-import com.npdev.dsl.v1.compiled.CompiledEntity;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
@@ -40,7 +40,7 @@ final class SchemaRealizationEmitterBusinessNamingTest {
                         sku
                 )
         );
-        Map<String, CompiledEntity> concepts = Map.of(
+        Map<String, CompiledConcept> concepts = Map.of(
                 order.getName(), order,
                 product.getName(), product
         );

@@ -51,6 +51,14 @@ $sourceRoots = @(
     (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevGenerator"),
     (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevKernel")
 )
+$workspaceItem = Get-Item -LiteralPath $WorkspaceRoot
+$externalBuildRoot = if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_BUILD_ROOT)) {
+    Normalize-NPDevPath $env:NPDEV_BUILD_ROOT
+}
+else {
+    Normalize-NPDevPath (Join-Path $workspaceItem.Parent.FullName "Build")
+}
+$externalGradleBuildRoot = Join-Path $externalBuildRoot "gradle"
 
 $sourceByName = @{}
 foreach ($sourceRoot in $sourceRoots) {
@@ -63,6 +71,23 @@ foreach ($sourceRoot in $sourceRoots) {
             Where-Object { $_.Name -notlike "npdev-migrations-*" })
 
     foreach ($jar in $jars) {
+        if (-not $sourceByName.ContainsKey($jar.Name)) {
+            $sourceByName[$jar.Name] = $jar.FullName
+            continue
+        }
+
+        $current = Get-Item -LiteralPath $sourceByName[$jar.Name]
+        if ($jar.LastWriteTimeUtc -gt $current.LastWriteTimeUtc) {
+            $sourceByName[$jar.Name] = $jar.FullName
+        }
+    }
+}
+if (Test-Path -LiteralPath $externalGradleBuildRoot -PathType Container) {
+    $externalJars = @(Get-ChildItem -LiteralPath $externalGradleBuildRoot -Recurse -Filter *.jar -File |
+            Where-Object { ($_.FullName -replace "\\", "/") -like "*/libs/*" } |
+            Where-Object { $_.Name -notlike "npdev-migrations-*" })
+
+    foreach ($jar in $externalJars) {
         if (-not $sourceByName.ContainsKey($jar.Name)) {
             $sourceByName[$jar.Name] = $jar.FullName
             continue

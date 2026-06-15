@@ -61,7 +61,7 @@ public final class SqlIdentifierSupport {
         return normalized.substring(0, LONG_IDENTIFIER_PREFIX_LENGTH) + "_" + shortHash(rawName);
     }
 
-    public static String tableName(CompiledEntity entity) {
+    public static String tableName(CompiledConcept entity) {
         if (entity == null) {
             return "";
         }
@@ -76,7 +76,7 @@ public final class SqlIdentifierSupport {
         return field == null ? "" : safeSqlIdentifier(field.getName());
     }
 
-    public static String junctionTableName(CompiledEntity sourceEntity, CompiledField sourceField) {
+    public static String junctionTableName(CompiledConcept sourceEntity, CompiledField sourceField) {
         return junctionTableName(tableName(sourceEntity), sourceField == null ? "" : sourceField.getName());
     }
 

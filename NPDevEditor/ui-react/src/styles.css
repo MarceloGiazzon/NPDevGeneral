@@ -1751,3 +1751,19 @@ button.authoring-validation-card {
     grid-template-columns: 1fr;
   }
 }
+.authoring-status-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 22px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.authoring-status-pill--warning {
+  border: 1px solid #b7791f;
+  color: #7c4a03;
+  background: #fff7e6;
+}

@@ -77,7 +77,7 @@ class InteractionMetadataSupportTest {
                 """);
 
         ModelAst ast = new JsonModelParser().parse(modelPath);
-        assertEquals("status == 'Scheduled'", ast.getEntities().get(1).getFields().get(2).getUi().getEnabledWhen());
+        assertEquals("status == 'Scheduled'", ast.getConcepts().get(1).getFields().get(2).getUi().getEnabledWhen());
 
         ValidationResult validation = new SemanticValidator().validateWithWarnings(ast);
         assertTrue(validation.getErrors().isEmpty(), "Expected no semantic errors, got: " + validation.getErrors());
@@ -85,7 +85,7 @@ class InteractionMetadataSupportTest {
                 "Expected no UX warnings for valid interaction metadata.");
 
         CompiledModel compiled = new ModelCompiler().compile(ast);
-        CompiledField providerField = compiled.findEntity("Appointment")
+        CompiledField providerField = compiled.findConcept("Appointment")
                 .orElseThrow()
                 .getFields()
                 .stream()

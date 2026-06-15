@@ -63,14 +63,14 @@ class EnumMetadataSupportTest {
                 """);
 
         ModelAst ast = new JsonModelParser().parse(modelPath);
-        assertEquals(2, ast.getEntities().get(0).getFields().get(1).getEnumOptions().size());
-        assertEquals("Scheduled", ast.getEntities().get(0).getFields().get(1).getEnumOptions().get(0).getValue());
+        assertEquals(2, ast.getConcepts().get(0).getFields().get(1).getEnumOptions().size());
+        assertEquals("Scheduled", ast.getConcepts().get(0).getFields().get(1).getEnumOptions().get(0).getValue());
 
         List<String> errors = new SemanticValidator().validate(ast);
         assertTrue(errors.isEmpty(), "Expected enriched enum metadata to validate, got: " + errors);
 
         CompiledModel compiled = new ModelCompiler().compile(ast);
-        CompiledField statusField = compiled.findEntity("Appointment")
+        CompiledField statusField = compiled.findConcept("Appointment")
                 .orElseThrow()
                 .getFields()
                 .stream()

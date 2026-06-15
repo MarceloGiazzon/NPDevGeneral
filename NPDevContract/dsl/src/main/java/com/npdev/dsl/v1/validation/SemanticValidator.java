@@ -5,7 +5,7 @@ import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.DomainTypeAst;
 import com.npdev.dsl.v1.ast.CapabilityPolicyAst;
-import com.npdev.dsl.v1.ast.EntityAst;
+import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.EventAst;
 import com.npdev.dsl.v1.ast.EventPayloadAst;
 import com.npdev.dsl.v1.ast.EnumOptionAst;
@@ -167,7 +167,7 @@ public final class SemanticValidator {
         }
         ModelAst effectiveModel = resolvedModel.modelAst();
         validateDslVersion(effectiveModel, errors);
-        Map<String, EntityAst> entitiesByLower = indexEntities(effectiveModel.getEntities(), errors);
+        Map<String, ConceptAst> entitiesByLower = indexEntities(effectiveModel.getConcepts(), errors);
 
         validateCapabilities(effectiveModel, errors);
         validateBindings(effectiveModel, errors);
@@ -178,7 +178,7 @@ public final class SemanticValidator {
         validateTechnologyNeutrality(effectiveModel, errors);
 
         Map<String, EffectiveEntity> effectiveCache = new HashMap<>();
-        for (EntityAst e : effectiveModel.getEntities()) {
+        for (ConceptAst e : effectiveModel.getConcepts()) {
             EffectiveEntity effective = resolveEffective(
                     e,
                     entitiesByLower,
@@ -407,7 +407,7 @@ public final class SemanticValidator {
                 .replace(" entity ", " concept ");
     }
 
-    private static void validateQueries(ModelAst modelAst, Map<String, EntityAst> entitiesByLower, List<String> errors) {
+    private static void validateQueries(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         Set<String> queryNames = new HashSet<>();
         for (QueryAst query : modelAst.getQueries()) {
             if (!queryNames.add(normalize(query.name()))) {
@@ -420,7 +420,7 @@ public final class SemanticValidator {
         }
     }
 
-    private static void validateRuleProfiles(ModelAst modelAst, Map<String, EntityAst> entitiesByLower, List<String> errors) {
+    private static void validateRuleProfiles(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         Set<String> names = new HashSet<>();
         Set<String> knownTargets = new HashSet<>(entitiesByLower.keySet());
         for (QueryAst query : modelAst.getQueries()) {
@@ -449,7 +449,7 @@ public final class SemanticValidator {
         }
     }
 
-    private static void validateProcedures(ModelAst modelAst, Map<String, EntityAst> entitiesByLower, List<String> errors) {
+    private static void validateProcedures(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         Set<String> procedureNames = modelAst.getProcedures().stream()
                 .map(ProcedureAst::name)
                 .map(SemanticValidator::normalize)
@@ -484,7 +484,7 @@ public final class SemanticValidator {
             String procedureName,
             String path,
             List<ProcedureStepAst> steps,
-            Map<String, EntityAst> entitiesByLower,
+            Map<String, ConceptAst> entitiesByLower,
             Set<String> queryNames,
             Set<String> procedureNames,
             List<String> errors
@@ -522,7 +522,7 @@ public final class SemanticValidator {
         }
     }
 
-    private static void validatePanels(ModelAst modelAst, Map<String, EntityAst> entitiesByLower, List<String> errors) {
+    private static void validatePanels(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         Set<String> queryNames = modelAst.getQueries().stream()
                 .map(QueryAst::name)
                 .map(SemanticValidator::normalize)
@@ -601,10 +601,10 @@ public final class SemanticValidator {
 
     private static List<ValidationDiagnostic> validatePresentationMetadata(
             ModelAst modelAst,
-            Map<String, EntityAst> entitiesByLower
+            Map<String, ConceptAst> entitiesByLower
     ) {
         List<ValidationDiagnostic> diagnostics = new ArrayList<>();
-        for (EntityAst entity : modelAst.getEntities()) {
+        for (ConceptAst entity : modelAst.getConcepts()) {
             PresentationMetadataAst conceptUi = entity.getUi();
             if (conceptUi == null || normalize(conceptUi.getLabel()).isBlank()) {
                 diagnostics.add(uxDiagnostic(
@@ -722,7 +722,7 @@ public final class SemanticValidator {
 
     private static void validateConceptLayoutMetadata(
             List<ValidationDiagnostic> diagnostics,
-            EntityAst entity,
+            ConceptAst entity,
             PresentationMetadataAst conceptUi,
             Set<String> fieldNames
     ) {
@@ -766,7 +766,7 @@ public final class SemanticValidator {
 
     private static void validateFieldLayoutMetadata(
             List<ValidationDiagnostic> diagnostics,
-            EntityAst entity,
+            ConceptAst entity,
             FieldAst field,
             PresentationMetadataAst fieldUi,
             Map<Integer, String> listColumnOwners,
@@ -1008,10 +1008,10 @@ public final class SemanticValidator {
 
     private static void validateInteractionPickerMetadata(
             List<ValidationDiagnostic> diagnostics,
-            EntityAst entity,
+            ConceptAst entity,
             FieldAst field,
             PresentationMetadataAst fieldUi,
-            Map<String, EntityAst> entitiesByLower
+            Map<String, ConceptAst> entitiesByLower
     ) {
         if (fieldUi == null) {
             return;
@@ -1045,7 +1045,7 @@ public final class SemanticValidator {
             ));
         }
 
-        EntityAst targetEntity = referenceField
+        ConceptAst targetEntity = referenceField
                 ? entitiesByLower.get(normalize(field.getReferenceTarget()))
                 : null;
         Set<String> seen = new HashSet<>();
@@ -1118,9 +1118,9 @@ public final class SemanticValidator {
         );
     }
 
-    private static Map<String, EntityAst> indexEntities(Collection<EntityAst> entities, List<String> errors) {
-        Map<String, EntityAst> byLower = new LinkedHashMap<>();
-        for (EntityAst entity : entities) {
+    private static Map<String, ConceptAst> indexEntities(Collection<ConceptAst> entities, List<String> errors) {
+        Map<String, ConceptAst> byLower = new LinkedHashMap<>();
+        for (ConceptAst entity : entities) {
             String key = normalize(entity.getName());
             if (byLower.containsKey(key)) {
                 errors.add("Duplicate concept name: " + entity.getName());
@@ -1132,7 +1132,7 @@ public final class SemanticValidator {
     }
 
     private static void validateEntityLocalFields(ModelAst modelAst, List<String> errors) {
-        for (EntityAst e : modelAst.getEntities()) {
+        for (ConceptAst e : modelAst.getConcepts()) {
             Set<String> localFieldNames = new HashSet<>();
             for (FieldAst f : e.getFields()) {
                 String fieldKey = normalize(f.getName());
@@ -1220,7 +1220,7 @@ public final class SemanticValidator {
             String entityName,
             FieldAst field,
             String normalizedType,
-            Map<String, EntityAst> entitiesByLower,
+            Map<String, ConceptAst> entitiesByLower,
             Map<String, EffectiveEntity> effectiveCache,
             List<String> errors
     ) {
@@ -1243,15 +1243,15 @@ public final class SemanticValidator {
             return;
         }
 
-        EntityAst targetEntityAst = entitiesByLower.get(target);
-        if (targetEntityAst == null) {
+        ConceptAst targetConceptAst = entitiesByLower.get(target);
+        if (targetConceptAst == null) {
             errors.add("Entity " + entityName + " field " + field.getName()
                     + ": reference target not found: " + field.getReferenceTarget());
             return;
         }
 
         EffectiveEntity effectiveTarget = resolveEffective(
-                targetEntityAst,
+                targetConceptAst,
                 entitiesByLower,
                 effectiveCache,
                 new HashSet<>(),
@@ -1366,9 +1366,9 @@ public final class SemanticValidator {
      * (truth is restrictive only at release); a release gate can later elevate it to an error.
      */
     private static void validateBondTruthEdge(
-            EntityAst source,
+            ConceptAst source,
             FieldAst port,
-            EntityAst target,
+            ConceptAst target,
             List<String> warnings
     ) {
         if (source == null || target == null) {
@@ -1462,15 +1462,15 @@ public final class SemanticValidator {
         }
     }
 
-    private static void validateInheritanceGraph(Map<String, EntityAst> entitiesByLower, List<String> errors) {
+    private static void validateInheritanceGraph(Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         Set<String> globallyVisited = new HashSet<>();
 
-        for (EntityAst entity : entitiesByLower.values()) {
+        for (ConceptAst entity : entitiesByLower.values()) {
             String entityKey = normalize(entity.getName());
 
             String parentName = entity.getExtendsName();
             if (parentName != null && !parentName.isBlank()) {
-                EntityAst parent = entitiesByLower.get(normalize(parentName));
+                ConceptAst parent = entitiesByLower.get(normalize(parentName));
                 if (parent == null) {
                     errors.add("Entity " + entity.getName() + ": extends unknown base " + parentName);
                 } else if (normalize(parentName).equals(entityKey)) {
@@ -1483,8 +1483,8 @@ public final class SemanticValidator {
     }
 
     private static void detectInheritanceCycle(
-            EntityAst current,
-            Map<String, EntityAst> entitiesByLower,
+            ConceptAst current,
+            Map<String, ConceptAst> entitiesByLower,
             Set<String> globallyVisited,
             Set<String> stack,
             List<String> errors
@@ -1498,7 +1498,7 @@ public final class SemanticValidator {
 
         String parentName = current.getExtendsName();
         if (parentName != null && !parentName.isBlank()) {
-            EntityAst parent = entitiesByLower.get(normalize(parentName));
+            ConceptAst parent = entitiesByLower.get(normalize(parentName));
             if (parent != null) {
                 detectInheritanceCycle(parent, entitiesByLower, globallyVisited, stack, errors);
             }
@@ -1509,8 +1509,8 @@ public final class SemanticValidator {
     }
 
     private static EffectiveEntity resolveEffective(
-            EntityAst entity,
-            Map<String, EntityAst> entitiesByLower,
+            ConceptAst entity,
+            Map<String, ConceptAst> entitiesByLower,
             Map<String, EffectiveEntity> cache,
             Set<String> stack,
             List<String> errors
@@ -1529,7 +1529,7 @@ public final class SemanticValidator {
 
         String parentName = entity.getExtendsName();
         if (parentName != null && !parentName.isBlank()) {
-            EntityAst parent = entitiesByLower.get(normalize(parentName));
+            ConceptAst parent = entitiesByLower.get(normalize(parentName));
             if (parent != null) {
                 EffectiveEntity parentEffective = resolveEffective(parent, entitiesByLower, cache, stack, errors);
                 for (FieldAst parentField : parentEffective.fields()) {
@@ -1632,7 +1632,7 @@ public final class SemanticValidator {
 
     private static void validateFlows(
             ModelAst modelAst,
-            Map<String, EntityAst> entitiesByLower,
+            Map<String, ConceptAst> entitiesByLower,
             Map<String, EffectiveEntity> effectiveCache,
             boolean allowUnboundFlowCapabilities,
             List<String> errors,
@@ -1656,7 +1656,7 @@ public final class SemanticValidator {
                 errors.add("Flow " + flow.getName() + ": steps must not be empty");
             }
 
-            EntityAst concept = entitiesByLower.get(normalize(flow.getConcept()));
+            ConceptAst concept = entitiesByLower.get(normalize(flow.getConcept()));
             if (concept == null) {
                 errors.add("Flow " + flow.getName() + ": references unknown concept " + flow.getConcept());
                 continue;
@@ -2111,13 +2111,9 @@ public final class SemanticValidator {
         return operationsByCapability;
     }
 
-    private static Set<String> collectInvariantReferences(EntityAst concept) {
-        return collectInvariantReferences(null, concept, new EffectiveEntity(concept.getFields(), concept.getInvariants()));
-    }
-
     private static Set<String> collectInvariantReferences(
             FlowAst flow,
-            EntityAst concept,
+            ConceptAst concept,
             EffectiveEntity effectiveConcept
     ) {
         Set<String> out = new HashSet<>();
@@ -2253,7 +2249,7 @@ public final class SemanticValidator {
         };
     }
 
-    private static void validateLifecycle(EntityAst entity, EffectiveEntity effective, List<String> errors) {
+    private static void validateLifecycle(ConceptAst entity, EffectiveEntity effective, List<String> errors) {
         LifecycleAst lifecycle = entity.getLifecycle();
         if (lifecycle == null) {
             return;
@@ -2445,7 +2441,7 @@ public final class SemanticValidator {
             return;
         }
 
-        Map<String, EntityAst> entitiesByName = modelAst.getEntities().stream()
+        Map<String, ConceptAst> entitiesByName = modelAst.getConcepts().stream()
                 .collect(Collectors.toMap(
                         entity -> normalize(entity.getName()),
                         entity -> entity,
@@ -2539,7 +2535,7 @@ public final class SemanticValidator {
                         errors.add("Orchestration " + name + ": " + actionLabel + " concept is required");
                         continue;
                     }
-                    EntityAst targetConcept = entitiesByName.get(conceptKey);
+                    ConceptAst targetConcept = entitiesByName.get(conceptKey);
                     if (targetConcept == null) {
                         errors.add("Orchestration " + name + ": " + actionLabel
                                 + " concept not found: " + action.getConcept());
@@ -2760,7 +2756,7 @@ public final class SemanticValidator {
     }
 
     private static void validateTechnologyNeutrality(ModelAst modelAst, List<String> errors) {
-        for (EntityAst entity : modelAst.getEntities()) {
+        for (ConceptAst entity : modelAst.getConcepts()) {
             validateNameAgainstForbiddenKeywords("Entity", entity.getName(), errors);
             for (FieldAst field : entity.getFields()) {
                 validateNameAgainstForbiddenKeywords("Field", field.getName(), errors);

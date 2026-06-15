@@ -11,6 +11,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 VERSION = "0.6.0"
@@ -88,7 +89,170 @@ def validate_official_model(path: Path) -> None:
     root = repo_root()
     model = Path(path).expanduser().resolve()
     schema = root / "NPDevContract" / "schemas" / "model.schema.json"
-    validate_json_schema(schema, model)
+    resolved = resolve_split_model(model)
+    with tempfile.TemporaryDirectory(prefix="npdev-model-") as temp_dir:
+        resolved_path = Path(temp_dir) / "resolved-model.json"
+        resolved_path.write_text(json.dumps(resolved, indent=2) + "\n", encoding="utf-8")
+        validate_json_schema(schema, resolved_path)
+
+
+MODEL_ARRAY_KEYS = {
+    "concepts",
+    "domainTypes",
+    "capabilities",
+    "customCapabilities",
+    "bindings",
+    "events",
+    "flows",
+    "orchestrationRules",
+    "orchestrations",
+    "queries",
+    "ruleProfiles",
+    "procedures",
+    "panels",
+}
+ROOT_SCALAR_KEYS = {"$schema", "schemaVersion", "dslVersion", "namespace", "model", "version"}
+FRAGMENT_KEYS = MODEL_ARRAY_KEYS | {"metadata", "fragments"}
+
+
+def resolve_split_model(path: Path) -> dict:
+    root_path = Path(path).expanduser().resolve(strict=True)
+    root_dir = root_path.parent.resolve(strict=True)
+    seen: set[Path] = set()
+
+    def fail(label: str, message: str) -> None:
+        raise CliError(f"{label}: {message}")
+
+    def include_path(ref: object, referencing: Path) -> Path:
+        if not isinstance(ref, str) or not ref.strip():
+            fail(str(referencing), "$ref must be a non-blank string")
+        normalized_ref = ref.replace("\\", "/")
+        if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", normalized_ref):
+            fail(str(referencing), f"model include ref must be local, not a URL: {ref}")
+        candidate_ref = Path(ref)
+        if candidate_ref.is_absolute():
+            fail(str(referencing), f"model include ref must be relative: {ref}")
+        if candidate_ref.suffix.lower() != ".json":
+            fail(str(referencing), f"model include ref must point to a .json file: {ref}")
+        try:
+            candidate = (referencing.parent / candidate_ref).resolve(strict=True)
+        except FileNotFoundError as exc:
+            raise CliError(f"{referencing}: referenced model fragment not found: {ref}") from exc
+        if root_dir not in [candidate, *candidate.parents]:
+            fail(str(referencing), f"referenced model fragment escapes the model root: {ref}")
+        if not candidate.is_file():
+            fail(str(referencing), f"referenced model fragment is not a file: {ref}")
+        return candidate
+
+    def ref_value(value: object, label: str) -> str | None:
+        if isinstance(value, dict) and "$ref" in value:
+            if set(value.keys()) != {"$ref"}:
+                fail(label, '$ref object must be exactly { "$ref": "relative/path.json" }')
+            ref = value["$ref"]
+            if not isinstance(ref, str) or not ref.strip():
+                fail(label, "$ref must be a non-blank string")
+            return ref
+        return None
+
+    def read_fragment(fragment_path: Path, depth: int, stack: list[Path]) -> object:
+        if depth > 32:
+            fail(str(fragment_path), "maximum model include depth exceeded: 32")
+        if fragment_path in stack:
+            fail(str(fragment_path), "circular model include detected")
+        if fragment_path not in seen:
+            seen.add(fragment_path)
+            if len(seen) > 512:
+                fail(str(fragment_path), "maximum model include file count exceeded: 512")
+        data = read_json(fragment_path)
+        validate_refs(data, str(fragment_path))
+        return data
+
+    def validate_refs(value: object, label: str) -> None:
+        if isinstance(value, dict):
+            ref_value(value, label)
+            for child_key, child_value in value.items():
+                validate_refs(child_value, f"{label}/{child_key}")
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                validate_refs(child, f"{label}/{index}")
+
+    def resolve_array(key: str, values: object, source: Path, depth: int, stack: list[Path]) -> list:
+        if not isinstance(values, list):
+            fail(str(source), f"{key} must be an array")
+        out: list = []
+        for index, item in enumerate(values):
+            ref = ref_value(item, f"{source}/{key}/{index}")
+            if ref is None:
+                out.append(item)
+                continue
+            child_path = include_path(ref, source)
+            child = read_fragment(child_path, depth + 1, [*stack, source])
+            if isinstance(child, dict) and isinstance(child.get(key), list):
+                out.extend(resolve_array(key, child[key], child_path, depth + 1, [*stack, source]))
+            else:
+                out.append(child)
+        return out
+
+    def resolve_model_fragment(fragment_path: Path, depth: int, stack: list[Path]) -> dict:
+        fragment = read_fragment(fragment_path, depth, stack)
+        if not isinstance(fragment, dict):
+            fail(str(fragment_path), "model fragment must be an object")
+        unsupported = set(fragment.keys()) - FRAGMENT_KEYS
+        if unsupported:
+            fail(str(fragment_path), "unsupported model fragment key: " + sorted(unsupported)[0])
+        resolved_fragment: dict = {}
+        for key in MODEL_ARRAY_KEYS:
+            if key in fragment:
+                resolved_fragment[key] = resolve_array(key, fragment[key], fragment_path, depth + 1, [*stack, fragment_path])
+        if "metadata" in fragment:
+            if not isinstance(fragment["metadata"], dict):
+                fail(str(fragment_path), "metadata must be an object")
+            resolved_fragment["metadata"] = dict(fragment["metadata"])
+        for index, nested in enumerate(fragment.get("fragments") or []):
+            ref = ref_value(nested, f"{fragment_path}/fragments/{index}")
+            if ref is None:
+                fail(f"{fragment_path}/fragments/{index}", "fragment entry must be a $ref object")
+            append_fragment(resolved_fragment, resolve_model_fragment(include_path(ref, fragment_path), depth + 1, [*stack, fragment_path]), set())
+        return resolved_fragment
+
+    def append_fragment(target: dict, fragment: dict, root_metadata_keys: set[str]) -> None:
+        for key in MODEL_ARRAY_KEYS:
+            if key in fragment:
+                target.setdefault(key, [])
+                target[key].extend(fragment[key])
+        if "metadata" in fragment:
+            metadata = target.setdefault("metadata", {})
+            for meta_key, meta_value in fragment["metadata"].items():
+                if meta_key in root_metadata_keys:
+                    continue
+                if meta_key in metadata:
+                    fail(str(root_path), f"duplicate fragment metadata key: {meta_key}")
+                metadata[meta_key] = meta_value
+
+    raw = read_json(root_path)
+    if not isinstance(raw, dict):
+        fail(str(root_path), "root model must be an object")
+    unsupported = set(raw.keys()) - (ROOT_SCALAR_KEYS | MODEL_ARRAY_KEYS | {"metadata", "fragments"})
+    if unsupported:
+        fail(str(root_path), "unsupported model top-level key: " + sorted(unsupported)[0])
+    validate_refs(raw, str(root_path))
+
+    resolved = {key: raw[key] for key in ROOT_SCALAR_KEYS if key in raw}
+    for key in MODEL_ARRAY_KEYS:
+        if key in raw:
+            resolved[key] = resolve_array(key, raw[key], root_path, 0, [root_path])
+    root_metadata_keys = set((raw.get("metadata") or {}).keys()) if isinstance(raw.get("metadata"), dict) else set()
+    if "metadata" in raw and not isinstance(raw["metadata"], dict):
+        fail(str(root_path), "metadata must be an object")
+    for index, fragment_ref in enumerate(raw.get("fragments") or []):
+        ref = ref_value(fragment_ref, f"{root_path}/fragments/{index}")
+        if ref is None:
+            fail(f"{root_path}/fragments/{index}", "fragment entry must be a $ref object")
+        append_fragment(resolved, resolve_model_fragment(include_path(ref, root_path), 1, [root_path]), root_metadata_keys)
+    if "metadata" in raw:
+        metadata = resolved.setdefault("metadata", {})
+        metadata.update(raw["metadata"])
+    return resolved
 
 
 def ai_type_to_dsl(value: str) -> str:
@@ -167,6 +331,87 @@ def write_or_print_json(value: dict, output: str | None) -> None:
         print(text)
 
 
+def inspect_bonds(args: argparse.Namespace) -> None:
+    model_path = Path(args.model).expanduser().resolve()
+    model = resolve_split_model(model_path)
+    concepts = {concept.get("name"): concept for concept in model.get("concepts") or [] if isinstance(concept, dict)}
+    bonds: list[dict] = []
+    risks: list[dict] = []
+
+    for concept_name, concept in concepts.items():
+        fields = concept.get("fields") or []
+        if not isinstance(fields, list):
+            continue
+        for field in fields:
+            if not isinstance(field, dict):
+                continue
+            reference = field.get("reference") if isinstance(field.get("reference"), dict) else {}
+            target = reference.get("target") or field.get("referenceTarget")
+            if field.get("type") != "reference" and not target:
+                continue
+            via = reference.get("via") or "id"
+            on_delete = reference.get("onDelete") or "restrict"
+            target_concept = concepts.get(target)
+            anchor = find_anchor(target_concept, via)
+            multiple = bool(reference.get("multiple"))
+            bond = {
+                "sourceConcept": concept_name,
+                "sourceField": field.get("name"),
+                "targetConcept": target,
+                "via": via,
+                "anchorFound": anchor is not None,
+                "anchorType": anchor.get("type") if isinstance(anchor, dict) else None,
+                "cardinality": "many-to-many" if multiple else ("one-to-one" if field.get("unique") else "many-to-one"),
+                "onDelete": on_delete,
+                "sourceTruthLevel": concept.get("truthLevel", "T1"),
+                "targetTruthLevel": target_concept.get("truthLevel", "T1") if isinstance(target_concept, dict) else None,
+            }
+            source_rank = truth_rank(bond["sourceTruthLevel"])
+            target_rank = truth_rank(bond["targetTruthLevel"])
+            bond["upwardTruthEdge"] = target_rank is not None and source_rank > target_rank
+            bonds.append(bond)
+            if not bond["anchorFound"]:
+                risks.append({"kind": "missing_anchor", "bond": f"{concept_name}.{field.get('name')}"})
+            if not multiple:
+                risks.append({
+                    "kind": "dangling_fk_precheck_required",
+                    "bond": f"{concept_name}.{field.get('name')}",
+                    "detail": "Before enabling FK constraints, verify all non-null source values exist on the target anchor."
+                })
+            if bond["upwardTruthEdge"]:
+                risks.append({"kind": "upward_truth_edge", "bond": f"{concept_name}.{field.get('name')}"})
+
+    write_or_print_json(
+        {
+            "model": str(model_path),
+            "bondCount": len(bonds),
+            "bonds": bonds,
+            "migrationRisks": risks,
+        },
+        args.output,
+    )
+
+
+def find_anchor(concept: dict | None, via: str) -> dict | None:
+    if not isinstance(concept, dict):
+        return None
+    for field in concept.get("fields") or []:
+        if not isinstance(field, dict):
+            continue
+        if via == "id" and field.get("id"):
+            return field
+        if field.get("name") == via and (field.get("id") or field.get("connectable") == "anchor" or field.get("unique")):
+            return field
+    return None
+
+
+def truth_rank(value: object) -> int | None:
+    if not isinstance(value, str):
+        return None
+    match = re.match(r"^T([0-6])$", value.strip(), re.IGNORECASE)
+    return int(match.group(1)) if match else None
+
+
 def migrate_legacy_model(args: argparse.Namespace) -> None:
     source = Path(args.input).expanduser().resolve()
     target = Path(args.output).expanduser().resolve()
@@ -215,36 +460,29 @@ def run_generate(args: argparse.Namespace) -> None:
         raise CliError(f"Gradle wrapper not found: {wrapper}")
     model = Path(args.model).expanduser().resolve()
     config = Path(args.config).expanduser().resolve()
-    output = Path(args.output).expanduser().resolve()
-    migrations = output / "db" / "migration"
+    final_app_out = Path(args.output).expanduser().resolve()
+    artifact_out = final_app_out.parent / "ArtifactNP"
+    schema_realization = artifact_out / "schema-realization"
+    db_definition = config.parent / "db.definition.json"
+    if not db_definition.exists():
+        raise CliError(f"db.definition.json not found alongside config: {db_definition}")
+    runtime_host = root / "NPDevRuntimeHost"
+    if not runtime_host.exists():
+        raise CliError(f"NPDevRuntimeHost not found: {runtime_host}")
     generator_args = [
-        "--config",
-        str(config),
-        "--model",
-        str(model),
-        "--out",
-        str(output),
-        "--migrationsDir",
-        str(migrations),
-        "--no-assembleFinalApp",
+        "--config", str(config),
+        "--model", str(model),
+        "--out", str(artifact_out),
+        "--dbDefinitionPath", str(db_definition),
+        "--schemaRealizationDir", str(schema_realization),
+        "--runtimeHostTemplate", str(runtime_host),
+        "--finalAppOut", str(final_app_out),
+        "--assembleFinalApp",
         "--clean",
+        "--cleanFinalApp",
     ]
-    if args.migrationMode:
-        generator_args.append("--migrationMode=" + args.migrationMode)
-    if args.migrationPlanOnly:
-        generator_args.append("--migrationPlanOnly")
-    if args.migrationRiskThreshold:
-        generator_args.append("--migrationRiskThreshold=" + args.migrationRiskThreshold)
-    if args.migrationDecisionReport:
-        generator_args.append("--migrationDecisionReport")
-        generator_args.append(str(Path(args.migrationDecisionReport).expanduser().resolve()))
-    command = [
-        str(wrapper),
-        ":generator:run",
-        "--no-daemon",
-        "--console=plain",
-        "--args=" + " ".join(f'"{item}"' if " " in item else item for item in generator_args),
-    ]
+    args_str = " ".join(f'"{item}"' if " " in item else item for item in generator_args)
+    command = [str(wrapper), ":generator:run", "--no-daemon", "--console=plain", f"--args={args_str}"]
     if os.name == "nt" and wrapper.suffix.lower() == ".bat":
         command = ["cmd.exe", "/c"] + command
     subprocess.run(command, cwd=generator_root, check=True)
@@ -342,16 +580,18 @@ def build_parser() -> argparse.ArgumentParser:
     migration_diff.add_argument("--decision-report", dest="decision_report")
     migration_diff.add_argument("--migrationRiskThreshold", choices=["SAFE_ADDITIVE", "BACKFILL_REQUIRED", "MANUAL_REVIEW"], default="SAFE_ADDITIVE")
 
+    inspect = subparsers.add_parser("inspect")
+    inspect_sub = inspect.add_subparsers(dest="inspect_command")
+    inspect_bonds_parser = inspect_sub.add_parser("bonds")
+    inspect_bonds_parser.add_argument("--model", required=True)
+    inspect_bonds_parser.add_argument("--output")
+
     generate = subparsers.add_parser("generate")
     generate_sub = generate.add_subparsers(dest="generate_command")
     generate_app = generate_sub.add_parser("app")
     generate_app.add_argument("--model", required=True)
     generate_app.add_argument("--config", required=True)
     generate_app.add_argument("--output", required=True)
-    generate_app.add_argument("--migrationMode", choices=["disabled", "off", "additive-only"])
-    generate_app.add_argument("--migrationPlanOnly", action="store_true")
-    generate_app.add_argument("--migrationRiskThreshold", choices=["SAFE_ADDITIVE", "BACKFILL_REQUIRED", "MANUAL_REVIEW"])
-    generate_app.add_argument("--migrationDecisionReport")
 
     report = subparsers.add_parser("report")
     report_sub = report.add_subparsers(dest="report_command")
@@ -378,6 +618,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "migration" and args.migration_command == "diff":
             run_migration_diff(args)
+            return 0
+        if args.command == "inspect" and args.inspect_command == "bonds":
+            inspect_bonds(args)
             return 0
         if args.command == "generate" and args.generate_command == "app":
             run_generate(args)

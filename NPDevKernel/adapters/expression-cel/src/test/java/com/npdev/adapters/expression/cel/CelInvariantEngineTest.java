@@ -1,6 +1,6 @@
 package com.npdev.adapters.expression.cel;
 
-import com.npdev.dsl.v1.compiled.CompiledEntity;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import org.junit.jupiter.api.Test;
@@ -599,8 +599,8 @@ class CelInvariantEngineTest {
                 new CompiledField("email", "string", "String", false, true, true)
         );
 
-        CompiledEntity user = new CompiledEntity("User", "User", "users", fields);
-        Map<String, CompiledEntity> entities = new LinkedHashMap<>();
+        CompiledConcept user = new CompiledConcept("User", "User", "users", fields);
+        Map<String, CompiledConcept> entities = new LinkedHashMap<>();
         entities.put("User", user);
 
         return new CompiledModel("demo", "v1", entities);

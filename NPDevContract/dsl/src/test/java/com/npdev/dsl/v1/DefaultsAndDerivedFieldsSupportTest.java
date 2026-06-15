@@ -94,7 +94,7 @@ class DefaultsAndDerivedFieldsSupportTest {
     }
 
     private static CompiledField findField(CompiledModel model, String entityName, String fieldName) {
-        return model.findEntity(entityName)
+        return model.findConcept(entityName)
                 .orElseThrow()
                 .getFields()
                 .stream()

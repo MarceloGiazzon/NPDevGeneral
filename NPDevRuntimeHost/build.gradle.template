@@ -219,8 +219,8 @@ def unsupportedRuntimeHostServiceSources = fileTree('src/main/java/com/finalexec
 }.files.collect(toRelativeSourcePath)
         .findAll { sourcePath ->
             String simpleName = sourcePath.tokenize('/').last().replace('.java', '')
-            !supportedCoreServiceNames.contains(simpleName)
-                    && !matchesSupportedPattern(simpleName, supportedCoreServicePatterns)
+            !supportedCoreServiceNames.contains(simpleName) &&
+                    !matchesSupportedPattern(simpleName, supportedCoreServicePatterns)
         }
 
 sourceSets {

@@ -1,22 +1,9 @@
 name: AI Beta Gate
 
+# Manual-only: this heavy gate (Docker/Linux proof + AI Beta 0 proof) runs on
+# demand via the "Run workflow" button, not on every PR/push. Re-add the
+# pull_request/push triggers below to restore automatic runs.
 on:
-  pull_request:
-    paths:
-      - "golden-ai-scenarios/**"
-      - "schemas/ai/**"
-      - "scripts/ai/**"
-      - "scripts/policy/**"
-      - "scripts/quality/**"
-      - "scripts/security/**"
-      - "NPDevContract/**"
-      - "NPDevGenerator/**"
-      - "NPDevKernel/**"
-      - "NPDevRuntimeHost/**"
-      - ".github/workflows/ai-beta-gate.yml"
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 concurrency:

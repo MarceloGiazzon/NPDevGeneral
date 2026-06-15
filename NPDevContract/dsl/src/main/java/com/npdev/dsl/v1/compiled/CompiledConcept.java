@@ -2,6 +2,7 @@ package com.npdev.dsl.v1.compiled;
 
 import java.util.List;
 
+@SuppressWarnings("deprecation")
 public final class CompiledConcept extends CompiledEntity {
     public CompiledConcept(String name, String className, String tableName, List<CompiledField> fields) {
         super(name, className, tableName, fields);

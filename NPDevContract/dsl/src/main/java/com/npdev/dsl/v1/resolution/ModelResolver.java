@@ -7,7 +7,6 @@ import com.npdev.dsl.v1.ast.ActionMetadataAst;
 import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.DomainTypeAst;
 import com.npdev.dsl.v1.ast.DomainTypeUiAst;
-import com.npdev.dsl.v1.ast.EntityAst;
 import com.npdev.dsl.v1.ast.EventAst;
 import com.npdev.dsl.v1.ast.EventPayloadAst;
 import com.npdev.dsl.v1.ast.FieldAst;

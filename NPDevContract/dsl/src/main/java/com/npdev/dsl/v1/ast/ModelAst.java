@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+@SuppressWarnings("deprecation")
 public final class ModelAst {
     public static final String DEFAULT_DSL_VERSION = "1.0.0";
 

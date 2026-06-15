@@ -2,7 +2,7 @@ package com.npdev.generator.emitters;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.npdev.dsl.v1.compiled.CompiledEntity;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledGeneratedActionDescriptorSpec;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledProcedure;
@@ -163,7 +163,7 @@ final class TrustedSourceEmitterGeneratedActionJdbcEvidenceTest {
                 "trusted-jdbc-test",
                 "1.0.0",
                 "1.0.0",
-                Map.<String, CompiledEntity>of(),
+                Map.<String, CompiledConcept>of(),
                 List.of(),
                 List.of(),
                 List.of(),

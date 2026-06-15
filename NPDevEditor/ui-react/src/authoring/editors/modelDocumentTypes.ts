@@ -54,6 +54,9 @@ export type AuthoringEnumOption = {
 
 export type AuthoringReferenceSemantics = {
   target: string;
+  via?: string;
+  onDelete?: "restrict" | "cascade" | "nullify";
+  multiple?: boolean;
   displayField?: string;
   displayTemplate?: string;
   searchFields?: string[];
@@ -69,6 +72,7 @@ export type AuthoringField = {
   type?: string;
   id?: boolean;
   required?: boolean;
+  unique?: boolean;
   description?: string;
   domainType?: string;
   default?: AuthoringModelPrimitive;
@@ -82,6 +86,7 @@ export type AuthoringField = {
   itemIdentityField?: string;
   duplicationPolicy?: "allow" | "deny";
   enumValues?: Array<string | AuthoringEnumOption>;
+  connectable?: "anchor";
   ui?: UiPresentationMetadata;
   reference?: AuthoringReferenceSemantics;
 };
@@ -121,6 +126,7 @@ export type AuthoringLifecycle = {
 
 export type AuthoringEntity = {
   name: string;
+  truthLevel?: "T0" | "T1" | "T2" | "T3" | "T4" | "T5" | "T6";
   ui?: UiPresentationMetadata;
   fields: AuthoringField[];
   invariants?: AuthoringInvariant[];

@@ -64,6 +64,6 @@ class ModelCompilerPackNamingTest {
 
         ModelAst ast = new JsonModelParser().parse(modelPath);
         CompiledModel compiled = new ModelCompiler().compile(ast);
-        return (CompiledConcept) compiled.findEntity(conceptName).orElseThrow();
+        return compiled.findConcept(conceptName).orElseThrow();
     }
 }

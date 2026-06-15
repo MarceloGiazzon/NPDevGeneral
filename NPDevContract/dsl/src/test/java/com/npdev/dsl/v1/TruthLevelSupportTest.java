@@ -47,9 +47,9 @@ class TruthLevelSupportTest {
                 """);
 
         ModelAst ast = new JsonModelParser().parse(modelPath);
-        assertEquals(TruthLevel.T5_EVIDENCE_BACKED, ast.getEntities().get(0).getTruthLevel());
-        assertEquals(TruthLevel.DEFAULT, ast.getEntities().get(1).getTruthLevel());
-        assertEquals(TruthLevel.T1_DECLARED, ast.getEntities().get(1).getTruthLevel());
+        assertEquals(TruthLevel.T5_EVIDENCE_BACKED, ast.getConcepts().get(0).getTruthLevel());
+        assertEquals(TruthLevel.DEFAULT, ast.getConcepts().get(1).getTruthLevel());
+        assertEquals(TruthLevel.T1_DECLARED, ast.getConcepts().get(1).getTruthLevel());
     }
 
     @Test

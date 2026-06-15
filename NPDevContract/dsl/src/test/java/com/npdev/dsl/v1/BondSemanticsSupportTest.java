@@ -59,13 +59,13 @@ class BondSemanticsSupportTest {
                 """);
 
         ModelAst ast = new JsonModelParser().parse(modelPath);
-        FieldAst productRef = ast.getEntities().get(1).getFields().get(2);
+        FieldAst productRef = ast.getConcepts().get(1).getFields().get(2);
         assertEquals("Product", productRef.getReferenceTarget());
         assertNotNull(productRef.getReferenceSemantics());
         assertEquals("skuId", productRef.getReferenceSemantics().getVia());
         assertEquals("restrict", productRef.getReferenceSemantics().getOnDelete());
 
-        FieldAst skuAnchor = ast.getEntities().get(0).getFields().get(1);
+        FieldAst skuAnchor = ast.getConcepts().get(0).getFields().get(1);
         assertEquals("anchor", skuAnchor.getConnectable());
 
         List<String> errors = new SemanticValidator().validate(ast);
@@ -109,7 +109,7 @@ class BondSemanticsSupportTest {
                 """);
 
         ModelAst ast = new JsonModelParser().parse(modelPath);
-        FieldAst productSet = ast.getEntities().get(1).getFields().get(1);
+        FieldAst productSet = ast.getConcepts().get(1).getFields().get(1);
 
         assertNotNull(productSet.getReferenceSemantics());
         assertTrue(productSet.getReferenceSemantics().isMultiple());

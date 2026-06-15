@@ -73,7 +73,7 @@ class DslV2StyleModelTest {
         assertTrue(errors.isEmpty(), "Expected no semantic errors, got: " + errors);
 
         CompiledModel compiled = new ModelCompiler().compile(ast);
-        assertEquals(1, compiled.getEntities().size());
+        assertEquals(1, compiled.getConcepts().size());
         assertEquals(1, compiled.getCapabilities().size());
         assertEquals("PersistenceCapability", compiled.getCapabilities().get(0).getType());
         assertEquals(3, compiled.getCapabilities().get(0).getOperations().size());

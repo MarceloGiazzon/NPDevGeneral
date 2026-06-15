@@ -140,7 +140,7 @@ class ActionMetadataSupportTest {
         assertNotNull(flow.getSteps().get(0).getAction());
         assertEquals("Persist appointment", flow.getSteps().get(0).getAction().getLabel());
 
-        CompiledStateTransition transition = compiled.findEntity("Appointment")
+        CompiledStateTransition transition = compiled.findConcept("Appointment")
                 .orElseThrow()
                 .getLifecycle()
                 .getTransitions()

@@ -2,6 +2,7 @@ package com.npdev.dsl.v1.ast;
 
 import java.util.List;
 
+@SuppressWarnings("deprecation")
 public final class ConceptAst extends EntityAst {
     public ConceptAst(String name, List<FieldAst> fields, List<InvariantAst> invariants) {
         super(name, fields, invariants);

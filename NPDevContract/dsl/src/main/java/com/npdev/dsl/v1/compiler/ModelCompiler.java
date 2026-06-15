@@ -1,7 +1,6 @@
 package com.npdev.dsl.v1.compiler;
 
 import com.npdev.dsl.v1.ast.ConceptAst;
-import com.npdev.dsl.v1.ast.EntityAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.ModelAst;
@@ -440,8 +439,8 @@ public final class ModelCompiler {
     }
 
     private static EffectiveEntityDef resolveEffective(
-            EntityAst entity,
-            Map<String, ? extends EntityAst> entitiesByLower,
+            ConceptAst entity,
+            Map<String, ? extends ConceptAst> entitiesByLower,
             Map<String, EffectiveEntityDef> cache,
             Set<String> stack
     ) {
@@ -459,7 +458,7 @@ public final class ModelCompiler {
 
         String parentName = entity.getExtendsName();
         if (parentName != null && !parentName.isBlank()) {
-            EntityAst parent = entitiesByLower.get(normalize(parentName));
+            ConceptAst parent = entitiesByLower.get(normalize(parentName));
             if (parent != null) {
                 EffectiveEntityDef parentEffective = resolveEffective(parent, entitiesByLower, cache, stack);
                 for (FieldAst pf : parentEffective.fields()) {

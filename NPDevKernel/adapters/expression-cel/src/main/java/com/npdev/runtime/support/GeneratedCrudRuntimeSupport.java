@@ -2,7 +2,7 @@ package com.npdev.runtime.support;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.npdev.dsl.v1.compiled.CompiledEntity;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledEvent;
 import com.npdev.dsl.v1.compiled.CompiledEventField;
 import com.npdev.dsl.v1.compiled.CompiledField;
@@ -387,7 +387,7 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     public Map<String, Object> buildCreateInvariantPayload(String entityName, Object dto) {
-        CompiledEntity entity = requireEntity(entityName);
+        CompiledConcept entity = requireEntity(entityName);
         return new LinkedHashMap<>(materializeEntityValues(entity, dto, null, false));
     }
 
@@ -397,7 +397,7 @@ public final class GeneratedCrudRuntimeSupport {
             Object existing,
             Object dto
     ) {
-        CompiledEntity entity = requireEntity(entityName);
+        CompiledConcept entity = requireEntity(entityName);
         Map<String, Object> payload = new LinkedHashMap<>(materializeEntityValues(entity, dto, existing, true));
         payload.put("__id", id);
         payload.put("id", id);
@@ -703,7 +703,7 @@ public final class GeneratedCrudRuntimeSupport {
             Map<String, Object> payload,
             UniqueValueLookup uniqueValueLookup
     ) {
-        Optional<CompiledEntity> entityOpt = findEntity(entityName);
+        Optional<CompiledConcept> entityOpt = findEntity(entityName);
         if (entityOpt.isEmpty()) {
             return List.of(new InvariantViolationDetail(
                     "invariant_failed",
@@ -715,7 +715,7 @@ public final class GeneratedCrudRuntimeSupport {
             ));
         }
 
-        CompiledEntity entity = entityOpt.get();
+        CompiledConcept entity = entityOpt.get();
         Map<String, Object> safePayload = immutablePayload(payload);
         Map<String, Object> normalizedPayload = normalizePayloadForValidation(entity, safePayload);
         List<InvariantViolationDetail> violations = new ArrayList<>();
@@ -829,7 +829,7 @@ public final class GeneratedCrudRuntimeSupport {
         if (snapshot == null) {
             return null;
         }
-        Optional<CompiledEntity> entityOpt = findEntity(entityName);
+        Optional<CompiledConcept> entityOpt = findEntity(entityName);
         if (entityOpt.isEmpty()) {
             return null;
         }
@@ -862,11 +862,11 @@ public final class GeneratedCrudRuntimeSupport {
             return;
         }
 
-        Optional<CompiledEntity> entityOpt = findEntity(entityName);
+        Optional<CompiledConcept> entityOpt = findEntity(entityName);
         if (entityOpt.isEmpty()) {
             return;
         }
-        CompiledEntity entity = entityOpt.get();
+        CompiledConcept entity = entityOpt.get();
         CompiledLifecycle lifecycle = entity.getLifecycle();
         if (lifecycle == null || lifecycle.getTransitions().isEmpty()) {
             return;
@@ -1060,11 +1060,11 @@ public final class GeneratedCrudRuntimeSupport {
         if (action == null || entityManager == null) {
             return null;
         }
-        Optional<CompiledEntity> targetEntityOpt = findEntity(action.getConcept());
+        Optional<CompiledConcept> targetEntityOpt = findEntity(action.getConcept());
         if (targetEntityOpt.isEmpty()) {
             return null;
         }
-        CompiledEntity targetEntity = targetEntityOpt.get();
+        CompiledConcept targetEntity = targetEntityOpt.get();
         Map<String, CompiledField> fieldsByName = new LinkedHashMap<>();
         List<String> uniqueFields = new ArrayList<>();
         for (CompiledField field : targetEntity.getFields()) {
@@ -2524,7 +2524,7 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     private Map<String, Object> normalizePayloadForValidation(
-            CompiledEntity entity,
+            CompiledConcept entity,
             Map<String, Object> payload
     ) {
         if (entity == null || payload == null || payload.isEmpty()) {
@@ -2554,7 +2554,7 @@ public final class GeneratedCrudRuntimeSupport {
         return immutablePayload(normalized);
     }
 
-    private Object normalizeFieldValue(CompiledEntity owner, CompiledField field, Object rawValue) {
+    private Object normalizeFieldValue(CompiledConcept owner, CompiledField field, Object rawValue) {
         String dslType = normalizeType(field == null ? null : field.getDslType());
         if ("reference".equals(dslType)) {
             CompiledField anchor = resolveReferenceAnchor(field).orElse(null);
@@ -2634,7 +2634,7 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     private Map<String, Object> materializeEntityValues(
-            CompiledEntity entity,
+            CompiledConcept entity,
             Object explicitSource,
             Object existingSource,
             boolean patchMode
@@ -2673,7 +2673,7 @@ public final class GeneratedCrudRuntimeSupport {
         return values;
     }
 
-    private void applySchemaValueBehaviors(CompiledEntity entity, Map<String, Object> values) {
+    private void applySchemaValueBehaviors(CompiledConcept entity, Map<String, Object> values) {
         if (entity == null || values == null) {
             return;
         }
@@ -2924,7 +2924,7 @@ public final class GeneratedCrudRuntimeSupport {
         return false;
     }
 
-    private List<String> validateFieldTypesAndReferences(CompiledEntity entity, Map<String, Object> payload) {
+    private List<String> validateFieldTypesAndReferences(CompiledConcept entity, Map<String, Object> payload) {
         if (entity == null || entity.getName() == null || entity.getName().isBlank()) {
             return List.of("Entity metadata is required for runtime field validation");
         }
@@ -3041,14 +3041,14 @@ public final class GeneratedCrudRuntimeSupport {
             return;
         }
 
-        Optional<CompiledEntity> targetEntityOpt = findEntity(targetEntityName);
+        Optional<CompiledConcept> targetEntityOpt = findEntity(targetEntityName);
         if (targetEntityOpt.isEmpty()) {
             violations.add("Entity " + entityName + ": reference target '" + targetEntityName
                     + "' not found in compiled model");
             return;
         }
 
-        CompiledEntity targetEntity = targetEntityOpt.get();
+        CompiledConcept targetEntity = targetEntityOpt.get();
         CompiledField anchor = resolveReferenceAnchor(field, targetEntity).orElse(null);
         if (anchor == null) {
             violations.add("Entity " + entityName + ": reference field '" + field.getName()
@@ -3294,7 +3294,7 @@ public final class GeneratedCrudRuntimeSupport {
         );
     }
 
-    private static Set<String> collectUniqueInvariantRefs(CompiledEntity entity) {
+    private static Set<String> collectUniqueInvariantRefs(CompiledConcept entity) {
         Set<String> out = new java.util.HashSet<>();
         if (entity == null || entity.getInvariants() == null) {
             return out;
@@ -3505,13 +3505,13 @@ public final class GeneratedCrudRuntimeSupport {
         return null;
     }
 
-    private Optional<CompiledEntity> findEntity(String name) {
-        Optional<CompiledEntity> exact = compiledModel.findEntity(name);
+    private Optional<CompiledConcept> findEntity(String name) {
+        Optional<CompiledConcept> exact = compiledModel.findConcept(name);
         if (exact.isPresent()) {
             return exact;
         }
         String normalized = normalize(name);
-        for (CompiledEntity entity : compiledModel.getEntities()) {
+        for (CompiledConcept entity : compiledModel.getConcepts()) {
             if (normalize(entity.getName()).equals(normalized)) {
                 return Optional.of(entity);
             }
@@ -3519,13 +3519,13 @@ public final class GeneratedCrudRuntimeSupport {
         return Optional.empty();
     }
 
-    private CompiledEntity requireEntity(String entityName) {
+    private CompiledConcept requireEntity(String entityName) {
         return findEntity(entityName)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown entity for runtime support: " + entityName));
     }
 
     private String idFieldName(String entityName) {
-        CompiledEntity entity = requireEntity(entityName);
+        CompiledConcept entity = requireEntity(entityName);
         String found = null;
         for (CompiledField field : entity.getFields()) {
             if (field == null || !field.isId()) {
@@ -3550,11 +3550,11 @@ public final class GeneratedCrudRuntimeSupport {
         if (targetEntityName == null || targetEntityName.isBlank()) {
             return Optional.empty();
         }
-        Optional<CompiledEntity> target = findEntity(targetEntityName);
+        Optional<CompiledConcept> target = findEntity(targetEntityName);
         return target.flatMap(entity -> resolveReferenceAnchor(referenceField, entity));
     }
 
-    private Optional<CompiledField> resolveReferenceAnchor(CompiledField referenceField, CompiledEntity targetEntity) {
+    private Optional<CompiledField> resolveReferenceAnchor(CompiledField referenceField, CompiledConcept targetEntity) {
         if (referenceField == null || targetEntity == null) {
             return Optional.empty();
         }
@@ -3571,7 +3571,7 @@ public final class GeneratedCrudRuntimeSupport {
         return Optional.empty();
     }
 
-    private Optional<CompiledField> idField(CompiledEntity entity) {
+    private Optional<CompiledField> idField(CompiledConcept entity) {
         if (entity == null) {
             return Optional.empty();
         }
@@ -3600,7 +3600,7 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     private BondRuntimeShape requireBondRuntimeShape(String sourceConceptName, String fieldName) {
-        CompiledEntity sourceEntity = requireEntity(sourceConceptName);
+        CompiledConcept sourceEntity = requireEntity(sourceConceptName);
         CompiledField sourceField = null;
         for (CompiledField field : sourceEntity.getFields()) {
             if (field != null && fieldName != null && fieldName.equalsIgnoreCase(field.getName())) {
@@ -3616,7 +3616,7 @@ public final class GeneratedCrudRuntimeSupport {
             throw new IllegalArgumentException("Bond field is not a multiple reference: "
                     + sourceConceptName + "." + fieldName);
         }
-        CompiledEntity targetEntity = findEntity(referenceTargetName(sourceField))
+        CompiledConcept targetEntity = findEntity(referenceTargetName(sourceField))
                 .orElseThrow(() -> new IllegalArgumentException("Unknown bond target for "
                         + sourceConceptName + "." + fieldName));
         CompiledField sourceId = idField(sourceEntity)
@@ -3648,9 +3648,9 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     private record BondRuntimeShape(
-            CompiledEntity sourceEntity,
+            CompiledConcept sourceEntity,
             CompiledField sourceField,
-            CompiledEntity targetEntity,
+            CompiledConcept targetEntity,
             CompiledField sourceIdField,
             CompiledField targetAnchorField,
             String junctionTable,
@@ -3663,7 +3663,7 @@ public final class GeneratedCrudRuntimeSupport {
         if (target == null) {
             return;
         }
-        CompiledEntity entity = requireEntity(entityName);
+        CompiledConcept entity = requireEntity(entityName);
         Map<String, Object> materialized = materializeEntityValues(entity, source, patchMode ? target : null, patchMode);
         for (CompiledField field : entity.getFields()) {
             if (field == null || field.isId()) {
@@ -3817,7 +3817,7 @@ public final class GeneratedCrudRuntimeSupport {
         return type;
     }
 
-    private boolean existsById(CompiledEntity entity, UUID id) {
+    private boolean existsById(CompiledConcept entity, UUID id) {
         if (entityManager == null || entity == null || id == null) {
             return false;
         }
@@ -3841,7 +3841,7 @@ public final class GeneratedCrudRuntimeSupport {
         }
     }
 
-    private boolean existsByAnchor(CompiledEntity entity, CompiledField anchor, Object value) {
+    private boolean existsByAnchor(CompiledConcept entity, CompiledField anchor, Object value) {
         if (entityManager == null || entity == null || anchor == null || value == null) {
             return false;
         }
@@ -3887,11 +3887,11 @@ public final class GeneratedCrudRuntimeSupport {
             return false;
         }
 
-        Optional<CompiledEntity> entityOpt = findEntity(entityName);
+        Optional<CompiledConcept> entityOpt = findEntity(entityName);
         if (entityOpt.isEmpty()) {
             return false;
         }
-        CompiledEntity entity = entityOpt.get();
+        CompiledConcept entity = entityOpt.get();
         String table = tableName(entity);
         if (table.isBlank()) {
             return false;
@@ -3964,12 +3964,12 @@ public final class GeneratedCrudRuntimeSupport {
             return false;
         }
 
-        Optional<CompiledEntity> entityOpt = findEntity(conceptName);
+        Optional<CompiledConcept> entityOpt = findEntity(conceptName);
         if (entityOpt.isEmpty()) {
             return false;
         }
 
-        CompiledEntity entity = entityOpt.get();
+        CompiledConcept entity = entityOpt.get();
         String table = tableName(entity);
         if (table.isBlank()) {
             return false;
@@ -4181,7 +4181,7 @@ public final class GeneratedCrudRuntimeSupport {
 
     private void validateLifecycleTransitions(
             String entityName,
-            CompiledEntity entity,
+            CompiledConcept entity,
             Map<String, Object> payload,
             List<InvariantViolationDetail> violations
     ) {
@@ -4381,7 +4381,7 @@ public final class GeneratedCrudRuntimeSupport {
         return null;
     }
 
-    private String fetchCurrentStatus(CompiledEntity entity, UUID id, String statusField) {
+    private String fetchCurrentStatus(CompiledConcept entity, UUID id, String statusField) {
         if (entityManager == null || entity == null || id == null) {
             return null;
         }
@@ -4426,7 +4426,7 @@ public final class GeneratedCrudRuntimeSupport {
         return false;
     }
 
-    private static String tableName(CompiledEntity entity) {
+    private static String tableName(CompiledConcept entity) {
         return SqlIdentifierSupport.tableName(entity);
     }
 
@@ -4441,7 +4441,7 @@ public final class GeneratedCrudRuntimeSupport {
                 : column;
     }
 
-    private static String columnName(CompiledEntity entity, String fieldName) {
+    private static String columnName(CompiledConcept entity, String fieldName) {
         if (entity != null && fieldName != null) {
             for (CompiledField field : entity.getFields()) {
                 if (field != null && fieldName.equalsIgnoreCase(field.getName())) {
@@ -4452,12 +4452,12 @@ public final class GeneratedCrudRuntimeSupport {
         return SqlIdentifierSupport.safeSqlIdentifier(fieldName);
     }
 
-    static String existsByIdSql(CompiledEntity entity, CompiledField idField) {
+    static String existsByIdSql(CompiledConcept entity, CompiledField idField) {
         return "SELECT 1 FROM " + tableName(entity)
                 + " WHERE CAST(" + columnName(idField) + " AS VARCHAR) = :id";
     }
 
-    static String fetchCurrentStatusSql(CompiledEntity entity, CompiledField idField, String statusColumn) {
+    static String fetchCurrentStatusSql(CompiledConcept entity, CompiledField idField, String statusColumn) {
         return "SELECT " + statusColumn + " FROM " + tableName(entity)
                 + " WHERE CAST(" + columnName(idField) + " AS VARCHAR) = :id";
     }

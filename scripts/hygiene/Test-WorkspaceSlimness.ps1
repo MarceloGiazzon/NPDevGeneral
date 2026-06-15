@@ -21,7 +21,7 @@ if ([string]::IsNullOrWhiteSpace($WorkspaceRoot)) {
 $WorkspaceRoot = Normalize-NPDevPath $WorkspaceRoot
 
 if ([string]::IsNullOrWhiteSpace($ReportPath)) {
-    $ReportPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\workspace-cleanliness-report.json"
+    $ReportPath = Join-Path (Split-Path $WorkspaceRoot -Parent) "Build\reports\workspace-cleanliness-report.json"
 }
 else {
     $ReportPath = Normalize-NPDevPath $ReportPath
@@ -29,6 +29,22 @@ else {
 
 function Get-RelativePath([string]$PathValue) {
     return (Get-NPDevWorkspaceRelativePath $WorkspaceRoot $PathValue).Replace("/", "\")
+}
+
+function Get-LengthSum {
+    # StrictMode-safe total of the .Length property across the supplied items.
+    # Measure-Object's result does not expose a usable Sum for an empty set, and
+    # under Set-StrictMode -Version Latest dereferencing .Sum then throws instead
+    # of yielding $null. Summing manually avoids that whole class of failure.
+    param([object[]]$Items)
+    $sum = [long]0
+    if ($null -eq $Items) { return $sum }
+    foreach ($item in $Items) {
+        if ($null -ne $item -and $null -ne $item.Length) {
+            $sum += [long]$item.Length
+        }
+    }
+    return $sum
 }
 
 function Get-FileSummary([string]$PathValue) {
@@ -50,8 +66,7 @@ function Get-FileSummary([string]$PathValue) {
         else {
             $item
         })
-    $size = ($files | Measure-Object Length -Sum).Sum
-    if ($null -eq $size) { $size = 0 }
+    $size = Get-LengthSum $files
     return [pscustomobject]@{
         path = Get-RelativePath $normalized
         exists = $true
@@ -85,8 +100,7 @@ if ($CleanTransientReportTemp) {
 
 $allFiles = @(Get-ChildItem -LiteralPath $WorkspaceRoot -Recurse -Force -File -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName -notmatch "\\.git\\" })
-$totalBytes = ($allFiles | Measure-Object Length -Sum).Sum
-if ($null -eq $totalBytes) { $totalBytes = 0 }
+$totalBytes = Get-LengthSum $allFiles
 $totalSizeMB = [math]::Round(([decimal]$totalBytes) / 1MB, 2)
 
 $topLevel = @($allFiles | ForEach-Object {
