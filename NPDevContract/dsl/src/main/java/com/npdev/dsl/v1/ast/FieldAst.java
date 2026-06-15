@@ -17,6 +17,7 @@ public final class FieldAst {
     private final String domainType;
     private final SchemaAst schema;
     private final PresentationMetadataAst ui;
+    private final String connectable;
 
     public FieldAst(String name, String type, boolean id, boolean required, boolean unique) {
         this(name, type, id, required, unique, List.of(), null, null, null, null, List.of(), null);
@@ -75,6 +76,25 @@ public final class FieldAst {
             List<EnumOptionAst> enumOptions,
             PresentationMetadataAst ui
     ) {
+        this(name, type, id, required, unique, enumValues, referenceTarget, referenceSemantics,
+                domainType, schema, enumOptions, ui, null);
+    }
+
+    public FieldAst(
+            String name,
+            String type,
+            boolean id,
+            boolean required,
+            boolean unique,
+            List<String> enumValues,
+            String referenceTarget,
+            ReferenceSemanticsAst referenceSemantics,
+            String domainType,
+            SchemaAst schema,
+            List<EnumOptionAst> enumOptions,
+            PresentationMetadataAst ui,
+            String connectable
+    ) {
         this.name = name;
         this.type = type;
         this.id = id;
@@ -87,6 +107,7 @@ public final class FieldAst {
         this.domainType = domainType;
         this.schema = schema;
         this.ui = ui;
+        this.connectable = connectable;
     }
 
     public String getName() { return name; }
@@ -101,4 +122,6 @@ public final class FieldAst {
     public String getDomainType() { return domainType; }
     public SchemaAst getSchema() { return schema; }
     public PresentationMetadataAst getUi() { return ui; }
+    /** Connection role of this field: "anchor" marks it as a bondable target key; null for ordinary fields. */
+    public String getConnectable() { return connectable; }
 }

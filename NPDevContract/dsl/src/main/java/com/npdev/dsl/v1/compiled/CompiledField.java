@@ -18,6 +18,7 @@ public final class CompiledField {
     private final String domainType;
     private final CompiledSchema schema;
     private final CompiledPresentationMetadata ui;
+    private final String connectable;
 
     public CompiledField(String name, String dslType, String javaType, boolean id, boolean required, boolean unique) {
         this(name, dslType, javaType, id, required, unique, List.of(), null, null, null, null, List.of(), null);
@@ -80,6 +81,26 @@ public final class CompiledField {
             List<CompiledEnumOption> enumOptions,
             CompiledPresentationMetadata ui
     ) {
+        this(name, dslType, javaType, id, required, unique, enumValues, referenceTarget,
+                referenceSemantics, domainType, schema, enumOptions, ui, null);
+    }
+
+    public CompiledField(
+            String name,
+            String dslType,
+            String javaType,
+            boolean id,
+            boolean required,
+            boolean unique,
+            List<String> enumValues,
+            String referenceTarget,
+            CompiledReferenceSemantics referenceSemantics,
+            String domainType,
+            CompiledSchema schema,
+            List<CompiledEnumOption> enumOptions,
+            CompiledPresentationMetadata ui,
+            String connectable
+    ) {
         this.name = name;
         this.dslType = dslType;
         this.javaType = javaType;
@@ -93,6 +114,7 @@ public final class CompiledField {
         this.domainType = domainType;
         this.schema = schema;
         this.ui = ui;
+        this.connectable = connectable;
     }
 
     public CompiledField(
@@ -139,4 +161,5 @@ public final class CompiledField {
     public String getDomainType() { return domainType; }
     public CompiledSchema getSchema() { return schema; }
     public CompiledPresentationMetadata getUi() { return ui; }
+    public String getConnectable() { return connectable; }
 }

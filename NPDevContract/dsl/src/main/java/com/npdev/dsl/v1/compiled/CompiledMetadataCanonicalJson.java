@@ -28,11 +28,20 @@ public final class CompiledMetadataCanonicalJson {
     }
 
     public static String toJson(CompiledModel model) {
-        return toJson(null, model);
+        return toJson((Path) null, model);
     }
 
     public static String toJson(Path modelPath, CompiledModel model) {
         ObjectNode canonical = toCanonicalObject(readRawModel(modelPath), model);
+        try {
+            return MAPPER.writeValueAsString(canonical) + "\n";
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to serialize compiled metadata as canonical JSON", exception);
+        }
+    }
+
+    public static String toJson(JsonNode resolvedModelRoot, CompiledModel model) {
+        ObjectNode canonical = toCanonicalObject(resolvedModelRoot, model);
         try {
             return MAPPER.writeValueAsString(canonical) + "\n";
         } catch (IOException exception) {
@@ -348,10 +357,22 @@ public final class CompiledMetadataCanonicalJson {
                 List<String> searchFields = effectiveReferenceSearchFields(referenceSemantics, targetEntity, displayField);
                 List<String> previewFields = effectiveReferencePreviewFields(referenceSemantics, targetEntity, displayField);
                 List<String> pickerColumns = effectiveReferencePickerColumns(referenceSemantics, searchFields, displayField);
+                CompiledField anchorField = resolveReferenceAnchor(targetEntity, referenceSemantics);
                 ObjectNode node = JsonNodeFactory.instance.objectNode();
                 node.put("concept", safe(entity.getName()));
                 node.put("fieldPath", safe(field.getName()));
                 node.put("targetConcept", safe(field.getReferenceTarget()));
+                node.put("sourceTruthLevel", safe(entity.getTruthLevel()));
+                node.put("targetTruthLevel", safe(targetEntity == null ? "" : targetEntity.getTruthLevel()));
+                node.put("via", safe(referenceSemantics == null ? "" : referenceSemantics.getVia()));
+                node.put("onDelete", safe(referenceSemantics == null ? "restrict" : firstNonBlank(referenceSemantics.getOnDelete(), "restrict")));
+                node.put("anchorField", safe(anchorField == null ? "" : anchorField.getName()));
+                node.put("anchorType", safe(anchorField == null ? "" : anchorField.getDslType()));
+                node.put("cardinality", referenceSemantics != null && referenceSemantics.isMultiple()
+                        ? "many-to-many"
+                        : (field.isUnique() ? "one-to-one" : "many-to-one"));
+                node.put("upwardTruthEdge", targetEntity != null
+                        && truthRank(entity.getTruthLevel()) > truthRank(targetEntity.getTruthLevel()));
                 node.put("multiple", referenceSemantics != null && referenceSemantics.isMultiple());
                 node.put("required", field.isRequired());
                 node.put("displayField", safe(displayField));
@@ -366,6 +387,44 @@ public final class CompiledMetadataCanonicalJson {
             }
         }
         return references;
+    }
+
+    private static CompiledField resolveReferenceAnchor(
+            CompiledConcept targetEntity,
+            CompiledReferenceSemantics referenceSemantics
+    ) {
+        if (targetEntity == null) {
+            return null;
+        }
+        String via = referenceSemantics == null ? null : referenceSemantics.getVia();
+        if (via != null && !via.isBlank()) {
+            for (CompiledField field : targetEntity.getFields()) {
+                if (field != null && via.equalsIgnoreCase(field.getName())) {
+                    return field;
+                }
+            }
+        }
+        for (CompiledField field : targetEntity.getFields()) {
+            if (field != null && field.isId()) {
+                return field;
+            }
+        }
+        return null;
+    }
+
+    private static int truthRank(String value) {
+        if (value == null || value.isBlank()) {
+            return 1;
+        }
+        String normalized = value.trim().toUpperCase(Locale.ROOT);
+        if (normalized.length() >= 2 && normalized.charAt(0) == 'T') {
+            try {
+                return Integer.parseInt(normalized.substring(1, 2));
+            } catch (NumberFormatException ignored) {
+                return 1;
+            }
+        }
+        return 1;
     }
 
     private static ArrayNode toActionCatalog(CompiledModel model) {

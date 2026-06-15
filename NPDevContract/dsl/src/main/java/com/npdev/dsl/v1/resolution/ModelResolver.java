@@ -181,7 +181,8 @@ public final class ModelResolver {
                 invariants,
                 events,
                 sanitizeLifecycle(concept.getLifecycle()),
-                copyPresentationMetadata(concept.getUi())
+                copyPresentationMetadata(concept.getUi()),
+                concept.getTruthLevel()
         );
     }
 
@@ -236,7 +237,8 @@ public final class ModelResolver {
                 mergedInvariants,
                 mergedEvents,
                 mergedLifecycle,
-                mergePresentationMetadata(base.getUi(), specialization.getUi())
+                mergePresentationMetadata(base.getUi(), specialization.getUi()),
+                specialization.getTruthLevel()
         );
     }
 
@@ -280,6 +282,7 @@ public final class ModelResolver {
                 firstNonBlank(override.getWidth(), base.getWidth()),
                 override.getSummaryCard() != null ? override.getSummaryCard() : base.getSummaryCard(),
                 override.getListColumn() != null ? override.getListColumn() : base.getListColumn(),
+                override.getShowInDefaultWebUi() != null ? override.getShowInDefaultWebUi() : base.getShowInDefaultWebUi(),
                 override.getListColumnOrder() != null ? override.getListColumnOrder() : base.getListColumnOrder(),
                 override.getFormColumns() != null ? override.getFormColumns() : base.getFormColumns(),
                 firstNonBlank(override.getDisplayMode(), base.getDisplayMode()),
@@ -319,6 +322,7 @@ public final class ModelResolver {
                 metadata.getWidth(),
                 metadata.getSummaryCard(),
                 metadata.getListColumn(),
+                metadata.getShowInDefaultWebUi(),
                 metadata.getListColumnOrder(),
                 metadata.getFormColumns(),
                 metadata.getDisplayMode(),

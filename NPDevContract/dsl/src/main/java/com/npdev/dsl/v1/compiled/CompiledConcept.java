@@ -53,6 +53,20 @@ public final class CompiledConcept extends CompiledEntity {
         super(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui);
     }
 
+    public CompiledConcept(
+            String name,
+            String className,
+            String tableName,
+            List<CompiledField> fields,
+            List<String> expressionInvariants,
+            List<CompiledInvariant> invariants,
+            CompiledLifecycle lifecycle,
+            CompiledPresentationMetadata ui,
+            String truthLevel
+    ) {
+        super(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel);
+    }
+
     public static CompiledConcept fromLegacyEntity(CompiledEntity legacy) {
         if (legacy instanceof CompiledConcept concept) {
             return concept;
@@ -65,7 +79,8 @@ public final class CompiledConcept extends CompiledEntity {
                 legacy.getExpressionInvariants(),
                 legacy.getInvariants(),
                 legacy.getLifecycle(),
-                legacy.getUi()
+                legacy.getUi(),
+                legacy.getTruthLevel()
         );
     }
 }

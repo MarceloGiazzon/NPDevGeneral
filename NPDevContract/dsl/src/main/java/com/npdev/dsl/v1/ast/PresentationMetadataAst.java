@@ -31,6 +31,7 @@ public final class PresentationMetadataAst {
     private final String width;
     private final Boolean summaryCard;
     private final Boolean listColumn;
+    private final Boolean showInDefaultWebUi;
     private final Integer listColumnOrder;
     private final Integer formColumns;
     private final String displayMode;
@@ -64,6 +65,7 @@ public final class PresentationMetadataAst {
             String width,
             Boolean summaryCard,
             Boolean listColumn,
+            Boolean showInDefaultWebUi,
             Integer listColumnOrder,
             Integer formColumns,
             String displayMode,
@@ -96,6 +98,7 @@ public final class PresentationMetadataAst {
         this.width = width;
         this.summaryCard = summaryCard;
         this.listColumn = listColumn;
+        this.showInDefaultWebUi = showInDefaultWebUi;
         this.listColumnOrder = listColumnOrder;
         this.formColumns = formColumns;
         this.displayMode = displayMode;
@@ -205,6 +208,10 @@ public final class PresentationMetadataAst {
 
     public Boolean getListColumn() {
         return listColumn;
+    }
+
+    public Boolean getShowInDefaultWebUi() {
+        return showInDefaultWebUi;
     }
 
     public Integer getListColumnOrder() {

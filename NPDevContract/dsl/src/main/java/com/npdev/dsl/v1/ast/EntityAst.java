@@ -18,6 +18,7 @@ public class EntityAst {
     private final List<EventAst> events;
     private final LifecycleAst lifecycle;
     private final PresentationMetadataAst ui;
+    private final TruthLevel truthLevel;
 
     public EntityAst(String name, List<FieldAst> fields, List<InvariantAst> invariants) {
         this(name, null, null, fields, invariants, List.of(), null, null);
@@ -70,6 +71,20 @@ public class EntityAst {
             LifecycleAst lifecycle,
             PresentationMetadataAst ui
     ) {
+        this(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, TruthLevel.DEFAULT);
+    }
+
+    public EntityAst(
+            String name,
+            String extendsName,
+            String specializesName,
+            List<FieldAst> fields,
+            List<InvariantAst> invariants,
+            List<EventAst> events,
+            LifecycleAst lifecycle,
+            PresentationMetadataAst ui,
+            TruthLevel truthLevel
+    ) {
         this.name = name;
         this.extendsName = extendsName;
         this.specializesName = firstNonBlank(specializesName, extendsName);
@@ -78,6 +93,7 @@ public class EntityAst {
         this.events = events == null ? List.of() : new ArrayList<>(events);
         this.lifecycle = lifecycle;
         this.ui = ui;
+        this.truthLevel = truthLevel == null ? TruthLevel.DEFAULT : truthLevel;
     }
 
     public String getName() { return name; }
@@ -102,6 +118,10 @@ public class EntityAst {
 
     public PresentationMetadataAst getUi() {
         return ui;
+    }
+
+    public TruthLevel getTruthLevel() {
+        return truthLevel;
     }
 
     private static String firstNonBlank(String primary, String fallback) {

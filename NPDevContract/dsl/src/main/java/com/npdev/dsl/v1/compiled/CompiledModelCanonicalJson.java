@@ -70,6 +70,7 @@ public final class CompiledModelCanonicalJson {
             node.put("name", safe(concept.getName()));
             node.put("className", safe(concept.getClassName()));
             node.put("tableName", safe(concept.getTableName()));
+            node.put("truthLevel", safe(concept.getTruthLevel()));
             node.set("ui", toPresentationMetadata(concept.getUi()));
 
             List<CompiledField> fields = new ArrayList<>(concept.getFields());
@@ -86,6 +87,7 @@ public final class CompiledModelCanonicalJson {
                 fieldNode.set("enumValues", toStringArray(field.getEnumValues()));
                 fieldNode.set("enumOptions", toEnumOptions(field.getEnumOptions()));
                 fieldNode.put("referenceTarget", safe(field.getReferenceTarget()));
+                fieldNode.put("connectable", safe(field.getConnectable()));
                 fieldNode.set("referenceSemantics", toReferenceSemantics(field.getReferenceSemantics()));
                 fieldNode.put("domainType", safe(field.getDomainType()));
                 fieldNode.set("schema", toSchema(field.getSchema()));
@@ -914,6 +916,8 @@ public final class CompiledModelCanonicalJson {
         node.set("pickerColumns", toStringArray(referenceSemantics.getPickerColumns()));
         node.put("previewCardTemplate", safe(referenceSemantics.getPreviewCardTemplate()));
         node.put("defaultFilter", safe(referenceSemantics.getDefaultFilter()));
+        node.put("via", safe(referenceSemantics.getVia()));
+        node.put("onDelete", safe(referenceSemantics.getOnDelete()));
         return node;
     }
 

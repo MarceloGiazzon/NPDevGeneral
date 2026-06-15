@@ -27,6 +27,7 @@ import com.npdev.dsl.v1.ast.ProcedureStepAst;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
 import com.npdev.dsl.v1.ast.RuleProfileAst;
+import com.npdev.dsl.v1.ast.TruthLevel;
 import com.npdev.dsl.v1.ast.SchemaAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
 import com.npdev.dsl.v1.ast.StateTransitionAst;
@@ -271,6 +272,17 @@ public final class SemanticValidator {
                             + ": enumValues are only allowed when type is enum");
                 }
 
+                String connectable = normalize(f.getConnectable());
+                if (!connectable.isBlank()) {
+                    if (!"anchor".equals(connectable)) {
+                        errors.add("Entity " + e.getName() + " field " + f.getName()
+                                + ": connectable must be \"anchor\"");
+                    } else if (!f.isId() && !f.isUnique()) {
+                        errors.add("Entity " + e.getName() + " field " + f.getName()
+                                + ": connectable anchor field must be unique (or the id field)");
+                    }
+                }
+
                 if ("reference".equals(normalizedType)) {
                     String target = normalize(f.getReferenceTarget());
                     if (target.isBlank()) {
@@ -288,6 +300,7 @@ public final class SemanticValidator {
                                 errors
                         );
                         validateReferenceSemantics(e.getName(), f, effectiveTarget, errors);
+                        validateBondTruthEdge(e, f, entitiesByLower.get(target), semanticWarnings);
                     }
                 } else if ((f.getReferenceTarget() != null && !f.getReferenceTarget().isBlank())
                         || f.getReferenceSemantics() != null) {
@@ -1293,11 +1306,6 @@ public final class SemanticValidator {
         if (referenceSemantics == null) {
             return;
         }
-        if (referenceSemantics.isMultiple()) {
-            errors.add("Entity " + entityName + " field " + field.getName()
-                    + ": reference multiple=true is not supported on scalar reference fields yet");
-        }
-
         String inlineCreatePolicy = normalize(referenceSemantics.getInlineCreatePolicy());
         if (!inlineCreatePolicy.isBlank()
                 && !"allow".equals(inlineCreatePolicy)
@@ -1306,12 +1314,82 @@ public final class SemanticValidator {
                     + ": inlineCreate must be allow or deny");
         }
 
+        String onDelete = normalize(referenceSemantics.getOnDelete());
+        if (!onDelete.isBlank()
+                && !"restrict".equals(onDelete)
+                && !"cascade".equals(onDelete)
+                && !"nullify".equals(onDelete)) {
+            errors.add("Entity " + entityName + " field " + field.getName()
+                    + ": reference onDelete must be one of restrict, cascade, nullify");
+        }
+        // nullify => SET NULL, which cannot apply to a NOT NULL column. A required port and an
+        // N:M port (whose junction target column is part of a NOT NULL composite PK) both forbid it.
+        if ("nullify".equals(onDelete)) {
+            if (field.isRequired()) {
+                errors.add("Entity " + entityName + " field " + field.getName()
+                        + ": reference onDelete=nullify is invalid on a required field (SET NULL cannot apply to a NOT NULL column)");
+            }
+            if (referenceSemantics.isMultiple()) {
+                errors.add("Entity " + entityName + " field " + field.getName()
+                        + ": reference onDelete=nullify is invalid on a multiple (N:M) bond (the junction key cannot be null)");
+            }
+        }
+
+        String via = normalize(referenceSemantics.getVia());
+        if (!via.isBlank()) {
+            FieldAst anchor = targetEntity.fields().stream()
+                    .filter(candidate -> via.equals(normalize(candidate.getName())))
+                    .findFirst()
+                    .orElse(null);
+            if (anchor == null) {
+                errors.add("Entity " + entityName + " field " + field.getName()
+                        + ": reference via anchor not found on target "
+                        + field.getReferenceTarget() + ": " + referenceSemantics.getVia());
+            } else if (!isConnectableAnchor(anchor)) {
+                errors.add("Entity " + entityName + " field " + field.getName()
+                        + ": reference via must target a connectable anchor (the id field, or a non-id field"
+                        + " with unique=true and connectable:anchor): " + referenceSemantics.getVia());
+            }
+        }
+
         validateReferenceFieldHint(entityName, field, targetEntity, referenceSemantics.getDisplayField(), "displayField", errors);
         validateReferenceFieldHintList(entityName, field, targetEntity, referenceSemantics.getSearchFields(), "searchFields", errors);
         validateReferenceFieldHintList(entityName, field, targetEntity, referenceSemantics.getPreviewFields(), "previewFields", errors);
         validateReferenceFieldHintList(entityName, field, targetEntity, referenceSemantics.getPickerColumns(), "pickerColumns", errors);
         validateReferenceTemplate(entityName, field, targetEntity, referenceSemantics.getDisplayTemplate(), "displayTemplate", errors);
         validateReferenceTemplate(entityName, field, targetEntity, referenceSemantics.getPreviewCardTemplate(), "previewCardTemplate", errors);
+    }
+
+    /**
+     * Bond truth integrity ("no upward edges"): a bond may not point at a concept whose
+     * truth level is below the source's. Surfaced as a warning so it never blocks creation
+     * (truth is restrictive only at release); a release gate can later elevate it to an error.
+     */
+    private static void validateBondTruthEdge(
+            EntityAst source,
+            FieldAst port,
+            EntityAst target,
+            List<String> warnings
+    ) {
+        if (source == null || target == null) {
+            return;
+        }
+        TruthLevel sourceTruth = source.getTruthLevel();
+        TruthLevel targetTruth = target.getTruthLevel();
+        if (sourceTruth == null || targetTruth == null) {
+            return;
+        }
+        if (targetTruth.rank() < sourceTruth.rank()) {
+            warnings.add("Entity " + source.getName() + " field " + port.getName()
+                    + ": bond points at lower-truth concept " + target.getName()
+                    + " (" + sourceTruth.code() + " -> " + targetTruth.code()
+                    + "); a concept may not depend on a less-true concept (no upward truth edges)");
+        }
+    }
+
+    private static boolean isConnectableAnchor(FieldAst field) {
+        return field.isId()
+                || (field.isUnique() && "anchor".equals(normalize(field.getConnectable())));
     }
 
     private static void validateReferenceFieldHint(

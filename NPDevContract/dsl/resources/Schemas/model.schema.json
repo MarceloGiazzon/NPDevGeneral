@@ -55,88 +55,190 @@
       "type": "string",
       "minLength": 1
     },
-
     "concepts": {
       "type": "array",
       "minItems": 1,
       "items": {
-        "$ref": "#/$defs/concept"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/concept"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "domainTypes": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/domainType"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/domainType"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "capabilities": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/capability"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/capability"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "customCapabilities": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/capability"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/capability"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "bindings": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/binding"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/binding"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "events": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/event"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/event"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "flows": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/flow"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/flow"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "orchestrationRules": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/orchestrationRule"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/orchestrationRule"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "orchestrations": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/orchestrationRule"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/orchestrationRule"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "queries": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/query"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/query"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "ruleProfiles": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/ruleProfile"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/ruleProfile"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "procedures": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/procedure"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/procedure"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "panels": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/panel"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/panel"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "metadata": {
       "type": "object"
+    },
+    "fragments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/localModelRef"
+      }
+    },
+    "packs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/packRef"
+      }
     }
   },
   "$defs": {
@@ -158,6 +260,18 @@
         "specializes": {
           "type": "string",
           "minLength": 1
+        },
+        "truthLevel": {
+          "type": "string",
+          "enum": [
+            "T0",
+            "T1",
+            "T2",
+            "T3",
+            "T4",
+            "T5",
+            "T6"
+          ]
         },
         "fields": {
           "type": "array",
@@ -345,6 +459,12 @@
         "unique": {
           "type": "boolean",
           "default": false
+        },
+        "connectable": {
+          "type": "string",
+          "enum": [
+            "anchor"
+          ]
         },
         "enumValues": {
           "type": "array",
@@ -718,6 +838,18 @@
             "allow",
             "deny"
           ]
+        },
+        "via": {
+          "type": "string",
+          "minLength": 1
+        },
+        "onDelete": {
+          "type": "string",
+          "enum": [
+            "restrict",
+            "cascade",
+            "nullify"
+          ]
         }
       },
       "additionalProperties": false
@@ -825,6 +957,9 @@
           "type": "boolean"
         },
         "listColumn": {
+          "type": "boolean"
+        },
+        "showInDefaultWebUi": {
           "type": "boolean"
         },
         "listColumnOrder": {
@@ -1006,7 +1141,6 @@
         },
         "input": {
           "oneOf": [
-
             {
               "$ref": "#/$defs/capabilityContractSchemaRef"
             },
@@ -1017,7 +1151,6 @@
         },
         "output": {
           "oneOf": [
-
             {
               "$ref": "#/$defs/capabilityContractSchemaRef"
             },
@@ -2853,11 +2986,41 @@
         }
       },
       "additionalProperties": false
+    },
+    "packRef": {
+      "type": "object",
+      "required": [
+        "$ref"
+      ],
+      "properties": {
+        "$ref": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?![A-Za-z][A-Za-z0-9+.-]*:)(?!/).*\\.json$"
+        },
+        "as": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "description": "Optional alias overriding the pack's own identifier as the namespace prefix in this model."
+        }
+      },
+      "additionalProperties": false
+    },
+    "localModelRef": {
+      "type": "object",
+      "required": [
+        "$ref"
+      ],
+      "properties": {
+        "$ref": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?![A-Za-z][A-Za-z0-9+.-]*:)(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).*\\.json$"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false
 }
-
-
-
-

@@ -140,7 +140,8 @@ public final class CompiledModelCanonicalJsonReader {
                 expressionInvariants,
                 invariants,
                 toLifecycle(node.get("lifecycle")),
-                toPresentationMetadata(node.get("ui"))
+                toPresentationMetadata(node.get("ui")),
+                optionalText(node, "truthLevel")
         );
     }
 
@@ -158,7 +159,8 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "domainType"),
                 toSchema(node.get("schema")),
                 toEnumOptions(node.get("enumOptions")),
-                toPresentationMetadata(node.get("ui"))
+                toPresentationMetadata(node.get("ui")),
+                optionalText(node, "connectable")
         );
     }
 
@@ -193,6 +195,7 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "width"),
                 optionalBooleanObject(node.get("summaryCard")),
                 optionalBooleanObject(node.get("listColumn")),
+                optionalBooleanObject(node.get("showInDefaultWebUi")),
                 optionalIntegerObject(node.get("listColumnOrder")),
                 optionalIntegerObject(node.get("formColumns")),
                 optionalText(node, "displayMode"),
@@ -239,7 +242,9 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "displayTemplate"),
                 toStringList(node.get("pickerColumns")),
                 optionalText(node, "previewCardTemplate"),
-                firstNonBlank(optionalText(node, "defaultFilter"), optionalText(node, "defaultFilterBehavior"))
+                firstNonBlank(optionalText(node, "defaultFilter"), optionalText(node, "defaultFilterBehavior")),
+                optionalText(node, "via"),
+                optionalText(node, "onDelete")
         );
     }
 

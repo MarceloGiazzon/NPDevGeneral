@@ -76,6 +76,8 @@ import com.npdev.dsl.v1.compiled.CompiledRuleProfile;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.compiled.CompiledStateMachineState;
 import com.npdev.dsl.v1.compiled.CompiledStateTransition;
+import com.npdev.dsl.v1.compiled.JavaIdentifierSupport;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.dsl.v1.resolution.ModelResolver;
 import com.npdev.dsl.v1.resolution.ResolvedModel;
 
@@ -120,8 +122,8 @@ public final class ModelCompiler {
         List<ConceptAst> orderedConcepts = new ArrayList<>(modelAst.getConcepts());
         orderedConcepts.sort(Comparator.comparing(concept -> normalize(concept.getName())));
         for (ConceptAst concept : orderedConcepts) {
-            String className = toPascal(concept.getName());
-            String tableName = toSnakePlural(concept.getName());
+            String className = JavaIdentifierSupport.className(concept.getName());
+            String tableName = SqlIdentifierSupport.toSnakePlural(concept.getName());
 
             EffectiveEntityDef effective = resolveEffective(
                     concept,
@@ -203,7 +205,8 @@ public final class ModelCompiler {
                         f.getDomainType(),
                         toCompiledSchema(effectiveSchema),
                         toCompiledEnumOptions(f.getEnumOptions()),
-                        toCompiledPresentationMetadata(f.getUi())
+                        toCompiledPresentationMetadata(f.getUi()),
+                        f.getConnectable()
                 ));
 
                 if (f.isRequired()) {
@@ -235,7 +238,8 @@ public final class ModelCompiler {
                             expressionInvariants,
                             compiledInvariants,
                             toCompiledLifecycle(effective.lifecycle()),
-                            toCompiledPresentationMetadata(concept.getUi())
+                            toCompiledPresentationMetadata(concept.getUi()),
+                            concept.getTruthLevel() == null ? null : concept.getTruthLevel().code()
                     )
             );
             List<String> invariantRefs = new ArrayList<>(invariantsByCanonicalRef.keySet());
@@ -552,18 +556,6 @@ public final class ModelCompiler {
             ));
         }
         return List.copyOf(compiled);
-    }
-
-    private static String toPascal(String s) {
-        if (s == null || s.isBlank()) return s;
-        String t = s.trim();
-        return t.substring(0, 1).toUpperCase() + t.substring(1);
-    }
-
-    private static String toSnakePlural(String s) {
-        String base = s.trim().toLowerCase(Locale.ROOT);
-        if (base.endsWith("s")) return base;
-        return base + "s";
     }
 
     private static String normalize(String value) {
@@ -1154,7 +1146,9 @@ public final class ModelCompiler {
                 referenceSemantics.getDisplayTemplate(),
                 referenceSemantics.getPickerColumns(),
                 referenceSemantics.getPreviewCardTemplate(),
-                referenceSemantics.getDefaultFilter()
+                referenceSemantics.getDefaultFilter(),
+                referenceSemantics.getVia(),
+                referenceSemantics.getOnDelete()
         );
     }
 
@@ -1189,6 +1183,7 @@ public final class ModelCompiler {
                 metadata.getWidth(),
                 metadata.getSummaryCard(),
                 metadata.getListColumn(),
+                metadata.getShowInDefaultWebUi(),
                 metadata.getListColumnOrder(),
                 metadata.getFormColumns(),
                 metadata.getDisplayMode(),

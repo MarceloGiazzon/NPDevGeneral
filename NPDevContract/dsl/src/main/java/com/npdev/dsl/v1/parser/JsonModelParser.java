@@ -48,7 +48,39 @@ public final class JsonModelParser {
             throw new IOException("model.json not found: " + modelJsonPath);
         }
 
-        JsonNode root = mapper.readTree(Files.readAllBytes(modelJsonPath));
+        // Detect deprecated/legacy authoring shapes on the RAW root before pack/fragment
+        // resolution runs. The resolver rejects unknown top-level keys (e.g. legacy
+        // 'entities') with a generic IOException, which would otherwise mask the helpful
+        // DeprecationException + migration guidance below.
+        JsonNode rawRoot = mapper.readTree(Files.readAllBytes(modelJsonPath));
+        checkDeprecatedAuthoringShape(rawRoot);
+
+        return parse(new ModelSourceResolver().resolve(modelJsonPath));
+    }
+
+    public ModelAst parse(ResolvedModelSource source) throws IOException {
+        if (source == null) {
+            throw new IOException("Resolved model source is required");
+        }
+        return parse(source.resolvedRoot(), source.rootModelPath().toString(), source.warnings().stream()
+                .map(ValidationDiagnostic::getMessage)
+                .toList());
+    }
+
+    public ModelAst parse(JsonNode root) throws IOException {
+        return parse(root, "<resolved-model>", List.of());
+    }
+
+    /**
+     * Rejects deprecated/legacy authoring shapes with a {@link DeprecationException} carrying
+     * migration guidance. Runs both on the raw root (before pack/fragment resolution) and on the
+     * resolved root, so the helpful deprecation message is never masked by the resolver's generic
+     * "unsupported top-level key" IOException.
+     */
+    private void checkDeprecatedAuthoringShape(JsonNode root) throws DeprecationException {
+        if (root == null || !root.isObject()) {
+            return;
+        }
         String schemaTarget = readText(root, "$schema");
         if (isDeprecatedSchemaTarget(schemaTarget)) {
             throw new DeprecationException(new ValidationDiagnostic(
@@ -82,6 +114,17 @@ public final class JsonModelParser {
                     "legacy-entities-root"
             ));
         }
+    }
+
+    public ModelAst parse(JsonNode root, String sourceLabel) throws IOException {
+        return parse(root, sourceLabel, List.of());
+    }
+
+    private ModelAst parse(JsonNode root, String sourceLabel, List<String> sourceWarnings) throws IOException {
+        if (root == null || !root.isObject()) {
+            throw new IOException("model.json root must be an object");
+        }
+        checkDeprecatedAuthoringShape(root);
         String namespace = firstNonBlank(readText(root, "namespace"), readText(root, "model"));
         if (namespace == null || namespace.isBlank()) {
             throw new IOException("Missing/blank required field: namespace (or alias: model)");
@@ -93,7 +136,7 @@ public final class JsonModelParser {
         if (!SUPPORTED_DSL_VERSION.equals(dslVersion)) {
             throw new IOException("Unsupported dslVersion '" + dslVersion + "'. Supported value: \"" + SUPPORTED_DSL_VERSION + "\".");
         }
-        schemaValidator.validate(root, modelJsonPath.toAbsolutePath().normalize().toString());
+        schemaValidator.validate(root, sourceLabel);
 
         String schemaVersion = readText(root, "schemaVersion");
         if (schemaVersion != null && !schemaVersion.isBlank() && !CURRENT_SCHEMA_VERSION.equals(schemaVersion)) {
@@ -112,7 +155,7 @@ public final class JsonModelParser {
         List<RuleProfileAst> ruleProfiles = new ArrayList<>();
         List<ProcedureAst> procedures = new ArrayList<>();
         List<PanelAst> panels = new ArrayList<>();
-        List<String> parserWarnings = new ArrayList<>();
+        List<String> parserWarnings = new ArrayList<>(sourceWarnings == null ? List.of() : sourceWarnings);
         Map<String, EntityAst> conceptsByLowerName = new LinkedHashMap<>();
 
         JsonNode conceptsNode = root.get("concepts");
@@ -191,6 +234,7 @@ public final class JsonModelParser {
                         )
                 );
                 String domainType = readText(f, "domainType");
+                String connectable = readText(f, "connectable");
                 SchemaAst fieldSchema = parseSchema(f, "concepts[" + name + "].fields[" + fname + "]");
                 PresentationMetadataAst fieldUi = parsePresentationMetadata(
                         f.get("ui"),
@@ -209,7 +253,8 @@ public final class JsonModelParser {
                         domainType,
                         fieldSchema,
                         enumOptions,
-                        fieldUi
+                        fieldUi,
+                        connectable
                 ));
             }
 
@@ -274,7 +319,8 @@ public final class JsonModelParser {
                 }
             }
 
-            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi);
+            TruthLevel truthLevel = TruthLevel.fromStringOrDefault(readText(ent, "truthLevel"));
+            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel);
             concepts.add(concept);
             conceptsByLowerName.put(name.toLowerCase(Locale.ROOT), concept);
         }
@@ -925,6 +971,8 @@ public final class JsonModelParser {
         List<String> pickerColumns = parseTextArray(node.get("pickerColumns"));
         String previewCardTemplate = readText(node, "previewCardTemplate");
         String defaultFilter = firstNonBlank(readText(node, "defaultFilter"), readText(node, "defaultFilterBehavior"));
+        String via = readText(node, "via");
+        String onDelete = readText(node, "onDelete");
         return new ReferenceSemanticsAst(
                 target,
                 multiple,
@@ -935,7 +983,9 @@ public final class JsonModelParser {
                 displayTemplate,
                 pickerColumns,
                 previewCardTemplate,
-                defaultFilter
+                defaultFilter,
+                via,
+                onDelete
         );
     }
 
@@ -1423,6 +1473,7 @@ public final class JsonModelParser {
                 readText(node, "width"),
                 readOptionalBoolean(node, "summaryCard"),
                 readOptionalBoolean(node, "listColumn"),
+                readOptionalBoolean(node, "showInDefaultWebUi"),
                 readOptionalInt(node, "listColumnOrder"),
                 readOptionalInt(node, "formColumns"),
                 readText(node, "displayMode"),
