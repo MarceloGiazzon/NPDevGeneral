@@ -9,10 +9,15 @@ import com.npdev.dsl.v1.paths.CanonicalModelPaths;
 import com.npdev.dsl.v1.parser.JsonModelParser;
 import com.npdev.dsl.v1.parser.ModelSourceResolver;
 import com.npdev.dsl.v1.parser.ResolvedModelSource;
+import com.npdev.dsl.v1.settings.NpdevSettings;
+import com.npdev.dsl.v1.settings.ResolvedSetting;
+import com.npdev.dsl.v1.settings.SettingResolver;
+import com.npdev.dsl.v1.settings.SettingTarget;
 import com.npdev.dsl.v1.validation.SemanticValidator;
 import com.npdev.dsl.v1.validation.ValidationResult;
 import com.npdev.generator.assembly.FinalAppAssembler;
 import com.npdev.generator.api.GeneratorFacade;
+import com.npdev.generator.settings.ConfigSettingsReader;
 import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
 import com.npdev.generator.dbconfig.OperationalRunbookEmitter;
 import com.npdev.generator.dbconfig.UserDatabaseDefinitionLoader;
@@ -36,6 +41,14 @@ public final class GeneratorMain {
 
         JsonNode config = readConfig(a.configPath);
         rejectUnsupportedMigrationManagement(config);
+
+        // Resolution pipeline: cascade platform defaults <- config defaults <- config overrides.
+        SettingResolver settingResolver = new SettingResolver(new ConfigSettingsReader().read(config));
+        ResolvedSetting<Boolean> generateBusinessUi =
+                settingResolver.resolve(NpdevSettings.UI_GENERATE_BUSINESS_UI, SettingTarget.app());
+        System.out.println("Setting " + NpdevSettings.UI_GENERATE_BUSINESS_UI.id()
+                + " = " + generateBusinessUi.value()
+                + " (source: " + generateBusinessUi.sourceSelector() + ")");
 
         Path modelPath = resolveModelPath(a, config);
         Path outRoot = resolveOutputRoot(a, config, modelPath);
@@ -79,7 +92,7 @@ public final class GeneratorMain {
         GeneratedSourceWriter writer =
                 new GeneratedSourceWriter(outRoot, new RegenerationPolicy());
 
-        new GeneratorFacade(templates, writer).generate(
+        new GeneratorFacade(templates, writer, settingResolver).generate(
                 compiled,
                 outRoot,
                 schemaRealizationDir,

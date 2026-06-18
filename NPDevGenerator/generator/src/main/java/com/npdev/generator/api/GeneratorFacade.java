@@ -2,6 +2,10 @@ package com.npdev.generator.api;
 
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.parser.ResolvedModelSource;
+import com.npdev.dsl.v1.settings.NpdevSettings;
+import com.npdev.dsl.v1.settings.SettingResolver;
+import com.npdev.dsl.v1.settings.SettingStore;
+import com.npdev.dsl.v1.settings.SettingTarget;
 import com.npdev.generator.emitters.BusinessUiEmitter;
 import com.npdev.generator.emitters.ControllerEmitter;
 import com.npdev.generator.emitters.DtoEmitter;
@@ -18,6 +22,7 @@ import com.npdev.generator.dbconfig.DatabaseEngine;
 import com.npdev.generator.dbconfig.SchemaLifecyclePolicy;
 import com.npdev.generator.dbconfig.SchemaLifecycleStrategy;
 import com.npdev.generator.output.GeneratedSourceWriter;
+import com.npdev.generator.settings.SettingsManifestEmitter;
 import com.npdev.generator.templates.TemplateEngine;
 
 import java.nio.file.Path;
@@ -30,9 +35,16 @@ public final class GeneratorFacade {
 
     private final TemplateEngine templates;
     private final GeneratedSourceWriter writer;
+    private final SettingResolver settingResolver;
+
     public GeneratorFacade(TemplateEngine templates, GeneratedSourceWriter writer) {
+        this(templates, writer, new SettingResolver(SettingStore.empty()));
+    }
+
+    public GeneratorFacade(TemplateEngine templates, GeneratedSourceWriter writer, SettingResolver settingResolver) {
         this.templates = templates;
         this.writer = writer;
+        this.settingResolver = settingResolver == null ? new SettingResolver(SettingStore.empty()) : settingResolver;
     }
 
     public void generate(CompiledModel model, Path outRoot, Path schemaRealizationDir) throws Exception {
@@ -88,12 +100,17 @@ public final class GeneratorFacade {
         new ControllerEmitter(templates, writer).emit(model);
 
         new RuntimeApiEmitter(templates, writer).emit(model, resolvedModelSource, modelSourcePath);
-        new BusinessUiEmitter(templates, writer).emit(model);
+        if (settingResolver.value(NpdevSettings.UI_GENERATE_BUSINESS_UI, SettingTarget.app())) {
+            new BusinessUiEmitter(templates, writer).emit(model);
+        }
         new TrustedSourceEmitter(writer).emit(model, modelSourcePath);
         new MetadataManifestAssetEmitter(writer).emit(model, resolvedModelSource, modelSourcePath);
 
         // Stage 3: emit deterministic plugin requirement asset derived from the model source.
         new PluginRequirementAssetEmitter(writer).emit(resolvedModelSource, modelSourcePath);
+
+        // Provenance: record the resolved settings cascade so it is inspectable in the generated app.
+        new SettingsManifestEmitter(writer).emit(settingResolver);
 
         new SchemaRealizationEmitter().emit(model, outRoot, databasePlan, modelSourcePath);
         new GeneratedFolderSignatureEmitter().emit(outRoot);

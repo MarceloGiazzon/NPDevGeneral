@@ -1,0 +1,33 @@
+{
+  "$schema": "../../schemas/pack.schema.json",
+  "dslVersion": "1.0.0",
+  "pack": "workspace",
+  "version": "1.0.0",
+  "namespace": "com.npdev.workspace",
+  "description": "Built-in NPDev workspace tables: navigation Menus (internal NPDev UI + business UIs) and per-user Preferences. Generic by design so they can evolve with system maturity. userId / parentMenuId / requiredRole are soft references (plain strings) to the identity pack and to other menus; they harden into bonds when the built-in packs compose into an app.",
+  "concepts": [
+    {
+      "name": "Menu",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "label", "type": "string", "required": true, "maxLength": 120 },
+        { "name": "target", "type": "string", "required": true, "maxLength": 400 },
+        { "name": "kind", "type": "enum", "required": true, "enumValues": ["INTERNAL", "BUSINESS"] },
+        { "name": "parentMenuId", "type": "string", "required": false, "maxLength": 64 },
+        { "name": "requiredRole", "type": "string", "required": false, "maxLength": 80 },
+        { "name": "ordinal", "type": "int", "required": true },
+        { "name": "visible", "type": "boolean", "required": true }
+      ]
+    },
+    {
+      "name": "Preference",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "userId", "type": "string", "required": false, "maxLength": 64 },
+        { "name": "category", "type": "string", "required": true, "maxLength": 80 },
+        { "name": "prefKey", "type": "string", "required": true, "maxLength": 120 },
+        { "name": "prefValue", "type": "string", "required": false, "maxLength": 2000 }
+      ]
+    }
+  ]
+}

@@ -223,6 +223,23 @@
         }
       }
     },
+    "defaults": {
+      "type": "object",
+      "description": "Behaviour-setting defaults for the whole app, as settingId -> value (NPDev resolution-pipeline envelope).",
+      "additionalProperties": {
+        "type": ["boolean", "string", "integer", "number"]
+      }
+    },
+    "overrides": {
+      "type": "object",
+      "description": "Per-target setting overrides keyed by selector (module:Name | concept:Name | field:Concept.field).",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": ["boolean", "string", "integer", "number"]
+        }
+      }
+    },
     "metadata": {
       "type": "object"
     }
