@@ -61,6 +61,12 @@ class RuntimeApiEmitterPermissionManifestTest {
                 "Expected generated permission manifest to contain flow execution grant");
         assertTrue(permissionManifestContent.contains("\"tenantId\": \"dev\""),
                 "Expected generated permission manifest to target the dev runtime tenant");
+        assertTrue(permissionManifestContent.contains("create:user"),
+                "Expected generated permission manifest to grant create on the persisted User concept");
+        assertTrue(permissionManifestContent.contains("update:user"),
+                "Expected generated permission manifest to grant update on the persisted User concept");
+        assertTrue(permissionManifestContent.contains("delete:user"),
+                "Expected generated permission manifest to grant delete on the persisted User concept");
         assertTrue(uiPolicyManifestContent.contains("\"policyVersion\": \"1.0.0\""),
                 "Expected generated UI metadata policy manifest version");
     }

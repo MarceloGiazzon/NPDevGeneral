@@ -415,6 +415,23 @@ writer.writeRelative(
         permissions.add("capability.invoke");
         permissions.add("event.publish");
 
+        // Generated CRUD controllers require an explicit grant per persisted concept and
+        // operation (see GeneratedCrudRuntimeSupport.checkCrudPermission, which checks
+        // "<operation>:<conceptName>" lowercased). Without these the generated Business UI
+        // and CRUD API can read but never create/update/delete.
+        for (CompiledConcept concept : model.getConcepts()) {
+            if (concept == null || concept.getName() == null || concept.getName().isBlank()) {
+                continue;
+            }
+            if (concept.getTableName() == null || concept.getTableName().isBlank()) {
+                continue;
+            }
+            String conceptKey = concept.getName().toLowerCase(Locale.ROOT);
+            permissions.add("create:" + conceptKey);
+            permissions.add("update:" + conceptKey);
+            permissions.add("delete:" + conceptKey);
+        }
+
         for (CompiledFlow flow : model.getFlows()) {
             addIfPresent(permissions, flow.getAction() == null ? null : flow.getAction().getPermissionHint());
             collectStepPermissionHints(flow.getSteps(), permissions);

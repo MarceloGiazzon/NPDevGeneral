@@ -6,7 +6,8 @@
     manifest: null,
     panels: {},
     lookupTimers: {},
-    referenceLabels: {}
+    referenceLabels: {},
+    activeConcept: null
   };
 
   const el = {
@@ -122,9 +123,20 @@
     }
     el.appTitle.textContent = state.manifest.appName || "Business Data";
     el.app.innerHTML = "";
-    state.manifest.concepts.forEach(function (concept) {
-      el.app.appendChild(renderPanel(concept));
+    const activeId = state.activeConcept ? sectionId(state.activeConcept) : null;
+    state.manifest.concepts.forEach(function (concept, index) {
+      const panel = renderPanel(concept);
+      const isActive = activeId ? sectionId(concept) === activeId : index === 0;
+      if (!isActive) panel.style.display = "none";
+      el.app.appendChild(panel);
     });
+  }
+
+  function showConcept(concept) {
+    state.activeConcept = concept;
+    el.app.querySelectorAll(".concept-panel").forEach(function (p) { p.style.display = "none"; });
+    const section = document.getElementById(sectionId(concept));
+    if (section) section.style.display = "";
   }
 
   function renderPanel(concept) {
@@ -354,10 +366,21 @@
       return updated && updated.label ? updated.label : "";
     }
 
-    const promise = fetchJson(reference.endpointBase + "/" + encodeURIComponent(rawId), {
-      method: "GET",
-      headers: headers()
-    }).then(function (row) {
+    const isVia = reference.via && reference.via !== "" && reference.anchorField && reference.anchorField !== reference.targetIdField;
+    const fetchPromise = isVia
+      ? (function () {
+          const params = new URLSearchParams({ page: "0", size: "20", filter: rawId });
+          return fetchJson(reference.endpointBase + "?" + params.toString(), { method: "GET", headers: headers() })
+            .then(function (payload) {
+              const rows = Array.isArray(payload.content) ? payload.content : [];
+              const matched = rows.find(function (r) { return text(r[reference.anchorField]) === text(rawId); }) || rows[0] || null;
+              if (!matched) { throw new Error("not found"); }
+              return matched;
+            });
+        })()
+      : fetchJson(reference.endpointBase + "/" + encodeURIComponent(rawId), { method: "GET", headers: headers() });
+
+    const promise = fetchPromise.then(function (row) {
       const label = lookupLabel(reference, row);
       state.referenceLabels[key] = {
         status: "resolved",
@@ -643,99 +666,144 @@
     hidden.value = text(value);
     wrapper.appendChild(hidden);
 
-    const search = document.createElement("input");
-    search.type = "search";
-    search.className = "lookup-search";
-    search.placeholder = "Search " + (field.reference.targetConcept || "records");
-    wrapper.appendChild(search);
+    const display = document.createElement("input");
+    display.type = "text";
+    display.readOnly = true;
+    display.className = "lookup-display";
+    display.placeholder = "— select " + humanize(field.reference.targetConcept || "record") + " —";
+    wrapper.appendChild(display);
 
-    const select = document.createElement("select");
-    select.className = "lookup-select";
-    wrapper.appendChild(select);
+    if (!field.required) {
+      const clearBtn = button("×", "lookup-clear", function () {
+        hidden.value = "";
+        display.value = "";
+      });
+      clearBtn.title = "Clear selection";
+      wrapper.appendChild(clearBtn);
+    }
 
-    const hint = document.createElement("small");
-    hint.className = "lookup-hint";
-    wrapper.appendChild(hint);
-
-    select.addEventListener("change", function () {
-      hidden.value = select.value;
-      const selected = select.options[select.selectedIndex];
-      hint.textContent = selected && selected.value ? selected.textContent : "";
+    const browseBtn = button("Browse…", "lookup-browse", function () {
+      openPickerDialog(field, function (id, label) {
+        hidden.value = id;
+        display.value = label;
+      });
     });
+    wrapper.appendChild(browseBtn);
 
-    search.addEventListener("input", function () {
-      const key = field.name + ":" + Date.now();
-      hidden.value = "";
-      select.value = "";
-      hint.textContent = "";
-      clearTimeout(state.lookupTimers[field.name]);
-      state.lookupTimers[field.name] = setTimeout(function () {
-        loadLookupOptions(field, search.value, "", select, hint);
-      }, 250);
-      state.lookupTimers[field.name + ":last"] = key;
-    });
+    const rawId = text(value).trim();
+    if (rawId) {
+      const cached = state.referenceLabels[referenceCacheKey(field.reference, rawId)];
+      if (cached && cached.label) {
+        display.value = cached.label;
+      } else {
+        display.value = rawId;
+        loadReferenceLabel(field, rawId).then(function (label) {
+          if (label) { display.value = label; }
+        });
+      }
+    }
 
-    loadLookupOptions(field, "", hidden.value, select, hint);
     return wrapper;
   }
 
-  async function loadLookupOptions(field, filter, currentValue, select, hint) {
+  function openPickerDialog(field, onSelect) {
     const reference = field.reference || {};
-    if (!reference.endpointBase || !reference.targetIdField) {
-      hint.textContent = "Lookup metadata is incomplete.";
-      return;
-    }
-    select.disabled = true;
-    hint.textContent = "Loading options";
-    try {
-      const normalizedFilter = filter && filter.trim() ? filter.trim() : "";
-      const params = new URLSearchParams();
-      params.set("page", "0");
-      params.set("size", "20");
-      params.set("sort", reference.displayField || reference.targetIdField);
-      params.set("direction", "asc");
-      if (normalizedFilter) {
-        params.set("filter", normalizedFilter);
-      }
-      const where = whereExpression(reference.defaultFilterExpression);
-      if (where) {
-        params.set("where", where);
-      }
-      const payload = await fetchJson(reference.endpointBase + "?" + params.toString(), {
-        method: "GET",
-        headers: headers()
-      });
-      const rows = Array.isArray(payload.content) ? payload.content : [];
-      select.innerHTML = "";
-      select.appendChild(new Option("", ""));
-      rows.forEach(function (row) {
-        const id = text(row[reference.targetIdField]);
-        const label = lookupLabel(reference, row);
-        select.appendChild(new Option(label, id));
-      });
-      if (rows.length === 0) {
-        const emptyLabel = normalizedFilter ? "No matches" : "No options";
-        const option = new Option(emptyLabel, "");
-        option.disabled = true;
-        select.appendChild(option);
-        select.value = "";
-        select.disabled = false;
-        hint.textContent = emptyLabel;
+    const content = document.createElement("div");
+    content.className = "picker-dialog";
+
+    const searchRow = document.createElement("div");
+    searchRow.className = "picker-search-row";
+    const searchInput = document.createElement("input");
+    searchInput.type = "search";
+    searchInput.className = "picker-search";
+    searchInput.placeholder = "Search " + humanize(reference.targetConcept || "records") + "…";
+    searchRow.appendChild(searchInput);
+    content.appendChild(searchRow);
+
+    const tableWrapper = document.createElement("div");
+    tableWrapper.className = "picker-table-wrapper";
+    content.appendChild(tableWrapper);
+
+    const columns = Array.isArray(reference.pickerColumns) && reference.pickerColumns.length
+      ? reference.pickerColumns
+      : (Array.isArray(reference.displayFields) && reference.displayFields.length
+          ? reference.displayFields
+          : [reference.displayField || reference.targetIdField]);
+
+    async function loadPickerRows(filter) {
+      if (!reference.endpointBase || !reference.targetIdField) {
+        tableWrapper.innerHTML = "<div class='empty'>Reference metadata is incomplete.</div>";
         return;
       }
-      if (currentValue && !normalizedFilter && !rows.some(function (row) { return text(row[reference.targetIdField]) === text(currentValue); })) {
-        const resolvedLabel = await loadReferenceLabel(field, text(currentValue));
-        select.appendChild(new Option(resolvedLabel || text(currentValue), text(currentValue)));
+      tableWrapper.innerHTML = "<div class='empty'>Loading…</div>";
+      const params = new URLSearchParams();
+      params.set("page", "0");
+      params.set("size", "30");
+      params.set("sort", reference.displayField || reference.targetIdField);
+      params.set("direction", "asc");
+      const normalizedFilter = filter && filter.trim() ? filter.trim() : "";
+      if (normalizedFilter) { params.set("filter", normalizedFilter); }
+      const where = whereExpression(reference.defaultFilterExpression);
+      if (where) { params.set("where", where); }
+      try {
+        const payload = await fetchJson(reference.endpointBase + "?" + params.toString(), {
+          method: "GET",
+          headers: headers()
+        });
+        const rows = Array.isArray(payload.content) ? payload.content : [];
+        tableWrapper.innerHTML = "";
+        if (rows.length === 0) {
+          tableWrapper.innerHTML = "<div class='empty'>" +
+            (normalizedFilter ? "No matches for “" + normalizedFilter + "”" : "No records found.") + "</div>";
+          return;
+        }
+        const table = document.createElement("table");
+        table.className = "records picker-records";
+        const thead = document.createElement("thead");
+        const headRow = document.createElement("tr");
+        columns.forEach(function (col) {
+          const th = document.createElement("th");
+          th.textContent = humanize(col);
+          headRow.appendChild(th);
+        });
+        thead.appendChild(headRow);
+        table.appendChild(thead);
+        const tbody = document.createElement("tbody");
+        rows.forEach(function (row) {
+          const tr = document.createElement("tr");
+          tr.className = "picker-row";
+          columns.forEach(function (col) {
+            const td = document.createElement("td");
+            td.textContent = formatValue(row[col]);
+            tr.appendChild(td);
+          });
+          tr.addEventListener("click", function () {
+            const isViaRef = reference.via && reference.via !== "" && reference.anchorField && reference.anchorField !== reference.targetIdField;
+            const id = isViaRef ? text(row[reference.anchorField]) : text(row[reference.targetIdField]);
+            const label = lookupLabel(reference, row);
+            state.referenceLabels[referenceCacheKey(reference, id)] = { status: "resolved", label: label, row: row };
+            onSelect(id, label);
+            closeModal();
+          });
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        tableWrapper.appendChild(table);
+      } catch (error) {
+        tableWrapper.innerHTML = "<div class='empty'>" + text(error.message) + "</div>";
+        setStatus(error.message, true);
       }
-      select.value = text(currentValue);
-      select.disabled = false;
-      const selected = select.options[select.selectedIndex];
-      hint.textContent = selected && selected.value ? selected.textContent : "";
-    } catch (error) {
-      select.disabled = true;
-      hint.textContent = error.message;
-      setStatus(error.message, true);
     }
+
+    let searchTimer;
+    searchInput.addEventListener("input", function () {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(function () { loadPickerRows(searchInput.value); }, 250);
+    });
+
+    loadPickerRows("");
+    openModal("Select " + humanize(reference.targetConcept || "record"), content);
+    setTimeout(function () { searchInput.focus(); }, 50);
   }
 
   function whereExpression(defaultFilterExpression) {
@@ -775,13 +843,21 @@
         payload[field.name] = arrValue;
         continue;
       }
-      const value = control.type === "checkbox" ? control.checked : text(control.value).trim();
-      if (field.required && (value === "" || value === null || value === undefined)) {
+      const rawValue = control.type === "checkbox" ? control.checked : text(control.value).trim();
+      if (field.required && (rawValue === "" || rawValue === null || rawValue === undefined)) {
         setStatus((field.label || field.name) + " is required.", true);
         return;
       }
-      if (value !== "" || field.required || control.type === "checkbox") {
-        payload[field.name] = value;
+      if (rawValue !== "" || field.required || control.type === "checkbox") {
+        const numericTypes = ["int", "long", "double", "float", "short", "byte", "decimal", "number"];
+        if (rawValue !== "" && numericTypes.indexOf(field.type) !== -1) {
+          const n = field.type === "int" || field.type === "long" || field.type === "short" || field.type === "byte"
+            ? parseInt(rawValue, 10)
+            : parseFloat(rawValue);
+          payload[field.name] = isNaN(n) ? rawValue : n;
+        } else {
+          payload[field.name] = rawValue;
+        }
       }
     }
     const id = record ? record[concept.idField] : null;
@@ -903,11 +979,13 @@
       const a = document.createElement("a");
       a.href = "#" + sectionId(concept);
       a.textContent = concept.displayName;
-      if (index === 0) a.classList.add("active");
+      if (index === 0) {
+        a.classList.add("active");
+        if (!state.activeConcept) state.activeConcept = concept;
+      }
       a.addEventListener("click", function (e) {
         e.preventDefault();
-        const section = document.getElementById(sectionId(concept));
-        if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
+        showConcept(concept);
         el.sideNav.querySelectorAll("a").forEach(function (l) { l.classList.remove("active"); });
         a.classList.add("active");
       });

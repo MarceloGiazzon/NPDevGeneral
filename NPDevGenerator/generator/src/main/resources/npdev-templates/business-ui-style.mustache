@@ -331,20 +331,60 @@ select {
 }
 
 .lookup-control {
-  display: grid;
-  gap: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.lookup-search,
-.lookup-select {
+.lookup-display {
+  flex: 1;
+  background: #f5f7fa;
+  cursor: default;
+}
+
+.lookup-clear {
+  min-height: 34px;
+  padding: 0 10px;
+  color: #9f1d1d;
+  flex-shrink: 0;
+}
+
+.lookup-browse {
+  flex-shrink: 0;
+}
+
+.picker-dialog {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.picker-search-row {
+  display: flex;
+}
+
+.picker-search {
   width: 100%;
 }
 
-.lookup-hint {
-  color: #617085;
-  font-size: 12px;
-  min-height: 16px;
-  overflow-wrap: anywhere;
+.picker-table-wrapper {
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid #d8dee7;
+  border-radius: 6px;
+}
+
+.picker-records {
+  table-layout: auto;
+}
+
+.picker-row {
+  cursor: pointer;
+}
+
+.picker-row:hover td {
+  background: #e8f0fb;
+  color: #1769aa;
 }
 
 .array-table-editor {

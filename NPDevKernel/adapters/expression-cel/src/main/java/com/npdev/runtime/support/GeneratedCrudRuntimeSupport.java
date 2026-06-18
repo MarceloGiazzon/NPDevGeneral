@@ -3749,6 +3749,37 @@ public final class GeneratedCrudRuntimeSupport {
         if (OffsetDateTime.class.equals(boxedTargetType)) {
             return toOffsetDateTime(value);
         }
+        if (Long.class.equals(boxedTargetType)) {
+            return toLong(value);
+        }
+        if (Integer.class.equals(boxedTargetType)) {
+            return toInteger(value);
+        }
+        if (Double.class.equals(boxedTargetType)) {
+            return toDouble(value);
+        }
+        if (Float.class.equals(boxedTargetType)) {
+            Double d = toDouble(value);
+            return d == null ? null : Float.valueOf(d.floatValue());
+        }
+        if (Short.class.equals(boxedTargetType)) {
+            Integer i = toInteger(value);
+            return i == null ? null : Short.valueOf(i.shortValue());
+        }
+        if (Byte.class.equals(boxedTargetType)) {
+            Integer i = toInteger(value);
+            return i == null ? null : Byte.valueOf(i.byteValue());
+        }
+        if (Boolean.class.equals(boxedTargetType)) {
+            return toBoolean(value);
+        }
+        if (java.math.BigDecimal.class.equals(boxedTargetType)) {
+            return toBigDecimal(value);
+        }
+        if (java.math.BigInteger.class.equals(boxedTargetType)) {
+            java.math.BigDecimal bigDecimal = toBigDecimal(value);
+            return bigDecimal == null ? null : bigDecimal.toBigInteger();
+        }
         return null;
     }
 
@@ -4071,6 +4102,51 @@ public final class GeneratedCrudRuntimeSupport {
             }
             try {
                 return Long.parseLong(trimmed);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static Double toDouble(Object value) {
+        if (value instanceof Double d) {
+            return d;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value instanceof String raw) {
+            String trimmed = raw.trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
+            try {
+                return Double.parseDouble(trimmed);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static java.math.BigDecimal toBigDecimal(Object value) {
+        if (value instanceof java.math.BigDecimal bd) {
+            return bd;
+        }
+        if (value instanceof java.math.BigInteger bi) {
+            return new java.math.BigDecimal(bi);
+        }
+        if (value instanceof Number number) {
+            return new java.math.BigDecimal(number.toString());
+        }
+        if (value instanceof String raw) {
+            String trimmed = raw.trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
+            try {
+                return new java.math.BigDecimal(trimmed);
             } catch (NumberFormatException ignored) {
                 return null;
             }
