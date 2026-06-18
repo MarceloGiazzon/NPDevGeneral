@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.compiler.ModelCompiler;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.paths.CanonicalModelPaths;
 import com.npdev.dsl.v1.parser.JsonModelParser;
@@ -17,6 +18,7 @@ import com.npdev.dsl.v1.validation.SemanticValidator;
 import com.npdev.dsl.v1.validation.ValidationResult;
 import com.npdev.generator.assembly.FinalAppAssembler;
 import com.npdev.generator.api.GeneratorFacade;
+import com.npdev.generator.packs.BuiltinPackComposer;
 import com.npdev.generator.settings.ConfigSettingsReader;
 import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
 import com.npdev.generator.dbconfig.OperationalRunbookEmitter;
@@ -80,6 +82,12 @@ public final class GeneratorMain {
         }
 
         CompiledModel compiled = new ModelCompiler().compile(ast);
+
+        // Compose the built-in NPDev internal tables (identity + workspace packs) when enabled.
+        if (settingResolver.value(NpdevSettings.INTERNAL_TABLES, SettingTarget.app())) {
+            compiled = composeBuiltinInternalTables(compiled);
+        }
+
         GeneratedDatabasePlan databasePlan = new UserDatabaseDefinitionLoader()
                 .load(Path.of(a.dbDefinitionPath), compiled);
         System.out.println("DB definition: " + databasePlan.definitionPath());
@@ -142,6 +150,32 @@ public final class GeneratorMain {
             );
             System.out.println("Generated operations runbook: " + opsRoot);
         }
+    }
+
+    private static CompiledModel composeBuiltinInternalTables(CompiledModel app) {
+        Path packsDir = locatePlatformPacksDir();
+        BuiltinPackComposer composer = new BuiltinPackComposer();
+        List<CompiledConcept> builtin = new java.util.ArrayList<>();
+        builtin.addAll(composer.loadPackConcepts(packsDir.resolve("identity").resolve("pack.json"), "identity"));
+        builtin.addAll(composer.loadPackConcepts(packsDir.resolve("workspace").resolve("pack.json"), "workspace"));
+        System.out.println("Composed built-in internal tables (" + builtin.size() + " concepts) from " + packsDir);
+        return composer.merge(app, builtin);
+    }
+
+    private static Path locatePlatformPacksDir() {
+        Path start = Path.of("").toAbsolutePath().normalize();
+        Path workspaceRoot = resolveSplitWorkspaceRoot(start);
+        if (workspaceRoot == null) {
+            throw new IllegalStateException(
+                    "internal.tables is enabled but the NPDev workspace root could not be located from "
+                            + start + " (needed to find NPDevContract/packs).");
+        }
+        Path packsDir = workspaceRoot.resolve("NPDevContract").resolve("packs");
+        if (!Files.isDirectory(packsDir)) {
+            throw new IllegalStateException(
+                    "internal.tables is enabled but the platform packs directory was not found: " + packsDir);
+        }
+        return packsDir;
     }
 
     private static JsonNode readConfig(String configPath) throws IOException {

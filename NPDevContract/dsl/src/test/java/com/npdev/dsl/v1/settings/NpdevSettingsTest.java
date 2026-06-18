@@ -40,4 +40,18 @@ class NpdevSettingsTest {
         assertEquals("ROOT", resolver.value(NpdevSettings.SECURITY_SUPER_USER_ROLE, SettingTarget.app()));
         assertFalse(resolver.value(NpdevSettings.SECURITY_TENANT_ISOLATION, SettingTarget.app()));
     }
+
+    @Test
+    void internalTablesGateDefaultsOffAndIsRegisteredAndOverridable() {
+        assertTrue(NpdevSettings.all().contains(NpdevSettings.INTERNAL_TABLES));
+        // Off by default so existing apps keep their current schema; opt-in turns it on.
+        assertFalse(new SettingResolver(SettingStore.empty())
+                .value(NpdevSettings.INTERNAL_TABLES, SettingTarget.app()));
+
+        SettingStore store = SettingStore.builder()
+                .layer(SettingScope.APP, SettingTarget.APP_SELECTOR,
+                        Map.of(NpdevSettings.INTERNAL_TABLES.id(), true), "config.json defaults")
+                .build();
+        assertTrue(new SettingResolver(store).value(NpdevSettings.INTERNAL_TABLES, SettingTarget.app()));
+    }
 }

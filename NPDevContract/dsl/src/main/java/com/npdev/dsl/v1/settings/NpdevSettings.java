@@ -41,6 +41,11 @@ public final class NpdevSettings {
             SettingKey.bool("security.tenantIsolation", true,
                     "Enforce tenant isolation on data access.");
 
+    /** Whether the built-in NPDev internal tables (identity + workspace packs) are composed into the app. */
+    public static final SettingKey<Boolean> INTERNAL_TABLES =
+            SettingKey.bool("internal.tables", false,
+                    "Compose the built-in NPDev internal tables (identity + workspace packs) into the generated app.");
+
     /** Whether custom code-bearing Coda extensions are allowed. */
     public static final SettingKey<Boolean> CODA_ALLOWED =
             SettingKey.bool("coda.allowed", false,
@@ -67,6 +72,7 @@ public final class NpdevSettings {
             AUTH_MODE,
             SECURITY_SUPER_USER_ROLE,
             SECURITY_TENANT_ISOLATION,
+            INTERNAL_TABLES,
             CODA_ALLOWED,
             LOG_ENABLED,
             LOG_LEVEL,
