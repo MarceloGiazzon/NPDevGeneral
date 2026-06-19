@@ -18,6 +18,7 @@ import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
 import com.npdev.dsl.v1.compiled.CompiledProcedure;
 import com.npdev.dsl.v1.parser.ResolvedModelSource;
+import com.npdev.generator.packs.BuiltinPackComposer;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.templates.TemplateEngine;
 
@@ -51,6 +52,15 @@ public final class RuntimeApiEmitter extends AbstractEmitter {
     }
 
     public void emit(CompiledModel model, ResolvedModelSource resolvedModelSource, Path modelSourcePath) {
+        emit(model, resolvedModelSource, modelSourcePath, "ADMIN");
+    }
+
+    public void emit(
+            CompiledModel model,
+            ResolvedModelSource resolvedModelSource,
+            Path modelSourcePath,
+            String superUserRole
+    ) {
         writer.deleteRelativeIfExists("src/main/java/com/npdev/generated/runtime/adapters/InProcEventStoreAdapter.java");
 
         Map<String, Object> ctx = new HashMap<>();
@@ -248,7 +258,7 @@ writer.writeRelative(
         );
         writer.writeRelative(
                 "src/main/resources/npdev/security/dev.permissions.json",
-                generatePermissionManifest(model, resolvedModelSource, modelSourcePath)
+                generatePermissionManifest(model, resolvedModelSource, modelSourcePath, superUserRole)
         );
         writer.writeRelative(
                 "src/main/resources/npdev/security/dev.ui-metadata-policy.json",
@@ -408,17 +418,26 @@ writer.writeRelative(
     private static String generatePermissionManifest(
             CompiledModel model,
             ResolvedModelSource resolvedModelSource,
-            Path modelSourcePath
+            Path modelSourcePath,
+            String superUserRole
     ) {
+        String superUserRoleKey = (superUserRole == null || superUserRole.isBlank())
+                ? "admin" : superUserRole.trim().toLowerCase(Locale.ROOT);
+
         Set<String> permissions = new LinkedHashSet<>();
         permissions.add("flow.execute");
         permissions.add("capability.invoke");
         permissions.add("event.publish");
 
+        List<PermissionGrantSpec> grants = new ArrayList<>();
+
         // Generated CRUD controllers require an explicit grant per persisted concept and
         // operation (see GeneratedCrudRuntimeSupport.checkCrudPermission, which checks
         // "<operation>:<conceptName>" lowercased). Without these the generated Business UI
-        // and CRUD API can read but never create/update/delete.
+        // and CRUD API cannot read or write at all under kernel-controlled CRUD.
+        // Concepts contributed by built-in platform packs (identity/workspace) are reserved
+        // to the configured super-user role; ordinary business concepts are also opened to
+        // the generic "user" role so regular authenticated users can use the app.
         for (CompiledConcept concept : model.getConcepts()) {
             if (concept == null || concept.getName() == null || concept.getName().isBlank()) {
                 continue;
@@ -427,9 +446,14 @@ writer.writeRelative(
                 continue;
             }
             String conceptKey = concept.getName().toLowerCase(Locale.ROOT);
-            permissions.add("create:" + conceptKey);
-            permissions.add("update:" + conceptKey);
-            permissions.add("delete:" + conceptKey);
+            boolean adminOnly = isAdminConcept(concept.getName());
+            for (String operation : List.of("create", "update", "delete", "read", "list")) {
+                String permission = operation + ":" + conceptKey;
+                grants.add(new PermissionGrantSpec(permission, "dev", "", superUserRoleKey));
+                if (!adminOnly && !"user".equals(superUserRoleKey)) {
+                    grants.add(new PermissionGrantSpec(permission, "dev", "", "user"));
+                }
+            }
         }
 
         for (CompiledFlow flow : model.getFlows()) {
@@ -458,9 +482,17 @@ writer.writeRelative(
         AiBetaSecurityMetadata aiSecurity = readAiBetaSecurityMetadata(resolvedModelSource, modelSourcePath);
         permissions.addAll(aiSecurity.allDeclaredPermissions());
 
-        List<PermissionGrantSpec> grants = new ArrayList<>();
         for (String permission : permissions) {
-            grants.add(new PermissionGrantSpec(permission, "dev", "", "admin"));
+            grants.add(new PermissionGrantSpec(permission, "dev", "", superUserRoleKey));
+        }
+        // event.publish backs the mutation-event side effect of every CRUD write (see
+        // GeneratedCrudRuntimeSupport.publishMutationEvent), which a business "user" role
+        // must already have cleared a per-concept create/update/delete grant to reach. Without
+        // this, every business-concept write under kernel-controlled CRUD throws after the
+        // permission check passes, because the event-publish step is unconditionally
+        // admin-only.
+        if (!"user".equals(superUserRoleKey)) {
+            grants.add(new PermissionGrantSpec("event.publish", "dev", "", "user"));
         }
         for (AiBetaUser user : aiSecurity.testUsers()) {
             Set<String> userPermissions = new LinkedHashSet<>(List.of(
@@ -506,6 +538,18 @@ writer.writeRelative(
   ]
 }
 """.formatted(grantsJson);
+    }
+
+    /** True for concepts contributed by a built-in platform pack (the internal NPDev tables). */
+    private static boolean isAdminConcept(String conceptName) {
+        if (conceptName == null) {
+            return false;
+        }
+        int sep = conceptName.indexOf("::");
+        if (sep < 0) {
+            return false;
+        }
+        return BuiltinPackComposer.BUILTIN_PACK_ALIASES.contains(conceptName.substring(0, sep));
     }
 
     private static void collectStepPermissionHints(Iterable<CompiledFlowStep> steps, Set<String> permissions) {

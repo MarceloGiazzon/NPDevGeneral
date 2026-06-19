@@ -30,6 +30,9 @@ public class {{entityName}} {
 {{/id}}
 
 {{/fields}}
+    @Column(name = "version", nullable = false)
+    private Long version = 0L;
+
 
 {{#fields}}
     public {{javaType}} get{{capName}}() {
@@ -51,4 +54,11 @@ public class {{entityName}} {
     }
 
 {{/idFieldIsNamedId}}
+    public Long getVersion() {
+        return this.version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
+    }
 }

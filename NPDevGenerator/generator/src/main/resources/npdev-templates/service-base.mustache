@@ -60,15 +60,24 @@ public class {{entityName}}ServiceBase {
     }
 
     public Optional<{{entityName}}> getById(UUID id) {
+{{#kernelControlled}}
+        runtimeSupport.checkCrudPermission("{{conceptName}}", "READ", generatedCrudExecutionContext());
+{{/kernelControlled}}
         return persistence.findById(id);
     }
 
     public List<{{entityName}}> list() {
+{{#kernelControlled}}
+        runtimeSupport.checkCrudPermission("{{conceptName}}", "LIST", generatedCrudExecutionContext());
+{{/kernelControlled}}
         return persistence.findAll();
     }
 
 {{#referenceFinders}}
     public List<{{entityName}}> listBy{{capName}}(Object value) {
+{{#kernelControlled}}
+        runtimeSupport.checkCrudPermission("{{conceptName}}", "LIST", generatedCrudExecutionContext());
+{{/kernelControlled}}
         return findAllFromConceptStore().stream()
                 .filter(entity -> uniqueValuesEqual(mapFromEntity(entity).get("{{name}}"), value))
                 .toList();
@@ -91,7 +100,9 @@ public class {{entityName}}ServiceBase {
 
     private {{entityName}} createFromSource(Object source) {
         ExecutionContext crudCtx = generatedCrudExecutionContext();
+{{#kernelControlled}}
         runtimeSupport.checkCrudPermission("{{conceptName}}", "CREATE", crudCtx);
+{{/kernelControlled}}
         String idempotencyKey = runtimeSupport.extractCrudIdempotencyKey();
         if (idempotencyKey != null) {
             String existingId = runtimeSupport.checkCrudIdempotency(crudCtx.tenantId(), "{{conceptName}}", idempotencyKey).orElse(null);
@@ -107,14 +118,18 @@ public class {{entityName}}ServiceBase {
         Map<String, Object> createPayload = runtimeSupport.buildCreateInvariantPayload("{{entityName}}", source);
         UUID generatedId = runtimeSupport.ensureGeneratedId("{{entityName}}", createPayload);
         enforceWithKernel("{{entityName}}", createPayload);
+{{#kernelControlled}}
         enforceWithConceptGateway("{{conceptName}}", generatedId, createPayload);
+{{/kernelControlled}}
 
         {{entityName}} e = new {{entityName}}();
         runtimeSupport.assignGeneratedId("{{entityName}}", e, generatedId);
         runtimeSupport.applyCreateFields("{{entityName}}", source, e);
 
         {{entityName}} created = saveWithIntegrityMapping(e);
+{{#kernelControlled}}
         runtimeSupport.auditCrudMutation("{{conceptName}}", "CREATE", String.valueOf(created.getId()), "ALLOW", crudCtx);
+{{/kernelControlled}}
         runtimeSupport.recordCrudIdempotencySuccess(crudCtx.tenantId(), "{{conceptName}}", String.valueOf(created.getId()), idempotencyKey);
 {{#emitCreatedEvent}}
         publishMutationEvent("created", created.getId(), created);
@@ -137,19 +152,27 @@ public class {{entityName}}ServiceBase {
 
     private Optional<{{entityName}}> updateFromSource(UUID id, Object source) {
         ExecutionContext crudCtx = generatedCrudExecutionContext();
+{{#kernelControlled}}
         runtimeSupport.checkCrudPermission("{{conceptName}}", "UPDATE", crudCtx);
+{{/kernelControlled}}
         Optional<{{entityName}}> opt = persistence.findById(id);
         if (opt.isEmpty()) return Optional.empty();
 
         {{entityName}} existing = opt.get();
+        runtimeSupport.checkOptimisticVersion("{{conceptName}}", existing, source);
         String previousLifecycleStatus = runtimeSupport.captureLifecycleStatus("{{entityName}}", existing);
         Map<String, Object> updatePayload = runtimeSupport.buildUpdateInvariantPayload("{{entityName}}", id, existing, source);
         enforceWithKernel("{{entityName}}", updatePayload);
+{{#kernelControlled}}
         enforceWithConceptGateway("{{conceptName}}", id, updatePayload);
+{{/kernelControlled}}
         runtimeSupport.applyUpdateFields("{{entityName}}", source, existing);
+        existing.setVersion((existing.getVersion() == null ? 0L : existing.getVersion()) + 1);
 
         {{entityName}} updated = saveWithIntegrityMapping(existing);
+{{#kernelControlled}}
         runtimeSupport.auditCrudMutation("{{conceptName}}", "UPDATE", String.valueOf(updated.getId()), "ALLOW", crudCtx);
+{{/kernelControlled}}
         runtimeSupport.publishLifecycleTransitionEvent("{{entityName}}", previousLifecycleStatus, updated, updatePayload);
 {{#emitUpdatedEvent}}
         publishMutationEvent("updated", updated.getId(), updated);
@@ -160,11 +183,17 @@ public class {{entityName}}ServiceBase {
     @Transactional
     public boolean delete(UUID id) {
         ExecutionContext crudCtx = generatedCrudExecutionContext();
+{{#kernelControlled}}
         runtimeSupport.checkCrudPermission("{{conceptName}}", "DELETE", crudCtx);
+{{/kernelControlled}}
         if (!persistence.existsById(id)) return false;
+{{#kernelControlled}}
         enforceDeleteWithConceptGateway("{{conceptName}}", id);
+{{/kernelControlled}}
         deleteWithIntegrityMapping(id);
+{{#kernelControlled}}
         runtimeSupport.auditCrudMutation("{{conceptName}}", "DELETE", String.valueOf(id), "ALLOW", crudCtx);
+{{/kernelControlled}}
 {{#emitDeletedEvent}}
         publishMutationEvent("deleted", id, null);
 {{/emitDeletedEvent}}
@@ -209,6 +238,7 @@ public class {{entityName}}ServiceBase {
     private static Set<String> buildAllFieldNames() {
         Set<String> fields = new LinkedHashSet<>();
         fields.add(ID_FIELD_NAME);
+        fields.add("version");
 {{#fields}}
         fields.add("{{name}}");
 {{/fields}}

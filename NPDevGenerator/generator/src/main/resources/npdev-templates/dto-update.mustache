@@ -5,6 +5,7 @@ public class {{entityName}}UpdateRequest {
 {{#fields}}
     private {{boxedJavaType}} {{name}};
 {{/fields}}
+    private Long version;
 
 {{#fields}}
     public {{boxedJavaType}} get{{capName}}() {
@@ -16,4 +17,11 @@ public class {{entityName}}UpdateRequest {
     }
 
 {{/fields}}
+    public Long getVersion() {
+        return this.version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
+    }
 }

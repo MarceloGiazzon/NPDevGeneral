@@ -27,6 +27,10 @@ public final class ServiceEmitter extends AbstractEmitter {
     }
 
     public void emit(CompiledModel model) {
+        emit(model, true);
+    }
+
+    public void emit(CompiledModel model, boolean kernelControlled) {
         Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
         for (CompiledConcept entity : model.getConcepts()) {
 
@@ -124,6 +128,7 @@ public final class ServiceEmitter extends AbstractEmitter {
             ctx.put("eventBusAdapter", eventBusAdapter);
             ctx.put("persistenceRepository", "repository".equalsIgnoreCase(persistenceAdapter));
             ctx.put("eventBusInproc", "inproc".equalsIgnoreCase(eventBusAdapter));
+            ctx.put("kernelControlled", kernelControlled);
 
             System.out.println("[NPDev] Entity " + entity.getClassName() + " uniqueFields=" + uniqueFields.size());
             for (Map<String, Object> uf : uniqueFields) {

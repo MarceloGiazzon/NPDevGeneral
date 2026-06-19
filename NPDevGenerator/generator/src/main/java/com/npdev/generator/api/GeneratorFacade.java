@@ -96,15 +96,17 @@ public final class GeneratorFacade {
             Path modelSourcePath,
             GeneratedDatabasePlan databasePlan
     ) throws Exception {
+        boolean kernelControlled = settingResolver.value(NpdevSettings.CRUD_KERNEL_CONTROLLED, SettingTarget.app());
+        String superUserRole = settingResolver.value(NpdevSettings.SECURITY_SUPER_USER_ROLE, SettingTarget.app());
+
         new EntityEmitter(templates, writer).emit(model);
         new DtoEmitter(templates, writer).emit(model);
-        new ServiceEmitter(templates, writer).emit(model);
+        new ServiceEmitter(templates, writer).emit(model, kernelControlled);
         new ControllerEmitter(templates, writer).emit(model);
 
-        new RuntimeApiEmitter(templates, writer).emit(model, resolvedModelSource, modelSourcePath);
+        new RuntimeApiEmitter(templates, writer).emit(model, resolvedModelSource, modelSourcePath, superUserRole);
         if (settingResolver.value(NpdevSettings.UI_GENERATE_BUSINESS_UI, SettingTarget.app())) {
-            new BusinessUiEmitter(templates, writer).emit(model,
-                    settingResolver.value(NpdevSettings.SECURITY_SUPER_USER_ROLE, SettingTarget.app()));
+            new BusinessUiEmitter(templates, writer).emit(model, superUserRole);
         }
         new TrustedSourceEmitter(writer).emit(model, modelSourcePath);
         new MetadataManifestAssetEmitter(writer).emit(model, resolvedModelSource, modelSourcePath);

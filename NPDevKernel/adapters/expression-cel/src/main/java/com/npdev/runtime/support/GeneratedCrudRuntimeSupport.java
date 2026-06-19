@@ -469,6 +469,40 @@ public final class GeneratedCrudRuntimeSupport {
         applyEntityFields(entityName, source, target, true);
     }
 
+    // No version in the request means no check, so callers unaware of versioning are unaffected.
+    public void checkOptimisticVersion(String conceptName, Object existing, Object source) {
+        Long expected = extractVersion(source);
+        if (expected == null) {
+            return;
+        }
+        Long actual = extractVersion(existing);
+        if (actual == null || !actual.equals(expected)) {
+            throw new InvariantViolationException(List.of(new InvariantViolationDetail(
+                    "version_conflict",
+                    conceptName,
+                    "optimisticConcurrency",
+                    "version",
+                    "Record was modified by another request. expected=" + expected + " actual=" + actual,
+                    true
+            )));
+        }
+    }
+
+    private static Long extractVersion(Object source) {
+        Object raw = readObjectValue(source, "version");
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof Number number) {
+            return number.longValue();
+        }
+        try {
+            return Long.parseLong(String.valueOf(raw).trim());
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
     public List<Object> listBondMembers(String sourceConceptName, Object sourceId, String fieldName) {
         BondRuntimeShape shape = requireBondRuntimeShape(sourceConceptName, fieldName);
         if (dataSource == null) {
