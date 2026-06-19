@@ -3,6 +3,7 @@ package com.npdev.generator.api;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.parser.ResolvedModelSource;
 import com.npdev.dsl.v1.settings.NpdevSettings;
+import com.npdev.dsl.v1.settings.ResolvedSetting;
 import com.npdev.dsl.v1.settings.SettingResolver;
 import com.npdev.dsl.v1.settings.SettingStore;
 import com.npdev.dsl.v1.settings.SettingTarget;
@@ -14,6 +15,7 @@ import com.npdev.generator.emitters.GeneratedFolderSignatureEmitter;
 import com.npdev.generator.emitters.MetadataManifestAssetEmitter;
 import com.npdev.generator.emitters.PluginRequirementAssetEmitter;
 import com.npdev.generator.emitters.RuntimeApiEmitter;
+import com.npdev.generator.emitters.RuntimeAuthPropertiesEmitter;
 import com.npdev.generator.emitters.ServiceEmitter;
 import com.npdev.generator.emitters.TrustedSourceEmitter;
 import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
@@ -108,6 +110,12 @@ public final class GeneratorFacade {
 
         // Stage 3: emit deterministic plugin requirement asset derived from the model source.
         new PluginRequirementAssetEmitter(writer).emit(resolvedModelSource, modelSourcePath);
+
+        // Auth: when the model personalizes auth.mode, emit the runtime auth properties that drive it.
+        ResolvedSetting<String> authMode = settingResolver.resolve(NpdevSettings.AUTH_MODE, SettingTarget.app());
+        if (authMode.isOverridden()) {
+            new RuntimeAuthPropertiesEmitter(writer).emit(authMode.value());
+        }
 
         // Provenance: record the resolved settings cascade so it is inspectable in the generated app.
         new SettingsManifestEmitter(writer).emit(settingResolver);
