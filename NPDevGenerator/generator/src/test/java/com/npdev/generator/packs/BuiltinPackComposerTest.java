@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BuiltinPackComposerTest {
@@ -64,5 +65,15 @@ class BuiltinPackComposerTest {
                 "Composed identity::User should be emitted as an entity");
         assertTrue(Files.exists(out.resolve("src/main/java/com/npdev/generated/entities/WorkspaceMenu.java")),
                 "Composed workspace::Menu should be emitted as an entity");
+
+        // The pack alias must be folded into a readable category label, not leaked as "identity::Users".
+        String manifest = Files.readString(
+                out.resolve("src/main/resources/static/npdev-business-ui/generated-ui-manifest.json"));
+        assertTrue(manifest.contains("Identity Users"),
+                "Composed identity::User should display as 'Identity Users'");
+        assertTrue(manifest.contains("Workspace Menus"),
+                "Composed workspace::Menu should display as 'Workspace Menus'");
+        assertFalse(manifest.contains("identity::Users"),
+                "Display label should not leak the pack alias prefix");
     }
 }

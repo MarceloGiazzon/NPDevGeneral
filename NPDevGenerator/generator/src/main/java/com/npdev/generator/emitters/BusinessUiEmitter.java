@@ -268,7 +268,24 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         if (label != null && !label.isBlank()) {
             return label.trim();
         }
-        return pluralize(concept.getName());
+        return pluralize(displayBaseName(concept.getName()));
+    }
+
+    /**
+     * Turns a (possibly pack-aliased) concept name into a human display base, folding the alias into
+     * a leading category word: {@code "identity::User" -> "Identity User"}, {@code "User" -> "User"}.
+     */
+    private static String displayBaseName(String conceptName) {
+        if (conceptName == null) {
+            return "";
+        }
+        int sep = conceptName.lastIndexOf("::");
+        if (sep < 0) {
+            return conceptName;
+        }
+        String alias = conceptName.substring(0, sep);
+        String name = conceptName.substring(sep + 2);
+        return (humanize(alias) + " " + name).trim();
     }
 
     private static String fieldLabel(CompiledField field) {
