@@ -62,6 +62,11 @@ public final class FlywayEmitter {
             sb.append("  ").append(idColumn).append(" ").append(mapType(idField)).append(" PRIMARY KEY\n");
             sb.append(");\n\n");
 
+            sb.append("ALTER TABLE ").append(table).append(" ADD COLUMN IF NOT EXISTS version BIGINT DEFAULT 0;\n");
+            sb.append("UPDATE ").append(table).append(" SET version = 0 WHERE version IS NULL;\n");
+            sb.append("ALTER TABLE ").append(table).append(" ALTER COLUMN version SET NOT NULL;\n");
+            sb.append("ALTER TABLE ").append(table).append(" ALTER COLUMN version SET DEFAULT 0;\n\n");
+
             for (CompiledField f : e.getFields()) {
                 if (f == null || f.getName() == null || f.isId() || isManyToManyBond(e, f, conceptsByName)) {
                     continue;

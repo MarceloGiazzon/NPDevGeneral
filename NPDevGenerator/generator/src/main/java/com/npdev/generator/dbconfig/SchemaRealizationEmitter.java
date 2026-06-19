@@ -137,6 +137,7 @@ public final class SchemaRealizationEmitter {
             idColumn = "id";
             lines.add(0, "  id UUID NOT NULL");
         }
+        lines.add("  version BIGINT NOT NULL DEFAULT 0");
         lines.add("  PRIMARY KEY (" + idColumn + ")");
         sql.append("CREATE TABLE IF NOT EXISTS ").append(table).append(" (\n");
         sql.append(String.join(",\n", lines)).append("\n);\n\n");
