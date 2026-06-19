@@ -1,0 +1,35 @@
+package {{controllerPackage}};
+
+import com.npdev.generated.runtime.service.RuntimeContextService;
+import com.npdev.kernel.ExecutionContext;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/**
+ * Exposes the current authenticated principal (id, tenant, roles) so the Business UI can decide
+ * whether to surface the super-user / admin section. This is presentation support only; actual
+ * endpoint authorization is enforced by the runtime kernel.
+ */
+@RestController
+public class GeneratedMeController {
+
+    private final RuntimeContextService runtimeContextService;
+
+    public GeneratedMeController(RuntimeContextService runtimeContextService) {
+        this.runtimeContextService = runtimeContextService;
+    }
+
+    @GetMapping("/api/me")
+    public Map<String, Object> me(HttpServletRequest request) {
+        ExecutionContext context = runtimeContextService.currentContext(request);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("actorId", context.actorId());
+        body.put("tenantId", context.tenantId());
+        body.put("roles", context.roles());
+        return body;
+    }
+}

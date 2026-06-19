@@ -103,7 +103,8 @@ public final class GeneratorFacade {
 
         new RuntimeApiEmitter(templates, writer).emit(model, resolvedModelSource, modelSourcePath);
         if (settingResolver.value(NpdevSettings.UI_GENERATE_BUSINESS_UI, SettingTarget.app())) {
-            new BusinessUiEmitter(templates, writer).emit(model);
+            new BusinessUiEmitter(templates, writer).emit(model,
+                    settingResolver.value(NpdevSettings.SECURITY_SUPER_USER_ROLE, SettingTarget.app()));
         }
         new TrustedSourceEmitter(writer).emit(model, modelSourcePath);
         new MetadataManifestAssetEmitter(writer).emit(model, resolvedModelSource, modelSourcePath);

@@ -31,6 +31,13 @@ import java.util.stream.Stream;
  */
 public final class BuiltinPackComposer {
 
+    /**
+     * Aliases of the built-in platform packs composed into an app under {@code internal.tables}.
+     * Concepts contributed by these packs ({@code identity::*}, {@code workspace::*}) are the
+     * "internal NPDev tables" surfaced behind the super-user role in the Business UI.
+     */
+    public static final List<String> BUILTIN_PACK_ALIASES = List.of("identity", "workspace");
+
     /** Loads and compiles the concepts contributed by a single built-in pack file. */
     public List<CompiledConcept> loadPackConcepts(Path packFile, String alias) {
         if (packFile == null || !Files.isRegularFile(packFile)) {

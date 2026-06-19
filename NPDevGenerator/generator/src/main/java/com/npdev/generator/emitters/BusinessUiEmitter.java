@@ -9,7 +9,9 @@ import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
+import com.npdev.dsl.v1.settings.NpdevSettings;
 import com.npdev.generator.output.GeneratedSourceWriter;
+import com.npdev.generator.packs.BuiltinPackComposer;
 import com.npdev.generator.templates.TemplateEngine;
 
 import java.util.ArrayList;
@@ -31,6 +33,10 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     }
 
     public void emit(CompiledModel model) {
+        emit(model, NpdevSettings.SECURITY_SUPER_USER_ROLE.defaultValue());
+    }
+
+    public void emit(CompiledModel model, String superUserRole) {
         List<CompiledConcept> persistedConcepts = persistedConcepts(model);
         Map<String, CompiledConcept> conceptsByName = conceptsByName(persistedConcepts);
         Map<String, Object> ctx = new LinkedHashMap<>();
@@ -48,6 +54,10 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 templates.render("business-ui-route-controller.mustache", ctx)
         );
         writer.writeRelative(
+                "src/main/java/com/npdev/generated/controllers/GeneratedMeController.java",
+                templates.render("business-ui-me-controller.mustache", ctx)
+        );
+        writer.writeRelative(
                 "src/main/resources/static/npdev-business-ui/index.html",
                 templates.render("business-ui-index.mustache", Map.of())
         );
@@ -61,7 +71,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         );
         writer.writeRelative(
                 "src/main/resources/static/npdev-business-ui/generated-ui-manifest.json",
-                manifestJson(model, persistedConcepts)
+                manifestJson(model, persistedConcepts, superUserRole)
         );
     }
 
@@ -138,10 +148,11 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         return out;
     }
 
-    private static String manifestJson(CompiledModel model, List<CompiledConcept> concepts) {
+    private static String manifestJson(CompiledModel model, List<CompiledConcept> concepts, String superUserRole) {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("schemaVersion", "npdev-generated-ui-manifest.v1");
         root.put("appName", model == null || model.getNamespace() == null ? "NPDev Generated App" : model.getNamespace());
+        root.put("superUserRole", superUserRole == null ? "" : superUserRole.trim());
         Map<String, Object> auth = new LinkedHashMap<>();
         auth.put("mode", "apiKey");
         auth.put("headerName", "X-Api-Key");
@@ -154,6 +165,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             Map<String, Object> node = new LinkedHashMap<>();
             node.put("conceptName", concept.getName());
             node.put("displayName", displayName(concept));
+            node.put("admin", isAdminConcept(concept));
             node.put("route", "/" + SqlIdentifierSupport.tableName(concept));
             node.put("tableName", SqlIdentifierSupport.tableName(concept));
             node.put("idField", idField.getName());
@@ -286,6 +298,19 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         String alias = conceptName.substring(0, sep);
         String name = conceptName.substring(sep + 2);
         return (humanize(alias) + " " + name).trim();
+    }
+
+    /** True for concepts contributed by a built-in platform pack (the internal NPDev tables). */
+    private static boolean isAdminConcept(CompiledConcept concept) {
+        String name = concept == null ? null : concept.getName();
+        if (name == null) {
+            return false;
+        }
+        int sep = name.indexOf("::");
+        if (sep < 0) {
+            return false;
+        }
+        return BuiltinPackComposer.BUILTIN_PACK_ALIASES.contains(name.substring(0, sep));
     }
 
     private static String fieldLabel(CompiledField field) {

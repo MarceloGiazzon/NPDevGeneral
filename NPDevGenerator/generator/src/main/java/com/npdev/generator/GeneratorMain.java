@@ -156,8 +156,9 @@ public final class GeneratorMain {
         Path packsDir = locatePlatformPacksDir();
         BuiltinPackComposer composer = new BuiltinPackComposer();
         List<CompiledConcept> builtin = new java.util.ArrayList<>();
-        builtin.addAll(composer.loadPackConcepts(packsDir.resolve("identity").resolve("pack.json"), "identity"));
-        builtin.addAll(composer.loadPackConcepts(packsDir.resolve("workspace").resolve("pack.json"), "workspace"));
+        for (String alias : BuiltinPackComposer.BUILTIN_PACK_ALIASES) {
+            builtin.addAll(composer.loadPackConcepts(packsDir.resolve(alias).resolve("pack.json"), alias));
+        }
         System.out.println("Composed built-in internal tables (" + builtin.size() + " concepts) from " + packsDir);
         return composer.merge(app, builtin);
     }

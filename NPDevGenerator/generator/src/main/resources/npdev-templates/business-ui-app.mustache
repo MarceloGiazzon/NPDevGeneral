@@ -7,7 +7,9 @@
     panels: {},
     lookupTimers: {},
     referenceLabels: {},
-    activeConcept: null
+    activeConcept: null,
+    roles: [],
+    isSuperUser: false
   };
 
   const el = {
@@ -117,14 +119,29 @@
     render();
   }
 
+  function conceptIsAdmin(concept) {
+    return Boolean(concept && concept.admin);
+  }
+
+  // Internal/admin concepts (identity::*, workspace::*) are only shown to a super-user.
+  function visibleConcepts() {
+    if (!state.manifest || !Array.isArray(state.manifest.concepts)) {
+      return [];
+    }
+    return state.manifest.concepts.filter(function (c) {
+      return !conceptIsAdmin(c) || state.isSuperUser;
+    });
+  }
+
   function render() {
     if (!state.manifest) {
       return;
     }
     el.appTitle.textContent = state.manifest.appName || "Business Data";
     el.app.innerHTML = "";
+    const concepts = visibleConcepts();
     const activeId = state.activeConcept ? sectionId(state.activeConcept) : null;
-    state.manifest.concepts.forEach(function (concept, index) {
+    concepts.forEach(function (concept, index) {
       const panel = renderPanel(concept);
       const isActive = activeId ? sectionId(concept) === activeId : index === 0;
       if (!isActive) panel.style.display = "none";
@@ -967,21 +984,40 @@
         el.apiKey.value = state.manifest.auth.devKeyHint;
       }
     }
+    await loadPrincipal();
     renderNav();
     render();
-    await Promise.all(state.manifest.concepts.map(loadPanel));
+    await Promise.all(visibleConcepts().map(loadPanel));
+  }
+
+  // Resolve the current user's roles to decide whether to surface the admin section.
+  async function loadPrincipal() {
+    const superUserRole = state.manifest.superUserRole || "";
+    try {
+      const me = await fetchJson("/api/me", { method: "GET", headers: headers() });
+      state.roles = Array.isArray(me.roles) ? me.roles : [];
+    } catch (error) {
+      state.roles = [];
+    }
+    state.isSuperUser = Boolean(superUserRole) && state.roles.indexOf(superUserRole) !== -1;
   }
 
   function renderNav() {
     if (!el.sideNav || !state.manifest) return;
     el.sideNav.innerHTML = "";
-    state.manifest.concepts.forEach(function (concept, index) {
+    const concepts = visibleConcepts();
+    const business = concepts.filter(function (c) { return !conceptIsAdmin(c); });
+    const admin = concepts.filter(conceptIsAdmin);
+    const nav = { first: true };
+
+    function addLink(concept) {
       const a = document.createElement("a");
       a.href = "#" + sectionId(concept);
       a.textContent = concept.displayName;
-      if (index === 0) {
+      if (nav.first) {
         a.classList.add("active");
         if (!state.activeConcept) state.activeConcept = concept;
+        nav.first = false;
       }
       a.addEventListener("click", function (e) {
         e.preventDefault();
@@ -990,7 +1026,16 @@
         a.classList.add("active");
       });
       el.sideNav.appendChild(a);
-    });
+    }
+
+    business.forEach(addLink);
+    if (admin.length) {
+      const header = document.createElement("div");
+      header.className = "nav-group-header";
+      header.textContent = "Admin";
+      el.sideNav.appendChild(header);
+      admin.forEach(addLink);
+    }
   }
 
   bootstrap().catch(function (error) {

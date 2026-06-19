@@ -75,5 +75,15 @@ class BuiltinPackComposerTest {
                 "Composed workspace::Menu should display as 'Workspace Menus'");
         assertFalse(manifest.contains("identity::Users"),
                 "Display label should not leak the pack alias prefix");
+
+        // Super-user admin UI support: internal tables marked admin, app concepts not, role surfaced.
+        assertTrue(manifest.contains("\"superUserRole\""),
+                "manifest should carry the super-user role");
+        assertTrue(manifest.contains("\"admin\" : true"),
+                "composed internal tables should be marked admin");
+        assertTrue(manifest.contains("\"admin\" : false"),
+                "app concepts should not be marked admin");
+        assertTrue(Files.exists(out.resolve("src/main/java/com/npdev/generated/controllers/GeneratedMeController.java")),
+                "the /api/me roles controller should be emitted");
     }
 }
