@@ -2509,7 +2509,12 @@ public final class GeneratedCrudRuntimeSupport {
                 return ExecutionContext.anonymous();
             }
 
-            Set<String> roles = parseRoles(claims.get("roles"));
+            // Identity-backed roles (when the identity pack is populated for this tenant+actor) are
+            // authoritative over the principal's claim-roles -- same supplement-with-fallback contract
+            // the RuntimeHost IdentityAwareContextResolver applies, kept consistent across both
+            // context-resolution paths via the shared IdentityRoleLookup.
+            Set<String> identityRoles = IdentityRoleLookup.rolesFor(dataSource, tenantId, actorId);
+            Set<String> roles = identityRoles.isEmpty() ? parseRoles(claims.get("roles")) : identityRoles;
             ExecutionContext context = ExecutionContext.of(tenantId, actorId);
             return roles.isEmpty() ? context : context.withRoles(roles);
         } catch (Exception ignored) {
