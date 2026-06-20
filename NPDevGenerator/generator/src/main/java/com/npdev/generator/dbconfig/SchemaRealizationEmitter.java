@@ -69,6 +69,49 @@ public final class SchemaRealizationEmitter {
             appendBonds(sql, model, plan.engine(), conceptsByName);
         }
         Files.writeString(schemaDir.resolve("V1__npdev_schema_realization.sql"), sql.toString(), StandardCharsets.UTF_8);
+
+        if (plan.createBusinessTables()) {
+            Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
+            StringBuilder additive = new StringBuilder();
+            additive.append("-- NPDev safe-additive schema columns (Flyway repeatable migration)\n");
+            additive.append("-- Adds new non-bond columns to already-existing business tables without destructive recreation.\n");
+            additive.append("-- Scope boundary: bond/foreign-key columns, type changes, and column/table removal remain\n");
+            additive.append("-- structural changes handled by the schema-fingerprint destructive-recreate path.\n\n");
+            for (CompiledConcept concept : model.getConcepts()) {
+                appendAdditiveColumns(additive, concept, plan.engine(), conceptsByName);
+            }
+            Files.writeString(schemaDir.resolve("R__npdev_schema_additive_columns.sql"), additive.toString(), StandardCharsets.UTF_8);
+        }
+    }
+
+    /**
+     * Adds new non-bond columns to an already-existing business table. Always nullable, even if the
+     * field is required by the model, so existing rows are not broken by the addition; tightening to
+     * NOT NULL after a backfill, and bond/FK columns, remain structural changes that go through the
+     * schema-fingerprint destructive-recreate path instead (see {@link #isAdditiveEligible}).
+     */
+    private static void appendAdditiveColumns(StringBuilder sql, CompiledConcept concept, DatabaseEngine engine,
+            Map<String, CompiledConcept> conceptsByName) {
+        String table = SqlIdentifierSupport.tableName(concept);
+        for (CompiledField field : concept.getFields()) {
+            if (!isAdditiveEligible(concept, field, conceptsByName)) {
+                continue;
+            }
+            String column = SqlIdentifierSupport.columnName(field);
+            String sqlType = SqlTypeSupport.sqlType(field);
+            sql.append("ALTER TABLE ").append(table).append(" ADD COLUMN IF NOT EXISTS ")
+                    .append(column).append(" ").append(renderType(sqlType, engine)).append(";\n");
+            if (field.isRequired()) {
+                sql.append("-- NOTE: '").append(column).append("' is required by the model but added nullable here; ")
+                        .append("existing rows will have NULL until backfilled or a destructive recreate is run.\n");
+            }
+        }
+        sql.append("\n");
+    }
+
+    private static boolean isAdditiveEligible(CompiledConcept concept, CompiledField field,
+            Map<String, CompiledConcept> conceptsByName) {
+        return BondModelSupport.resolveBond(concept, field, conceptsByName).isEmpty();
     }
 
     private static void appendTable(StringBuilder sql, InternalTableDefinition table, DatabaseEngine engine) {
@@ -163,6 +206,45 @@ public final class SchemaRealizationEmitter {
             }
         }
         sql.append("\n");
+    }
+
+    /**
+     * The full expected column set for a business table (id + version + every non-M2M field,
+     * including scalar bond columns), used to detect when the live database has a column the
+     * current model no longer declares (a removal — always structural, never safe-additive).
+     */
+    private static List<String> fullColumnNames(CompiledConcept concept, Map<String, CompiledConcept> conceptsByName) {
+        List<String> columns = new ArrayList<>();
+        boolean hasIdField = false;
+        for (CompiledField field : concept.getFields()) {
+            Optional<Bond> bond = BondModelSupport.resolveBond(concept, field, conceptsByName);
+            if (bond.isPresent() && bond.get().cardinality() == Cardinality.MANY_TO_MANY) {
+                continue;
+            }
+            columns.add(SqlIdentifierSupport.columnName(field));
+            if (field.isId()) {
+                hasIdField = true;
+            }
+        }
+        if (!hasIdField) {
+            columns.add(0, "id");
+        }
+        columns.add("version");
+        return List.copyOf(columns);
+    }
+
+    /**
+     * The subset of a business table's columns that {@link #appendAdditiveColumns} is able to add
+     * to an already-existing table without a destructive recreate (non-bond fields only).
+     */
+    private static List<String> additiveColumnNames(CompiledConcept concept, Map<String, CompiledConcept> conceptsByName) {
+        List<String> columns = new ArrayList<>();
+        for (CompiledField field : concept.getFields()) {
+            if (isAdditiveEligible(concept, field, conceptsByName)) {
+                columns.add(SqlIdentifierSupport.columnName(field));
+            }
+        }
+        return List.copyOf(columns);
     }
 
     private static boolean isConnectableAnchor(CompiledField field) {
@@ -282,6 +364,16 @@ public final class SchemaRealizationEmitter {
         List<String> businessTables = plan.createBusinessTables()
                 ? model.getConcepts().stream().map(SqlIdentifierSupport::tableName).toList()
                 : List.of();
+        Map<String, List<String>> businessTableColumns = new LinkedHashMap<>();
+        Map<String, List<String>> businessTableAdditiveColumns = new LinkedHashMap<>();
+        if (plan.createBusinessTables()) {
+            Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
+            for (CompiledConcept concept : model.getConcepts()) {
+                String table = SqlIdentifierSupport.tableName(concept);
+                businessTableColumns.put(table, fullColumnNames(concept, conceptsByName));
+                businessTableAdditiveColumns.put(table, additiveColumnNames(concept, conceptsByName));
+            }
+        }
 
         Map<String, Object> manifest = new LinkedHashMap<>();
         manifest.put("schemaRealizationVersion", "1");
@@ -298,6 +390,8 @@ public final class SchemaRealizationEmitter {
         ));
         manifest.put("internalTables", internalTables);
         manifest.put("businessTables", businessTables);
+        manifest.put("businessTableColumns", businessTableColumns);
+        manifest.put("businessTableAdditiveColumns", businessTableAdditiveColumns);
         manifest.put("sourceOfTruth", Map.of(
                 "internal", resolveInternalSchemaSourcePath(plan.definitionPath()).toString(),
                 "business", modelSourcePath == null ? "" : modelSourcePath.toAbsolutePath().normalize().toString(),

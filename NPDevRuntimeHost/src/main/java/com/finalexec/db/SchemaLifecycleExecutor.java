@@ -12,19 +12,25 @@ import org.springframework.stereotype.Component;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 @Component
 public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     private static final String METADATA_TABLE = "npdev_schema_metadata";
     private static final String FINGERPRINT_KEY = "schemaFingerprint";
     private static final String SCHEMA_REALIZATION_LOCATION = "classpath:db/schema-realization";
+    private static final Set<String> SYSTEM_SCHEMAS = Set.of("information_schema", "pg_catalog");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Override
@@ -43,6 +49,13 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         DestructiveRecreation recreation = beforeMigrate(dataSource, manifest);
         if (recreation.performed()) {
             clearSchemaRealizationHistory(dataSource);
+        } else if (recreation.safeAdditive()) {
+            // V1's bootstrap SQL is regenerated from the full current model on every generation pass,
+            // so its content (and checksum) legitimately changes whenever a column is added even though
+            // it must not be re-executed here. repair() reconciles Flyway's recorded checksums with the
+            // newly resolved migration content instead of failing validation or re-running V1's CREATE TABLE.
+            flyway.repair();
+            System.out.println("NPDev schema lifecycle: flyway.repair() reconciled schema-realization checksums for the additive change.");
         }
         flyway.migrate();
         afterMigrate(dataSource, manifest);
@@ -57,6 +70,12 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         if (stored.equals(manifest.schemaFingerprint())) {
             System.out.println("NPDev schema lifecycle: stored schema fingerprint matches generated schema fingerprint; no destructive recreation required.");
             return DestructiveRecreation.none();
+        }
+        if (isSafeAdditiveChange(dataSource, manifest)) {
+            System.out.println("NPDev schema lifecycle: fingerprint changed from " + stored + " to "
+                    + manifest.schemaFingerprint() + " but every difference is a new non-bond column on an "
+                    + "already-existing table; skipping destructive recreation (handled by the additive repeatable migration).");
+            return DestructiveRecreation.safeAdditiveOutcome();
         }
         if (!manifest.destructiveAllowed()) {
             throw new IllegalStateException("Schema fingerprint changed from " + stored + " to "
@@ -81,10 +100,78 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             System.out.println("NPDev destructive schema recreation dropped manifest-listed NPDev-owned tables: " + dropped);
             System.out.println("NPDev destructive schema recreation stored fingerprint: " + stored);
             System.out.println("NPDev destructive schema recreation generated fingerprint: " + manifest.schemaFingerprint());
-            return new DestructiveRecreation(true, List.copyOf(dropped));
+            return new DestructiveRecreation(true, false, List.copyOf(dropped));
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed destructive schema recreation", exception);
         }
+    }
+
+    /**
+     * Classifies a fingerprint mismatch as safe to migrate without dropping data: true only if, for
+     * every already-existing business table, the live database has no column the model no longer
+     * declares (a removal) and every column the model adds is one {@code R__npdev_schema_additive_columns.sql}
+     * can add (a non-bond field). New tables and unreachable databases are not safe-additive evidence
+     * either way and fall through to the existing destructive-recreate-or-throw behavior.
+     */
+    private boolean isSafeAdditiveChange(DataSource dataSource, SchemaManifest manifest) {
+        if (manifest.businessTableColumns().isEmpty()) {
+            return false;
+        }
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            for (Map.Entry<String, List<String>> entry : manifest.businessTableColumns().entrySet()) {
+                String table = entry.getKey();
+                Set<String> expected = new LinkedHashSet<>(entry.getValue());
+                Set<String> additiveEligible = new LinkedHashSet<>(
+                        manifest.businessTableAdditiveColumns().getOrDefault(table, List.of()));
+                Set<String> actual = readActualColumns(metadata, table);
+                if (actual.isEmpty()) {
+                    // Table doesn't exist yet (brand new concept); V1's CREATE TABLE IF NOT EXISTS handles it.
+                    continue;
+                }
+                Set<String> extraInDb = new LinkedHashSet<>(actual);
+                extraInDb.removeAll(expected);
+                if (!extraInDb.isEmpty()) {
+                    return false;
+                }
+                Set<String> missingInDb = new LinkedHashSet<>(expected);
+                missingInDb.removeAll(actual);
+                if (!missingInDb.isEmpty() && !additiveEligible.containsAll(missingInDb)) {
+                    return false;
+                }
+            }
+            return true;
+        } catch (SQLException exception) {
+            return false;
+        }
+    }
+
+    private static Set<String> readActualColumns(DatabaseMetaData metadata, String table) throws SQLException {
+        Set<String> columns = readActualColumns(metadata, table, table.toLowerCase(Locale.ROOT));
+        if (columns.isEmpty()) {
+            columns = readActualColumns(metadata, table, table.toUpperCase(Locale.ROOT));
+        }
+        return columns;
+    }
+
+    /**
+     * An unqualified {@code getColumns(null, null, table, null)} also matches same-named system
+     * views (e.g. H2's {@code information_schema.users}), which would pollute the comparison with
+     * unrelated columns and make every additive change look unsafe. Skip any row whose reported
+     * schema is one of the standard system schemas; NPDev never creates business tables there.
+     */
+    private static Set<String> readActualColumns(DatabaseMetaData metadata, String table, String candidate) throws SQLException {
+        Set<String> columns = new LinkedHashSet<>();
+        try (ResultSet resultSet = metadata.getColumns(null, null, candidate, null)) {
+            while (resultSet.next()) {
+                String schema = resultSet.getString("TABLE_SCHEM");
+                if (schema != null && SYSTEM_SCHEMAS.contains(schema.toLowerCase(Locale.ROOT))) {
+                    continue;
+                }
+                columns.add(resultSet.getString("COLUMN_NAME").toLowerCase(Locale.ROOT));
+            }
+        }
+        return columns;
     }
 
     private void clearSchemaRealizationHistory(DataSource dataSource) {
@@ -194,6 +281,8 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     root.path("schemaFingerprint").asText(""),
                     strings(root.path("internalTables")),
                     strings(root.path("businessTables")),
+                    stringListMap(root.path("businessTableColumns")),
+                    stringListMap(root.path("businessTableAdditiveColumns")),
                     lifecycle.path("allowDestructiveRecreate").asBoolean(false),
                     lifecycle.path("strategy").asText(""),
                     lifecycle.path("scope").asText(""),
@@ -218,6 +307,15 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         return List.copyOf(out);
     }
 
+    private static Map<String, List<String>> stringListMap(JsonNode object) {
+        if (object == null || !object.isObject()) {
+            return Map.of();
+        }
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        object.fields().forEachRemaining(field -> out.put(field.getKey(), strings(field.getValue())));
+        return Map.copyOf(out);
+    }
+
     public record SchemaManifest(
             String engine,
             String storageMode,
@@ -225,6 +323,8 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             String schemaFingerprint,
             List<String> internalTables,
             List<String> businessTables,
+            Map<String, List<String>> businessTableColumns,
+            Map<String, List<String>> businessTableAdditiveColumns,
             boolean allowDestructiveRecreate,
             String strategy,
             String scope,
@@ -238,9 +338,13 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         }
     }
 
-    private record DestructiveRecreation(boolean performed, List<String> droppedTables) {
+    private record DestructiveRecreation(boolean performed, boolean safeAdditive, List<String> droppedTables) {
         static DestructiveRecreation none() {
-            return new DestructiveRecreation(false, List.of());
+            return new DestructiveRecreation(false, false, List.of());
+        }
+
+        static DestructiveRecreation safeAdditiveOutcome() {
+            return new DestructiveRecreation(false, true, List.of());
         }
     }
 }
