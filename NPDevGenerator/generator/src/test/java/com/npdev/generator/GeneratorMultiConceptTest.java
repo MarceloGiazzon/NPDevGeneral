@@ -178,7 +178,8 @@ class GeneratorMultiConceptTest {
                     .filter(path -> {
                         String relative = root.relativize(path).toString().replace('\\', '/');
                         return !relative.equals("src/main/resources/npdev/db/schema-realization-manifest.json")
-                                && !relative.equals("src/main/resources/npdev/support/generated-folder.signature.properties");
+                                && !relative.equals("src/main/resources/npdev/support/generated-folder.signature.properties")
+                                && !relative.equals("src/main/resources/npdev/store/pack-catalog.json");
                     })
                     .sorted()
                     .map(path -> {

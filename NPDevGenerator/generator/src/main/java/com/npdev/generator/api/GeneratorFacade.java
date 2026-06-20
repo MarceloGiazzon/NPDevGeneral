@@ -24,6 +24,8 @@ import com.npdev.generator.dbconfig.DatabaseEngine;
 import com.npdev.generator.dbconfig.SchemaLifecyclePolicy;
 import com.npdev.generator.dbconfig.SchemaLifecycleStrategy;
 import com.npdev.generator.output.GeneratedSourceWriter;
+import com.npdev.generator.provenance.BoxManifestEmitter;
+import com.npdev.generator.provenance.PackCatalogEmitter;
 import com.npdev.generator.settings.SettingsManifestEmitter;
 import com.npdev.generator.templates.TemplateEngine;
 
@@ -98,6 +100,7 @@ public final class GeneratorFacade {
     ) throws Exception {
         boolean kernelControlled = settingResolver.value(NpdevSettings.CRUD_KERNEL_CONTROLLED, SettingTarget.app());
         String superUserRole = settingResolver.value(NpdevSettings.SECURITY_SUPER_USER_ROLE, SettingTarget.app());
+        boolean internalTablesEnabled = settingResolver.value(NpdevSettings.INTERNAL_TABLES, SettingTarget.app());
 
         new EntityEmitter(templates, writer).emit(model);
         new DtoEmitter(templates, writer).emit(model);
@@ -107,6 +110,10 @@ public final class GeneratorFacade {
         new RuntimeApiEmitter(templates, writer).emit(model, resolvedModelSource, modelSourcePath, superUserRole);
         if (settingResolver.value(NpdevSettings.UI_GENERATE_BUSINESS_UI, SettingTarget.app())) {
             new BusinessUiEmitter(templates, writer).emit(model, superUserRole);
+            // Phase 7: provenance/store/box-view admin surfaces ride along with the business UI,
+            // since they are only reachable through its super-user admin nav.
+            new BoxManifestEmitter().emit(model, writer);
+            new PackCatalogEmitter().emit(writer, internalTablesEnabled);
         }
         new TrustedSourceEmitter(writer).emit(model, modelSourcePath);
         new MetadataManifestAssetEmitter(writer).emit(model, resolvedModelSource, modelSourcePath);

@@ -24,6 +24,7 @@ import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
 import com.npdev.generator.dbconfig.OperationalRunbookEmitter;
 import com.npdev.generator.dbconfig.UserDatabaseDefinitionLoader;
 import com.npdev.generator.output.GeneratedSourceWriter;
+import com.npdev.generator.provenance.BuildInfoEmitter;
 import com.npdev.generator.strategy.RegenerationPolicy;
 import com.npdev.generator.templates.TemplateEngine;
 
@@ -149,6 +150,10 @@ public final class GeneratorMain {
                     databasePlan
             );
             System.out.println("Generated operations runbook: " + opsRoot);
+
+            new BuildInfoEmitter().emit(compiled, assemblyResult.finalAppRoot());
+            System.out.println("Generated build-info: " + assemblyResult.finalAppRoot()
+                    .resolve(BuildInfoEmitter.RELATIVE_PATH).toAbsolutePath().normalize());
         }
     }
 

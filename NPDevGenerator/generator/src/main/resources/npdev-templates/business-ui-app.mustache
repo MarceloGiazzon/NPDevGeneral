@@ -6,6 +6,8 @@
   const MENU_CONCEPT_NAME = "workspace::Menu";
   const PREFERENCE_CONCEPT_NAME = "workspace::Preference";
   const PREFERENCES_SECTION = { conceptName: "__preferences__" };
+  const STORE_SECTION = { conceptName: "__store__" };
+  const BOX_VIEW_SECTION = { conceptName: "__boxview__" };
   const state = {
     manifest: null,
     panels: {},
@@ -16,7 +18,9 @@
     isSuperUser: false,
     actorId: "",
     menuItems: [],
-    preferences: { records: [], loading: false, loaded: false }
+    preferences: { records: [], loading: false, loaded: false },
+    store: { packs: [], discoverable: false, loading: false, loaded: false },
+    boxView: { boxes: [], note: "", loading: false, loaded: false }
   };
 
   const el = {
@@ -295,6 +299,14 @@
       prefsPanel.style.display = activeId === sectionId(PREFERENCES_SECTION) ? "" : "none";
       el.app.appendChild(prefsPanel);
     }
+    if (state.isSuperUser) {
+      const storePanel = renderStorePanel();
+      storePanel.style.display = activeId === sectionId(STORE_SECTION) ? "" : "none";
+      el.app.appendChild(storePanel);
+      const boxViewPanel = renderBoxViewPanel();
+      boxViewPanel.style.display = activeId === sectionId(BOX_VIEW_SECTION) ? "" : "none";
+      el.app.appendChild(boxViewPanel);
+    }
   }
 
   function showConcept(concept) {
@@ -307,6 +319,144 @@
   function showPreferences() {
     showConcept(PREFERENCES_SECTION);
     loadPreferences();
+  }
+
+  function showStore() {
+    showConcept(STORE_SECTION);
+    loadStore();
+  }
+
+  function showBoxView() {
+    showConcept(BOX_VIEW_SECTION);
+    loadBoxView();
+  }
+
+  // Read-only "app store" view of every built-in platform pack the generator found on disk,
+  // and whether internal.tables composed it into this app.
+  async function loadStore() {
+    state.store.loading = true;
+    render();
+    try {
+      const payload = await fetchJson("/api/admin/packs", { method: "GET", headers: headers() });
+      state.store.packs = Array.isArray(payload.packs) ? payload.packs : [];
+      state.store.discoverable = Boolean(payload.discoverable);
+      state.store.loaded = true;
+      setStatus("Pack catalog loaded.", false);
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+    state.store.loading = false;
+    render();
+  }
+
+  function renderStorePanel() {
+    const section = document.createElement("section");
+    section.className = "concept-panel";
+    section.id = sectionId(STORE_SECTION);
+
+    const header = document.createElement("div");
+    header.className = "panel-header";
+    const title = document.createElement("h2");
+    title.textContent = "Store";
+    header.appendChild(title);
+    const actions = document.createElement("div");
+    actions.className = "panel-actions";
+    actions.appendChild(button("Refresh", "", loadStore));
+    header.appendChild(actions);
+    section.appendChild(header);
+
+    if (!state.store.loaded && !state.store.loading) {
+      loadStore();
+    }
+    if (state.store.loaded && !state.store.discoverable) {
+      const note = document.createElement("p");
+      note.textContent = "The platform packs directory could not be located from this app's generation environment.";
+      section.appendChild(note);
+    }
+
+    const table = document.createElement("table");
+    table.className = "records";
+    const thead = document.createElement("thead");
+    thead.appendChild(headerRow(["Pack", "Version", "Concepts", "Description", "Included"]));
+    table.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    state.store.packs.forEach(function (pack) {
+      const row = document.createElement("tr");
+      row.appendChild(textCell(pack.name || pack.alias));
+      row.appendChild(textCell(pack.version || "UNKNOWN"));
+      row.appendChild(textCell(String(pack.conceptCount || 0)));
+      row.appendChild(textCell(pack.description || ""));
+      row.appendChild(badgeCell(pack.included ? "Included" : "Available", pack.included ? "badge-success" : "badge-neutral"));
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    section.appendChild(table);
+    return section;
+  }
+
+  // Read-only "Box View": one Entity Box per persisted concept, with its truth level. The server
+  // upgrades T2 (Generated) to T3 (RunsLocally) since serving the response is itself the evidence.
+  async function loadBoxView() {
+    state.boxView.loading = true;
+    render();
+    try {
+      const payload = await fetchJson("/api/admin/box", { method: "GET", headers: headers() });
+      state.boxView.boxes = Array.isArray(payload.boxes) ? payload.boxes : [];
+      state.boxView.note = payload.truthLevelNote || "";
+      state.boxView.loaded = true;
+      setStatus("Box view loaded.", false);
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+    state.boxView.loading = false;
+    render();
+  }
+
+  function renderBoxViewPanel() {
+    const section = document.createElement("section");
+    section.className = "concept-panel";
+    section.id = sectionId(BOX_VIEW_SECTION);
+
+    const header = document.createElement("div");
+    header.className = "panel-header";
+    const title = document.createElement("h2");
+    title.textContent = "Box View";
+    header.appendChild(title);
+    const actions = document.createElement("div");
+    actions.className = "panel-actions";
+    actions.appendChild(button("Refresh", "", loadBoxView));
+    header.appendChild(actions);
+    section.appendChild(header);
+
+    if (!state.boxView.loaded && !state.boxView.loading) {
+      loadBoxView();
+    }
+    if (state.boxView.note) {
+      const note = document.createElement("p");
+      note.textContent = state.boxView.note;
+      section.appendChild(note);
+    }
+
+    const table = document.createElement("table");
+    table.className = "records";
+    const thead = document.createElement("thead");
+    thead.appendChild(headerRow(["Entity Box", "Table", "Fields", "Bonds", "Source", "Truth Level"]));
+    table.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    state.boxView.boxes.forEach(function (box) {
+      const row = document.createElement("tr");
+      const truthBadgeClass = box.truthLevel === "T3_RUNS_LOCALLY" ? "badge-success" : "badge-info";
+      row.appendChild(textCell(box.displayName || box.conceptName));
+      row.appendChild(textCell(box.table || ""));
+      row.appendChild(textCell(String(box.fieldCount || 0)));
+      row.appendChild(textCell(String(box.bondCount || 0)));
+      row.appendChild(textCell(box.admin ? "Built-in pack" : "App-authored"));
+      row.appendChild(badgeCell(box.truthLevel || "T2_GENERATED", truthBadgeClass));
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    section.appendChild(table);
+    return section;
   }
 
   // Loads every workspace::Preference row and keeps only the current actor's, client-side. This
@@ -1485,6 +1635,31 @@
     return b;
   }
 
+  function headerRow(labels) {
+    const row = document.createElement("tr");
+    labels.forEach(function (label) {
+      const th = document.createElement("th");
+      th.textContent = label;
+      row.appendChild(th);
+    });
+    return row;
+  }
+
+  function textCell(text) {
+    const cell = document.createElement("td");
+    cell.textContent = text;
+    return cell;
+  }
+
+  function badgeCell(text, badgeClass) {
+    const cell = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = "badge " + badgeClass;
+    badge.textContent = text;
+    cell.appendChild(badge);
+    return cell;
+  }
+
   function formatValue(value) {
     if (value === null || value === undefined || value === "") {
       return "-";
@@ -1601,6 +1776,10 @@
         e.preventDefault();
         if (concept === PREFERENCES_SECTION) {
           showPreferences();
+        } else if (concept === STORE_SECTION) {
+          showStore();
+        } else if (concept === BOX_VIEW_SECTION) {
+          showBoxView();
         } else {
           showConcept(concept);
         }
@@ -1625,12 +1804,16 @@
     }
 
     business.forEach(function (concept) { addLink(concept); });
-    if (admin.length) {
+    if (admin.length || state.isSuperUser) {
       const header = document.createElement("div");
       header.className = "nav-group-header";
       header.textContent = "Admin";
       el.sideNav.appendChild(header);
       admin.forEach(function (concept) { addLink(concept); });
+      if (state.isSuperUser) {
+        addLink(STORE_SECTION, "Store", true);
+        addLink(BOX_VIEW_SECTION, "Box View", true);
+      }
     }
   }
 

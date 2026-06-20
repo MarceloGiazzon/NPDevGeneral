@@ -44,6 +44,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         ctx.put("servicePackage", "com.npdev.generated.services");
         ctx.put("entityPackage", "com.npdev.generated.entities");
         ctx.put("concepts", conceptTemplateModels(persistedConcepts, conceptsByName));
+        ctx.put("superUserRole", superUserRole == null || superUserRole.isBlank() ? "ADMIN" : superUserRole.trim());
 
         writer.writeRelative(
                 "src/main/java/com/npdev/generated/controllers/GeneratedConceptCrudController.java",
@@ -56,6 +57,16 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         writer.writeRelative(
                 "src/main/java/com/npdev/generated/controllers/GeneratedMeController.java",
                 templates.render("business-ui-me-controller.mustache", ctx)
+        );
+        // Phase 7: read-only admin surfaces for the pack catalog ("store") and the per-concept
+        // truth-level view ("box view"), both gated to superUserRole.
+        writer.writeRelative(
+                "src/main/java/com/npdev/generated/controllers/GeneratedPackCatalogController.java",
+                templates.render("business-ui-pack-catalog-controller.mustache", ctx)
+        );
+        writer.writeRelative(
+                "src/main/java/com/npdev/generated/controllers/GeneratedBoxViewController.java",
+                templates.render("business-ui-box-view-controller.mustache", ctx)
         );
         writer.writeRelative(
                 "src/main/resources/static/npdev-business-ui/index.html",
