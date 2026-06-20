@@ -305,7 +305,8 @@ public class NpdevCapabilityBindingConfig {
             RuntimeInvariantEngineFactory runtimeInvariantEngineFactory,
             AuditLogStore auditLogStore,
             PermissionEvaluator permissionEvaluator,
-            IdempotencyStore idempotencyStore
+            IdempotencyStore idempotencyStore,
+            ConceptGateway conceptGateway
     ) {
         return new GeneratedCrudRuntimeSupport(
                 compiledModel,
@@ -320,7 +321,7 @@ public class NpdevCapabilityBindingConfig {
                 auditLogStore,
                 permissionEvaluator,
                 idempotencyStore
-        );
+        ).withConceptGateway(conceptGateway);
     }
 
     @Bean

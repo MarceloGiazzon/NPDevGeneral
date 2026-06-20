@@ -21,6 +21,9 @@ import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.FlowStepDefinition;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.KernelRunner;
+import com.npdev.kernel.concepts.ConceptGateway;
+import com.npdev.kernel.concepts.ConceptListRequest;
+import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.events.EventEnvelope;
 import com.npdev.kernel.audit.AuditRecord;
 import com.npdev.kernel.capability.IdempotencyRecord;
@@ -205,6 +208,16 @@ public final class GeneratedCrudRuntimeSupport {
     private final AuditLogStore auditLogStore;
     private final PermissionEvaluator permissionEvaluator;
     private final IdempotencyStore idempotencyStore;
+    private ConceptGateway conceptGateway;
+
+    // Fallback existence check for cross-concept reference validation when there is no
+    // EntityManager (e.g. npdev.storage.mode=in-memory). Set via withConceptGateway after
+    // construction rather than threaded through the constructor overloads below, since this
+    // is an optional capability rather than a required dependency.
+    public GeneratedCrudRuntimeSupport withConceptGateway(ConceptGateway conceptGateway) {
+        this.conceptGateway = conceptGateway;
+        return this;
+    }
 
     public GeneratedCrudRuntimeSupport(CompiledModel compiledModel, KernelRunner kernelRunner) {
         this(compiledModel, kernelRunner, null, null, null, null);
@@ -3907,8 +3920,11 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     private boolean existsByAnchor(CompiledConcept entity, CompiledField anchor, Object value) {
-        if (entityManager == null || entity == null || anchor == null || value == null) {
+        if (entity == null || anchor == null || value == null) {
             return false;
+        }
+        if (entityManager == null) {
+            return existsByAnchorViaConceptGateway(entity, anchor, value);
         }
         String table = tableName(entity);
         String column = columnName(anchor);
@@ -3929,6 +3945,36 @@ public final class GeneratedCrudRuntimeSupport {
         }
     }
 
+    // Reference-existence fallback for npdev.storage.mode=in-memory, where there is no
+    // EntityManager and the referenced concept lives only in the ConceptGateway/ConceptStore.
+    private boolean existsByAnchorViaConceptGateway(CompiledConcept entity, CompiledField anchor, Object value) {
+        if (conceptGateway == null) {
+            return false;
+        }
+        try {
+            ExecutionContext context = resolveCurrentCrudContext();
+            String anchorName = anchor.getName();
+            if ("id".equalsIgnoreCase(anchorName)) {
+                return conceptGateway.read(
+                        new ConceptReadRequest(entity.getName(), String.valueOf(value), context.tenantId()),
+                        context
+                ).isPresent();
+            }
+            return conceptGateway.list(new ConceptListRequest(entity.getName(), context.tenantId()), context)
+                    .stream()
+                    .anyMatch(record -> referenceValuesEqual(record.data().get(anchorName), value));
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private static boolean referenceValuesEqual(Object left, Object right) {
+        if (left == null || right == null) {
+            return false;
+        }
+        return left.equals(right) || String.valueOf(left).equalsIgnoreCase(String.valueOf(right));
+    }
+
     private boolean resourceHasConflict(
             String entityName,
             String resourceFieldPath,
@@ -3940,8 +3986,7 @@ public final class GeneratedCrudRuntimeSupport {
             Object excludeIdValue,
             Object payload
     ) {
-        if (entityManager == null
-                || entityName == null
+        if (entityName == null
                 || entityName.isBlank()
                 || resourceFieldPath == null
                 || resourceFieldPath.isBlank()
@@ -3950,6 +3995,19 @@ public final class GeneratedCrudRuntimeSupport {
                 || durationMinutesFieldPath == null
                 || durationMinutesFieldPath.isBlank()) {
             return false;
+        }
+        if (entityManager == null) {
+            return resourceHasConflictViaConceptGateway(
+                    entityName,
+                    resourceFieldPath,
+                    resourceIdValue,
+                    startsAtFieldPath,
+                    scheduledAtValue,
+                    durationMinutesFieldPath,
+                    durationMinutesValue,
+                    excludeIdValue,
+                    payload
+            );
         }
 
         Optional<CompiledConcept> entityOpt = findEntity(entityName);
@@ -4009,6 +4067,58 @@ public final class GeneratedCrudRuntimeSupport {
                 }
             }
             return false;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    // Conflict-detection fallback for npdev.storage.mode=in-memory, where there is no
+    // EntityManager and the resource's existing bookings live only in the ConceptGateway/ConceptStore.
+    private boolean resourceHasConflictViaConceptGateway(
+            String entityName,
+            String resourceFieldPath,
+            Object resourceIdValue,
+            String startsAtFieldPath,
+            Object scheduledAtValue,
+            String durationMinutesFieldPath,
+            Object durationMinutesValue,
+            Object excludeIdValue,
+            Object payload
+    ) {
+        if (conceptGateway == null) {
+            return false;
+        }
+        Object effectiveExcludeId = resolveConflictExcludeId(excludeIdValue, payload);
+        UUID resourceId = toUuid(resourceIdValue);
+        OffsetDateTime start = toOffsetDateTime(scheduledAtValue);
+        Integer durationMinutes = toInteger(durationMinutesValue);
+        UUID excludeId = toUuid(effectiveExcludeId);
+        if (resourceId == null || start == null || durationMinutes == null || durationMinutes <= 0) {
+            return false;
+        }
+        OffsetDateTime newEnd = start.plusMinutes(durationMinutes);
+
+        try {
+            ExecutionContext context = resolveCurrentCrudContext();
+            return conceptGateway.list(new ConceptListRequest(entityName, context.tenantId()), context)
+                    .stream()
+                    .anyMatch(record -> {
+                        Map<String, Object> data = record.data();
+                        if (!referenceValuesEqual(data.get(resourceFieldPath), resourceId.toString())) {
+                            return false;
+                        }
+                        UUID rowId = toUuid(data.get("id"));
+                        if (excludeId != null && excludeId.equals(rowId)) {
+                            return false;
+                        }
+                        OffsetDateTime existingStart = toOffsetDateTime(data.get(startsAtFieldPath));
+                        Integer existingDuration = toInteger(data.get(durationMinutesFieldPath));
+                        if (existingStart == null || existingDuration == null || existingDuration <= 0) {
+                            return false;
+                        }
+                        OffsetDateTime existingEnd = existingStart.plusMinutes(existingDuration);
+                        return start.isBefore(existingEnd) && existingStart.isBefore(newEnd);
+                    });
         } catch (Exception ignored) {
             return false;
         }

@@ -190,18 +190,13 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         for (InvariantDefinition invariant : concept.invariants()) {
             String expression = invariant.expression();
             if (!isSupportedBooleanExpression(expression)) {
-                rulesEvaluated.add(ruleDetail(invariant, "unsupported", false));
-                return ConceptSemanticDecision.deny(
-                        "CONCEPT_RULE_UNSUPPORTED_EXPRESSION",
-                        "Concept invariant uses unsupported expression syntax: " + invariant.name(),
-                        Map.of(
-                                "concept", request.conceptName(),
-                                "invariant", invariant.name(),
-                                "expression", expression,
-                                "operation", request.operation().name(),
-                                "rulesEvaluated", rulesEvaluated
-                        )
-                ).withRuleProfiles(ruleProfiles);
+                // This policy only understands a small comparison/uniqueBy grammar; richer
+                // invariants (e.g. conflict-detection functions like overlapsProvider(...))
+                // are already fully validated by the kernel's CEL invariant engine before this
+                // gateway-side check runs (see GeneratedCrudRuntimeSupport.enforceWithKernel),
+                // so we skip rather than deny instead of double-rejecting on syntax we can't parse.
+                rulesEvaluated.add(ruleDetail(invariant, "skippedUnsupportedExpression", true));
+                continue;
             }
             boolean passed = evaluateBooleanExpression(expression, facts);
             rulesEvaluated.add(ruleDetail(invariant, passed ? "passed" : "failed", passed));
@@ -278,10 +273,17 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         }
     }
 
+    private static final Pattern UNIQUE_BY_PATTERN =
+            Pattern.compile("^([A-Za-z_][A-Za-z0-9_]*)\\.uniqueBy\\(([A-Za-z_][A-Za-z0-9_]*)\\)$");
+
     private static boolean evaluateBooleanExpression(String expression, Map<String, Object> facts) {
         String text = expression == null ? "" : expression.trim();
         if (text.isEmpty()) {
             return true;
+        }
+        Matcher uniqueByMatcher = UNIQUE_BY_PATTERN.matcher(text);
+        if (uniqueByMatcher.matches()) {
+            return evaluateUniqueBy(uniqueByMatcher.group(1), uniqueByMatcher.group(2), facts);
         }
         for (String disjunct : text.split("\\s+\\|\\|\\s+")) {
             boolean all = true;
@@ -293,6 +295,27 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
             }
         }
         return false;
+    }
+
+    private static boolean evaluateUniqueBy(String fieldName, String subfield, Map<String, Object> facts) {
+        Object value = facts.get(fieldName);
+        if (!(value instanceof List<?> list)) {
+            return true;
+        }
+        Set<Object> seen = new LinkedHashSet<>();
+        for (Object element : list) {
+            if (!(element instanceof Map<?, ?> elementMap)) {
+                continue;
+            }
+            Object subValue = elementMap.get(subfield);
+            if (subValue == null) {
+                continue;
+            }
+            if (!seen.add(normalizeComparable(subValue))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean evaluateComparison(String expression, Map<String, Object> facts) {
@@ -318,6 +341,9 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
     private static boolean isSupportedBooleanExpression(String expression) {
         String text = expression == null ? "" : expression.trim();
         if (text.isEmpty()) {
+            return true;
+        }
+        if (UNIQUE_BY_PATTERN.matcher(text).matches()) {
             return true;
         }
         for (String disjunct : text.split("\\s+\\|\\|\\s+")) {

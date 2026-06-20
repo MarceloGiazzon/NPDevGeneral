@@ -2,6 +2,7 @@ package {{packageName}};
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.npdev.runtime.support.GeneratedCrudRuntimeSupport;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGateway;
@@ -31,7 +32,7 @@ public class {{entityName}}ServiceBase {
     protected final GeneratedCrudRuntimeSupport runtimeSupport;
     protected final ConceptGateway conceptGateway;
     protected final ConceptStore conceptStore;
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new JavaTimeModule());
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
     private static final Set<String> ALLOWED_MUTATION_TOPICS = buildAllowedMutationTopics();
     private static final String ID_FIELD_NAME = "{{idFieldName}}";
