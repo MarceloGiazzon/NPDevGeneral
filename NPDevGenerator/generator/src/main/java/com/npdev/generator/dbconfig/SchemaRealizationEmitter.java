@@ -93,6 +93,10 @@ public final class SchemaRealizationEmitter {
     private static void appendAdditiveColumns(StringBuilder sql, CompiledConcept concept, DatabaseEngine engine,
             Map<String, CompiledConcept> conceptsByName) {
         String table = SqlIdentifierSupport.tableName(concept);
+        sql.append("ALTER TABLE ").append(table).append(" ADD COLUMN IF NOT EXISTS tenant_id ")
+                .append(renderType("VARCHAR(120)", engine)).append(";\n");
+        sql.append("-- NOTE: 'tenant_id' is required by the platform but added nullable here; ")
+                .append("existing rows will have NULL until backfilled or a destructive recreate is run.\n");
         for (CompiledField field : concept.getFields()) {
             if (!isAdditiveEligible(concept, field, conceptsByName)) {
                 continue;
@@ -181,6 +185,7 @@ public final class SchemaRealizationEmitter {
             lines.add(0, "  id UUID NOT NULL");
         }
         lines.add("  version BIGINT NOT NULL DEFAULT 0");
+        lines.add("  tenant_id " + renderType("VARCHAR(120)", engine) + " NOT NULL");
         lines.add("  PRIMARY KEY (" + idColumn + ")");
         sql.append("CREATE TABLE IF NOT EXISTS ").append(table).append(" (\n");
         sql.append(String.join(",\n", lines)).append("\n);\n\n");
@@ -230,6 +235,7 @@ public final class SchemaRealizationEmitter {
             columns.add(0, "id");
         }
         columns.add("version");
+        columns.add("tenant_id");
         return List.copyOf(columns);
     }
 
@@ -239,6 +245,7 @@ public final class SchemaRealizationEmitter {
      */
     private static List<String> additiveColumnNames(CompiledConcept concept, Map<String, CompiledConcept> conceptsByName) {
         List<String> columns = new ArrayList<>();
+        columns.add("tenant_id");
         for (CompiledField field : concept.getFields()) {
             if (isAdditiveEligible(concept, field, conceptsByName)) {
                 columns.add(SqlIdentifierSupport.columnName(field));

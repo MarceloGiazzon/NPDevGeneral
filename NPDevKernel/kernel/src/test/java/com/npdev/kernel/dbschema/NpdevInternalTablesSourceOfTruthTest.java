@@ -25,7 +25,8 @@ final class NpdevInternalTablesSourceOfTruthTest {
             "npdev_publication_execution",
             "npdev_schema_metadata",
             "npdev_scheduled_event",
-            "npdev_trace"
+            "npdev_trace",
+            "npdev_promotion_state"
     );
 
     private static final Set<String> FORBIDDEN_FUTURE_SCOPE_TABLES = Set.of(

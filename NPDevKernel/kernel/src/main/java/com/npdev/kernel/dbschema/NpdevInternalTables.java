@@ -18,7 +18,8 @@ public final class NpdevInternalTables {
                 NpdevScheduledEventTable.definition(),
                 NpdevPublicationExecutionTable.definition(),
                 NpdevPublicationAuditTable.definition(),
-                NpdevSchemaMetadataTable.definition()
+                NpdevSchemaMetadataTable.definition(),
+                NpdevPromotionStateTable.definition()
         );
     }
 }

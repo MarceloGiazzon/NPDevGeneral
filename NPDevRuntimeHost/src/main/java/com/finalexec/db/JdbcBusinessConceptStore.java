@@ -35,10 +35,11 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     @Override
     public Optional<ConceptRecord> findById(String tenantId, String conceptName, String id) {
         ConceptShape shape = shape(conceptName);
-        String sql = "SELECT * FROM " + shape.tableName() + " WHERE " + shape.idColumn() + " = ?";
+        String sql = "SELECT * FROM " + shape.tableName() + " WHERE " + shape.idColumn() + " = ? AND tenant_id = ?";
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, coerceId(id));
+            statement.setObject(2, tenantId);
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
                     return Optional.empty();
@@ -53,15 +54,17 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     @Override
     public List<ConceptRecord> findAll(String tenantId, String conceptName) {
         ConceptShape shape = shape(conceptName);
-        String sql = "SELECT * FROM " + shape.tableName() + " ORDER BY " + shape.idColumn();
+        String sql = "SELECT * FROM " + shape.tableName() + " WHERE tenant_id = ? ORDER BY " + shape.idColumn();
         try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql);
-             ResultSet resultSet = statement.executeQuery()) {
-            List<ConceptRecord> out = new ArrayList<>();
-            while (resultSet.next()) {
-                out.add(toRecord(shape, tenantId, resultSet));
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setObject(1, tenantId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<ConceptRecord> out = new ArrayList<>();
+                while (resultSet.next()) {
+                    out.add(toRecord(shape, tenantId, resultSet));
+                }
+                return List.copyOf(out);
             }
-            return List.copyOf(out);
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed listing concept " + conceptName + " from JDBC store", exception);
         }
@@ -95,10 +98,11 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     @Override
     public void deleteById(String tenantId, String conceptName, String id) {
         ConceptShape shape = shape(conceptName);
-        String sql = "DELETE FROM " + shape.tableName() + " WHERE " + shape.idColumn() + " = ?";
+        String sql = "DELETE FROM " + shape.tableName() + " WHERE " + shape.idColumn() + " = ? AND tenant_id = ?";
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, coerceId(id));
+            statement.setObject(2, tenantId);
             statement.executeUpdate();
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed deleting concept " + conceptName + " from JDBC store", exception);
@@ -124,6 +128,12 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     private Map<String, Object> dbRecord(ConceptShape shape, ConceptRecord record) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put(shape.idColumn(), coerceId(record.id()));
+        // tenant_id has no safe DB-level default (unlike "version" DEFAULT 0) — it must come from
+        // the ConceptRecord's own dedicated tenantId component, not record.data(). The
+        // kernel-gateway write path (DefaultConceptGateway.save -> store.save) builds its payload
+        // from DSL-declared fields only and never puts a "tenantId" entry into data(), so relying on
+        // record.data() alone (as this loop does for every other column) would silently write NULL.
+        out.put("tenant_id", record.tenantId());
         for (Map.Entry<String, Object> entry : record.data().entrySet()) {
             String column = shape.columnByField().getOrDefault(entry.getKey().toLowerCase(Locale.ROOT), toDbColumn(entry.getKey()));
             out.put(column, entry.getValue());

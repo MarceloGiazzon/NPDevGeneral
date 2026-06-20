@@ -129,6 +129,10 @@ public class {{entityName}}ServiceBase {
         {{entityName}} e = new {{entityName}}();
         runtimeSupport.assignGeneratedId("{{conceptName}}", e, generatedId);
         runtimeSupport.applyCreateFields("{{conceptName}}", source, e);
+        // Tenant isolation: the row is owned by whoever creates it, from the verified auth
+        // context — never from caller-supplied data, since CreateRequest DTOs never carry a
+        // tenantId field (DtoEmitter only emits DSL-declared fields).
+        e.setTenantId(currentTenantId());
 
         {{entityName}} created = saveWithIntegrityMapping(e);
 {{#kernelControlled}}
@@ -425,16 +429,31 @@ public class {{entityName}}ServiceBase {
         return runtimeSupport.resolveCurrentCrudContext();
     }
 
+    /**
+     * Tenant isolation: every {@code conceptStore} call is scoped to the caller's own tenant from
+     * the verified auth context, falling back to {@code DEFAULT_TENANT_ID} only when no tenant
+     * claim is present at all (e.g. an unauthenticated trial boot). The DB-level unique index on a
+     * {@code unique:true} field stays GLOBAL (not tenant-scoped) — tenant-scoping it would break FK
+     * resolution for natural-key bond anchors — so {@link #existsUniqueInConceptStore} pre-checking
+     * only the caller's tenant is an intentional, narrower pre-check: a genuine cross-tenant
+     * collision on a unique field still gets caught, just later, as a 409 data-integrity violation
+     * from the database instead of the friendlier validation error.
+     */
+    private String currentTenantId() {
+        String tenantId = generatedCrudExecutionContext().tenantId();
+        return tenantId == null || tenantId.isBlank() ? DEFAULT_TENANT_ID : tenantId;
+    }
+
     private Optional<{{entityName}}> findByIdFromConceptStore(UUID id) {
         if (id == null) {
             return Optional.empty();
         }
-        return conceptStore.findById(DEFAULT_TENANT_ID, CONCEPT_NAME, String.valueOf(id))
+        return conceptStore.findById(currentTenantId(), CONCEPT_NAME, String.valueOf(id))
                 .map(this::entityFromRecord);
     }
 
     private List<{{entityName}}> findAllFromConceptStore() {
-        return conceptStore.findAll(DEFAULT_TENANT_ID, CONCEPT_NAME).stream()
+        return conceptStore.findAll(currentTenantId(), CONCEPT_NAME).stream()
                 .map(this::entityFromRecord)
                 .toList();
     }
@@ -444,13 +463,13 @@ public class {{entityName}}ServiceBase {
         if (id == null) {
             throw new IllegalArgumentException("Generated CRUD cannot save {{conceptName}} without an id.");
         }
-        conceptStore.save(new ConceptRecord(CONCEPT_NAME, String.valueOf(id), DEFAULT_TENANT_ID, mapFromEntity(entity)));
+        conceptStore.save(new ConceptRecord(CONCEPT_NAME, String.valueOf(id), currentTenantId(), mapFromEntity(entity)));
         return entity;
     }
 
     private void deleteFromConceptStore(UUID id) {
         if (id != null) {
-            conceptStore.deleteById(DEFAULT_TENANT_ID, CONCEPT_NAME, String.valueOf(id));
+            conceptStore.deleteById(currentTenantId(), CONCEPT_NAME, String.valueOf(id));
         }
     }
 
@@ -459,7 +478,7 @@ public class {{entityName}}ServiceBase {
             return false;
         }
         String normalizedField = fieldName.trim();
-        for (ConceptRecord record : conceptStore.findAll(DEFAULT_TENANT_ID, CONCEPT_NAME)) {
+        for (ConceptRecord record : conceptStore.findAll(currentTenantId(), CONCEPT_NAME)) {
             if (excludeId != null && String.valueOf(excludeId).equalsIgnoreCase(record.id())) {
                 continue;
             }

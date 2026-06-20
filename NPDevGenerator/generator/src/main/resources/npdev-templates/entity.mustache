@@ -33,6 +33,9 @@ public class {{entityName}} {
     @Column(name = "version", nullable = false)
     private Long version = 0L;
 
+    @Column(name = "tenant_id", nullable = false)
+    private String tenantId;
+
 
 {{#fields}}
     public {{javaType}} get{{capName}}() {
@@ -60,5 +63,13 @@ public class {{entityName}} {
 
     public void setVersion(Long version) {
         this.version = version;
+    }
+
+    public String getTenantId() {
+        return this.tenantId;
+    }
+
+    public void setTenantId(String tenantId) {
+        this.tenantId = tenantId;
     }
 }

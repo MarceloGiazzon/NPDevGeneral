@@ -22,7 +22,8 @@
     "RollbackExecutionController",
     "PublicationRollbackExecutorController",
     "SupportDiagnosticsController",
-    "StorageSummaryController"
+    "StorageSummaryController",
+    "PromotionController"
   ],
   "deferredControllers": [
     "HelloController",
@@ -66,7 +67,8 @@
     "SourceMutationRollbackAnchorService",
     "StructuralPublicationMappingService",
     "SupportDiagnosticsService",
-    "TenantStoragePathResolver"
+    "TenantStoragePathResolver",
+    "PromotionStateService"
   ],
   "supportedCoreServicePatterns": [
     "*ArtifactRealizationProvider",
