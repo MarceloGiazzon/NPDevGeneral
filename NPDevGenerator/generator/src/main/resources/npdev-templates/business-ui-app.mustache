@@ -3,6 +3,9 @@
 
   const STORAGE_KEY = "npdev.businessUi.apiKey";
   const NAV_COLLAPSED_KEY = "npdev.businessUi.navCollapsed";
+  const MENU_CONCEPT_NAME = "workspace::Menu";
+  const PREFERENCE_CONCEPT_NAME = "workspace::Preference";
+  const PREFERENCES_SECTION = { conceptName: "__preferences__" };
   const state = {
     manifest: null,
     panels: {},
@@ -10,7 +13,10 @@
     referenceLabels: {},
     activeConcept: null,
     roles: [],
-    isSuperUser: false
+    isSuperUser: false,
+    actorId: "",
+    menuItems: [],
+    preferences: { records: [], loading: false, loaded: false }
   };
 
   const el = {
@@ -249,12 +255,23 @@
     return Boolean(concept && concept.admin);
   }
 
+  function findConcept(conceptName) {
+    if (!state.manifest || !Array.isArray(state.manifest.concepts)) {
+      return null;
+    }
+    return state.manifest.concepts.find(function (c) { return c.conceptName === conceptName; }) || null;
+  }
+
   // Internal/admin concepts (identity::*, workspace::*) are only shown to a super-user.
+  // workspace::Preference is excluded here because it has its own personal "Preferences" panel.
   function visibleConcepts() {
     if (!state.manifest || !Array.isArray(state.manifest.concepts)) {
       return [];
     }
     return state.manifest.concepts.filter(function (c) {
+      if (c.conceptName === PREFERENCE_CONCEPT_NAME) {
+        return false;
+      }
       return !conceptIsAdmin(c) || state.isSuperUser;
     });
   }
@@ -273,6 +290,11 @@
       if (!isActive) panel.style.display = "none";
       el.app.appendChild(panel);
     });
+    if (findConcept(PREFERENCE_CONCEPT_NAME)) {
+      const prefsPanel = renderPreferencesPanel();
+      prefsPanel.style.display = activeId === sectionId(PREFERENCES_SECTION) ? "" : "none";
+      el.app.appendChild(prefsPanel);
+    }
   }
 
   function showConcept(concept) {
@@ -280,6 +302,156 @@
     el.app.querySelectorAll(".concept-panel").forEach(function (p) { p.style.display = "none"; });
     const section = document.getElementById(sectionId(concept));
     if (section) section.style.display = "";
+  }
+
+  function showPreferences() {
+    showConcept(PREFERENCES_SECTION);
+    loadPreferences();
+  }
+
+  // Loads every workspace::Preference row and keeps only the current actor's, client-side. This
+  // mirrors the documented tenant-isolation scope limitation of generated CRUD (no server-side
+  // owner filter yet), so it is a UI convenience, not a security boundary.
+  async function loadPreferences() {
+    const concept = findConcept(PREFERENCE_CONCEPT_NAME);
+    if (!concept) return;
+    state.preferences.loading = true;
+    render();
+    try {
+      const payload = await fetchJson(concept.endpointBase + "?page=0&size=200&sort=category&direction=asc", {
+        method: "GET",
+        headers: headers()
+      });
+      const rows = Array.isArray(payload.content) ? payload.content : [];
+      state.preferences.records = rows.filter(function (row) { return row.userId === state.actorId; });
+      state.preferences.loaded = true;
+      setStatus("Preferences loaded.", false);
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+    state.preferences.loading = false;
+    render();
+  }
+
+  async function savePreference(record, prefValue) {
+    const concept = findConcept(PREFERENCE_CONCEPT_NAME);
+    if (!concept) return;
+    try {
+      await fetchJson(concept.endpointBase + "/" + encodeURIComponent(record[concept.idField]), {
+        method: "PUT",
+        headers: headers(),
+        body: JSON.stringify({ userId: record.userId, category: record.category, prefKey: record.prefKey, prefValue: prefValue })
+      });
+      setStatus("Preference saved.", false);
+      await loadPreferences();
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  }
+
+  async function addPreference(category, prefKey, prefValue) {
+    const concept = findConcept(PREFERENCE_CONCEPT_NAME);
+    if (!concept) return;
+    if (!category.trim() || !prefKey.trim()) {
+      setStatus("Category and key are required.", true);
+      return;
+    }
+    try {
+      await fetchJson(concept.endpointBase, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({ userId: state.actorId, category: category.trim(), prefKey: prefKey.trim(), prefValue: prefValue })
+      });
+      setStatus("Preference added.", false);
+      await loadPreferences();
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  }
+
+  async function deletePreference(record) {
+    const concept = findConcept(PREFERENCE_CONCEPT_NAME);
+    if (!concept || !window.confirm("Delete this preference?")) return;
+    try {
+      await fetch(concept.endpointBase + "/" + encodeURIComponent(record[concept.idField]), { method: "DELETE", headers: headers() });
+      setStatus("Preference deleted.", false);
+      await loadPreferences();
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  }
+
+  function renderPreferencesPanel() {
+    const section = document.createElement("section");
+    section.className = "concept-panel";
+    section.id = sectionId(PREFERENCES_SECTION);
+
+    const header = document.createElement("div");
+    header.className = "panel-header";
+    const title = document.createElement("h2");
+    title.textContent = "My Preferences";
+    header.appendChild(title);
+    const actions = document.createElement("div");
+    actions.className = "panel-actions";
+    actions.appendChild(button("Refresh", "", loadPreferences));
+    header.appendChild(actions);
+    section.appendChild(header);
+
+    if (!state.preferences.loaded && !state.preferences.loading) {
+      loadPreferences();
+    }
+
+    const byCategory = {};
+    state.preferences.records.forEach(function (row) {
+      const category = row.category || "General";
+      if (!byCategory[category]) byCategory[category] = [];
+      byCategory[category].push(row);
+    });
+
+    Object.keys(byCategory).sort().forEach(function (category) {
+      const group = document.createElement("div");
+      group.className = "filters";
+      const groupTitle = document.createElement("strong");
+      groupTitle.textContent = category;
+      group.appendChild(groupTitle);
+      section.appendChild(group);
+
+      byCategory[category].forEach(function (row) {
+        const line = document.createElement("div");
+        line.className = "filters";
+        const label = document.createElement("span");
+        label.textContent = row.prefKey + ":";
+        const input = document.createElement("input");
+        input.type = "text";
+        input.value = row.prefValue || "";
+        line.appendChild(label);
+        line.appendChild(input);
+        line.appendChild(button("Save", "primary", function () { savePreference(row, input.value); }));
+        line.appendChild(button("Delete", "danger", function () { deletePreference(row); }));
+        section.appendChild(line);
+      });
+    });
+
+    const addRow = document.createElement("div");
+    addRow.className = "filters";
+    const categoryInput = document.createElement("input");
+    categoryInput.type = "text";
+    categoryInput.placeholder = "Category";
+    const keyInput = document.createElement("input");
+    keyInput.type = "text";
+    keyInput.placeholder = "Key";
+    const valueInput = document.createElement("input");
+    valueInput.type = "text";
+    valueInput.placeholder = "Value";
+    addRow.appendChild(categoryInput);
+    addRow.appendChild(keyInput);
+    addRow.appendChild(valueInput);
+    addRow.appendChild(button("Add", "primary", function () {
+      addPreference(categoryInput.value, keyInput.value, valueInput.value);
+    }));
+    section.appendChild(addRow);
+
+    return section;
   }
 
   function renderPanel(concept) {
@@ -1349,6 +1521,7 @@
       }
     }
     await loadPrincipal();
+    await loadMenuItems();
     renderNav();
     render();
     await Promise.all(visibleConcepts().map(loadPanel));
@@ -1360,10 +1533,51 @@
     try {
       const me = await fetchJson("/api/me", { method: "GET", headers: headers() });
       state.roles = Array.isArray(me.roles) ? me.roles : [];
+      state.actorId = me.actorId || "";
     } catch (error) {
       state.roles = [];
+      state.actorId = "";
     }
     state.isSuperUser = Boolean(superUserRole) && state.roles.indexOf(superUserRole) !== -1;
+  }
+
+  // workspace::Menu rows are an optional, app-author-curated overlay on top of the auto-generated
+  // per-concept nav: when the table is empty (the common case until an app author populates it),
+  // this is a no-op and the nav looks exactly as it always has.
+  async function loadMenuItems() {
+    state.menuItems = [];
+    const concept = findConcept(MENU_CONCEPT_NAME);
+    if (!concept) return;
+    try {
+      const payload = await fetchJson(concept.endpointBase + "?page=0&size=200&sort=ordinal&direction=asc", {
+        method: "GET",
+        headers: headers()
+      });
+      const rows = Array.isArray(payload.content) ? payload.content : [];
+      state.menuItems = rows.filter(function (row) {
+        return row.visible !== false && (!row.requiredRole || state.roles.indexOf(row.requiredRole) !== -1);
+      });
+    } catch (error) {
+      state.menuItems = [];
+    }
+  }
+
+  // Resolves a workspace::Menu row's free-text "target" to something the nav can link to:
+  // kind BUSINESS targets a concept by conceptName/displayName; kind INTERNAL only recognizes
+  // "preferences" today. Unresolvable rows are silently skipped rather than breaking the nav.
+  function resolveMenuTarget(item) {
+    if (item.kind === "BUSINESS") {
+      return visibleConcepts().find(function (c) {
+        return c.conceptName === item.target || c.displayName === item.target;
+      }) || null;
+    }
+    if (item.kind === "INTERNAL") {
+      const key = (item.target || "").trim().toLowerCase();
+      if (key === "preferences" && findConcept(PREFERENCE_CONCEPT_NAME)) {
+        return PREFERENCES_SECTION;
+      }
+    }
+    return null;
   }
 
   function renderNav() {
@@ -1374,31 +1588,49 @@
     const admin = concepts.filter(conceptIsAdmin);
     const nav = { first: true };
 
-    function addLink(concept) {
+    function addLink(concept, labelOverride, excludeFromDefault) {
       const a = document.createElement("a");
       a.href = "#" + sectionId(concept);
-      a.textContent = concept.displayName;
-      if (nav.first) {
+      a.textContent = labelOverride || concept.displayName;
+      if (!excludeFromDefault && nav.first) {
         a.classList.add("active");
         if (!state.activeConcept) state.activeConcept = concept;
         nav.first = false;
       }
       a.addEventListener("click", function (e) {
         e.preventDefault();
-        showConcept(concept);
+        if (concept === PREFERENCES_SECTION) {
+          showPreferences();
+        } else {
+          showConcept(concept);
+        }
         el.sideNav.querySelectorAll("a").forEach(function (l) { l.classList.remove("active"); });
         a.classList.add("active");
       });
       el.sideNav.appendChild(a);
     }
 
-    business.forEach(addLink);
+    if (findConcept(PREFERENCE_CONCEPT_NAME)) {
+      addLink(PREFERENCES_SECTION, "My Preferences", true);
+    }
+    if (state.menuItems.length) {
+      const menuHeader = document.createElement("div");
+      menuHeader.className = "nav-group-header";
+      menuHeader.textContent = "Menu";
+      el.sideNav.appendChild(menuHeader);
+      state.menuItems.forEach(function (item) {
+        const target = resolveMenuTarget(item);
+        if (target) addLink(target, item.label, true);
+      });
+    }
+
+    business.forEach(function (concept) { addLink(concept); });
     if (admin.length) {
       const header = document.createElement("div");
       header.className = "nav-group-header";
       header.textContent = "Admin";
       el.sideNav.appendChild(header);
-      admin.forEach(addLink);
+      admin.forEach(function (concept) { addLink(concept); });
     }
   }
 

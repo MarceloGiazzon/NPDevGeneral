@@ -119,16 +119,16 @@ public class {{entityName}}ServiceBase {
                 }
             }
         }
-        Map<String, Object> createPayload = runtimeSupport.buildCreateInvariantPayload("{{entityName}}", source);
-        UUID generatedId = runtimeSupport.ensureGeneratedId("{{entityName}}", createPayload);
-        enforceWithKernel("{{entityName}}", createPayload);
+        Map<String, Object> createPayload = runtimeSupport.buildCreateInvariantPayload("{{conceptName}}", source);
+        UUID generatedId = runtimeSupport.ensureGeneratedId("{{conceptName}}", createPayload);
+        enforceWithKernel("{{conceptName}}", createPayload);
 {{#kernelControlled}}
         enforceWithConceptGateway("{{conceptName}}", generatedId, createPayload);
 {{/kernelControlled}}
 
         {{entityName}} e = new {{entityName}}();
-        runtimeSupport.assignGeneratedId("{{entityName}}", e, generatedId);
-        runtimeSupport.applyCreateFields("{{entityName}}", source, e);
+        runtimeSupport.assignGeneratedId("{{conceptName}}", e, generatedId);
+        runtimeSupport.applyCreateFields("{{conceptName}}", source, e);
 
         {{entityName}} created = saveWithIntegrityMapping(e);
 {{#kernelControlled}}
@@ -167,20 +167,20 @@ public class {{entityName}}ServiceBase {
 
         {{entityName}} existing = opt.get();
         runtimeSupport.checkOptimisticVersion("{{conceptName}}", existing, source);
-        String previousLifecycleStatus = runtimeSupport.captureLifecycleStatus("{{entityName}}", existing);
-        Map<String, Object> updatePayload = runtimeSupport.buildUpdateInvariantPayload("{{entityName}}", id, existing, source);
-        enforceWithKernel("{{entityName}}", updatePayload);
+        String previousLifecycleStatus = runtimeSupport.captureLifecycleStatus("{{conceptName}}", existing);
+        Map<String, Object> updatePayload = runtimeSupport.buildUpdateInvariantPayload("{{conceptName}}", id, existing, source);
+        enforceWithKernel("{{conceptName}}", updatePayload);
 {{#kernelControlled}}
         enforceWithConceptGateway("{{conceptName}}", id, updatePayload);
 {{/kernelControlled}}
-        runtimeSupport.applyUpdateFields("{{entityName}}", source, existing);
+        runtimeSupport.applyUpdateFields("{{conceptName}}", source, existing);
         existing.setVersion((existing.getVersion() == null ? 0L : existing.getVersion()) + 1);
 
         {{entityName}} updated = saveWithIntegrityMapping(existing);
 {{#kernelControlled}}
         runtimeSupport.auditCrudMutation("{{conceptName}}", "UPDATE", String.valueOf(updated.getId()), "ALLOW", crudCtx);
 {{/kernelControlled}}
-        runtimeSupport.publishLifecycleTransitionEvent("{{entityName}}", previousLifecycleStatus, updated, updatePayload);
+        runtimeSupport.publishLifecycleTransitionEvent("{{conceptName}}", previousLifecycleStatus, updated, updatePayload);
 {{#emitUpdatedEvent}}
         publishMutationEvent("updated", updated.getId(), updated);
 {{/emitUpdatedEvent}}
