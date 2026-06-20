@@ -26,11 +26,13 @@ final class NpdevInternalTablesSourceOfTruthTest {
             "npdev_schema_metadata",
             "npdev_scheduled_event",
             "npdev_trace",
-            "npdev_promotion_state"
+            "npdev_promotion_state",
+            "npdev_tenant"
     );
 
+    // npdev_tenant was previously future-scope; it is now in scope as the backbone of the runtime
+    // tenant lifecycle (hybrid multitenancy), so it has moved up to EXPECTED_CURRENT_TABLES.
     private static final Set<String> FORBIDDEN_FUTURE_SCOPE_TABLES = Set.of(
-            "npdev_tenant",
             "npdev_tenant_alias",
             "npdev_tenant_app_entitlement",
             "npdev_tenant_coda_entitlement",

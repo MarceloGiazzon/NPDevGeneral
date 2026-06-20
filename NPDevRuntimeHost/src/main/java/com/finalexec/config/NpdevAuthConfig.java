@@ -2,6 +2,8 @@ package com.finalexec.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finalexec.auth.IdentityAwareContextResolver;
+import com.finalexec.auth.TenantStatusFilter;
+import com.finalexec.npdev.service.TenantRegistryService;
 import com.npdev.adapters.authcontext.jwt.JwtAuthenticatedContextResolver;
 import com.npdev.adapters.authz.defaultpolicy.DefaultExecutionAuthorizationPolicy;
 import com.npdev.adapters.authz.defaultpolicy.DefaultTenantIsolationPolicy;
@@ -59,6 +61,20 @@ public class NpdevAuthConfig {
         bean.setFilter(runtimeApiKeyAuthFilter);
         bean.addUrlPatterns("/*");
         bean.setOrder(-100);
+        bean.setEnabled(runtimeSettings.authEnabled());
+        return bean;
+    }
+
+    @Bean
+    public FilterRegistrationBean<TenantStatusFilter> tenantStatusFilterRegistration(
+            TenantRegistryService tenantRegistryService,
+            RuntimeSettings runtimeSettings
+    ) {
+        FilterRegistrationBean<TenantStatusFilter> bean = new FilterRegistrationBean<>();
+        bean.setFilter(new TenantStatusFilter(tenantRegistryService));
+        bean.addUrlPatterns("/*");
+        // After the authentication filter (-100) so the claims attribute is already set.
+        bean.setOrder(-90);
         bean.setEnabled(runtimeSettings.authEnabled());
         return bean;
     }
