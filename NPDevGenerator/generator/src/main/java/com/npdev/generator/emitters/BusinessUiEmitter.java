@@ -170,6 +170,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("tableName", SqlIdentifierSupport.tableName(concept));
             node.put("idField", idField.getName());
             node.put("endpointBase", endpointBase(concept));
+            node.put("formColumns", formColumns(concept));
+            node.put("displayMode", displayMode(concept));
             node.put("fields", manifestFields(concept, conceptsByName(concepts)));
             node.put("list", manifestList(concept, idField));
             Map<String, Object> actions = new LinkedHashMap<>();
@@ -206,6 +208,13 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("sortable", isSortable(field));
             node.put("filterable", isFilterable(field));
             node.put("showInDefaultWebUi", isShowInUi(field));
+            node.put("tab", firstNonBlank(fieldUiString(field, CompiledPresentationMetadata::getTab), ""));
+            node.put("column", fieldUiInt(field, CompiledPresentationMetadata::getColumn));
+            node.put("columnSpan", fieldUiInt(field, CompiledPresentationMetadata::getColumnSpan, 1));
+            node.put("visibleWhen", firstNonBlank(fieldUiString(field, CompiledPresentationMetadata::getVisibleWhen), ""));
+            node.put("enabledWhen", firstNonBlank(fieldUiString(field, CompiledPresentationMetadata::getEnabledWhen), ""));
+            node.put("readonlyWhen", firstNonBlank(fieldUiString(field, CompiledPresentationMetadata::getReadonlyWhen), ""));
+            node.put("requiredWhen", firstNonBlank(fieldUiString(field, CompiledPresentationMetadata::getRequiredWhen), ""));
             if ("array".equals(manifestType(field))) {
                 CompiledSchema schema = field.getSchema();
                 if (schema != null && schema.getItems() != null && !schema.getItems().getProperties().isEmpty()) {
@@ -311,6 +320,42 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             return false;
         }
         return BuiltinPackComposer.BUILTIN_PACK_ALIASES.contains(name.substring(0, sep));
+    }
+
+    private static int formColumns(CompiledConcept concept) {
+        CompiledPresentationMetadata ui = concept.getUi();
+        Integer columns = ui == null ? null : ui.getFormColumns();
+        return columns == null || columns < 1 ? 1 : columns;
+    }
+
+    private static String displayMode(CompiledConcept concept) {
+        CompiledPresentationMetadata ui = concept.getUi();
+        return firstNonBlank(ui == null ? null : ui.getDisplayMode(), "");
+    }
+
+    private static String fieldUiString(
+            CompiledField field,
+            java.util.function.Function<CompiledPresentationMetadata, String> accessor
+    ) {
+        CompiledPresentationMetadata ui = field.getUi();
+        return ui == null ? null : accessor.apply(ui);
+    }
+
+    private static Integer fieldUiInt(
+            CompiledField field,
+            java.util.function.Function<CompiledPresentationMetadata, Integer> accessor
+    ) {
+        return fieldUiInt(field, accessor, null);
+    }
+
+    private static Integer fieldUiInt(
+            CompiledField field,
+            java.util.function.Function<CompiledPresentationMetadata, Integer> accessor,
+            Integer fallback
+    ) {
+        CompiledPresentationMetadata ui = field.getUi();
+        Integer value = ui == null ? null : accessor.apply(ui);
+        return value == null ? fallback : value;
     }
 
     private static String fieldLabel(CompiledField field) {

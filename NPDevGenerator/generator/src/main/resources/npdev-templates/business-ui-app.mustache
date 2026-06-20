@@ -36,6 +36,129 @@
     return value === null || value === undefined ? "" : String(value);
   }
 
+  // Tiny boolean-expression evaluator for visibleWhen/enabledWhen/readonlyWhen/requiredWhen.
+  // Grammar: OR -> AND ("||" AND)* ; AND -> CMP ("&&" CMP)* ; CMP -> PRIMARY (("=="|"!=") PRIMARY)? ;
+  // PRIMARY -> IDENT | STRING | "null" | "(" OR ")". Identifiers resolve against the sibling field
+  // values passed in. Unparsable/unknown expressions fail OPEN (return true) so a malformed condition
+  // never locks a field out of the form.
+  function evaluateWhen(expr, values) {
+    if (!expr) {
+      return true;
+    }
+    try {
+      const tokens = tokenizeWhen(expr);
+      let pos = 0;
+      function peek() { return tokens[pos]; }
+      function advance() { return tokens[pos++]; }
+      function parseOr() {
+        let left = parseAnd();
+        while (peek() && peek().type === "OR") { advance(); left = parseAnd() || left; }
+        return left;
+      }
+      function parseAnd() {
+        let left = parseCmp();
+        while (peek() && peek().type === "AND") { advance(); left = parseCmp() && left; }
+        return left;
+      }
+      function parseCmp() {
+        const left = parsePrimary();
+        const op = peek();
+        if (op && (op.type === "EQ" || op.type === "NEQ")) {
+          advance();
+          const right = parsePrimary();
+          return op.type === "EQ" ? left === right : left !== right;
+        }
+        return Boolean(left);
+      }
+      function parsePrimary() {
+        const tok = advance();
+        if (!tok) { throw new Error("Unexpected end of expression"); }
+        if (tok.type === "LPAREN") {
+          const value = parseOr();
+          const close = advance();
+          if (!close || close.type !== "RPAREN") { throw new Error("Expected )"); }
+          return value;
+        }
+        if (tok.type === "STRING") { return tok.value; }
+        if (tok.type === "NULL") { return null; }
+        if (tok.type === "IDENT") {
+          const raw = values[tok.value];
+          return raw === undefined || raw === null || raw === "" ? null : raw;
+        }
+        throw new Error("Unexpected token " + tok.type);
+      }
+      const result = parseOr();
+      if (pos !== tokens.length) {
+        throw new Error("Trailing tokens in expression");
+      }
+      return Boolean(result);
+    } catch (error) {
+      return true;
+    }
+  }
+
+  function tokenizeWhen(expr) {
+    const tokens = [];
+    let i = 0;
+    while (i < expr.length) {
+      const c = expr[i];
+      if (/\s/.test(c)) { i++; continue; }
+      if (c === "(") { tokens.push({ type: "LPAREN" }); i++; continue; }
+      if (c === ")") { tokens.push({ type: "RPAREN" }); i++; continue; }
+      if (c === "'" || c === "\"") {
+        const quote = c;
+        let j = i + 1;
+        let value = "";
+        while (j < expr.length && expr[j] !== quote) { value += expr[j]; j++; }
+        tokens.push({ type: "STRING", value: value });
+        i = j + 1;
+        continue;
+      }
+      if (expr.substr(i, 2) === "==") { tokens.push({ type: "EQ" }); i += 2; continue; }
+      if (expr.substr(i, 2) === "!=") { tokens.push({ type: "NEQ" }); i += 2; continue; }
+      if (expr.substr(i, 2) === "&&") { tokens.push({ type: "AND" }); i += 2; continue; }
+      if (expr.substr(i, 2) === "||") { tokens.push({ type: "OR" }); i += 2; continue; }
+      const identMatch = /^[A-Za-z_][A-Za-z0-9_]*/.exec(expr.slice(i));
+      if (identMatch) {
+        const word = identMatch[0];
+        tokens.push(word === "null" ? { type: "NULL" } : { type: "IDENT", value: word });
+        i += word.length;
+        continue;
+      }
+      throw new Error("Unexpected character '" + c + "' in expression");
+    }
+    return tokens;
+  }
+
+  function currentFormValues(concept, form, record) {
+    const values = {};
+    concept.fields.forEach(function (field) {
+      const control = form.elements[field.name];
+      if (control) {
+        values[field.name] = control.type === "checkbox" ? control.checked : control.value;
+      } else if (record && Object.prototype.hasOwnProperty.call(record, field.name)) {
+        values[field.name] = record[field.name];
+      }
+    });
+    return values;
+  }
+
+  function isFieldVisible(field, values) {
+    return evaluateWhen(field.visibleWhen, values);
+  }
+
+  function isFieldEnabled(field, values) {
+    return evaluateWhen(field.enabledWhen, values);
+  }
+
+  function isFieldReadonlyByCondition(field, values) {
+    return field.readonlyWhen ? evaluateWhen(field.readonlyWhen, values) : false;
+  }
+
+  function isFieldRequiredNow(field, values) {
+    return Boolean(field.required) || (field.requiredWhen ? evaluateWhen(field.requiredWhen, values) : false);
+  }
+
   function setStatus(message, error) {
     el.status.textContent = message || "";
     el.status.classList.toggle("is-error", Boolean(error));
@@ -469,6 +592,11 @@
     }
     const rawValue = text(value).trim();
     if (!isReferenceField(field)) {
+      const enumOption = findEnumOption(field, rawValue);
+      if (enumOption) {
+        target.appendChild(renderEnumBadge(enumOption));
+        return;
+      }
       target.textContent = formatValue(value);
       return;
     }
@@ -491,6 +619,39 @@
     }
   }
 
+  function findEnumOption(field, rawValue) {
+    if (!rawValue || !Array.isArray(field.enumOptions) || !field.enumOptions.length) {
+      return null;
+    }
+    return field.enumOptions.find(function (option) { return text(option.value) === rawValue; }) || null;
+  }
+
+  function renderEnumBadge(option) {
+    const span = document.createElement("span");
+    span.className = "enum-value";
+    if (option.badgeHint) {
+      span.classList.add("enum-badge", "badge-" + slugify(option.badgeHint));
+    }
+    if (option.iconHint) {
+      const icon = document.createElement("span");
+      icon.className = "enum-icon";
+      icon.textContent = option.iconHint;
+      icon.setAttribute("aria-hidden", "true");
+      span.appendChild(icon);
+    }
+    const label = document.createElement("span");
+    label.textContent = option.label || option.value;
+    span.appendChild(label);
+    if (option.description) {
+      span.title = option.description;
+    }
+    return span;
+  }
+
+  function slugify(value) {
+    return String(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  }
+
   function openDetails(concept, record) {
     const content = document.createElement("div");
     content.className = "details";
@@ -508,16 +669,80 @@
     openModal(concept.displayName, content);
   }
 
+  function groupFieldsByTab(fields) {
+    const order = [];
+    const byTab = {};
+    fields.forEach(function (field) {
+      const tabName = field.tab || "";
+      if (!byTab[tabName]) {
+        byTab[tabName] = [];
+        order.push(tabName);
+      }
+      byTab[tabName].push(field);
+    });
+    return order.map(function (name) { return { name: name, fields: byTab[name] }; });
+  }
+
   function openForm(concept, mode, record) {
     const form = document.createElement("form");
     form.className = "record-form";
-    formFields(concept, mode).forEach(function (field) {
-      const label = document.createElement("label");
-      label.textContent = (field.label || field.name) + (field.required ? " *" : "");
-      const input = createInput(field, record ? record[field.name] : "");
-      label.appendChild(input);
-      form.appendChild(label);
+    form.dataset.mode = mode;
+
+    const fields = formFields(concept, mode);
+    const groups = groupFieldsByTab(fields);
+    const showTabs = groups.length > 1;
+    const columns = concept.formColumns && concept.formColumns > 1 ? concept.formColumns : 1;
+
+    const tabStrip = showTabs ? document.createElement("div") : null;
+    if (tabStrip) {
+      tabStrip.className = "form-tabs";
+      form.appendChild(tabStrip);
+    }
+
+    const sections = [];
+    groups.forEach(function (group, index) {
+      const section = document.createElement("div");
+      section.className = "form-tab-section";
+      if (index !== 0) {
+        section.classList.add("field-hidden");
+      }
+      const grid = document.createElement("div");
+      grid.className = "form-grid";
+      grid.style.gridTemplateColumns = "repeat(" + columns + ", 1fr)";
+      group.fields.forEach(function (field) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "form-field";
+        if (field.column) {
+          wrapper.style.gridColumn = field.column + " / span " + (field.columnSpan || 1);
+        } else if (field.columnSpan && field.columnSpan > 1) {
+          wrapper.style.gridColumn = "span " + field.columnSpan;
+        }
+        const label = document.createElement("label");
+        const labelText = document.createElement("span");
+        labelText.className = "field-label-text";
+        labelText.textContent = (field.label || field.name) + (field.required ? " *" : "");
+        label.appendChild(labelText);
+        const input = createInput(field, record ? record[field.name] : "");
+        input.addEventListener("input", function () { applyConditionals(concept, form, record); });
+        input.addEventListener("change", function () { applyConditionals(concept, form, record); });
+        label.appendChild(input);
+        wrapper.appendChild(label);
+        grid.appendChild(wrapper);
+      });
+      section.appendChild(grid);
+      form.appendChild(section);
+      sections.push(section);
+
+      if (tabStrip) {
+        const tabButton = button(group.name || "General", index === 0 ? "form-tab active" : "form-tab", function () {
+          sections.forEach(function (s, i) { s.classList.toggle("field-hidden", i !== index); });
+          Array.prototype.forEach.call(tabStrip.querySelectorAll(".form-tab"), function (b) { b.classList.remove("active"); });
+          tabButton.classList.add("active");
+        });
+        tabStrip.appendChild(tabButton);
+      }
     });
+
     const footer = document.createElement("div");
     footer.className = "modal-actions";
     footer.appendChild(button("Cancel", "", closeModal));
@@ -530,6 +755,33 @@
       submitForm(concept, mode, record, form);
     });
     openModal(mode === "edit" ? "Edit " + concept.displayName : "New " + concept.displayName, form);
+    applyConditionals(concept, form, record);
+  }
+
+  function applyConditionals(concept, form, record) {
+    const values = currentFormValues(concept, form, record);
+    formFields(concept, form.dataset.mode).forEach(function (field) {
+      const control = form.elements[field.name];
+      if (!control) {
+        return;
+      }
+      const visible = isFieldVisible(field, values);
+      const enabled = isFieldEnabled(field, values);
+      const readonly = isFieldReadonlyByCondition(field, values);
+      const required = isFieldRequiredNow(field, values);
+      const wrapper = control.closest(".form-field");
+      if (wrapper) {
+        wrapper.classList.toggle("field-hidden", !visible);
+        const labelText = wrapper.querySelector(".field-label-text");
+        if (labelText) {
+          labelText.textContent = (field.label || field.name) + (required ? " *" : "");
+        }
+      }
+      control.disabled = !enabled || readonly;
+      if ("readOnly" in control) {
+        control.readOnly = readonly;
+      }
+    });
   }
 
   function createInput(field, value) {
@@ -847,13 +1099,18 @@
   }
 
   async function submitForm(concept, mode, record, form) {
+    const values = currentFormValues(concept, form, record);
     const payload = {};
     for (const field of formFields(concept, mode)) {
+      if (!isFieldVisible(field, values)) {
+        continue;
+      }
       const control = form.elements[field.name];
+      const required = isFieldRequiredNow(field, values);
       if (field.type === "array") {
         let arrValue;
         try { arrValue = JSON.parse(control.value || "[]"); } catch (e) { arrValue = []; }
-        if (field.required && (!Array.isArray(arrValue) || arrValue.length === 0)) {
+        if (required && (!Array.isArray(arrValue) || arrValue.length === 0)) {
           setStatus((field.label || field.name) + " must have at least one item.", true);
           return;
         }
@@ -861,7 +1118,7 @@
         continue;
       }
       const rawValue = control.type === "checkbox" ? control.checked : text(control.value).trim();
-      if (field.required && (rawValue === "" || rawValue === null || rawValue === undefined)) {
+      if (required && (rawValue === "" || rawValue === null || rawValue === undefined)) {
         setStatus((field.label || field.name) + " is required.", true);
         return;
       }

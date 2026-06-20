@@ -310,6 +310,67 @@ select {
   justify-content: flex-end;
 }
 
+.form-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid #e7ebf0;
+}
+
+.form-tab {
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #4c5a69;
+  padding: 8px 4px;
+  min-height: 32px;
+}
+
+.form-tab:hover {
+  border-bottom-color: #c8d0da;
+}
+
+.form-tab.active {
+  color: #1769aa;
+  font-weight: 600;
+  border-bottom-color: #1769aa;
+}
+
+
+.form-grid {
+  display: grid;
+  gap: 14px 16px;
+}
+
+.form-field {
+  display: grid;
+}
+
+.field-hidden {
+  display: none !important;
+}
+
+.enum-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.enum-badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: #eef2f7;
+  color: #34404e;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.enum-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
 @media (max-width: 760px) {
   .side-nav {
     display: none;
