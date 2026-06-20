@@ -32,7 +32,8 @@ final class SchemaRealizationEmitterTenantColumnTest {
                 "Order", "Order", "orders",
                 List.of(
                         new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
-                        new CompiledField("name", "string", "String", false, true, false)
+                        new CompiledField("name", "string", "String", false, true, false),
+                        new CompiledField("code", "string", "String", false, true, true)
                 )
         );
         CompiledModel model = new CompiledModel("test", "1.0.0", "1.0.0", Map.of(order.getName(), order));
@@ -42,10 +43,14 @@ final class SchemaRealizationEmitterTenantColumnTest {
 
         Path schemaDir = outRoot.resolve("src/main/resources/db/schema-realization");
         String v1Sql = Files.readString(schemaDir.resolve("V1__npdev_schema_realization.sql"));
-        assertTrue(v1Sql.contains("tenant_id VARCHAR(120) NOT NULL"), v1Sql);
+        // V1 column is backfill-safe (DEFAULT 'default') so even a path that omits tenant_id never
+        // writes NULL, and an ordinary unique field is unique WITHIN a tenant, not globally.
+        assertTrue(v1Sql.contains("tenant_id VARCHAR(120) NOT NULL DEFAULT 'default'"), v1Sql);
+        assertTrue(v1Sql.contains("ON orders (tenant_id, code)"), v1Sql);
 
         String additiveSql = Files.readString(schemaDir.resolve("R__npdev_schema_additive_columns.sql"));
-        assertTrue(additiveSql.contains("ALTER TABLE orders ADD COLUMN IF NOT EXISTS tenant_id"), additiveSql);
+        // Additive path backfills pre-existing rows via DEFAULT so in-place upgrades stay visible.
+        assertTrue(additiveSql.contains("ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(120) DEFAULT 'default'"), additiveSql);
 
         JsonNode manifest = new ObjectMapper().readTree(
                 outRoot.resolve("src/main/resources/npdev/db/schema-realization-manifest.json").toFile());

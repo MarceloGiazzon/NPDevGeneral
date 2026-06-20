@@ -43,7 +43,6 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
 
     public PostgresPersistenceCapabilityAdapter(DataSource dataSource) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
-        System.out.println("NPDEV-UPGRADE-MARKER 2026-03-03 :: PostgresPersistenceCapabilityAdapter created (this proves NP export is running)");
     }
 
     @Override
@@ -78,15 +77,6 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
             ensureColumnFirst(columns, idColumn);
 
             String sql = buildUpsertSql(connection, table, columns, idColumn);
-            System.out.println(String.format(
-                    "NPDEV-PG-SAVE :: concept=%s table=%s columns=%s sql=%s recordKeys=%s",
-                    concept,
-                    table,
-                    columns,
-                    sql,
-                    runtimeRecord.keySet()
-            ));
-
             try (PreparedStatement ps = connection.prepareStatement(sql)) {
                 int idx = 1;
                 for (String column : columns) {

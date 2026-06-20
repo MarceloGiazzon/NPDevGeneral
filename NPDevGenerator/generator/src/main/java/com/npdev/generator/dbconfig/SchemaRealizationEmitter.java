@@ -93,10 +93,13 @@ public final class SchemaRealizationEmitter {
     private static void appendAdditiveColumns(StringBuilder sql, CompiledConcept concept, DatabaseEngine engine,
             Map<String, CompiledConcept> conceptsByName) {
         String table = SqlIdentifierSupport.tableName(concept);
+        // DEFAULT 'default' backfills pre-existing rows when tenant_id is added to a table in place
+        // (the safe-additive path). Without it, an in-place upgrade would leave legacy rows NULL and
+        // every tenant-scoped read (WHERE tenant_id = ?) would silently make all existing data
+        // unreachable. The DB-level DEFAULT also guards the kernel-injected-synthetic-column class of
+        // bug, mirroring how 'version BIGINT NOT NULL DEFAULT 0' is handled.
         sql.append("ALTER TABLE ").append(table).append(" ADD COLUMN IF NOT EXISTS tenant_id ")
-                .append(renderType("VARCHAR(120)", engine)).append(";\n");
-        sql.append("-- NOTE: 'tenant_id' is required by the platform but added nullable here; ")
-                .append("existing rows will have NULL until backfilled or a destructive recreate is run.\n");
+                .append(renderType("VARCHAR(120)", engine)).append(" DEFAULT 'default';\n");
         for (CompiledField field : concept.getFields()) {
             if (!isAdditiveEligible(concept, field, conceptsByName)) {
                 continue;
@@ -185,7 +188,7 @@ public final class SchemaRealizationEmitter {
             lines.add(0, "  id UUID NOT NULL");
         }
         lines.add("  version BIGINT NOT NULL DEFAULT 0");
-        lines.add("  tenant_id " + renderType("VARCHAR(120)", engine) + " NOT NULL");
+        lines.add("  tenant_id " + renderType("VARCHAR(120)", engine) + " NOT NULL DEFAULT 'default'");
         lines.add("  PRIMARY KEY (" + idColumn + ")");
         sql.append("CREATE TABLE IF NOT EXISTS ").append(table).append(" (\n");
         sql.append(String.join(",\n", lines)).append("\n);\n\n");
@@ -195,17 +198,25 @@ public final class SchemaRealizationEmitter {
             }
             String column = SqlIdentifierSupport.columnName(field);
             if (isConnectableAnchor(field) && !field.isId()) {
+                // A connectable natural-key anchor must stay GLOBALLY unique: it is a foreign-key
+                // target for scalar bonds, and a single-column FK cannot reference a column that is
+                // only unique as part of a composite (tenant_id, col) key. So anchors are the one
+                // unique kind that is deliberately not tenant-scoped.
                 String constraint = truncate("uq_" + table + "_" + column);
                 String constraintSql = "ALTER TABLE " + table
                         + " ADD CONSTRAINT " + constraint
                         + " UNIQUE (" + column + ")";
                 sql.append(addConstraintIfMissing(engine, table, constraint, constraintSql));
             } else {
+                // Ordinary unique fields are unique WITHIN a tenant, not across the whole database:
+                // two separate tenants may each have a user with email 'alice@x.com', and a global
+                // index would both forbid that and leak cross-tenant existence via 409 collisions.
+                // This also aligns the DB constraint with the per-tenant existsUnique pre-check.
                 sql.append("CREATE UNIQUE INDEX IF NOT EXISTS ")
                         .append(truncate("ux_" + table + "_" + column))
                         .append(" ON ")
                         .append(table)
-                        .append(" (")
+                        .append(" (tenant_id, ")
                         .append(column)
                         .append(");\n");
             }
