@@ -1,6 +1,7 @@
 package com.finalexec.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finalexec.auth.IdentityAwareContextResolver;
 import com.npdev.adapters.authcontext.jwt.JwtAuthenticatedContextResolver;
 import com.npdev.adapters.authz.defaultpolicy.DefaultExecutionAuthorizationPolicy;
 import com.npdev.adapters.authz.defaultpolicy.DefaultTenantIsolationPolicy;
@@ -32,8 +33,12 @@ public class NpdevAuthConfig {
 
     @Bean
     @ConditionalOnMissingBean(AuthenticatedContextResolver.class)
-    public AuthenticatedContextResolver authenticatedContextResolver() {
-        return new JwtAuthenticatedContextResolver();
+    public AuthenticatedContextResolver authenticatedContextResolver(
+            org.springframework.beans.factory.ObjectProvider<javax.sql.DataSource> dataSourceProvider
+    ) {
+        // Base resolver decodes the principal (api-key / JWT) into tenant + actor + claim-roles;
+        // the identity-aware wrapper lets the persistent identity pack override roles when populated.
+        return new IdentityAwareContextResolver(new JwtAuthenticatedContextResolver(), dataSourceProvider);
     }
 
     @Bean
