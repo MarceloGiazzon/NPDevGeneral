@@ -41,11 +41,11 @@ $artifactRoot = Join-Path $OutputRoot "ArtifactNP"
 $finalAppRoot = Join-Path $OutputRoot "App"
 $reportsRoot = Join-Path $OutputRoot "Reports"
 $generationMarkerPath = Join-Path $reportsRoot "generation-run.json"
-$migrationsRoot = Join-Path $generatorRoot "db-history\src\main\resources\db\migration"
+$dbDefinitionPath = Join-Path $sample.InputRoot "db.definition.json"
 
 Ensure-File -PathValue $gradlew -Label "Generator Gradle wrapper"
 Ensure-Directory -PathValue $runtimeHostRoot -Label "RuntimeHost base template"
-Ensure-Directory -PathValue $migrationsRoot -Label "Generator migrations root"
+Ensure-File -PathValue $dbDefinitionPath -Label "Sample db.definition.json"
 
 Info ("NPDevRoot:    " + $NPDevRoot)
 Info ("SampleId:     " + $sample.SampleId)
@@ -54,12 +54,13 @@ Info ("InputRoot:    " + $sample.InputRoot)
 Info ("OutputRoot:   " + $OutputRoot)
 Info ("ArtifactRoot: " + $artifactRoot)
 Info ("AppRoot:      " + $finalAppRoot)
+Info ("DbDefinition: " + $dbDefinitionPath)
 
 $generatorArgs = @(
     "--config", $sample.ConfigPath,
     "--model", $sample.ModelPath,
     "--out", $artifactRoot,
-    "--migrationsDir", $migrationsRoot,
+    "--dbDefinitionPath", $dbDefinitionPath,
     "--runtimeHostTemplate", $runtimeHostRoot,
     "--finalAppOut", $finalAppRoot,
     "--clean"
