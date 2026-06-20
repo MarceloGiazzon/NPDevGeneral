@@ -113,7 +113,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * can add (a non-bond field). New tables and unreachable databases are not safe-additive evidence
      * either way and fall through to the existing destructive-recreate-or-throw behavior.
      */
-    private boolean isSafeAdditiveChange(DataSource dataSource, SchemaManifest manifest) {
+    boolean isSafeAdditiveChange(DataSource dataSource, SchemaManifest manifest) {
         if (manifest.businessTableColumns().isEmpty()) {
             return false;
         }

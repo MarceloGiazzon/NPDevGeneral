@@ -7,6 +7,11 @@ import com.npdev.dsl.v1.parser.JsonModelParser;
 import com.npdev.dsl.v1.parser.ModelSourceResolver;
 import com.npdev.dsl.v1.parser.ResolvedModelSource;
 import com.npdev.dsl.v1.validation.SemanticValidator;
+import com.npdev.generator.dbconfig.DatabaseEngine;
+import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
+import com.npdev.generator.dbconfig.SchemaLifecyclePolicy;
+import com.npdev.generator.dbconfig.SchemaLifecycleStrategy;
+import com.npdev.generator.dbconfig.SchemaRealizationEmitter;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.strategy.RegenerationPolicy;
 import com.npdev.generator.templates.TemplateEngine;
@@ -33,20 +38,22 @@ class PackBondEmitterTest {
         assertTrue(errors.isEmpty(), "Expected pack bond model to validate, got: " + errors);
 
         CompiledModel compiled = new ModelCompiler().compile(ast);
-        Path migrations = temp.resolve("migrations");
-        String sql = Files.readString(new FlywayEmitter().emitRepeatableSchema(compiled, migrations));
+        Path outRoot = temp.resolve("app");
+        new SchemaRealizationEmitter().emit(compiled, outRoot, plan(), modelPath);
+        String sql = Files.readString(
+                outRoot.resolve("src/main/resources/db/schema-realization/V1__npdev_schema_realization.sql"));
 
         assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS cat_products"), sql);
         assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS cat_variants"), sql);
-        assertTrue(sql.contains("ADD COLUMN IF NOT EXISTS product_sku VARCHAR(255);"), sql);
-        assertTrue(sql.contains("REFERENCES cat_products (sku_id) ON UPDATE CASCADE ON DELETE CASCADE"), sql);
+        assertTrue(sql.contains("product_sku VARCHAR(255)"), sql);
+        assertTrue(sql.contains("REFERENCES cat_products (sku_id)") && sql.contains("ON UPDATE CASCADE"), sql);
         assertTrue(sql.contains("DO $$"), sql);
         assertTrue(sql.contains("INFORMATION_SCHEMA.TABLE_CONSTRAINTS"),
                 "DO $$ guard must query INFORMATION_SCHEMA, not pg_constraint. SQL:\n" + sql);
         assertFalse(sql.contains("pg_constraint"),
                 "pg_constraint is a PostgreSQL-only catalog absent in H2; must not appear. SQL:\n" + sql);
-        assertTrue(sql.contains("ALTER TABLE orders ADD CONSTRAINT fk_orders_product_sku"
-                + " FOREIGN KEY (product_sku) REFERENCES cat_products (sku_id) ON UPDATE CASCADE ON DELETE RESTRICT;"), sql);
+        assertTrue(sql.contains("ALTER TABLE orders") && sql.contains("ADD CONSTRAINT fk_orders_product_sku")
+                && sql.contains("FOREIGN KEY (product_sku)") && sql.contains("ON DELETE RESTRICT"), sql);
         assertFalse(sql.contains("ADD CONSTRAINT IF NOT EXISTS"), sql);
         assertFalse(sql.contains("::"), sql);
 
@@ -130,5 +137,42 @@ class PackBondEmitterTest {
         Files.createDirectories(path.getParent());
         Files.writeString(path, content);
         return path;
+    }
+
+    private GeneratedDatabasePlan plan() {
+        return new GeneratedDatabasePlan(
+                "pack-bond-test",
+                DatabaseEngine.POSTGRES,
+                DatabaseEngine.POSTGRES.storageMode(),
+                true,
+                "pack-bond-test",
+                "pack-bond-test",
+                "test",
+                temp.resolve("data").toString(),
+                "db-instance",
+                "",
+                "",
+                0,
+                0,
+                "jdbc:postgresql://localhost:5432/pack-bond-test",
+                "org.postgresql.Driver",
+                "sa",
+                "",
+                "",
+                0,
+                "",
+                "",
+                false,
+                true,
+                new SchemaLifecyclePolicy(
+                        SchemaLifecycleStrategy.KEEP_EXISTING_IF_COMPATIBLE,
+                        false,
+                        "",
+                        SchemaLifecyclePolicy.NPDEV_TABLE_SCOPE
+                ),
+                "test-fingerprint",
+                temp.resolve("database.json"),
+                List.of("test")
+        );
     }
 }

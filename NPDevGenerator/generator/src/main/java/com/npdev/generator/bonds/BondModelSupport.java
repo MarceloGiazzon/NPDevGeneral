@@ -115,7 +115,6 @@ public final class BondModelSupport {
          * Junction table + column naming. MUST stay byte-identical to the runtime mirror in
          * {@code GeneratedCrudRuntimeSupport.requireBondRuntimeShape} (NPDevKernel), otherwise the
          * generated migration and the runtime SQL disagree and N:M CRUD hits a missing table.
-         * The generator side is pinned by {@code FlywayEmitterBondsTest}; keep both in sync.
          */
         public String junctionTable() {
             return SqlIdentifierSupport.junctionTableName(sourceConcept, sourceField);

@@ -252,7 +252,7 @@ public final class SchemaRealizationEmitter {
     }
 
     /**
-     * Emits referential integrity for bonds, mirroring {@code FlywayEmitter}: junction tables for
+     * Emits referential integrity for bonds: junction tables for
      * many-to-many bonds, and foreign keys (with the authored ON DELETE policy and, for natural-key
      * anchors, ON UPDATE CASCADE) for scalar bonds. Emitted after all tables and their unique
      * indexes exist so every referenced anchor column is already present.
