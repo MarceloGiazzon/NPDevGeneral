@@ -801,12 +801,29 @@
       input.checked = Boolean(value);
       return input;
     }
+    if (field.widget === "textarea") {
+      const textarea = document.createElement("textarea");
+      textarea.name = field.name;
+      textarea.rows = 3;
+      textarea.value = value === null || value === undefined ? "" : String(value);
+      return textarea;
+    }
     const input = document.createElement("input");
     input.name = field.name;
     if (field.widget === "datetime-local" || field.type === "datetime") {
       input.type = "datetime-local";
+    } else if (field.widget === "date" || field.type === "date") {
+      input.type = "date";
+    } else if (field.widget === "number" || field.type === "number" || field.type === "integer" || field.type === "decimal") {
+      input.type = "number";
+    } else if (field.widget === "email") {
+      input.type = "email";
+    } else if (field.widget === "tel") {
+      input.type = "tel";
+    } else if (field.widget === "url") {
+      input.type = "url";
     } else {
-      input.type = field.widget === "date" || field.type === "date" ? "date" : "text";
+      input.type = "text";
     }
     input.value = value === null || value === undefined ? "" : String(value);
     return input;
