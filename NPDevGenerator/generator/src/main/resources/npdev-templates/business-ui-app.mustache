@@ -2,6 +2,7 @@
   "use strict";
 
   const STORAGE_KEY = "npdev.businessUi.apiKey";
+  const NAV_COLLAPSED_KEY = "npdev.businessUi.navCollapsed";
   const state = {
     manifest: null,
     panels: {},
@@ -18,7 +19,9 @@
     status: document.getElementById("status"),
     apiKey: document.getElementById("apiKey"),
     modalRoot: document.getElementById("modalRoot"),
-    sideNav: document.getElementById("sideNav")
+    sideNav: document.getElementById("sideNav"),
+    layoutRoot: document.getElementById("layoutRoot"),
+    navToggle: document.getElementById("navToggle")
   };
 
   function sectionId(concept) {
@@ -590,6 +593,28 @@
       target.appendChild(table);
       return;
     }
+    if (field.type === "object" && value && typeof value === "object") {
+      const props = Object.keys(value);
+      if (props.length === 0) {
+        target.textContent = "-";
+        return;
+      }
+      const dl = document.createElement("div");
+      dl.className = "object-preview";
+      props.forEach(function (prop) {
+        const row = document.createElement("div");
+        row.className = "object-preview-row";
+        const k = document.createElement("strong");
+        k.textContent = humanize(prop) + ": ";
+        const v = document.createElement("span");
+        v.textContent = formatValue(value[prop]);
+        row.appendChild(k);
+        row.appendChild(v);
+        dl.appendChild(row);
+      });
+      target.appendChild(dl);
+      return;
+    }
     const rawValue = text(value).trim();
     if (!isReferenceField(field)) {
       const enumOption = findEnumOption(field, rawValue);
@@ -788,6 +813,9 @@
     if (field.type === "array" && field.itemsSchema) {
       return createArrayTableInput(field, Array.isArray(value) ? value : []);
     }
+    if (field.type === "object" && field.objectSchema) {
+      return createObjectInput(field, value && typeof value === "object" ? value : {});
+    }
     if (field.widget === "lookup" && field.reference) {
       return createLookupInput(field, value);
     }
@@ -894,6 +922,49 @@
     const addBtn = button("+ Add row", "", function () { addRow(null); });
     wrapper.appendChild(table);
     wrapper.appendChild(addBtn);
+    wrapper.appendChild(hidden);
+    syncHidden();
+    return wrapper;
+  }
+
+  function createObjectInput(field, value) {
+    const props = Object.keys(field.objectSchema.properties || {});
+    const wrapper = document.createElement("div");
+    wrapper.className = "object-group-editor";
+
+    const hidden = document.createElement("input");
+    hidden.type = "hidden";
+    hidden.name = field.name;
+
+    function syncHidden() {
+      const out = {};
+      props.forEach(function (prop) {
+        const inp = wrapper.querySelector("[data-prop=\"" + prop + "\"]");
+        out[prop] = inp ? text(inp.value).trim() : "";
+      });
+      hidden.value = JSON.stringify(out);
+    }
+
+    const grid = document.createElement("div");
+    grid.className = "object-group-grid";
+    props.forEach(function (prop) {
+      const propLabel = document.createElement("label");
+      propLabel.className = "object-group-field";
+      const labelText = document.createElement("span");
+      labelText.className = "field-label-text";
+      labelText.textContent = humanize(prop);
+      propLabel.appendChild(labelText);
+      const inp = document.createElement("input");
+      inp.type = "text";
+      inp.dataset.prop = prop;
+      const existing = value ? value[prop] : null;
+      inp.value = existing === null || existing === undefined ? "" : String(existing);
+      inp.addEventListener("input", syncHidden);
+      propLabel.appendChild(inp);
+      grid.appendChild(propLabel);
+    });
+
+    wrapper.appendChild(grid);
     wrapper.appendChild(hidden);
     syncHidden();
     return wrapper;
@@ -1134,6 +1205,12 @@
         payload[field.name] = arrValue;
         continue;
       }
+      if (field.type === "object") {
+        let objValue;
+        try { objValue = JSON.parse(control.value || "{}"); } catch (e) { objValue = {}; }
+        payload[field.name] = objValue;
+        continue;
+      }
       const rawValue = control.type === "checkbox" ? control.checked : text(control.value).trim();
       if (required && (rawValue === "" || rawValue === null || rawValue === undefined)) {
         setStatus((field.label || field.name) + " is required.", true);
@@ -1243,6 +1320,13 @@
     return String(value);
   }
 
+  function setNavCollapsed(collapsed) {
+    if (el.layoutRoot) {
+      el.layoutRoot.classList.toggle("nav-collapsed", collapsed);
+    }
+    localStorage.setItem(NAV_COLLAPSED_KEY, collapsed ? "1" : "0");
+  }
+
   async function bootstrap() {
     const storedKey = localStorage.getItem(STORAGE_KEY);
     if (storedKey) {
@@ -1251,6 +1335,12 @@
     el.apiKey.addEventListener("input", function () {
       localStorage.setItem(STORAGE_KEY, el.apiKey.value.trim());
     });
+    if (el.navToggle) {
+      setNavCollapsed(localStorage.getItem(NAV_COLLAPSED_KEY) === "1");
+      el.navToggle.addEventListener("click", function () {
+        setNavCollapsed(!el.layoutRoot.classList.contains("nav-collapsed"));
+      });
+    }
     state.manifest = await fetchJson("./generated-ui-manifest.json");
     if (state.manifest.auth && state.manifest.auth.devKeyHint) {
       el.apiKey.placeholder = "dev/smoke: " + state.manifest.auth.devKeyHint;

@@ -220,6 +220,11 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 if (schema != null && schema.getItems() != null && !schema.getItems().getProperties().isEmpty()) {
                     node.put("itemsSchema", buildItemsSchemaNode(schema.getItems()));
                 }
+            } else if ("object".equals(manifestType(field))) {
+                CompiledSchema schema = field.getSchema();
+                if (schema != null && !schema.getProperties().isEmpty()) {
+                    node.put("objectSchema", buildItemsSchemaNode(schema));
+                }
             }
             Optional<Map<String, Object>> reference = referenceMetadata(field, conceptsByName);
             node.put("widget", reference.isPresent() ? "lookup" : widget(field, conceptsByName));

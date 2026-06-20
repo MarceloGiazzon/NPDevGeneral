@@ -32,6 +32,10 @@ body {
   padding: 12px 8px;
 }
 
+.layout.nav-collapsed .side-nav {
+  display: none;
+}
+
 .side-nav a {
   display: block;
   padding: 7px 12px;
@@ -127,6 +131,18 @@ textarea {
   padding: 16px 24px;
   border-bottom: 1px solid #d8dee7;
   background: #ffffff;
+}
+
+.app-bar-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.nav-toggle {
+  flex-shrink: 0;
+  padding: 0 10px;
+  font-size: 16px;
 }
 
 .app-bar h1 {
@@ -377,6 +393,36 @@ textarea {
   line-height: 1;
 }
 
+.badge-info {
+  background: #e3f0fc;
+  color: #1769aa;
+}
+
+.badge-success {
+  background: #e6f6ea;
+  color: #1e7a34;
+}
+
+.badge-warning {
+  background: #fff3da;
+  color: #95620a;
+}
+
+.badge-danger {
+  background: #fbe4e4;
+  color: #9f1d1d;
+}
+
+.badge-progress {
+  background: #eae6fb;
+  color: #5b3aa0;
+}
+
+.badge-neutral {
+  background: #eef2f7;
+  color: #4c5a69;
+}
+
 @media (max-width: 760px) {
   .side-nav {
     display: none;
@@ -514,4 +560,32 @@ textarea {
 .array-preview td {
   font-size: 12px;
   padding: 6px 8px;
+}
+
+.object-group-editor {
+  border: 1px solid #e7ebf0;
+  border-radius: 6px;
+  padding: 10px;
+  background: #f9fafc;
+}
+
+.object-group-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.object-group-field {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.object-preview {
+  display: grid;
+  gap: 2px;
+}
+
+.object-preview-row {
+  font-size: 13px;
 }

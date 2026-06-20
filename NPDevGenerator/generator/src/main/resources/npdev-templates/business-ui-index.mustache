@@ -8,16 +8,19 @@
 </head>
 <body>
   <header class="app-bar">
-    <div>
-      <h1 id="appTitle">Business Data</h1>
-      <div id="status" class="status" role="status"></div>
+    <div class="app-bar-brand">
+      <button id="navToggle" type="button" class="nav-toggle" aria-label="Toggle navigation">☰</button>
+      <div>
+        <h1 id="appTitle">Business Data</h1>
+        <div id="status" class="status" role="status"></div>
+      </div>
     </div>
     <label class="api-key-field">
       <span>API Key</span>
       <input id="apiKey" type="password" autocomplete="off">
     </label>
   </header>
-  <div class="layout">
+  <div id="layoutRoot" class="layout">
     <nav id="sideNav" class="side-nav"></nav>
     <main id="app" class="workspace"></main>
   </div>
