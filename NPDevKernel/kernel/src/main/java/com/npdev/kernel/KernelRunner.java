@@ -3179,6 +3179,7 @@ private final EventBus eventBus;
             int attempt
     ) {
         List<Object> effectiveArgs = (args == null) ? new ArrayList<>() : args;
+        List<Object> callArgs = args;
         Object conceptForDebug = null;
 
         if (args != null
@@ -3199,10 +3200,22 @@ private final EventBus eventBus;
                 }
                 if (concept != null && !String.valueOf(concept).isBlank()) {
                     conceptForDebug = concept;
+                }
 
-                    // NOTE: We intentionally DO NOT change the call arguments here, to preserve the
-                    // PersistenceCapabilityContract signature save(entity) and keep existing tests stable.
-                    // If/when we introduce a concept-aware persistence contract, this is the place to wire it.
+                // Tenant isolation for the FLOW-DRIVEN persistence path: stamp the caller's tenant
+                // (carried in flow state, seeded from the ExecutionContext at execute() time) into the
+                // entity payload so the capability adapter writes the tenant_id column. The tenant is
+                // taken from the execution context, never from caller-supplied data -- mirroring the
+                // generated-CRUD path. Reads via capability findById (by globally-unique UUID) are
+                // unaffected; capability query()/list flows remain the flow author's responsibility.
+                if (args.get(0) instanceof Map<?, ?> entityMap) {
+                    Map<String, Object> stamped = new LinkedHashMap<>();
+                    for (Map.Entry<?, ?> entry : entityMap.entrySet()) {
+                        stamped.put(String.valueOf(entry.getKey()), entry.getValue());
+                    }
+                    stamped.put("tenantId", flowStateTenantId(state));
+                    callArgs = List.of(stamped);
+                    effectiveArgs = callArgs;
                 }
             }
         }
@@ -3223,7 +3236,7 @@ CapabilityCall call = new CapabilityCall(
                 step.getCapabilityType(),
                 step.getCapabilityAdapterId(),
                 Objects.requireNonNull(step.getOperation(), "operation is required"),
-                args,
+                callArgs,
                 correlationId,
                 idempotencyKey
         );
@@ -3296,6 +3309,17 @@ CapabilityCall call = new CapabilityCall(
                     )
             );
         }
+    }
+
+    /**
+     * The tenant a flow-driven persistence write is owned by: taken from flow state (seeded from the
+     * caller's ExecutionContext at execute() time), falling back to "default" when no tenant claim is
+     * present (e.g. an unauthenticated trial boot). Mirrors the generated-CRUD currentTenantId().
+     */
+    private static String flowStateTenantId(Map<String, Object> state) {
+        Object tenant = state == null ? null : state.get("tenantId");
+        String tenantId = tenant == null ? null : String.valueOf(tenant).trim();
+        return (tenantId == null || tenantId.isBlank()) ? "default" : tenantId;
     }
 
     private static CapabilityResult normalizeCapabilityFailure(

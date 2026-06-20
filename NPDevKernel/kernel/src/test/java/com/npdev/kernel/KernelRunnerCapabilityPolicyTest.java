@@ -131,6 +131,29 @@ class KernelRunnerCapabilityPolicyTest {
     }
 
     @Test
+    void stampsCallerTenantIntoFlowDrivenPersistenceSavePayload() {
+        AtomicReference<Object> seenEntity = new AtomicReference<>();
+        KernelRunner runner = runnerWithCapabilityStep(
+                new CapabilityExecutionPolicy(1, 0, 0, null, null),
+                (call, state) -> {
+                    seenEntity.set(call.args().get(0));
+                    return CapabilityResult.success(Map.of("id", "u-9"));
+                }
+        );
+
+        ExecutionResult result = runner.execute(
+                "CreateUser",
+                Map.of("email", "a@b.com"),
+                ExecutionContext.of("tenant-xyz", "actor-1")
+        );
+
+        assertEquals(ExecutionStatus.OK, result.getStatus());
+        assertTrue(seenEntity.get() instanceof Map, "save entity should be a Map");
+        assertEquals("tenant-xyz", ((Map<?, ?>) seenEntity.get()).get("tenantId"),
+                "flow-driven persistence save must carry the caller's tenant from the execution context");
+    }
+
+    @Test
     void opensCircuitAfterRepeatedTransientFailuresAndShortCircuitsNextCall() {
         AtomicInteger attempts = new AtomicInteger();
         CircuitBreakerStateStore circuitStore = new InMemoryCircuitBreakerStore();
