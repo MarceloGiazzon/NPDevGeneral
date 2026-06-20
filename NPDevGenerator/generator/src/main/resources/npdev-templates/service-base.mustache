@@ -96,6 +96,9 @@ public class {{entityName}}ServiceBase {
 
     @Transactional
     public {{entityName}} create(Map<String, Object> request) {
+{{#kernelControlled}}
+        runtimeSupport.checkCrudPermission("{{conceptName}}", "CREATE", generatedCrudExecutionContext());
+{{/kernelControlled}}
         return createFromSource(validateMapRequest(request, false, null));
     }
 
@@ -148,6 +151,9 @@ public class {{entityName}}ServiceBase {
 
     @Transactional
     public Optional<{{entityName}}> update(UUID id, Map<String, Object> request) {
+{{#kernelControlled}}
+        runtimeSupport.checkCrudPermission("{{conceptName}}", "UPDATE", generatedCrudExecutionContext());
+{{/kernelControlled}}
         return updateFromSource(id, validateMapRequest(request, true, id));
     }
 
