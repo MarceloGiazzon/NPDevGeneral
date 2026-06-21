@@ -1,4 +1,9 @@
 dependencies {
     implementation project(':kernel')
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
+    // Declared directly rather than relied on transitively: findAndRegisterModules() only finds
+    // this via classpath SPI scanning, which silently found nothing when this module's own tests
+    // ran in isolation (it only "worked" inside the fully assembled app because Spring Boot's
+    // classpath happens to carry this jar too).
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.17.2'
 }

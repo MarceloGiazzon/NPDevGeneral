@@ -43,3 +43,27 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\restaurant-saas-mu
 ```
 
 `populate-restaurant-tenants.ps1` writes its evidence files into `Output/RunOutput`.
+
+## Demonstrate The Platform's Own Tenant Lifecycle
+
+The two scripts above exercise this sample's app-modeled `Tenant` concept and `tenantRef`
+reference field -- a business fact an app author models. Separately, and independently, the
+platform itself has its own authenticated-tenant identity (`tenant_id`), enforced automatically on
+every generated CRUD row regardless of what the model declares. To see that lifecycle end to end
+(create a platform tenant, issue it a credential with no restart, disable/re-enable it, revoke a
+credential):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\restaurant-saas-multitenant\demonstrate-platform-tenancy.ps1
+```
+
+This script also demonstrates a confirmed, current limitation rather than hiding it: a brand-new
+platform tenant authenticates correctly but gets a 403 on every generated CRUD call, because the
+generated `dev.permissions.json` only ever authors grants for `tenantId=dev`. See the project's
+gaps/bugs report for the full writeup.
+
+## Known Engine Note
+
+This sample's `Input/db.definition.json` uses `H2Local` so the walkthrough above runs without an
+external database. `config.json`'s top-level `database` block describes a separate, optional
+`docker-postgres` deployment path that these scripts do not exercise.

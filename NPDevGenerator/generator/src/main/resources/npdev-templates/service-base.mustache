@@ -2,6 +2,7 @@ package {{packageName}};
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.npdev.runtime.support.GeneratedCrudRuntimeSupport;
 import com.npdev.kernel.ExecutionContext;
@@ -32,7 +33,16 @@ public class {{entityName}}ServiceBase {
     protected final GeneratedCrudRuntimeSupport runtimeSupport;
     protected final ConceptGateway conceptGateway;
     protected final ConceptStore conceptStore;
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new JavaTimeModule());
+    // JavaTimeModule lets this convert an entity's java.time fields at all, but the module's own
+    // default for WRITE_DATES_AS_TIMESTAMPS is true -- without disabling it, mapFromEntity's
+    // OBJECT_MAPPER.convertValue(entity, MAP_TYPE) silently turns an OffsetDateTime field into a
+    // bare epoch-seconds BigDecimal. That corrupted map is what the kernel-gateway write path
+    // (DefaultConceptGateway.save -> store.save) ultimately persists, which fails at the JDBC layer
+    // for any datetime column typed TIMESTAMP WITH TIME ZONE (confirmed live: a Reservation create
+    // with a "datetime" field failed with an H2 "NUMERIC to TIMESTAMP WITH TIME ZONE" error).
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
     private static final Set<String> ALLOWED_MUTATION_TOPICS = buildAllowedMutationTopics();
     private static final String ID_FIELD_NAME = "{{idFieldName}}";

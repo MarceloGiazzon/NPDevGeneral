@@ -18,7 +18,12 @@ function As-Array($Value) {
 
 function Invoke-Get([string]$Route) {
     $uri = (Normalize-BaseUrl $BaseUrl) + "/api/" + $Route
-    return Invoke-RestMethod -Method Get -Uri $uri -Headers @{ "X-Api-Key" = $ApiKey }
+    $response = Invoke-RestMethod -Method Get -Uri $uri -Headers @{ "X-Api-Key" = $ApiKey }
+    # Generated list endpoints return a paged wrapper {content:[...], page, size, ...}, not a bare array.
+    if ($null -ne $response -and ($response.PSObject.Properties.Name -contains "content")) {
+        return $response.content
+    }
+    return $response
 }
 
 function Tenant-Name([hashtable]$TenantNames, [string]$TenantId) {
@@ -52,13 +57,13 @@ foreach ($tenant in $tenants) {
 }
 
 $routes = @(
-    @{ route = "staffmembers"; label = "Staff members" },
-    @{ route = "diningtables"; label = "Dining tables" },
-    @{ route = "menuitems"; label = "Menu items" },
+    @{ route = "staff_members"; label = "Staff members" },
+    @{ route = "dining_tables"; label = "Dining tables" },
+    @{ route = "menu_items"; label = "Menu items" },
     @{ route = "reservations"; label = "Reservations" },
-    @{ route = "diningorders"; label = "Dining orders" },
-    @{ route = "orderlines"; label = "Order lines" },
-    @{ route = "paymentreceipts"; label = "Payment receipts" }
+    @{ route = "dining_orders"; label = "Dining orders" },
+    @{ route = "order_lines"; label = "Order lines" },
+    @{ route = "payment_receipts"; label = "Payment receipts" }
 )
 
 foreach ($routeInfo in $routes) {
@@ -70,7 +75,7 @@ foreach ($routeInfo in $routes) {
         continue
     }
 
-    $groups = $rows | Group-Object -Property tenantId
+    $groups = $rows | Group-Object -Property tenantRef
     foreach ($group in $groups) {
         $name = Tenant-Name -TenantNames $tenantNames -TenantId ([string]$group.Name)
         Write-Host (" - " + $name + ": " + $group.Count)
@@ -79,4 +84,5 @@ foreach ($routeInfo in $routes) {
 
 Write-Host ""
 Write-Host "OK    Tenant-shaped data is present in generated CRUD APIs." -ForegroundColor Green
-Write-Host "NOTE  This verifies modeled tenant references. It is not row-level authenticated tenant filtering." -ForegroundColor Yellow
+Write-Host "NOTE  This verifies the app-modeled Tenant/tenantRef shape using a single ADMIN key." -ForegroundColor Yellow
+Write-Host "NOTE  It does not exercise authenticated-tenant row filtering -- see demonstrate-platform-tenancy.ps1 for that." -ForegroundColor Yellow
