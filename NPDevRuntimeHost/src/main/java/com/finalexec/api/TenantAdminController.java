@@ -65,6 +65,8 @@ public class TenantAdminController {
     private <T> T run(java.util.function.Supplier<T> call) {
         try {
             return call.get();
+        } catch (TenantRegistryService.TenantAlreadyExistsException exception) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, exception.getMessage());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         } catch (IllegalStateException exception) {

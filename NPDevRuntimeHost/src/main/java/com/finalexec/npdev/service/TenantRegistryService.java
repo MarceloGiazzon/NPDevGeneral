@@ -31,6 +31,14 @@ public class TenantRegistryService {
 
     public enum Status { ACTIVE, DISABLED }
 
+    /** Thrown when create() fails because the tenant_id already exists -- distinct from a real DB
+     * failure, which still surfaces as IllegalStateException. */
+    public static final class TenantAlreadyExistsException extends RuntimeException {
+        public TenantAlreadyExistsException(String tenantId) {
+            super("Tenant already exists: " + tenantId);
+        }
+    }
+
     private final ObjectProvider<DataSource> dataSourceProvider;
 
     public TenantRegistryService(ObjectProvider<DataSource> dataSourceProvider) {
@@ -53,7 +61,10 @@ public class TenantRegistryService {
             statement.setLong(4, Instant.now().toEpochMilli());
             statement.executeUpdate();
         } catch (SQLException exception) {
-            throw new IllegalStateException("Failed creating tenant '" + id + "' (already exists?): " + exception.getMessage(), exception);
+            if (isIntegrityConstraintViolation(exception)) {
+                throw new TenantAlreadyExistsException(id);
+            }
+            throw new IllegalStateException("Failed creating tenant '" + id + "': " + exception.getMessage(), exception);
         }
         return view(id, displayName == null || displayName.isBlank() ? id : displayName.trim(), Status.ACTIVE.name());
     }
@@ -145,6 +156,16 @@ public class TenantRegistryService {
         }
         row.put("status", status);
         return row;
+    }
+
+    /**
+     * SQLState class "23" (integrity constraint violation, e.g. "23505" unique violation) is
+     * standardized across H2 and PostgreSQL, unlike vendor-specific exception subclasses --
+     * checking it directly is more reliable than relying on driver-specific exception types.
+     */
+    private static boolean isIntegrityConstraintViolation(SQLException exception) {
+        String sqlState = exception.getSQLState();
+        return sqlState != null && sqlState.startsWith("23");
     }
 
     private static String normalize(String value) {

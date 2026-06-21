@@ -75,6 +75,17 @@ class TenantRegistryServiceTest {
                 () -> service.setStatus("ghost", TenantRegistryService.Status.DISABLED));
     }
 
+    @Test
+    void creatingADuplicateTenantIdThrowsADistinguishableException() {
+        // Previously this fell into the generic SQLException catch and surfaced as
+        // IllegalStateException -> 503 Service Unavailable, conflating "tenant already exists"
+        // with a real database outage. Must be its own exception type so the controller can map
+        // it to 409 Conflict instead.
+        service.create("acme", "Acme Corp");
+        assertThrows(TenantRegistryService.TenantAlreadyExistsException.class,
+                () -> service.create("acme", "Acme Corp Again"));
+    }
+
     private record FixedProvider(DataSource dataSource) implements ObjectProvider<DataSource> {
         @Override public DataSource getObject(Object... args) { return dataSource; }
         @Override public DataSource getObject() { return dataSource; }
