@@ -16,15 +16,11 @@ $ErrorActionPreference = "Stop"
 # is "which authenticated caller this row belongs to" (enforced automatically on every generated CRUD
 # row, regardless of what the model declares).
 #
-# IMPORTANT, CONFIRMED LIMITATION: a tenant created here via /api/admin/tenants can authenticate
-# (/api/me resolves correctly) but CANNOT use this sample's generated CRUD endpoints out of the box.
-# The generated, signed dev.permissions.json only ever authors grants with tenantId="dev" -- the
-# permission evaluator requires an EXACT tenantId match unless a grant's tenantId is blank (wildcard),
-# and the generator never emits a blank-tenantId grant. So every brand-new platform tenant gets 403 on
-# every generated CRUD call until someone hand-authors an additional grant for it (or a wildcard grant)
-# in the permissions file -- which the admin tenant-lifecycle API does NOT do for you. This script
-# demonstrates that 403 explicitly (Step 4) rather than working around it, because masking it would
-# hide a real, currently-unresolved gap in the tenant lifecycle feature.
+# A platform tenant created via /api/admin/tenants gets a wildcard-tenantId permission grant from
+# generation onward (RuntimeApiEmitter emits blank tenantId, not the generation-time "dev" tenant) --
+# so it can authenticate AND use generated CRUD immediately, with no restart and no hand-authored
+# grant. Role still gates capability; tenant_id row scoping (demonstrated in Steps 5-7 below) is the
+# separate, already-enforced mechanism that keeps one tenant's data from another's.
 
 function Normalize-BaseUrl([string]$Value) {
     return $Value.TrimEnd("/")
@@ -77,6 +73,40 @@ function Get-OrCreate-PlatformTenant([string]$TenantId, [string]$DisplayName) {
     return $created
 }
 
+function Get-OrCreate-AppTenant([string]$ApiKey, [hashtable]$Body) {
+    $existingList = @(Get-Rows (Invoke-Json -Method Get -Route "/api/tenants" -ApiKey $ApiKey))
+    $existing = $existingList | Where-Object { $_.code -eq $Body.code } | Select-Object -First 1
+    if ($null -ne $existing) {
+        Ok ("App-level Tenant row already existed, reused: " + $Body.code)
+        return $existing
+    }
+    $created = Invoke-Json -Method Post -Route "/api/tenants" -ApiKey $ApiKey -Body $Body
+    Assert-Success -Result $created -Label ("Created app-level Tenant row: " + $Body.code)
+    return $created
+}
+
+function Get-OrCreate-StaffMember([string]$ApiKey, [hashtable]$Body) {
+    $existingList = @(Get-Rows (Invoke-Json -Method Get -Route "/api/staff_members" -ApiKey $ApiKey))
+    $existing = $existingList | Where-Object { $_.email -eq $Body.email } | Select-Object -First 1
+    if ($null -ne $existing) {
+        Ok ("StaffMember row already existed, reused: " + $Body.email)
+        return $existing
+    }
+    $created = Invoke-Json -Method Post -Route "/api/staff_members" -ApiKey $ApiKey -Body $Body
+    Assert-Success -Result $created -Label ("Created StaffMember row: " + $Body.email)
+    return $created
+}
+
+function Get-Rows($ListResponse) {
+    # The generated Tenant list returns a bare array; other generated list endpoints return a paged
+    # {content:[...], page, size, ...} wrapper. Handle both without assuming which shape a given
+    # concept's route uses.
+    if ($null -eq $ListResponse) { return @() }
+    if ($ListResponse -is [System.Array]) { return @($ListResponse) }
+    if ($ListResponse.PSObject.Properties.Name -contains "content") { return @($ListResponse.content) }
+    return @($ListResponse)
+}
+
 try {
     $health = Invoke-RestMethod -Method Get -Uri ((Normalize-BaseUrl $BaseUrl) + "/actuator/health")
     Info ("App reachable, health: " + $health.status)
@@ -104,27 +134,51 @@ $sushiMe = Invoke-Json -Method Get -Route "/api/me" -ApiKey $sushiKey
 if ($sushiMe.tenantId -ne "sushi-bar") { Fail "sushi credential did not resolve to tenant sushi-bar" }
 Ok ("sushi-bar credential resolves to: " + ($sushiMe | ConvertTo-Json -Compress))
 
-Info "=== Step 4: CONFIRMED GAP -- a brand-new platform tenant authenticates but has no CRUD permission ==="
-$pizzaCrudAttempt = Invoke-Json -Method Post -Route "/api/tenants" -ApiKey $pizzaKey -Body @{ code = "PIZZA"; displayName = "Pizza House"; plan = "Growth"; active = $true }
-Assert-StatusCode -Result $pizzaCrudAttempt -ExpectedStatusCode 403 -Label "pizza-house's brand-new credential calling generated CRUD (create Tenant)"
-Info "    This is BY DESIGN today, not a bug in this script: dev.permissions.json only authors grants"
-Info "    with tenantId='dev'. The permission evaluator requires an exact tenantId match unless a"
-Info "    grant's tenantId is blank (wildcard) -- and the generator never emits a blank-tenantId grant."
-Info "    A new platform tenant is fully authenticated and isolated, but functionally inert for CRUD"
-Info "    until someone hand-authors a grant for it. See the gaps report for the full writeup."
+Info "=== Step 4: each brand-new platform tenant creates its OWN app-level Tenant + StaffMember row ==="
+$pizzaAppTenant = Get-OrCreate-AppTenant -ApiKey $pizzaKey -Body @{ code = "PIZZA"; displayName = "Pizza House"; plan = "Growth"; active = $true }
+$pizzaAppTenantId = [string]$pizzaAppTenant.id
+$pizzaStaff = Get-OrCreate-StaffMember -ApiKey $pizzaKey -Body @{ tenantRef = $pizzaAppTenantId; fullName = "Alice Staff"; email = "alice@pizza.test"; role = "Manager"; active = $true }
 
-Info "=== Step 5: disabling a platform tenant denies its (still-active) credential everywhere ==="
+$sushiAppTenant = Get-OrCreate-AppTenant -ApiKey $sushiKey -Body @{ code = "SUSHI"; displayName = "Sushi Bar"; plan = "Starter"; active = $true }
+$sushiAppTenantId = [string]$sushiAppTenant.id
+$sushiStaff = Get-OrCreate-StaffMember -ApiKey $sushiKey -Body @{ tenantRef = $sushiAppTenantId; fullName = "Bob Staff"; email = "bob@sushi.test"; role = "Manager"; active = $true }
+
+Info "=== Step 5: row isolation -- each platform tenant only ever sees its own rows ==="
+$pizzaStaffList = @(Get-Rows (Invoke-Json -Method Get -Route "/api/staff_members" -ApiKey $pizzaKey))
+if ($pizzaStaffList.Count -ne 1) { Fail "pizza-house should see exactly its own 1 staff member, saw $($pizzaStaffList.Count)" }
+Ok "pizza-house's staff_members list shows exactly its own row (isolation confirmed)"
+$sushiStaffList = @(Get-Rows (Invoke-Json -Method Get -Route "/api/staff_members" -ApiKey $sushiKey))
+if ($sushiStaffList.Count -ne 1) { Fail "sushi-bar should see exactly its own 1 staff member, saw $($sushiStaffList.Count)" }
+Ok "sushi-bar's staff_members list shows exactly its own row (isolation confirmed)"
+
+Info "=== Step 6: cross-tenant READ is denied without confirming existence (404, not 403) ==="
+$crossRead = Invoke-Json -Method Get -Route ("/api/tenants/" + $sushiAppTenantId) -ApiKey $pizzaKey
+Assert-StatusCode -Result $crossRead -ExpectedStatusCode 404 -Label "pizza-house reading sushi-bar's Tenant row by id"
+
+Info "=== Step 7: cross-tenant BOND WRITE is rejected (the fix verified live earlier this session) ==="
+$crossBondWrite = Invoke-Json -Method Post -Route "/api/staff_members" -ApiKey $pizzaKey -Body @{
+    tenantRef = $sushiAppTenantId
+    fullName  = "Cross Tenant Staff"
+    email     = "cross@pizza.test"
+    role      = "Manager"
+    active    = $true
+}
+Assert-StatusCode -Result $crossBondWrite -ExpectedStatusCode 422 -Label "pizza-house creating a StaffMember whose tenantRef points at sushi-bar's Tenant row"
+
+Info "=== Step 8: disabling a platform tenant denies its (still-active) credential everywhere ==="
 Invoke-Json -Method Post -Route "/api/admin/tenants/sushi-bar/disable" -ApiKey $AdminApiKey | Out-Null
 $disabledMe = Invoke-Json -Method Get -Route "/api/me" -ApiKey $sushiKey
 Assert-StatusCode -Result $disabledMe -ExpectedStatusCode 403 -Label "sushi-bar's credential, after its TENANT was disabled"
+$disabledCrud = Invoke-Json -Method Get -Route "/api/staff_members" -ApiKey $sushiKey
+Assert-StatusCode -Result $disabledCrud -ExpectedStatusCode 403 -Label "sushi-bar's credential on generated CRUD, after disable"
 
-Info "=== Step 6: re-enabling restores access ==="
+Info "=== Step 9: re-enabling restores access ==="
 Invoke-Json -Method Post -Route "/api/admin/tenants/sushi-bar/enable" -ApiKey $AdminApiKey | Out-Null
 $restoredMe = Invoke-Json -Method Get -Route "/api/me" -ApiKey $sushiKey
 if ($restoredMe.tenantId -ne "sushi-bar") { Fail "sushi-bar credential did not resolve correctly after re-enable" }
 Ok "sushi-bar's credential works again after re-enable"
 
-Info "=== Step 7: revoke a credential directly (independent of tenant status) ==="
+Info "=== Step 10: revoke a credential directly (independent of tenant status) ==="
 $pizzaCredentialId = [string]$pizzaCredential.credentialId
 Invoke-Json -Method Post -Route ("/api/admin/credentials/" + $pizzaCredentialId + "/revoke") -ApiKey $AdminApiKey | Out-Null
 $revokedMe = Invoke-Json -Method Get -Route "/api/me" -ApiKey $pizzaKey
@@ -143,19 +197,20 @@ $summary = [ordered]@{
     baseUrl     = $BaseUrl
     generatedAt = (Get-Date).ToString("o")
     platformTenants = @(
-        [ordered]@{ tenantId = "pizza-house"; credentialId = $pizzaCredentialId; revoked = $true }
-        [ordered]@{ tenantId = "sushi-bar"; credentialId = [string]$sushiCredential.credentialId; disabledThenReEnabled = $true }
+        [ordered]@{ tenantId = "pizza-house"; credentialId = $pizzaCredentialId; appTenantId = $pizzaAppTenantId; revoked = $true }
+        [ordered]@{ tenantId = "sushi-bar"; credentialId = [string]$sushiCredential.credentialId; appTenantId = $sushiAppTenantId; disabledThenReEnabled = $true }
     )
     checks = [ordered]@{
-        newTenantAuthenticatesViaMe          = $true
-        newTenantCrudDenied403NoGrant        = $true
-        tenantDisableDenies403               = $true
-        tenantReEnableRestores               = $true
-        credentialRevokeDenies401            = $true
+        newTenantUsesCrudWithNoHandAuthoredGrant = $true
+        rowIsolationConfirmed                    = $true
+        crossTenantReadDenied404                  = $true
+        crossTenantBondWriteDenied422              = $true
+        tenantDisableDenies403                    = $true
+        tenantReEnableRestores                    = $true
+        credentialRevokeDenies401                 = $true
     }
-    knownGap = "A platform tenant created via /api/admin/tenants authenticates successfully but has no generated-CRUD permission grant by default (dev.permissions.json only authors grants for tenantId=dev); see project gaps report."
 }
 $summary | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $OutputPath -Encoding UTF8
 Write-Host ""
 Ok ("Evidence written to " + $OutputPath)
-Ok "Platform tenancy lifecycle (create/issue/authenticate/disable/enable/revoke) demonstrated end to end."
+Ok "Platform tenancy lifecycle (create/issue/use-CRUD/isolate/disable/enable/revoke) demonstrated end to end."

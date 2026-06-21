@@ -8,6 +8,6 @@
 3. Verify that menu, table, and staff records remain visibly associated with the correct tenant
    reference (`tenantRef`, an app-modeled business field, not the platform's own isolation key).
 4. Separately, exercise the platform's own tenant lifecycle: create a platform tenant, issue it a
-   credential, confirm it authenticates via `/api/me`, disable/re-enable the tenant, revoke the
-   credential -- and confirm the platform's permission model gates a brand-new tenant out of
-   generated CRUD until a grant is hand-authored for it (a confirmed, currently open gap).
+   credential, confirm it authenticates via `/api/me`, immediately use generated CRUD with that
+   credential (no restart, no hand-authored grant), confirm row isolation against a second platform
+   tenant, disable/re-enable the tenant, and revoke the credential.

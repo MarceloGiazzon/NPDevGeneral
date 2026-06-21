@@ -59,8 +59,10 @@ class RuntimeApiEmitterPermissionManifestTest {
                 "Expected generated loader to read runtime permission manifest from classpath");
         assertTrue(permissionManifestContent.contains("flow.execute"),
                 "Expected generated permission manifest to contain flow execution grant");
-        assertTrue(permissionManifestContent.contains("\"tenantId\": \"dev\""),
-                "Expected generated permission manifest to target the dev runtime tenant");
+        assertTrue(permissionManifestContent.contains("\"tenantId\": \"\""),
+                "Expected generated permission manifest grants to use a blank/wildcard tenantId, "
+                        + "so any platform tenant (not just the generation-time 'dev' tenant) can use "
+                        + "generated CRUD -- role still gates access, tenant_id row scoping handles data isolation separately");
         assertTrue(permissionManifestContent.contains("create:user"),
                 "Expected generated permission manifest to grant create on the persisted User concept");
         assertTrue(permissionManifestContent.contains("update:user"),

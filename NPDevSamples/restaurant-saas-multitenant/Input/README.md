@@ -57,10 +57,11 @@ credential):
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\restaurant-saas-multitenant\demonstrate-platform-tenancy.ps1
 ```
 
-This script also demonstrates a confirmed, current limitation rather than hiding it: a brand-new
-platform tenant authenticates correctly but gets a 403 on every generated CRUD call, because the
-generated `dev.permissions.json` only ever authors grants for `tenantId=dev`. See the project's
-gaps/bugs report for the full writeup.
+A platform tenant created this way gets a wildcard-tenantId permission grant from generation
+onward, so it can authenticate and use generated CRUD immediately -- no restart, no hand-authored
+grant. The script also demonstrates that row-level data isolation (`tenant_id`) is a separate,
+independently-enforced mechanism: two platform tenants both have full CRUD capability, but neither
+can read, list, or write a bond reference into the other's data.
 
 ## Known Engine Note
 

@@ -449,9 +449,17 @@ writer.writeRelative(
             boolean adminOnly = isAdminConcept(concept.getName());
             for (String operation : List.of("create", "update", "delete", "read", "list")) {
                 String permission = operation + ":" + conceptKey;
-                grants.add(new PermissionGrantSpec(permission, "dev", "", superUserRoleKey));
+                // Blank tenantId is a wildcard match in PermissionGrant.matches() -- these grants are
+                // role-based capability checks ("can an admin/user create this concept type at all"),
+                // not data access, so they apply to every platform tenant. Row-level data isolation is
+                // a separate, already-enforced concern (tenant_id scoping in JdbcBusinessConceptStore /
+                // InMemoryConceptStore). Without this, a tenant created at runtime via
+                // /api/admin/tenants authenticates fine but gets 403 on every generated CRUD call,
+                // because the old hardcoded tenantId="dev" only ever matched the one tenant the
+                // generator itself knows about at generation time.
+                grants.add(new PermissionGrantSpec(permission, "", "", superUserRoleKey));
                 if (!adminOnly && !"user".equals(superUserRoleKey)) {
-                    grants.add(new PermissionGrantSpec(permission, "dev", "", "user"));
+                    grants.add(new PermissionGrantSpec(permission, "", "", "user"));
                 }
             }
         }
@@ -483,7 +491,7 @@ writer.writeRelative(
         permissions.addAll(aiSecurity.allDeclaredPermissions());
 
         for (String permission : permissions) {
-            grants.add(new PermissionGrantSpec(permission, "dev", "", superUserRoleKey));
+            grants.add(new PermissionGrantSpec(permission, "", "", superUserRoleKey));
         }
         // event.publish backs the mutation-event side effect of every CRUD write (see
         // GeneratedCrudRuntimeSupport.publishMutationEvent), which a business "user" role
@@ -492,7 +500,7 @@ writer.writeRelative(
         // permission check passes, because the event-publish step is unconditionally
         // admin-only.
         if (!"user".equals(superUserRoleKey)) {
-            grants.add(new PermissionGrantSpec("event.publish", "dev", "", "user"));
+            grants.add(new PermissionGrantSpec("event.publish", "", "", "user"));
         }
         for (AiBetaUser user : aiSecurity.testUsers()) {
             Set<String> userPermissions = new LinkedHashSet<>(List.of(
