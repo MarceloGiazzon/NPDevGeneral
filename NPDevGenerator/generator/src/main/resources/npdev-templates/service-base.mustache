@@ -120,6 +120,7 @@ public class {{entityName}}ServiceBase {
             }
         }
         Map<String, Object> createPayload = runtimeSupport.buildCreateInvariantPayload("{{conceptName}}", source);
+        runtimeSupport.enforceBondTargetTenant("{{conceptName}}", createPayload, crudCtx);
         UUID generatedId = runtimeSupport.ensureGeneratedId("{{conceptName}}", createPayload);
         enforceWithKernel("{{conceptName}}", createPayload);
 {{#kernelControlled}}
@@ -173,6 +174,7 @@ public class {{entityName}}ServiceBase {
         runtimeSupport.checkOptimisticVersion("{{conceptName}}", existing, source);
         String previousLifecycleStatus = runtimeSupport.captureLifecycleStatus("{{conceptName}}", existing);
         Map<String, Object> updatePayload = runtimeSupport.buildUpdateInvariantPayload("{{conceptName}}", id, existing, source);
+        runtimeSupport.enforceBondTargetTenant("{{conceptName}}", updatePayload, crudCtx);
         enforceWithKernel("{{conceptName}}", updatePayload);
 {{#kernelControlled}}
         enforceWithConceptGateway("{{conceptName}}", id, updatePayload);

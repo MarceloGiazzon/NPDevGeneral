@@ -51,7 +51,7 @@
     "runtimeUrl": "http://localhost:8093/",
     "databaseMode": "docker-postgres",
     "notes": [
-      "This sample models tenant ownership explicitly through Tenant plus tenantId references.",
+      "This sample models tenant ownership explicitly through Tenant plus tenantRef references.",
       "CRUD population scripts use the generated REST API only; they do not write to the database directly.",
       "This sample demonstrates tenant-scoped data shape, not automatic row-level tenant filtering in generated CRUD."
     ]

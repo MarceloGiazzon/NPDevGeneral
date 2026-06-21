@@ -9,7 +9,7 @@ This sample models one generated restaurant SaaS app shared by three tenants:
 The modeling boundary is explicit tenant ownership:
 
 - `Tenant` is the root tenant concept.
-- Every tenant-owned concept carries a required `tenantId` reference.
+- Every tenant-owned concept carries a required `tenantRef` reference.
 - The generated CRUD APIs store and return tenant-shaped rows.
 
 This sample root follows the standard layout:

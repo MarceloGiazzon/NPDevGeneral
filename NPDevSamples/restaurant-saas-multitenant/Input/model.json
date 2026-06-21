@@ -8,13 +8,13 @@
     "tenancy": {
       "strategy": "modeled-tenant-reference",
       "tenantConcept": "Tenant",
-      "tenantReferenceField": "tenantId",
+      "tenantReferenceField": "tenantRef",
       "sampleTenants": [
         "Pizza House",
         "Sushi Bar",
         "Vegan Bistro"
       ],
-      "currentRuntimeBoundary": "CRUD rows carry tenantId. Automatic authenticated-tenant CRUD filtering is not claimed by this sample."
+      "currentRuntimeBoundary": "tenantRef is an app-modeled BUSINESS reference to the Tenant concept (which restaurant a row belongs to, picked via the search-dialog widget) -- distinct from the platform's own tenant_id column, which is the authenticated-caller isolation key derived from the API key/ExecutionContext and enforced automatically on every generated CRUD read/write. The two are independent: this sample's own tenantRef field does not by itself give you the platform's automatic per-caller filtering -- map your auth tenants to Tenant rows if you want both to line up."
     }
   },
   "concepts": [
@@ -135,7 +135,7 @@
           "required": true
         },
         {
-          "name": "tenantId",
+          "name": "tenantRef",
           "type": "reference",
           "required": true,
           "reference": {
@@ -200,7 +200,7 @@
       "invariants": [
         {
           "name": "StaffTenantRequired",
-          "expr": "tenantId != null"
+          "expr": "tenantRef != null"
         },
         {
           "name": "StaffNameRequired",
@@ -228,7 +228,7 @@
           "required": true
         },
         {
-          "name": "tenantId",
+          "name": "tenantRef",
           "type": "reference",
           "required": true,
           "reference": {
@@ -282,7 +282,7 @@
       "invariants": [
         {
           "name": "DiningTableTenantRequired",
-          "expr": "tenantId != null"
+          "expr": "tenantRef != null"
         },
         {
           "name": "DiningTableNumberRequired",
@@ -310,7 +310,7 @@
           "required": true
         },
         {
-          "name": "tenantId",
+          "name": "tenantRef",
           "type": "reference",
           "required": true,
           "reference": {
@@ -384,7 +384,7 @@
       "invariants": [
         {
           "name": "MenuItemTenantRequired",
-          "expr": "tenantId != null"
+          "expr": "tenantRef != null"
         },
         {
           "name": "MenuItemNameRequired",
@@ -416,7 +416,7 @@
           "required": true
         },
         {
-          "name": "tenantId",
+          "name": "tenantRef",
           "type": "reference",
           "required": true,
           "reference": {
@@ -567,7 +567,7 @@
       "invariants": [
         {
           "name": "ReservationTenantRequired",
-          "expr": "tenantId != null"
+          "expr": "tenantRef != null"
         },
         {
           "name": "ReservationCustomerRequired",
@@ -595,7 +595,7 @@
           "required": true
         },
         {
-          "name": "tenantId",
+          "name": "tenantRef",
           "type": "reference",
           "required": true,
           "reference": {
@@ -750,7 +750,7 @@
       "invariants": [
         {
           "name": "DiningOrderTenantRequired",
-          "expr": "tenantId != null"
+          "expr": "tenantRef != null"
         },
         {
           "name": "DiningOrderTotalNonNegative",
@@ -774,7 +774,7 @@
           "required": true
         },
         {
-          "name": "tenantId",
+          "name": "tenantRef",
           "type": "reference",
           "required": true,
           "reference": {
@@ -865,7 +865,7 @@
       "invariants": [
         {
           "name": "OrderLineTenantRequired",
-          "expr": "tenantId != null"
+          "expr": "tenantRef != null"
         },
         {
           "name": "OrderLineQuantityPositive",
@@ -893,7 +893,7 @@
           "required": true
         },
         {
-          "name": "tenantId",
+          "name": "tenantRef",
           "type": "reference",
           "required": true,
           "reference": {
@@ -959,7 +959,7 @@
       "invariants": [
         {
           "name": "PaymentReceiptTenantRequired",
-          "expr": "tenantId != null"
+          "expr": "tenantRef != null"
         },
         {
           "name": "PaymentReceiptAmountPositive",
@@ -1009,7 +1009,7 @@
           "type": "uuid"
         },
         {
-          "name": "tenantId",
+          "name": "tenantRef",
           "type": "uuid"
         },
         {
@@ -1030,7 +1030,7 @@
           "type": "uuid"
         },
         {
-          "name": "tenantId",
+          "name": "tenantRef",
           "type": "uuid"
         },
         {
@@ -1055,7 +1055,7 @@
           "type": "uuid"
         },
         {
-          "name": "tenantId",
+          "name": "tenantRef",
           "type": "uuid"
         },
         {
@@ -1072,7 +1072,7 @@
           "type": "uuid"
         },
         {
-          "name": "tenantId",
+          "name": "tenantRef",
           "type": "uuid"
         },
         {
@@ -1089,7 +1089,7 @@
           "type": "uuid"
         },
         {
-          "name": "tenantId",
+          "name": "tenantRef",
           "type": "uuid"
         },
         {
@@ -1106,7 +1106,7 @@
           "type": "uuid"
         },
         {
-          "name": "tenantId",
+          "name": "tenantRef",
           "type": "uuid"
         },
         {
@@ -1123,7 +1123,7 @@
           "type": "uuid"
         },
         {
-          "name": "tenantId",
+          "name": "tenantRef",
           "type": "uuid"
         },
         {
@@ -1147,7 +1147,7 @@
           "capability": "notification",
           "operation": "send",
           "map": {
-            "tenantId": "$event.tenantId",
+            "tenantRef": "$event.tenantRef",
             "orderId": "$event.id",
             "message": "Order payment captured"
           }

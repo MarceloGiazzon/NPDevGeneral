@@ -7,5 +7,5 @@
 
 ## Expected error surfaces
 
-- error diagnostics should identify missing required tenantId references
+- error diagnostics should identify missing required tenantRef references
 - error responses should remain clear when invalid tenant-shaped payloads are submitted

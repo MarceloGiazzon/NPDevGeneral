@@ -417,6 +417,79 @@ public final class GeneratedCrudRuntimeSupport {
         return payload;
     }
 
+    /**
+     * Closes a real cross-tenant data-integrity gap: the FK constraint on a scalar bond column only
+     * checks that the referenced ROW EXISTS, never that it belongs to the CALLER's own tenant. Without
+     * this, tenant A can create a row whose bond field points at tenant B's private business data --
+     * confirmed live (a StaffMember create with a cross-tenant tenantRef succeeded with 200) before
+     * this check existed. For every non-M2M reference field present in the payload, requires that the
+     * target row exists AND its tenant_id matches the caller's tenant; otherwise throws the same
+     * InvariantViolationException shape every other CRUD validation failure uses, deliberately worded
+     * like a not-found rather than a forbidden, so it never confirms a row exists in another tenant.
+     */
+    public void enforceBondTargetTenant(String entityName, Map<String, Object> payload, ExecutionContext context) {
+        if (payload == null || dataSource == null) {
+            return;
+        }
+        CompiledConcept entity = requireEntity(entityName);
+        String callerTenant = normalizeTenantForBondCheck(context == null ? null : context.tenantId());
+        for (CompiledField field : entity.getFields()) {
+            if (field == null || field.isId()) {
+                continue;
+            }
+            CompiledReferenceSemantics semantics = field.getReferenceSemantics();
+            if (semantics != null && semantics.isMultiple()) {
+                continue; // many-to-many lives in a junction table, not a column on this payload
+            }
+            String targetName = referenceTargetName(field);
+            if (targetName == null || targetName.isBlank()) {
+                continue; // not a reference field at all
+            }
+            Object rawValue = readMapValue(payload, field.getName());
+            if (rawValue == null) {
+                continue; // optional reference left unset
+            }
+            CompiledConcept targetEntity = findEntity(targetName).orElse(null);
+            if (targetEntity == null) {
+                continue; // unresolvable target name is a model problem, not this caller's to diagnose
+            }
+            CompiledField anchor = resolveReferenceAnchor(field, targetEntity).orElse(null);
+            if (anchor == null) {
+                continue;
+            }
+            String table = SqlIdentifierSupport.tableName(targetEntity);
+            String column = SqlIdentifierSupport.columnName(anchor);
+            if (!bondTargetExistsForTenant(table, column, rawValue, callerTenant)) {
+                throw new InvariantViolationException(List.of(new InvariantViolationDetail(
+                        "bond_target_not_found",
+                        entityName,
+                        "BondTenantScope",
+                        field.getName(),
+                        "Referenced " + targetName + " was not found",
+                        false
+                )));
+            }
+        }
+    }
+
+    private boolean bondTargetExistsForTenant(String table, String column, Object value, String tenantId) {
+        String sql = "SELECT 1 FROM " + table + " WHERE " + column + " = ? AND tenant_id = ?";
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setObject(1, value);
+            statement.setString(2, tenantId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next();
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed validating bond target tenant for table " + table, exception);
+        }
+    }
+
+    private static String normalizeTenantForBondCheck(String tenantId) {
+        return tenantId == null || tenantId.isBlank() ? "default" : tenantId.trim();
+    }
+
     public UUID ensureGeneratedId(Map<String, Object> payload) {
         if (payload == null) {
             return UUID.randomUUID();

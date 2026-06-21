@@ -22,8 +22,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public final class SchemaRealizationEmitter {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
@@ -63,6 +65,9 @@ public final class SchemaRealizationEmitter {
         }
         if (plan.createBusinessTables()) {
             Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
+            for (CompiledConcept concept : model.getConcepts()) {
+                validateNoReservedColumnCollision(concept);
+            }
             for (CompiledConcept concept : model.getConcepts()) {
                 appendBusinessTable(sql, concept, plan.engine(), conceptsByName);
             }
@@ -151,6 +156,30 @@ public final class SchemaRealizationEmitter {
                     .append(");\n");
         }
         sql.append("\n");
+    }
+
+    // "version" and "tenant_id" are platform-reserved business-table columns: every generated
+    // entity gets them implicitly (optimistic concurrency; tenant isolation), regardless of what
+    // the model declares. A model field whose column name collides with one of these (e.g. a
+    // hand-modeled "tenantId" reference field, as in a pre-platform-tenancy multi-tenant sample)
+    // would otherwise silently produce a CREATE TABLE with the same column listed twice -- invalid
+    // SQL that fails at the database, not at generation time where the error is actually
+    // diagnosable. Fail fast here instead, with a message that tells the model author what to do.
+    private static final Set<String> RESERVED_BUSINESS_COLUMN_NAMES = Set.of("version", "tenant_id");
+
+    private static void validateNoReservedColumnCollision(CompiledConcept concept) {
+        for (CompiledField field : concept.getFields()) {
+            String column = SqlIdentifierSupport.columnName(field);
+            if (RESERVED_BUSINESS_COLUMN_NAMES.contains(column.toLowerCase(Locale.ROOT))) {
+                throw new IllegalStateException(
+                        "Concept " + concept.getName() + " has a field '" + field.getName()
+                                + "' whose column name '" + column + "' collides with a platform-reserved "
+                                + "business-table column (every generated table implicitly gets 'version' "
+                                + "for optimistic concurrency and 'tenant_id' for tenant isolation). "
+                                + "Rename this field in the model to something else (e.g. '"
+                                + field.getName() + "Ref').");
+            }
+        }
     }
 
     private static void appendBusinessTable(StringBuilder sql, CompiledConcept concept, DatabaseEngine engine,
