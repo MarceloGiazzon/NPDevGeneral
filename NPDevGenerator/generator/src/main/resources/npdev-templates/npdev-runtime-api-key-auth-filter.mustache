@@ -1,5 +1,6 @@
 package {{configPackage}};
 
+import com.npdev.kernel.ports.ApiKeyCredentialResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -19,9 +20,18 @@ public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
     private static final String DEFAULT_API_KEY_MAPPINGS = "api-dev=dev:developer:ADMIN;dev-key=dev:developer:ADMIN";
 
     private final Map<String, PrincipalClaims> byApiKey;
+    private final ApiKeyCredentialResolver credentialResolver;
 
     public RuntimeApiKeyAuthFilter(String encodedMappings) {
+        this(encodedMappings, ApiKeyCredentialResolver.NONE);
+    }
+
+    // The static mappings (encodedMappings, baked in at generation/startup time) are checked FIRST
+    // and always win; credentialResolver is consulted only as a fallback for a key it doesn't
+    // recognize, so a tenant onboarded at runtime (no regenerate/restart) can still authenticate.
+    public RuntimeApiKeyAuthFilter(String encodedMappings, ApiKeyCredentialResolver credentialResolver) {
         this.byApiKey = parseMappings(encodedMappings);
+        this.credentialResolver = credentialResolver == null ? ApiKeyCredentialResolver.NONE : credentialResolver;
     }
 
     @Override
@@ -51,6 +61,9 @@ public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
             return;
         }
         PrincipalClaims claims = byApiKey.get(apiKey);
+        if (claims == null) {
+            claims = credentialResolver.resolve(apiKey).map(PrincipalClaims::fromCredential).orElse(null);
+        }
         if (claims == null) {
             unauthorized(response, "invalid_api_key");
             return;
@@ -126,6 +139,10 @@ public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
                 return null;
             }
             return new PrincipalClaims(tenantId, actorId, Set.copyOf(roles));
+        }
+
+        static PrincipalClaims fromCredential(ApiKeyCredentialResolver.Principal principal) {
+            return new PrincipalClaims(principal.tenantId(), principal.actorId(), principal.roles());
         }
 
         Map<String, Object> toClaimMap() {

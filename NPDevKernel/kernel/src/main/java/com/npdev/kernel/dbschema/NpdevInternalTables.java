@@ -20,7 +20,8 @@ public final class NpdevInternalTables {
                 NpdevPublicationAuditTable.definition(),
                 NpdevSchemaMetadataTable.definition(),
                 NpdevPromotionStateTable.definition(),
-                NpdevTenantTable.definition()
+                NpdevTenantTable.definition(),
+                NpdevApiCredentialTable.definition()
         );
     }
 }

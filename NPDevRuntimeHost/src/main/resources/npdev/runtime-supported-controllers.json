@@ -24,7 +24,8 @@
     "SupportDiagnosticsController",
     "StorageSummaryController",
     "PromotionController",
-    "TenantAdminController"
+    "TenantAdminController",
+    "CredentialAdminController"
   ],
   "deferredControllers": [
     "HelloController",
@@ -70,7 +71,8 @@
     "SupportDiagnosticsService",
     "TenantStoragePathResolver",
     "PromotionStateService",
-    "TenantRegistryService"
+    "TenantRegistryService",
+    "CredentialRegistryService"
   ],
   "supportedCoreServicePatterns": [
     "*ArtifactRealizationProvider",

@@ -3,6 +3,7 @@ package com.finalexec.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finalexec.auth.IdentityAwareContextResolver;
 import com.finalexec.auth.TenantStatusFilter;
+import com.finalexec.npdev.service.CredentialRegistryService;
 import com.finalexec.npdev.service.TenantRegistryService;
 import com.npdev.adapters.authcontext.jwt.JwtAuthenticatedContextResolver;
 import com.npdev.adapters.authz.defaultpolicy.DefaultExecutionAuthorizationPolicy;
@@ -46,9 +47,12 @@ public class NpdevAuthConfig {
     @Bean
     @ConditionalOnProperty(name = "npdev.auth.mode", havingValue = "apikey")
     public RuntimeApiKeyAuthFilter runtimeApiKeyAuthFilter(
-            @Value("${npdev.auth.api-keys:}") String encodedMappings
+            @Value("${npdev.auth.api-keys:}") String encodedMappings,
+            CredentialRegistryService credentialRegistryService
     ) {
-        return new RuntimeApiKeyAuthFilter(encodedMappings);
+        // Static mappings (encodedMappings) win first; credentialRegistryService is the fallback
+        // that lets a tenant onboarded at runtime (T4) authenticate without a regenerate/restart.
+        return new RuntimeApiKeyAuthFilter(encodedMappings, credentialRegistryService);
     }
 
     @Bean
