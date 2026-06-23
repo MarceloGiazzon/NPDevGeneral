@@ -154,6 +154,65 @@ class KernelRunnerCapabilityPolicyTest {
     }
 
     @Test
+    void stampsCallerTenantIntoFlowDrivenPersistenceQueryCriteria() {
+        AtomicReference<Object> seenConcept = new AtomicReference<>();
+        AtomicReference<Object> seenCriteria = new AtomicReference<>();
+        KernelRunner runner = new KernelRunner(
+                event -> {
+                },
+                (entityName, payload) -> List.of(),
+                new InMemoryFlowDefinitionProvider()
+                        .register(new FlowDefinition(
+                                "ListUsers",
+                                "User",
+                                List.of(
+                                        FlowStepDefinition.capabilityCall(
+                                                "query",
+                                                "persistence",
+                                                "PersistenceCapability",
+                                                "inmemory",
+                                                "query",
+                                                List.of("User", "$input"),
+                                                "$found",
+                                                new CapabilityExecutionPolicy(1, 0, 0, null, null)
+                                        ),
+                                        FlowStepDefinition.returnValue("return-found", "$found")
+                                )
+                        )),
+                (call, state) -> {
+                    seenConcept.set(call.args().get(0));
+                    seenCriteria.set(call.args().get(1));
+                    return CapabilityResult.success(List.of());
+                },
+                null,
+                null,
+                FlowInstanceStore.noop(),
+                CorrelationOwnershipStore.noop(),
+                CircuitBreakerStateStore.noop(),
+                BulkheadStore.noop(),
+                IdempotencyStore.noop(),
+                CapabilityPolicyOverrides.empty(),
+                new InMemoryJsonCodec(),
+                null,
+                MetricsSink.noop()
+        );
+
+        ExecutionResult result = runner.execute(
+                "ListUsers",
+                Map.of("status", "active"),
+                ExecutionContext.of("tenant-xyz", "actor-1")
+        );
+
+        assertEquals(ExecutionStatus.OK, result.getStatus());
+        assertEquals("User", seenConcept.get());
+        assertTrue(seenCriteria.get() instanceof Map, "query criteria should be a Map");
+        Map<?, ?> criteria = (Map<?, ?>) seenCriteria.get();
+        assertEquals("active", criteria.get("status"), "the flow author's own criteria must still be present");
+        assertEquals("tenant-xyz", criteria.get("tenantId"),
+                "flow-driven persistence query/list must carry the caller's tenant from the execution context");
+    }
+
+    @Test
     void opensCircuitAfterRepeatedTransientFailuresAndShortCircuitsNextCall() {
         AtomicInteger attempts = new AtomicInteger();
         CircuitBreakerStateStore circuitStore = new InMemoryCircuitBreakerStore();

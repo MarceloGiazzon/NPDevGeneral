@@ -531,9 +531,6 @@ private final EventBus eventBus;
         this.schemaValidator = schemaValidator == null ? SchemaValidator.noop() : schemaValidator;
         this.metricsSink = metricsSink == null ? MetricsSink.noop() : metricsSink;
         this.idProvider = idProvider == null ? IdProvider.uuid() : idProvider;
-
-        // Marker to verify that exported NP is the one running inside FinalExec
-        LOG.info("NPDEV-UPGRADE-MARKER 2026-03-03 :: KernelRunner loaded");
     }
 
     public KernelRunner(
@@ -3183,17 +3180,17 @@ private final EventBus eventBus;
         Object conceptForDebug = null;
 
         if (args != null
-                && args.size() == 1
                 && step != null
                 && step.getCapability() != null
                 && step.getOperation() != null) {
 
             String capName = step.getCapability().trim().toLowerCase();
             String opName = step.getOperation().trim().toLowerCase();
+            boolean isPersistence = "persistence".equals(capName);
 
             // NPDev convention (debug only for now): infer a concept name for persistence.save
             // from invariant scope or runtime entity name.
-            if ("persistence".equals(capName) && "save".equals(opName)) {
+            if (isPersistence && "save".equals(opName) && args.size() == 1) {
                 Object concept = step.getInvariantScope();
                 if (concept == null || String.valueOf(concept).isBlank()) {
                     concept = state == null ? null : state.get("_npdevEntityName");
@@ -3207,7 +3204,8 @@ private final EventBus eventBus;
                 // entity payload so the capability adapter writes the tenant_id column. The tenant is
                 // taken from the execution context, never from caller-supplied data -- mirroring the
                 // generated-CRUD path. Reads via capability findById (by globally-unique UUID) are
-                // unaffected; capability query()/list flows remain the flow author's responsibility.
+                // unaffected (IDs are globally-unique UUIDs, not enumerable); query()/list reads are
+                // tenant-scoped below, the same way.
                 if (args.get(0) instanceof Map<?, ?> entityMap) {
                     Map<String, Object> stamped = new LinkedHashMap<>();
                     for (Map.Entry<?, ?> entry : entityMap.entrySet()) {
@@ -3217,6 +3215,26 @@ private final EventBus eventBus;
                     callArgs = List.of(stamped);
                     effectiveArgs = callArgs;
                 }
+            }
+
+            // Tenant isolation for flow-driven persistence READS: query()/list() take
+            // (concept, criteria) -- stamp the caller's tenant into the criteria map the same way
+            // save() stamps it into the entity map, so a flow author gets row-scoped reads for free
+            // instead of having to remember to add a tenantId criterion themselves.
+            if (isPersistence && ("query".equals(opName) || "list".equals(opName)) && args.size() == 2) {
+                Object concept = args.get(0);
+                if (concept != null && !String.valueOf(concept).isBlank()) {
+                    conceptForDebug = concept;
+                }
+                Map<String, Object> stamped = new LinkedHashMap<>();
+                if (args.get(1) instanceof Map<?, ?> criteriaMap) {
+                    for (Map.Entry<?, ?> entry : criteriaMap.entrySet()) {
+                        stamped.put(String.valueOf(entry.getKey()), entry.getValue());
+                    }
+                }
+                stamped.put("tenantId", flowStateTenantId(state));
+                callArgs = List.of(concept, stamped);
+                effectiveArgs = callArgs;
             }
         }
 

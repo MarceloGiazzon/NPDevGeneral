@@ -1,0 +1,172 @@
+{
+  "$schema": "..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.superuser.admin.console",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "Permanent browser-verified sample proving the super-user surfaces (identity/workspace built-in packs, Store, Box View) alongside ordinary business CRUD, side by side in the same generated app.",
+    "internalTables": {
+      "gate": "internal.tables=true (config.json defaults)",
+      "composedPacks": ["identity (User/Role/UserRole)", "workspace (Menu/Preference)"],
+      "superUserSurfaces": ["Admin nav group", "Store (/api/admin/packs)", "Box View (/api/admin/box)"]
+    }
+  },
+  "concepts": [
+    {
+      "name": "Project",
+      "ui": {
+        "label": "Project",
+        "description": "An ordinary business concept, rendered in the regular (non-admin) nav group",
+        "group": "Work",
+        "order": 10
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Name",
+            "widget": "text"
+          }
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "enumValues": [
+            "Active",
+            "OnHold",
+            "Completed"
+          ],
+          "required": true,
+          "ui": {
+            "label": "Status",
+            "widget": "select"
+          }
+        },
+        {
+          "name": "ownerEmail",
+          "type": "string",
+          "ui": {
+            "label": "Owner email",
+            "widget": "email"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "ProjectNameRequired",
+          "expr": "name != null && name != ''"
+        },
+        {
+          "name": "ProjectNameUnique",
+          "type": "unique",
+          "fields": [
+            "name"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Note",
+      "ui": {
+        "label": "Note",
+        "description": "Business concept with a reference field, scoped to one Project",
+        "group": "Work",
+        "order": 20
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "projectRef",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "Project",
+            "displayField": "name",
+            "searchFields": [
+              "name"
+            ],
+            "inlineCreate": "deny"
+          },
+          "ui": {
+            "label": "Project",
+            "widget": "search-dialog"
+          }
+        },
+        {
+          "name": "body",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Body",
+            "widget": "textarea"
+          }
+        },
+        {
+          "name": "pinned",
+          "type": "boolean",
+          "required": true,
+          "default": false,
+          "ui": {
+            "label": "Pinned",
+            "widget": "checkbox"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "NoteProjectRequired",
+          "expr": "projectRef != null"
+        },
+        {
+          "name": "NoteBodyRequired",
+          "expr": "body != null && body != ''"
+        }
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        "save",
+        "findById",
+        "unique"
+      ]
+    },
+    {
+      "name": "notification",
+      "type": "NotificationCapability",
+      "operations": [
+        "send"
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    },
+    {
+      "capability": "notification",
+      "adapter": "notification-inproc"
+    },
+    {
+      "capability": "eventBus",
+      "adapter": "inproc"
+    }
+  ]
+}

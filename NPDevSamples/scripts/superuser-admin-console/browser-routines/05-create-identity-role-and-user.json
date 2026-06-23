@@ -1,0 +1,39 @@
+{
+  "scenarioName": "superuser-console-create-identity-role-and-user",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "variables": { "roleName": "UITEST-ROLE-PLACEHOLDER", "userName": "uitest-user-placeholder" },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "value": "api-dev" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-identity--Role\"]", "state": "visible" },
+
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-identity--Role\"]", "label": "Open the composed Identity Role concept" },
+    { "action": "waitForSelector", "selector": "#concept-identity--Role", "state": "visible" },
+    { "action": "click", "selector": "#concept-identity--Role .panel-actions button:has-text(\"New\")", "label": "Open the Role create form" },
+    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "visible" },
+    { "action": "fill", "selector": "#modalRoot [name=\"name\"]", "valueFromVariable": "roleName", "label": "Unique role name (avoids unique-constraint collision on reruns)" },
+    { "action": "fill", "selector": "#modalRoot [name=\"description\"]", "value": "Created through the browser-verification routine" },
+    { "action": "click", "selector": "#modalRoot button:has-text(\"Create\")", "label": "Submit the Role create form" },
+    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "detached", "label": "Modal closes only on a successful create" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "assertTextContains", "selector": "#concept-identity--Role", "text": "UITEST", "label": "New Role row visible in the grid" },
+
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-identity--User\"]", "label": "Open the composed Identity User concept" },
+    { "action": "waitForSelector", "selector": "#concept-identity--User", "state": "visible" },
+    { "action": "click", "selector": "#concept-identity--User .panel-actions button:has-text(\"New\")", "label": "Open the User create form" },
+    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "visible" },
+    { "action": "fill", "selector": "#modalRoot [name=\"username\"]", "valueFromVariable": "userName", "label": "Unique username (avoids unique-constraint collision on reruns)" },
+    { "action": "fill", "selector": "#modalRoot [name=\"displayName\"]", "value": "UI Test User" },
+    { "action": "fill", "selector": "#modalRoot [name=\"email\"]", "value": "uitest-user@example.com" },
+    { "action": "check", "selector": "#modalRoot [name=\"active\"]" },
+    { "action": "click", "selector": "#modalRoot button:has-text(\"Create\")", "label": "Submit the User create form" },
+    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "detached", "label": "Modal closes only on a successful create" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "assertTextContains", "selector": "#concept-identity--User", "text": "uitest-user", "label": "New User row visible in the grid" },
+    { "action": "screenshot", "name": "role_and_user_created" },
+    { "action": "collect", "what": ["domText", "url"] }
+  ]
+}

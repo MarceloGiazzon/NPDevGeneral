@@ -8,6 +8,9 @@
   const PREFERENCES_SECTION = { conceptName: "__preferences__" };
   const STORE_SECTION = { conceptName: "__store__" };
   const BOX_VIEW_SECTION = { conceptName: "__boxview__" };
+  const PROMOTION_SECTION = { conceptName: "__promotion__" };
+  const PROMOTION_STAGES = ["S0_IDEA", "S1_DECLARED", "S2_GENERATED", "S3_CUSTOMIZED", "S4_RUNNABLE",
+    "S5_TESTED", "S6_EVIDENCE_BACKED", "S7_RELEASE_APPROVED", "S8_RELEASED"];
   const state = {
     manifest: null,
     panels: {},
@@ -20,7 +23,8 @@
     menuItems: [],
     preferences: { records: [], loading: false, loaded: false },
     store: { packs: [], discoverable: false, loading: false, loaded: false },
-    boxView: { boxes: [], note: "", loading: false, loaded: false }
+    boxView: { boxes: [], note: "", loading: false, loaded: false },
+    promotion: { currentStage: "", history: [], loading: false, loaded: false }
   };
 
   const el = {
@@ -29,6 +33,7 @@
     status: document.getElementById("status"),
     apiKey: document.getElementById("apiKey"),
     modalRoot: document.getElementById("modalRoot"),
+    pickerModalRoot: document.getElementById("pickerModalRoot"),
     sideNav: document.getElementById("sideNav"),
     layoutRoot: document.getElementById("layoutRoot"),
     navToggle: document.getElementById("navToggle")
@@ -306,6 +311,9 @@
       const boxViewPanel = renderBoxViewPanel();
       boxViewPanel.style.display = activeId === sectionId(BOX_VIEW_SECTION) ? "" : "none";
       el.app.appendChild(boxViewPanel);
+      const promotionPanel = renderPromotionPanel();
+      promotionPanel.style.display = activeId === sectionId(PROMOTION_SECTION) ? "" : "none";
+      el.app.appendChild(promotionPanel);
     }
   }
 
@@ -329,6 +337,11 @@
   function showBoxView() {
     showConcept(BOX_VIEW_SECTION);
     loadBoxView();
+  }
+
+  function showPromotion() {
+    showConcept(PROMOTION_SECTION);
+    loadPromotion();
   }
 
   // Read-only "app store" view of every built-in platform pack the generator found on disk,
@@ -452,6 +465,114 @@
       row.appendChild(textCell(String(box.bondCount || 0)));
       row.appendChild(textCell(box.admin ? "Built-in pack" : "App-authored"));
       row.appendChild(badgeCell(box.truthLevel || "T2_GENERATED", truthBadgeClass));
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    section.appendChild(table);
+    return section;
+  }
+
+  // S0-S8 promotion lifecycle (see PromotionController/PromotionStateService). The endpoint
+  // returns the current accepted stage AND the full append-only history (including past REJECTED
+  // attempts) in one call, so a single load covers both the status line and the audit table.
+  async function loadPromotion() {
+    state.promotion.loading = true;
+    render();
+    try {
+      const payload = await fetchJson("/api/admin/promotion", { method: "GET", headers: headers() });
+      state.promotion.currentStage = payload.currentStage || "";
+      state.promotion.history = Array.isArray(payload.history) ? payload.history : [];
+      state.promotion.loaded = true;
+      setStatus("Promotion state loaded.", false);
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+    state.promotion.loading = false;
+    render();
+  }
+
+  // A rejected advance attempt (stage-skip, missing evidence, missing ADMIN role) still gets
+  // recorded as a REJECTED history event server-side even though the HTTP call itself fails with
+  // 400 -- so the history is always reloaded afterward regardless of outcome, not only on success.
+  async function advancePromotion(stage, evidence) {
+    try {
+      await fetchJson("/api/admin/promotion/advance", {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({ stage: stage, evidence: evidence })
+      });
+      setStatus("Promotion advanced to " + stage + ".", false);
+    } catch (error) {
+      setStatus(error.message, true);
+    } finally {
+      await loadPromotion();
+    }
+  }
+
+  function formatTimestampMs(value) {
+    const n = Number(value);
+    if (!n) return "";
+    try { return new Date(n).toISOString(); } catch (e) { return String(value); }
+  }
+
+  function renderPromotionPanel() {
+    const section = document.createElement("section");
+    section.className = "concept-panel";
+    section.id = sectionId(PROMOTION_SECTION);
+
+    const header = document.createElement("div");
+    header.className = "panel-header";
+    const title = document.createElement("h2");
+    title.textContent = "Promotion";
+    header.appendChild(title);
+    const actions = document.createElement("div");
+    actions.className = "panel-actions";
+    actions.appendChild(button("Refresh", "", loadPromotion));
+    header.appendChild(actions);
+    section.appendChild(header);
+
+    if (!state.promotion.loaded && !state.promotion.loading) {
+      loadPromotion();
+    }
+
+    const status = document.createElement("p");
+    status.textContent = "Current stage: " + (state.promotion.currentStage || "(unknown)");
+    section.appendChild(status);
+
+    const advanceRow = document.createElement("div");
+    advanceRow.className = "filters";
+    const stageSelect = document.createElement("select");
+    PROMOTION_STAGES.forEach(function (stage) {
+      const option = document.createElement("option");
+      option.value = stage;
+      option.textContent = stage;
+      stageSelect.appendChild(option);
+    });
+    const evidenceInput = document.createElement("input");
+    evidenceInput.type = "text";
+    evidenceInput.placeholder = "Evidence (required from S5 onward)";
+    advanceRow.appendChild(stageSelect);
+    advanceRow.appendChild(evidenceInput);
+    advanceRow.appendChild(button("Advance", "primary", function () {
+      advancePromotion(stageSelect.value, evidenceInput.value);
+    }));
+    section.appendChild(advanceRow);
+
+    const table = document.createElement("table");
+    table.className = "records";
+    const thead = document.createElement("thead");
+    thead.appendChild(headerRow(["When", "Stage", "Actor", "Roles", "Evidence", "Outcome", "Reason"]));
+    table.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    state.promotion.history.forEach(function (event) {
+      const row = document.createElement("tr");
+      row.appendChild(textCell(formatTimestampMs(event.timestampMs)));
+      row.appendChild(textCell(event.stage || ""));
+      row.appendChild(textCell(event.actorId || ""));
+      row.appendChild(textCell(event.roles || ""));
+      row.appendChild(textCell(event.evidence || ""));
+      row.appendChild(badgeCell(event.outcome || "", event.outcome === "ACCEPTED" ? "badge-success" : "badge-danger"));
+      row.appendChild(textCell(event.reasonCode || ""));
       tbody.appendChild(row);
     });
     table.appendChild(tbody);
@@ -1462,7 +1583,7 @@
             const label = lookupLabel(reference, row);
             state.referenceLabels[referenceCacheKey(reference, id)] = { status: "resolved", label: label, row: row };
             onSelect(id, label);
-            closeModal();
+            closeModalIn(el.pickerModalRoot);
           });
           tbody.appendChild(tr);
         });
@@ -1481,7 +1602,7 @@
     });
 
     loadPickerRows("");
-    openModal("Select " + humanize(reference.targetConcept || "record"), content);
+    openModalInto(el.pickerModalRoot, "Select " + humanize(reference.targetConcept || "record"), content);
     setTimeout(function () { searchInput.focus(); }, 50);
   }
 
@@ -1602,8 +1723,15 @@
     }));
   }
 
-  function openModal(title, content) {
-    el.modalRoot.innerHTML = "";
+  // Reference/lookup fields inside a create/edit form open their own picker
+  // dialog (see openPickerDialog). That picker must render in a SEPARATE root
+  // (el.pickerModalRoot) from the form's own modal (el.modalRoot) -- both
+  // openModal/closeModal wipe their root's innerHTML wholesale, so reusing the
+  // same root for the picker would destroy the parent form the instant the
+  // picker opened (confirmed live: a real generator bug, found via browser
+  // verification of a reference field inside a create form).
+  function openModalInto(root, title, content) {
+    root.innerHTML = "";
     const backdrop = document.createElement("div");
     backdrop.className = "modal-backdrop";
     const modal = document.createElement("div");
@@ -1613,15 +1741,23 @@
     const heading = document.createElement("h3");
     heading.textContent = title;
     header.appendChild(heading);
-    header.appendChild(button("Close", "", closeModal));
+    header.appendChild(button("Close", "", function () { closeModalIn(root); }));
     modal.appendChild(header);
     modal.appendChild(content);
     backdrop.appendChild(modal);
-    el.modalRoot.appendChild(backdrop);
+    root.appendChild(backdrop);
+  }
+
+  function closeModalIn(root) {
+    root.innerHTML = "";
+  }
+
+  function openModal(title, content) {
+    openModalInto(el.modalRoot, title, content);
   }
 
   function closeModal() {
-    el.modalRoot.innerHTML = "";
+    closeModalIn(el.modalRoot);
   }
 
   function button(label, className, onClick) {
@@ -1751,6 +1887,20 @@
       if (key === "preferences" && findConcept(PREFERENCE_CONCEPT_NAME)) {
         return PREFERENCES_SECTION;
       }
+      // Store/Box View/Promotion are themselves super-user-only surfaces, so a Menu row
+      // routing to one only resolves for a super-user viewer -- a non-super-user with a
+      // misconfigured Menu row simply sees no extra link, the same as an unresolvable target.
+      if (state.isSuperUser) {
+        if (key === "store") {
+          return STORE_SECTION;
+        }
+        if (key === "boxview" || key === "box-view" || key === "box_view") {
+          return BOX_VIEW_SECTION;
+        }
+        if (key === "promotion") {
+          return PROMOTION_SECTION;
+        }
+      }
     }
     return null;
   }
@@ -1780,6 +1930,8 @@
           showStore();
         } else if (concept === BOX_VIEW_SECTION) {
           showBoxView();
+        } else if (concept === PROMOTION_SECTION) {
+          showPromotion();
         } else {
           showConcept(concept);
         }
@@ -1813,6 +1965,7 @@
       if (state.isSuperUser) {
         addLink(STORE_SECTION, "Store", true);
         addLink(BOX_VIEW_SECTION, "Box View", true);
+        addLink(PROMOTION_SECTION, "Promotion", true);
       }
     }
   }

@@ -24,7 +24,6 @@ public final class RegistryCapabilityDispatcher implements CapabilityDispatcher 
 
     public RegistryCapabilityDispatcher(CapabilityRegistry registry) {
         this.registry = Objects.requireNonNull(registry, "registry");
-        LOG.info("NPDEV-UPGRADE-MARKER 2026-03-03 :: RegistryCapabilityDispatcher loaded");
     }
 
     @Override

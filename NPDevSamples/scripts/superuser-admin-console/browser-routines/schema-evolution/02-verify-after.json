@@ -1,0 +1,32 @@
+{
+  "scenarioName": "schema-evolution-verify-after",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "variables": { "projectName": "EVO-PROJECT-PLACEHOLDER", "internalCodeValue": "EVO-CODE-PLACEHOLDER" },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "value": "api-dev" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-Project\"]", "state": "visible" },
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-Project\"]", "label": "Open the Project concept (v2 schema, after evolution)" },
+    { "action": "waitForSelector", "selector": "#concept-Project", "state": "visible" },
+    { "action": "assertTextContains", "selector": "#concept-Project", "text": "EVO-PROJECT", "label": "(a) NO DATA LOSS -- the row created before the schema evolved is still here" },
+
+    { "action": "click", "selector": "#concept-Project tr:has-text(\"EVO-PROJECT\") button:has-text(\"Edit\")", "label": "Open the edit form for the pre-evolution row" },
+    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "visible" },
+    { "action": "assertVisible", "selector": "#modalRoot [name=\"internalCode\"]", "label": "The newly-added column renders on this OLD record's edit form (manifest/UI picked up the migration)" },
+    { "action": "fill", "selector": "#modalRoot [name=\"internalCode\"]", "valueFromVariable": "internalCodeValue", "label": "(c) NEW COLUMN IS USABLE -- write through it" },
+    { "action": "click", "selector": "#modalRoot button:has-text(\"Save\")" },
+    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "detached", "label": "Modal closes only on a successful update" },
+
+    { "action": "reload", "label": "Force a fresh fetch from the server (not client cache) to prove the value really persisted" },
+    { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-Project\"]", "state": "visible" },
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-Project\"]" },
+    { "action": "waitForSelector", "selector": "#concept-Project", "state": "visible" },
+    { "action": "assertTextContains", "selector": "#concept-Project", "text": "EVO-PROJECT", "label": "Still no data loss after the reload" },
+    { "action": "assertTextContains", "selector": "#concept-Project", "text": "EVO-CODE", "label": "(c) the new column's value round-tripped through the server and renders in the grid" },
+    { "action": "screenshot", "name": "after_evolution" },
+    { "action": "collect", "what": ["domText", "url"] }
+  ]
+}

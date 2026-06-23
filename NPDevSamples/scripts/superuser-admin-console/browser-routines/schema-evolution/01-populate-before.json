@@ -1,0 +1,26 @@
+{
+  "scenarioName": "schema-evolution-populate-before",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "variables": { "projectName": "EVO-PROJECT-PLACEHOLDER" },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "value": "api-dev" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-Project\"]", "state": "visible" },
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-Project\"]", "label": "Open the Project concept (v1 schema, before evolution)" },
+    { "action": "waitForSelector", "selector": "#concept-Project", "state": "visible" },
+    { "action": "click", "selector": "#concept-Project .panel-actions button:has-text(\"New\")", "label": "Open the Project create form" },
+    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "visible" },
+    { "action": "fill", "selector": "#modalRoot [name=\"name\"]", "valueFromVariable": "projectName", "label": "The row whose survival proves no data loss after the schema evolves" },
+    { "action": "selectOption", "selector": "#modalRoot [name=\"status\"]", "value": "Active" },
+    { "action": "fill", "selector": "#modalRoot [name=\"ownerEmail\"]", "value": "evo@example.com" },
+    { "action": "click", "selector": "#modalRoot button:has-text(\"Create\")", "label": "Submit the create form" },
+    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "detached", "label": "Modal closes only on a successful create" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "assertTextContains", "selector": "#concept-Project", "text": "EVO-PROJECT", "label": "Row visible before the schema evolves -- the baseline this demo will prove survives" },
+    { "action": "screenshot", "name": "before_evolution" },
+    { "action": "collect", "what": ["domText", "url"] }
+  ]
+}

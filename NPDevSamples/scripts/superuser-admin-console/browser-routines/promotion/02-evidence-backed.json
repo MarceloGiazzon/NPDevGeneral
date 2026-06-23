@@ -1,0 +1,30 @@
+{
+  "scenarioName": "promotion-evidence-backed",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "onFailure", "collectDomOnFailure": true },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "value": "api-dev" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-__promotion__\"]", "state": "visible" },
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-__promotion__\"]" },
+    { "action": "waitForSelector", "selector": "#concept-__promotion__", "state": "visible" },
+    { "action": "assertTextContains", "selector": "#concept-__promotion__", "text": "Current stage: S4_RUNNABLE", "label": "Continuity from 01-promotion-rejections-and-early-stages -- state lives in the DB, not the browser" },
+
+    { "action": "selectOption", "selector": "#concept-__promotion__ select", "value": "S5_TESTED" },
+    { "action": "fill", "selector": "#concept-__promotion__ input[placeholder^=\"Evidence\"]", "value": "Automated test suite green; see this session's CI run." },
+    { "action": "click", "selector": "#concept-__promotion__ button:has-text(\"Advance\")" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "assertTextContains", "selector": "#concept-__promotion__", "text": "Current stage: S5_TESTED", "label": "With evidence provided, S5 is accepted" },
+
+    { "action": "selectOption", "selector": "#concept-__promotion__ select", "value": "S6_EVIDENCE_BACKED" },
+    { "action": "fill", "selector": "#concept-__promotion__ input[placeholder^=\"Evidence\"]", "value": "Evidence bundle attached to this run's RunOutput." },
+    { "action": "click", "selector": "#concept-__promotion__ button:has-text(\"Advance\")" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "assertTextContains", "selector": "#concept-__promotion__", "text": "Current stage: S6_EVIDENCE_BACKED" },
+
+    { "action": "screenshot", "name": "promotion_evidence_backed" },
+    { "action": "collect", "what": ["domText", "url"] }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "scenarioName": "restaurant-create-tenant-via-ui",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "variables": { "uniqueCode": "UITEST-PLACEHOLDER" },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "value": "api-dev" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-Tenant\"]", "state": "visible", "label": "Nav ready" },
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-Tenant\"]", "label": "Open the Tenant concept" },
+    { "action": "waitForSelector", "selector": "#concept-Tenant", "state": "visible", "label": "Tenant panel rendered" },
+    { "action": "click", "selector": "#concept-Tenant .panel-actions button:has-text(\"New\")", "label": "Open the create form" },
+    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "visible", "label": "Create modal opened" },
+    { "action": "fill", "selector": "#modalRoot [name=\"code\"]", "valueFromVariable": "uniqueCode", "label": "Unique tenant code (per run, avoids unique-constraint collisions)" },
+    { "action": "fill", "selector": "#modalRoot [name=\"displayName\"]", "value": "UI Created Tenant", "label": "Display name" },
+    { "action": "selectOption", "selector": "#modalRoot [name=\"plan\"]", "value": "Starter", "label": "Required plan enum" },
+    { "action": "check", "selector": "#modalRoot [name=\"active\"]", "label": "Required active flag" },
+    { "action": "screenshot", "name": "tenant_form_filled" },
+    { "action": "click", "selector": "#modalRoot button:has-text(\"Create\")", "label": "Submit the create form" },
+    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "detached", "label": "Modal closes only on a successful create (server accepted the row)" },
+    { "action": "waitForTimeout", "timeoutMs": 1000, "label": "Let the panel reload after the mutation" },
+    { "action": "screenshot", "name": "tenant_created" },
+    { "action": "collect", "what": ["domText", "url"] }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "scenarioName": "superuser-console-create-workspace-menu",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "variables": { "menuLabel": "UITEST-MENU-PLACEHOLDER" },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "value": "api-dev" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-workspace--Menu\"]", "state": "visible" },
+
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-workspace--Menu\"]", "label": "Open the composed Workspace Menu concept" },
+    { "action": "waitForSelector", "selector": "#concept-workspace--Menu", "state": "visible" },
+    { "action": "click", "selector": "#concept-workspace--Menu .panel-actions button:has-text(\"New\")", "label": "Open the Menu create form" },
+    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "visible" },
+    { "action": "fill", "selector": "#modalRoot [name=\"label\"]", "valueFromVariable": "menuLabel", "label": "Unique menu label" },
+    { "action": "fill", "selector": "#modalRoot [name=\"target\"]", "value": "#concept-Note" },
+    { "action": "selectOption", "selector": "#modalRoot [name=\"kind\"]", "value": "BUSINESS", "label": "Required kind enum" },
+    { "action": "fill", "selector": "#modalRoot [name=\"ordinal\"]", "value": "10" },
+    { "action": "check", "selector": "#modalRoot [name=\"visible\"]" },
+    { "action": "screenshot", "name": "menu_form_filled" },
+    { "action": "click", "selector": "#modalRoot button:has-text(\"Create\")", "label": "Submit the Menu create form" },
+    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "detached", "label": "Modal closes only on a successful create" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "assertTextContains", "selector": "#concept-workspace--Menu", "text": "UITEST", "label": "New Menu row visible in the grid" },
+    { "action": "screenshot", "name": "menu_created" },
+    { "action": "collect", "what": ["domText", "url"] }
+  ]
+}
