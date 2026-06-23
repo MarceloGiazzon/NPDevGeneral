@@ -57,6 +57,31 @@
             "label": "Owner email",
             "widget": "email"
           }
+        },
+        {
+          "name": "shipping",
+          "type": "object",
+          "description": "3-level nested object (shipping -> address -> geo), the permanent proof point for recursive multi-level data editing.",
+          "ui": {
+            "label": "Shipping",
+            "showInDefaultWebUi": true
+          },
+          "properties": {
+            "carrier": { "type": "string" },
+            "address": {
+              "type": "object",
+              "properties": {
+                "street": { "type": "string" },
+                "geo": {
+                  "type": "object",
+                  "properties": {
+                    "lat": { "type": "string" },
+                    "lng": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
         }
       ],
       "invariants": [

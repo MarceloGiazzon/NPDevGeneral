@@ -10,6 +10,8 @@ import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.dsl.v1.settings.NpdevSettings;
+import com.npdev.dsl.v1.settings.SettingResolver;
+import com.npdev.dsl.v1.settings.SettingTarget;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.packs.BuiltinPackComposer;
 import com.npdev.generator.templates.TemplateEngine;
@@ -37,13 +39,28 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     }
 
     public void emit(CompiledModel model, String superUserRole) {
+        emit(model, superUserRole, new SettingResolver(com.npdev.dsl.v1.settings.SettingStore.empty()));
+    }
+
+    /**
+     * @param settingResolver resolves {@code field.widget} cascade overrides
+     *     (selector {@code field:<Concept>.<field>} -> {@code concept:<Concept>} -> {@code app})
+     *     ahead of a field's direct model.json {@code ui.widget} attribute. An empty resolver
+     *     (every call resolves to the platform default, the empty string) reproduces the prior
+     *     behavior exactly, so existing callers/samples are unaffected unless they actually
+     *     declare an override.
+     */
+    public void emit(CompiledModel model, String superUserRole, SettingResolver settingResolver) {
+        SettingResolver resolver = settingResolver == null
+                ? new SettingResolver(com.npdev.dsl.v1.settings.SettingStore.empty())
+                : settingResolver;
         List<CompiledConcept> persistedConcepts = persistedConcepts(model);
         Map<String, CompiledConcept> conceptsByName = conceptsByName(persistedConcepts);
         Map<String, Object> ctx = new LinkedHashMap<>();
         ctx.put("controllerPackage", "com.npdev.generated.controllers");
         ctx.put("servicePackage", "com.npdev.generated.services");
         ctx.put("entityPackage", "com.npdev.generated.entities");
-        ctx.put("concepts", conceptTemplateModels(persistedConcepts, conceptsByName));
+        ctx.put("concepts", conceptTemplateModels(persistedConcepts, conceptsByName, resolver));
         ctx.put("superUserRole", superUserRole == null || superUserRole.isBlank() ? "ADMIN" : superUserRole.trim());
 
         writer.writeRelative(
@@ -82,7 +99,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         );
         writer.writeRelative(
                 "src/main/resources/static/npdev-business-ui/generated-ui-manifest.json",
-                manifestJson(model, persistedConcepts, superUserRole)
+                manifestJson(model, persistedConcepts, superUserRole, resolver)
         );
     }
 
@@ -115,7 +132,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
 
     private static List<Map<String, Object>> conceptTemplateModels(
             List<CompiledConcept> concepts,
-            Map<String, CompiledConcept> conceptsByName
+            Map<String, CompiledConcept> conceptsByName,
+            SettingResolver settingResolver
     ) {
         List<Map<String, Object>> out = new ArrayList<>();
         for (CompiledConcept concept : concepts) {
@@ -128,7 +146,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             view.put("endpointBase", javaString(endpointBase(concept)));
             view.put("className", concept.getClassName());
             view.put("serviceVariable", uncap(concept.getClassName()) + "Service");
-            view.put("fields", fieldTemplateModels(concept, conceptsByName));
+            view.put("fields", fieldTemplateModels(concept, conceptsByName, settingResolver));
             out.add(view);
         }
         return out;
@@ -136,7 +154,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
 
     private static List<Map<String, Object>> fieldTemplateModels(
             CompiledConcept concept,
-            Map<String, CompiledConcept> conceptsByName
+            Map<String, CompiledConcept> conceptsByName,
+            SettingResolver settingResolver
     ) {
         List<Map<String, Object>> out = new ArrayList<>();
         for (CompiledField field : concept.getFields()) {
@@ -150,7 +169,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             view.put("readOnly", field.isId());
             view.put("sortable", isSortable(field));
             view.put("filterable", isFilterable(field));
-            view.put("widget", javaString(widget(field, conceptsByName)));
+            view.put("widget", javaString(widget(field, conceptsByName, concept.getName(), settingResolver)));
             view.put("hasEnumValues", field.getEnumValues() != null && !field.getEnumValues().isEmpty());
             view.put("enumValues", enumValuesJava(field));
             view.put("defaultEnumValue", javaString(defaultEnumValue(field)));
@@ -159,7 +178,12 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         return out;
     }
 
-    private static String manifestJson(CompiledModel model, List<CompiledConcept> concepts, String superUserRole) {
+    private static String manifestJson(
+            CompiledModel model,
+            List<CompiledConcept> concepts,
+            String superUserRole,
+            SettingResolver settingResolver
+    ) {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("schemaVersion", "npdev-generated-ui-manifest.v1");
         root.put("appName", model == null || model.getNamespace() == null ? "NPDev Generated App" : model.getNamespace());
@@ -183,7 +207,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("endpointBase", endpointBase(concept));
             node.put("formColumns", formColumns(concept));
             node.put("displayMode", displayMode(concept));
-            node.put("fields", manifestFields(concept, conceptsByName(concepts)));
+            node.put("frameMode", resolveFrameMode(concept, settingResolver));
+            node.put("fields", manifestFields(concept, conceptsByName(concepts), settingResolver));
             node.put("list", manifestList(concept, idField));
             Map<String, Object> actions = new LinkedHashMap<>();
             actions.put("list", true);
@@ -204,7 +229,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
 
     private static List<Map<String, Object>> manifestFields(
             CompiledConcept concept,
-            Map<String, CompiledConcept> conceptsByName
+            Map<String, CompiledConcept> conceptsByName,
+            SettingResolver settingResolver
     ) {
         List<Map<String, Object>> fields = new ArrayList<>();
         for (CompiledField field : concept.getFields()) {
@@ -238,7 +264,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 }
             }
             Optional<Map<String, Object>> reference = referenceMetadata(field, conceptsByName);
-            node.put("widget", reference.isPresent() ? "lookup" : widget(field, conceptsByName));
+            node.put("widget", reference.isPresent() ? "lookup" : widget(field, conceptsByName, concept.getName(), settingResolver));
             node.put("enumValues", field.getEnumValues());
             node.put("enumOptions", enumOptionsManifest(field));
             node.put("enumName", enumName(concept, field));
@@ -380,9 +406,28 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         return label == null || label.isBlank() ? humanize(field.getName()) : label.trim();
     }
 
-    private static String widget(CompiledField field, Map<String, CompiledConcept> conceptsByName) {
+    private static String widget(
+            CompiledField field,
+            Map<String, CompiledConcept> conceptsByName,
+            String conceptName,
+            SettingResolver settingResolver
+    ) {
         if (referenceMetadata(field, conceptsByName).isPresent()) {
             return "lookup";
+        }
+        // field.widget cascade (field:<Concept>.<field> -> concept:<Concept> -> app -> platform
+        // default) takes priority over the field's own model.json ui.widget when explicitly
+        // overridden -- this is the actual personalization mechanism the setting was registered
+        // for. An unconfigured app resolves to the platform default (empty string) for every
+        // field, so this is a no-op unless an author has actually declared an override.
+        if (settingResolver != null && conceptName != null && !conceptName.isBlank() && field.getName() != null) {
+            String cascadeWidget = settingResolver.value(
+                    NpdevSettings.FIELD_WIDGET,
+                    SettingTarget.field(conceptName, field.getName())
+            );
+            if (cascadeWidget != null && !cascadeWidget.isBlank()) {
+                return cascadeWidget.trim();
+            }
         }
         String type = manifestType(field);
         if ("enum".equals(type) && field.getEnumValues() != null && !field.getEnumValues().isEmpty()) {
@@ -399,6 +444,25 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             case "boolean" -> "checkbox";
             default -> "text";
         };
+    }
+
+    /**
+     * "full" (default: header + #sideNav + #app, today's only behavior) | "minimal" (no header/
+     * sidenav, just the section's own content) | "none" (raw -- the section's own markup owns the
+     * whole viewport, e.g. a login screen). Resolved via the same concept-scope cascade as every
+     * other per-concept setting (concept:&lt;Name&gt; -> app -> platform default "full"), so an
+     * unconfigured app's sections all render exactly as before.
+     */
+    private static String resolveFrameMode(CompiledConcept concept, SettingResolver settingResolver) {
+        if (settingResolver == null || concept == null || concept.getName() == null || concept.getName().isBlank()) {
+            return NpdevSettings.UI_FRAME_MODE.defaultValue();
+        }
+        String mode = settingResolver.value(NpdevSettings.UI_FRAME_MODE, SettingTarget.concept(concept.getName()));
+        if (mode == null || mode.isBlank()) {
+            return NpdevSettings.UI_FRAME_MODE.defaultValue();
+        }
+        String normalized = mode.trim().toLowerCase(Locale.ROOT);
+        return List.of("full", "minimal", "none").contains(normalized) ? normalized : NpdevSettings.UI_FRAME_MODE.defaultValue();
     }
 
     private static String manifestType(CompiledField field) {
@@ -712,17 +776,49 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         return idField(target).getName();
     }
 
+    /** Purely a guard against a pathological/self-referential schema hanging generation -- not a
+     *  semantic limit on how deep an author can legitimately nest object/array fields. */
+    private static final int MAX_SCHEMA_NESTING_DEPTH = 5;
+
     private static Map<String, Object> buildItemsSchemaNode(CompiledSchema items) {
+        return buildItemsSchemaNode(items, 0);
+    }
+
+    /**
+     * Recursively mirrors a nested object/array field's full shape into the manifest, the same
+     * way a top-level field does (objectSchema/itemsSchema) -- so a property that is itself an
+     * object or an array gets its OWN nested objectSchema/itemsSchema instead of a flat
+     * {@code {"type": "object"}} the renderer can't actually edit past one level.
+     */
+    private static Map<String, Object> buildItemsSchemaNode(CompiledSchema items, int depth) {
         Map<String, Object> node = new LinkedHashMap<>();
-        node.put("type", items.getType() != null ? items.getType() : "object");
+        String type = items.getType() != null ? items.getType() : "object";
+        node.put("type", type);
         Map<String, Object> propsNode = new LinkedHashMap<>();
         for (Map.Entry<String, CompiledSchema> entry : items.getProperties().entrySet()) {
-            Map<String, Object> propNode = new LinkedHashMap<>();
-            propNode.put("type", entry.getValue().getType() != null ? entry.getValue().getType() : "string");
-            propsNode.put(entry.getKey(), propNode);
+            propsNode.put(entry.getKey(), buildNestedPropertyNode(entry.getValue(), depth));
         }
         node.put("properties", propsNode);
+        if ("array".equals(type) && items.getItems() != null && depth < MAX_SCHEMA_NESTING_DEPTH) {
+            node.put("items", buildItemsSchemaNode(items.getItems(), depth + 1));
+        }
         return node;
+    }
+
+    private static Map<String, Object> buildNestedPropertyNode(CompiledSchema propertySchema, int depth) {
+        String propType = propertySchema.getType() != null ? propertySchema.getType() : "string";
+        Map<String, Object> propNode = new LinkedHashMap<>();
+        propNode.put("type", propType);
+        if (depth >= MAX_SCHEMA_NESTING_DEPTH) {
+            return propNode;
+        }
+        if ("object".equals(propType) && !propertySchema.getProperties().isEmpty()) {
+            propNode.put("objectSchema", buildItemsSchemaNode(propertySchema, depth + 1));
+        } else if ("array".equals(propType) && propertySchema.getItems() != null
+                && !propertySchema.getItems().getProperties().isEmpty()) {
+            propNode.put("itemsSchema", buildItemsSchemaNode(propertySchema.getItems(), depth + 1));
+        }
+        return propNode;
     }
 
     private static String firstNonBlank(String first, String fallback) {

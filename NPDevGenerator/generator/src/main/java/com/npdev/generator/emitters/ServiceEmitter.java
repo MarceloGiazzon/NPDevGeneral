@@ -130,6 +130,25 @@ public final class ServiceEmitter extends AbstractEmitter {
             ctx.put("eventBusInproc", "inproc".equalsIgnoreCase(eventBusAdapter));
             ctx.put("kernelControlled", kernelControlled);
 
+            // Flow-CRUD wrapper integration: looked up once at generation time (mirrors
+            // kernelControlled exactly, not a runtime FlowDefinitionProvider lookup per call).
+            // Permission/tenant/idempotency/optimistic-concurrency/audit stay in the template
+            // exactly as today; only the core mutation sub-step optionally delegates to this
+            // Flow's own steps. See service-base.mustache's create()/update()/delete() bodies.
+            model.findFlow(entity.getName(), "create").ifPresent(flow -> {
+                ctx.put("hasCreateFlow", true);
+                ctx.put("createFlowName", flow.getName());
+            });
+            model.findFlow(entity.getName(), "update").ifPresent(flow -> {
+                ctx.put("hasUpdateFlow", true);
+                ctx.put("updateFlowName", flow.getName());
+            });
+            model.findFlow(entity.getName(), "delete").ifPresent(flow -> {
+                ctx.put("hasDeleteFlow", true);
+                ctx.put("deleteFlowName", flow.getName());
+            });
+            ctx.put("hasAnyFlow", ctx.containsKey("hasCreateFlow") || ctx.containsKey("hasUpdateFlow") || ctx.containsKey("hasDeleteFlow"));
+
             System.out.println("[NPDev] Entity " + entity.getClassName() + " uniqueFields=" + uniqueFields.size());
             for (Map<String, Object> uf : uniqueFields) {
                 System.out.println("  - unique: " + uf.get("name"));

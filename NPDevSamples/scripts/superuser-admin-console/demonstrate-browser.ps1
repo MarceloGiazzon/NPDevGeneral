@@ -51,12 +51,13 @@ if ($routines.Count -eq 0) { Fail "No browser routines found in $routineDir" }
 # rows 05 created via the lookup picker's search filter.
 $runStamp = (Get-Date).ToString("yyyyMMdd-HHmmss")
 $sharedVars = @{
-    projectName = "UITEST-PROJECT-$runStamp"
-    noteBody    = "UI test note $runStamp"
-    roleName    = "UITEST-ROLE-$runStamp"
-    userName    = "uitest-user-$runStamp"
-    menuLabel   = "UITEST-MENU-$runStamp"
-    prefKey     = "uitest-pref-$runStamp"
+    projectName        = "UITEST-PROJECT-$runStamp"
+    noteBody           = "UI test note $runStamp"
+    roleName           = "UITEST-ROLE-$runStamp"
+    userName           = "uitest-user-$runStamp"
+    menuLabel          = "UITEST-MENU-$runStamp"
+    prefKey            = "uitest-pref-$runStamp"
+    shippingProjectName = "UITEST-SHIP-$runStamp"
 }
 
 Initialize-ScrapForAI -Root $ScrapForAIRoot | Out-Null

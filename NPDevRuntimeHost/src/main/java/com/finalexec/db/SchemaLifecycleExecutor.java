@@ -71,11 +71,23 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             System.out.println("NPDev schema lifecycle: stored schema fingerprint matches generated schema fingerprint; no destructive recreation required.");
             return DestructiveRecreation.none();
         }
-        if (isSafeAdditiveChange(dataSource, manifest)) {
+        SchemaChangeClassification classification = classify(dataSource, manifest);
+        if (classification == SchemaChangeClassification.SAFE_ADDITIVE) {
             System.out.println("NPDev schema lifecycle: fingerprint changed from " + stored + " to "
                     + manifest.schemaFingerprint() + " but every difference is a new non-bond column on an "
                     + "already-existing table; skipping destructive recreation (handled by the additive repeatable migration).");
             return DestructiveRecreation.safeAdditiveOutcome();
+        }
+        if (classification == SchemaChangeClassification.RENAME_DETECTED) {
+            System.out.println("NPDev schema lifecycle: fingerprint changed from " + stored + " to "
+                    + manifest.schemaFingerprint() + " -- classified as RENAME_DETECTED (a declared renamedFrom "
+                    + "matches a column the live database still has under its old name). This is NOT auto-applied "
+                    + "as an in-place rename; it still goes through the destructive recreate path below, but is "
+                    + "correctly labeled instead of looking like an unrelated remove+add.");
+        } else if (classification == SchemaChangeClassification.TYPE_CHANGE_DETECTED) {
+            System.out.println("NPDev schema lifecycle: fingerprint changed from " + stored + " to "
+                    + manifest.schemaFingerprint() + " -- classified as TYPE_CHANGE_DETECTED (an existing column's "
+                    + "declared SQL type changed). Still goes through the destructive recreate path below.");
         }
         if (!manifest.destructiveAllowed()) {
             throw new IllegalStateException("Schema fingerprint changed from " + stored + " to "
@@ -85,6 +97,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         tables.addAll(manifest.businessTables());
         tables.addAll(manifest.internalTables());
         Collections.reverse(tables);
+        SchemaDropSnapshotWriter.snapshotBeforeDrop(dataSource, tables);
         List<String> dropped = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
             for (String table : tables) {
@@ -92,7 +105,14 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     continue;
                 }
                 String safeTable = safeIdentifier(table);
-                try (PreparedStatement statement = connection.prepareStatement("DROP TABLE IF EXISTS " + safeTable)) {
+                // CASCADE, not a precise FK-aware drop order: the manifest lists tables in
+                // declaration order, which does not generally match the dependency order a
+                // referencing table (e.g. notes.project_ref -> projects) requires -- dropping the
+                // referenced table first throws ("depends on it") on both H2 and Postgres. CASCADE
+                // drops the dependent FK constraint along with the table; it does not touch the
+                // referencing table's ROWS (those are gone anyway, the referencing table is itself
+                // in this same drop list during a full destructive recreate).
+                try (PreparedStatement statement = connection.prepareStatement("DROP TABLE IF EXISTS " + safeTable + " CASCADE")) {
                     statement.executeUpdate();
                     dropped.add(safeTable);
                 }
@@ -106,17 +126,36 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         }
     }
 
-    /**
-     * Classifies a fingerprint mismatch as safe to migrate without dropping data: true only if, for
-     * every already-existing business table, the live database has no column the model no longer
-     * declares (a removal) and every column the model adds is one {@code R__npdev_schema_additive_columns.sql}
-     * can add (a non-bond field). New tables and unreachable databases are not safe-additive evidence
-     * either way and fall through to the existing destructive-recreate-or-throw behavior.
-     */
+    /** Backward-compatible convenience: true only for the SAFE_ADDITIVE classification. */
     boolean isSafeAdditiveChange(DataSource dataSource, SchemaManifest manifest) {
+        return classify(dataSource, manifest) == SchemaChangeClassification.SAFE_ADDITIVE;
+    }
+
+    /**
+     * Classifies a fingerprint mismatch by inspecting every already-existing business table against
+     * the manifest's expected columns:
+     * <ul>
+     *   <li>{@code SAFE_ADDITIVE} -- no column removed; every added column is one
+     *       {@code R__npdev_schema_additive_columns.sql} can apply (a non-bond field). Unchanged from
+     *       the original boolean check.</li>
+     *   <li>{@code RENAME_DETECTED} -- every extra/missing column pair is explained by a field's
+     *       declared {@code renamedFrom}: the live database still has the OLD column name, the model
+     *       now declares the NEW one. Not auto-applied as an in-place rename (out of scope -- see the
+     *       class-level note on {@link com.finalexec.db.SchemaLifecycleExecutor}); this only makes the
+     *       boot log and the eventual destructive recreate correctly say "rename" instead of looking
+     *       like an unrelated column swap.</li>
+     *   <li>{@code TYPE_CHANGE_DETECTED} -- column names match exactly, but at least one shared
+     *       column's live SQL type differs from what the model now declares.</li>
+     *   <li>{@code DESTRUCTIVE} -- anything else (the original "return false" case).</li>
+     * </ul>
+     * New tables and unreachable databases are not safe-additive evidence either way and fall through
+     * to the existing destructive-recreate-or-throw behavior (matches the original boolean check).
+     */
+    SchemaChangeClassification classify(DataSource dataSource, SchemaManifest manifest) {
         if (manifest.businessTableColumns().isEmpty()) {
-            return false;
+            return SchemaChangeClassification.DESTRUCTIVE;
         }
+        SchemaChangeClassification worst = SchemaChangeClassification.SAFE_ADDITIVE;
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
             for (Map.Entry<String, List<String>> entry : manifest.businessTableColumns().entrySet()) {
@@ -131,18 +170,133 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 }
                 Set<String> extraInDb = new LinkedHashSet<>(actual);
                 extraInDb.removeAll(expected);
-                if (!extraInDb.isEmpty()) {
-                    return false;
-                }
                 Set<String> missingInDb = new LinkedHashSet<>(expected);
                 missingInDb.removeAll(actual);
-                if (!missingInDb.isEmpty() && !additiveEligible.containsAll(missingInDb)) {
-                    return false;
+
+                if (extraInDb.isEmpty() && (missingInDb.isEmpty() || additiveEligible.containsAll(missingInDb))) {
+                    // No column was removed and every added column is additive-eligible -- but a
+                    // SHARED column (same name, present both before and after) may still have had its
+                    // type changed, which a pure name-based diff can never see. Must check before
+                    // declaring this table safe, not after -- a perfect name match would otherwise
+                    // always short-circuit past the type-change check below.
+                    if (hasTypeChange(metadata, table, expected, manifest.businessTableColumnTypes().getOrDefault(table, Map.of()))) {
+                        worst = worse(worst, SchemaChangeClassification.TYPE_CHANGE_DETECTED);
+                    }
+                    continue;
                 }
+
+                Map<String, String> renames = manifest.businessTableRenamedColumns().getOrDefault(table, Map.of());
+                Set<String> explainedNew = new LinkedHashSet<>();
+                Set<String> explainedOld = new LinkedHashSet<>();
+                for (Map.Entry<String, String> rename : renames.entrySet()) {
+                    if (missingInDb.contains(rename.getKey()) && extraInDb.contains(rename.getValue())) {
+                        explainedNew.add(rename.getKey());
+                        explainedOld.add(rename.getValue());
+                    }
+                }
+                Set<String> remainingMissing = new LinkedHashSet<>(missingInDb);
+                remainingMissing.removeAll(explainedNew);
+                Set<String> remainingExtra = new LinkedHashSet<>(extraInDb);
+                remainingExtra.removeAll(explainedOld);
+
+                if (remainingExtra.isEmpty() && (remainingMissing.isEmpty() || additiveEligible.containsAll(remainingMissing))) {
+                    worst = worse(worst, SchemaChangeClassification.RENAME_DETECTED);
+                    continue;
+                }
+                if (remainingExtra.isEmpty() && remainingMissing.isEmpty()) {
+                    // Column sets match exactly once renames are accounted for; the only remaining
+                    // possible difference is an existing shared column's type.
+                    if (hasTypeChange(metadata, table, expected, manifest.businessTableColumnTypes().getOrDefault(table, Map.of()))) {
+                        worst = worse(worst, SchemaChangeClassification.TYPE_CHANGE_DETECTED);
+                        continue;
+                    }
+                }
+                return SchemaChangeClassification.DESTRUCTIVE;
             }
-            return true;
+            return worst;
         } catch (SQLException exception) {
-            return false;
+            return SchemaChangeClassification.DESTRUCTIVE;
+        }
+    }
+
+    private static SchemaChangeClassification worse(SchemaChangeClassification a, SchemaChangeClassification b) {
+        return a.severity() >= b.severity() ? a : b;
+    }
+
+    private static boolean hasTypeChange(
+            DatabaseMetaData metadata,
+            String table,
+            Set<String> columns,
+            Map<String, String> expectedTypes
+    ) {
+        Map<String, String> actualTypes = readActualColumnTypes(metadata, table);
+        for (String column : columns) {
+            String expected = normalizeSqlType(expectedTypes.get(column));
+            String actual = normalizeSqlType(actualTypes.get(column));
+            if (expected != null && actual != null && !expected.equals(actual)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Best-effort cross-engine type comparison, not exact: strips length/precision
+     * ("VARCHAR(255)" -> "VARCHAR"), uppercases, and treats JSON/JSONB as equivalent (H2 reports
+     * "JSON" for a column the manifest declares as Postgres-style "JSONB" -- see
+     * {@code SchemaRealizationEmitter.renderType}). Good enough to flag an unrelated/incompatible
+     * type swap (e.g. VARCHAR -> BIGINT); not a guarantee against every engine-specific type alias.
+     */
+    private static String normalizeSqlType(String sqlType) {
+        if (sqlType == null || sqlType.isBlank()) {
+            return null;
+        }
+        String normalized = sqlType.trim().toUpperCase(Locale.ROOT);
+        int parenIndex = normalized.indexOf('(');
+        if (parenIndex >= 0) {
+            normalized = normalized.substring(0, parenIndex).trim();
+        }
+        if ("JSONB".equals(normalized)) {
+            return "JSON";
+        }
+        return normalized;
+    }
+
+    private static Map<String, String> readActualColumnTypes(DatabaseMetaData metadata, String table) {
+        Map<String, String> types = new LinkedHashMap<>();
+        for (String candidate : List.of(table.toLowerCase(Locale.ROOT), table.toUpperCase(Locale.ROOT))) {
+            try (ResultSet resultSet = metadata.getColumns(null, null, candidate, null)) {
+                while (resultSet.next()) {
+                    String schema = resultSet.getString("TABLE_SCHEM");
+                    if (schema != null && SYSTEM_SCHEMAS.contains(schema.toLowerCase(Locale.ROOT))) {
+                        continue;
+                    }
+                    types.put(resultSet.getString("COLUMN_NAME").toLowerCase(Locale.ROOT), resultSet.getString("TYPE_NAME"));
+                }
+            } catch (SQLException ignored) {
+                // Fall through to the other case-sensitivity candidate.
+            }
+            if (!types.isEmpty()) {
+                break;
+            }
+        }
+        return types;
+    }
+
+    enum SchemaChangeClassification {
+        SAFE_ADDITIVE(0),
+        RENAME_DETECTED(1),
+        TYPE_CHANGE_DETECTED(2),
+        DESTRUCTIVE(3);
+
+        private final int severity;
+
+        SchemaChangeClassification(int severity) {
+            this.severity = severity;
+        }
+
+        int severity() {
+            return severity;
         }
     }
 
@@ -283,6 +437,8 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     strings(root.path("businessTables")),
                     stringListMap(root.path("businessTableColumns")),
                     stringListMap(root.path("businessTableAdditiveColumns")),
+                    stringMapMap(root.path("businessTableColumnTypes")),
+                    stringMapMap(root.path("businessTableRenamedColumns")),
                     lifecycle.path("allowDestructiveRecreate").asBoolean(false),
                     lifecycle.path("strategy").asText(""),
                     lifecycle.path("scope").asText(""),
@@ -316,6 +472,24 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         return Map.copyOf(out);
     }
 
+    private static Map<String, Map<String, String>> stringMapMap(JsonNode object) {
+        if (object == null || !object.isObject()) {
+            return Map.of();
+        }
+        Map<String, Map<String, String>> out = new LinkedHashMap<>();
+        object.fields().forEachRemaining(field -> out.put(field.getKey(), stringMap(field.getValue())));
+        return Map.copyOf(out);
+    }
+
+    private static Map<String, String> stringMap(JsonNode object) {
+        if (object == null || !object.isObject()) {
+            return Map.of();
+        }
+        Map<String, String> out = new LinkedHashMap<>();
+        object.fields().forEachRemaining(field -> out.put(field.getKey(), field.getValue().asText("")));
+        return Map.copyOf(out);
+    }
+
     public record SchemaManifest(
             String engine,
             String storageMode,
@@ -325,6 +499,8 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             List<String> businessTables,
             Map<String, List<String>> businessTableColumns,
             Map<String, List<String>> businessTableAdditiveColumns,
+            Map<String, Map<String, String>> businessTableColumnTypes,
+            Map<String, Map<String, String>> businessTableRenamedColumns,
             boolean allowDestructiveRecreate,
             String strategy,
             String scope,

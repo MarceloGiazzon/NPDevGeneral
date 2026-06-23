@@ -1,0 +1,105 @@
+{
+  "$schema": "../../schemas/pack.schema.json",
+  "dslVersion": "1.0.0",
+  "pack": "project-tracker-demo",
+  "version": "1.0.0",
+  "description": "Demo pack exported from the superuser-admin-console sample to prove the export-concept-to-pack.ps1 script end to end.",
+  "category": "other",
+  "author": "NPDev Sample Author",
+  "concepts": [
+    {
+      "name": "Project",
+      "ui": {
+        "label": "Project",
+        "description": "An ordinary business concept, rendered in the regular (non-admin) nav group",
+        "group": "Work",
+        "order": 10
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Name",
+            "widget": "text"
+          }
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "enumValues": [
+            "Active",
+            "OnHold",
+            "Completed"
+          ],
+          "required": true,
+          "ui": {
+            "label": "Status",
+            "widget": "select"
+          }
+        },
+        {
+          "name": "ownerEmail",
+          "type": "string",
+          "ui": {
+            "label": "Owner email",
+            "widget": "email"
+          }
+        },
+        {
+          "name": "shipping",
+          "type": "object",
+          "description": "3-level nested object (shipping -> address -> geo), the permanent proof point for recursive multi-level data editing.",
+          "ui": {
+            "label": "Shipping",
+            "showInDefaultWebUi": true
+          },
+          "properties": {
+            "carrier": {
+              "type": "string"
+            },
+            "address": {
+              "type": "object",
+              "properties": {
+                "street": {
+                  "type": "string"
+                },
+                "geo": {
+                  "type": "object",
+                  "properties": {
+                    "lat": {
+                      "type": "string"
+                    },
+                    "lng": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "ProjectNameRequired",
+          "expr": "name != null && name != ''"
+        },
+        {
+          "name": "ProjectNameUnique",
+          "type": "unique",
+          "fields": [
+            "name"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -19,6 +19,7 @@ public final class CompiledField {
     private final CompiledSchema schema;
     private final CompiledPresentationMetadata ui;
     private final String connectable;
+    private final String renamedFrom;
 
     public CompiledField(String name, String dslType, String javaType, boolean id, boolean required, boolean unique) {
         this(name, dslType, javaType, id, required, unique, List.of(), null, null, null, null, List.of(), null);
@@ -101,6 +102,28 @@ public final class CompiledField {
             CompiledPresentationMetadata ui,
             String connectable
     ) {
+        this(name, dslType, javaType, id, required, unique, enumValues, referenceTarget,
+                referenceSemantics, domainType, schema, enumOptions, ui, connectable, null);
+    }
+
+    /** Declares this field is a rename of a previously-existing column, not a brand-new one (see getRenamedFrom). */
+    public CompiledField(
+            String name,
+            String dslType,
+            String javaType,
+            boolean id,
+            boolean required,
+            boolean unique,
+            List<String> enumValues,
+            String referenceTarget,
+            CompiledReferenceSemantics referenceSemantics,
+            String domainType,
+            CompiledSchema schema,
+            List<CompiledEnumOption> enumOptions,
+            CompiledPresentationMetadata ui,
+            String connectable,
+            String renamedFrom
+    ) {
         this.name = name;
         this.dslType = dslType;
         this.javaType = javaType;
@@ -115,6 +138,7 @@ public final class CompiledField {
         this.schema = schema;
         this.ui = ui;
         this.connectable = connectable;
+        this.renamedFrom = renamedFrom;
     }
 
     public CompiledField(
@@ -162,4 +186,6 @@ public final class CompiledField {
     public CompiledSchema getSchema() { return schema; }
     public CompiledPresentationMetadata getUi() { return ui; }
     public String getConnectable() { return connectable; }
+    /** The previous field name this field was renamed from, or null if this is not a declared rename. */
+    public String getRenamedFrom() { return renamedFrom; }
 }

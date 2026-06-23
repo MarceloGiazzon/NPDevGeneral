@@ -235,6 +235,7 @@ public final class JsonModelParser {
                 );
                 String domainType = readText(f, "domainType");
                 String connectable = readText(f, "connectable");
+                String renamedFrom = readText(f, "renamedFrom");
                 SchemaAst fieldSchema = parseSchema(f, "concepts[" + name + "].fields[" + fname + "]");
                 PresentationMetadataAst fieldUi = parsePresentationMetadata(
                         f.get("ui"),
@@ -254,7 +255,8 @@ public final class JsonModelParser {
                         fieldSchema,
                         enumOptions,
                         fieldUi,
-                        connectable
+                        connectable,
+                        renamedFrom
                 ));
             }
 

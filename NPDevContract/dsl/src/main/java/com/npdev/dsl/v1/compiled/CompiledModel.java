@@ -213,4 +213,26 @@ public final class CompiledModel {
         }
         return Optional.empty();
     }
+
+    /**
+     * The Flow that owns a concept's CRUD mode (e.g. "create"), if the model declares one. Used by
+     * the generated service's wrapper integration: permission/tenant/idempotency/optimistic-
+     * concurrency/audit stay exactly as today (in the generated CRUD template), but the core
+     * mutation step delegates to this Flow's own steps when one is declared, instead of the default
+     * direct gateway/entity save. At most one Flow may own a given (concept, mode) pair; if more
+     * than one declares the same pair, the first declared wins (mirrors findFlow(name)'s
+     * first-match behavior) -- model authoring should treat that as a conflict to avoid, not a
+     * supported override mechanism.
+     */
+    public Optional<CompiledFlow> findFlow(String conceptName, String mode) {
+        if (conceptName == null || conceptName.isBlank() || mode == null || mode.isBlank()) {
+            return Optional.empty();
+        }
+        for (CompiledFlow flow : flows) {
+            if (conceptName.equals(flow.getConcept()) && mode.equalsIgnoreCase(flow.getMode())) {
+                return Optional.of(flow);
+            }
+        }
+        return Optional.empty();
+    }
 }

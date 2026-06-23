@@ -160,7 +160,8 @@ public final class CompiledModelCanonicalJsonReader {
                 toSchema(node.get("schema")),
                 toEnumOptions(node.get("enumOptions")),
                 toPresentationMetadata(node.get("ui")),
-                optionalText(node, "connectable")
+                optionalText(node, "connectable"),
+                optionalText(node, "renamedFrom")
         );
     }
 

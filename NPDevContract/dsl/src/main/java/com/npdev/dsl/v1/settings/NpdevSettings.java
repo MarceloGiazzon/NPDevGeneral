@@ -66,6 +66,11 @@ public final class NpdevSettings {
             SettingKey.string("field.widget", "",
                     "UI input widget hint for a field.");
 
+    /** Business UI shell mode for a section: full (header+sidenav, default) | minimal (no sidenav/header) | none (raw, author controls everything). Concept-scope. */
+    public static final SettingKey<String> UI_FRAME_MODE =
+            SettingKey.string("ui.frame.mode", "full",
+                    "Business UI shell mode for a section (full|minimal|none).");
+
     private static final List<SettingKey<?>> ALL = List.of(
             UI_GENERATE_BUSINESS_UI,
             CRUD_KERNEL_CONTROLLED,
@@ -76,7 +81,8 @@ public final class NpdevSettings {
             CODA_ALLOWED,
             LOG_ENABLED,
             LOG_LEVEL,
-            FIELD_WIDGET
+            FIELD_WIDGET,
+            UI_FRAME_MODE
     );
 
     /** All registered settings, in declaration order. */

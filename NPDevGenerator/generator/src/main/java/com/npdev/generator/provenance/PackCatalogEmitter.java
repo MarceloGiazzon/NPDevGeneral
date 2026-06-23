@@ -77,14 +77,46 @@ public final class PackCatalogEmitter {
             entry.put("version", root.path("version").asText("UNKNOWN"));
             entry.put("description", root.path("description").asText(""));
             entry.put("conceptCount", root.path("concepts").isArray() ? root.path("concepts").size() : 0);
+            entry.put("conceptNames", conceptNames(root.path("concepts")));
+            entry.put("category", root.path("category").asText(""));
+            entry.put("author", root.path("author").asText(""));
+            entry.put("forkedFrom", forkedFrom(root.path("forkedFrom")));
         } catch (IOException exception) {
             entry.put("name", alias);
             entry.put("version", "UNKNOWN");
             entry.put("description", "");
             entry.put("conceptCount", 0);
+            entry.put("conceptNames", List.of());
+            entry.put("category", "");
+            entry.put("author", "");
+            entry.put("forkedFrom", null);
         }
         entry.put("included", internalTablesEnabled && BuiltinPackComposer.BUILTIN_PACK_ALIASES.contains(alias));
         return entry;
+    }
+
+    private static List<String> conceptNames(JsonNode conceptsNode) {
+        List<String> names = new ArrayList<>();
+        if (conceptsNode != null && conceptsNode.isArray()) {
+            for (JsonNode concept : conceptsNode) {
+                String name = concept.path("name").asText("");
+                if (!name.isBlank()) {
+                    names.add(name);
+                }
+            }
+        }
+        return names;
+    }
+
+    private static Map<String, Object> forkedFrom(JsonNode forkedFromNode) {
+        if (forkedFromNode == null || !forkedFromNode.isObject()) {
+            return null;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("pack", forkedFromNode.path("pack").asText(""));
+        out.put("version", forkedFromNode.path("version").asText(""));
+        out.put("originAuthor", forkedFromNode.path("originAuthor").asText(""));
+        return out;
     }
 
     private static Path locatePlatformPacksDir(Path start) {

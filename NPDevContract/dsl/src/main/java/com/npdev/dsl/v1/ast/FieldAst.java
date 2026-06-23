@@ -18,6 +18,7 @@ public final class FieldAst {
     private final SchemaAst schema;
     private final PresentationMetadataAst ui;
     private final String connectable;
+    private final String renamedFrom;
 
     public FieldAst(String name, String type, boolean id, boolean required, boolean unique) {
         this(name, type, id, required, unique, List.of(), null, null, null, null, List.of(), null);
@@ -95,6 +96,27 @@ public final class FieldAst {
             PresentationMetadataAst ui,
             String connectable
     ) {
+        this(name, type, id, required, unique, enumValues, referenceTarget, referenceSemantics,
+                domainType, schema, enumOptions, ui, connectable, null);
+    }
+
+    /** Declares this field is a rename of a previously-existing column, not a brand-new one (see CompiledField.getRenamedFrom). */
+    public FieldAst(
+            String name,
+            String type,
+            boolean id,
+            boolean required,
+            boolean unique,
+            List<String> enumValues,
+            String referenceTarget,
+            ReferenceSemanticsAst referenceSemantics,
+            String domainType,
+            SchemaAst schema,
+            List<EnumOptionAst> enumOptions,
+            PresentationMetadataAst ui,
+            String connectable,
+            String renamedFrom
+    ) {
         this.name = name;
         this.type = type;
         this.id = id;
@@ -108,6 +130,7 @@ public final class FieldAst {
         this.schema = schema;
         this.ui = ui;
         this.connectable = connectable;
+        this.renamedFrom = renamedFrom;
     }
 
     public String getName() { return name; }
@@ -124,4 +147,6 @@ public final class FieldAst {
     public PresentationMetadataAst getUi() { return ui; }
     /** Connection role of this field: "anchor" marks it as a bondable target key; null for ordinary fields. */
     public String getConnectable() { return connectable; }
+    /** The previous field name this field was renamed from, or null if this is not a declared rename. */
+    public String getRenamedFrom() { return renamedFrom; }
 }

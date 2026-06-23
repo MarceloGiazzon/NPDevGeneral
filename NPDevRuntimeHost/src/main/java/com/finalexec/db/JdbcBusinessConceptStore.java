@@ -1,5 +1,6 @@
 package com.finalexec.db;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -116,6 +117,9 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         for (int index = 1; index <= metaData.getColumnCount(); index++) {
             String column = metaData.getColumnLabel(index);
             Object value = resultSet.getObject(index);
+            if (isJsonColumnType(metaData, index)) {
+                value = parseJsonColumnValue(column, value);
+            }
             String field = shape.fieldByColumn().getOrDefault(column.toLowerCase(Locale.ROOT), toRuntimeField(column));
             data.put(field, value);
             if (shape.idColumn().equalsIgnoreCase(column) && value != null) {
@@ -123,6 +127,45 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             }
         }
         return new ConceptRecord(shape.conceptName(), id, tenantId, data);
+    }
+
+    private static boolean isJsonColumnType(ResultSetMetaData metaData, int index) throws SQLException {
+        String typeName = metaData.getColumnTypeName(index);
+        return typeName != null && (
+                "JSON".equalsIgnoreCase(typeName) || "JSONB".equalsIgnoreCase(typeName)
+        );
+    }
+
+    /**
+     * The write side (coerceValue) stores object/array DSL fields as JSON text, since neither H2
+     * nor Postgres accept a raw Java Map/List for a JSON-typed column. Reading it back, the JDBC
+     * driver hands the column back as a String (or, on some drivers, raw bytes) -- parse it back
+     * into the Map/List the rest of the runtime (entity mapping, JSON serialization to the
+     * generated REST response, the business UI's object/array renderer) expects, so the round trip
+     * is transparent: nothing downstream needs to know this field is JSON-backed.
+     */
+    private static Object parseJsonColumnValue(String column, Object value) {
+        if (value == null) {
+            return null;
+        }
+        String json;
+        if (value instanceof byte[] bytes) {
+            json = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+        } else if (value instanceof String text) {
+            json = text;
+        } else {
+            // Already a structured value (some drivers may already deserialize JSON columns) --
+            // leave it as-is rather than guessing.
+            return value;
+        }
+        if (json.isBlank()) {
+            return null;
+        }
+        try {
+            return JSON_COLUMN_MAPPER.readValue(json, Object.class);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to parse JSON column \"" + column + "\"", exception);
+        }
     }
 
     private Map<String, Object> dbRecord(ConceptShape shape, ConceptRecord record) {
@@ -215,12 +258,26 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
                 + String.join(", ", updates);
     }
 
+    private static final ObjectMapper JSON_COLUMN_MAPPER = new ObjectMapper();
+
     private static Object coerceValue(String column, Object value) {
         if (value == null) {
             return null;
         }
         if (isUuidColumn(column)) {
             return coerceId(value);
+        }
+        if (value instanceof Map<?, ?> || value instanceof List<?>) {
+            // Object/array DSL fields map to a JSON/JSONB column (SqlTypeSupport). Handing the
+            // JDBC driver a raw Map/List makes it default to JAVA_OBJECT, which H2 (and Postgres)
+            // both reject for a JSON-typed column ("Data conversion error converting JAVA_OBJECT
+            // to JSON") -- write the JSON text representation instead, the standard plain-JDBC
+            // idiom both engines accept for a JSON column via setObject/setString.
+            try {
+                return JSON_COLUMN_MAPPER.writeValueAsString(value);
+            } catch (Exception exception) {
+                throw new IllegalStateException("Failed to serialize column \"" + column + "\" to JSON", exception);
+            }
         }
         return value;
     }

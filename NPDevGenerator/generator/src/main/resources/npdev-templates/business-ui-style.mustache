@@ -36,6 +36,22 @@ body {
   display: none;
 }
 
+/* ui.frame.mode per-section override: "minimal" hides the header/sidenav chrome around the
+   active section's own content; "none" additionally lets that content claim the full viewport
+   (e.g. a login screen). Toggled on <body> by showConcept() in app.js based on the active
+   section's manifest-declared frameMode -- unconfigured sections stay "full" (today's only
+   behavior, unchanged). */
+body.frame-minimal .app-bar,
+body.frame-minimal .side-nav,
+body.frame-none .app-bar,
+body.frame-none .side-nav {
+  display: none;
+}
+
+body.frame-none .layout {
+  height: 100vh;
+}
+
 .side-nav a {
   display: block;
   padding: 7px 12px;
@@ -421,6 +437,22 @@ textarea {
 .badge-neutral {
   background: #eef2f7;
   color: #4c5a69;
+}
+
+.pack-detail-cell {
+  background: #f7f9fb;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: #455263;
+}
+
+.pack-detail-cell > div {
+  margin: 2px 0;
+}
+
+.pack-fork-badge {
+  color: #1769aa;
+  font-style: italic;
 }
 
 @media (max-width: 760px) {

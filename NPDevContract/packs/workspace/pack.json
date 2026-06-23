@@ -5,6 +5,8 @@
   "version": "1.0.0",
   "namespace": "com.npdev.workspace",
   "description": "Built-in NPDev workspace tables: navigation Menus (internal NPDev UI + business UIs) and per-user Preferences. Generic by design so they can evolve with system maturity. userId / parentMenuId / requiredRole are soft references (plain strings) to the identity pack and to other menus; they harden into bonds when the built-in packs compose into an app.",
+  "category": "web-ui",
+  "author": "NPDev",
   "concepts": [
     {
       "name": "Menu",

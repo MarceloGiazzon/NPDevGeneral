@@ -297,6 +297,7 @@
       const panel = renderPanel(concept);
       const isActive = activeId ? sectionId(concept) === activeId : index === 0;
       if (!isActive) panel.style.display = "none";
+      if (isActive) applyFrameMode(concept);
       el.app.appendChild(panel);
     });
     if (findConcept(PREFERENCE_CONCEPT_NAME)) {
@@ -317,11 +318,20 @@
     }
   }
 
+  // ui.frame.mode: synthetic sections (Store/Box View/Preferences/Promotion) carry no frameMode
+  // of their own and fall back to "full", same as an unconfigured real concept.
+  function applyFrameMode(concept) {
+    const frameMode = (concept && concept.frameMode) || "full";
+    document.body.classList.toggle("frame-minimal", frameMode === "minimal");
+    document.body.classList.toggle("frame-none", frameMode === "none");
+  }
+
   function showConcept(concept) {
     state.activeConcept = concept;
     el.app.querySelectorAll(".concept-panel").forEach(function (p) { p.style.display = "none"; });
     const section = document.getElementById(sectionId(concept));
     if (section) section.style.display = "";
+    applyFrameMode(concept);
   }
 
   function showPreferences() {
@@ -390,17 +400,53 @@
     const table = document.createElement("table");
     table.className = "records";
     const thead = document.createElement("thead");
-    thead.appendChild(headerRow(["Pack", "Version", "Concepts", "Description", "Included"]));
+    thead.appendChild(headerRow(["", "Pack", "Category", "Version", "Concepts", "Description", "Included"]));
     table.appendChild(thead);
     const tbody = document.createElement("tbody");
     state.store.packs.forEach(function (pack) {
       const row = document.createElement("tr");
+      const toggleCell = document.createElement("td");
+      const detailRow = document.createElement("tr");
+      detailRow.className = "pack-detail-row";
+      detailRow.style.display = "none";
+      const toggleBtn = button("▶", "", function () {
+        const expanded = detailRow.style.display !== "none";
+        detailRow.style.display = expanded ? "none" : "";
+        toggleBtn.textContent = expanded ? "▶" : "▼";
+      });
+      toggleCell.appendChild(toggleBtn);
+      row.appendChild(toggleCell);
       row.appendChild(textCell(pack.name || pack.alias));
+      row.appendChild(badgeCell(pack.category || "other", "badge-neutral"));
       row.appendChild(textCell(pack.version || "UNKNOWN"));
       row.appendChild(textCell(String(pack.conceptCount || 0)));
       row.appendChild(textCell(pack.description || ""));
       row.appendChild(badgeCell(pack.included ? "Included" : "Available", pack.included ? "badge-success" : "badge-neutral"));
       tbody.appendChild(row);
+
+      const detailCell = document.createElement("td");
+      detailCell.colSpan = 7;
+      detailCell.className = "pack-detail-cell";
+      const conceptNames = Array.isArray(pack.conceptNames) ? pack.conceptNames : [];
+      const conceptsLine = document.createElement("div");
+      conceptsLine.textContent = conceptNames.length
+        ? "Concepts: " + conceptNames.join(", ")
+        : "Concepts: (none declared)";
+      detailCell.appendChild(conceptsLine);
+      if (pack.forkedFrom && pack.forkedFrom.pack) {
+        const forkLine = document.createElement("div");
+        forkLine.className = "pack-fork-badge";
+        const originAuthor = pack.forkedFrom.originAuthor ? (" by " + pack.forkedFrom.originAuthor) : "";
+        forkLine.textContent = "Forked from " + pack.forkedFrom.pack + " v" + pack.forkedFrom.version + originAuthor;
+        detailCell.appendChild(forkLine);
+      }
+      if (pack.author) {
+        const authorLine = document.createElement("div");
+        authorLine.textContent = "Author: " + pack.author;
+        detailCell.appendChild(authorLine);
+      }
+      detailRow.appendChild(detailCell);
+      tbody.appendChild(detailRow);
     });
     table.appendChild(tbody);
     section.appendChild(table);
@@ -1301,34 +1347,134 @@
   }
 
 
+  // Top-level entry points (called from createInput()'s field dispatch): build the editor and
+  // return just the element -- the value round-trips through the hidden input's real form
+  // `name` via the existing currentFormValues()/submitForm() JSON.parse path, same as before.
   function createArrayTableInput(field, rows) {
-    const props = Object.keys(field.itemsSchema.properties || {});
+    return createNestedArrayEditor(field.itemsSchema, field.name, rows, null).element;
+  }
+
+  function createObjectInput(field, value) {
+    return createNestedObjectEditor(field.objectSchema, field.name, value, null).element;
+  }
+
+  // Recursive editors for object/array fields, depth-unlimited (mirrors the generator's
+  // recursive objectSchema/itemsSchema emission). `schema` is a {type, properties, items?} node
+  // -- either a top-level field's own objectSchema/itemsSchema, or a nested property's. `name` is
+  // only set at the top level (it becomes the real <input name> submitForm reads); nested calls
+  // pass null and instead expose `getValue()`, which the PARENT editor calls during its own
+  // syncHidden() so a value of any nesting depth round-trips correctly.
+  //
+  // `onChange` is how a change at ANY depth reaches the form's top-level hidden input: each level
+  // only listens for input events on its OWN direct leaf inputs, so without propagation, editing a
+  // deeply-nested leaf (e.g. level 3) would refresh level 3's own hidden snapshot but never the
+  // level-1/level-2 ancestors' -- and submitForm only ever reads the level-1 (top-level) hidden
+  // input.
+  //
+  // `getValue` (exposed to the parent, used while the parent ASSEMBLES its own value) and
+  // `notifyChange` (used as the child's `onChange`, fired on a leaf edit) MUST be two different
+  // functions even though both refresh this level's own hidden snapshot: if the parent's assembly
+  // pass called the SAME function that also re-invokes the parent (via onChange), every leaf edit
+  // would recurse parent->child->parent->child... infinitely (child.notifyChange calls
+  // onChange===parent.notifyChange, which calls child.getValue() to assemble itself -- if getValue
+  // were notifyChange, that nested call would re-trigger onChange again, forever). `getValue` is
+  // the pure, side-effect-only-on-self computation; `notifyChange` adds "and tell whoever owns me".
+  function createNestedObjectEditor(schema, name, value, onChange) {
+    const propsSchema = (schema && schema.properties) || {};
+    const propNames = Object.keys(propsSchema);
+    const wrapper = document.createElement("div");
+    wrapper.className = "object-group-editor";
+
+    const hidden = document.createElement("input");
+    hidden.type = "hidden";
+    if (name) { hidden.name = name; }
+
+    const nestedGetters = {};
+
+    function getValue() {
+      const out = {};
+      propNames.forEach(function (prop) {
+        if (nestedGetters[prop]) {
+          out[prop] = nestedGetters[prop]();
+          return;
+        }
+        const inp = wrapper.querySelector("[data-prop=\"" + prop + "\"]");
+        out[prop] = inp ? text(inp.value).trim() : "";
+      });
+      hidden.value = JSON.stringify(out);
+      return out;
+    }
+
+    function notifyChange() {
+      getValue();
+      if (onChange) { onChange(); }
+    }
+
+    const grid = document.createElement("div");
+    grid.className = "object-group-grid";
+    propNames.forEach(function (prop) {
+      const propSchema = propsSchema[prop] || {};
+      const existing = value ? value[prop] : null;
+      const propLabel = document.createElement("label");
+      propLabel.className = "object-group-field";
+      const labelText = document.createElement("span");
+      labelText.className = "field-label-text";
+      labelText.textContent = humanize(prop);
+      propLabel.appendChild(labelText);
+
+      if (propSchema.objectSchema) {
+        const nested = createNestedObjectEditor(propSchema.objectSchema, null, existing && typeof existing === "object" ? existing : {}, notifyChange);
+        nestedGetters[prop] = nested.getValue;
+        propLabel.appendChild(nested.element);
+      } else if (propSchema.itemsSchema) {
+        const nested = createNestedArrayEditor(propSchema.itemsSchema, null, Array.isArray(existing) ? existing : [], notifyChange);
+        nestedGetters[prop] = nested.getValue;
+        propLabel.appendChild(nested.element);
+      } else {
+        const inp = document.createElement("input");
+        inp.type = "text";
+        inp.dataset.prop = prop;
+        inp.value = existing === null || existing === undefined ? "" : String(existing);
+        inp.addEventListener("input", notifyChange);
+        propLabel.appendChild(inp);
+      }
+      grid.appendChild(propLabel);
+    });
+
+    wrapper.appendChild(grid);
+    wrapper.appendChild(hidden);
+    getValue();
+    return { element: wrapper, getValue: getValue };
+  }
+
+  function createNestedArrayEditor(schema, name, rows, onChange) {
+    const propsSchema = (schema && schema.properties) || {};
+    const propNames = Object.keys(propsSchema);
     const wrapper = document.createElement("div");
     wrapper.className = "array-table-editor";
 
     const hidden = document.createElement("input");
     hidden.type = "hidden";
-    hidden.name = field.name;
+    if (name) { hidden.name = name; }
 
-    function syncHidden() {
-      const out = [];
-      wrapper.querySelectorAll("tr.array-row").forEach(function (tr) {
-        const item = {};
-        props.forEach(function (prop) {
-          const inp = tr.querySelector("[data-prop=\"" + prop + "\"]");
-          item[prop] = inp ? text(inp.value).trim() : "";
-        });
-        out.push(item);
-      });
+    const rowGetters = [];
+
+    function getValue() {
+      const out = rowGetters.map(function (getRow) { return getRow(); });
       hidden.value = JSON.stringify(out);
+      return out;
+    }
+
+    function notifyChange() {
+      getValue();
+      if (onChange) { onChange(); }
     }
 
     const table = document.createElement("table");
     table.className = "array-editor-table";
-
     const thead = document.createElement("thead");
     const headRow = document.createElement("tr");
-    props.forEach(function (prop) {
+    propNames.forEach(function (prop) {
       const th = document.createElement("th");
       th.textContent = humanize(prop);
       headRow.appendChild(th);
@@ -1342,21 +1488,47 @@
     function addRow(rowData) {
       const tr = document.createElement("tr");
       tr.className = "array-row";
-      props.forEach(function (prop) {
+      const cellGetters = {};
+      propNames.forEach(function (prop) {
         const td = document.createElement("td");
-        const inp = document.createElement("input");
-        inp.type = "text";
-        inp.dataset.prop = prop;
-        inp.value = rowData && rowData[prop] !== null && rowData[prop] !== undefined ? String(rowData[prop]) : "";
-        inp.addEventListener("input", syncHidden);
-        td.appendChild(inp);
+        const propSchema = propsSchema[prop] || {};
+        const existing = rowData ? rowData[prop] : null;
+        if (propSchema.objectSchema) {
+          const nested = createNestedObjectEditor(propSchema.objectSchema, null, existing && typeof existing === "object" ? existing : {}, notifyChange);
+          cellGetters[prop] = nested.getValue;
+          td.appendChild(nested.element);
+        } else if (propSchema.itemsSchema) {
+          const nested = createNestedArrayEditor(propSchema.itemsSchema, null, Array.isArray(existing) ? existing : [], notifyChange);
+          cellGetters[prop] = nested.getValue;
+          td.appendChild(nested.element);
+        } else {
+          const inp = document.createElement("input");
+          inp.type = "text";
+          inp.dataset.prop = prop;
+          inp.value = existing !== null && existing !== undefined ? String(existing) : "";
+          inp.addEventListener("input", notifyChange);
+          td.appendChild(inp);
+          cellGetters[prop] = function () { return text(inp.value).trim(); };
+        }
         tr.appendChild(td);
       });
       const tdDel = document.createElement("td");
-      tdDel.appendChild(button("×", "danger", function () { tr.remove(); syncHidden(); }));
+      tdDel.appendChild(button("×", "danger", function () {
+        tr.remove();
+        const idx = rowGetters.indexOf(rowGetter);
+        if (idx >= 0) { rowGetters.splice(idx, 1); }
+        notifyChange();
+      }));
       tr.appendChild(tdDel);
       tbody.appendChild(tr);
-      syncHidden();
+
+      const rowGetter = function () {
+        const item = {};
+        propNames.forEach(function (prop) { item[prop] = cellGetters[prop] ? cellGetters[prop]() : ""; });
+        return item;
+      };
+      rowGetters.push(rowGetter);
+      notifyChange();
     }
 
     (Array.isArray(rows) ? rows : []).forEach(addRow);
@@ -1366,51 +1538,8 @@
     wrapper.appendChild(table);
     wrapper.appendChild(addBtn);
     wrapper.appendChild(hidden);
-    syncHidden();
-    return wrapper;
-  }
-
-  function createObjectInput(field, value) {
-    const props = Object.keys(field.objectSchema.properties || {});
-    const wrapper = document.createElement("div");
-    wrapper.className = "object-group-editor";
-
-    const hidden = document.createElement("input");
-    hidden.type = "hidden";
-    hidden.name = field.name;
-
-    function syncHidden() {
-      const out = {};
-      props.forEach(function (prop) {
-        const inp = wrapper.querySelector("[data-prop=\"" + prop + "\"]");
-        out[prop] = inp ? text(inp.value).trim() : "";
-      });
-      hidden.value = JSON.stringify(out);
-    }
-
-    const grid = document.createElement("div");
-    grid.className = "object-group-grid";
-    props.forEach(function (prop) {
-      const propLabel = document.createElement("label");
-      propLabel.className = "object-group-field";
-      const labelText = document.createElement("span");
-      labelText.className = "field-label-text";
-      labelText.textContent = humanize(prop);
-      propLabel.appendChild(labelText);
-      const inp = document.createElement("input");
-      inp.type = "text";
-      inp.dataset.prop = prop;
-      const existing = value ? value[prop] : null;
-      inp.value = existing === null || existing === undefined ? "" : String(existing);
-      inp.addEventListener("input", syncHidden);
-      propLabel.appendChild(inp);
-      grid.appendChild(propLabel);
-    });
-
-    wrapper.appendChild(grid);
-    wrapper.appendChild(hidden);
-    syncHidden();
-    return wrapper;
+    getValue();
+    return { element: wrapper, getValue: getValue };
   }
 
   function createEnumSelect(field, value) {
@@ -1799,6 +1928,11 @@
   function formatValue(value) {
     if (value === null || value === undefined || value === "") {
       return "-";
+    }
+    if (typeof value === "object") {
+      // A nested object/array value inside a read-only preview cell (e.g. a 2nd/3rd-level
+      // nested field) -- show real JSON instead of the useless default "[object Object]".
+      try { return JSON.stringify(value); } catch (e) { return String(value); }
     }
     return String(value);
   }

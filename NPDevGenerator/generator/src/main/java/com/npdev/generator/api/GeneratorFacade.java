@@ -109,7 +109,7 @@ public final class GeneratorFacade {
 
         new RuntimeApiEmitter(templates, writer).emit(model, resolvedModelSource, modelSourcePath, superUserRole);
         if (settingResolver.value(NpdevSettings.UI_GENERATE_BUSINESS_UI, SettingTarget.app())) {
-            new BusinessUiEmitter(templates, writer).emit(model, superUserRole);
+            new BusinessUiEmitter(templates, writer).emit(model, superUserRole, settingResolver);
             // Phase 7: provenance/store/box-view admin surfaces ride along with the business UI,
             // since they are only reachable through its super-user admin nav.
             new BoxManifestEmitter().emit(model, writer);

@@ -88,6 +88,7 @@ public final class CompiledModelCanonicalJson {
                 fieldNode.set("enumOptions", toEnumOptions(field.getEnumOptions()));
                 fieldNode.put("referenceTarget", safe(field.getReferenceTarget()));
                 fieldNode.put("connectable", safe(field.getConnectable()));
+                fieldNode.put("renamedFrom", safe(field.getRenamedFrom()));
                 fieldNode.set("referenceSemantics", toReferenceSemantics(field.getReferenceSemantics()));
                 fieldNode.put("domainType", safe(field.getDomainType()));
                 fieldNode.set("schema", toSchema(field.getSchema()));

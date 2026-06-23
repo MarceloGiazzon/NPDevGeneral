@@ -205,7 +205,8 @@ public final class ModelCompiler {
                         toCompiledSchema(effectiveSchema),
                         toCompiledEnumOptions(f.getEnumOptions()),
                         toCompiledPresentationMetadata(f.getUi()),
-                        f.getConnectable()
+                        f.getConnectable(),
+                        f.getRenamedFrom()
                 ));
 
                 if (f.isRequired()) {

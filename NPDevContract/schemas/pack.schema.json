@@ -162,6 +162,35 @@
       "items": {
         "$ref": "model.schema.json#/$defs/localModelRef"
       }
+    },
+    "category": {
+      "type": "string",
+      "enum": ["security", "web-ui", "crypto", "bots", "ai-tools", "finance", "math", "other"],
+      "description": "Author-ecosystem catalog grouping shown in the Store panel's drill-down."
+    },
+    "author": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Free-text attribution for who published this pack."
+    },
+    "forkedFrom": {
+      "type": "object",
+      "description": "Attribution when this pack was derived from another published pack.",
+      "required": ["pack", "version"],
+      "properties": {
+        "pack": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "originAuthor": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

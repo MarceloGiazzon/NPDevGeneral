@@ -294,6 +294,55 @@ public final class SchemaRealizationEmitter {
         return List.copyOf(columns);
     }
 
+    /**
+     * Column name -> SQL type, for every column {@link #fullColumnNames} lists (id/version/tenant_id
+     * included with their fixed platform types). Threaded into the manifest so the runtime schema
+     * lifecycle can distinguish "an existing column's type actually changed" from "this is an
+     * unrelated remove+add" instead of only ever seeing column names.
+     */
+    private static Map<String, String> columnTypes(CompiledConcept concept, Map<String, CompiledConcept> conceptsByName) {
+        Map<String, String> types = new LinkedHashMap<>();
+        boolean hasIdField = false;
+        for (CompiledField field : concept.getFields()) {
+            Optional<Bond> bond = BondModelSupport.resolveBond(concept, field, conceptsByName);
+            if (bond.isPresent() && bond.get().cardinality() == Cardinality.MANY_TO_MANY) {
+                continue;
+            }
+            String sqlType = bond.isPresent() ? bond.get().effectiveSqlType() : SqlTypeSupport.sqlType(field);
+            types.put(SqlIdentifierSupport.columnName(field), sqlType);
+            if (field.isId()) {
+                hasIdField = true;
+            }
+        }
+        if (!hasIdField) {
+            types.put("id", "UUID");
+        }
+        types.put("version", "BIGINT");
+        types.put("tenant_id", "VARCHAR(120)");
+        return types;
+    }
+
+    /**
+     * New column name -> previous column name, for every field declaring {@code renamedFrom}. Lets
+     * the runtime schema lifecycle classify a fingerprint mismatch as a rename instead of an
+     * unrelated remove+add when the live database still has the old column and the model now
+     * declares the new one in its place.
+     */
+    private static Map<String, String> columnRenames(CompiledConcept concept, Map<String, CompiledConcept> conceptsByName) {
+        Map<String, String> renames = new LinkedHashMap<>();
+        for (CompiledField field : concept.getFields()) {
+            Optional<Bond> bond = BondModelSupport.resolveBond(concept, field, conceptsByName);
+            if (bond.isPresent() && bond.get().cardinality() == Cardinality.MANY_TO_MANY) {
+                continue;
+            }
+            String renamedFrom = field.getRenamedFrom();
+            if (renamedFrom != null && !renamedFrom.isBlank()) {
+                renames.put(SqlIdentifierSupport.columnName(field), SqlIdentifierSupport.toSnake(renamedFrom));
+            }
+        }
+        return renames;
+    }
+
     private static boolean isConnectableAnchor(CompiledField field) {
         return field != null && "anchor".equalsIgnoreCase(field.getConnectable());
     }
@@ -413,12 +462,19 @@ public final class SchemaRealizationEmitter {
                 : List.of();
         Map<String, List<String>> businessTableColumns = new LinkedHashMap<>();
         Map<String, List<String>> businessTableAdditiveColumns = new LinkedHashMap<>();
+        Map<String, Map<String, String>> businessTableColumnTypes = new LinkedHashMap<>();
+        Map<String, Map<String, String>> businessTableRenamedColumns = new LinkedHashMap<>();
         if (plan.createBusinessTables()) {
             Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
             for (CompiledConcept concept : model.getConcepts()) {
                 String table = SqlIdentifierSupport.tableName(concept);
                 businessTableColumns.put(table, fullColumnNames(concept, conceptsByName));
                 businessTableAdditiveColumns.put(table, additiveColumnNames(concept, conceptsByName));
+                businessTableColumnTypes.put(table, columnTypes(concept, conceptsByName));
+                Map<String, String> renames = columnRenames(concept, conceptsByName);
+                if (!renames.isEmpty()) {
+                    businessTableRenamedColumns.put(table, renames);
+                }
             }
         }
 
@@ -439,6 +495,8 @@ public final class SchemaRealizationEmitter {
         manifest.put("businessTables", businessTables);
         manifest.put("businessTableColumns", businessTableColumns);
         manifest.put("businessTableAdditiveColumns", businessTableAdditiveColumns);
+        manifest.put("businessTableColumnTypes", businessTableColumnTypes);
+        manifest.put("businessTableRenamedColumns", businessTableRenamedColumns);
         manifest.put("sourceOfTruth", Map.of(
                 "internal", resolveInternalSchemaSourcePath(plan.definitionPath()).toString(),
                 "business", modelSourcePath == null ? "" : modelSourcePath.toAbsolutePath().normalize().toString(),

@@ -6,6 +6,9 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.npdev.runtime.support.GeneratedCrudRuntimeSupport;
 import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.ExecutionResult;
+import com.npdev.kernel.ExecutionStatus;
+import com.npdev.kernel.KernelRunner;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptGatewaySemanticException;
 import com.npdev.kernel.concepts.ConceptRecord;
@@ -33,6 +36,7 @@ public class {{entityName}}ServiceBase {
     protected final GeneratedCrudRuntimeSupport runtimeSupport;
     protected final ConceptGateway conceptGateway;
     protected final ConceptStore conceptStore;
+    protected final KernelRunner kernelRunner;
     // JavaTimeModule lets this convert an entity's java.time fields at all, but the module's own
     // default for WRITE_DATES_AS_TIMESTAMPS is true -- without disabling it, mapFromEntity's
     // OBJECT_MAPPER.convertValue(entity, MAP_TYPE) silently turns an OffsetDateTime field into a
@@ -55,11 +59,13 @@ public class {{entityName}}ServiceBase {
     public {{entityName}}ServiceBase(
             GeneratedCrudRuntimeSupport runtimeSupport,
             ConceptGateway conceptGateway,
-            ConceptStore conceptStore
+            ConceptStore conceptStore,
+            KernelRunner kernelRunner
     ) {
         this.runtimeSupport = runtimeSupport;
         this.conceptGateway = conceptGateway;
         this.conceptStore = conceptStore;
+        this.kernelRunner = kernelRunner;
         this.persistence = GeneratedCrudRuntimeSupport.persistenceCapability(
                 this::findByIdFromConceptStore,
                 this::findAllFromConceptStore,
@@ -133,9 +139,14 @@ public class {{entityName}}ServiceBase {
         runtimeSupport.enforceBondTargetTenant("{{conceptName}}", createPayload, crudCtx);
         UUID generatedId = runtimeSupport.ensureGeneratedId("{{conceptName}}", createPayload);
         enforceWithKernel("{{conceptName}}", createPayload);
+{{#hasCreateFlow}}
+        enforceWithCreateFlow(crudCtx, generatedId, createPayload);
+{{/hasCreateFlow}}
+{{^hasCreateFlow}}
 {{#kernelControlled}}
         enforceWithConceptGateway("{{conceptName}}", generatedId, createPayload);
 {{/kernelControlled}}
+{{/hasCreateFlow}}
 
         {{entityName}} e = new {{entityName}}();
         runtimeSupport.assignGeneratedId("{{conceptName}}", e, generatedId);
@@ -186,9 +197,14 @@ public class {{entityName}}ServiceBase {
         Map<String, Object> updatePayload = runtimeSupport.buildUpdateInvariantPayload("{{conceptName}}", id, existing, source);
         runtimeSupport.enforceBondTargetTenant("{{conceptName}}", updatePayload, crudCtx);
         enforceWithKernel("{{conceptName}}", updatePayload);
+{{#hasUpdateFlow}}
+        enforceWithUpdateFlow(crudCtx, id, updatePayload);
+{{/hasUpdateFlow}}
+{{^hasUpdateFlow}}
 {{#kernelControlled}}
         enforceWithConceptGateway("{{conceptName}}", id, updatePayload);
 {{/kernelControlled}}
+{{/hasUpdateFlow}}
         runtimeSupport.applyUpdateFields("{{conceptName}}", source, existing);
         existing.setVersion((existing.getVersion() == null ? 0L : existing.getVersion()) + 1);
 
@@ -210,9 +226,14 @@ public class {{entityName}}ServiceBase {
         runtimeSupport.checkCrudPermission("{{conceptName}}", "DELETE", crudCtx);
 {{/kernelControlled}}
         if (!persistence.existsById(id)) return false;
+{{#hasDeleteFlow}}
+        enforceWithDeleteFlow(crudCtx, id);
+{{/hasDeleteFlow}}
+{{^hasDeleteFlow}}
 {{#kernelControlled}}
         enforceDeleteWithConceptGateway("{{conceptName}}", id);
 {{/kernelControlled}}
+{{/hasDeleteFlow}}
         deleteWithIntegrityMapping(id);
 {{#kernelControlled}}
         runtimeSupport.auditCrudMutation("{{conceptName}}", "DELETE", String.valueOf(id), "ALLOW", crudCtx);
@@ -440,6 +461,49 @@ public class {{entityName}}ServiceBase {
     private ExecutionContext generatedCrudExecutionContext() {
         return runtimeSupport.resolveCurrentCrudContext();
     }
+
+{{#hasCreateFlow}}
+    /**
+     * Flow-CRUD wrapper integration: the core mutation step delegates to this declared Flow's own
+     * steps instead of the default {@code conceptGateway.save(...)}. Permission/tenant/idempotency/
+     * audit around this call are unchanged from the standard path (see createFromSource) -- this
+     * Flow must not assume it owns any of that; crudCtx is already verified by the time this runs.
+     */
+    private void enforceWithCreateFlow(ExecutionContext crudCtx, UUID generatedId, Map<String, Object> createPayload) {
+        Map<String, Object> flowInput = new LinkedHashMap<>(createPayload);
+        flowInput.put(ID_FIELD_NAME, String.valueOf(generatedId));
+        ExecutionResult result = kernelRunner.execute("{{createFlowName}}", flowInput, crudCtx);
+        requireFlowSucceeded("{{createFlowName}}", result);
+    }
+
+{{/hasCreateFlow}}
+{{#hasUpdateFlow}}
+    /** Update-mode counterpart of enforceWithCreateFlow -- see that method's note. */
+    private void enforceWithUpdateFlow(ExecutionContext crudCtx, UUID id, Map<String, Object> updatePayload) {
+        Map<String, Object> flowInput = new LinkedHashMap<>(updatePayload);
+        flowInput.put(ID_FIELD_NAME, String.valueOf(id));
+        ExecutionResult result = kernelRunner.execute("{{updateFlowName}}", flowInput, crudCtx);
+        requireFlowSucceeded("{{updateFlowName}}", result);
+    }
+
+{{/hasUpdateFlow}}
+{{#hasDeleteFlow}}
+    /** Delete-mode counterpart of enforceWithCreateFlow -- see that method's note. */
+    private void enforceWithDeleteFlow(ExecutionContext crudCtx, UUID id) {
+        ExecutionResult result = kernelRunner.execute("{{deleteFlowName}}", Map.of(ID_FIELD_NAME, String.valueOf(id)), crudCtx);
+        requireFlowSucceeded("{{deleteFlowName}}", result);
+    }
+
+{{/hasDeleteFlow}}
+{{#hasAnyFlow}}
+    private static void requireFlowSucceeded(String flowName, ExecutionResult result) {
+        if (result == null || result.getStatus() != ExecutionStatus.OK) {
+            throw new IllegalStateException("Flow \"" + flowName + "\" for {{conceptName}} did not complete successfully: "
+                    + (result == null ? "null result" : result.getStatus() + " " + result.getError()));
+        }
+    }
+
+{{/hasAnyFlow}}
 
     /**
      * Tenant isolation: every {@code conceptStore} call is scoped to the caller's own tenant from

@@ -108,6 +108,8 @@ class SchemaLifecycleExecutorAdditiveChangeTest {
                 List.copyOf(businessTableColumns.keySet()),
                 businessTableColumns,
                 businessTableAdditiveColumns,
+                Map.of(),
+                Map.of(),
                 true,
                 "DropAndRecreateOnStructureChange",
                 "NpdevOwnedTablesOnly",

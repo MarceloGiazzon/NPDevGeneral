@@ -5,6 +5,8 @@
   "version": "1.0.0",
   "namespace": "com.npdev.identity",
   "description": "Built-in NPDev identity model: users, roles, and their assignments. Intended as the persistent backing for in-app super-user administration and per-user preferences.",
+  "category": "security",
+  "author": "NPDev",
   "concepts": [
     {
       "name": "User",
