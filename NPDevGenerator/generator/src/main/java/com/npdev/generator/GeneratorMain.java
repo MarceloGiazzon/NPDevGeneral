@@ -89,6 +89,16 @@ public final class GeneratorMain {
             compiled = composeBuiltinInternalTables(compiled);
         }
 
+        // Compose any explicitly-installed third-party packs (config.json's packs.included list --
+        // distinct from internal.tables/BUILTIN_PACK_ALIASES, which are platform packs surfaced
+        // admin-only). An installed pack's concepts are ordinary business concepts, not admin-gated:
+        // they are deliberately NOT added to BuiltinPackComposer.BUILTIN_PACK_ALIASES, which is what
+        // every admin-only check (BusinessUiEmitter/RuntimeApiEmitter/BoxManifestEmitter) keys on.
+        List<String> installedPackAliases = readInstalledPackAliases(config);
+        if (!installedPackAliases.isEmpty()) {
+            compiled = composeInstalledPacks(compiled, installedPackAliases);
+        }
+
         GeneratedDatabasePlan databasePlan = new UserDatabaseDefinitionLoader()
                 .load(Path.of(a.dbDefinitionPath), compiled);
         System.out.println("DB definition: " + databasePlan.definitionPath());
@@ -101,7 +111,7 @@ public final class GeneratorMain {
         GeneratedSourceWriter writer =
                 new GeneratedSourceWriter(outRoot, new RegenerationPolicy());
 
-        new GeneratorFacade(templates, writer, settingResolver).generate(
+        new GeneratorFacade(templates, writer, settingResolver, installedPackAliases).generate(
                 compiled,
                 outRoot,
                 schemaRealizationDir,
@@ -158,7 +168,7 @@ public final class GeneratorMain {
     }
 
     private static CompiledModel composeBuiltinInternalTables(CompiledModel app) {
-        Path packsDir = locatePlatformPacksDir();
+        Path packsDir = locatePlatformPacksDir("internal.tables is enabled");
         BuiltinPackComposer composer = new BuiltinPackComposer();
         List<CompiledConcept> builtin = new java.util.ArrayList<>();
         for (String alias : BuiltinPackComposer.BUILTIN_PACK_ALIASES) {
@@ -168,18 +178,61 @@ public final class GeneratorMain {
         return composer.merge(app, builtin);
     }
 
-    private static Path locatePlatformPacksDir() {
+    /**
+     * Composes any pack explicitly named in config.json's {@code packs.included} list -- the
+     * "install a pack" half of the author-ecosystem ask. Reuses {@code BuiltinPackComposer}'s
+     * already-generic {@code loadPackConcepts}/{@code merge} (it never assumed identity/workspace
+     * specifically; only the BUILTIN_PACK_ALIASES *list* it's normally driven by was hardcoded).
+     * Concepts contributed this way are deliberately not added to BUILTIN_PACK_ALIASES, so every
+     * existing admin-only check keys correctly: an installed third-party pack's concepts render as
+     * ordinary business concepts, not admin-gated internal tables.
+     */
+    private static CompiledModel composeInstalledPacks(CompiledModel app, List<String> aliases) {
+        Path packsDir = locatePlatformPacksDir("packs.included is non-empty");
+        BuiltinPackComposer composer = new BuiltinPackComposer();
+        List<CompiledConcept> installed = new java.util.ArrayList<>();
+        for (String alias : aliases) {
+            Path packFile = packsDir.resolve(alias).resolve("pack.json");
+            if (!Files.isRegularFile(packFile)) {
+                throw new IllegalStateException(
+                        "config.json's packs.included names \"" + alias + "\", but no pack was found at " + packFile);
+            }
+            installed.addAll(composer.loadPackConcepts(packFile, alias));
+        }
+        System.out.println("Composed installed packs " + aliases + " (" + installed.size() + " concepts) from " + packsDir);
+        return composer.merge(app, installed);
+    }
+
+    /** Reads config.json's optional {@code packs.included} string array (defaults to none). */
+    private static List<String> readInstalledPackAliases(JsonNode config) {
+        if (config == null) {
+            return List.of();
+        }
+        JsonNode included = config.path("packs").path("included");
+        if (!included.isArray()) {
+            return List.of();
+        }
+        List<String> aliases = new java.util.ArrayList<>();
+        for (JsonNode alias : included) {
+            if (alias.isTextual() && !alias.asText().isBlank()) {
+                aliases.add(alias.asText().trim());
+            }
+        }
+        return List.copyOf(aliases);
+    }
+
+    private static Path locatePlatformPacksDir(String reason) {
         Path start = Path.of("").toAbsolutePath().normalize();
         Path workspaceRoot = resolveSplitWorkspaceRoot(start);
         if (workspaceRoot == null) {
             throw new IllegalStateException(
-                    "internal.tables is enabled but the NPDev workspace root could not be located from "
+                    reason + " but the NPDev workspace root could not be located from "
                             + start + " (needed to find NPDevContract/packs).");
         }
         Path packsDir = workspaceRoot.resolve("NPDevContract").resolve("packs");
         if (!Files.isDirectory(packsDir)) {
             throw new IllegalStateException(
-                    "internal.tables is enabled but the platform packs directory was not found: " + packsDir);
+                    reason + " but the platform packs directory was not found: " + packsDir);
         }
         return packsDir;
     }

@@ -466,6 +466,10 @@
             "anchor"
           ]
         },
+        "renamedFrom": {
+          "type": "string",
+          "description": "Declares this field is a rename of a previously-existing column with this name, so a regeneration's schema-lifecycle classifies it as a rename instead of an unrelated remove+add."
+        },
         "enumValues": {
           "type": "array",
           "minItems": 1,
@@ -1226,6 +1230,11 @@
               }
             ]
           }
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["create", "update", "delete"],
+          "description": "When set on a concept-nested event, generated CRUD publishes this event directly from the matching mutation step (in addition to any Flow's own emitEvent step) -- no Flow required to reach it."
         }
       },
       "additionalProperties": false

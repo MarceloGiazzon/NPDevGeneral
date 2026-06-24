@@ -48,6 +48,14 @@
   "defaults": {
     "internal.tables": true
   },
+  "overrides": {
+    "concept:Note": {
+      "persistence.adapter": "audited"
+    },
+    "field:Note.projectRef": {
+      "field.widget": "select"
+    }
+  },
   "trialDefaults": {
     "apiKey": "api-dev",
     "recommendedProfiles": "dev,trial",

@@ -169,7 +169,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             view.put("readOnly", field.isId());
             view.put("sortable", isSortable(field));
             view.put("filterable", isFilterable(field));
-            view.put("widget", javaString(widget(field, conceptsByName, concept.getName(), settingResolver)));
+            view.put("widget", javaString(widget(field, conceptsByName, concept, settingResolver)));
             view.put("hasEnumValues", field.getEnumValues() != null && !field.getEnumValues().isEmpty());
             view.put("enumValues", enumValuesJava(field));
             view.put("defaultEnumValue", javaString(defaultEnumValue(field)));
@@ -263,8 +263,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                     node.put("objectSchema", buildItemsSchemaNode(schema));
                 }
             }
-            Optional<Map<String, Object>> reference = referenceMetadata(field, conceptsByName);
-            node.put("widget", reference.isPresent() ? "lookup" : widget(field, conceptsByName, concept.getName(), settingResolver));
+            Optional<Map<String, Object>> reference = referenceMetadata(field, conceptsByName, concept);
+            node.put("widget", widget(field, conceptsByName, concept, settingResolver));
             node.put("enumValues", field.getEnumValues());
             node.put("enumOptions", enumOptionsManifest(field));
             node.put("enumName", enumName(concept, field));
@@ -409,25 +409,46 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     private static String widget(
             CompiledField field,
             Map<String, CompiledConcept> conceptsByName,
-            String conceptName,
+            CompiledConcept concept,
             SettingResolver settingResolver
     ) {
-        if (referenceMetadata(field, conceptsByName).isPresent()) {
-            return "lookup";
+        String conceptName = concept == null ? null : concept.getName();
+        boolean isReference = referenceMetadata(field, conceptsByName, concept).isPresent();
+        boolean isMultiReference = isReference
+                && field.getReferenceSemantics() != null
+                && field.getReferenceSemantics().isMultiple();
+        // A many-to-many bond has exactly one working widget today -- there is no scalar value to
+        // "lookup" or render as a "select" (the field isn't even a property on the generated
+        // entity; it's a set of junction-table rows). Settled before the cascade check below so an
+        // unrelated field.widget override on this field can't silently break it.
+        if (isMultiReference) {
+            return "multiselect";
         }
         // field.widget cascade (field:<Concept>.<field> -> concept:<Concept> -> app -> platform
         // default) takes priority over the field's own model.json ui.widget when explicitly
         // overridden -- this is the actual personalization mechanism the setting was registered
         // for. An unconfigured app resolves to the platform default (empty string) for every
-        // field, so this is a no-op unless an author has actually declared an override.
+        // field, so this is a no-op unless an author has actually declared an override. Checked
+        // before the reference-field default so a single (N:1/1:1) reference field can opt into a
+        // plain "select" dropdown instead of the picker dialog.
         if (settingResolver != null && conceptName != null && !conceptName.isBlank() && field.getName() != null) {
             String cascadeWidget = settingResolver.value(
                     NpdevSettings.FIELD_WIDGET,
                     SettingTarget.field(conceptName, field.getName())
             );
             if (cascadeWidget != null && !cascadeWidget.isBlank()) {
-                return cascadeWidget.trim();
+                String normalized = cascadeWidget.trim();
+                if (isReference) {
+                    // "select" is the only supported alternative for a reference field; any other
+                    // override falls back to the picker rather than silently rendering a bare text
+                    // input over a foreign-key value.
+                    return "select".equalsIgnoreCase(normalized) ? "select" : "lookup";
+                }
+                return normalized;
             }
+        }
+        if (isReference) {
+            return "lookup";
         }
         String type = manifestType(field);
         if ("enum".equals(type) && field.getEnumValues() != null && !field.getEnumValues().isEmpty()) {
@@ -490,6 +511,13 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 return explicit;
             }
         }
+        // A many-to-many bond field has no scalar value on the record (it's junction-table rows,
+        // not an entity property) -- a grid column would just read undefined for every row.
+        // Hidden from the default grid for the same reason array/object are: showing it would
+        // need a per-row async fetch the list view isn't set up to do.
+        if (field.getReferenceSemantics() != null && field.getReferenceSemantics().isMultiple()) {
+            return false;
+        }
         // array and object fields are complex structures; hide by default
         String type = manifestType(field);
         return !"array".equals(type) && !"object".equals(type);
@@ -498,7 +526,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
 
     private static Optional<Map<String, Object>> referenceMetadata(
             CompiledField field,
-            Map<String, CompiledConcept> conceptsByName
+            Map<String, CompiledConcept> conceptsByName,
+            CompiledConcept sourceConcept
     ) {
         String targetName = referenceTarget(field, conceptsByName);
         if (targetName == null || targetName.isBlank()) {
@@ -548,6 +577,21 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         reference.put("defaultFilter", firstNonBlank(defaultFilter, ""));
         parseDefaultFilterExpression(defaultFilter, target).ifPresent(expression -> reference.put("defaultFilterExpression", expression));
         reference.put("filterMode", "bounded-lookup-v1.1");
+        boolean multiple = field.getReferenceSemantics() != null && field.getReferenceSemantics().isMultiple();
+        reference.put("multiple", multiple);
+        if (multiple && sourceConcept != null) {
+            // The many-to-many bond's own member list/add/remove/replace routes
+            // (controller-custom.mustache's {{#manyToManyBonds}} block) are generated onto the
+            // PER-ENTITY controller, route "/api/" + tableName (ControllerEmitter.java) -- a
+            // DIFFERENT base than endpointBase()'s "/api/concepts/" + tableName, which only the
+            // generic binding-map GeneratedConceptCrudController serves (regular CRUD, reference
+            // lookups). Confirmed live: PUT /api/concepts/notes/{id}/tags 404s; PUT
+            // /api/notes/{id}/tags is the real route. The {id} is a runtime value the generator
+            // doesn't have, so this is a base for the frontend to complete itself
+            // (bondEndpointBase + "/" + recordId + "/" + bondFieldName).
+            reference.put("bondEndpointBase", "/api/" + SqlIdentifierSupport.tableName(sourceConcept));
+            reference.put("bondFieldName", field.getName());
+        }
         return Optional.of(reference);
     }
 

@@ -8,8 +8,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -46,6 +48,56 @@ final class PackCatalogEmitterTest {
         JsonNode root = new ObjectMapper().readTree(tempDir.resolve(PackCatalogEmitter.RELATIVE_PATH).toFile());
         JsonNode identity = findPack(root.path("packs"), "identity");
         assertEquals(false, identity.path("included").asBoolean());
+    }
+
+    @Test
+    void exposesReferenceTargetForBondFieldsInConceptDetails() throws Exception {
+        GeneratedSourceWriter writer = new GeneratedSourceWriter(tempDir, new RegenerationPolicy());
+        new PackCatalogEmitter().emit(writer, true);
+
+        JsonNode root = new ObjectMapper().readTree(tempDir.resolve(PackCatalogEmitter.RELATIVE_PATH).toFile());
+        JsonNode identity = findPack(root.path("packs"), "identity");
+        JsonNode userRole = findConcept(identity.path("concepts"), "UserRole");
+
+        JsonNode userIdField = findField(userRole.path("fields"), "userId");
+        assertEquals("User", userIdField.path("referenceTarget").asText());
+
+        JsonNode roleIdField = findField(userRole.path("fields"), "roleId");
+        assertEquals("Role", roleIdField.path("referenceTarget").asText());
+
+        JsonNode idField = findField(findConcept(identity.path("concepts"), "User").path("fields"), "id");
+        assertFalse(idField.has("referenceTarget"));
+    }
+
+    @Test
+    void marksAnInstalledThirdPartyPackAsIncludedEvenWithoutInternalTables() throws Exception {
+        GeneratedSourceWriter writer = new GeneratedSourceWriter(tempDir, new RegenerationPolicy());
+        new PackCatalogEmitter().emit(writer, false, List.of("identity"));
+
+        JsonNode root = new ObjectMapper().readTree(tempDir.resolve(PackCatalogEmitter.RELATIVE_PATH).toFile());
+        JsonNode identity = findPack(root.path("packs"), "identity");
+        assertTrue(identity.path("included").asBoolean());
+
+        JsonNode workspace = findPack(root.path("packs"), "workspace");
+        assertFalse(workspace.path("included").asBoolean());
+    }
+
+    private static JsonNode findConcept(JsonNode concepts, String name) {
+        for (JsonNode concept : concepts) {
+            if (name.equals(concept.path("name").asText())) {
+                return concept;
+            }
+        }
+        throw new AssertionError("No concept found named " + name);
+    }
+
+    private static JsonNode findField(JsonNode fields, String name) {
+        for (JsonNode field : fields) {
+            if (name.equals(field.path("name").asText())) {
+                return field;
+            }
+        }
+        throw new AssertionError("No field found named " + name);
     }
 
     private static JsonNode findPack(JsonNode packs, String alias) {

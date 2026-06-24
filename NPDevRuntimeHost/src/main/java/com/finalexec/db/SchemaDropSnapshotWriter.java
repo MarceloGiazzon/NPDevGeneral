@@ -109,7 +109,16 @@ final class SchemaDropSnapshotWriter {
         }
     }
 
-    /** Best-effort full dump as JSON-lines; a BLOB/binary column's value is replaced with a note, not crashed on. */
+    /**
+     * Best-effort full dump as JSON-lines. A genuine BLOB/binary column's value is replaced with a
+     * note, not crashed on or pulled into the dump raw. JSON-typed columns (object/array DSL
+     * fields) are NOT treated as binary even though the JDBC driver hands them back as byte[]/String
+     * just like a real BLOB would -- without the type-name check below, a column the JDBC driver
+     * happens to return as byte[] (H2 does this for JSON columns, not just BLOBs) would have its
+     * actual content silently replaced by a "<binary, not snapshotted>" placeholder, defeating the
+     * entire purpose of this snapshot for exactly the structured data it's most important to
+     * capture (confirmed live: a Project.shipping object field was lost this way before this fix).
+     */
     private static int dumpRows(Connection connection, Path snapshotDir, String table) throws SQLException, IOException {
         Path dumpFile = snapshotDir.resolve(table.toLowerCase(Locale.ROOT) + ".jsonl");
         int rowsWritten = 0;
@@ -117,12 +126,16 @@ final class SchemaDropSnapshotWriter {
              ResultSet resultSet = statement.executeQuery()) {
             ResultSetMetaData metaData = resultSet.getMetaData();
             int columnCount = metaData.getColumnCount();
+            boolean[] isJsonColumn = new boolean[columnCount + 1];
+            for (int index = 1; index <= columnCount; index++) {
+                isJsonColumn[index] = isJsonColumnType(metaData, index);
+            }
             StringBuilder out = new StringBuilder();
             while (resultSet.next()) {
                 Map<String, Object> row = new LinkedHashMap<>();
                 for (int index = 1; index <= columnCount; index++) {
                     String column = metaData.getColumnLabel(index);
-                    row.put(column, snapshotColumnValue(resultSet, index));
+                    row.put(column, snapshotColumnValue(resultSet, index, isJsonColumn[index]));
                 }
                 out.append(OBJECT_MAPPER.writeValueAsString(row)).append('\n');
                 rowsWritten++;
@@ -132,9 +145,24 @@ final class SchemaDropSnapshotWriter {
         return rowsWritten;
     }
 
-    private static Object snapshotColumnValue(ResultSet resultSet, int index) {
+    private static boolean isJsonColumnType(ResultSetMetaData metaData, int index) {
+        try {
+            String typeName = metaData.getColumnTypeName(index);
+            return typeName != null && ("JSON".equalsIgnoreCase(typeName) || "JSONB".equalsIgnoreCase(typeName));
+        } catch (SQLException exception) {
+            return false;
+        }
+    }
+
+    private static Object snapshotColumnValue(ResultSet resultSet, int index, boolean isJsonColumn) {
         try {
             Object value = resultSet.getObject(index);
+            if (value == null) {
+                return null;
+            }
+            if (isJsonColumn) {
+                return decodeJsonColumnValue(value);
+            }
             if (value instanceof byte[] bytes) {
                 return "<binary, " + bytes.length + " bytes, not snapshotted>";
             }
@@ -142,6 +170,43 @@ final class SchemaDropSnapshotWriter {
         } catch (SQLException exception) {
             return "<unreadable column: " + exception.getMessage() + ">";
         }
+    }
+
+    /**
+     * A JSON-typed column's value, regardless of whether the JDBC driver handed it back as a
+     * String or as byte[] (H2 does the latter): decode to text, then parse so the snapshot captures
+     * real structured JSON, not an escaped string-within-a-string. One parse pass isn't always
+     * enough -- confirmed live, a column written through Hibernate's JsonNode/JSON-column mapping
+     * (the path the JPA entity save uses, separate from the snapshot's own raw JDBC read) round-trips
+     * through one extra layer of JSON-string quoting that only Hibernate's own FormatMapper normally
+     * reverses on read; a raw, Hibernate-unaware JDBC read like this one sees that extra layer
+     * directly: the literal bytes are a JSON STRING LITERAL (starting with a quote, e.g.
+     * {@code "{\"carrier\":...}"}), not bare object/array text. Keep parsing while the result is a
+     * String that still looks like JSON -- object, array, OR a quoted string -- bounded so a value
+     * that legitimately is just a plain string (no further nesting) terminates after unwrapping it.
+     */
+    private static Object decodeJsonColumnValue(Object value) {
+        String json = value instanceof byte[] bytes ? new String(bytes, StandardCharsets.UTF_8) : String.valueOf(value);
+        if (json.isBlank()) {
+            return null;
+        }
+        Object decoded = json;
+        for (int pass = 0; pass < 3; pass++) {
+            if (!(decoded instanceof String text) || text.isBlank()) {
+                break;
+            }
+            String trimmed = text.trim();
+            boolean looksLikeJson = trimmed.startsWith("{") || trimmed.startsWith("[") || trimmed.startsWith("\"");
+            if (!looksLikeJson) {
+                break;
+            }
+            try {
+                decoded = OBJECT_MAPPER.readValue(trimmed, Object.class);
+            } catch (Exception exception) {
+                break;
+            }
+        }
+        return decoded;
     }
 
     private static void pruneOldSnapshots() {

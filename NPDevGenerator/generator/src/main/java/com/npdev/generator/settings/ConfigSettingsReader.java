@@ -74,6 +74,14 @@ public final class ConfigSettingsReader {
                 appValues.put(NpdevSettings.UI_GENERATE_BUSINESS_UI.id(), emitUiAssets.booleanValue());
             }
         }
+        JsonNode database = config.get("database");
+        if (database != null && database.isObject()) {
+            JsonNode provider = database.get("provider");
+            if (provider != null && provider.isTextual()
+                    && !appValues.containsKey(NpdevSettings.DATABASE_PROVIDER.id())) {
+                appValues.put(NpdevSettings.DATABASE_PROVIDER.id(), provider.textValue());
+            }
+        }
     }
 
     private static SettingScope scopeForSelector(String selector) {

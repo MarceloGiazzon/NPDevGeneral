@@ -45,6 +45,11 @@
     "javaArgs": [],
     "gradleTask": "bootRun"
   },
+  "overrides": {
+    "concept:Tenant": {
+      "persistence.adapter": "audited"
+    }
+  },
   "trialDefaults": {
     "apiKey": "api-dev",
     "recommendedProfiles": "dev,trial",

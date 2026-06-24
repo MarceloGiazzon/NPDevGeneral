@@ -37,6 +37,7 @@ public class {{entityName}}ServiceBase {
     protected final ConceptGateway conceptGateway;
     protected final ConceptStore conceptStore;
     protected final KernelRunner kernelRunner;
+    protected final java.util.Optional<com.npdev.kernel.coda.CodaHook> codaHook;
     // JavaTimeModule lets this convert an entity's java.time fields at all, but the module's own
     // default for WRITE_DATES_AS_TIMESTAMPS is true -- without disabling it, mapFromEntity's
     // OBJECT_MAPPER.convertValue(entity, MAP_TYPE) silently turns an OffsetDateTime field into a
@@ -60,11 +61,25 @@ public class {{entityName}}ServiceBase {
             GeneratedCrudRuntimeSupport runtimeSupport,
             ConceptGateway conceptGateway,
             ConceptStore conceptStore,
-            KernelRunner kernelRunner
+            KernelRunner kernelRunner,
+            java.util.Optional<com.npdev.kernel.coda.CodaHook> codaHook
     ) {
         this.runtimeSupport = runtimeSupport;
         this.conceptGateway = conceptGateway;
+        this.codaHook = codaHook == null ? java.util.Optional.empty() : codaHook;
+{{#hasPersistenceAdapterOverride}}
+        // Adapters personalization cascade (persistence.adapter resolved at generation time):
+        // an override other than the binding-declared default wraps the underlying ConceptStore
+        // with an alternate adapter -- "audited" is the one real variant available today (logs
+        // every access, same data/correctness). Closes the "hardcoded, no override" wiring gap
+        // without claiming a live per-request switch, which would need a different mechanism.
+        // ServiceEmitter already rejected any value other than "audited" at generation time, so
+        // this block is only ever emitted for a value known-good -- no runtime check needed here.
+        this.conceptStore = new com.finalexec.db.AuditingConceptStoreDecorator(conceptStore, "{{conceptName}}");
+{{/hasPersistenceAdapterOverride}}
+{{^hasPersistenceAdapterOverride}}
         this.conceptStore = conceptStore;
+{{/hasPersistenceAdapterOverride}}
         this.kernelRunner = kernelRunner;
         this.persistence = GeneratedCrudRuntimeSupport.persistenceCapability(
                 this::findByIdFromConceptStore,
@@ -139,6 +154,9 @@ public class {{entityName}}ServiceBase {
         runtimeSupport.enforceBondTargetTenant("{{conceptName}}", createPayload, crudCtx);
         UUID generatedId = runtimeSupport.ensureGeneratedId("{{conceptName}}", createPayload);
         enforceWithKernel("{{conceptName}}", createPayload);
+{{#codaAllowed}}
+        codaHook.ifPresent(hook -> hook.beforeCreate("{{conceptName}}", createPayload, crudCtx));
+{{/codaAllowed}}
 {{#hasCreateFlow}}
         enforceWithCreateFlow(crudCtx, generatedId, createPayload);
 {{/hasCreateFlow}}
@@ -157,6 +175,9 @@ public class {{entityName}}ServiceBase {
         e.setTenantId(currentTenantId());
 
         {{entityName}} created = saveWithIntegrityMapping(e);
+{{#codaAllowed}}
+        codaHook.ifPresent(hook -> hook.afterCreate("{{conceptName}}", created, crudCtx));
+{{/codaAllowed}}
 {{#kernelControlled}}
         runtimeSupport.auditCrudMutation("{{conceptName}}", "CREATE", String.valueOf(created.getId()), "ALLOW", crudCtx);
 {{/kernelControlled}}
@@ -164,6 +185,11 @@ public class {{entityName}}ServiceBase {
 {{#emitCreatedEvent}}
         publishMutationEvent("created", created.getId(), created);
 {{/emitCreatedEvent}}
+{{#hasExtraCreateEvents}}
+{{#extraCreateEvents}}
+        runtimeSupport.publishDeclaredEvent("{{javaString}}", "{{conceptName}}", created.getId(), created);
+{{/extraCreateEvents}}
+{{/hasExtraCreateEvents}}
         return created;
     }
 
@@ -216,6 +242,11 @@ public class {{entityName}}ServiceBase {
 {{#emitUpdatedEvent}}
         publishMutationEvent("updated", updated.getId(), updated);
 {{/emitUpdatedEvent}}
+{{#hasExtraUpdateEvents}}
+{{#extraUpdateEvents}}
+        runtimeSupport.publishDeclaredEvent("{{javaString}}", "{{conceptName}}", updated.getId(), updated);
+{{/extraUpdateEvents}}
+{{/hasExtraUpdateEvents}}
         return Optional.of(updated);
     }
 
@@ -241,6 +272,11 @@ public class {{entityName}}ServiceBase {
 {{#emitDeletedEvent}}
         publishMutationEvent("deleted", id, null);
 {{/emitDeletedEvent}}
+{{#hasExtraDeleteEvents}}
+{{#extraDeleteEvents}}
+        runtimeSupport.publishDeclaredEvent("{{javaString}}", "{{conceptName}}", id, null);
+{{/extraDeleteEvents}}
+{{/hasExtraDeleteEvents}}
         return true;
     }
 

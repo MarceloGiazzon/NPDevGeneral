@@ -288,7 +288,7 @@ public final class ModelCompiler {
                 payloadFields.add(new CompiledEventField(payloadField.getName(), payloadField.getType()));
             }
             payloadFields.sort(Comparator.comparing(field -> normalize(field.getName())));
-            events.add(new CompiledEvent(eventAst.getName(), eventAst.getConceptName(), payloadFields));
+            events.add(new CompiledEvent(eventAst.getName(), eventAst.getConceptName(), payloadFields, eventAst.getTriggerMode()));
         }
 
         List<FlowAst> orderedFlows = new ArrayList<>(modelAst.getFlows());

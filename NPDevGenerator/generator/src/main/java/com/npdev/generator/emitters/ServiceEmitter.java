@@ -4,6 +4,9 @@ import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledEvent;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.settings.NpdevSettings;
+import com.npdev.dsl.v1.settings.SettingResolver;
+import com.npdev.dsl.v1.settings.SettingTarget;
 import com.npdev.generator.bonds.BondModelSupport;
 import com.npdev.generator.bonds.BondModelSupport.Bond;
 import com.npdev.generator.bonds.BondModelSupport.Cardinality;
@@ -31,6 +34,10 @@ public final class ServiceEmitter extends AbstractEmitter {
     }
 
     public void emit(CompiledModel model, boolean kernelControlled) {
+        emit(model, kernelControlled, null);
+    }
+
+    public void emit(CompiledModel model, boolean kernelControlled, SettingResolver settingResolver) {
         Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
         for (CompiledConcept entity : model.getConcepts()) {
 
@@ -130,6 +137,51 @@ public final class ServiceEmitter extends AbstractEmitter {
             ctx.put("eventBusInproc", "inproc".equalsIgnoreCase(eventBusAdapter));
             ctx.put("kernelControlled", kernelControlled);
 
+            // Adapters personalization cascade: resolved once at generation time (mirrors
+            // kernelControlled/field.widget exactly -- not a live per-request switch). Empty
+            // (default) leaves the binding-declared adapter untouched for every existing sample.
+            String persistenceAdapterOverride = settingResolver == null
+                    ? ""
+                    : settingResolver.value(NpdevSettings.PERSISTENCE_ADAPTER, SettingTarget.concept(entity.getName()));
+            persistenceAdapterOverride = persistenceAdapterOverride == null ? "" : persistenceAdapterOverride.trim();
+            // Fail fast on an unsupported value instead of letting the template's
+            // "audited".equalsIgnoreCase(override) check silently fall through to the unwrapped
+            // store -- a typo'd or stale override (e.g. "audit", "Audited ") would otherwise
+            // generate without complaint and just quietly not apply. Mirrors the binding-adapter
+            // validation immediately above: only one real variant exists today, and an
+            // unrecognised value is a model authoring error, not a thing to ignore.
+            if (!persistenceAdapterOverride.isEmpty() && !"audited".equalsIgnoreCase(persistenceAdapterOverride)) {
+                throw new IllegalStateException(
+                        "Entity " + entity.getClassName() + " has unsupported persistence.adapter override: \""
+                                + persistenceAdapterOverride + "\" (supported: \"\" | \"audited\")"
+                );
+            }
+            ctx.put("hasPersistenceAdapterOverride", !persistenceAdapterOverride.isEmpty());
+            ctx.put("persistenceAdapterOverride", persistenceAdapterOverride);
+
+            // Coda: the single defined author-code hook point, gated per concept by coda.allowed
+            // (resolved at generation time, mirrors every other concept-scope setting). When false
+            // (the platform default for every existing sample), the generated service never even
+            // references CodaHook beyond the always-present, always-empty-by-default constructor
+            // parameter -- zero behavior change.
+            boolean codaAllowed = settingResolver != null
+                    && settingResolver.value(NpdevSettings.CODA_ALLOWED, SettingTarget.concept(entity.getName()));
+            ctx.put("codaAllowed", codaAllowed);
+
+            // Custom events direct from CRUD: a concept-nested event declaring mode:create/update/
+            // delete is published from generated CRUD's matching mutation step directly -- no Flow
+            // required to reach it (previously the ONLY way to trigger a custom, non-built-in event
+            // was an explicit Flow's emitEvent step).
+            List<String> extraCreateEvents = customTriggeredEventNames(model, entity, "create");
+            List<String> extraUpdateEvents = customTriggeredEventNames(model, entity, "update");
+            List<String> extraDeleteEvents = customTriggeredEventNames(model, entity, "delete");
+            ctx.put("extraCreateEvents", toEventViews(extraCreateEvents));
+            ctx.put("extraUpdateEvents", toEventViews(extraUpdateEvents));
+            ctx.put("extraDeleteEvents", toEventViews(extraDeleteEvents));
+            ctx.put("hasExtraCreateEvents", !extraCreateEvents.isEmpty());
+            ctx.put("hasExtraUpdateEvents", !extraUpdateEvents.isEmpty());
+            ctx.put("hasExtraDeleteEvents", !extraDeleteEvents.isEmpty());
+
             // Flow-CRUD wrapper integration: looked up once at generation time (mirrors
             // kernelControlled exactly, not a runtime FlowDefinitionProvider lookup per call).
             // Permission/tenant/idempotency/optimistic-concurrency/audit stay in the template
@@ -227,6 +279,35 @@ public final class ServiceEmitter extends AbstractEmitter {
             Map<String, Object> m = new HashMap<>();
             m.put("value", topic);
             out.add(m);
+        }
+        return out;
+    }
+
+    /** Concept-nested events declaring {@code mode} matching the given CRUD mode, for direct publish. */
+    private static List<String> customTriggeredEventNames(CompiledModel model, CompiledConcept entity, String mode) {
+        List<String> names = new ArrayList<>();
+        for (CompiledEvent event : model.getEvents()) {
+            if (event == null || event.getName() == null || event.getName().isBlank()) {
+                continue;
+            }
+            if (!entity.getName().equals(event.getConceptName())) {
+                continue;
+            }
+            if (!mode.equalsIgnoreCase(event.getTriggerMode())) {
+                continue;
+            }
+            names.add(event.getName().trim());
+        }
+        return names;
+    }
+
+    private static List<Map<String, Object>> toEventViews(List<String> eventNames) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (String name : eventNames) {
+            Map<String, Object> view = new HashMap<>();
+            view.put("name", name);
+            view.put("javaString", escapeForJavaString(name));
+            out.add(view);
         }
         return out;
     }

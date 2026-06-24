@@ -16,6 +16,7 @@ import com.npdev.generator.emitters.MetadataManifestAssetEmitter;
 import com.npdev.generator.emitters.PluginRequirementAssetEmitter;
 import com.npdev.generator.emitters.RuntimeApiEmitter;
 import com.npdev.generator.emitters.RuntimeAuthPropertiesEmitter;
+import com.npdev.generator.emitters.RuntimeLogPropertiesEmitter;
 import com.npdev.generator.emitters.ServiceEmitter;
 import com.npdev.generator.emitters.TrustedSourceEmitter;
 import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
@@ -40,15 +41,29 @@ public final class GeneratorFacade {
     private final TemplateEngine templates;
     private final GeneratedSourceWriter writer;
     private final SettingResolver settingResolver;
+    private final List<String> installedPackAliases;
 
     public GeneratorFacade(TemplateEngine templates, GeneratedSourceWriter writer) {
         this(templates, writer, new SettingResolver(SettingStore.empty()));
     }
 
     public GeneratorFacade(TemplateEngine templates, GeneratedSourceWriter writer, SettingResolver settingResolver) {
+        this(templates, writer, settingResolver, List.of());
+    }
+
+    /** {@code installedPackAliases} mirrors config.json's packs.included list (see GeneratorMain) --
+     *  threaded through only so PackCatalogEmitter can mark these packs "included" in the Store
+     *  catalog; composition itself already happened before this class runs. */
+    public GeneratorFacade(
+            TemplateEngine templates,
+            GeneratedSourceWriter writer,
+            SettingResolver settingResolver,
+            List<String> installedPackAliases
+    ) {
         this.templates = templates;
         this.writer = writer;
         this.settingResolver = settingResolver == null ? new SettingResolver(SettingStore.empty()) : settingResolver;
+        this.installedPackAliases = installedPackAliases == null ? List.of() : List.copyOf(installedPackAliases);
     }
 
     public void generate(CompiledModel model, Path outRoot, Path schemaRealizationDir) throws Exception {
@@ -104,7 +119,7 @@ public final class GeneratorFacade {
 
         new EntityEmitter(templates, writer).emit(model);
         new DtoEmitter(templates, writer).emit(model);
-        new ServiceEmitter(templates, writer).emit(model, kernelControlled);
+        new ServiceEmitter(templates, writer).emit(model, kernelControlled, settingResolver);
         new ControllerEmitter(templates, writer).emit(model);
 
         new RuntimeApiEmitter(templates, writer).emit(model, resolvedModelSource, modelSourcePath, superUserRole);
@@ -113,7 +128,7 @@ public final class GeneratorFacade {
             // Phase 7: provenance/store/box-view admin surfaces ride along with the business UI,
             // since they are only reachable through its super-user admin nav.
             new BoxManifestEmitter().emit(model, writer);
-            new PackCatalogEmitter().emit(writer, internalTablesEnabled);
+            new PackCatalogEmitter().emit(writer, internalTablesEnabled, installedPackAliases);
         }
         new TrustedSourceEmitter(writer).emit(model, modelSourcePath);
         new MetadataManifestAssetEmitter(writer).emit(model, resolvedModelSource, modelSourcePath);
@@ -125,6 +140,16 @@ public final class GeneratorFacade {
         ResolvedSetting<String> authMode = settingResolver.resolve(NpdevSettings.AUTH_MODE, SettingTarget.app());
         if (authMode.isOverridden()) {
             new RuntimeAuthPropertiesEmitter(writer).emit(authMode.value());
+        }
+
+        // Logging: when the model personalizes log.enabled/log.level, emit the real
+        // logging.level.root property that drives them. Unpersonalized apps emit nothing and keep
+        // the RuntimeHost profile defaults -- these settings used to resolve in
+        // resolved-settings.json without affecting anything; this is their real consumer.
+        ResolvedSetting<Boolean> logEnabled = settingResolver.resolve(NpdevSettings.LOG_ENABLED, SettingTarget.app());
+        ResolvedSetting<String> logLevel = settingResolver.resolve(NpdevSettings.LOG_LEVEL, SettingTarget.app());
+        if (logEnabled.isOverridden() || logLevel.isOverridden()) {
+            new RuntimeLogPropertiesEmitter(writer).emit(logEnabled.value(), logLevel.value());
         }
 
         // Provenance: record the resolved settings cascade so it is inspectable in the generated app.

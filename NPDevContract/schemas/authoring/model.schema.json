@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://npdev.local/schema/npdev-model.schema.json",
   "title": "NPDev DSL 1.0.0 Model",
+  "version": "1.0.0",
   "type": "object",
   "required": [
     "dslVersion",
@@ -31,6 +32,10 @@
   "properties": {
     "$schema": {
       "type": "string"
+    },
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0.0"
     },
     "dslVersion": {
       "type": "string",
@@ -458,6 +463,10 @@
           "enum": [
             "anchor"
           ]
+        },
+        "renamedFrom": {
+          "type": "string",
+          "description": "Declares this field is a rename of a previously-existing column with this name, so a regeneration's schema-lifecycle classifies it as a rename instead of an unrelated remove+add."
         },
         "enumValues": {
           "type": "array",
@@ -1219,6 +1228,11 @@
               }
             ]
           }
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["create", "update", "delete"],
+          "description": "When set on a concept-nested event, generated CRUD publishes this event directly from the matching mutation step (in addition to any Flow's own emitEvent step) -- no Flow required to reach it."
         }
       },
       "additionalProperties": false

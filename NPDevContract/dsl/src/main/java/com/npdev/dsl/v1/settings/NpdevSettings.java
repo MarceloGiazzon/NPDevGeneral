@@ -10,6 +10,13 @@ import java.util.List;
  * here so there is one place that answers "what can be defaulted and overridden?". Defaults express
  * the platform's intended behaviour ("truthful and kernel-controlled by default; personalizable to
  * opt out"); the override envelope is how an app or a concept/field deviates from them.</p>
+ *
+ * <p>A setting belongs here only once something real reads it -- a registered key with no
+ * consumer resolves and shows up in {@code resolved-settings.json} looking like a working feature
+ * while doing nothing. {@code security.tenantIsolation} was removed for exactly this reason: tenant
+ * isolation is enforced unconditionally by the kernel's {@code TenantIsolationPolicy}, and toggling
+ * it off via this registry never actually disabled anything. Don't re-add a setting like it without
+ * wiring a real consumer first.</p>
  */
 public final class NpdevSettings {
 
@@ -35,11 +42,6 @@ public final class NpdevSettings {
     public static final SettingKey<String> SECURITY_SUPER_USER_ROLE =
             SettingKey.string("security.superUserRole", "ADMIN",
                     "Role that unlocks in-app admin/super-user surfaces.");
-
-    /** Whether tenant isolation is enforced on data access. */
-    public static final SettingKey<Boolean> SECURITY_TENANT_ISOLATION =
-            SettingKey.bool("security.tenantIsolation", true,
-                    "Enforce tenant isolation on data access.");
 
     /** Whether the built-in NPDev internal tables (identity + workspace packs) are composed into the app. */
     public static final SettingKey<Boolean> INTERNAL_TABLES =
@@ -71,18 +73,41 @@ public final class NpdevSettings {
             SettingKey.string("ui.frame.mode", "full",
                     "Business UI shell mode for a section (full|minimal|none).");
 
+    /**
+     * Persistence adapter variant for a concept's generated CRUD, overriding the model's declared
+     * binding. Empty (default) = use the binding as declared, unchanged. Generation-time selection,
+     * not a live per-request switch -- the resolved value is baked into the generated service when
+     * the app is built, same as every other concept-scope setting in this registry.
+     */
+    public static final SettingKey<String> PERSISTENCE_ADAPTER =
+            SettingKey.string("persistence.adapter", "",
+                    "Persistence adapter variant for a concept's generated CRUD (\"\"|audited).");
+
+    /**
+     * Database provider for this app (e.g. h2-local|docker-postgres), app-scope only. This joins the
+     * same defaults/overrides envelope and is recorded in resolved-settings.json like every other
+     * setting, but it is honestly generation-time-only: the real consumer remains config.json's
+     * existing flat {@code database.provider} field, read once by the generator when assembling the
+     * app. There is no live runtime database switching -- this setting only makes the choice visible
+     * and overridable through the same provenance mechanism as everything else.
+     */
+    public static final SettingKey<String> DATABASE_PROVIDER =
+            SettingKey.string("database.provider", "",
+                    "Database provider for this app (e.g. h2-local|docker-postgres). Generation-time only.");
+
     private static final List<SettingKey<?>> ALL = List.of(
             UI_GENERATE_BUSINESS_UI,
             CRUD_KERNEL_CONTROLLED,
             AUTH_MODE,
             SECURITY_SUPER_USER_ROLE,
-            SECURITY_TENANT_ISOLATION,
             INTERNAL_TABLES,
             CODA_ALLOWED,
             LOG_ENABLED,
             LOG_LEVEL,
             FIELD_WIDGET,
-            UI_FRAME_MODE
+            UI_FRAME_MODE,
+            PERSISTENCE_ADAPTER,
+            DATABASE_PROVIDER
     );
 
     /** All registered settings, in declaration order. */

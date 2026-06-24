@@ -68,6 +68,32 @@ class ConfigSettingsReaderTest {
     }
 
     @Test
+    void moduleOverrideSelectorIsScopedAndBeatsAppButNotConcept() throws Exception {
+        SettingResolver resolver = resolverFrom("""
+                {
+                  "defaults": { "log.level": "info" },
+                  "overrides": {
+                    "module:billing": { "log.level": "debug" },
+                    "concept:Invoice": { "log.level": "trace" }
+                  }
+                }
+                """);
+
+        // A module: prefixed override key is read as a real MODULE-scope layer (not silently
+        // mis-scoped to APP, which is what would happen if scopeForSelector() didn't recognize
+        // the "module:" prefix).
+        var billingResolved = resolver.resolve(NpdevSettings.LOG_LEVEL,
+                com.npdev.dsl.v1.settings.SettingTarget.conceptInModule("billing", "Payment"));
+        assertEquals(SettingScope.MODULE, billingResolved.sourceScope());
+        assertEquals("module:billing", billingResolved.sourceSelector());
+        assertEquals("debug", billingResolved.value());
+
+        // A concept-level override in the same lookup chain still beats the module override.
+        assertEquals("trace", resolver.value(NpdevSettings.LOG_LEVEL,
+                com.npdev.dsl.v1.settings.SettingTarget.conceptInModule("billing", "Invoice")));
+    }
+
+    @Test
     void ignoresNullAndNonScalarEnvelopeValues() throws Exception {
         SettingResolver resolver = resolverFrom("""
                 {

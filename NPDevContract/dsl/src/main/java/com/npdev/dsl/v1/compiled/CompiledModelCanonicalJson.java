@@ -284,6 +284,7 @@ public final class CompiledModelCanonicalJson {
             ObjectNode node = JsonNodeFactory.instance.objectNode();
             node.put("name", safe(event.getName()));
             node.put("conceptName", safe(event.getConceptName()));
+            node.put("triggerMode", safe(event.getTriggerMode()));
 
             List<CompiledEventField> payloadFields = new ArrayList<>(event.getPayloadFields());
             payloadFields.sort(Comparator.comparing(field -> normalize(field.getName())));

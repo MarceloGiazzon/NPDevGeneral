@@ -460,6 +460,17 @@ writer.writeRelative(
                 grants.add(new PermissionGrantSpec(permission, "", "", superUserRoleKey));
                 if (!adminOnly && !"user".equals(superUserRoleKey)) {
                     grants.add(new PermissionGrantSpec(permission, "", "", "user"));
+                    // If this CRUD operation's mutation is delegated to a declared Flow (the
+                    // Flow-CRUD wrapper), a "user" granted the CRUD permission above must also be
+                    // granted flow.execute, or the wrapper's kernelRunner.execute() call throws
+                    // PERMISSION_DENIED even though the CRUD-level check just passed -- these are
+                    // two separate gates on the same request. superUserRoleKey already gets
+                    // flow.execute unconditionally (every collected permission is granted to it
+                    // below), so only the "user" role needs this alignment.
+                    if (("create".equals(operation) || "update".equals(operation) || "delete".equals(operation))
+                            && model.findFlow(concept.getName(), operation).isPresent()) {
+                        grants.add(new PermissionGrantSpec("flow.execute", "", "", "user"));
+                    }
                 }
             }
         }
@@ -521,6 +532,11 @@ writer.writeRelative(
         }
 
         String grantsJson = grants.stream()
+                // A concept with multiple Flow-delegated CRUD modes (e.g. create AND update both
+                // declared Flows) previously added the same flow.execute/user grant once per mode,
+                // producing duplicate entries in the manifest -- harmless (a duplicate grant is a
+                // no-op) but pure noise. distinct() relies on the record's generated equals/hashCode.
+                .distinct()
                 .sorted(Comparator.comparing(PermissionGrantSpec::permission)
                         .thenComparing(PermissionGrantSpec::tenantId)
                         .thenComparing(PermissionGrantSpec::actorId)

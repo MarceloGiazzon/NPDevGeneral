@@ -39,7 +39,22 @@ if (-not (Test-Path -LiteralPath $ModelPath)) {
 if ($PackName -notmatch '^[a-z][a-z0-9_-]*$') {
     Fail "PackName must match ^[a-z][a-z0-9_-]*$ (pack.schema.json's identifier pattern), got: $PackName"
 }
-$validCategories = @("security", "web-ui", "crypto", "bots", "ai-tools", "finance", "math", "other")
+
+$scriptRoot = Split-Path -Parent $PSScriptRoot
+$contractRoot = Resolve-Path (Join-Path $scriptRoot "..\..\NPDevContract")
+
+# Read the category enum from pack.schema.json itself at runtime instead of a hand-duplicated
+# copy here -- the two lists drifting apart silently was a real, if minor, gap (the export script
+# could previously accept/reject categories pack.schema.json itself didn't agree with).
+$packSchemaPath = Join-Path $contractRoot "schemas\pack.schema.json"
+if (-not (Test-Path -LiteralPath $packSchemaPath)) {
+    Fail "pack.schema.json not found at $packSchemaPath"
+}
+$packSchema = Get-Content -LiteralPath $packSchemaPath -Raw | ConvertFrom-Json
+$validCategories = $packSchema.properties.category.enum
+if (-not $validCategories -or $validCategories.Count -eq 0) {
+    Fail "Could not read properties.category.enum from $packSchemaPath"
+}
 if ($validCategories -notcontains $Category) {
     Fail ("Category must be one of: " + ($validCategories -join ", ") + ", got: " + $Category)
 }
@@ -50,9 +65,6 @@ if (-not $concept) {
     $available = ($model.concepts | ForEach-Object { $_.name }) -join ", "
     Fail "Concept '$ConceptName' not found in $ModelPath. Available concepts: $available"
 }
-
-$scriptRoot = Split-Path -Parent $PSScriptRoot
-$contractRoot = Resolve-Path (Join-Path $scriptRoot "..\..\NPDevContract")
 $packDir = Join-Path $contractRoot "packs\$PackName"
 $packJsonPath = Join-Path $packDir "pack.json"
 if (Test-Path -LiteralPath $packJsonPath) {

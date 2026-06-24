@@ -1228,6 +1228,11 @@
               }
             ]
           }
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["create", "update", "delete"],
+          "description": "When set on a concept-nested event, generated CRUD publishes this event directly from the matching mutation step (in addition to any Flow's own emitEvent step) -- no Flow required to reach it."
         }
       },
       "additionalProperties": false

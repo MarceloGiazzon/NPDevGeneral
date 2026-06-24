@@ -8,7 +8,12 @@ A model should define neutral platform structure: namespace, version, concepts, 
 
 A model should not require NPDev core code to know domain vocabulary from a generated app. Those words belong in model files, generated artifacts, examples, samples, or tests.
 
-Canonical schema path: schemas/authoring/model.schema.json.
+Canonical schema path: schemas/authoring/model.schema.json. This file is kept byte-identical
+to `schemas/model.schema.json`, `dsl/resources/Schemas/model.schema.json`, and the classpath
+copy at `dsl/src/main/resources/schema/model.schema.json` (different consumers resolve the
+schema from different relative roots, so one logical schema exists as four physical files).
+`StructuralSchemaAssetConformanceTest` (in `NPDevContract/dsl`) asserts all four stay aligned —
+run it after any schema edit; it is the only thing that catches drift between copies.
 
 ## Split model files
 

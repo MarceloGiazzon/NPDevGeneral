@@ -3,7 +3,7 @@ server:
 
 spring:
   config:
-    import: "optional:classpath:application-npdev-db.properties,optional:classpath:application-npdev-auth.properties"
+    import: "optional:classpath:application-npdev-db.properties,optional:classpath:application-npdev-auth.properties,optional:classpath:application-npdev-log.properties"
 
   datasource:
     url: jdbc:postgresql://localhost:5432/finalexec

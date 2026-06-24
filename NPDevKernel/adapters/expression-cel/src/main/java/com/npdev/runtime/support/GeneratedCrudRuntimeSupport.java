@@ -945,6 +945,28 @@ public final class GeneratedCrudRuntimeSupport {
         ));
     }
 
+    /**
+     * Publishes an author-declared custom event (model.json's {@code events} section, a concept-
+     * nested event with a {@code mode} field) directly from generated CRUD's mutation step --
+     * closes the gap where reaching a custom event required declaring an entire Flow for that
+     * concept+mode just to use its {@code emitEvent} step. Unlike {@link #publishMutationEvent}
+     * (which always derives the topic as {@code entityName + "." + action}), the topic here is the
+     * event's own declared name verbatim, since a custom event is not one of the 3 built-in
+     * create/update/delete shapes.
+     */
+    public void publishDeclaredEvent(String eventName, String entityName, UUID id, Object snapshot) {
+        if (eventName == null || eventName.isBlank()) {
+            return;
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("entity", entityName);
+        payload.put("id", id);
+        if (snapshot != null) {
+            payload.put("snapshot", snapshot);
+        }
+        publishRuntimeEvent(eventName.trim(), payload, Map.of("entity", entityName));
+    }
+
     public String captureLifecycleStatus(String entityName, Object snapshot) {
         if (snapshot == null) {
             return null;

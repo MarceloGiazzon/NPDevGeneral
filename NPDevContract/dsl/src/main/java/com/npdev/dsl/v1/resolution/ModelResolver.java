@@ -604,7 +604,8 @@ public final class ModelResolver {
                 event.getConceptName(),
                 null,
                 event.getVersion(),
-                payload
+                payload,
+                event.getTriggerMode()
         );
     }
 
@@ -635,13 +636,16 @@ public final class ModelResolver {
         }
         List<EventPayloadAst> resolvedPayload = localPayload.isEmpty() ? basePayload : localPayload;
         String resolvedVersion = !localVersion.isBlank() ? specialization.getVersion() : base.getVersion();
+        String localTriggerMode = safe(specialization.getTriggerMode());
+        String resolvedTriggerMode = !localTriggerMode.isBlank() ? specialization.getTriggerMode() : base.getTriggerMode();
 
         return new EventAst(
                 specialization.getName(),
                 resolvedConcept,
                 null,
                 resolvedVersion,
-                resolvedPayload
+                resolvedPayload,
+                resolvedTriggerMode
         );
     }
 

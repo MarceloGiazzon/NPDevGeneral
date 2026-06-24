@@ -315,7 +315,7 @@ public final class CompiledModelCanonicalJsonReader {
         for (JsonNode payloadNode : array(node, "payload")) {
             payload.add(new CompiledEventField(text(payloadNode, "name"), text(payloadNode, "type")));
         }
-        return new CompiledEvent(text(node, "name"), optionalText(node, "conceptName"), payload);
+        return new CompiledEvent(text(node, "name"), optionalText(node, "conceptName"), payload, optionalText(node, "triggerMode"));
     }
 
     private static CompiledFlow toFlow(JsonNode node) {

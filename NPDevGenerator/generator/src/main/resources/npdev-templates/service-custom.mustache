@@ -2,9 +2,12 @@ package {{packageName}};
 
 import com.npdev.runtime.support.GeneratedCrudRuntimeSupport;
 import com.npdev.kernel.KernelRunner;
+import com.npdev.kernel.coda.CodaHook;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.ports.ConceptStore;
 import org.springframework.stereotype.Service;
+
+import java.util.Optional;
 
 @Service
 public class {{entityName}}Service extends {{entityName}}ServiceBase {
@@ -13,8 +16,9 @@ public class {{entityName}}Service extends {{entityName}}ServiceBase {
             GeneratedCrudRuntimeSupport runtimeSupport,
             ConceptGateway conceptGateway,
             ConceptStore conceptStore,
-            KernelRunner kernelRunner
+            KernelRunner kernelRunner,
+            Optional<CodaHook> codaHook
     ) {
-        super(runtimeSupport, conceptGateway, conceptStore, kernelRunner);
+        super(runtimeSupport, conceptGateway, conceptStore, kernelRunner, codaHook);
     }
 }

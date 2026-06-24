@@ -315,7 +315,13 @@ public final class JsonModelParser {
                     List<EventPayloadAst> payload = parseEventPayload(ev.get("payload"));
                     String eventSpecializes = readText(ev, "specializes");
                     String eventVersion = readText(ev, "version");
-                    EventAst eventAst = new EventAst(eventName, name, eventSpecializes, eventVersion, payload);
+                    String eventTriggerMode = readText(ev, "mode");
+                    if (eventTriggerMode != null && !eventTriggerMode.isBlank()
+                            && !List.of("create", "update", "delete").contains(eventTriggerMode.trim().toLowerCase(Locale.ROOT))) {
+                        throw new IOException("Concept " + name + " event " + eventName
+                                + " has invalid mode \"" + eventTriggerMode + "\" (must be create|update|delete)");
+                    }
+                    EventAst eventAst = new EventAst(eventName, name, eventSpecializes, eventVersion, payload, eventTriggerMode);
                     conceptEvents.add(eventAst);
                     events.add(eventAst);
                 }
@@ -340,6 +346,18 @@ public final class JsonModelParser {
                 List<EventPayloadAst> payload = parseEventPayload(ev.get("payload"));
                 String specializes = readText(ev, "specializes");
                 String eventVersion = readText(ev, "version");
+                // mode only means something on a concept-nested event (it tells generated CRUD
+                // which mutation step to publish from); a top-level event has no concept to bind
+                // that to. Reject it explicitly instead of silently dropping it -- the
+                // concept-nested loop above validates the same field, so a top-level declaration
+                // that happens to include it is far more likely an authoring mistake (declared in
+                // the wrong place) than an intentional no-op.
+                String topLevelMode = readText(ev, "mode");
+                if (topLevelMode != null && !topLevelMode.isBlank()) {
+                    throw new IOException("Top-level event " + name
+                            + " declares \"mode\", which only applies to a concept-nested event "
+                            + "(move it under that concept's \"events\" array).");
+                }
                 events.add(new EventAst(name, null, specializes, eventVersion, payload));
             }
         }

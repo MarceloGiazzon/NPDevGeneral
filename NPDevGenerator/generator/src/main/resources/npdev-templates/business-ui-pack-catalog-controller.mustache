@@ -2,18 +2,28 @@ package {{controllerPackage}};
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 
+import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,14 +31,36 @@ import java.util.Map;
 /**
  * Read-only "app store" view: every built-in platform pack the generator found on disk at
  * generation time, with its version/description/concept count and whether it is composed into
- * this app ({@code internal.tables}). Super-user only — this is admin surface, not business data.
+ * this app ({@code internal.tables}/{@code packs.included}). Super-user only — this is admin
+ * surface, not business data.
+ *
+ * <p>"Install" first attempts a best-effort write into the generation-time
+ * {@code Input/config.json}'s {@code packs.included} array, reached via the relative path every
+ * sample's local dev workflow uses ({@code Output/App} -> {@code ../../Input/config.json}). This
+ * only exists/works in that local workflow -- a config.json living outside the deployed app's own
+ * filesystem in any other deployment shape means the write silently does nothing there, falling
+ * back to recording intent only. Either way, there is no hot-reload: a regenerate is still required
+ * to actually compose the pack.</p>
  */
 @RestController
 public class GeneratedPackCatalogController {
 
     private static final String SUPER_USER_ROLE = "{{superUserRole}}";
     private static final String CATALOG_RESOURCE = "npdev/store/pack-catalog.json";
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final Path INSTALL_INTENTS_FILE = Path.of("npdev-pack-install-intents.json");
+    // Stable across every sample: Output/App (this app's CWD when run locally) -> ../../Input is
+    // always the sibling Input/ directory the generator itself read config.json from (confirmed by
+    // config.json's own finalExec.root convention, "..\Output\App" relative to Input/). Only valid
+    // for the local dev/sample workflow -- intentionally not configurable, since a real deployment
+    // has no Input/ to find regardless of what path we guess.
+    private static final Path LOCAL_DEV_CONFIG_FILE = Path.of("..", "..", "Input", "config.json");
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+    // Guards the install-intents file's read-modify-write: two concurrent POSTs without this can
+    // each read the same pre-update content and the second writer's append silently clobbers the
+    // first's (a lost-update race), since java.nio.file.Files has no atomic "append a JSON array
+    // element" operation. The file is small and this endpoint is low-traffic (super-user-only
+    // admin action), so a simple in-process lock is proportionate -- no need for file locking.
+    private static final Object INSTALL_INTENTS_LOCK = new Object();
 
     private final RuntimeContextService runtimeContextService;
 
@@ -38,11 +70,105 @@ public class GeneratedPackCatalogController {
 
     @GetMapping("/api/admin/packs")
     public Map<String, Object> packs(HttpServletRequest request) {
+        requireSuperUser(request);
+        return readCatalog();
+    }
+
+    @GetMapping("/api/admin/packs/install-intents")
+    public Map<String, Object> installIntents(HttpServletRequest request) {
+        requireSuperUser(request);
+        Map<String, Object> body = new LinkedHashMap<>();
+        synchronized (INSTALL_INTENTS_LOCK) {
+            body.put("intents", readIntents());
+        }
+        return body;
+    }
+
+    @PostMapping("/api/admin/packs/{alias}/install-intent")
+    public Map<String, Object> recordInstallIntent(@PathVariable String alias, HttpServletRequest request) {
+        requireSuperUser(request);
+        requireKnownPackAlias(alias);
+        boolean configWritten = tryWriteConfigInclude(alias);
+        synchronized (INSTALL_INTENTS_LOCK) {
+            List<Map<String, Object>> intents = readIntents();
+            Map<String, Object> intent = new LinkedHashMap<>();
+            intent.put("alias", alias);
+            intent.put("requestedAt", Instant.now().toString());
+            intent.put("configWritten", configWritten);
+            intents.add(intent);
+            writeIntents(intents);
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("recorded", true);
+        body.put("alias", alias);
+        body.put("configWritten", configWritten);
+        body.put("message", configWritten
+                ? "Install intent recorded and written to config.json's packs.included for \"" + alias
+                        + "\". Regenerate to apply -- this does not hot-reload."
+                : "Install intent recorded for \"" + alias
+                        + "\", but config.json could not be located/updated automatically (only works in the "
+                        + "local dev/sample workflow). Add it to packs.included by hand and regenerate to apply.");
+        return body;
+    }
+
+    /**
+     * Best-effort: read Input/config.json, add {@code alias} to its packs.included array if not
+     * already present, write it back. Returns false (never throws) for anything that stops this
+     * from working -- file not found, not valid JSON, not writable -- since this whole path is a
+     * convenience for the local dev workflow, not something a real deployment can rely on.
+     */
+    private boolean tryWriteConfigInclude(String alias) {
+        synchronized (INSTALL_INTENTS_LOCK) {
+            try {
+                if (!Files.isRegularFile(LOCAL_DEV_CONFIG_FILE)) {
+                    return false;
+                }
+                JsonNode root = OBJECT_MAPPER.readTree(LOCAL_DEV_CONFIG_FILE.toFile());
+                if (!(root instanceof ObjectNode configNode)) {
+                    return false;
+                }
+                JsonNode packsNode = configNode.get("packs");
+                ObjectNode packsObject = (packsNode instanceof ObjectNode existing)
+                        ? existing
+                        : configNode.putObject("packs");
+                JsonNode includedNode = packsObject.get("included");
+                ArrayNode includedArray = (includedNode instanceof ArrayNode existing)
+                        ? existing
+                        : packsObject.putArray("included");
+                boolean alreadyPresent = false;
+                for (JsonNode entry : includedArray) {
+                    if (alias.equals(entry.asText())) {
+                        alreadyPresent = true;
+                        break;
+                    }
+                }
+                if (!alreadyPresent) {
+                    includedArray.add(alias);
+                }
+                OBJECT_MAPPER.writeValue(LOCAL_DEV_CONFIG_FILE.toFile(), configNode);
+                return true;
+            } catch (Exception exception) {
+                return false;
+            }
+        }
+    }
+
+    /** Rejects an alias that doesn't actually appear in the generated pack catalog -- previously
+     *  any string was accepted and silently recorded, with no feedback that it named nothing real. */
+    @SuppressWarnings("unchecked")
+    private void requireKnownPackAlias(String alias) {
+        List<Map<String, Object>> packs = (List<Map<String, Object>>) readCatalog().getOrDefault("packs", List.of());
+        boolean known = packs.stream().anyMatch(pack -> alias.equals(String.valueOf(pack.get("alias"))));
+        if (!known) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown pack alias: " + alias);
+        }
+    }
+
+    private void requireSuperUser(HttpServletRequest request) {
         ExecutionContext context = runtimeContextService.currentContext(request);
         if (!context.roles().contains(SUPER_USER_ROLE)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Super-user role required");
         }
-        return readCatalog();
     }
 
     private Map<String, Object> readCatalog() {
@@ -57,6 +183,27 @@ public class GeneratedPackCatalogController {
             body.put("discoverable", false);
             body.put("packs", List.of());
             return body;
+        }
+    }
+
+    private List<Map<String, Object>> readIntents() {
+        if (!Files.isRegularFile(INSTALL_INTENTS_FILE)) {
+            return new ArrayList<>();
+        }
+        try {
+            JsonNode root = OBJECT_MAPPER.readTree(INSTALL_INTENTS_FILE.toFile());
+            List<Map<String, Object>> intents = OBJECT_MAPPER.convertValue(root, new TypeReference<List<Map<String, Object>>>() { });
+            return intents == null ? new ArrayList<>() : intents;
+        } catch (IOException exception) {
+            return new ArrayList<>();
+        }
+    }
+
+    private void writeIntents(List<Map<String, Object>> intents) {
+        try {
+            OBJECT_MAPPER.writeValue(INSTALL_INTENTS_FILE.toFile(), intents);
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to record install intent");
         }
     }
 }

@@ -41,7 +41,10 @@
 
     { "action": "click", "selector": "#concept-Project tbody tr button:has-text(\"View\")", "label": "Open the read-only detail view too -- the grid is still filtered to this run's one row" },
     { "action": "waitForTimeout", "timeoutMs": 400 },
-    { "action": "assertTextContains", "selector": "#modalRoot", "text": "40.7128", "label": "The leaf value 3 levels deep is visible in the read-only preview (formatValue JSON.stringify fix)" },
+    { "action": "assertTextContains", "selector": "#modalRoot", "text": "UI-Test-Carrier", "label": "Level 1 value (shipping.carrier) genuinely round-tripped, not just the input element re-rendering empty" },
+    { "action": "assertTextContains", "selector": "#modalRoot", "text": "123 UI Test Street", "label": "Level 2 value (shipping.address.street) genuinely round-tripped" },
+    { "action": "assertTextContains", "selector": "#modalRoot", "text": "40.7128", "label": "Level 3 value lat genuinely round-tripped (formatValue JSON.stringify fix)" },
+    { "action": "assertTextContains", "selector": "#modalRoot", "text": "-74.0060", "label": "Level 3 value lng genuinely round-tripped (asserting all 4 entered leaf values, not just one, closes the prior audit's 'visibility only, not value' gap)" },
     { "action": "collect", "what": ["domText", "url"] }
   ]
 }

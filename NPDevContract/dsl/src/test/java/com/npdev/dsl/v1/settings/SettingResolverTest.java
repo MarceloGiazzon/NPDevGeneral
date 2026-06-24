@@ -82,6 +82,40 @@ class SettingResolverTest {
     }
 
     @Test
+    void moduleOverrideBeatsAppDefaultButConceptOverrideBeatsModule() {
+        SettingStore store = SettingStore.builder()
+                .layer(SettingScope.APP, SettingTarget.APP_SELECTOR,
+                        Map.of(NpdevSettings.LOG_LEVEL.id(), "info"), "config.json defaults")
+                .layer(SettingScope.MODULE, "module:billing",
+                        Map.of(NpdevSettings.LOG_LEVEL.id(), "debug"), "overrides[module:billing]")
+                .layer(SettingScope.CONCEPT, "concept:Invoice",
+                        Map.of(NpdevSettings.LOG_LEVEL.id(), "trace"), "overrides[concept:Invoice]")
+                .build();
+        SettingResolver resolver = new SettingResolver(store);
+
+        // A concept declared inside the module, with no concept-specific override, inherits the
+        // module-level override over the app default.
+        ResolvedSetting<String> payment =
+                resolver.resolve(NpdevSettings.LOG_LEVEL, SettingTarget.conceptInModule("billing", "Payment"));
+        assertEquals("debug", payment.value());
+        assertEquals(SettingScope.MODULE, payment.sourceScope());
+        assertEquals("module:billing", payment.sourceSelector());
+
+        // A concept in the same module that also has its own concept-level override wins over
+        // the module's, confirming the fallthrough order is concept > module > app.
+        ResolvedSetting<String> invoice =
+                resolver.resolve(NpdevSettings.LOG_LEVEL, SettingTarget.conceptInModule("billing", "Invoice"));
+        assertEquals("trace", invoice.value());
+        assertEquals(SettingScope.CONCEPT, invoice.sourceScope());
+
+        // A concept in a different (unconfigured) module falls all the way through to the app default.
+        ResolvedSetting<String> shipping =
+                resolver.resolve(NpdevSettings.LOG_LEVEL, SettingTarget.conceptInModule("logistics", "Shipment"));
+        assertEquals("info", shipping.value());
+        assertEquals(SettingScope.APP, shipping.sourceScope());
+    }
+
+    @Test
     void layerWithoutTheSettingIsSkipped() {
         SettingStore store = SettingStore.builder()
                 .layer(SettingScope.APP, SettingTarget.APP_SELECTOR,

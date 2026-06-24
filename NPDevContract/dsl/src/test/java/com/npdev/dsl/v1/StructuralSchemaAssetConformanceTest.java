@@ -34,6 +34,27 @@ class StructuralSchemaAssetConformanceTest {
         );
     }
 
+    /**
+     * The model schema exists as four on-disk copies (canonical, classpath, NPDevContract/schemas,
+     * and NPDevContract/schemas/authoring) because different consumers resolve it from different
+     * relative roots. {@link #canonicalSchemaCopiesStayAligned()} only ever checked two of the
+     * four -- the other two ({@code NPDevContract/schemas/model.schema.json} and its
+     * {@code authoring/} mirror) drifted silently for weeks (missing {@code renamedFrom} and the
+     * event {@code mode} field) before anything caught it. This test checks every known copy
+     * against the same canonical source, so a future addition can't repeat that.
+     */
+    @Test
+    void allKnownModelSchemaCopiesStayAligned() throws Exception {
+        JsonNode canonical = normalizeSchema(readJson(resolveCanonicalModelSchema()));
+        for (Path copy : resolveAllModelSchemaCopies()) {
+            assertEquals(
+                    canonical,
+                    normalizeSchema(readJson(copy)),
+                    "Model schema copy at " + copy + " must stay aligned with the canonical model schema."
+            );
+        }
+    }
+
     @Test
     void canonicalDemoAndOfficialSampleModelsValidateStructurally() throws Exception {
         JsonSchema schema = readSchema(resolveCanonicalModelSchema());
@@ -160,6 +181,19 @@ class StructuralSchemaAssetConformanceTest {
         return resolvePath(List.of(
                 Path.of("src", "main", "resources", "schema", "model.schema.json")
         ));
+    }
+
+    /** Every known on-disk copy of model.schema.json other than the canonical one itself. */
+    private static List<Path> resolveAllModelSchemaCopies() {
+        return List.of(
+                resolveClasspathModelSchema(),
+                resolvePath(List.of(
+                        Path.of("..", "schemas", "model.schema.json")
+                )),
+                resolvePath(List.of(
+                        Path.of("..", "schemas", "authoring", "model.schema.json")
+                ))
+        );
     }
 
     private static Path resolveCanonicalConfigSchema() {
