@@ -1,0 +1,15 @@
+{
+  "id": "plant-care-log",
+  "title": "Plant Care Log",
+  "complexity": "12works",
+  "purpose": "Plant care log with a Flow on create that emits a custom event (CareLogged).",
+  "inputFiles": [],
+  "walkthrough": [
+    "Generate and boot the sample via NPDevSamples/scripts/generate-sample-app.ps1 and run-sample-app.ps1.",
+    "Exercise the declared CRUD/Flow/Event/Orchestration behaviour described in the purpose above."
+  ],
+  "expectedOutcomes": [
+    "CRUD persists and round-trips correctly.",
+    "Declared Flow/Event/Orchestration behaviour fires as designed."
+  ]
+}

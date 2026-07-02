@@ -1,0 +1,113 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.twelveworks.maintenance.log",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "12works sample #5: a reference (log -> asset) plus a Flow-emitted custom event consumed by an orchestration rule."
+  },
+  "concepts": [
+    {
+      "name": "Asset",
+      "ui": { "label": "Asset", "description": "A car or appliance you maintain.", "group": "Maintenance", "order": 10 },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "name", "type": "string", "required": true, "ui": { "label": "Name", "widget": "text" } },
+        {
+          "name": "type",
+          "type": "enum",
+          "enumValues": ["Vehicle", "Appliance", "Equipment"],
+          "required": true,
+          "ui": { "label": "Type", "widget": "select" }
+        }
+      ],
+      "invariants": [
+        { "name": "AssetNameRequired", "expr": "name != null && name != ''" }
+      ]
+    },
+    {
+      "name": "ServiceEntry",
+      "ui": { "label": "Service entry", "description": "A maintenance event for an asset.", "group": "Maintenance", "order": 20 },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        {
+          "name": "assetRef",
+          "type": "reference",
+          "required": true,
+          "reference": { "target": "Asset", "displayField": "name", "searchFields": ["name"], "inlineCreate": "deny" },
+          "ui": { "label": "Asset", "widget": "search-dialog" }
+        },
+        { "name": "serviceDate", "type": "date", "required": true, "ui": { "label": "Service date", "widget": "date" } },
+        {
+          "name": "serviceType",
+          "type": "enum",
+          "enumValues": ["Routine", "Repair", "Inspection"],
+          "required": true,
+          "ui": { "label": "Service type", "widget": "select" }
+        },
+        { "name": "notes", "type": "string", "ui": { "label": "Notes", "widget": "textarea" } }
+      ],
+      "invariants": [
+        { "name": "ServiceEntryAssetRequired", "expr": "assetRef != null" }
+      ]
+    }
+  ],
+  "capabilities": [
+    { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "findById", "unique"] },
+    { "name": "notification", "type": "NotificationCapability", "operations": ["send"] }
+  ],
+  "bindings": [
+    { "capability": "persistence", "adapter": "repository" },
+    { "capability": "notification", "adapter": "notification-inproc" },
+    { "capability": "eventBus", "adapter": "inproc" }
+  ],
+  "events": [
+    {
+      "name": "AssetServiced",
+      "payload": [
+        { "name": "id", "type": "uuid" },
+        { "name": "assetRef", "type": "uuid" },
+        { "name": "serviceType", "type": "string" }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "LogService",
+      "input": { "concept": "ServiceEntry", "mode": "create" },
+      "steps": [
+        { "name": "validate-entry", "type": "validate", "scope": "ServiceEntry", "invariants": ["ServiceEntryAssetRequired"] },
+        { "name": "save-entry", "type": "createConcept", "scope": "ServiceEntry", "input": "$input", "out": "$saved" },
+        { "name": "emit-asset-serviced", "type": "emitEvent", "event": "AssetServiced", "from": "$saved" },
+        { "name": "return-entry", "type": "return", "value": "$saved" }
+      ]
+    }
+  ],
+  "orchestrationRules": [
+    {
+      "name": "NotifyOnAssetServiced",
+      "trigger": { "type": "event", "event": "AssetServiced" },
+      "condition": "$event.serviceType != null",
+      "actions": [
+        {
+          "type": "callCapability",
+          "capability": "notification",
+          "operation": "send",
+          "action": {
+            "label": "Send service-completed notification",
+            "successMessage": "Service-completed notification sent.",
+            "failureHint": "Check the notification capability binding if delivery fails.",
+            "dangerLevel": "low",
+            "permissionHint": "notifications.send",
+            "inputFormHint": "asset-serviced-notification"
+          },
+          "map": {
+            "serviceEntryId": "$event.id",
+            "assetRef": "$event.assetRef",
+            "serviceType": "$event.serviceType"
+          }
+        }
+      ]
+    }
+  ]
+}

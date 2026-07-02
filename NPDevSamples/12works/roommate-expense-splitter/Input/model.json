@@ -1,0 +1,91 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.twelveworks.roommate.expense.splitter",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "12works sample #12: combines a modeled-tenant-reference (Household), a many-to-many bond (Expense.splitWith, reference.multiple=true), and a select-widget reference (Expense.payerRef) in one model -- the highest-stress combination of the 12.",
+    "tenancy": {
+      "strategy": "modeled-tenant-reference",
+      "tenantConcept": "Household",
+      "tenantReferenceField": "householdRef",
+      "note": "Same pattern as NPDevSamples/restaurant-saas-multitenant: an app-modeled business reference to the tenant concept, distinct from the platform's own automatic per-caller tenant_id isolation."
+    }
+  },
+  "concepts": [
+    {
+      "name": "Household",
+      "ui": { "label": "Household", "description": "A shared household.", "group": "Household", "order": 10 },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "name", "type": "string", "required": true, "ui": { "label": "Name", "widget": "text" } }
+      ],
+      "invariants": [
+        { "name": "HouseholdNameRequired", "expr": "name != null && name != ''" }
+      ]
+    },
+    {
+      "name": "Member",
+      "ui": { "label": "Member", "description": "A roommate in a household.", "group": "Household", "order": 20 },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        {
+          "name": "householdRef",
+          "type": "reference",
+          "required": true,
+          "reference": { "target": "Household", "displayField": "name", "searchFields": ["name"], "inlineCreate": "deny" },
+          "ui": { "label": "Household", "widget": "select" }
+        },
+        { "name": "name", "type": "string", "required": true, "ui": { "label": "Name", "widget": "text" } }
+      ],
+      "invariants": [
+        { "name": "MemberHouseholdRequired", "expr": "householdRef != null" },
+        { "name": "MemberNameRequired", "expr": "name != null && name != ''" }
+      ]
+    },
+    {
+      "name": "Expense",
+      "ui": { "label": "Expense", "description": "A shared household expense, paid by one member and split with others.", "group": "Household", "order": 30 },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        {
+          "name": "householdRef",
+          "type": "reference",
+          "required": true,
+          "reference": { "target": "Household", "displayField": "name", "searchFields": ["name"], "inlineCreate": "deny" },
+          "ui": { "label": "Household", "widget": "select" }
+        },
+        { "name": "description", "type": "string", "required": true, "ui": { "label": "Description", "widget": "text" } },
+        { "name": "amount", "type": "integer", "required": true, "ui": { "label": "Amount" } },
+        {
+          "name": "payerRef",
+          "type": "reference",
+          "required": true,
+          "reference": { "target": "Member", "displayField": "name", "searchFields": ["name"], "inlineCreate": "deny" },
+          "ui": { "label": "Paid by", "widget": "select" }
+        },
+        {
+          "name": "splitWithRefs",
+          "type": "reference",
+          "reference": { "target": "Member", "multiple": true },
+          "ui": { "label": "Split with" }
+        }
+      ],
+      "invariants": [
+        { "name": "ExpenseHouseholdRequired", "expr": "householdRef != null" },
+        { "name": "ExpenseDescriptionRequired", "expr": "description != null && description != ''" },
+        { "name": "ExpenseAmountPositive", "expr": "amount != null && amount > 0" },
+        { "name": "ExpensePayerRequired", "expr": "payerRef != null" }
+      ]
+    }
+  ],
+  "capabilities": [
+    { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "findById", "unique"] },
+    { "name": "notification", "type": "NotificationCapability", "operations": ["send"] }
+  ],
+  "bindings": [
+    { "capability": "persistence", "adapter": "repository" },
+    { "capability": "notification", "adapter": "notification-inproc" },
+    { "capability": "eventBus", "adapter": "inproc" }
+  ]
+}

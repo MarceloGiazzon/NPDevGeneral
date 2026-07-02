@@ -423,14 +423,39 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
     }
 
     private static String tableName(Object concept) {
-        String c = Objects.toString(concept, "default").trim().toLowerCase(Locale.ROOT);
-        if (c.isBlank()) {
-            c = "default";
+        String raw = Objects.toString(concept, "default").trim();
+        if (raw.isBlank()) {
+            raw = "default";
         }
-        if (c.endsWith("s")) {
-            return c;
+        // Concept names are PascalCase/camelCase (e.g. "CareLogEntry"); the generated schema's
+        // table names are snake_case-pluralized (e.g. "care_log_entrys") via SqlIdentifierSupport.
+        // A plain toLowerCase() here would compute "carelogentrys" and never find the real table --
+        // this conversion must keep matching that naming, since callers (e.g. Flow createConcept
+        // steps) pass bare concept names rather than already-resolved table names.
+        String snake = toSnakeCase(raw);
+        if (snake.isBlank()) {
+            snake = "default";
         }
-        return c + "s";
+        return snake.endsWith("s") ? snake : snake + "s";
+    }
+
+    private static String toSnakeCase(String value) {
+        StringBuilder out = new StringBuilder(value.length() + 8);
+        char previous = '\0';
+        for (int index = 0; index < value.length(); index++) {
+            char current = value.charAt(index);
+            if (Character.isUpperCase(current) && index > 0
+                    && (Character.isLowerCase(previous) || Character.isDigit(previous))) {
+                out.append('_');
+            }
+            if (Character.isLetterOrDigit(current)) {
+                out.append(Character.toLowerCase(current));
+            } else {
+                out.append('_');
+            }
+            previous = current;
+        }
+        return out.toString().replaceAll("_+", "_").replaceAll("^_+|_+$", "");
     }
 
     private static String inferredRuntimeIdField(Object concept, String table) {
@@ -581,6 +606,15 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
     }
 
     private static Object coerceValueForColumn(String column, Object value) {
+        // Object/array fields arrive here as a parsed Map/List (from the Flow's runtime
+        // payload). Passing that raw Java structure straight to setObject() makes the JDBC
+        // driver serialize it as a JAVA_OBJECT blob instead of writing it into the column's
+        // actual JSON type, which the generated (non-Flow) CRUD repository path avoids by
+        // always writing JSON text. Mirror that here so Flow-driven persistence of nested
+        // object/array fields round-trips the same way.
+        if (value instanceof Map<?, ?> || value instanceof List<?>) {
+            return toJsonText(value);
+        }
         if (isUuidColumn(column)) {
             return coerceUuid(value);
         }
@@ -591,6 +625,69 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
             return coerceTimestamp(value);
         }
         return value;
+    }
+
+    private static String toJsonText(Object value) {
+        StringBuilder sb = new StringBuilder();
+        appendJson(sb, value);
+        return sb.toString();
+    }
+
+    private static void appendJson(StringBuilder sb, Object value) {
+        if (value == null) {
+            sb.append("null");
+        } else if (value instanceof Map<?, ?> map) {
+            sb.append('{');
+            boolean first = true;
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (!first) {
+                    sb.append(',');
+                }
+                first = false;
+                appendJsonString(sb, String.valueOf(entry.getKey()));
+                sb.append(':');
+                appendJson(sb, entry.getValue());
+            }
+            sb.append('}');
+        } else if (value instanceof List<?> list) {
+            sb.append('[');
+            boolean first = true;
+            for (Object item : list) {
+                if (!first) {
+                    sb.append(',');
+                }
+                first = false;
+                appendJson(sb, item);
+            }
+            sb.append(']');
+        } else if (value instanceof CharSequence) {
+            appendJsonString(sb, value.toString());
+        } else if (value instanceof Boolean || value instanceof Number) {
+            sb.append(value);
+        } else {
+            appendJsonString(sb, value.toString());
+        }
+    }
+
+    private static void appendJsonString(StringBuilder sb, String text) {
+        sb.append('"');
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            switch (c) {
+                case '"': sb.append("\\\""); break;
+                case '\\': sb.append("\\\\"); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                default:
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+            }
+        }
+        sb.append('"');
     }
 
     private static boolean isUuidColumn(String column) {

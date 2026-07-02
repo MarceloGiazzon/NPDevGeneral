@@ -2232,9 +2232,9 @@
         return;
       }
       if (rawValue !== "" || field.required || control.type === "checkbox") {
-        const numericTypes = ["int", "long", "double", "float", "short", "byte", "decimal", "number"];
+        const numericTypes = ["int", "integer", "long", "double", "float", "short", "byte", "decimal", "number"];
         if (rawValue !== "" && numericTypes.indexOf(field.type) !== -1) {
-          const n = field.type === "int" || field.type === "long" || field.type === "short" || field.type === "byte"
+          const n = field.type === "int" || field.type === "integer" || field.type === "long" || field.type === "short" || field.type === "byte"
             ? parseInt(rawValue, 10)
             : parseFloat(rawValue);
           payload[field.name] = isNaN(n) ? rawValue : n;

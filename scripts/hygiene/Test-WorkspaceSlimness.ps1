@@ -162,7 +162,7 @@ if (Test-Path -LiteralPath $sampleOutputRoot -PathType Container) {
     }
 }
 
-$forbiddenDirNames = @(".gradle", "build", "target", "dist", "coverage", "node_modules", "RunOutput")
+$forbiddenDirNames = @(".gradle", "build", "target", "dist", "coverage", "node_modules", "RunOutput", "bin")
 foreach ($dir in @(Get-ChildItem -LiteralPath $WorkspaceRoot -Recurse -Force -Directory -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName -notmatch "\\.git\\" -and $_.Name -in $forbiddenDirNames })) {
     $summary = Get-FileSummary $dir.FullName

@@ -1,0 +1,15 @@
+{
+  "id": "reading-list",
+  "title": "Reading List",
+  "complexity": "12works",
+  "purpose": "Reading list with status, rating, and per-book quotes (enum + array-of-objects), with a concept-scoped ui.frame.mode=minimal override.",
+  "inputFiles": [],
+  "walkthrough": [
+    "Generate and boot the sample via NPDevSamples/scripts/generate-sample-app.ps1 and run-sample-app.ps1.",
+    "Exercise the declared CRUD/Flow/Event/Orchestration behaviour described in the purpose above."
+  ],
+  "expectedOutcomes": [
+    "CRUD persists and round-trips correctly.",
+    "Declared Flow/Event/Orchestration behaviour fires as designed."
+  ]
+}

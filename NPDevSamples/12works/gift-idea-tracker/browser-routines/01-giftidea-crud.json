@@ -1,0 +1,39 @@
+{
+  "scenarioName": "gift-idea-tracker-crud",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "variables": { "personId": "PERSON-ID-PLACEHOLDER", "personName": "PERSON-NAME-PLACEHOLDER", "ideaText": "UITEST-IDEA-PLACEHOLDER" },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "value": "dev-key" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-GiftIdea\"]", "state": "visible" },
+
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-GiftIdea\"]", "label": "Open the Gift idea concept" },
+    { "action": "waitForSelector", "selector": "#concept-GiftIdea", "state": "visible" },
+    { "action": "click", "selector": "#concept-GiftIdea .panel-actions button:has-text(\"New\")", "label": "Open the Gift idea create form" },
+    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "visible" },
+    { "action": "waitForSelector", "selector": "#modalRoot select[name=\"personRef\"] option:not([value=\"\"])", "state": "attached", "label": "Person select options loaded from the API" },
+    { "action": "selectOption", "selector": "#modalRoot select[name=\"personRef\"]", "valueFromVariable": "personId", "label": "Pick the test Person via the plain <select> (field.widget=select override, not the lookup picker)" },
+    { "action": "fill", "selector": "#modalRoot [name=\"idea\"]", "valueFromVariable": "ideaText" },
+    { "action": "selectOption", "selector": "#modalRoot [name=\"occasion\"]", "value": "Birthday", "label": "Required occasion enum" },
+    { "action": "selectOption", "selector": "#modalRoot [name=\"status\"]", "value": "Idea", "label": "Required status enum (declared default does not auto-select in the create form)" },
+    { "action": "fill", "selector": "#modalRoot [name=\"budget\"]", "value": "50" },
+    { "action": "screenshot", "name": "giftidea_form_filled" },
+    { "action": "click", "selector": "#modalRoot button:has-text(\"Create\")", "label": "Submit the Gift idea create form" },
+    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "detached", "label": "Modal closes only on a successful create" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "assertTextContains", "selector": "#concept-GiftIdea", "text": "UITEST-IDEA", "label": "New Gift idea row visible in the grid" },
+    { "action": "assertTextContains", "selector": "#concept-GiftIdea", "text": "UITEST-PERSON", "label": "Select-widget reference resolved to the Person's display label in the grid" },
+
+    { "action": "click", "selector": "#concept-GiftIdea tbody tr:has-text(\"UITEST-IDEA-\") button:has-text(\"Edit\")", "label": "Re-open the Gift idea row to verify the select-widget value round-tripped" },
+    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "visible" },
+    { "action": "waitForTimeout", "timeoutMs": 600 },
+    { "action": "assertTextContains", "selector": "#modalRoot select[name=\"personRef\"]", "text": "UITEST-PERSON", "label": "The select's currently-chosen option still shows this run's Person after reload" },
+    { "action": "collect", "what": ["domText", "url"] },
+
+    { "action": "click", "selector": "#modalRoot button:has-text(\"Cancel\")" },
+    { "action": "screenshot", "name": "giftidea_created" }
+  ]
+}

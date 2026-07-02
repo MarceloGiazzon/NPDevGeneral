@@ -1,0 +1,51 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "recipe-box-shopping-list",
+    "description": "12works sample: Recipes with an ingredients array-of-objects, a fresh stress test of the nested array editor.",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": {
+    "root": "..\\..\\..\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\Output\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\Output\\App",
+    "deleteBeforeMount": true
+  },
+  "database": {
+    "provider": "h2-local",
+    "database": "recipe_box_shopping_list",
+    "resetMode": "reset"
+  },
+  "runtime": {
+    "springProfile": "dev,trial",
+    "serverPort": 8109,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "trialDefaults": {
+    "apiKey": "dev-key",
+    "recommendedProfiles": "dev,trial",
+    "runtimeUrl": "http://localhost:8109/",
+    "databaseMode": "h2-local",
+    "notes": [
+      "12works sample, built to exercise: Recipes with an ingredients array-of-objects, a fresh stress test of the nested array editor."
+    ]
+  }
+}

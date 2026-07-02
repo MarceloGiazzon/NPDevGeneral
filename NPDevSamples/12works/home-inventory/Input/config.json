@@ -1,0 +1,51 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "home-inventory",
+    "description": "12works sample: Home inventory with a 3-level nested warranty object and a many-to-many Tag bond (multiselect widget).",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": {
+    "root": "..\\..\\..\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\Output\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\Output\\App",
+    "deleteBeforeMount": true
+  },
+  "database": {
+    "provider": "h2-local",
+    "database": "home_inventory",
+    "resetMode": "reset"
+  },
+  "runtime": {
+    "springProfile": "dev,trial",
+    "serverPort": 8110,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "trialDefaults": {
+    "apiKey": "dev-key",
+    "recommendedProfiles": "dev,trial",
+    "runtimeUrl": "http://localhost:8110/",
+    "databaseMode": "h2-local",
+    "notes": [
+      "12works sample, built to exercise: Home inventory with a 3-level nested warranty object and a many-to-many Tag bond (multiselect widget)."
+    ]
+  }
+}

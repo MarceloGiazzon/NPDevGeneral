@@ -1,0 +1,78 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.twelveworks.habit.streak.tracker",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "12works sample #6: a reference (check-in -> habit) plus a Flow-emitted custom event."
+  },
+  "concepts": [
+    {
+      "name": "Habit",
+      "ui": { "label": "Habit", "description": "A habit you're trying to build.", "group": "Habits", "order": 10 },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "name", "type": "string", "required": true, "ui": { "label": "Name", "widget": "text" } },
+        {
+          "name": "frequency",
+          "type": "enum",
+          "enumValues": ["Daily", "Weekdays", "Weekly"],
+          "required": true,
+          "ui": { "label": "Frequency", "widget": "select" }
+        }
+      ],
+      "invariants": [
+        { "name": "HabitNameRequired", "expr": "name != null && name != ''" }
+      ]
+    },
+    {
+      "name": "CheckIn",
+      "ui": { "label": "Check-in", "description": "A single day you completed a habit.", "group": "Habits", "order": 20 },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        {
+          "name": "habitRef",
+          "type": "reference",
+          "required": true,
+          "reference": { "target": "Habit", "displayField": "name", "searchFields": ["name"], "inlineCreate": "deny" },
+          "ui": { "label": "Habit", "widget": "search-dialog" }
+        },
+        { "name": "checkInDate", "type": "date", "required": true, "ui": { "label": "Check-in date", "widget": "date" } }
+      ],
+      "invariants": [
+        { "name": "CheckInHabitRequired", "expr": "habitRef != null" }
+      ]
+    }
+  ],
+  "capabilities": [
+    { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "findById", "unique"] },
+    { "name": "notification", "type": "NotificationCapability", "operations": ["send"] }
+  ],
+  "bindings": [
+    { "capability": "persistence", "adapter": "repository" },
+    { "capability": "notification", "adapter": "notification-inproc" },
+    { "capability": "eventBus", "adapter": "inproc" }
+  ],
+  "events": [
+    {
+      "name": "HabitCheckedIn",
+      "payload": [
+        { "name": "id", "type": "uuid" },
+        { "name": "habitRef", "type": "uuid" },
+        { "name": "checkInDate", "type": "date" }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "CheckInHabit",
+      "input": { "concept": "CheckIn", "mode": "create" },
+      "steps": [
+        { "name": "validate-checkin", "type": "validate", "scope": "CheckIn", "invariants": ["CheckInHabitRequired"] },
+        { "name": "save-checkin", "type": "createConcept", "scope": "CheckIn", "input": "$input", "out": "$saved" },
+        { "name": "emit-checked-in", "type": "emitEvent", "event": "HabitCheckedIn", "from": "$saved" },
+        { "name": "return-checkin", "type": "return", "value": "$saved" }
+      ]
+    }
+  ]
+}

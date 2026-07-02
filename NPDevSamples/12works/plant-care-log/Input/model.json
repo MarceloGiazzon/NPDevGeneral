@@ -1,0 +1,82 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.twelveworks.plant.care.log",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "12works sample #3: a Flow on create that emits a custom event, plus a nested care-needs object on the referenced parent."
+  },
+  "concepts": [
+    {
+      "name": "Plant",
+      "ui": { "label": "Plant", "description": "A plant and its care needs.", "group": "Garden", "order": 10 },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "name", "type": "string", "required": true, "ui": { "label": "Name", "widget": "text" } },
+        { "name": "species", "type": "string", "ui": { "label": "Species", "widget": "text" } },
+        {
+          "name": "careNeeds",
+          "type": "object",
+          "ui": { "label": "Care needs", "showInDefaultWebUi": true },
+          "properties": {
+            "wateringIntervalDays": { "type": "integer" },
+            "sunlight": { "type": "string" }
+          }
+        }
+      ],
+      "invariants": [
+        { "name": "PlantNameRequired", "expr": "name != null && name != ''" }
+      ]
+    },
+    {
+      "name": "CareLogEntry",
+      "ui": { "label": "Care log entry", "description": "A watering or feeding event for a plant.", "group": "Garden", "order": 20 },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        {
+          "name": "plantRef",
+          "type": "reference",
+          "required": true,
+          "reference": { "target": "Plant", "displayField": "name", "searchFields": ["name"], "inlineCreate": "deny" },
+          "ui": { "label": "Plant", "widget": "search-dialog" }
+        },
+        { "name": "wateredAt", "type": "datetime", "required": true, "ui": { "label": "Watered at", "widget": "datetime-local" } },
+        { "name": "fed", "type": "boolean", "required": true, "default": false, "ui": { "label": "Fed", "widget": "checkbox" } }
+      ],
+      "invariants": [
+        { "name": "CareLogPlantRequired", "expr": "plantRef != null" }
+      ]
+    }
+  ],
+  "capabilities": [
+    { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "findById", "unique"] },
+    { "name": "notification", "type": "NotificationCapability", "operations": ["send"] }
+  ],
+  "bindings": [
+    { "capability": "persistence", "adapter": "repository" },
+    { "capability": "notification", "adapter": "notification-inproc" },
+    { "capability": "eventBus", "adapter": "inproc" }
+  ],
+  "events": [
+    {
+      "name": "CareLogged",
+      "payload": [
+        { "name": "id", "type": "uuid" },
+        { "name": "plantRef", "type": "uuid" },
+        { "name": "fed", "type": "boolean" }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "LogCare",
+      "input": { "concept": "CareLogEntry", "mode": "create" },
+      "steps": [
+        { "name": "validate-entry", "type": "validate", "scope": "CareLogEntry", "invariants": ["CareLogPlantRequired"] },
+        { "name": "save-entry", "type": "createConcept", "scope": "CareLogEntry", "input": "$input", "out": "$saved" },
+        { "name": "emit-care-logged", "type": "emitEvent", "event": "CareLogged", "from": "$saved" },
+        { "name": "return-entry", "type": "return", "value": "$saved" }
+      ]
+    }
+  ]
+}

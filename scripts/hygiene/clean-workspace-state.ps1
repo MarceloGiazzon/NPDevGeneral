@@ -55,13 +55,13 @@ function Assert-CleanupTarget([string]$TargetPath, [string]$Category) {
                 "scripts\reports\out",
                 "scripts\reports\releases"
             )
-            $isSampleOutput = $relative -match '^NPDevSamples\\[^\\]+\\Output$'
+            $isSampleOutput = $relative -match '^NPDevSamples\\.+\\Output$'
             if ($relative -notin $allowed -and -not $isSampleOutput) {
                 throw ("Refusing unexpected explicit cleanup path: " + $relative)
             }
         }
         "named-dir" {
-            if ($leaf -notin @(".gradle", "build", "target", "dist", "coverage", "node_modules", "RunOutput")) {
+            if ($leaf -notin @(".gradle", "build", "target", "dist", "coverage", "node_modules", "RunOutput", "bin")) {
                 throw ("Refusing unexpected named cleanup path: " + $relative)
             }
         }
@@ -131,8 +131,8 @@ if (-not $OnlyIdeMetadata) {
 
     $sampleRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevSamples"
     if (Test-Path -LiteralPath $sampleRoot -PathType Container) {
-        foreach ($sampleDir in @(Get-ChildItem -LiteralPath $sampleRoot -Directory -Force -ErrorAction SilentlyContinue)) {
-            Add-CleanupTarget -Targets $targets -PathValue (Join-Path $sampleDir.FullName "Output") -Category "explicit-dir"
+        foreach ($outputDir in @(Get-ChildItem -LiteralPath $sampleRoot -Directory -Recurse -Force -Filter "Output" -ErrorAction SilentlyContinue)) {
+            Add-CleanupTarget -Targets $targets -PathValue $outputDir.FullName -Category "explicit-dir"
         }
     }
 
@@ -140,7 +140,7 @@ if (-not $OnlyIdeMetadata) {
         if ($dir.FullName -like "*\.git\*" -or $dir.FullName -like "*\.npdev-gradle\*") {
             continue
         }
-        if ($dir.Name -in @(".gradle", "build", "target", "dist", "coverage", "node_modules", "RunOutput")) {
+        if ($dir.Name -in @(".gradle", "build", "target", "dist", "coverage", "node_modules", "RunOutput", "bin")) {
             Add-CleanupTarget -Targets $targets -PathValue $dir.FullName -Category "named-dir"
         }
     }

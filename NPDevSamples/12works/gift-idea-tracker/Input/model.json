@@ -1,0 +1,67 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.twelveworks.gift.idea.tracker",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "12works sample #2: a single (N:1) reference field rendered via the field.widget=select cascade override instead of the lookup picker."
+  },
+  "concepts": [
+    {
+      "name": "Person",
+      "ui": { "label": "Person", "description": "Someone you give gifts to.", "group": "People", "order": 10 },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "name", "type": "string", "required": true, "ui": { "label": "Name", "widget": "text" } },
+        { "name": "relationship", "type": "string", "ui": { "label": "Relationship", "widget": "text" } }
+      ],
+      "invariants": [
+        { "name": "PersonNameRequired", "expr": "name != null && name != ''" }
+      ]
+    },
+    {
+      "name": "GiftIdea",
+      "ui": { "label": "Gift idea", "description": "An idea for a person, tied to an occasion and a budget.", "group": "Gifts", "order": 20 },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        {
+          "name": "personRef",
+          "type": "reference",
+          "required": true,
+          "reference": { "target": "Person", "displayField": "name", "searchFields": ["name"], "inlineCreate": "deny" },
+          "ui": { "label": "Person", "widget": "search-dialog" }
+        },
+        { "name": "idea", "type": "string", "required": true, "ui": { "label": "Idea", "widget": "text" } },
+        {
+          "name": "occasion",
+          "type": "enum",
+          "enumValues": ["Birthday", "Holiday", "Anniversary", "JustBecause"],
+          "required": true,
+          "ui": { "label": "Occasion", "widget": "select" }
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "enumValues": ["Idea", "Bought", "Given"],
+          "required": true,
+          "default": "Idea",
+          "ui": { "label": "Status", "widget": "select" }
+        },
+        { "name": "budget", "type": "integer", "ui": { "label": "Budget" } }
+      ],
+      "invariants": [
+        { "name": "GiftIdeaPersonRequired", "expr": "personRef != null" },
+        { "name": "GiftIdeaTextRequired", "expr": "idea != null && idea != ''" }
+      ]
+    }
+  ],
+  "capabilities": [
+    { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "findById", "unique"] },
+    { "name": "notification", "type": "NotificationCapability", "operations": ["send"] }
+  ],
+  "bindings": [
+    { "capability": "persistence", "adapter": "repository" },
+    { "capability": "notification", "adapter": "notification-inproc" },
+    { "capability": "eventBus", "adapter": "inproc" }
+  ]
+}

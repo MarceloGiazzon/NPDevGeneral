@@ -1,0 +1,80 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.twelveworks.lent.borrowed.items",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "12works sample #7: a Flow on the UPDATE mode (not just create) -- the Flow-CRUD wrapper path that needed the T9.1 flow.execute permission-grant alignment -- plus a select-widget reference."
+  },
+  "concepts": [
+    {
+      "name": "Contact",
+      "ui": { "label": "Contact", "description": "Someone you lend things to.", "group": "Contacts", "order": 10 },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "name", "type": "string", "required": true, "ui": { "label": "Name", "widget": "text" } },
+        { "name": "email", "type": "string", "ui": { "label": "Email", "widget": "email" } }
+      ],
+      "invariants": [
+        { "name": "ContactNameRequired", "expr": "name != null && name != ''" }
+      ]
+    },
+    {
+      "name": "LentItem",
+      "ui": { "label": "Lent item", "description": "An item you lent to a contact.", "group": "Items", "order": 20 },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "itemName", "type": "string", "required": true, "ui": { "label": "Item name", "widget": "text" } },
+        {
+          "name": "contactRef",
+          "type": "reference",
+          "required": true,
+          "reference": { "target": "Contact", "displayField": "name", "searchFields": ["name"], "inlineCreate": "deny" },
+          "ui": { "label": "Contact", "widget": "select" }
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "enumValues": ["Lent", "Returned"],
+          "required": true,
+          "default": "Lent",
+          "ui": { "label": "Status", "widget": "select" }
+        },
+        { "name": "lentDate", "type": "date", "required": true, "ui": { "label": "Lent date", "widget": "date" } }
+      ],
+      "invariants": [
+        { "name": "LentItemNameRequired", "expr": "itemName != null && itemName != ''" },
+        { "name": "LentItemContactRequired", "expr": "contactRef != null" }
+      ]
+    }
+  ],
+  "capabilities": [
+    { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "findById", "unique"] },
+    { "name": "notification", "type": "NotificationCapability", "operations": ["send"] }
+  ],
+  "bindings": [
+    { "capability": "persistence", "adapter": "repository" },
+    { "capability": "notification", "adapter": "notification-inproc" },
+    { "capability": "eventBus", "adapter": "inproc" }
+  ],
+  "events": [
+    {
+      "name": "ItemReturned",
+      "payload": [
+        { "name": "id", "type": "uuid" },
+        { "name": "itemName", "type": "string" }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "MarkReturned",
+      "input": { "concept": "LentItem", "mode": "update" },
+      "steps": [
+        { "name": "update-item", "type": "updateConcept", "scope": "LentItem", "input": "$input", "out": "$updated" },
+        { "name": "emit-item-returned", "type": "emitEvent", "event": "ItemReturned", "from": "$updated" },
+        { "name": "return-item", "type": "return", "value": "$updated" }
+      ]
+    }
+  ]
+}

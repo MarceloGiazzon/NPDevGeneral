@@ -1,0 +1,16 @@
+{
+  "database": {
+    "engine": "H2Local",
+    "databaseName": "subscription_renewal_tracker",
+    "username": "sa",
+    "password": "",
+    "createInternalTables": true,
+    "createBusinessTables": true
+  },
+  "schemaLifecycle": {
+    "strategy": "DropAndRecreateOnStructureChange",
+    "allowDestructiveRecreate": true,
+    "destructiveRecreateConfirmation": "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED",
+    "scope": "NpdevOwnedTablesOnly"
+  }
+}

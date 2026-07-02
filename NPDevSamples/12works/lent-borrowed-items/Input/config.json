@@ -1,0 +1,51 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "lent-borrowed-items",
+    "description": "12works sample: Lent items with a Flow on the UPDATE mode (MarkReturned) -- the Flow-CRUD wrapper path needing the T9.1 flow.execute permission alignment.",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": {
+    "root": "..\\..\\..\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\Output\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\Output\\App",
+    "deleteBeforeMount": true
+  },
+  "database": {
+    "provider": "h2-local",
+    "database": "lent_borrowed_items",
+    "resetMode": "reset"
+  },
+  "runtime": {
+    "springProfile": "dev,trial",
+    "serverPort": 8107,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "trialDefaults": {
+    "apiKey": "dev-key",
+    "recommendedProfiles": "dev,trial",
+    "runtimeUrl": "http://localhost:8107/",
+    "databaseMode": "h2-local",
+    "notes": [
+      "12works sample, built to exercise: Lent items with a Flow on the UPDATE mode (MarkReturned) -- the Flow-CRUD wrapper path needing the T9.1 flow.execute permission alignment."
+    ]
+  }
+}

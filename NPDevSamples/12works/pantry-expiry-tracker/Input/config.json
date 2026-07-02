@@ -1,0 +1,51 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "pantry-expiry-tracker",
+    "description": "12works sample: Pantry items with nested location data; a Flow-emitted custom event is consumed by an orchestration rule that sends a notification.",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": {
+    "root": "..\\..\\..\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\Output\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\Output\\App",
+    "deleteBeforeMount": true
+  },
+  "database": {
+    "provider": "h2-local",
+    "database": "pantry_expiry_tracker",
+    "resetMode": "reset"
+  },
+  "runtime": {
+    "springProfile": "dev,trial",
+    "serverPort": 8104,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "trialDefaults": {
+    "apiKey": "dev-key",
+    "recommendedProfiles": "dev,trial",
+    "runtimeUrl": "http://localhost:8104/",
+    "databaseMode": "h2-local",
+    "notes": [
+      "12works sample, built to exercise: Pantry items with nested location data; a Flow-emitted custom event is consumed by an orchestration rule that sends a notification."
+    ]
+  }
+}

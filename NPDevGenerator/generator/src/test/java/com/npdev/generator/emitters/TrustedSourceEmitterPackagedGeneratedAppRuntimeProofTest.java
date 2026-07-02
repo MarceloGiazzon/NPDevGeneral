@@ -38,6 +38,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
@@ -65,6 +66,14 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
     void packagedGeneratedAppBootsHandlesHttpAndWritesJdbcEvidenceRows() throws Exception {
         String runId = "item12-" + System.currentTimeMillis();
         Path runRoot = ITEM12_ROOT.resolve(runId);
+        try {
+            runPackagedGeneratedAppProof(runId, runRoot);
+        } finally {
+            deleteRecursively(runRoot);
+        }
+    }
+
+    private void runPackagedGeneratedAppProof(String runId, Path runRoot) throws Exception {
         Path generatedRoot = runRoot.resolve("generated-artifact");
         Path schemaRoot = generatedRoot.resolve("src/main/resources/db/schema-realization");
         Path finalAppRoot = runRoot.resolve("generated-app");
@@ -377,6 +386,21 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                 app.destroyForcibly();
                 app.waitFor(15, TimeUnit.SECONDS);
             }
+        }
+    }
+
+    private static void deleteRecursively(Path root) throws IOException {
+        if (!Files.exists(root)) {
+            return;
+        }
+        try (Stream<Path> paths = Files.walk(root)) {
+            paths.sorted(Comparator.reverseOrder()).forEach(path -> {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (IOException e) {
+                    // best-effort cleanup; a locked file (e.g. a not-yet-released jar handle) should not fail the test
+                }
+            });
         }
     }
 

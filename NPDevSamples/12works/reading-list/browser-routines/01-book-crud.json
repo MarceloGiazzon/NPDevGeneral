@@ -1,0 +1,41 @@
+{
+  "scenarioName": "reading-list-book-crud",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "variables": { "bookTitle": "UITEST-BOOK-PLACEHOLDER" },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "value": "dev-key" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-Book\"]", "state": "visible" },
+
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-Book\"]", "label": "Open the Book concept" },
+    { "action": "waitForSelector", "selector": "#concept-Book", "state": "visible" },
+    { "action": "click", "selector": "#concept-Book .panel-actions button:has-text(\"New\")", "label": "Open the Book create form" },
+    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "visible" },
+    { "action": "fill", "selector": "#modalRoot [name=\"title\"]", "valueFromVariable": "bookTitle", "label": "Unique book title (avoids collision on reruns)" },
+    { "action": "fill", "selector": "#modalRoot [name=\"author\"]", "value": "UITest Author" },
+    { "action": "selectOption", "selector": "#modalRoot [name=\"genre\"]", "value": "Science", "label": "Required genre enum" },
+    { "action": "selectOption", "selector": "#modalRoot [name=\"status\"]", "value": "Reading", "label": "Required status enum" },
+    { "action": "fill", "selector": "#modalRoot [name=\"rating\"]", "value": "4" },
+    { "action": "screenshot", "name": "book_form_filled_before_quotes" },
+    { "action": "click", "selector": "#modalRoot .form-field:has(.array-table-editor) button:has-text(\"+ Add row\")", "label": "Add one quotes array-of-objects row" },
+    { "action": "waitForSelector", "selector": "#modalRoot .array-row input[data-prop=\"text\"]", "state": "visible" },
+    { "action": "fill", "selector": "#modalRoot .array-row input[data-prop=\"text\"]", "value": "Fear is the mind-killer" },
+    { "action": "fill", "selector": "#modalRoot .array-row input[data-prop=\"page\"]", "value": "1" },
+    { "action": "screenshot", "name": "book_form_filled" },
+    { "action": "click", "selector": "#modalRoot button:has-text(\"Create\")", "label": "Submit the Book create form" },
+    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "detached", "label": "Modal closes only on a successful create" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "assertTextContains", "selector": "#concept-Book", "text": "UITEST-BOOK", "label": "New Book row visible in the grid" },
+
+    { "action": "click", "selector": "#concept-Book tbody tr:has-text(\"UITEST-BOOK-\") button:has-text(\"Edit\")", "label": "Re-open the Book row to verify quotes round-tripped" },
+    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "visible" },
+    { "action": "waitForTimeout", "timeoutMs": 600 },
+    { "action": "assertCount", "selector": "#modalRoot .array-row input[data-prop=\"text\"]", "operator": "=", "count": 1, "label": "Exactly one quotes row present after reload -- proves the array-of-objects value genuinely persisted" },
+    { "action": "click", "selector": "#modalRoot button:has-text(\"Cancel\")" },
+    { "action": "screenshot", "name": "book_created" },
+    { "action": "collect", "what": ["domText", "url"] }
+  ]
+}

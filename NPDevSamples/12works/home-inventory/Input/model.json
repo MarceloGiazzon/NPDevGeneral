@@ -1,0 +1,84 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.twelveworks.home.inventory",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "12works sample #10: a 3-level nested object (warranty -> terms -> coverage) plus a many-to-many bond (Item.tags, reference.multiple=true) rendered via the recently-closed multiselect widget."
+  },
+  "concepts": [
+    {
+      "name": "Room",
+      "ui": { "label": "Room", "description": "A room in the home.", "group": "Inventory", "order": 10 },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "name", "type": "string", "required": true, "ui": { "label": "Name", "widget": "text" } }
+      ],
+      "invariants": [
+        { "name": "RoomNameRequired", "expr": "name != null && name != ''" }
+      ]
+    },
+    {
+      "name": "Tag",
+      "ui": { "label": "Tag", "description": "A free-form category tag for belongings.", "group": "Inventory", "order": 15 },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "name", "type": "string", "required": true, "ui": { "label": "Name", "widget": "text" } }
+      ],
+      "invariants": [
+        { "name": "TagNameRequired", "expr": "name != null && name != ''" }
+      ]
+    },
+    {
+      "name": "Item",
+      "ui": { "label": "Item", "description": "A belonging, for insurance purposes.", "group": "Inventory", "order": 20 },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "name", "type": "string", "required": true, "ui": { "label": "Name", "widget": "text" } },
+        {
+          "name": "roomRef",
+          "type": "reference",
+          "required": true,
+          "reference": { "target": "Room", "displayField": "name", "searchFields": ["name"], "inlineCreate": "deny" },
+          "ui": { "label": "Room", "widget": "select" }
+        },
+        {
+          "name": "tagRefs",
+          "type": "reference",
+          "reference": { "target": "Tag", "multiple": true },
+          "ui": { "label": "Tags" }
+        },
+        { "name": "estimatedValue", "type": "integer", "required": true, "ui": { "label": "Value" } },
+        {
+          "name": "warranty",
+          "type": "object",
+          "description": "3-level nested object (warranty -> terms -> coverage).",
+          "ui": { "label": "Warranty", "showInDefaultWebUi": true },
+          "properties": {
+            "provider": { "type": "string" },
+            "terms": {
+              "type": "object",
+              "properties": {
+                "years": { "type": "integer" },
+                "coverage": { "type": "string" }
+              }
+            }
+          }
+        }
+      ],
+      "invariants": [
+        { "name": "ItemNameRequired", "expr": "name != null && name != ''" },
+        { "name": "ItemRoomRequired", "expr": "roomRef != null" }
+      ]
+    }
+  ],
+  "capabilities": [
+    { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "findById", "unique"] },
+    { "name": "notification", "type": "NotificationCapability", "operations": ["send"] }
+  ],
+  "bindings": [
+    { "capability": "persistence", "adapter": "repository" },
+    { "capability": "notification", "adapter": "notification-inproc" },
+    { "capability": "eventBus", "adapter": "inproc" }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "party-checklist-rsvp",
+  "title": "Party Checklist Rsvp",
+  "complexity": "12works",
+  "purpose": "Party planning: Guest and Task both reference Event; an UPDATE-mode RSVP Flow emits a custom event.",
+  "inputFiles": [],
+  "walkthrough": [
+    "Generate and boot the sample via NPDevSamples/scripts/generate-sample-app.ps1 and run-sample-app.ps1.",
+    "Exercise the declared CRUD/Flow/Event/Orchestration behaviour described in the purpose above."
+  ],
+  "expectedOutcomes": [
+    "CRUD persists and round-trips correctly.",
+    "Declared Flow/Event/Orchestration behaviour fires as designed."
+  ]
+}
