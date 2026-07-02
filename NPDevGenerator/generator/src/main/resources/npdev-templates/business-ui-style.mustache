@@ -52,6 +52,20 @@ body.frame-none .layout {
   height: 100vh;
 }
 
+/* Escape hatch shown only inside a "minimal" section (see app.js renderPanel) -- "none" sections
+   never render one, by design, since they claim the whole viewport with zero chrome. */
+.frame-escape-hatch {
+  display: inline-block;
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: #3f6fd1;
+  text-decoration: none;
+}
+
+.frame-escape-hatch:hover {
+  text-decoration: underline;
+}
+
 .side-nav a {
   display: block;
   padding: 7px 12px;
@@ -592,6 +606,41 @@ textarea {
   flex-shrink: 0;
 }
 
+.autocomplete-control {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.autocomplete-search {
+  flex: 1;
+}
+
+.autocomplete-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid #d8dee7;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+
+.autocomplete-suggestion {
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.autocomplete-suggestion:hover {
+  background: #f5f7fa;
+}
+
 .picker-dialog {
   display: grid;
   gap: 12px;
@@ -611,6 +660,53 @@ textarea {
   overflow-y: auto;
   border: 1px solid #d8dee7;
   border-radius: 6px;
+}
+
+.pack-export-form {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #d8dee7;
+}
+
+.pack-export-form h3 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+}
+
+.pack-export-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pack-export-row input,
+.pack-export-row select {
+  flex: 1 1 160px;
+}
+
+.declared-panel-body {
+  margin-top: 16px;
+}
+
+.declared-panel-datasource {
+  margin-bottom: 20px;
+}
+
+.declared-panel-datasource h4 {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+  color: #5b6675;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.declared-panel-json {
+  background: #f5f7fa;
+  border: 1px solid #d8dee7;
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 12px;
+  overflow-x: auto;
 }
 
 .picker-records {

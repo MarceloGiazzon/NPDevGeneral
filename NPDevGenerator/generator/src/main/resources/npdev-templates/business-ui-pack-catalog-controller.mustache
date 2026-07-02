@@ -54,6 +54,8 @@ public class GeneratedPackCatalogController {
     // for the local dev/sample workflow -- intentionally not configurable, since a real deployment
     // has no Input/ to find regardless of what path we guess.
     private static final Path LOCAL_DEV_CONFIG_FILE = Path.of("..", "..", "Input", "config.json");
+    private static final Path LOCAL_DEV_MODEL_FILE = Path.of("..", "..", "Input", "model.json");
+    private static final java.util.regex.Pattern PACK_NAME_PATTERN = java.util.regex.Pattern.compile("^[a-z][a-z0-9_-]*$");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
     // Guards the install-intents file's read-modify-write: two concurrent POSTs without this can
     // each read the same pre-update content and the second writer's append silently clobbers the
@@ -63,9 +65,13 @@ public class GeneratedPackCatalogController {
     private static final Object INSTALL_INTENTS_LOCK = new Object();
 
     private final RuntimeContextService runtimeContextService;
+    private final org.springframework.beans.factory.ObjectProvider<javax.sql.DataSource> dataSourceProvider;
 
-    public GeneratedPackCatalogController(RuntimeContextService runtimeContextService) {
+    public GeneratedPackCatalogController(
+            RuntimeContextService runtimeContextService,
+            org.springframework.beans.factory.ObjectProvider<javax.sql.DataSource> dataSourceProvider) {
         this.runtimeContextService = runtimeContextService;
+        this.dataSourceProvider = dataSourceProvider;
     }
 
     @GetMapping("/api/admin/packs")
@@ -74,41 +80,102 @@ public class GeneratedPackCatalogController {
         return readCatalog();
     }
 
+    /**
+     * Prefers the durable, deployment-independent {@code npdev_pack_install_intent} table when a
+     * real DataSource exists (any deployment shape) -- only falls back to the local intents file
+     * (the pre-existing, local-dev-only mechanism) when this app's engine has no physical database
+     * at all (e.g. a pure in-memory trial run), so the two records never silently diverge for the
+     * same deployment.
+     */
     @GetMapping("/api/admin/packs/install-intents")
     public Map<String, Object> installIntents(HttpServletRequest request) {
         requireSuperUser(request);
         Map<String, Object> body = new LinkedHashMap<>();
-        synchronized (INSTALL_INTENTS_LOCK) {
-            body.put("intents", readIntents());
+        javax.sql.DataSource dataSource = dataSourceProvider.getIfAvailable();
+        if (dataSource != null) {
+            body.put("intents", readIntentsFromDatabase(dataSource));
+            body.put("durable", true);
+        } else {
+            synchronized (INSTALL_INTENTS_LOCK) {
+                body.put("intents", readIntents());
+            }
+            body.put("durable", false);
         }
         return body;
     }
 
     @PostMapping("/api/admin/packs/{alias}/install-intent")
     public Map<String, Object> recordInstallIntent(@PathVariable String alias, HttpServletRequest request) {
-        requireSuperUser(request);
+        ExecutionContext context = requireSuperUser(request);
         requireKnownPackAlias(alias);
         boolean configWritten = tryWriteConfigInclude(alias);
-        synchronized (INSTALL_INTENTS_LOCK) {
-            List<Map<String, Object>> intents = readIntents();
-            Map<String, Object> intent = new LinkedHashMap<>();
-            intent.put("alias", alias);
-            intent.put("requestedAt", Instant.now().toString());
-            intent.put("configWritten", configWritten);
-            intents.add(intent);
-            writeIntents(intents);
+        javax.sql.DataSource dataSource = dataSourceProvider.getIfAvailable();
+        boolean recordedDurably = false;
+        if (dataSource != null) {
+            recordIntentInDatabase(dataSource, alias, context.actorId(), configWritten);
+            recordedDurably = true;
+        } else {
+            synchronized (INSTALL_INTENTS_LOCK) {
+                List<Map<String, Object>> intents = readIntents();
+                Map<String, Object> intent = new LinkedHashMap<>();
+                intent.put("alias", alias);
+                intent.put("requestedAt", Instant.now().toString());
+                intent.put("configWritten", configWritten);
+                intents.add(intent);
+                writeIntents(intents);
+            }
         }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("recorded", true);
         body.put("alias", alias);
         body.put("configWritten", configWritten);
+        body.put("recordedDurably", recordedDurably);
         body.put("message", configWritten
                 ? "Install intent recorded and written to config.json's packs.included for \"" + alias
                         + "\". Regenerate to apply -- this does not hot-reload."
                 : "Install intent recorded for \"" + alias
-                        + "\", but config.json could not be located/updated automatically (only works in the "
+                        + "\"" + (recordedDurably
+                                ? " in this app's own database (visible to any admin reaching this deployment)"
+                                : "")
+                        + ", but config.json could not be located/updated automatically (only works in the "
                         + "local dev/sample workflow). Add it to packs.included by hand and regenerate to apply.");
         return body;
+    }
+
+    private static void recordIntentInDatabase(
+            javax.sql.DataSource dataSource, String alias, String requestedBy, boolean configWritten) {
+        String sql = "INSERT INTO npdev_pack_install_intent (intent_id, alias, requested_at_ms, requested_by, config_written) VALUES (?, ?, ?, ?, ?)";
+        try (java.sql.Connection connection = dataSource.getConnection();
+             java.sql.PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, java.util.UUID.randomUUID().toString());
+            statement.setString(2, alias);
+            statement.setLong(3, Instant.now().toEpochMilli());
+            statement.setString(4, requestedBy == null ? "" : requestedBy);
+            statement.setString(5, String.valueOf(configWritten));
+            statement.executeUpdate();
+        } catch (java.sql.SQLException exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to record pack install intent");
+        }
+    }
+
+    private static List<Map<String, Object>> readIntentsFromDatabase(javax.sql.DataSource dataSource) {
+        String sql = "SELECT alias, requested_at_ms, requested_by, config_written FROM npdev_pack_install_intent ORDER BY requested_at_ms ASC";
+        try (java.sql.Connection connection = dataSource.getConnection();
+             java.sql.PreparedStatement statement = connection.prepareStatement(sql);
+             java.sql.ResultSet resultSet = statement.executeQuery()) {
+            List<Map<String, Object>> out = new ArrayList<>();
+            while (resultSet.next()) {
+                Map<String, Object> intent = new LinkedHashMap<>();
+                intent.put("alias", resultSet.getString("alias"));
+                intent.put("requestedAt", Instant.ofEpochMilli(resultSet.getLong("requested_at_ms")).toString());
+                intent.put("requestedBy", resultSet.getString("requested_by"));
+                intent.put("configWritten", Boolean.parseBoolean(resultSet.getString("config_written")));
+                out.add(intent);
+            }
+            return out;
+        } catch (java.sql.SQLException exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to read pack install intents");
+        }
     }
 
     /**
@@ -153,6 +220,141 @@ public class GeneratedPackCatalogController {
         }
     }
 
+    /**
+     * Author-time "export a concept to a new pack" (gap C.2), surfaced from the running app rather
+     * than requiring the {@code export-concept-to-pack.ps1} script -- but under the SAME local-
+     * workflow-only constraint as install: this app's own {@code Input/model.json} and the platform
+     * {@code NPDevContract/packs/} directory are only both reachable from a sample's own local dev
+     * checkout, never from a real deployment. There is no partial/fallback mode here (unlike
+     * install's intent-recording) because there is nothing meaningful to defer -- either the pack
+     * gets written now, or it can't be exported from this running instance at all.
+     */
+    @PostMapping("/api/admin/packs/export")
+    public Map<String, Object> exportConceptToPack(@org.springframework.web.bind.annotation.RequestBody Map<String, Object> request,
+                                                     HttpServletRequest httpRequest) {
+        requireSuperUser(httpRequest);
+        String conceptName = String.valueOf(request.getOrDefault("conceptName", "")).trim();
+        String packName = String.valueOf(request.getOrDefault("packName", "")).trim();
+        String author = String.valueOf(request.getOrDefault("author", "")).trim();
+        String category = String.valueOf(request.getOrDefault("category", "other")).trim();
+        String description = String.valueOf(request.getOrDefault("description", "")).trim();
+        String version = String.valueOf(request.getOrDefault("version", "1.0.0")).trim();
+        if (conceptName.isBlank() || packName.isBlank() || author.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "conceptName, packName, and author are required");
+        }
+        if (!PACK_NAME_PATTERN.matcher(packName).matches()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "packName must match ^[a-z][a-z0-9_-]*$ (pack.schema.json's identifier pattern), got: " + packName);
+        }
+
+        Path workspaceRoot = locateWorkspaceRoot();
+        if (workspaceRoot == null) {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("exported", false);
+            body.put("message", "Cannot export from this deployment: the platform NPDevContract/packs "
+                    + "directory is only reachable from a sample's local dev checkout.");
+            return body;
+        }
+        if (!Files.isRegularFile(LOCAL_DEV_MODEL_FILE)) {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("exported", false);
+            body.put("message", "Cannot export: this app's own Input/model.json was not found at the expected local dev path.");
+            return body;
+        }
+
+        Path packSchemaPath = workspaceRoot.resolve("NPDevContract").resolve("schemas").resolve("pack.schema.json");
+        List<String> validCategories = readCategoryEnum(packSchemaPath);
+        if (!validCategories.isEmpty() && !validCategories.contains(category)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "category must be one of: " + validCategories + ", got: " + category);
+        }
+
+        JsonNode conceptNode;
+        try {
+            JsonNode model = OBJECT_MAPPER.readTree(LOCAL_DEV_MODEL_FILE.toFile());
+            conceptNode = null;
+            for (JsonNode candidate : model.path("concepts")) {
+                if (conceptName.equals(candidate.path("name").asText(""))) {
+                    conceptNode = candidate;
+                    break;
+                }
+            }
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to read Input/model.json");
+        }
+        if (conceptNode == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Concept not found in this app's model: " + conceptName);
+        }
+
+        Path packDir = workspaceRoot.resolve("NPDevContract").resolve("packs").resolve(packName);
+        Path packJsonPath = packDir.resolve("pack.json");
+        if (Files.exists(packJsonPath)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Pack already exists, refusing to overwrite: " + packName);
+        }
+
+        ObjectNode pack = OBJECT_MAPPER.createObjectNode();
+        pack.put("$schema", "../../schemas/pack.schema.json");
+        pack.put("dslVersion", "1.0.0");
+        pack.put("pack", packName);
+        pack.put("version", version);
+        pack.put("description", description.isBlank()
+                ? ("Exported from concept '" + conceptName + "' via the running app's admin UI.")
+                : description);
+        pack.put("category", category);
+        pack.put("author", author);
+        ArrayNode concepts = pack.putArray("concepts");
+        concepts.add(conceptNode);
+
+        try {
+            Files.createDirectories(packDir);
+            OBJECT_MAPPER.writeValue(packJsonPath.toFile(), pack);
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to write pack.json");
+        }
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("exported", true);
+        body.put("packName", packName);
+        body.put("conceptName", conceptName);
+        body.put("message", "Exported concept '" + conceptName + "' to new pack '" + packName
+                + "'. It now appears in the Store catalog on the next generation.");
+        return body;
+    }
+
+    private static List<String> readCategoryEnum(Path packSchemaPath) {
+        if (!Files.isRegularFile(packSchemaPath)) {
+            return List.of();
+        }
+        try {
+            JsonNode schema = OBJECT_MAPPER.readTree(packSchemaPath.toFile());
+            List<String> values = new ArrayList<>();
+            for (JsonNode value : schema.path("properties").path("category").path("enum")) {
+                values.add(value.asText());
+            }
+            return values;
+        } catch (IOException exception) {
+            return List.of();
+        }
+    }
+
+    /** Same sibling-directory discovery {@link com.npdev.generator.provenance.PackCatalogEmitter}
+     *  uses at generation time, re-implemented here since this runs inside the generated app's own
+     *  process, not the generator's -- only ever resolves in a local dev checkout. */
+    private static Path locateWorkspaceRoot() {
+        Path current = Path.of("").toAbsolutePath();
+        while (current != null) {
+            if (Files.isDirectory(current.resolve("NPDevContract"))
+                    && Files.isDirectory(current.resolve("NPDevGenerator"))
+                    && Files.isDirectory(current.resolve("NPDevKernel"))
+                    && Files.isDirectory(current.resolve("NPDevRuntimeHost"))) {
+                return current;
+            }
+            current = current.getParent();
+        }
+        return null;
+    }
+
     /** Rejects an alias that doesn't actually appear in the generated pack catalog -- previously
      *  any string was accepted and silently recorded, with no feedback that it named nothing real. */
     @SuppressWarnings("unchecked")
@@ -164,11 +366,12 @@ public class GeneratedPackCatalogController {
         }
     }
 
-    private void requireSuperUser(HttpServletRequest request) {
+    private ExecutionContext requireSuperUser(HttpServletRequest request) {
         ExecutionContext context = runtimeContextService.currentContext(request);
         if (!context.roles().contains(SUPER_USER_ROLE)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Super-user role required");
         }
+        return context;
     }
 
     private Map<String, Object> readCatalog() {

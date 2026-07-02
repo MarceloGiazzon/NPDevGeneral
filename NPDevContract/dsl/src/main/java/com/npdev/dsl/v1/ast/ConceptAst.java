@@ -4,12 +4,14 @@ import java.util.List;
 
 @SuppressWarnings("deprecation")
 public final class ConceptAst extends EntityAst {
+    private final String module;
+
     public ConceptAst(String name, List<FieldAst> fields, List<InvariantAst> invariants) {
-        super(name, fields, invariants);
+        this(name, null, null, fields, invariants, List.of(), null, null, null, null);
     }
 
     public ConceptAst(String name, String extendsName, List<FieldAst> fields, List<InvariantAst> invariants) {
-        super(name, extendsName, fields, invariants);
+        this(name, extendsName, null, fields, invariants, List.of(), null, null, null, null);
     }
 
     public ConceptAst(
@@ -19,7 +21,7 @@ public final class ConceptAst extends EntityAst {
             List<InvariantAst> invariants,
             List<EventAst> events
     ) {
-        super(name, extendsName, fields, invariants, events);
+        this(name, extendsName, null, fields, invariants, events, null, null, null, null);
     }
 
     public ConceptAst(
@@ -30,7 +32,7 @@ public final class ConceptAst extends EntityAst {
             List<InvariantAst> invariants,
             List<EventAst> events
     ) {
-        super(name, extendsName, specializesName, fields, invariants, events);
+        this(name, extendsName, specializesName, fields, invariants, events, null, null, null, null);
     }
 
     public ConceptAst(
@@ -42,7 +44,7 @@ public final class ConceptAst extends EntityAst {
             List<EventAst> events,
             LifecycleAst lifecycle
     ) {
-        super(name, extendsName, specializesName, fields, invariants, events, lifecycle);
+        this(name, extendsName, specializesName, fields, invariants, events, lifecycle, null, null, null);
     }
 
     public ConceptAst(
@@ -55,7 +57,7 @@ public final class ConceptAst extends EntityAst {
             LifecycleAst lifecycle,
             PresentationMetadataAst ui
     ) {
-        super(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui);
+        this(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, null, null);
     }
 
     public ConceptAst(
@@ -69,7 +71,28 @@ public final class ConceptAst extends EntityAst {
             PresentationMetadataAst ui,
             TruthLevel truthLevel
     ) {
+        this(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel, null);
+    }
+
+    public ConceptAst(
+            String name,
+            String extendsName,
+            String specializesName,
+            List<FieldAst> fields,
+            List<InvariantAst> invariants,
+            List<EventAst> events,
+            LifecycleAst lifecycle,
+            PresentationMetadataAst ui,
+            TruthLevel truthLevel,
+            String module
+    ) {
         super(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel);
+        this.module = (module == null || module.isBlank()) ? null : module;
+    }
+
+    /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */
+    public String getModule() {
+        return module;
     }
 
     public static ConceptAst fromLegacyEntity(EntityAst legacy) {

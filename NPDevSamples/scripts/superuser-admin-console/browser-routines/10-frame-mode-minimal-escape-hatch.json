@@ -1,0 +1,25 @@
+{
+  "scenarioName": "superuser-console-frame-mode-minimal-escape-hatch",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl", "label": "Open the generated business UI" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible", "label": "Shell rendered" },
+    { "action": "fill", "selector": "#apiKey", "value": "api-dev", "label": "Enter the dev super-user API key" },
+    { "action": "reload", "label": "Reload so the persisted key authenticates on bootstrap" },
+    { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-Project\"]", "state": "visible", "label": "Default full-frame section (Project) visible" },
+    { "action": "assertVisible", "selector": ".app-bar", "label": "Header chrome visible on the default full-frame section" },
+    { "action": "assertVisible", "selector": ".side-nav", "label": "Sidenav chrome visible on the default full-frame section" },
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-Note\"]", "label": "Open the Note concept (ui.frame.mode=minimal override)" },
+    { "action": "waitForSelector", "selector": ".frame-escape-hatch", "state": "visible", "label": "Escape-hatch link rendered inside the minimal-frame Note panel" },
+    { "action": "assertHidden", "selector": ".app-bar", "label": "Header chrome hidden while in minimal frame mode" },
+    { "action": "assertHidden", "selector": ".side-nav", "label": "Sidenav chrome hidden while in minimal frame mode" },
+    { "action": "screenshot", "name": "note_minimal_frame", "label": "Capture the chromeless Note section with its escape hatch" },
+    { "action": "click", "selector": ".frame-escape-hatch", "label": "Click the escape hatch to return to the app" },
+    { "action": "waitForSelector", "selector": ".app-bar", "state": "visible", "label": "Header chrome restored after the escape hatch" },
+    { "action": "assertVisible", "selector": ".side-nav", "label": "Sidenav chrome restored after the escape hatch" },
+    { "action": "assertVisible", "selector": "#sideNav a[href=\"#concept-Project\"].active", "label": "Escape hatch returned to a real full-frame section, not a blank state" },
+    { "action": "screenshot", "name": "escape_hatch_returned", "label": "Capture the restored full-frame shell after using the escape hatch" },
+    { "action": "collect", "what": ["domText", "url"] }
+  ]
+}

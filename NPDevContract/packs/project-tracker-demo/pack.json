@@ -6,6 +6,11 @@
   "description": "Demo pack exported from the superuser-admin-console sample to prove the export-concept-to-pack.ps1 script end to end.",
   "category": "other",
   "author": "NPDev Sample Author",
+  "forkedFrom": {
+    "pack": "identity",
+    "version": "0.9.0",
+    "originAuthor": "NPDev Platform"
+  },
   "concepts": [
     {
       "name": "Project",

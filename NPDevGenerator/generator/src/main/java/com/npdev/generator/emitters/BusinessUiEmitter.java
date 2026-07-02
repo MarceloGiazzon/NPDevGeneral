@@ -6,6 +6,8 @@ import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledEnumOption;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledPanel;
+import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
@@ -220,6 +222,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             conceptNodes.add(node);
         }
         root.put("concepts", conceptNodes);
+        root.put("panels", panelNodes(model));
         try {
             return OBJECT_MAPPER.writeValueAsString(root) + System.lineSeparator();
         } catch (Exception exception) {
@@ -364,6 +367,39 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         return BuiltinPackComposer.BUILTIN_PACK_ALIASES.contains(name.substring(0, sep));
     }
 
+    /**
+     * Declared Panel Objects surfaced as their own dedicated nav entry + section in the generated
+     * business UI, closing the gap where they were metadata the generator validated but the
+     * rendered UI never showed. The manifest only carries enough to build the nav entry and each
+     * action's button label -- the actual field/data payload is fetched lazily from the existing,
+     * already-real generic {@code PanelRuntime} endpoints
+     * ({@code GET .../panels/{name}}, {@code POST .../panels/{name}/actions/{action}}) the same way
+     * the Store/Box View sections already fetch their own data on demand.
+     */
+    private static List<Map<String, Object>> panelNodes(CompiledModel model) {
+        List<Map<String, Object>> panels = new ArrayList<>();
+        if (model == null) {
+            return panels;
+        }
+        for (CompiledPanel panel : model.getPanels()) {
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("name", panel.name());
+            node.put("route", panel.route());
+            node.put("title", panel.title() == null || panel.title().isBlank() ? panel.name() : panel.title());
+            List<Map<String, Object>> actions = new ArrayList<>();
+            for (CompiledPanelAction action : panel.actions()) {
+                Map<String, Object> actionNode = new LinkedHashMap<>();
+                actionNode.put("name", action.name());
+                actionNode.put("label", action.label() == null || action.label().isBlank() ? action.name() : action.label());
+                actionNode.put("binding", action.binding());
+                actions.add(actionNode);
+            }
+            node.put("actions", actions);
+            panels.add(node);
+        }
+        return panels;
+    }
+
     private static int formColumns(CompiledConcept concept) {
         CompiledPresentationMetadata ui = concept.getUi();
         Integer columns = ui == null ? null : ui.getFormColumns();
@@ -439,10 +475,18 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             if (cascadeWidget != null && !cascadeWidget.isBlank()) {
                 String normalized = cascadeWidget.trim();
                 if (isReference) {
-                    // "select" is the only supported alternative for a reference field; any other
+                    // "select" (plain <select>, whole candidate set fetched upfront) and
+                    // "autocomplete" (live-search suggestions, for a candidate set too large for a
+                    // <select>) are the only supported alternatives for a reference field; any other
                     // override falls back to the picker rather than silently rendering a bare text
                     // input over a foreign-key value.
-                    return "select".equalsIgnoreCase(normalized) ? "select" : "lookup";
+                    if ("select".equalsIgnoreCase(normalized)) {
+                        return "select";
+                    }
+                    if ("autocomplete".equalsIgnoreCase(normalized)) {
+                        return "autocomplete";
+                    }
+                    return "lookup";
                 }
                 return normalized;
             }
@@ -478,7 +522,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         if (settingResolver == null || concept == null || concept.getName() == null || concept.getName().isBlank()) {
             return NpdevSettings.UI_FRAME_MODE.defaultValue();
         }
-        String mode = settingResolver.value(NpdevSettings.UI_FRAME_MODE, SettingTarget.concept(concept.getName()));
+        String mode = settingResolver.value(NpdevSettings.UI_FRAME_MODE, SettingTarget.forConcept(concept.getModule(), concept.getName()));
         if (mode == null || mode.isBlank()) {
             return NpdevSettings.UI_FRAME_MODE.defaultValue();
         }

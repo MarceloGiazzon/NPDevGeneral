@@ -21,7 +21,8 @@ public final class NpdevInternalTables {
                 NpdevSchemaMetadataTable.definition(),
                 NpdevPromotionStateTable.definition(),
                 NpdevTenantTable.definition(),
-                NpdevApiCredentialTable.definition()
+                NpdevApiCredentialTable.definition(),
+                NpdevPackInstallIntentTable.definition()
         );
     }
 }

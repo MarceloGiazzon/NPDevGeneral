@@ -142,7 +142,7 @@ public final class ServiceEmitter extends AbstractEmitter {
             // (default) leaves the binding-declared adapter untouched for every existing sample.
             String persistenceAdapterOverride = settingResolver == null
                     ? ""
-                    : settingResolver.value(NpdevSettings.PERSISTENCE_ADAPTER, SettingTarget.concept(entity.getName()));
+                    : settingResolver.value(NpdevSettings.PERSISTENCE_ADAPTER, SettingTarget.forConcept(entity.getModule(), entity.getName()));
             persistenceAdapterOverride = persistenceAdapterOverride == null ? "" : persistenceAdapterOverride.trim();
             // Fail fast on an unsupported value instead of letting the template's
             // "audited".equalsIgnoreCase(override) check silently fall through to the unwrapped
@@ -165,7 +165,7 @@ public final class ServiceEmitter extends AbstractEmitter {
             // references CodaHook beyond the always-present, always-empty-by-default constructor
             // parameter -- zero behavior change.
             boolean codaAllowed = settingResolver != null
-                    && settingResolver.value(NpdevSettings.CODA_ALLOWED, SettingTarget.concept(entity.getName()));
+                    && settingResolver.value(NpdevSettings.CODA_ALLOWED, SettingTarget.forConcept(entity.getModule(), entity.getName()));
             ctx.put("codaAllowed", codaAllowed);
 
             // Custom events direct from CRUD: a concept-nested event declaring mode:create/update/

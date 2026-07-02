@@ -44,6 +44,13 @@ public final class SettingTarget {
         return new SettingTarget(List.of("concept:" + conceptName, "module:" + moduleName, APP_SELECTOR));
     }
 
+    /** Concept-scope resolution that also anchors MODULE scope when the concept declares a module. */
+    public static SettingTarget forConcept(String moduleNameOrNull, String conceptName) {
+        return (moduleNameOrNull == null || moduleNameOrNull.isBlank())
+                ? concept(conceptName)
+                : conceptInModule(moduleNameOrNull, conceptName);
+    }
+
     public static SettingTarget field(String conceptName, String fieldName) {
         require(conceptName, "conceptName");
         require(fieldName, "fieldName");

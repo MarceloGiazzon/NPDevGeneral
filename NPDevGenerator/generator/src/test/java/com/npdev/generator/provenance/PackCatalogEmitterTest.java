@@ -70,6 +70,33 @@ final class PackCatalogEmitterTest {
     }
 
     @Test
+    void flagsVersionDriftWhenOriginPackHasMovedOnSinceTheForkWasDeclared() throws Exception {
+        // project-tracker-demo declares forkedFrom identity v0.9.0 (real fixture, see pack.json) --
+        // the real identity pack is at v1.0.0, so this is a genuine, permanent drift case, not a
+        // synthetic/mocked one.
+        GeneratedSourceWriter writer = new GeneratedSourceWriter(tempDir, new RegenerationPolicy());
+        new PackCatalogEmitter().emit(writer, true);
+
+        JsonNode root = new ObjectMapper().readTree(tempDir.resolve(PackCatalogEmitter.RELATIVE_PATH).toFile());
+        JsonNode fork = findPack(root.path("packs"), "project-tracker-demo");
+        assertEquals("identity", fork.path("forkedFrom").path("pack").asText());
+        assertTrue(fork.path("forkedFromExists").asBoolean());
+        assertEquals("1.0.0", fork.path("forkedFromCurrentVersion").asText());
+        assertTrue(fork.path("forkedFromVersionDrift").asBoolean());
+    }
+
+    @Test
+    void noVersionDriftReportedWhenPackDeclaresNoFork() throws Exception {
+        GeneratedSourceWriter writer = new GeneratedSourceWriter(tempDir, new RegenerationPolicy());
+        new PackCatalogEmitter().emit(writer, true);
+
+        JsonNode root = new ObjectMapper().readTree(tempDir.resolve(PackCatalogEmitter.RELATIVE_PATH).toFile());
+        JsonNode identity = findPack(root.path("packs"), "identity");
+        assertTrue(identity.path("forkedFrom").isNull());
+        assertTrue(identity.path("forkedFromVersionDrift").isNull());
+    }
+
+    @Test
     void marksAnInstalledThirdPartyPackAsIncludedEvenWithoutInternalTables() throws Exception {
         GeneratedSourceWriter writer = new GeneratedSourceWriter(tempDir, new RegenerationPolicy());
         new PackCatalogEmitter().emit(writer, false, List.of("identity"));

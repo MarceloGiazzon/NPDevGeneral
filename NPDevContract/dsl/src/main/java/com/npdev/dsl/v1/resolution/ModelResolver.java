@@ -181,7 +181,8 @@ public final class ModelResolver {
                 events,
                 sanitizeLifecycle(concept.getLifecycle()),
                 copyPresentationMetadata(concept.getUi()),
-                concept.getTruthLevel()
+                concept.getTruthLevel(),
+                concept.getModule()
         );
     }
 
@@ -237,7 +238,8 @@ public final class ModelResolver {
                 mergedEvents,
                 mergedLifecycle,
                 mergePresentationMetadata(base.getUi(), specialization.getUi()),
-                specialization.getTruthLevel()
+                specialization.getTruthLevel(),
+                firstNonBlank(specialization.getModule(), base.getModule())
         );
     }
 

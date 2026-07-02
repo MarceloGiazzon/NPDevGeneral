@@ -91,8 +91,24 @@ public final class PackCatalogEmitter {
             entry.put("author", root.path("author").asText(""));
             Map<String, Object> forkedFrom = forkedFrom(root.path("forkedFrom"));
             entry.put("forkedFrom", forkedFrom);
-            entry.put("forkedFromExists", forkedFrom == null
-                    ? null : packExists(packJson.getParent().getParent(), String.valueOf(forkedFrom.get("pack"))));
+            Path packsRootDir = packJson.getParent().getParent();
+            Boolean originExists = forkedFrom == null
+                    ? null : packExists(packsRootDir, String.valueOf(forkedFrom.get("pack")));
+            entry.put("forkedFromExists", originExists);
+            // Consistency check beyond mere existence: has the origin pack moved to a newer version
+            // since this fork declared what it was forked FROM? A fork is expected to differ in
+            // CONTENT from its origin (that's the point of forking) so comparing concept sets would
+            // be noisy and wrong; comparing versions instead answers a genuinely useful question --
+            // "is this fork based on a stale snapshot of its origin" -- without penalizing legitimate
+            // divergence. Best-effort/local only: not lineage verification, just a version check.
+            String originCurrentVersion = Boolean.TRUE.equals(originExists)
+                    ? readOriginVersion(packsRootDir, String.valueOf(forkedFrom.get("pack")))
+                    : null;
+            entry.put("forkedFromCurrentVersion", originCurrentVersion);
+            String declaredForkVersion = forkedFrom == null ? null : String.valueOf(forkedFrom.get("version"));
+            entry.put("forkedFromVersionDrift", originCurrentVersion == null || originCurrentVersion.isBlank()
+                    ? null
+                    : !originCurrentVersion.equals(declaredForkVersion));
         } catch (IOException exception) {
             entry.put("name", alias);
             entry.put("version", "UNKNOWN");
@@ -104,6 +120,8 @@ public final class PackCatalogEmitter {
             entry.put("author", "");
             entry.put("forkedFrom", null);
             entry.put("forkedFromExists", null);
+            entry.put("forkedFromCurrentVersion", null);
+            entry.put("forkedFromVersionDrift", null);
         }
         boolean isBuiltinIncluded = internalTablesEnabled && BuiltinPackComposer.BUILTIN_PACK_ALIASES.contains(alias);
         entry.put("included", isBuiltinIncluded || installedPackAliases.contains(alias));
@@ -172,6 +190,23 @@ public final class PackCatalogEmitter {
         }
         return Files.isDirectory(packsDir.resolve(forkedFromAlias))
                 && Files.isRegularFile(packsDir.resolve(forkedFromAlias).resolve("pack.json"));
+    }
+
+    /** Best-effort read of an origin pack's own current declared version, for the fork-drift check. */
+    private static String readOriginVersion(Path packsDir, String originAlias) {
+        if (packsDir == null || originAlias == null || originAlias.isBlank()) {
+            return null;
+        }
+        Path originPackJson = packsDir.resolve(originAlias).resolve("pack.json");
+        if (!Files.isRegularFile(originPackJson)) {
+            return null;
+        }
+        try {
+            JsonNode originRoot = OBJECT_MAPPER.readTree(originPackJson.toFile());
+            return originRoot.path("version").asText("");
+        } catch (IOException exception) {
+            return null;
+        }
     }
 
     private static Map<String, Object> forkedFrom(JsonNode forkedFromNode) {

@@ -239,7 +239,8 @@ public final class ModelCompiler {
                             compiledInvariants,
                             toCompiledLifecycle(effective.lifecycle()),
                             toCompiledPresentationMetadata(concept.getUi()),
-                            concept.getTruthLevel() == null ? null : concept.getTruthLevel().code()
+                            concept.getTruthLevel() == null ? null : concept.getTruthLevel().code(),
+                            concept.getModule()
                     )
             );
             List<String> invariantRefs = new ArrayList<>(invariantsByCanonicalRef.keySet());

@@ -193,5 +193,29 @@
       "capability": "eventBus",
       "adapter": "inproc"
     }
+  ],
+  "procedures": [
+    {
+      "name": "CountProjects",
+      "description": "Lists every Project -- the permanent live anchor proving a declared Panel's procedure-bound action actually executes through the real PanelRuntime/DefaultProcedureExecutor path, not just metadata.",
+      "steps": [
+        { "type": "listConcepts", "concept": "Project", "target": "projects" },
+        { "type": "return", "value": "$projects" }
+      ]
+    }
+  ],
+  "panels": [
+    {
+      "name": "ProjectsOverviewPanel",
+      "route": "projects-overview",
+      "title": "Projects Overview",
+      "dataSources": [
+        { "name": "projects", "concept": "Project" }
+      ],
+      "layout": { "type": "table", "fields": ["projects"] },
+      "actions": [
+        { "name": "recount", "label": "Recount Projects", "binding": "procedure", "procedure": "CountProjects" }
+      ]
+    }
   ]
 }

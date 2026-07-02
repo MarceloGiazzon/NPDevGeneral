@@ -4,8 +4,10 @@ import java.util.List;
 
 @SuppressWarnings("deprecation")
 public final class CompiledConcept extends CompiledEntity {
+    private final String module;
+
     public CompiledConcept(String name, String className, String tableName, List<CompiledField> fields) {
-        super(name, className, tableName, fields);
+        this(name, className, tableName, fields, List.of(), List.of(), null, null, null, null);
     }
 
     public CompiledConcept(
@@ -15,7 +17,7 @@ public final class CompiledConcept extends CompiledEntity {
             List<CompiledField> fields,
             List<String> expressionInvariants
     ) {
-        super(name, className, tableName, fields, expressionInvariants);
+        this(name, className, tableName, fields, expressionInvariants, List.of(), null, null, null, null);
     }
 
     public CompiledConcept(
@@ -26,7 +28,7 @@ public final class CompiledConcept extends CompiledEntity {
             List<String> expressionInvariants,
             List<CompiledInvariant> invariants
     ) {
-        super(name, className, tableName, fields, expressionInvariants, invariants);
+        this(name, className, tableName, fields, expressionInvariants, invariants, null, null, null, null);
     }
 
     public CompiledConcept(
@@ -38,7 +40,7 @@ public final class CompiledConcept extends CompiledEntity {
             List<CompiledInvariant> invariants,
             CompiledLifecycle lifecycle
     ) {
-        super(name, className, tableName, fields, expressionInvariants, invariants, lifecycle);
+        this(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, null, null, null);
     }
 
     public CompiledConcept(
@@ -51,7 +53,7 @@ public final class CompiledConcept extends CompiledEntity {
             CompiledLifecycle lifecycle,
             CompiledPresentationMetadata ui
     ) {
-        super(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui);
+        this(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, null, null);
     }
 
     public CompiledConcept(
@@ -65,7 +67,28 @@ public final class CompiledConcept extends CompiledEntity {
             CompiledPresentationMetadata ui,
             String truthLevel
     ) {
+        this(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel, null);
+    }
+
+    public CompiledConcept(
+            String name,
+            String className,
+            String tableName,
+            List<CompiledField> fields,
+            List<String> expressionInvariants,
+            List<CompiledInvariant> invariants,
+            CompiledLifecycle lifecycle,
+            CompiledPresentationMetadata ui,
+            String truthLevel,
+            String module
+    ) {
         super(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel);
+        this.module = (module == null || module.isBlank()) ? null : module;
+    }
+
+    /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */
+    public String getModule() {
+        return module;
     }
 
     public static CompiledConcept fromLegacyEntity(CompiledEntity legacy) {

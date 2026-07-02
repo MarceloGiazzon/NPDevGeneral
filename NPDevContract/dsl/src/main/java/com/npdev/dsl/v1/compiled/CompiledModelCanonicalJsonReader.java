@@ -141,7 +141,8 @@ public final class CompiledModelCanonicalJsonReader {
                 invariants,
                 toLifecycle(node.get("lifecycle")),
                 toPresentationMetadata(node.get("ui")),
-                optionalText(node, "truthLevel")
+                optionalText(node, "truthLevel"),
+                optionalText(node, "module")
         );
     }
 

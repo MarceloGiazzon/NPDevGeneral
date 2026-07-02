@@ -24,7 +24,10 @@
     preferences: { records: [], loading: false, loaded: false },
     store: { packs: [], discoverable: false, loading: false, loaded: false, filter: "", installedIntents: {} },
     boxView: { boxes: [], note: "", loading: false, loaded: false },
-    promotion: { currentStage: "", history: [], loading: false, loaded: false }
+    promotion: { currentStage: "", history: [], loading: false, loaded: false },
+    // Keyed by declared Panel name -- deliberately separate from state.panels (per-CONCEPT grid
+    // pagination state, a pre-existing and unrelated use of that name).
+    declaredPanels: {}
   };
 
   const el = {
@@ -38,6 +41,13 @@
     layoutRoot: document.getElementById("layoutRoot"),
     navToggle: document.getElementById("navToggle")
   };
+
+  // Declared Panel Objects (project_vision's "code-bearing creative surfaces") are a dynamic list
+  // from the manifest, unlike the fixed Store/BoxView/Promotion sentinels above -- this builds an
+  // equivalent section-ref object per panel, keyed off its (unique, DSL-required) name.
+  function panelSectionRef(panelMeta) {
+    return { conceptName: "__panel-" + panelMeta.name + "__", declaredPanel: panelMeta };
+  }
 
   function sectionId(concept) {
     return "concept-" + concept.conceptName.replace(/[^a-zA-Z0-9_-]/g, "-");
@@ -305,6 +315,12 @@
       prefsPanel.style.display = activeId === sectionId(PREFERENCES_SECTION) ? "" : "none";
       el.app.appendChild(prefsPanel);
     }
+    (state.manifest.panels || []).forEach(function (panelMeta) {
+      const ref = panelSectionRef(panelMeta);
+      const declaredPanelSection = renderDeclaredPanel(panelMeta);
+      declaredPanelSection.style.display = activeId === sectionId(ref) ? "" : "none";
+      el.app.appendChild(declaredPanelSection);
+    });
     if (state.isSuperUser) {
       const storePanel = renderStorePanel();
       storePanel.style.display = activeId === sectionId(STORE_SECTION) ? "" : "none";
@@ -352,6 +368,152 @@
   function showPromotion() {
     showConcept(PROMOTION_SECTION);
     loadPromotion();
+  }
+
+  function showDeclaredPanel(panelMeta) {
+    showConcept(panelSectionRef(panelMeta));
+    loadDeclaredPanel(panelMeta);
+  }
+
+  function declaredPanelState(panelMeta) {
+    if (!state.declaredPanels[panelMeta.name]) {
+      state.declaredPanels[panelMeta.name] = { loading: false, loaded: false, data: {}, lastActionName: "", lastActionResult: null };
+    }
+    return state.declaredPanels[panelMeta.name];
+  }
+
+  // Declared Panel Objects fetch their own data lazily from the existing, already-real generic
+  // PanelRuntime endpoints -- same lazy-load-on-first-render pattern as Store/Box View/Preferences,
+  // and no new backend surface, since /api/runtime/metadata/ui/panels/{name} already exists and
+  // already enforces permission/tenant scoping through ConceptGateway for any concept-bound
+  // dataSource or action.
+  async function loadDeclaredPanel(panelMeta) {
+    const entry = declaredPanelState(panelMeta);
+    entry.loading = true;
+    render();
+    try {
+      const payload = await fetchJson("/api/runtime/metadata/ui/panels/" + encodeURIComponent(panelMeta.name), {
+        method: "GET",
+        headers: headers()
+      });
+      entry.data = payload.data || {};
+      entry.loaded = true;
+    } catch (error) {
+      setStatus(error.message, true);
+    } finally {
+      entry.loading = false;
+      render();
+    }
+  }
+
+  async function executeDeclaredPanelAction(panelMeta, actionName) {
+    const entry = declaredPanelState(panelMeta);
+    try {
+      const payload = await fetchJson(
+        "/api/runtime/metadata/ui/panels/" + encodeURIComponent(panelMeta.name) + "/actions/" + encodeURIComponent(actionName),
+        { method: "POST", headers: headers(), body: JSON.stringify({}) }
+      );
+      entry.lastActionName = actionName;
+      entry.lastActionResult = payload.result;
+      setStatus("Action \"" + actionName + "\" completed: " + (payload.status || "OK"), payload.status === "FAILED");
+      await loadDeclaredPanel(panelMeta);
+    } catch (error) {
+      setStatus(error.message, true);
+      render();
+    }
+  }
+
+  function renderDeclaredPanel(panelMeta) {
+    const section = document.createElement("section");
+    section.className = "concept-panel";
+    section.id = sectionId(panelSectionRef(panelMeta));
+
+    const header = document.createElement("div");
+    header.className = "panel-header";
+    const title = document.createElement("h2");
+    title.textContent = panelMeta.title || panelMeta.name;
+    header.appendChild(title);
+    const headerActions = document.createElement("div");
+    headerActions.className = "panel-actions";
+    headerActions.appendChild(button("Refresh", "", function () { loadDeclaredPanel(panelMeta); }));
+    header.appendChild(headerActions);
+    section.appendChild(header);
+
+    (panelMeta.actions || []).forEach(function (action) {
+      section.appendChild(button(action.label, "primary", function () {
+        executeDeclaredPanelAction(panelMeta, action.name);
+      }));
+    });
+
+    const entry = declaredPanelState(panelMeta);
+    const body = document.createElement("div");
+    body.className = "declared-panel-body";
+    if (entry.loading) {
+      body.textContent = "Loading…";
+    } else if (entry.loaded) {
+      Object.keys(entry.data || {}).forEach(function (dataSourceName) {
+        const block = document.createElement("div");
+        block.className = "declared-panel-datasource";
+        const label = document.createElement("h4");
+        label.textContent = dataSourceName;
+        block.appendChild(label);
+        block.appendChild(renderDeclaredPanelValue(entry.data[dataSourceName]));
+        body.appendChild(block);
+      });
+      if (entry.lastActionResult !== null && entry.lastActionResult !== undefined) {
+        const resultBlock = document.createElement("div");
+        resultBlock.className = "declared-panel-datasource";
+        const label = document.createElement("h4");
+        label.textContent = "Last action result (" + entry.lastActionName + ")";
+        resultBlock.appendChild(label);
+        resultBlock.appendChild(renderDeclaredPanelValue(entry.lastActionResult));
+        body.appendChild(resultBlock);
+      }
+    }
+    section.appendChild(body);
+    return section;
+  }
+
+  // A declared Panel's dataSource/action-result values have no fixed shape (JSON returned by an
+  // arbitrary bound procedure/concept query), so this renders generically: a list of uniform
+  // objects becomes a table (mirrors every other records table in this file), anything else a
+  // formatted JSON block.
+  function renderDeclaredPanelValue(value) {
+    if (Array.isArray(value) && value.length && value.every(function (item) {
+      return item && typeof item === "object" && !Array.isArray(item);
+    })) {
+      const props = Array.from(value.reduce(function (set, item) {
+        Object.keys(item).forEach(function (key) { set.add(key); });
+        return set;
+      }, new Set()));
+      const table = document.createElement("table");
+      table.className = "records";
+      const thead = document.createElement("thead");
+      thead.appendChild(headerRow(props));
+      table.appendChild(thead);
+      const tbody = document.createElement("tbody");
+      value.forEach(function (item) {
+        const tr = document.createElement("tr");
+        props.forEach(function (prop) {
+          const td = document.createElement("td");
+          td.textContent = formatValue(item[prop]);
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      return table;
+    }
+    if (Array.isArray(value) && value.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "(empty)";
+      return empty;
+    }
+    const pre = document.createElement("pre");
+    pre.className = "declared-panel-json";
+    pre.textContent = JSON.stringify(value, null, 2);
+    return pre;
   }
 
   // Read-only "app store" view of every built-in platform pack the generator found on disk,
@@ -666,7 +828,13 @@
         forkLine.className = "pack-fork-badge";
         const originAuthor = pack.forkedFrom.originAuthor ? (" by " + pack.forkedFrom.originAuthor) : "";
         const existsNote = pack.forkedFromExists === false ? " — origin not found locally" : "";
-        forkLine.textContent = "Forked from " + pack.forkedFrom.pack + " v" + pack.forkedFrom.version + originAuthor + existsNote;
+        // Version-drift note: NOT a "your fork differs from its origin" warning (forks are SUPPOSED
+        // to differ in content) -- specifically "the origin has moved to a newer version since this
+        // fork declared what it was forked from", the same question a stale git fork answers.
+        const driftNote = pack.forkedFromVersionDrift === true
+          ? (" — origin now at v" + pack.forkedFromCurrentVersion + ", fork based on v" + pack.forkedFrom.version)
+          : "";
+        forkLine.textContent = "Forked from " + pack.forkedFrom.pack + " v" + pack.forkedFrom.version + originAuthor + existsNote + driftNote;
         detailCell.appendChild(forkLine);
       }
       if (pack.author) {
@@ -679,7 +847,71 @@
     });
     table.appendChild(tbody);
     section.appendChild(table);
+    section.appendChild(renderExportConceptForm());
     return section;
+  }
+
+  // Author-time "export a concept to a new pack" (gap C.2), local-workflow-only (see the endpoint's
+  // own doc comment): this app's Input/model.json and the platform NPDevContract/packs/ directory
+  // are only both reachable from a sample's own local dev checkout.
+  function renderExportConceptForm() {
+    const wrapper = document.createElement("div");
+    wrapper.className = "pack-export-form";
+    const heading = document.createElement("h3");
+    heading.textContent = "Export a concept to a new pack";
+    wrapper.appendChild(heading);
+
+    const conceptSelect = document.createElement("select");
+    visibleConcepts().forEach(function (concept) {
+      const option = document.createElement("option");
+      option.value = concept.conceptName;
+      option.textContent = concept.displayName || concept.conceptName;
+      conceptSelect.appendChild(option);
+    });
+    const packNameInput = document.createElement("input");
+    packNameInput.type = "text";
+    packNameInput.placeholder = "pack-name (lowercase, e.g. my-pack)";
+    const authorInput = document.createElement("input");
+    authorInput.type = "text";
+    authorInput.placeholder = "Author";
+    const categoryInput = document.createElement("input");
+    categoryInput.type = "text";
+    categoryInput.placeholder = "Category (e.g. other, security, web-ui, finance...)";
+    categoryInput.value = "other";
+    const descriptionInput = document.createElement("input");
+    descriptionInput.type = "text";
+    descriptionInput.placeholder = "Description (optional)";
+
+    const exportButton = button("Export", "primary", async function () {
+      const payload = {
+        conceptName: conceptSelect.value,
+        packName: packNameInput.value.trim(),
+        author: authorInput.value.trim(),
+        category: categoryInput.value.trim() || "other",
+        description: descriptionInput.value.trim()
+      };
+      try {
+        const result = await fetchJson("/api/admin/packs/export", {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify(payload)
+        });
+        setStatus(result.message || (result.exported ? "Exported." : "Not exported."), !result.exported);
+        if (result.exported) {
+          loadStore();
+        }
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    });
+
+    const row = document.createElement("div");
+    row.className = "pack-export-row";
+    [conceptSelect, packNameInput, authorInput, categoryInput, descriptionInput, exportButton].forEach(function (rowEl) {
+      row.appendChild(rowEl);
+    });
+    wrapper.appendChild(row);
+    return wrapper;
   }
 
   // Read-only "Box View": one Entity Box per persisted concept, with its truth level. The server
@@ -1005,6 +1237,29 @@
     const section = document.createElement("section");
     section.className = "concept-panel";
     section.id = sectionId(concept);
+
+    // ui.frame.mode="minimal" hides the header/sidenav chrome, which would otherwise leave no way
+    // back to the rest of the app short of a full page reload. "none" is deliberately excluded --
+    // it's meant to let content claim the whole viewport with zero chrome (e.g. a login screen),
+    // so adding a link back there would defeat its purpose.
+    if (concept.frameMode === "minimal") {
+      const escapeHatch = document.createElement("a");
+      escapeHatch.className = "frame-escape-hatch";
+      escapeHatch.href = "#";
+      escapeHatch.textContent = "← Back to app";
+      escapeHatch.addEventListener("click", function (e) {
+        e.preventDefault();
+        const target = visibleConcepts().find(function (c) {
+          return c.frameMode !== "minimal" && c.frameMode !== "none";
+        }) || visibleConcepts()[0];
+        if (!target) return;
+        showConcept(target);
+        el.sideNav.querySelectorAll("a").forEach(function (l) { l.classList.remove("active"); });
+        const link = el.sideNav.querySelector("a[href=\"#" + sectionId(target) + "\"]");
+        if (link) link.classList.add("active");
+      });
+      section.appendChild(escapeHatch);
+    }
 
     const header = document.createElement("div");
     header.className = "panel-header";
@@ -1587,6 +1842,9 @@
     if (field.widget === "select" && field.reference) {
       return createReferenceSelectInput(field, value);
     }
+    if (field.widget === "autocomplete" && field.reference) {
+      return createAutocompleteInput(field, value);
+    }
     if (field.widget === "lookup" && field.reference) {
       return createLookupInput(field, value);
     }
@@ -1967,6 +2225,123 @@
 
     loadOptions();
     return select;
+  }
+
+  // field.widget="autocomplete": a lighter-weight alternative to the picker dialog for a single
+  // (N:1/1:1) reference field with a LARGE candidate set, where a plain <select> (field.widget=
+  // "select", which fetches up to 200 rows upfront) becomes unwieldy. Same hidden-input-plus-
+  // display skeleton as the lookup picker (createLookupInput) -- the real submitted value is the
+  // anchor id in a hidden field, never the visible label -- but suggestions filter live via the
+  // same reference.endpointBase + "filter" query param the picker dialog's search box uses,
+  // without ever opening a modal.
+  function createAutocompleteInput(field, value) {
+    const reference = field.reference || {};
+    const wrapper = document.createElement("div");
+    wrapper.className = "autocomplete-control";
+
+    const hidden = document.createElement("input");
+    hidden.type = "hidden";
+    hidden.name = field.name;
+    hidden.value = text(value);
+    wrapper.appendChild(hidden);
+
+    const search = document.createElement("input");
+    search.type = "text";
+    search.className = "autocomplete-search";
+    search.placeholder = "Search " + humanize(reference.targetConcept || "records") + "…";
+    search.autocomplete = "off";
+    wrapper.appendChild(search);
+
+    const suggestions = document.createElement("div");
+    suggestions.className = "autocomplete-suggestions";
+    suggestions.style.display = "none";
+    wrapper.appendChild(suggestions);
+
+    if (!field.required) {
+      const clearBtn = button("×", "lookup-clear", function () {
+        hidden.value = "";
+        search.value = "";
+      });
+      clearBtn.title = "Clear selection";
+      wrapper.appendChild(clearBtn);
+    }
+
+    function selectRow(row) {
+      const isViaRef = reference.via && reference.via !== "" && reference.anchorField && reference.anchorField !== reference.targetIdField;
+      const id = isViaRef ? text(row[reference.anchorField]) : text(row[reference.targetIdField]);
+      const label = lookupLabel(reference, row);
+      state.referenceLabels[referenceCacheKey(reference, id)] = { status: "resolved", label: label, row: row };
+      hidden.value = id;
+      search.value = label;
+      suggestions.style.display = "none";
+      suggestions.innerHTML = "";
+    }
+
+    async function loadSuggestions(query) {
+      if (!reference.endpointBase || !reference.targetIdField) {
+        return;
+      }
+      const params = new URLSearchParams();
+      params.set("page", "0");
+      params.set("size", "10");
+      params.set("sort", reference.displayField || reference.targetIdField);
+      params.set("direction", "asc");
+      if (query) { params.set("filter", query); }
+      try {
+        const payload = await fetchJson(reference.endpointBase + "?" + params.toString(), {
+          method: "GET",
+          headers: headers()
+        });
+        const rows = Array.isArray(payload.content) ? payload.content : [];
+        suggestions.innerHTML = "";
+        if (rows.length === 0) {
+          suggestions.style.display = "none";
+          return;
+        }
+        rows.forEach(function (row) {
+          const item = document.createElement("div");
+          item.className = "autocomplete-suggestion";
+          item.textContent = lookupLabel(reference, row);
+          // mousedown (not click) fires before the search input's blur handler hides the dropdown.
+          item.addEventListener("mousedown", function (e) {
+            e.preventDefault();
+            selectRow(row);
+          });
+          suggestions.appendChild(item);
+        });
+        suggestions.style.display = "";
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    }
+
+    let searchTimer;
+    search.addEventListener("input", function () {
+      hidden.value = "";
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(function () { loadSuggestions(search.value.trim()); }, 300);
+    });
+    search.addEventListener("focus", function () {
+      if (!hidden.value) { loadSuggestions(search.value.trim()); }
+    });
+    search.addEventListener("blur", function () {
+      suggestions.style.display = "none";
+    });
+
+    const rawId = text(value).trim();
+    if (rawId) {
+      const cached = state.referenceLabels[referenceCacheKey(reference, rawId)];
+      if (cached && cached.label) {
+        search.value = cached.label;
+      } else {
+        search.value = rawId;
+        loadReferenceLabel(field, rawId).then(function (label) {
+          if (label) { search.value = label; }
+        });
+      }
+    }
+
+    return wrapper;
   }
 
   // field.widget="multiselect" for a many-to-many bond field: a real checkbox list, not a native
@@ -2520,6 +2895,8 @@
           showBoxView();
         } else if (concept === PROMOTION_SECTION) {
           showPromotion();
+        } else if (concept.declaredPanel) {
+          showDeclaredPanel(concept.declaredPanel);
         } else {
           showConcept(concept);
         }
@@ -2544,6 +2921,16 @@
     }
 
     business.forEach(function (concept) { addLink(concept); });
+    const declaredPanels = (state.manifest.panels || []);
+    if (declaredPanels.length) {
+      const panelsHeader = document.createElement("div");
+      panelsHeader.className = "nav-group-header";
+      panelsHeader.textContent = "Panels";
+      el.sideNav.appendChild(panelsHeader);
+      declaredPanels.forEach(function (panelMeta) {
+        addLink(panelSectionRef(panelMeta), panelMeta.title, true);
+      });
+    }
     if (admin.length || state.isSuperUser) {
       const header = document.createElement("div");
       header.className = "nav-group-header";

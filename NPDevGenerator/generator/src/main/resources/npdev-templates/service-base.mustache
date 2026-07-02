@@ -223,6 +223,9 @@ public class {{entityName}}ServiceBase {
         Map<String, Object> updatePayload = runtimeSupport.buildUpdateInvariantPayload("{{conceptName}}", id, existing, source);
         runtimeSupport.enforceBondTargetTenant("{{conceptName}}", updatePayload, crudCtx);
         enforceWithKernel("{{conceptName}}", updatePayload);
+{{#codaAllowed}}
+        codaHook.ifPresent(hook -> hook.beforeUpdate("{{conceptName}}", id, updatePayload, crudCtx));
+{{/codaAllowed}}
 {{#hasUpdateFlow}}
         enforceWithUpdateFlow(crudCtx, id, updatePayload);
 {{/hasUpdateFlow}}
@@ -235,6 +238,9 @@ public class {{entityName}}ServiceBase {
         existing.setVersion((existing.getVersion() == null ? 0L : existing.getVersion()) + 1);
 
         {{entityName}} updated = saveWithIntegrityMapping(existing);
+{{#codaAllowed}}
+        codaHook.ifPresent(hook -> hook.afterUpdate("{{conceptName}}", updated, crudCtx));
+{{/codaAllowed}}
 {{#kernelControlled}}
         runtimeSupport.auditCrudMutation("{{conceptName}}", "UPDATE", String.valueOf(updated.getId()), "ALLOW", crudCtx);
 {{/kernelControlled}}
@@ -257,6 +263,9 @@ public class {{entityName}}ServiceBase {
         runtimeSupport.checkCrudPermission("{{conceptName}}", "DELETE", crudCtx);
 {{/kernelControlled}}
         if (!persistence.existsById(id)) return false;
+{{#codaAllowed}}
+        codaHook.ifPresent(hook -> hook.beforeDelete("{{conceptName}}", id, crudCtx));
+{{/codaAllowed}}
 {{#hasDeleteFlow}}
         enforceWithDeleteFlow(crudCtx, id);
 {{/hasDeleteFlow}}
@@ -266,6 +275,9 @@ public class {{entityName}}ServiceBase {
 {{/kernelControlled}}
 {{/hasDeleteFlow}}
         deleteWithIntegrityMapping(id);
+{{#codaAllowed}}
+        codaHook.ifPresent(hook -> hook.afterDelete("{{conceptName}}", id, crudCtx));
+{{/codaAllowed}}
 {{#kernelControlled}}
         runtimeSupport.auditCrudMutation("{{conceptName}}", "DELETE", String.valueOf(id), "ALLOW", crudCtx);
 {{/kernelControlled}}

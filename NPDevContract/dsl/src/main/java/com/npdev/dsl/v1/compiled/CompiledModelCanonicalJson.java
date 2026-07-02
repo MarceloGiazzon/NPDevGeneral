@@ -71,6 +71,7 @@ public final class CompiledModelCanonicalJson {
             node.put("className", safe(concept.getClassName()));
             node.put("tableName", safe(concept.getTableName()));
             node.put("truthLevel", safe(concept.getTruthLevel()));
+            node.put("module", safe(concept.getModule()));
             node.set("ui", toPresentationMetadata(concept.getUi()));
 
             List<CompiledField> fields = new ArrayList<>(concept.getFields());
