@@ -138,25 +138,32 @@ public final class ServiceEmitter extends AbstractEmitter {
             ctx.put("kernelControlled", kernelControlled);
 
             // Adapters personalization cascade: resolved once at generation time (mirrors
-            // kernelControlled/field.widget exactly -- not a live per-request switch). Empty
-            // (default) leaves the binding-declared adapter untouched for every existing sample.
+            // kernelControlled/field.widget). Empty (default) leaves the binding-declared adapter
+            // untouched for every existing sample. Two non-empty values exist: "audited" is a fixed,
+            // permanent wrap decided here at generation time (every request, every tenant); "tenant"
+            // defers the actual choice to a live, per-tenant runtime setting (npdev_tenant.
+            // persistence_mode, toggleable via the admin API with no regenerate) -- this is the real
+            // live per-request adapter switch, scoped to what tenant-level runtime data can honestly
+            // drive without a larger capability-dispatcher bridge.
             String persistenceAdapterOverride = settingResolver == null
                     ? ""
                     : settingResolver.value(NpdevSettings.PERSISTENCE_ADAPTER, SettingTarget.forConcept(entity.getModule(), entity.getName()));
             persistenceAdapterOverride = persistenceAdapterOverride == null ? "" : persistenceAdapterOverride.trim();
-            // Fail fast on an unsupported value instead of letting the template's
-            // "audited".equalsIgnoreCase(override) check silently fall through to the unwrapped
-            // store -- a typo'd or stale override (e.g. "audit", "Audited ") would otherwise
-            // generate without complaint and just quietly not apply. Mirrors the binding-adapter
-            // validation immediately above: only one real variant exists today, and an
-            // unrecognised value is a model authoring error, not a thing to ignore.
-            if (!persistenceAdapterOverride.isEmpty() && !"audited".equalsIgnoreCase(persistenceAdapterOverride)) {
+            // Fail fast on an unsupported value instead of letting the template's equality checks
+            // silently fall through to the unwrapped store -- a typo'd or stale override (e.g.
+            // "audit", "Audited ") would otherwise generate without complaint and just quietly not
+            // apply. Mirrors the binding-adapter validation immediately above: an unrecognised value
+            // is a model authoring error, not a thing to ignore.
+            if (!persistenceAdapterOverride.isEmpty()
+                    && !"audited".equalsIgnoreCase(persistenceAdapterOverride)
+                    && !"tenant".equalsIgnoreCase(persistenceAdapterOverride)) {
                 throw new IllegalStateException(
                         "Entity " + entity.getClassName() + " has unsupported persistence.adapter override: \""
-                                + persistenceAdapterOverride + "\" (supported: \"\" | \"audited\")"
+                                + persistenceAdapterOverride + "\" (supported: \"\" | \"audited\" | \"tenant\")"
                 );
             }
-            ctx.put("hasPersistenceAdapterOverride", !persistenceAdapterOverride.isEmpty());
+            ctx.put("hasPersistenceAdapterOverride", "audited".equalsIgnoreCase(persistenceAdapterOverride));
+            ctx.put("hasTenantControlledPersistenceAdapter", "tenant".equalsIgnoreCase(persistenceAdapterOverride));
             ctx.put("persistenceAdapterOverride", persistenceAdapterOverride);
 
             // Coda: the single defined author-code hook point, gated per concept by coda.allowed

@@ -386,12 +386,16 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("name", panel.name());
             node.put("route", panel.route());
             node.put("title", panel.title() == null || panel.title().isBlank() ? panel.name() : panel.title());
+            node.put("visibility", panel.visibility() == null ? "" : panel.visibility());
+            node.put("enabledWhen", panel.enabledWhen() == null ? "" : panel.enabledWhen());
             List<Map<String, Object>> actions = new ArrayList<>();
             for (CompiledPanelAction action : panel.actions()) {
                 Map<String, Object> actionNode = new LinkedHashMap<>();
                 actionNode.put("name", action.name());
                 actionNode.put("label", action.label() == null || action.label().isBlank() ? action.name() : action.label());
                 actionNode.put("binding", action.binding());
+                actionNode.put("visibleWhen", action.visibleWhen() == null ? "" : action.visibleWhen());
+                actionNode.put("enabledWhen", action.enabledWhen() == null ? "" : action.enabledWhen());
                 actions.add(actionNode);
             }
             node.put("actions", actions);

@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -62,6 +63,18 @@ public class TenantAdminController {
         return run(() -> tenantRegistryService.setStatus(tenantId, TenantRegistryService.Status.ACTIVE));
     }
 
+    /**
+     * Live per-request adapter switch (see {@code com.finalexec.db.TenantControlledConceptStoreDecorator}):
+     * flips this tenant into/out of "audited" persistence mode for every concept generated with
+     * {@code persistence.adapter="tenant"}, with no regenerate/reboot required.
+     */
+    @PutMapping("/{tenantId}/persistence-mode")
+    public Map<String, Object> setPersistenceMode(
+            HttpServletRequest request, @PathVariable String tenantId, @RequestBody PersistenceModeRequest body) {
+        requireAdmin(request);
+        return run(() -> tenantRegistryService.setPersistenceMode(tenantId, body == null ? null : body.persistenceMode()));
+    }
+
     private <T> T run(java.util.function.Supplier<T> call) {
         try {
             return call.get();
@@ -82,5 +95,8 @@ public class TenantAdminController {
     }
 
     public record CreateRequest(String tenantId, String displayName) {
+    }
+
+    public record PersistenceModeRequest(String persistenceMode) {
     }
 }

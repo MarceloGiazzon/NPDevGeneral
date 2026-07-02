@@ -56,6 +56,14 @@ public class GeneratedPackCatalogController {
     private static final Path LOCAL_DEV_CONFIG_FILE = Path.of("..", "..", "Input", "config.json");
     private static final Path LOCAL_DEV_MODEL_FILE = Path.of("..", "..", "Input", "model.json");
     private static final java.util.regex.Pattern PACK_NAME_PATTERN = java.util.regex.Pattern.compile("^[a-z][a-z0-9_-]*$");
+    private static final java.util.regex.Pattern FIELD_NAME_PATTERN = java.util.regex.Pattern.compile("^[a-zA-Z_][a-zA-Z0-9_]*$");
+    // reference/object/array are deliberately excluded: they need richer sub-schemas (target
+    // concept, nested property lists) this admin form doesn't attempt to author.
+    private static final List<String> EDITABLE_FIELD_TYPES = List.of(
+            "string", "uuid", "int", "integer", "long", "boolean", "date", "datetime", "enum");
+    // Guards a pack.json's read-modify-write the same way INSTALL_INTENTS_LOCK guards the intents
+    // file -- a distinct lock since it protects a different file.
+    private static final Object PACK_EDIT_LOCK = new Object();
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
     // Guards the install-intents file's read-modify-write: two concurrent POSTs without this can
     // each read the same pre-update content and the second writer's append silently clobbers the
@@ -320,6 +328,223 @@ public class GeneratedPackCatalogController {
         body.put("message", "Exported concept '" + conceptName + "' to new pack '" + packName
                 + "'. It now appears in the Store catalog on the next generation.");
         return body;
+    }
+
+    /**
+     * Full field editing (add) of an EXISTING pack's concept -- a real reversal of the earlier
+     * "extend the manifest renderer, don't converge with the React Editor" boundary, deliberately
+     * scoped to pack.json specifically: unlike an app's own authored model.json (which the React
+     * Editor owns, and which DOES have live-schema/migration implications the instant it's
+     * regenerated), a pack.json is a not-yet-consumed platform CATALOG TEMPLATE -- editing it has
+     * zero effect on any already-composed app's database until some app actually (re)composes this
+     * pack at a future generation.
+     */
+    @PostMapping("/api/admin/packs/{alias}/concepts/{concept}/fields")
+    public Map<String, Object> addPackField(
+            @PathVariable String alias, @PathVariable String concept,
+            @org.springframework.web.bind.annotation.RequestBody Map<String, Object> request,
+            HttpServletRequest httpRequest) {
+        requireSuperUser(httpRequest);
+        String fieldName = String.valueOf(request.getOrDefault("name", "")).trim();
+        String fieldType = String.valueOf(request.getOrDefault("type", "")).trim();
+        boolean required = Boolean.TRUE.equals(request.get("required"));
+        Object enumValuesRaw = request.get("enumValues");
+
+        if (fieldName.isBlank() || !FIELD_NAME_PATTERN.matcher(fieldName).matches()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "name must be a valid identifier (^[a-zA-Z_][a-zA-Z0-9_]*$), got: " + fieldName);
+        }
+        if (!EDITABLE_FIELD_TYPES.contains(fieldType)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "type must be one of: "
+                    + EDITABLE_FIELD_TYPES + " (reference/object/array are not editable from this admin form), got: " + fieldType);
+        }
+        if ("enum".equals(fieldType) && !(enumValuesRaw instanceof List<?> enumList && !enumList.isEmpty())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "enumValues is required and must be non-empty for type=enum");
+        }
+
+        synchronized (PACK_EDIT_LOCK) {
+            ObjectNode packRoot = requireEditablePack(alias);
+            ObjectNode conceptNode = requireConceptNode(packRoot, concept, alias);
+            ArrayNode fields = requireFieldsArray(conceptNode);
+            for (JsonNode existing : fields) {
+                if (fieldName.equals(existing.path("name").asText(""))) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "Field already exists on " + concept + ": " + fieldName);
+                }
+            }
+            ObjectNode newField = OBJECT_MAPPER.createObjectNode();
+            newField.put("name", fieldName);
+            newField.put("type", fieldType);
+            if (required) {
+                newField.put("required", true);
+            }
+            if ("enum".equals(fieldType)) {
+                ArrayNode enumValues = newField.putArray("enumValues");
+                for (Object value : (List<?>) enumValuesRaw) {
+                    enumValues.add(String.valueOf(value));
+                }
+            }
+            fields.add(newField);
+            writePackJson(alias, packRoot);
+        }
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("added", true);
+        body.put("field", fieldName);
+        body.put("message", "Added field '" + fieldName + "' to " + alias + "::" + concept
+                + ". Takes effect for apps that compose this pack on their NEXT generation.");
+        return body;
+    }
+
+    /** Change an existing field's type (and enumValues, if applicable). Refuses to retype the
+     *  concept's own id field, since that would break every generated entity referencing it. */
+    @org.springframework.web.bind.annotation.PutMapping("/api/admin/packs/{alias}/concepts/{concept}/fields/{fieldName}")
+    public Map<String, Object> updatePackField(
+            @PathVariable String alias, @PathVariable String concept, @PathVariable String fieldName,
+            @org.springframework.web.bind.annotation.RequestBody Map<String, Object> request,
+            HttpServletRequest httpRequest) {
+        requireSuperUser(httpRequest);
+        String newType = String.valueOf(request.getOrDefault("type", "")).trim();
+        Object enumValuesRaw = request.get("enumValues");
+        if (!EDITABLE_FIELD_TYPES.contains(newType)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "type must be one of: " + EDITABLE_FIELD_TYPES + ", got: " + newType);
+        }
+        if ("enum".equals(newType) && !(enumValuesRaw instanceof List<?> enumList && !enumList.isEmpty())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "enumValues is required and must be non-empty for type=enum");
+        }
+
+        synchronized (PACK_EDIT_LOCK) {
+            ObjectNode packRoot = requireEditablePack(alias);
+            ObjectNode conceptNode = requireConceptNode(packRoot, concept, alias);
+            ArrayNode fields = requireFieldsArray(conceptNode);
+            ObjectNode target = null;
+            for (JsonNode candidate : fields) {
+                if (fieldName.equals(candidate.path("name").asText("")) && candidate instanceof ObjectNode objectNode) {
+                    target = objectNode;
+                    break;
+                }
+            }
+            if (target == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Field not found: " + fieldName);
+            }
+            if (target.path("id").asBoolean(false)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Refusing to retype the concept's own id field: " + fieldName);
+            }
+            if ("reference".equals(target.path("type").asText(""))) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Refusing to retype a reference/bond field from this scalar-only editor: " + fieldName);
+            }
+            target.put("type", newType);
+            if ("enum".equals(newType)) {
+                ArrayNode enumValues = target.putArray("enumValues");
+                for (Object value : (List<?>) enumValuesRaw) {
+                    enumValues.add(String.valueOf(value));
+                }
+            } else {
+                target.remove("enumValues");
+            }
+            writePackJson(alias, packRoot);
+        }
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("updated", true);
+        body.put("field", fieldName);
+        body.put("message", "Updated field '" + fieldName + "' on " + alias + "::" + concept + " to type " + newType
+                + ". Takes effect for apps that compose this pack on their NEXT generation.");
+        return body;
+    }
+
+    /** Refuses to remove the concept's own id field, or the last remaining field (pack.schema.json
+     *  requires at least one field per concept). */
+    @org.springframework.web.bind.annotation.DeleteMapping("/api/admin/packs/{alias}/concepts/{concept}/fields/{fieldName}")
+    public Map<String, Object> deletePackField(
+            @PathVariable String alias, @PathVariable String concept, @PathVariable String fieldName,
+            HttpServletRequest httpRequest) {
+        requireSuperUser(httpRequest);
+
+        synchronized (PACK_EDIT_LOCK) {
+            ObjectNode packRoot = requireEditablePack(alias);
+            ObjectNode conceptNode = requireConceptNode(packRoot, concept, alias);
+            ArrayNode fields = requireFieldsArray(conceptNode);
+            int removeIndex = -1;
+            for (int i = 0; i < fields.size(); i++) {
+                JsonNode candidate = fields.get(i);
+                if (fieldName.equals(candidate.path("name").asText(""))) {
+                    if (candidate.path("id").asBoolean(false)) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Refusing to remove the concept's own id field: " + fieldName);
+                    }
+                    if ("reference".equals(candidate.path("type").asText(""))) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                "Refusing to remove a reference/bond field from this scalar-only editor: " + fieldName);
+                    }
+                    removeIndex = i;
+                    break;
+                }
+            }
+            if (removeIndex < 0) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Field not found: " + fieldName);
+            }
+            if (fields.size() <= 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Refusing to remove the last field on " + concept + " (a concept needs at least one field)");
+            }
+            fields.remove(removeIndex);
+            writePackJson(alias, packRoot);
+        }
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("removed", true);
+        body.put("field", fieldName);
+        body.put("message", "Removed field '" + fieldName + "' from " + alias + "::" + concept
+                + ". Takes effect for apps that compose this pack on their NEXT generation.");
+        return body;
+    }
+
+    private static ObjectNode requireEditablePack(String alias) {
+        Path workspaceRoot = locateWorkspaceRoot();
+        if (workspaceRoot == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Cannot edit packs from this deployment: the platform NPDevContract/packs directory is only reachable from a local dev checkout.");
+        }
+        Path packJsonPath = workspaceRoot.resolve("NPDevContract").resolve("packs").resolve(alias).resolve("pack.json");
+        if (!Files.isRegularFile(packJsonPath)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown pack: " + alias);
+        }
+        try {
+            JsonNode root = OBJECT_MAPPER.readTree(packJsonPath.toFile());
+            if (!(root instanceof ObjectNode objectNode)) {
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "pack.json is not a JSON object: " + alias);
+            }
+            return objectNode;
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to read pack.json for " + alias);
+        }
+    }
+
+    private static ObjectNode requireConceptNode(ObjectNode packRoot, String concept, String alias) {
+        for (JsonNode candidate : packRoot.path("concepts")) {
+            if (concept.equals(candidate.path("name").asText("")) && candidate instanceof ObjectNode objectNode) {
+                return objectNode;
+            }
+        }
+        throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Concept not found in pack " + alias + ": " + concept);
+    }
+
+    private static ArrayNode requireFieldsArray(ObjectNode conceptNode) {
+        JsonNode fieldsNode = conceptNode.get("fields");
+        if (fieldsNode instanceof ArrayNode arrayNode) {
+            return arrayNode;
+        }
+        return conceptNode.putArray("fields");
+    }
+
+    private static void writePackJson(String alias, ObjectNode packRoot) {
+        Path workspaceRoot = locateWorkspaceRoot();
+        Path packJsonPath = workspaceRoot.resolve("NPDevContract").resolve("packs").resolve(alias).resolve("pack.json");
+        try {
+            OBJECT_MAPPER.writeValue(packJsonPath.toFile(), packRoot);
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to write pack.json for " + alias);
+        }
     }
 
     private static List<String> readCategoryEnum(Path packSchemaPath) {

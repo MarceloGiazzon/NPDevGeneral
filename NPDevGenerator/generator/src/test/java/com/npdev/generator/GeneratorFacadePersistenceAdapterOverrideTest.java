@@ -19,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -79,5 +80,26 @@ class GeneratorFacadePersistenceAdapterOverrideTest {
 
         String generated = Files.readString(out.resolve("src/main/java/com/npdev/generated/services/PatientServiceBase.java"));
         assertTrue(generated.contains("AuditingConceptStoreDecorator"), generated);
+    }
+
+    @Test
+    void supportedTenantOverrideGeneratesTheLiveSwitchDecoratorCleanly() throws Exception {
+        CompiledModel compiled = compileCanonicalDemo();
+        Path out = Files.createTempDirectory("npdev-persistence-adapter-tenant-");
+        Path migrations = Files.createTempDirectory("npdev-persistence-adapter-tenant-mig-");
+
+        SettingStore store = SettingStore.builder()
+                .layer(SettingScope.CONCEPT, "concept:Patient",
+                        Map.of(NpdevSettings.PERSISTENCE_ADAPTER.id(), "tenant"), "test override")
+                .build();
+
+        new GeneratorFacade(new TemplateEngine("npdev-templates/"),
+                new GeneratedSourceWriter(out, new RegenerationPolicy()),
+                new SettingResolver(store))
+                .generate(compiled, out, migrations, canonicalDemoModel());
+
+        String generated = Files.readString(out.resolve("src/main/java/com/npdev/generated/services/PatientServiceBase.java"));
+        assertTrue(generated.contains("TenantControlledConceptStoreDecorator"), generated);
+        assertFalse(generated.contains("new com.finalexec.db.AuditingConceptStoreDecorator(conceptStore"), generated);
     }
 }

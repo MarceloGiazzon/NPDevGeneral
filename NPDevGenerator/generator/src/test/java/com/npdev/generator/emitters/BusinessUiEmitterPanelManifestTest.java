@@ -95,6 +95,56 @@ public class BusinessUiEmitterPanelManifestTest {
     }
 
     @Test
+    void panelAndActionVisibilityEnabledWhenAppearInTheManifest() throws Exception {
+        CompiledModel model = compile("""
+                {
+                  "namespace": "panel.manifest.demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    {
+                      "name": "Project",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        { "name": "name", "type": "string", "required": true }
+                      ]
+                    }
+                  ],
+                  "procedures": [
+                    {
+                      "name": "CountProjects",
+                      "steps": [
+                        { "type": "listConcepts", "concept": "Project", "target": "projects" },
+                        { "type": "return", "value": "$projects" }
+                      ]
+                    }
+                  ],
+                  "panels": [
+                    {
+                      "name": "AdminOnlyPanel",
+                      "route": "admin-only",
+                      "title": "Admin Only",
+                      "visibility": "isSuperUser",
+                      "enabledWhen": "role == 'ADMIN'",
+                      "dataSources": [ { "name": "projects", "concept": "Project" } ],
+                      "actions": [
+                        {
+                          "name": "recount", "label": "Recount", "binding": "procedure", "procedure": "CountProjects",
+                          "visibleWhen": "isSuperUser", "enabledWhen": "role == 'ADMIN'"
+                        }
+                      ]
+                    }
+                  ]
+                }
+                """);
+
+        String manifest = emitAndReadManifest(model);
+        assertTrue(manifest.contains("\"visibility\" : \"isSuperUser\""), manifest);
+        assertTrue(manifest.contains("\"enabledWhen\" : \"role == 'ADMIN'\""), manifest);
+        assertTrue(manifest.contains("\"visibleWhen\" : \"isSuperUser\""), manifest);
+    }
+
+    @Test
     void emptyPanelsArrayWhenModelDeclaresNone() throws Exception {
         CompiledModel model = compile("""
                 {

@@ -71,7 +71,7 @@ public class TenantRegistryService {
 
     public List<Map<String, Object>> list() {
         DataSource dataSource = requireDataSource();
-        String sql = "SELECT tenant_id, display_name, status, created_at_ms FROM "
+        String sql = "SELECT tenant_id, display_name, status, created_at_ms, persistence_mode FROM "
                 + NpdevTenantTable.NAME + " ORDER BY tenant_id";
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql);
@@ -83,12 +83,48 @@ public class TenantRegistryService {
                         resultSet.getString("display_name"),
                         resultSet.getString("status"));
                 row.put("createdAtMs", resultSet.getLong("created_at_ms"));
+                row.put("persistenceMode", resultSet.getString("persistence_mode"));
                 out.add(row);
             }
             return out;
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed listing tenants: " + exception.getMessage(), exception);
         }
+    }
+
+    /**
+     * Live per-tenant driver for {@code persistence.adapter="tenant"}
+     * ({@link com.finalexec.db.TenantControlledConceptStoreDecorator}). Valid values: "default"
+     * (unwrapped store, the platform default for every existing tenant) | "audited" (every access
+     * logged for that tenant only). Rejects anything else up front rather than silently persisting
+     * a value the decorator's own equalsIgnoreCase check would just never match.
+     */
+    public Map<String, Object> setPersistenceMode(String tenantId, String mode) {
+        String id = normalize(tenantId);
+        if (id == null) {
+            throw new IllegalArgumentException("tenantId is required");
+        }
+        String normalizedMode = mode == null ? "" : mode.trim().toLowerCase(Locale.ROOT);
+        if (!"default".equals(normalizedMode) && !"audited".equals(normalizedMode)) {
+            throw new IllegalArgumentException(
+                    "persistenceMode must be \"default\" or \"audited\", got: " + mode);
+        }
+        DataSource dataSource = requireDataSource();
+        String sql = "UPDATE " + NpdevTenantTable.NAME + " SET persistence_mode = ? WHERE tenant_id = ?";
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, normalizedMode);
+            statement.setString(2, id);
+            if (statement.executeUpdate() == 0) {
+                throw new IllegalArgumentException("Unknown tenant: " + id);
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed updating tenant '" + id + "': " + exception.getMessage(), exception);
+        }
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("tenantId", id);
+        row.put("persistenceMode", normalizedMode);
+        return row;
     }
 
     public Map<String, Object> setStatus(String tenantId, Status status) {

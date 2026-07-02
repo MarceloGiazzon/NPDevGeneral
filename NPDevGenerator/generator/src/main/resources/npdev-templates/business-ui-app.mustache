@@ -49,6 +49,18 @@
     return { conceptName: "__panel-" + panelMeta.name + "__", declaredPanel: panelMeta };
   }
 
+  // Context for a declared Panel's visibility/enabledWhen expressions (and its actions' own
+  // visibleWhen/enabledWhen) -- reuses the SAME tiny evaluateWhen() grammar field-level
+  // visibleWhen/enabledWhen already use, just against role/session identifiers instead of sibling
+  // form field values (a Panel isn't a form, so there's no natural "sibling field" context).
+  function panelContextValues() {
+    return {
+      isSuperUser: state.isSuperUser,
+      role: state.roles && state.roles.length ? state.roles[0] : null,
+      actorId: state.actorId || null
+    };
+  }
+
   function sectionId(concept) {
     return "concept-" + concept.conceptName.replace(/[^a-zA-Z0-9_-]/g, "-");
   }
@@ -316,6 +328,7 @@
       el.app.appendChild(prefsPanel);
     }
     (state.manifest.panels || []).forEach(function (panelMeta) {
+      if (!evaluateWhen(panelMeta.visibility, panelContextValues())) { return; }
       const ref = panelSectionRef(panelMeta);
       const declaredPanelSection = renderDeclaredPanel(panelMeta);
       declaredPanelSection.style.display = activeId === sectionId(ref) ? "" : "none";
@@ -439,10 +452,15 @@
     header.appendChild(headerActions);
     section.appendChild(header);
 
+    const panelContext = panelContextValues();
+    const panelEnabled = evaluateWhen(panelMeta.enabledWhen, panelContext);
     (panelMeta.actions || []).forEach(function (action) {
-      section.appendChild(button(action.label, "primary", function () {
+      if (!evaluateWhen(action.visibleWhen, panelContext)) { return; }
+      const actionButton = button(action.label, "primary", function () {
         executeDeclaredPanelAction(panelMeta, action.name);
-      }));
+      });
+      actionButton.disabled = !panelEnabled || !evaluateWhen(action.enabledWhen, panelContext);
+      section.appendChild(actionButton);
     });
 
     const entry = declaredPanelState(panelMeta);
@@ -557,13 +575,150 @@
     }
   }
 
+  const EDITABLE_PACK_FIELD_TYPES = ["string", "uuid", "int", "integer", "long", "boolean", "date", "datetime", "enum"];
+
+  // Real field editing (add/change-type/remove) of an EXISTING pack's concept, via the
+  // POST/PUT/DELETE .../packs/{alias}/concepts/{concept}/fields[/{field}] endpoints. Scoped to
+  // scalar field types only (reference/object/array need richer sub-schemas this form doesn't
+  // attempt to author). Editing pack.json has zero effect on any already-composed app until that
+  // app regenerates against this pack again -- same "not hot-reload" story as everything else in
+  // the Store panel.
+  function renderPackConceptFieldEditor(pack, concept) {
+    // Self-contained re-render: /api/admin/packs serves a generation-time-baked snapshot
+    // (PackCatalogEmitter's pack-catalog.json classpath resource), so it never reflects an edit
+    // made through THIS admin UI within the same running session -- calling loadStore()/a full
+    // page render() after a mutation would silently show the stale pre-edit field list (and would
+    // also collapse every other pack's drill-down, since renderStorePanel rebuilds the whole table
+    // fresh). Instead, mutate concept.fields in place (the same object state.store.packs already
+    // holds) and rebuild only this wrapper's own children.
+    const wrapper = document.createElement("div");
+
+    function refresh() {
+      wrapper.innerHTML = "";
+      const fields = Array.isArray(concept.fields) ? concept.fields : [];
+      const table = document.createElement("table");
+      table.className = "records pack-field-edit-table";
+      const tbody = document.createElement("tbody");
+      fields.forEach(function (field) {
+        const row = document.createElement("tr");
+        row.appendChild(textCell(field.name));
+        row.appendChild(textCell(field.type || "string"));
+        const actionsCell = document.createElement("td");
+        if (field.referenceTarget) {
+          actionsCell.appendChild(textNode("(reference/bond field -- not editable here)"));
+          row.appendChild(actionsCell);
+          tbody.appendChild(row);
+          return;
+        }
+        const typeSelect = document.createElement("select");
+        EDITABLE_PACK_FIELD_TYPES.forEach(function (type) {
+          const option = document.createElement("option");
+          option.value = type;
+          option.textContent = type;
+          if (type === field.type) { option.selected = true; }
+          typeSelect.appendChild(option);
+        });
+        actionsCell.appendChild(typeSelect);
+        actionsCell.appendChild(button("Retype", "", async function () {
+          const newType = typeSelect.value;
+          let enumValues;
+          if (newType === "enum") {
+            const raw = window.prompt("Comma-separated enum values for " + field.name + ":", "");
+            if (raw === null) { return; }
+            enumValues = raw.split(",").map(function (v) { return v.trim(); }).filter(Boolean);
+            if (!enumValues.length) { setStatus("enumValues is required for type=enum", true); return; }
+          }
+          try {
+            const result = await fetchJson(
+              "/api/admin/packs/" + encodeURIComponent(pack.alias) + "/concepts/" + encodeURIComponent(concept.name)
+                + "/fields/" + encodeURIComponent(field.name),
+              { method: "PUT", headers: headers(), body: JSON.stringify({ type: newType, enumValues: enumValues }) }
+            );
+            setStatus(result.message || "Field updated.", false);
+            field.type = newType;
+            refresh();
+          } catch (error) {
+            setStatus(error.message, true);
+          }
+        }));
+        actionsCell.appendChild(button("Remove", "lookup-clear", async function () {
+          if (!window.confirm("Remove field \"" + field.name + "\" from " + concept.name + "? Takes effect on this pack's next composition.")) {
+            return;
+          }
+          try {
+            const result = await fetchJson(
+              "/api/admin/packs/" + encodeURIComponent(pack.alias) + "/concepts/" + encodeURIComponent(concept.name)
+                + "/fields/" + encodeURIComponent(field.name),
+              { method: "DELETE", headers: headers() }
+            );
+            setStatus(result.message || "Field removed.", false);
+            const index = concept.fields.indexOf(field);
+            if (index !== -1) { concept.fields.splice(index, 1); }
+            refresh();
+          } catch (error) {
+            setStatus(error.message, true);
+          }
+        }));
+        row.appendChild(actionsCell);
+        tbody.appendChild(row);
+      });
+      table.appendChild(tbody);
+      wrapper.appendChild(fields.length ? table : textNode("(no fields declared)"));
+
+      const addRow = document.createElement("div");
+      addRow.className = "pack-export-row";
+      const nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.placeholder = "New field name";
+      const addTypeSelect = document.createElement("select");
+      EDITABLE_PACK_FIELD_TYPES.forEach(function (type) {
+        const option = document.createElement("option");
+        option.value = type;
+        option.textContent = type;
+        addTypeSelect.appendChild(option);
+      });
+      addRow.appendChild(nameInput);
+      addRow.appendChild(addTypeSelect);
+      addRow.appendChild(button("Add field", "primary", async function () {
+        let enumValues;
+        if (addTypeSelect.value === "enum") {
+          const raw = window.prompt("Comma-separated enum values for " + nameInput.value + ":", "");
+          if (raw === null) { return; }
+          enumValues = raw.split(",").map(function (v) { return v.trim(); }).filter(Boolean);
+          if (!enumValues.length) { setStatus("enumValues is required for type=enum", true); return; }
+        }
+        const newFieldName = nameInput.value.trim();
+        try {
+          const result = await fetchJson(
+            "/api/admin/packs/" + encodeURIComponent(pack.alias) + "/concepts/" + encodeURIComponent(concept.name) + "/fields",
+            { method: "POST", headers: headers(), body: JSON.stringify({ name: newFieldName, type: addTypeSelect.value, enumValues: enumValues }) }
+          );
+          setStatus(result.message || "Field added.", false);
+          if (!Array.isArray(concept.fields)) { concept.fields = []; }
+          concept.fields.push({ name: newFieldName, type: addTypeSelect.value });
+          refresh();
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+      }));
+      wrapper.appendChild(addRow);
+    }
+
+    refresh();
+    return wrapper;
+  }
+
+  function textNode(text) {
+    const span = document.createElement("span");
+    span.textContent = text;
+    return span;
+  }
+
   // Visual graph view for a pack's drill-down: real boxes (one per concept, listing its fields),
   // draggable to reposition, with lines connecting a reference field to its target concept's box.
   // Positions persist in localStorage per pack alias so reopening the graph keeps the layout.
-  // Deliberately does NOT edit the pack's own declared fields/concepts (that's pack.json, platform-
-  // shared catalog data a running app has no business rewriting) -- "editable" here means the
-  // visual layout, which is genuinely real, persisted, drag-and-drop interaction, not a static
-  // diagram.
+  // Field EDITING (add/change-type/remove) lives in renderPackConceptFieldEditor above, using the
+  // real POST/PUT/DELETE endpoints -- this graph view stays purely about visual layout.
   function renderPackGraph(pack, concepts) {
     const container = document.createElement("div");
     container.className = "pack-graph-container";
@@ -811,10 +966,7 @@
             conceptToggle.textContent = (expanded ? "▶ " : "▼ ") + concept.name;
           });
           conceptWrapper.appendChild(conceptToggle);
-          const fields = Array.isArray(concept.fields) ? concept.fields : [];
-          fieldsList.textContent = fields.length
-            ? fields.map(function (f) { return f.name + " (" + (f.type || "string") + ")"; }).join(", ")
-            : "(no fields declared)";
+          fieldsList.appendChild(renderPackConceptFieldEditor(pack, concept));
           conceptWrapper.appendChild(fieldsList);
           detailCell.appendChild(conceptWrapper);
         });
@@ -2921,13 +3073,15 @@
     }
 
     business.forEach(function (concept) { addLink(concept); });
-    const declaredPanels = (state.manifest.panels || []);
-    if (declaredPanels.length) {
+    const visibleDeclaredPanels = (state.manifest.panels || []).filter(function (panelMeta) {
+      return evaluateWhen(panelMeta.visibility, panelContextValues());
+    });
+    if (visibleDeclaredPanels.length) {
       const panelsHeader = document.createElement("div");
       panelsHeader.className = "nav-group-header";
       panelsHeader.textContent = "Panels";
       el.sideNav.appendChild(panelsHeader);
-      declaredPanels.forEach(function (panelMeta) {
+      visibleDeclaredPanels.forEach(function (panelMeta) {
         addLink(panelSectionRef(panelMeta), panelMeta.title, true);
       });
     }

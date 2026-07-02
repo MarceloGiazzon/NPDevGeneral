@@ -209,12 +209,16 @@
       "name": "ProjectsOverviewPanel",
       "route": "projects-overview",
       "title": "Projects Overview",
+      "visibility": "isSuperUser",
       "dataSources": [
         { "name": "projects", "concept": "Project" }
       ],
       "layout": { "type": "table", "fields": ["projects"] },
       "actions": [
-        { "name": "recount", "label": "Recount Projects", "binding": "procedure", "procedure": "CountProjects" }
+        {
+          "name": "recount", "label": "Recount Projects", "binding": "procedure", "procedure": "CountProjects",
+          "enabledWhen": "role == 'ADMIN'"
+        }
       ]
     }
   ]

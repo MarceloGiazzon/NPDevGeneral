@@ -62,7 +62,8 @@ public class {{entityName}}ServiceBase {
             ConceptGateway conceptGateway,
             ConceptStore conceptStore,
             KernelRunner kernelRunner,
-            java.util.Optional<com.npdev.kernel.coda.CodaHook> codaHook
+            java.util.Optional<com.npdev.kernel.coda.CodaHook> codaHook,
+            org.springframework.beans.factory.ObjectProvider<javax.sql.DataSource> dataSourceProvider
     ) {
         this.runtimeSupport = runtimeSupport;
         this.conceptGateway = conceptGateway;
@@ -70,15 +71,23 @@ public class {{entityName}}ServiceBase {
 {{#hasPersistenceAdapterOverride}}
         // Adapters personalization cascade (persistence.adapter resolved at generation time):
         // an override other than the binding-declared default wraps the underlying ConceptStore
-        // with an alternate adapter -- "audited" is the one real variant available today (logs
-        // every access, same data/correctness). Closes the "hardcoded, no override" wiring gap
-        // without claiming a live per-request switch, which would need a different mechanism.
-        // ServiceEmitter already rejected any value other than "audited" at generation time, so
-        // this block is only ever emitted for a value known-good -- no runtime check needed here.
+        // with an alternate adapter -- "audited" is a fixed, permanent wrap decided here, once,
+        // for every request regardless of tenant. ServiceEmitter already rejected any value other
+        // than "audited"/"tenant" at generation time, so this block is only ever emitted for a
+        // value known-good -- no runtime check needed here.
         this.conceptStore = new com.finalexec.db.AuditingConceptStoreDecorator(conceptStore, "{{conceptName}}");
 {{/hasPersistenceAdapterOverride}}
+{{#hasTenantControlledPersistenceAdapter}}
+        // persistence.adapter="tenant": the LIVE per-request adapter switch. Unlike "audited" above
+        // (decided once, here, for every tenant), this defers the actual choice to
+        // npdev_tenant.persistence_mode -- real runtime data an admin can flip per tenant with no
+        // regenerate. TenantControlledConceptStoreDecorator checks it fresh on every call.
+        this.conceptStore = new com.finalexec.db.TenantControlledConceptStoreDecorator(conceptStore, "{{conceptName}}", dataSourceProvider);
+{{/hasTenantControlledPersistenceAdapter}}
 {{^hasPersistenceAdapterOverride}}
+{{^hasTenantControlledPersistenceAdapter}}
         this.conceptStore = conceptStore;
+{{/hasTenantControlledPersistenceAdapter}}
 {{/hasPersistenceAdapterOverride}}
         this.kernelRunner = kernelRunner;
         this.persistence = GeneratedCrudRuntimeSupport.persistenceCapability(

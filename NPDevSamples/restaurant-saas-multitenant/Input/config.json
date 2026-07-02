@@ -48,6 +48,9 @@
   "overrides": {
     "concept:Tenant": {
       "persistence.adapter": "audited"
+    },
+    "concept:StaffMember": {
+      "persistence.adapter": "tenant"
     }
   },
   "trialDefaults": {
@@ -60,7 +63,8 @@
       "Separately, the platform itself now enforces real authenticated-tenant isolation (tenant_id) on every generated CRUD row, on both the generic CRUD path and flow-driven persistence, and rejects a tenantRef bond pointing at another platform tenant's row.",
       "CRUD population scripts use the generated REST API only; they do not write to the database directly.",
       "Use 'dev,trial' (not 'dev,step0,trial') to boot against the real H2Local database in Input/db.definition.json -- step0 would override it with an ephemeral in-memory store.",
-      "demonstrate-platform-tenancy.ps1 walks through the platform admin surfaces: /api/admin/tenants (create/disable/enable), /api/admin/credentials (issue/revoke), and the resulting authenticated-tenant isolation."
+      "demonstrate-platform-tenancy.ps1 walks through the platform admin surfaces: /api/admin/tenants (create/disable/enable), /api/admin/credentials (issue/revoke), and the resulting authenticated-tenant isolation.",
+      "StaffMember is overridden to persistence.adapter=tenant: the LIVE per-request adapter switch. PUT /api/admin/tenants/{tenantId}/persistence-mode toggles a SINGLE platform tenant into audited mode with no regenerate/reboot -- other tenants' StaffMember access is unaffected."
     ]
   }
 }

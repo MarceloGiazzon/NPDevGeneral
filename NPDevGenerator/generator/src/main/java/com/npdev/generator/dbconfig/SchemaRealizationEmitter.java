@@ -75,18 +75,48 @@ public final class SchemaRealizationEmitter {
         }
         Files.writeString(schemaDir.resolve("V1__npdev_schema_realization.sql"), sql.toString(), StandardCharsets.UTF_8);
 
-        if (plan.createBusinessTables()) {
-            Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
+        if (plan.createBusinessTables() || plan.createInternalTables()) {
             StringBuilder additive = new StringBuilder();
             additive.append("-- NPDev safe-additive schema columns (Flyway repeatable migration)\n");
-            additive.append("-- Adds new non-bond columns to already-existing business tables without destructive recreation.\n");
-            additive.append("-- Scope boundary: bond/foreign-key columns, type changes, and column/table removal remain\n");
-            additive.append("-- structural changes handled by the schema-fingerprint destructive-recreate path.\n\n");
-            for (CompiledConcept concept : model.getConcepts()) {
-                appendAdditiveColumns(additive, concept, plan.engine(), conceptsByName);
+            additive.append("-- Adds new non-bond columns to already-existing tables (internal + business) without\n");
+            additive.append("-- destructive recreation. Scope boundary: bond/foreign-key columns, type changes, and\n");
+            additive.append("-- column/table removal remain structural changes handled by the schema-fingerprint\n");
+            additive.append("-- destructive-recreate path.\n\n");
+            // Internal tables previously had NO column-evolution path at all -- appendTable() only ever
+            // emits CREATE TABLE IF NOT EXISTS, which is a no-op the instant the table already exists.
+            // A new column added to an internal table definition (e.g. NpdevTenantTable) would silently
+            // never reach an already-booted app's database. Mirrors the business-table additive path,
+            // including its "downgrade a required-but-undefaulted column to nullable" safety net.
+            if (plan.createInternalTables()) {
+                for (InternalTableDefinition table : NpdevInternalTables.all()) {
+                    appendInternalTableAdditiveColumns(additive, table, plan.engine());
+                }
+            }
+            if (plan.createBusinessTables()) {
+                Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
+                for (CompiledConcept concept : model.getConcepts()) {
+                    appendAdditiveColumns(additive, concept, plan.engine(), conceptsByName);
+                }
             }
             Files.writeString(schemaDir.resolve("R__npdev_schema_additive_columns.sql"), additive.toString(), StandardCharsets.UTF_8);
         }
+    }
+
+    private static void appendInternalTableAdditiveColumns(StringBuilder sql, InternalTableDefinition table, DatabaseEngine engine) {
+        for (InternalColumnDefinition column : table.columns()) {
+            sql.append("ALTER TABLE ").append(table.name()).append(" ADD COLUMN IF NOT EXISTS ")
+                    .append(column.name()).append(" ").append(renderInternalType(column.type(), engine));
+            if (!column.defaultExpression().isBlank()) {
+                sql.append(" DEFAULT ").append(column.defaultExpression());
+            } else if (column.required()) {
+                sql.append("; -- NOTE: '").append(column.name()).append("' on ").append(table.name())
+                        .append(" is required but added nullable here (no default declared); ")
+                        .append("existing rows will have NULL until backfilled\n");
+                continue;
+            }
+            sql.append(";\n");
+        }
+        sql.append("\n");
     }
 
     /**
