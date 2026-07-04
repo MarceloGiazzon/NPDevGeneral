@@ -1038,7 +1038,10 @@ public final class ModelCompiler {
                     dataSource.concept(),
                     dataSource.query(),
                     dataSource.procedure(),
-                    sortObjectMap(dataSource.params())
+                    sortObjectMap(dataSource.params()),
+                    dataSource.parentDataSource(),
+                    dataSource.parentField(),
+                    dataSource.childField()
             ));
         }
         out.sort(Comparator.comparing(dataSource -> normalize(dataSource.name())));
@@ -1073,7 +1076,8 @@ public final class ModelCompiler {
                     binding.visibleWhen(),
                     binding.enabledWhen(),
                     binding.readonlyWhen(),
-                    toCompiledPresentationMetadata(binding.ui())
+                    toCompiledPresentationMetadata(binding.ui()),
+                    binding.editable()
             ));
         }
         out.sort(Comparator.comparing(binding -> normalize(binding.field())));

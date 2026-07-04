@@ -4,6 +4,7 @@ import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPanelDataSource;
+import com.npdev.dsl.v1.compiled.CompiledPanelFieldBinding;
 import com.npdev.dsl.v1.compiled.CompiledProcedure;
 import com.npdev.dsl.v1.compiled.CompiledProcedureStep;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
@@ -138,21 +139,53 @@ public class PanelRuntime {
         int traceStart = traceStartIndex();
         Map<String, Object> data = new LinkedHashMap<>();
         List<Map<String, Object>> dataSourceSummaries = new ArrayList<>();
+
+        // Pass 1: every dataSource with no declared parent, exactly as before this method grew nesting support.
         for (CompiledPanelDataSource dataSource : panel.dataSources()) {
-            Object value = loadDataSource(dataSource, safeInput, effectiveContext);
-            boolean fallback = isFallbackDataSource(value);
-            data.put(dataSource.name(), value);
-            Map<String, Object> summary = new LinkedHashMap<>();
-            summary.put("name", safe(dataSource.name()));
-            summary.put("concept", safe(resolveDataSourceConcept(dataSource)));
-            summary.put("query", safe(dataSource.query()));
-            summary.put("procedure", safe(dataSource.procedure()));
-            summary.put("recordCount", value instanceof Collection<?> collection ? collection.size() : 0);
-            summary.put("fallback", fallback);
-            if (fallback && value instanceof Map<?, ?> fallbackMap) {
-                summary.put("fallbackCode", safe(String.valueOf(fallbackMap.get("code"))));
+            if (hasText(dataSource.parentDataSource())) {
+                continue;
             }
-            dataSourceSummaries.add(summary);
+            Object value = loadDataSource(dataSource, safeInput, effectiveContext, null, null);
+            data.put(dataSource.name(), value);
+            dataSourceSummaries.add(dataSourceSummary(dataSource, value));
+        }
+
+        // Pass 2: each declared child dataSource is loaded once per already-loaded parent row, filtered by
+        // childField == that row's parentField value, and nested under the parent record's "__children" map.
+        // The flattened child list is still kept under data[childName] so the existing flat-array contract is
+        // unchanged for any caller that only reads data[name] (backward compatibility for non-nested consumers).
+        for (CompiledPanelDataSource dataSource : panel.dataSources()) {
+            if (!hasText(dataSource.parentDataSource())) {
+                continue;
+            }
+            Object parentValue = data.get(dataSource.parentDataSource());
+            List<Map<String, Object>> flatChildren = new ArrayList<>();
+            if (parentValue instanceof List<?> parentList) {
+                String parentField = firstNonBlank(dataSource.parentField(), "id");
+                for (Object parentItemObj : parentList) {
+                    if (!(parentItemObj instanceof Map<?, ?> rawParentItem)) {
+                        continue;
+                    }
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> parentItem = (Map<String, Object>) rawParentItem;
+                    String parentKeyValue = resolveRecordFieldValue(parentItem, parentField);
+                    Object childValue = loadDataSource(dataSource, safeInput, effectiveContext,
+                            dataSource.childField(), parentKeyValue);
+                    List<Map<String, Object>> childList = List.of();
+                    if (childValue instanceof List<?> list) {
+                        @SuppressWarnings("unchecked")
+                        List<Map<String, Object>> castList = (List<Map<String, Object>>) (List<?>) list;
+                        childList = castList;
+                    }
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> children = (Map<String, Object>) parentItem.computeIfAbsent(
+                            "__children", key -> new LinkedHashMap<String, Object>());
+                    children.put(dataSource.name(), childList);
+                    flatChildren.addAll(childList);
+                }
+            }
+            data.put(dataSource.name(), flatChildren);
+            dataSourceSummaries.add(dataSourceSummary(dataSource, flatChildren));
         }
 
         Map<String, Object> response = new LinkedHashMap<>();
@@ -169,6 +202,7 @@ public class PanelRuntime {
         response.put("dataSources", dataSourceSummaries);
         response.put("data", data);
         response.put("fields", panelFields(panel));
+        response.put("fieldBindings", panelFieldBindings(panel));
         response.put("actions", panelActions(panel));
         response.put("fallbackUi", dataSourceSummaries.stream().anyMatch(item -> Boolean.TRUE.equals(item.get("fallback"))));
         response.put("layout", panel.layout() == null ? Map.of() : Map.of(
@@ -242,7 +276,9 @@ public class PanelRuntime {
     private Object loadDataSource(
             CompiledPanelDataSource dataSource,
             Map<String, Object> input,
-            ExecutionContext context
+            ExecutionContext context,
+            String filterField,
+            String filterValue
     ) {
         if (hasText(dataSource.procedure())) {
             try {
@@ -265,7 +301,8 @@ public class PanelRuntime {
                         "ConceptGateway is required for executable panel data."
                 );
             }
-            return requireConceptGateway().list(new ConceptListRequest(conceptName, null), context).stream()
+            return requireConceptGateway()
+                    .list(new ConceptListRequest(conceptName, null, filterField, filterValue), context).stream()
                     .map(PanelRuntime::toRecordMap)
                     .toList();
         }
@@ -274,6 +311,35 @@ public class PanelRuntime {
                 "Panel data source has no supported concept, query, or procedure binding.",
                 ""
         );
+    }
+
+    private Map<String, Object> dataSourceSummary(CompiledPanelDataSource dataSource, Object value) {
+        boolean fallback = isFallbackDataSource(value);
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("name", safe(dataSource.name()));
+        summary.put("concept", safe(resolveDataSourceConcept(dataSource)));
+        summary.put("query", safe(dataSource.query()));
+        summary.put("procedure", safe(dataSource.procedure()));
+        summary.put("parentDataSource", safe(dataSource.parentDataSource()));
+        summary.put("recordCount", value instanceof Collection<?> collection ? collection.size() : 0);
+        summary.put("fallback", fallback);
+        if (fallback && value instanceof Map<?, ?> fallbackMap) {
+            summary.put("fallbackCode", safe(String.valueOf(fallbackMap.get("code"))));
+        }
+        return summary;
+    }
+
+    // Parent records have the toRecordMap shape {tenantId, concept, id, data}; "id" lives at the top level,
+    // every other field lives one level down under "data".
+    private static String resolveRecordFieldValue(Map<String, Object> record, String field) {
+        Object value = "id".equals(field) ? record.get("id") : dataMap(record).get(field);
+        return value == null ? null : String.valueOf(value);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> dataMap(Map<String, Object> record) {
+        Object data = record.get("data");
+        return data instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
     }
 
     private Object executeConceptMutation(
@@ -460,6 +526,25 @@ public class PanelRuntime {
             }
         }
         return List.copyOf(fields);
+    }
+
+    private static List<Map<String, Object>> panelFieldBindings(CompiledPanel panel) {
+        List<Map<String, Object>> bindings = new ArrayList<>();
+        for (CompiledPanelFieldBinding binding : panel.fieldBindings()) {
+            String source = safe(binding.source());
+            int dot = source.indexOf('.');
+            String dataSource = dot > 0 ? source.substring(0, dot) : "";
+            String sourceField = dot > 0 ? source.substring(dot + 1) : (source.isBlank() ? safe(binding.field()) : source);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("field", safe(binding.field()));
+            item.put("dataSource", dataSource);
+            item.put("sourceField", sourceField);
+            item.put("editable", binding.editable());
+            item.put("label", binding.ui() == null ? "" : safe(binding.ui().getLabel()));
+            item.put("order", binding.ui() == null ? null : binding.ui().getOrder());
+            bindings.add(item);
+        }
+        return List.copyOf(bindings);
     }
 
     private static List<Map<String, Object>> panelActions(CompiledPanel panel) {

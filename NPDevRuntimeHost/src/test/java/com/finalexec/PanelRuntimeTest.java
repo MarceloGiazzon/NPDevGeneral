@@ -17,6 +17,7 @@ import com.npdev.kernel.concepts.ConceptGatewayOperation;
 import com.npdev.kernel.concepts.ConceptGatewaySemanticPolicy;
 import com.npdev.kernel.concepts.ConceptGatewayTraceRecord;
 import com.npdev.kernel.concepts.ConceptGatewayTraceSink;
+import com.npdev.kernel.concepts.ConceptWriteRequest;
 import com.npdev.kernel.concepts.DefaultConceptGateway;
 import com.npdev.kernel.inproc.InMemoryConceptStore;
 import com.npdev.kernel.ports.AuditLogStore;
@@ -175,6 +176,98 @@ class PanelRuntimeTest {
         assertEquals("CONCEPT_GATEWAY_UNAVAILABLE", contacts.get("code"));
     }
 
+    @Test
+    void loadPanelNestsChildDataSourceUnderItsDeclaredParentRows() {
+        DefaultConceptGateway gateway = new DefaultConceptGateway(
+                new InMemoryConceptStore(),
+                PermissionEvaluator.allowAll(),
+                TenantIsolationPolicy.STRICT_EQUALS,
+                AuditLogStore.noop(),
+                ConceptGatewaySemanticPolicy.noop(),
+                new CollectingTraceSink()
+        );
+        ExecutionContext context = ExecutionContext.of("dev", "operator").withRoles(Set.of("OPERATOR"));
+
+        gateway.save(new ConceptWriteRequest("Movimento", "mov-1", null, Map.of("tipo", "Recebimento")), context);
+        gateway.save(new ConceptWriteRequest("Movimento", "mov-2", null, Map.of("tipo", "Expedicao")), context);
+        gateway.save(new ConceptWriteRequest("MovimentoItem", "item-1a", null,
+                Map.of("movimentoId", "mov-1", "quantidade", 10)), context);
+        gateway.save(new ConceptWriteRequest("MovimentoItem", "item-1b", null,
+                Map.of("movimentoId", "mov-1", "quantidade", 20)), context);
+        gateway.save(new ConceptWriteRequest("MovimentoItem", "item-2a", null,
+                Map.of("movimentoId", "mov-2", "quantidade", 30)), context);
+
+        PanelRuntime runtime = new PanelRuntime(metadataService, null, nestedPanelModel(), gateway, null, null);
+        Map<String, Object> loaded = runtime.loadPanel("MovimentoDetailPanel", Map.of(), context);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) loaded.get("data");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> movimentos = (List<Map<String, Object>>) data.get("movimentos");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> flatItems = (List<Map<String, Object>>) data.get("items");
+
+        assertEquals(2, movimentos.size(), "flat parent dataSource unaffected by nesting");
+        assertEquals(3, flatItems.size(), "flat child dataSource still carries every row (backward compat)");
+
+        Map<String, Object> mov1 = movimentos.stream().filter(m -> "mov-1".equals(m.get("id"))).findFirst().orElseThrow();
+        Map<String, Object> mov2 = movimentos.stream().filter(m -> "mov-2".equals(m.get("id"))).findFirst().orElseThrow();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mov1Children = (Map<String, Object>) mov1.get("__children");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> mov1Items = (List<Map<String, Object>>) mov1Children.get("items");
+        assertEquals(2, mov1Items.size(), "mov-1 has exactly its own 2 children nested, no cross-parent leakage");
+        assertTrue(mov1Items.stream().allMatch(item -> "mov-1".equals(((Map<?, ?>) item.get("data")).get("movimentoId"))));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mov2Children = (Map<String, Object>) mov2.get("__children");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> mov2Items = (List<Map<String, Object>>) mov2Children.get("items");
+        assertEquals(1, mov2Items.size(), "mov-2 has exactly its own 1 child nested");
+
+        @SuppressWarnings("unchecked")
+        List<ConceptGatewayTraceRecord> gatewayTrace = (List<ConceptGatewayTraceRecord>) loaded.get("gatewayTrace");
+        long listCalls = gatewayTrace.stream().filter(record -> record.operation() == ConceptGatewayOperation.LIST).count();
+        assertEquals(3, listCalls, "1 parent list + 1 filtered child list per parent row (N+1 for 2 parents)");
+    }
+
+    private static CompiledModel nestedPanelModel() {
+        CompiledPanel panel = new CompiledPanel(
+                "MovimentoDetailPanel",
+                "/movimentos/detalhe",
+                "Detalhe do Movimento",
+                List.of(
+                        new CompiledPanelDataSource("movimentos", "Movimento", null, null, Map.of(), null, null, null),
+                        new CompiledPanelDataSource("items", "MovimentoItem", null, null, Map.of(),
+                                "movimentos", "id", "movimentoId")
+                ),
+                new CompiledPanelLayout("table", List.of(), List.of("tipo"), Map.of()),
+                List.of(),
+                null,
+                null,
+                List.of(),
+                Map.of(),
+                Map.of()
+        );
+        return new CompiledModel(
+                "panel.runtime.nesting",
+                "1.0.0",
+                "1.0.0",
+                Map.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(panel)
+        );
+    }
+
     private static CompiledModel executablePanelModel() {
         CompiledProcedureStep saveStep = new CompiledProcedureStep(
                 "save-contact",
@@ -217,7 +310,7 @@ class PanelRuntimeTest {
                 "ContactPanel",
                 "/contacts",
                 "Contacts",
-                List.of(new CompiledPanelDataSource("contacts", "Contact", null, null, Map.of())),
+                List.of(new CompiledPanelDataSource("contacts", "Contact", null, null, Map.of(), null, null, null)),
                 new CompiledPanelLayout("table", List.of(), List.of("message"), Map.of()),
                 List.of(),
                 null,

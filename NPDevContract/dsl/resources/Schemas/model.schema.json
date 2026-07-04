@@ -2616,6 +2616,18 @@
         },
         "params": {
           "type": "object"
+        },
+        "parentDataSource": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parentField": {
+          "type": "string",
+          "minLength": 1
+        },
+        "childField": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "additionalProperties": false
@@ -2684,6 +2696,9 @@
         },
         "ui": {
           "$ref": "#/$defs/presentationMetadata"
+        },
+        "editable": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false

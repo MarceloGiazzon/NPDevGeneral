@@ -115,10 +115,19 @@ public final class DefaultConceptGateway implements ConceptGateway {
 
         List<ConceptRecord> records = store.findAll(tenantId, request.conceptName()).stream()
                 .map(item -> semanticPolicy.filterVisibleFields(item, requestContext))
+                .filter(item -> matchesExact(item, request.filterField(), request.filterValue()))
                 .toList();
         audit(effectiveContext, "CONCEPT_LIST", request.conceptName(), "*", "SUCCESS", "allowed", tenantId);
         trace(requestContext, "SUCCESS", "allowed", decision);
         return records;
+    }
+
+    private static boolean matchesExact(ConceptRecord record, String field, String value) {
+        if (field == null) {
+            return true;
+        }
+        Object actual = record.data().get(field);
+        return Objects.equals(actual == null ? null : String.valueOf(actual), value);
     }
 
     @Override

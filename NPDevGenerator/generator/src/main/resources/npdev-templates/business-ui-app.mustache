@@ -390,7 +390,10 @@
 
   function declaredPanelState(panelMeta) {
     if (!state.declaredPanels[panelMeta.name]) {
-      state.declaredPanels[panelMeta.name] = { loading: false, loaded: false, data: {}, lastActionName: "", lastActionResult: null };
+      state.declaredPanels[panelMeta.name] = {
+        loading: false, loaded: false, data: {}, fieldBindings: [], dataSources: [],
+        lastActionName: "", lastActionResult: null
+      };
     }
     return state.declaredPanels[panelMeta.name];
   }
@@ -410,6 +413,8 @@
         headers: headers()
       });
       entry.data = payload.data || {};
+      entry.fieldBindings = payload.fieldBindings || [];
+      entry.dataSources = payload.dataSources || [];
       entry.loaded = true;
     } catch (error) {
       setStatus(error.message, true);
@@ -419,12 +424,12 @@
     }
   }
 
-  async function executeDeclaredPanelAction(panelMeta, actionName) {
+  async function executeDeclaredPanelAction(panelMeta, actionName, body) {
     const entry = declaredPanelState(panelMeta);
     try {
       const payload = await fetchJson(
         "/api/runtime/metadata/ui/panels/" + encodeURIComponent(panelMeta.name) + "/actions/" + encodeURIComponent(actionName),
-        { method: "POST", headers: headers(), body: JSON.stringify({}) }
+        { method: "POST", headers: headers(), body: JSON.stringify(body || {}) }
       );
       entry.lastActionName = actionName;
       entry.lastActionResult = payload.result;
@@ -475,7 +480,7 @@
         const label = document.createElement("h4");
         label.textContent = dataSourceName;
         block.appendChild(label);
-        block.appendChild(renderDeclaredPanelValue(entry.data[dataSourceName]));
+        block.appendChild(renderDeclaredPanelValue(entry.data[dataSourceName], entry, dataSourceName, panelMeta));
         body.appendChild(block);
       });
       if (entry.lastActionResult !== null && entry.lastActionResult !== undefined) {
@@ -484,7 +489,7 @@
         const label = document.createElement("h4");
         label.textContent = "Last action result (" + entry.lastActionName + ")";
         resultBlock.appendChild(label);
-        resultBlock.appendChild(renderDeclaredPanelValue(entry.lastActionResult));
+        resultBlock.appendChild(renderDeclaredPanelValueGeneric(entry.lastActionResult));
         body.appendChild(resultBlock);
       }
     }
@@ -495,8 +500,9 @@
   // A declared Panel's dataSource/action-result values have no fixed shape (JSON returned by an
   // arbitrary bound procedure/concept query), so this renders generically: a list of uniform
   // objects becomes a table (mirrors every other records table in this file), anything else a
-  // formatted JSON block.
-  function renderDeclaredPanelValue(value) {
+  // formatted JSON block. Kept as the guaranteed-unchanged fallback for any dataSource that has no
+  // matching declared fieldBindings -- see renderDeclaredPanelValue below for the declared-column path.
+  function renderDeclaredPanelValueGeneric(value) {
     if (Array.isArray(value) && value.length && value.every(function (item) {
       return item && typeof item === "object" && !Array.isArray(item);
     })) {
@@ -532,6 +538,112 @@
     pre.className = "declared-panel-json";
     pre.textContent = JSON.stringify(value, null, 2);
     return pre;
+  }
+
+  // Declared fieldBindings scoped to one dataSource (or unscoped, applying to every dataSource),
+  // sorted by declared ui.order. Returns null when none apply, so the caller falls back to the
+  // fully-generic union-of-keys rendering above -- existing Panels with no fieldBindings for a
+  // given dataSource render byte-identically to before this function existed.
+  function declaredPanelColumns(fieldBindings, dataSourceName) {
+    const scoped = (fieldBindings || []).filter(function (binding) {
+      return !binding.dataSource || binding.dataSource === dataSourceName;
+    });
+    if (!scoped.length) { return null; }
+    return scoped.slice().sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+  }
+
+  // Resolves which declared Panel action (if any) should save an edited row of the given
+  // dataSource: the first conceptMutation action whose concept matches that dataSource's own
+  // concept. No matching action -> no Save button is rendered for that dataSource at all (a
+  // graceful no-op, never an error) -- Panels with editable-looking bindings but no matching
+  // action just render read-only, exactly like before this function existed.
+  function resolveRowSaveAction(panelMeta, entry, dataSourceName) {
+    const dataSourceMeta = (entry.dataSources || []).find(function (ds) { return ds.name === dataSourceName; });
+    const concept = dataSourceMeta ? String(dataSourceMeta.concept || "").toLowerCase() : "";
+    if (!concept) { return null; }
+    return (panelMeta.actions || []).find(function (action) {
+      return String(action.binding || "").toLowerCase() === "conceptmutation"
+        && String(action.concept || "").toLowerCase() === concept;
+    }) || null;
+  }
+
+  // Declared-column table for one dataSource's rows. Record shape from the runtime is always
+  // {tenantId, concept, id, data}, so each column's value lives at row.data[column.sourceField].
+  // If a row carries __children (attached server-side by PanelRuntime for a declared parent/child
+  // dataSource pair -- one level of nesting only, per the Tier 2 scope), each child dataSource's
+  // rows render as their own nested table directly below the parent row. Columns marked
+  // editable render an <input> instead of static text; an explicit per-row "Save" button (not
+  // autosave) appears once per row that has at least one editable column and a resolvable save
+  // action -- modeled directly on the proven WmsOffice centro-trabalho.html renderPosicaoRow pattern.
+  function renderDeclaredColumnsTable(rows, columns, dataSourceName, panelMeta, entry) {
+    const table = document.createElement("table");
+    table.className = "records";
+    const editableColumns = columns.filter(function (column) { return column.editable; });
+    const saveAction = editableColumns.length ? resolveRowSaveAction(panelMeta, entry, dataSourceName) : null;
+    const headerLabels = columns.map(function (column) { return column.label || column.field; });
+    if (saveAction) { headerLabels.push(""); }
+    const thead = document.createElement("thead");
+    thead.appendChild(headerRow(headerLabels));
+    table.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    rows.forEach(function (row) {
+      const tr = document.createElement("tr");
+      const rowData = row && typeof row === "object" ? (row.data || {}) : {};
+      const inputsByField = {};
+      columns.forEach(function (column) {
+        const td = document.createElement("td");
+        const cellValue = rowData[column.sourceField];
+        if (column.editable) {
+          const input = document.createElement("input");
+          const isNumeric = typeof cellValue === "number";
+          input.type = isNumeric ? "number" : "text";
+          input.value = cellValue === null || cellValue === undefined ? "" : cellValue;
+          input.className = "declared-panel-edit-input";
+          inputsByField[column.sourceField] = input;
+          td.appendChild(input);
+        } else {
+          td.textContent = formatValue(cellValue);
+        }
+        tr.appendChild(td);
+      });
+      if (saveAction) {
+        const actionTd = document.createElement("td");
+        actionTd.appendChild(button("Save", "secondary small", function () {
+          const data = Object.assign({}, rowData);
+          Object.keys(inputsByField).forEach(function (field) {
+            const input = inputsByField[field];
+            data[field] = input.type === "number" ? Number(input.value) : input.value;
+          });
+          executeDeclaredPanelAction(panelMeta, saveAction.name, { id: row.id, data: data });
+        }));
+        tr.appendChild(actionTd);
+      }
+      tbody.appendChild(tr);
+
+      const children = row && typeof row === "object" ? row.__children : null;
+      if (children && typeof children === "object") {
+        Object.keys(children).forEach(function (childDataSourceName) {
+          const childRows = children[childDataSourceName];
+          const childTr = document.createElement("tr");
+          childTr.className = "declared-panel-nested-row";
+          const childTd = document.createElement("td");
+          childTd.colSpan = headerLabels.length;
+          childTd.appendChild(renderDeclaredPanelValue(childRows, entry, childDataSourceName, panelMeta));
+          childTr.appendChild(childTd);
+          tbody.appendChild(childTr);
+        });
+      }
+    });
+    table.appendChild(tbody);
+    return table;
+  }
+
+  function renderDeclaredPanelValue(value, entry, dataSourceName, panelMeta) {
+    const columns = declaredPanelColumns(entry.fieldBindings, dataSourceName);
+    if (columns && Array.isArray(value)) {
+      return renderDeclaredColumnsTable(value, columns, dataSourceName, panelMeta, entry);
+    }
+    return renderDeclaredPanelValueGeneric(value);
   }
 
   // Read-only "app store" view of every built-in platform pack the generator found on disk,

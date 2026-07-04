@@ -198,6 +198,39 @@ class DefaultConceptGatewayTest {
         assertTrue(listTrace.ruleProfiles().contains("interactive"));
     }
 
+    @Test
+    void listWithFilterFieldReturnsOnlyMatchingRecords() {
+        DefaultConceptGateway gateway = new DefaultConceptGateway(
+                new InMemoryConceptStore(),
+                PermissionEvaluator.allowAll(),
+                (left, right) -> left.equals(right),
+                AuditLogStore.noop(),
+                new SemanticPolicy(false),
+                new CapturingTraceSink()
+        );
+        ExecutionContext context = ExecutionContext.of("tenant-a", "actor-a")
+                .withTag("executionMode", "interactive");
+
+        gateway.save(new ConceptWriteRequest("MovimentoItem", "item-1", null,
+                Map.of("amount", 10, "movimentoId", "mov-1", "quantidade", 10)), context);
+        gateway.save(new ConceptWriteRequest("MovimentoItem", "item-2", null,
+                Map.of("amount", 20, "movimentoId", "mov-2", "quantidade", 20)), context);
+        gateway.save(new ConceptWriteRequest("MovimentoItem", "item-3", null,
+                Map.of("amount", 30, "movimentoId", "mov-1", "quantidade", 30)), context);
+
+        List<ConceptRecord> filtered = gateway.list(
+                new ConceptListRequest("MovimentoItem", null, "movimentoId", "mov-1"), context);
+        assertEquals(2, filtered.size());
+        assertTrue(filtered.stream().allMatch(record -> "mov-1".equals(record.data().get("movimentoId"))));
+
+        List<ConceptRecord> unfiltered = gateway.list(new ConceptListRequest("MovimentoItem", null), context);
+        assertEquals(3, unfiltered.size());
+
+        List<ConceptRecord> noMatch = gateway.list(
+                new ConceptListRequest("MovimentoItem", null, "movimentoId", "mov-does-not-exist"), context);
+        assertTrue(noMatch.isEmpty());
+    }
+
     private static final class CapturingAuditLogStore implements AuditLogStore {
         private final List<AuditRecord> records = new ArrayList<>();
 

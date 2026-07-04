@@ -2,11 +2,19 @@ package com.npdev.kernel.concepts;
 
 public record ConceptListRequest(
         String conceptName,
-        String tenantId
+        String tenantId,
+        String filterField,
+        String filterValue
 ) {
     public ConceptListRequest {
         conceptName = normalizeRequired(conceptName, "conceptName");
         tenantId = normalizeOptional(tenantId);
+        filterField = normalizeOptional(filterField);
+        // filterValue intentionally NOT blank-normalized to null: an empty-string match is a legitimate value.
+    }
+
+    public ConceptListRequest(String conceptName, String tenantId) {
+        this(conceptName, tenantId, null, null);
     }
 
     private static String normalizeRequired(String value, String field) {

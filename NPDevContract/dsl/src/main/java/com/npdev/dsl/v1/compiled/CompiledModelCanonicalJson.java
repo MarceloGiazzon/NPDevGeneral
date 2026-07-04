@@ -504,6 +504,9 @@ public final class CompiledModelCanonicalJson {
             node.put("query", safe(dataSource.query()));
             node.put("procedure", safe(dataSource.procedure()));
             node.set("params", toObjectMap(dataSource.params()));
+            node.put("parentDataSource", safe(dataSource.parentDataSource()));
+            node.put("parentField", safe(dataSource.parentField()));
+            node.put("childField", safe(dataSource.childField()));
             out.add(node);
         }
         return out;
@@ -540,6 +543,7 @@ public final class CompiledModelCanonicalJson {
             node.put("enabledWhen", safe(binding.enabledWhen()));
             node.put("readonlyWhen", safe(binding.readonlyWhen()));
             node.set("ui", toPresentationMetadata(binding.ui()));
+            node.put("editable", binding.editable());
             out.add(node);
         }
         return out;

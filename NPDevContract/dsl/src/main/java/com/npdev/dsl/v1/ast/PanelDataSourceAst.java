@@ -7,7 +7,10 @@ public record PanelDataSourceAst(
         String concept,
         String query,
         String procedure,
-        Map<String, Object> params
+        Map<String, Object> params,
+        String parentDataSource,
+        String parentField,
+        String childField
 ) {
     public PanelDataSourceAst {
         params = params == null ? Map.of() : Map.copyOf(params);

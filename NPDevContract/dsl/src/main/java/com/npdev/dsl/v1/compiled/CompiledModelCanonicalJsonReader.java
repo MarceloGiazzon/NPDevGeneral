@@ -620,7 +620,10 @@ public final class CompiledModelCanonicalJsonReader {
                     optionalText(dataSourceNode, "concept"),
                     optionalText(dataSourceNode, "query"),
                     optionalText(dataSourceNode, "procedure"),
-                    toObjectMap(dataSourceNode.get("params"))
+                    toObjectMap(dataSourceNode.get("params")),
+                    optionalText(dataSourceNode, "parentDataSource"),
+                    optionalText(dataSourceNode, "parentField"),
+                    optionalText(dataSourceNode, "childField")
             ));
         }
         return out;
@@ -657,7 +660,8 @@ public final class CompiledModelCanonicalJsonReader {
                     optionalText(bindingNode, "visibleWhen"),
                     optionalText(bindingNode, "enabledWhen"),
                     optionalText(bindingNode, "readonlyWhen"),
-                    toPresentationMetadata(bindingNode.get("ui"))
+                    toPresentationMetadata(bindingNode.get("ui")),
+                    booleanValue(bindingNode, "editable")
             ));
         }
         return out;

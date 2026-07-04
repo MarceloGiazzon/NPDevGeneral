@@ -747,7 +747,10 @@ public final class JsonModelParser {
                     readText(dataSourceNode, "concept"),
                     readText(dataSourceNode, "query"),
                     readText(dataSourceNode, "procedure"),
-                    parseObjectMap(dataSourceNode.get("params"))
+                    parseObjectMap(dataSourceNode.get("params")),
+                    readText(dataSourceNode, "parentDataSource"),
+                    readText(dataSourceNode, "parentField"),
+                    readText(dataSourceNode, "childField")
             ));
         }
         return out;
@@ -796,7 +799,8 @@ public final class JsonModelParser {
                     readText(bindingNode, "visibleWhen"),
                     readText(bindingNode, "enabledWhen"),
                     readText(bindingNode, "readonlyWhen"),
-                    parsePresentationMetadata(bindingNode.get("ui"), fieldPath + "[" + field + "].ui")
+                    parsePresentationMetadata(bindingNode.get("ui"), fieldPath + "[" + field + "].ui"),
+                    readBooleanFlag(bindingNode, "editable")
             ));
         }
         return out;

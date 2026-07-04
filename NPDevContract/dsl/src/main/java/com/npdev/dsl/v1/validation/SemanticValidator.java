@@ -46,6 +46,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -557,6 +558,31 @@ public final class SemanticValidator {
                 if (hasText(dataSource.procedure()) && !procedureNames.contains(normalize(dataSource.procedure()))) {
                     errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
                             + ": procedure not found: " + dataSource.procedure());
+                }
+                if (hasText(dataSource.parentDataSource())) {
+                    if (normalize(dataSource.parentDataSource()).equals(normalize(dataSource.name()))) {
+                        errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
+                                + ": cannot declare itself as parentDataSource");
+                    }
+                    Optional<PanelDataSourceAst> parent = panel.dataSources().stream()
+                            .filter(candidate -> normalize(candidate.name()).equals(normalize(dataSource.parentDataSource())))
+                            .findFirst();
+                    if (parent.isEmpty()) {
+                        errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
+                                + ": parentDataSource not found among sibling dataSources: " + dataSource.parentDataSource());
+                    } else if (hasText(parent.get().parentDataSource())) {
+                        errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
+                                + ": nesting is limited to one level (parentDataSource " + dataSource.parentDataSource()
+                                + " is itself a child dataSource)");
+                    }
+                    if (!hasText(dataSource.childField())) {
+                        errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
+                                + ": childField is required when parentDataSource is declared");
+                    }
+                    if (hasText(dataSource.procedure())) {
+                        errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
+                                + ": a child dataSource (parentDataSource declared) must be concept/query-bound, not procedure-bound");
+                    }
                 }
             }
             for (PanelActionAst action : panel.actions()) {
