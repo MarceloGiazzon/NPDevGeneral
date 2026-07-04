@@ -1347,7 +1347,7 @@ public final class GeneratedCrudRuntimeSupport {
         }
         String normalizedType = normalize(action.type());
         if ("create".equals(normalizedType)) {
-            return executeCreateOrchestrationAction(action.createAction(), eventPayload);
+            return executeCreateOrchestrationAction(action.createAction(), envelope, eventPayload);
         }
         if ("callcapability".equals(normalizedType)) {
             return executeCapabilityOrchestrationAction(
@@ -1371,12 +1371,13 @@ public final class GeneratedCrudRuntimeSupport {
 
     private OrchestrationActionExecutionResult executeCreateOrchestrationAction(
             EventCreateOrchestration action,
+            EventEnvelope envelope,
             Map<String, Object> eventPayload
     ) {
         if (action == null) {
             return OrchestrationActionExecutionResult.failed("failed", "create_action_missing");
         }
-        Map<String, Object> createPayload = resolveCreatePayload(action, eventPayload);
+        Map<String, Object> createPayload = resolveCreatePayload(action, envelope, eventPayload);
         if (createPayload.isEmpty()) {
             return OrchestrationActionExecutionResult.failed("failed", "mapped_payload_empty");
         }
@@ -1715,6 +1716,7 @@ public final class GeneratedCrudRuntimeSupport {
 
     private Map<String, Object> resolveCreatePayload(
             EventCreateOrchestration orchestration,
+            EventEnvelope envelope,
             Map<String, Object> eventPayload
     ) {
         if (orchestration == null || orchestration.fieldMap().isEmpty()) {
@@ -1736,6 +1738,17 @@ public final class GeneratedCrudRuntimeSupport {
                     || "reference".equals(normalizeType(idField.getDslType())))) {
                 values.put(idField.getName(), UUID.randomUUID());
             }
+        }
+        // Without this, an orchestration-created row silently falls back to the table's schema-level
+        // tenant_id default ("default") instead of the tenant that actually triggered the event -- the
+        // row exists but is invisible through the normal tenant-scoped list/read endpoints. Confirmed
+        // live: a create-orchestration row was findable only via a direct SQL query, never via the
+        // generated concept's REST API under the acting tenant. "tenantId" has no CompiledField (it's
+        // a generator-injected infra column, never DSL-authored), so it's added under its raw key --
+        // insertMappedRow's columnName() already falls back to a computed identifier for keys with no
+        // matching field, exactly for cases like this one.
+        if (!hasMapKey(values, "tenantId") && envelope != null && envelope.tenantId() != null) {
+            values.put("tenantId", envelope.tenantId());
         }
         return values.isEmpty() ? Map.of() : Map.copyOf(values);
     }
@@ -2137,6 +2150,16 @@ public final class GeneratedCrudRuntimeSupport {
         }
         String safeConcept = conceptName == null || conceptName.isBlank() ? null : conceptName;
         String safeField = fieldName == null || fieldName.isBlank() ? null : fieldName;
+        if (exception instanceof com.npdev.kernel.concepts.ReferentialIntegrityException referentialIntegrityException) {
+            return Optional.of(new InvariantViolationException(List.of(new InvariantViolationDetail(
+                    "reference_integrity_failed",
+                    safeConcept != null ? safeConcept : referentialIntegrityException.getConceptName(),
+                    "in_memory_reference_constraint",
+                    safeField != null ? safeField : referentialIntegrityException.getFieldName(),
+                    referentialIntegrityException.getMessage(),
+                    false
+            ))));
+        }
         if (isUniqueViolation(exception)) {
             return Optional.of(new InvariantViolationException(List.of(new InvariantViolationDetail(
                     "unique_integrity_failed",

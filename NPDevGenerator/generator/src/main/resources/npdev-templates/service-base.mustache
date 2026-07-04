@@ -601,8 +601,14 @@ public class {{entityName}}ServiceBase {
     }
 
     private void deleteFromConceptStore(UUID id) {
-        if (id != null) {
+        if (id == null) {
+            return;
+        }
+        try {
             conceptStore.deleteById(currentTenantId(), CONCEPT_NAME, String.valueOf(id));
+        } catch (RuntimeException exception) {
+            throw GeneratedCrudRuntimeSupport.mapDataIntegrityViolation("{{conceptName}}", null, exception)
+                    .orElseThrow(() -> exception);
         }
     }
 

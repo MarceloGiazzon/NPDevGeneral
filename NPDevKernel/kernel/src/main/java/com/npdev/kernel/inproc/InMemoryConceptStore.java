@@ -1,6 +1,11 @@
 package com.npdev.kernel.inproc;
 
+import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledReferenceSemantics;
 import com.npdev.kernel.concepts.ConceptRecord;
+import com.npdev.kernel.concepts.ReferentialIntegrityException;
 import com.npdev.kernel.ports.ConceptStore;
 
 import java.util.ArrayList;
@@ -13,6 +18,22 @@ import java.util.Optional;
 
 public final class InMemoryConceptStore implements ConceptStore {
     private final Map<String, ConceptRecord> records = new LinkedHashMap<>();
+    private final CompiledModel model;
+
+    public InMemoryConceptStore() {
+        this(null);
+    }
+
+    /**
+     * @param model when present, deletes are checked against every other concept's declared
+     *              {@code reference}/{@code onDelete} bonds pointing at the concept being deleted
+     *              (restrict/cascade/nullify), mirroring the referential-integrity enforcement a
+     *              physical database's foreign-key constraints already provide for JDBC-backed
+     *              stores. {@code null} preserves the original no-enforcement behavior.
+     */
+    public InMemoryConceptStore(CompiledModel model) {
+        this.model = model;
+    }
 
     @Override
     public synchronized Optional<ConceptRecord> findById(String tenantId, String conceptName, String id) {
@@ -40,7 +61,71 @@ public final class InMemoryConceptStore implements ConceptStore {
 
     @Override
     public synchronized void deleteById(String tenantId, String conceptName, String id) {
+        if (model != null) {
+            enforceReferentialIntegrity(tenantId, conceptName, id);
+        }
         records.remove(key(tenantId, conceptName, id));
+    }
+
+    /**
+     * Scans every other concept's fields for a {@code reference} targeting {@code conceptName}
+     * and applies its {@code onDelete} policy (default {@code restrict}, matching
+     * {@link CompiledReferenceSemantics#getOnDelete()}'s own documented default) against whatever
+     * rows in this same in-memory registry currently point at {@code id}.
+     */
+    private void enforceReferentialIntegrity(String tenantId, String conceptName, String id) {
+        for (CompiledConcept referencingConcept : model.getConcepts()) {
+            for (CompiledField field : referencingConcept.getFields()) {
+                if (!conceptName.equals(field.getReferenceTarget())) {
+                    continue;
+                }
+                String onDelete = onDeletePolicy(field.getReferenceSemantics());
+                List<ConceptRecord> referencingRows = findReferencingRows(
+                        tenantId, referencingConcept.getName(), field.getName(), id);
+                if (referencingRows.isEmpty()) {
+                    continue;
+                }
+                switch (onDelete) {
+                    case "cascade" -> {
+                        for (ConceptRecord row : referencingRows) {
+                            deleteById(tenantId, referencingConcept.getName(), row.id());
+                        }
+                    }
+                    case "nullify" -> {
+                        for (ConceptRecord row : referencingRows) {
+                            Map<String, Object> updatedData = new LinkedHashMap<>(row.data());
+                            updatedData.put(field.getName(), null);
+                            save(new ConceptRecord(row.conceptName(), row.id(), row.tenantId(), updatedData));
+                        }
+                    }
+                    default -> throw new ReferentialIntegrityException(
+                            conceptName,
+                            field.getName(),
+                            "Cannot delete " + conceptName + " " + id + ": referenced by "
+                                    + referencingRows.size() + " " + referencingConcept.getName()
+                                    + " record(s) via '" + field.getName() + "'"
+                    );
+                }
+            }
+        }
+    }
+
+    private static String onDeletePolicy(CompiledReferenceSemantics semantics) {
+        if (semantics == null || semantics.getOnDelete() == null || semantics.getOnDelete().isBlank()) {
+            return "restrict";
+        }
+        return semantics.getOnDelete().trim().toLowerCase(Locale.ROOT);
+    }
+
+    private List<ConceptRecord> findReferencingRows(String tenantId, String conceptName, String fieldName, String id) {
+        List<ConceptRecord> out = new ArrayList<>();
+        for (ConceptRecord record : findAll(tenantId, conceptName)) {
+            Object value = record.data().get(fieldName);
+            if (value != null && id.equals(String.valueOf(value))) {
+                out.add(record);
+            }
+        }
+        return out;
     }
 
     private static String key(String tenantId, String conceptName, String id) {

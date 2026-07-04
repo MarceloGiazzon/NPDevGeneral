@@ -152,8 +152,8 @@ public class NpdevRuntimeModeConfig {
 
     @Bean
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "in-memory", matchIfMissing = true)
-    public ConceptStore inMemoryConceptStore() {
-        return new InMemoryConceptStore();
+    public ConceptStore inMemoryConceptStore(CompiledModel compiledModel) {
+        return new InMemoryConceptStore(compiledModel);
     }
 
     @Bean

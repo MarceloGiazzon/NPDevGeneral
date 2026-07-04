@@ -301,10 +301,11 @@ public class PanelRuntime {
                         "ConceptGateway is required for executable panel data."
                 );
             }
-            return requireConceptGateway()
+            List<Map<String, Object>> rows = requireConceptGateway()
                     .list(new ConceptListRequest(conceptName, null, filterField, filterValue), context).stream()
                     .map(PanelRuntime::toRecordMap)
-                    .toList();
+                    .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+            return applyQueryWhereFilter(rows, resolveDataSourceQuery(dataSource));
         }
         return fallbackDataSource(
                 "PANEL_DATASOURCE_UNBOUND",
@@ -474,13 +475,86 @@ public class PanelRuntime {
         if (hasText(dataSource.concept())) {
             return dataSource.concept();
         }
+        return resolveDataSourceQuery(dataSource).map(CompiledQuery::concept).orElse("");
+    }
+
+    private Optional<CompiledQuery> resolveDataSourceQuery(CompiledPanelDataSource dataSource) {
         if (compiledModel == null || !hasText(dataSource.query())) {
-            return "";
+            return Optional.empty();
         }
-        Optional<CompiledQuery> query = compiledModel.getQueries().stream()
+        return compiledModel.getQueries().stream()
                 .filter(item -> dataSource.query().equalsIgnoreCase(item.name()))
                 .findFirst();
-        return query.map(CompiledQuery::concept).orElse("");
+    }
+
+    /**
+     * Applies a query's declared {@code where} clause as an in-process post-filter on records
+     * already fetched from the concept gateway. Deliberately scoped to the same single-field
+     * {@code field == literal} / {@code field != literal} shape every query in practice declares
+     * (mirrors CelInvariantEngine's own documented DNF-only scope) -- not a general expression
+     * evaluator. A clause outside this shape is left unenforced (rows pass through unfiltered)
+     * rather than failing the whole panel load.
+     */
+    private static List<Map<String, Object>> applyQueryWhereFilter(List<Map<String, Object>> rows, Optional<CompiledQuery> query) {
+        String where = query.map(CompiledQuery::where).orElse(null);
+        if (!hasText(where)) {
+            return rows;
+        }
+        String trimmed = where.trim();
+        boolean negate;
+        int opIndex = trimmed.indexOf("!=");
+        if (opIndex >= 0) {
+            negate = true;
+        } else {
+            opIndex = trimmed.indexOf("==");
+            negate = false;
+            if (opIndex < 0) {
+                return rows;
+            }
+        }
+        String field = trimmed.substring(0, opIndex).trim();
+        String literalText = trimmed.substring(opIndex + 2).trim();
+        if (field.isEmpty()) {
+            return rows;
+        }
+        Object literal = parseWhereLiteral(literalText);
+        List<Map<String, Object>> filtered = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Object dataObj = row.get("data");
+            Object fieldValue = dataObj instanceof Map<?, ?> data ? data.get(field) : null;
+            boolean equal = Objects.equals(normalizeForCompare(fieldValue), normalizeForCompare(literal));
+            if (equal != negate) {
+                filtered.add(row);
+            }
+        }
+        return filtered;
+    }
+
+    private static Object parseWhereLiteral(String text) {
+        if (text.length() >= 2 && text.startsWith("'") && text.endsWith("'")) {
+            return text.substring(1, text.length() - 1);
+        }
+        if ("true".equalsIgnoreCase(text)) {
+            return Boolean.TRUE;
+        }
+        if ("false".equalsIgnoreCase(text)) {
+            return Boolean.FALSE;
+        }
+        try {
+            return Double.parseDouble(text);
+        } catch (NumberFormatException ignored) {
+            return text;
+        }
+    }
+
+    private static Object normalizeForCompare(Object value) {
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value != null) {
+            return String.valueOf(value);
+        }
+        return null;
     }
 
     private String primaryPanelConcept(CompiledPanel panel) {
