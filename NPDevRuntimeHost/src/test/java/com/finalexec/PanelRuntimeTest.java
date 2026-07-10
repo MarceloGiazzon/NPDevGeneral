@@ -248,7 +248,8 @@ class PanelRuntimeTest {
                 null,
                 List.of(),
                 Map.of(),
-                Map.of()
+                Map.of(),
+                null
         );
         return new CompiledModel(
                 "panel.runtime.nesting",
@@ -330,7 +331,8 @@ class PanelRuntimeTest {
                         Map.of()
                 )),
                 Map.of(),
-                Map.of()
+                Map.of(),
+                null
         );
         return new CompiledModel(
                 "panel.runtime",

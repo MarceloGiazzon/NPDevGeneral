@@ -447,6 +447,13 @@ writer.writeRelative(
             }
             String conceptKey = concept.getName().toLowerCase(Locale.ROOT);
             boolean adminOnly = isAdminConcept(concept.getName());
+            // workspace::Menu is a platform-default navigation source read by every logged-in
+            // user's own shell/UI, not an admin surface -- unlike every other admin-pack concept,
+            // withholding its read/list operations from ordinary users isn't a security boundary,
+            // it just breaks navigation entirely for anyone who isn't a super-user. Its own
+            // create/update/delete stay admin-only, same as every other identity::*/workspace::*
+            // concept -- only list/read are opened here.
+            boolean publiclyReadableMenu = "workspace::menu".equals(conceptKey);
             for (String operation : List.of("create", "update", "delete", "read", "list")) {
                 String permission = operation + ":" + conceptKey;
                 // Blank tenantId is a wildcard match in PermissionGrant.matches() -- these grants are
@@ -458,6 +465,10 @@ writer.writeRelative(
                 // because the old hardcoded tenantId="dev" only ever matched the one tenant the
                 // generator itself knows about at generation time.
                 grants.add(new PermissionGrantSpec(permission, "", "", superUserRoleKey));
+                boolean openMenuRead = publiclyReadableMenu && ("read".equals(operation) || "list".equals(operation));
+                if (openMenuRead && !"user".equals(superUserRoleKey)) {
+                    grants.add(new PermissionGrantSpec(permission, "", "", "user"));
+                }
                 if (!adminOnly && !"user".equals(superUserRoleKey)) {
                     grants.add(new PermissionGrantSpec(permission, "", "", "user"));
                     // If this CRUD operation's mutation is delegated to a declared Flow (the

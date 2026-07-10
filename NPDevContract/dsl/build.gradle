@@ -54,6 +54,26 @@ tasks.withType(Test).configureEach {
     useJUnitPlatform()
 }
 
+// AI-authoring loop: validate a draft model.json (structural + semantic) without generating.
+// Prints a typed JSON diagnostic report (contract npdev-validation-report.v2) and, with
+// -PreportOut=<path>, also writes it to that file (the noise-free channel the CLI/MCP reads).
+// ignoreExitValue lets the report surface even when the model fails validation (exit 2).
+tasks.register('validateModel', JavaExec) {
+    group = 'verification'
+    description = 'Validate a model.json (structural + semantic) and emit a typed JSON diagnostic report.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.npdev.dsl.v1.cli.ModelValidatorMain'
+    ignoreExitValue = true
+    def cliArgs = []
+    if (project.hasProperty('modelPath')) {
+        cliArgs << project.getProperty('modelPath')
+    }
+    if (project.hasProperty('reportOut')) {
+        cliArgs << '--out' << project.getProperty('reportOut')
+    }
+    args cliArgs
+}
+
 tasks.register('checkRuntimeSchemaCopies') {
     description = 'Ensures active canonical schemas are synchronized into DSL runtime resources.'
     group = 'verification'

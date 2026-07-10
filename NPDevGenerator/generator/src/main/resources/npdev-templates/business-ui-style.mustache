@@ -1,8 +1,12 @@
+/* Colors reference the shell's `--np-*` tokens (shell.css, loaded on every page) with the
+   original hardcoded values as fallbacks, so an app-owned /theme.css (see shell.js) restyles
+   these generated screens too -- accent, grid headers, striping, semantic colors -- without
+   editing this hash-verified file. */
 :root {
   color-scheme: light;
-  font-family: Inter, Segoe UI, Roboto, Arial, sans-serif;
-  background: #f5f7fa;
-  color: #18202a;
+  font-family: var(--np-font, Inter, Segoe UI, Roboto, Arial, sans-serif);
+  background: var(--np-bg, #f5f7fa);
+  color: var(--np-text, #18202a);
 }
 
 * {
@@ -83,8 +87,8 @@ body.frame-none .layout {
 }
 
 .side-nav a.active {
-  background: #e8f0fb;
-  color: #1769aa;
+  background: color-mix(in srgb, var(--np-accent, #1769aa) 12%, transparent);
+  color: var(--np-accent, #1769aa);
   font-weight: 600;
 }
 
@@ -120,13 +124,13 @@ button:hover {
 }
 
 button.primary {
-  background: #1769aa;
-  border-color: #1769aa;
-  color: #ffffff;
+  background: var(--np-accent, #1769aa);
+  border-color: var(--np-accent, #1769aa);
+  color: var(--np-on-accent, #ffffff);
 }
 
 button.danger {
-  color: #9f1d1d;
+  color: var(--np-negative, #9f1d1d);
 }
 
 button:disabled {
@@ -143,6 +147,14 @@ textarea {
   padding: 6px 10px;
   background: #ffffff;
   color: #18202a;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--np-accent, #1769aa);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--np-accent, #1769aa) 25%, transparent);
 }
 
 textarea {
@@ -198,6 +210,20 @@ textarea {
   min-width: 260px;
   color: #4c5a69;
   font-size: 13px;
+}
+
+/* Replaces the old static header's status/API-key strip now that the shell (shell.js) owns the
+   actual header -- this renders as the first child of #app instead, on every render(). Hidden
+   API-key field in jwt mode (see business-ui-app.mustache's render()), where the shell's own
+   identity/logout is the real session mechanism and this would just be redundant chrome. */
+.business-ui-authbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 20px;
+  border-bottom: 1px solid #d8dee7;
+  background: #ffffff;
 }
 
 .workspace {
@@ -260,17 +286,27 @@ textarea {
 
 .records th,
 .records td {
-  padding: 11px 12px;
+  padding: 8px 10px;
   border-bottom: 1px solid #e7ebf0;
   text-align: left;
   vertical-align: top;
   overflow-wrap: anywhere;
+  font-size: 13.5px;
 }
 
 .records th {
-  color: #4c5a69;
+  color: var(--np-grid-head-text, #4c5a69);
   font-size: 13px;
-  background: #f9fafc;
+  font-weight: 600;
+  background: var(--np-grid-head-bg, #f9fafc);
+}
+
+.records tbody tr:nth-child(even) {
+  background: var(--np-row-stripe, rgba(16, 24, 40, .02));
+}
+
+.records tbody tr:hover {
+  background: var(--np-row-hover, rgba(23, 105, 170, .05));
 }
 
 .records th.sortable {
@@ -341,6 +377,16 @@ textarea {
   gap: 6px;
 }
 
+/* Explicit (not inherited) color + weight, independent of whatever --np-text the shell's theme
+   happens to resolve to -- field labels are the primary reading target of a form and must stay
+   legible even if a surrounding surface's background doesn't track dark mode (see shell.js.mustache
+   theme.mode fix: this used to silently go near-white-on-white under prefers-color-scheme:dark). */
+.field-label-text {
+  color: #1c2333;
+  font-weight: 600;
+  font-size: 13px;
+}
+
 .detail-row {
   grid-template-columns: 180px 1fr;
   align-items: start;
@@ -384,9 +430,9 @@ textarea {
 }
 
 .form-tab.active {
-  color: #1769aa;
+  color: var(--np-accent, #1769aa);
   font-weight: 600;
-  border-bottom-color: #1769aa;
+  border-bottom-color: var(--np-accent, #1769aa);
 }
 
 
@@ -425,22 +471,22 @@ textarea {
 
 .badge-info {
   background: #e3f0fc;
-  color: #1769aa;
+  color: var(--np-accent, #1769aa);
 }
 
 .badge-success {
   background: #e6f6ea;
-  color: #1e7a34;
+  color: var(--np-positive, #1e7a34);
 }
 
 .badge-warning {
   background: #fff3da;
-  color: #95620a;
+  color: var(--np-warning, #95620a);
 }
 
 .badge-danger {
   background: #fbe4e4;
-  color: #9f1d1d;
+  color: var(--np-negative, #9f1d1d);
 }
 
 .badge-progress {
@@ -465,7 +511,7 @@ textarea {
 }
 
 .pack-fork-badge {
-  color: #1769aa;
+  color: var(--np-accent, #1769aa);
   font-style: italic;
 }
 
@@ -534,6 +580,53 @@ textarea {
 
 .multiselect-item input[type="checkbox"] {
   flex-shrink: 0;
+}
+
+.image-select-control {
+  display: block;
+}
+
+.image-select-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.image-select-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #d8dee7;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: center;
+}
+
+.image-select-card:hover {
+  background: #f5f7fa;
+}
+
+.image-select-card.selected {
+  border-color: #2f6fed;
+  box-shadow: 0 0 0 2px rgba(47, 111, 237, 0.2);
+}
+
+.image-select-icon {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.image-select-icon-glyph {
+  font-size: 24px;
+  line-height: 32px;
 }
 
 .pack-graph-container {
@@ -728,8 +821,8 @@ textarea {
 }
 
 .picker-row:hover td {
-  background: #e8f0fb;
-  color: #1769aa;
+  background: color-mix(in srgb, var(--np-accent, #1769aa) 10%, transparent);
+  color: var(--np-accent, #1769aa);
 }
 
 .array-table-editor {

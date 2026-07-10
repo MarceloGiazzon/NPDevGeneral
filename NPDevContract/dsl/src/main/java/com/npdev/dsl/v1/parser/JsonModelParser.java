@@ -155,6 +155,7 @@ public final class JsonModelParser {
         List<RuleProfileAst> ruleProfiles = new ArrayList<>();
         List<ProcedureAst> procedures = new ArrayList<>();
         List<PanelAst> panels = new ArrayList<>();
+        List<GuidePageAst> guidePages = new ArrayList<>();
         List<String> parserWarnings = new ArrayList<>(sourceWarnings == null ? List.of() : sourceWarnings);
         Map<String, ConceptAst> conceptsByLowerName = new LinkedHashMap<>();
 
@@ -500,6 +501,7 @@ public final class JsonModelParser {
         ruleProfiles.addAll(parseRuleProfiles(root.get("ruleProfiles")));
         procedures.addAll(parseProcedures(root.get("procedures")));
         panels.addAll(parsePanels(root.get("panels")));
+        guidePages.addAll(parseGuidePages(root.get("guidePages")));
 
         return new ModelAst(
                 namespace,
@@ -516,6 +518,7 @@ public final class JsonModelParser {
                 ruleProfiles,
                 procedures,
                 panels,
+                guidePages,
                 parserWarnings
         );
     }
@@ -727,7 +730,97 @@ public final class JsonModelParser {
                     readText(panelNode, "enabledWhen"),
                     parsePanelActions(panelNode.get("actions"), "panels[" + name + "].actions"),
                     parseObjectMap(panelNode.get("explainability")),
-                    parseObjectMap(panelNode.get("metadata"))
+                    parseObjectMap(panelNode.get("metadata")),
+                    readText(panelNode, "guidePage")
+            ));
+        }
+        return out;
+    }
+
+    private static List<GuidePageAst> parseGuidePages(JsonNode node) throws IOException {
+        List<GuidePageAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("guidePages must be an array");
+        }
+        for (JsonNode pageNode : node) {
+            out.add(new GuidePageAst(
+                    requiredText(pageNode, "name"),
+                    readOptionalBoolean(pageNode, "default") != null && readOptionalBoolean(pageNode, "default"),
+                    parseGuidePageRegions(pageNode.get("regions")),
+                    parseGuidePageTheme(pageNode.get("theme")),
+                    parseGuidePageGadgets(pageNode.get("gadgets"))
+            ));
+        }
+        return out;
+    }
+
+    private static GuidePageRegionsAst parseGuidePageRegions(JsonNode node) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException("guidePages[].regions must be an object");
+        }
+        Boolean top = readOptionalBoolean(node, "top");
+        return new GuidePageRegionsAst(
+                top == null || top,
+                parseGuidePageRegion(node.get("left")),
+                parseGuidePageRegion(node.get("right"))
+        );
+    }
+
+    private static GuidePageRegionAst parseGuidePageRegion(JsonNode node) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException("guidePages[].regions.left/right must be an object");
+        }
+        Boolean enabled = readOptionalBoolean(node, "enabled");
+        Boolean collapsible = readOptionalBoolean(node, "collapsible");
+        Boolean defaultCollapsed = readOptionalBoolean(node, "defaultCollapsed");
+        JsonNode widthNode = node.get("width");
+        int width = widthNode != null && widthNode.isNumber() ? widthNode.asInt() : 0;
+        return new GuidePageRegionAst(
+                enabled == null || enabled,
+                collapsible != null && collapsible,
+                defaultCollapsed != null && defaultCollapsed,
+                width
+        );
+    }
+
+    private static GuidePageThemeAst parseGuidePageTheme(JsonNode node) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException("guidePages[].theme must be an object");
+        }
+        return new GuidePageThemeAst(
+                readText(node, "mode"),
+                readText(node, "accent"),
+                readText(node, "density"),
+                readText(node, "logoText"),
+                readText(node, "logoUrl")
+        );
+    }
+
+    private static List<GuidePageGadgetAst> parseGuidePageGadgets(JsonNode node) throws IOException {
+        List<GuidePageGadgetAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("guidePages[].gadgets must be an array");
+        }
+        for (JsonNode gadgetNode : node) {
+            out.add(new GuidePageGadgetAst(
+                    requiredText(gadgetNode, "name"),
+                    requiredText(gadgetNode, "type"),
+                    readText(gadgetNode, "title")
             ));
         }
         return out;
@@ -1502,8 +1595,11 @@ public final class JsonModelParser {
                 readOptionalInt(node, "listColumnOrder"),
                 readOptionalInt(node, "formColumns"),
                 readText(node, "displayMode"),
+                readText(node, "formPresentation"),
                 readText(node, "defaultSort"),
-                readText(node, "defaultGroup")
+                readText(node, "defaultGroup"),
+                readText(node, "imageField"),
+                readText(node, "customWidgetRef")
         );
     }
 

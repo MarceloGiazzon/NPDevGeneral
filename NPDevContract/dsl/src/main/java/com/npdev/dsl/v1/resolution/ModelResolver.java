@@ -20,6 +20,7 @@ import com.npdev.dsl.v1.ast.OrchestrationAst;
 import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.PresentationMetadataAst;
 import com.npdev.dsl.v1.ast.PanelAst;
+import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.ast.ProcedureAst;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.RuleProfileAst;
@@ -69,6 +70,8 @@ public final class ModelResolver {
         resolvedProcedures.sort(Comparator.comparing(procedure -> normalize(procedure.name())));
         List<PanelAst> resolvedPanels = new ArrayList<>(source.getPanels());
         resolvedPanels.sort(Comparator.comparing(panel -> normalize(panel.name())));
+        List<GuidePageAst> resolvedGuidePages = new ArrayList<>(source.getGuidePages());
+        resolvedGuidePages.sort(Comparator.comparing(page -> normalize(page.name())));
         List<CapabilityBindingAst> resolvedBindings = new ArrayList<>(source.getBindings());
         resolvedBindings.sort(Comparator
                 .comparing((CapabilityBindingAst binding) -> normalize(binding.getCapability()))
@@ -89,6 +92,7 @@ public final class ModelResolver {
                 resolvedRuleProfiles,
                 resolvedProcedures,
                 resolvedPanels,
+                resolvedGuidePages,
                 source.getParserWarnings()
         );
         return ResolvedModel.from(resolvedAst);
@@ -287,8 +291,11 @@ public final class ModelResolver {
                 override.getListColumnOrder() != null ? override.getListColumnOrder() : base.getListColumnOrder(),
                 override.getFormColumns() != null ? override.getFormColumns() : base.getFormColumns(),
                 firstNonBlank(override.getDisplayMode(), base.getDisplayMode()),
+                firstNonBlank(override.getFormPresentation(), base.getFormPresentation()),
                 firstNonBlank(override.getDefaultSort(), base.getDefaultSort()),
-                firstNonBlank(override.getDefaultGroup(), base.getDefaultGroup())
+                firstNonBlank(override.getDefaultGroup(), base.getDefaultGroup()),
+                firstNonBlank(override.getImageField(), base.getImageField()),
+                firstNonBlank(override.getCustomWidgetRef(), base.getCustomWidgetRef())
         );
     }
 
@@ -327,8 +334,11 @@ public final class ModelResolver {
                 metadata.getListColumnOrder(),
                 metadata.getFormColumns(),
                 metadata.getDisplayMode(),
+                metadata.getFormPresentation(),
                 metadata.getDefaultSort(),
-                metadata.getDefaultGroup()
+                metadata.getDefaultGroup(),
+                metadata.getImageField(),
+                metadata.getCustomWidgetRef()
         );
     }
 

@@ -49,7 +49,8 @@ public final class ModelSourceResolver {
             "queries",
             "ruleProfiles",
             "procedures",
-            "panels"
+            "panels",
+            "guidePages"
     );
     private static final Set<String> ROOT_SCALAR_KEYS = Set.of(
             "$schema",

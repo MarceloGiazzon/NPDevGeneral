@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import shutil
 import json
 import os
@@ -14,7 +15,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-VERSION = "0.6.0"
+VERSION = "0.8.0"
 
 
 class CliError(Exception):
@@ -452,6 +453,28 @@ def gradle_args_value(args: list[str]) -> str:
     return shlex.join(args)
 
 
+# Default db.definition.json used when a sample/app doesn't ship one. InMemory needs no
+# host/port/username (UserDatabaseDefinitionLoader.validate skips those checks for it) and is the
+# only engine proven compatible with the ai-beta-local smoke profile today: its resolved database
+# name is blank by design, so DatabaseIdentityStartupValidator's identity check is a no-op. Matches
+# NPDevSamples/canonical-demo/Input/db.definition.json exactly. sample-matrix-policy.json's
+# requiredInputFiles list doesn't include db.definition.json either -- this default aligns the CLI
+# with what the samples' own policy already treats as optional.
+DEFAULT_DB_DEFINITION = {
+    "database": {
+        "engine": "InMemory",
+        "createInternalTables": True,
+        "createBusinessTables": True,
+    },
+    "schemaLifecycle": {
+        "strategy": "RecreateOnAppStart",
+        "allowDestructiveRecreate": True,
+        "destructiveRecreateConfirmation": "I_UNDERSTAND_INMEMORY_DATA_IS_EPHEMERAL",
+        "scope": "NpdevOwnedLogicalStoresOnly",
+    },
+}
+
+
 def run_generate(args: argparse.Namespace) -> None:
     root = repo_root()
     generator_root = root / "NPDevGenerator"
@@ -463,29 +486,42 @@ def run_generate(args: argparse.Namespace) -> None:
     final_app_out = Path(args.output).expanduser().resolve()
     artifact_out = final_app_out.parent / "ArtifactNP"
     schema_realization = artifact_out / "schema-realization"
-    db_definition = config.parent / "db.definition.json"
-    if not db_definition.exists():
-        raise CliError(f"db.definition.json not found alongside config: {db_definition}")
     runtime_host = root / "NPDevRuntimeHost"
     if not runtime_host.exists():
         raise CliError(f"NPDevRuntimeHost not found: {runtime_host}")
-    generator_args = [
-        "--config", str(config),
-        "--model", str(model),
-        "--out", str(artifact_out),
-        "--dbDefinitionPath", str(db_definition),
-        "--schemaRealizationDir", str(schema_realization),
-        "--runtimeHostTemplate", str(runtime_host),
-        "--finalAppOut", str(final_app_out),
-        "--assembleFinalApp",
-        "--clean",
-        "--cleanFinalApp",
-    ]
-    args_str = " ".join(f'"{item}"' if " " in item else item for item in generator_args)
-    command = [str(wrapper), ":generator:run", "--no-daemon", "--console=plain", f"--args={args_str}"]
-    if os.name == "nt" and wrapper.suffix.lower() == ".bat":
-        command = ["cmd.exe", "/c"] + command
-    subprocess.run(command, cwd=generator_root, check=True)
+
+    with contextlib.ExitStack() as stack:
+        db_definition = config.parent / "db.definition.json"
+        if not db_definition.exists():
+            if getattr(args, "require_db_definition", False):
+                raise CliError(f"db.definition.json not found alongside config: {db_definition}")
+            temp_dir = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="npdev-default-db-")))
+            db_definition = temp_dir / "db.definition.json"
+            db_definition.write_text(json.dumps(DEFAULT_DB_DEFINITION, indent=2) + "\n", encoding="utf-8")
+            print(
+                f"npdev: db.definition.json not found alongside config ({config.parent}) -- "
+                f"using default InMemory database definition. Pass --require-db-definition to "
+                f"disable this default and fail instead.",
+                file=sys.stderr,
+            )
+
+        generator_args = [
+            "--config", str(config),
+            "--model", str(model),
+            "--out", str(artifact_out),
+            "--dbDefinitionPath", str(db_definition),
+            "--schemaRealizationDir", str(schema_realization),
+            "--runtimeHostTemplate", str(runtime_host),
+            "--finalAppOut", str(final_app_out),
+            "--assembleFinalApp",
+            "--clean",
+            "--cleanFinalApp",
+        ]
+        args_str = " ".join(f'"{item}"' if " " in item else item for item in generator_args)
+        command = [str(wrapper), ":generator:run", "--no-daemon", "--console=plain", f"--args={args_str}"]
+        if os.name == "nt" and wrapper.suffix.lower() == ".bat":
+            command = ["cmd.exe", "/c"] + command
+        subprocess.run(command, cwd=generator_root, check=True)
 
 
 def run_migration_diff(args: argparse.Namespace) -> None:
@@ -549,6 +585,138 @@ def run_report_bootstrap() -> None:
     subprocess.run(["pwsh", "-NoProfile", "-File", str(script)], cwd=root, check=True)
 
 
+def run_validate_semantic(model_path: Path, report_out: Path | None) -> int:
+    """Run full structural + semantic validation via the standalone Java validator.
+
+    Invokes the :NPDevContract:dsl:validateModel Gradle task (ModelValidatorMain), which runs
+    the exact validation the generator runs -- without generating -- and writes a typed
+    npdev-validation-report.v2 report. Returns 0 when the model passes (or has warnings only),
+    2 when it has errors. The report is the loopable contract an AI-authoring agent self-corrects
+    against; here we also echo it to stdout.
+    """
+    root = repo_root()
+    wrapper = gradle_wrapper(root)
+    if not wrapper.exists():
+        raise CliError(f"Gradle wrapper not found: {wrapper}")
+    model = Path(model_path).expanduser().resolve()
+    if not model.exists():
+        raise CliError(f"model not found: {model}")
+
+    written_report = Path(report_out).expanduser().resolve() if report_out else None
+    with tempfile.TemporaryDirectory(prefix="npdev-validate-") as temp_dir:
+        report_target = written_report or (Path(temp_dir) / "validation-report.json")
+        report_target.parent.mkdir(parents=True, exist_ok=True)
+        gradle_args = [
+            str(wrapper),
+            ":NPDevContract:dsl:validateModel",
+            f"-PmodelPath={model}",
+            f"-PreportOut={report_target}",
+            "-q",
+            "--console=plain",
+        ]
+        if os.name == "nt" and wrapper.suffix.lower() == ".bat":
+            gradle_args = ["cmd.exe", "/c"] + gradle_args
+        # Capture the subprocess output: the Java validator echoes the report to stdout, but the
+        # report FILE is the channel we read, and the CLI is the single stdout authority (printing
+        # captured output too would emit two JSON docs). On failure, surface it in the error.
+        completed = subprocess.run(gradle_args, cwd=root, check=False, capture_output=True, text=True)
+        if not report_target.exists():
+            detail = (completed.stderr or completed.stdout or "").strip()
+            raise CliError(
+                "validator did not produce a report"
+                + (f" (gradle exit {completed.returncode})" if completed.returncode else "")
+                + (f": {detail[-500:]}" if detail else "")
+            )
+        report = read_json(report_target)
+
+    print(json.dumps(report, indent=2))
+    return 2 if report.get("status") == "failed" else 0
+
+
+def inspect_app(args: argparse.Namespace) -> None:
+    """Read-only introspection of an app model -- what concepts/flows/events/etc. already exist.
+
+    Gives an authoring agent the "does X already exist?" surface so it extends the model instead
+    of duplicating a concept. Structural summary only; use `inspect bonds` for bond/anchor detail
+    and `validate model --semantic` for correctness.
+    """
+    model_path = Path(args.model).expanduser().resolve()
+    model = resolve_split_model(model_path)
+
+    def names(key: str) -> list:
+        return [item.get("name") for item in (model.get(key) or [])
+                if isinstance(item, dict) and item.get("name")]
+
+    concepts = []
+    bond_count = 0
+    for concept in model.get("concepts") or []:
+        if not isinstance(concept, dict):
+            continue
+        fields = []
+        id_field = None
+        for field in concept.get("fields") or []:
+            if not isinstance(field, dict):
+                continue
+            reference = field.get("reference") if isinstance(field.get("reference"), dict) else None
+            target = (reference or {}).get("target") or field.get("referenceTarget")
+            if field.get("type") == "reference" or target:
+                bond_count += 1
+            if field.get("id"):
+                id_field = field.get("name")
+            fields.append({
+                "name": field.get("name"),
+                "type": field.get("type"),
+                "required": bool(field.get("required", False)),
+                "unique": bool(field.get("unique", False)),
+                "id": bool(field.get("id", False)),
+                "referenceTarget": target,
+            })
+        concepts.append({
+            "name": concept.get("name"),
+            "truthLevel": concept.get("truthLevel", "T1"),
+            "idField": id_field,
+            "fieldCount": len(fields),
+            "fields": fields,
+        })
+
+    flows = []
+    for flow in model.get("flows") or []:
+        if not isinstance(flow, dict):
+            continue
+        input_node = flow.get("input") if isinstance(flow.get("input"), dict) else {}
+        flows.append({
+            "name": flow.get("name"),
+            "concept": flow.get("concept") or input_node.get("concept"),
+            "stepCount": len(flow.get("steps") or []),
+        })
+
+    write_or_print_json(
+        {
+            "model": str(model_path),
+            "namespace": model.get("namespace") or model.get("model"),
+            "version": model.get("version"),
+            "counts": {
+                "concepts": len(concepts),
+                "bonds": bond_count,
+                "flows": len(flows),
+                "events": len(model.get("events") or []),
+                "panels": len(model.get("panels") or []),
+                "procedures": len(model.get("procedures") or []),
+                "capabilities": len(model.get("capabilities") or []),
+                "queries": len(model.get("queries") or []),
+            },
+            "concepts": concepts,
+            "flows": flows,
+            "events": names("events"),
+            "panels": names("panels"),
+            "procedures": names("procedures"),
+            "capabilities": names("capabilities"),
+            "queries": names("queries"),
+        },
+        args.output,
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="npdev")
     parser.add_argument("--version", action="store_true", help="Print the portable NPDev CLI version.")
@@ -558,6 +726,15 @@ def build_parser() -> argparse.ArgumentParser:
     validate_sub = validate.add_subparsers(dest="validate_command")
     validate_model = validate_sub.add_parser("model")
     validate_model.add_argument("path")
+    validate_model.add_argument(
+        "--semantic",
+        action="store_true",
+        help="Run full structural + semantic validation and emit a typed npdev-validation-report.v2 report.",
+    )
+    validate_model.add_argument(
+        "--report",
+        help="Write the typed validation report to this path (in addition to stdout).",
+    )
 
     normalize = subparsers.add_parser("normalize")
     normalize_sub = normalize.add_subparsers(dest="normalize_command")
@@ -586,12 +763,21 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_bonds_parser.add_argument("--model", required=True)
     inspect_bonds_parser.add_argument("--output")
 
+    inspect_app_parser = inspect_sub.add_parser("app")
+    inspect_app_parser.add_argument("--model", required=True)
+    inspect_app_parser.add_argument("--output")
+
     generate = subparsers.add_parser("generate")
     generate_sub = generate.add_subparsers(dest="generate_command")
     generate_app = generate_sub.add_parser("app")
     generate_app.add_argument("--model", required=True)
     generate_app.add_argument("--config", required=True)
     generate_app.add_argument("--output", required=True)
+    generate_app.add_argument(
+        "--require-db-definition",
+        action="store_true",
+        help="Fail if db.definition.json is missing instead of defaulting to an InMemory database definition.",
+    )
 
     report = subparsers.add_parser("report")
     report_sub = report.add_subparsers(dest="report_command")
@@ -607,6 +793,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"npdev {VERSION}")
             return 0
         if args.command == "validate" and args.validate_command == "model":
+            if getattr(args, "semantic", False):
+                report_out = Path(args.report).expanduser() if args.report else None
+                return run_validate_semantic(Path(args.path).expanduser(), report_out)
             validate_official_model(Path(args.path).expanduser())
             print("model validation passed")
             return 0
@@ -621,6 +810,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "inspect" and args.inspect_command == "bonds":
             inspect_bonds(args)
+            return 0
+        if args.command == "inspect" and args.inspect_command == "app":
+            inspect_app(args)
             return 0
         if args.command == "generate" and args.generate_command == "app":
             run_generate(args)

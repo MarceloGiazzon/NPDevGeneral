@@ -17,6 +17,10 @@ import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.ast.OrchestrationActionAst;
 import com.npdev.dsl.v1.ast.OrchestrationAst;
 import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
+import com.npdev.dsl.v1.ast.GuidePageAst;
+import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
+import com.npdev.dsl.v1.compiled.FieldWidgetDefaults;
+import com.npdev.dsl.v1.compiled.GuidePageDefaults;
 import com.npdev.dsl.v1.ast.PanelActionAst;
 import com.npdev.dsl.v1.ast.PanelAst;
 import com.npdev.dsl.v1.ast.PanelDataSourceAst;
@@ -48,6 +52,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -302,6 +307,11 @@ public final class SemanticValidator {
                         );
                         validateReferenceSemantics(e.getName(), f, effectiveTarget, errors);
                         validateBondTruthEdge(e, f, entitiesByLower.get(target), semanticWarnings);
+                        validateReferenceFieldHint(
+                                e.getName(), f, effectiveTarget,
+                                f.getUi() == null ? null : f.getUi().getImageField(),
+                                "imageField", errors
+                        );
                     }
                 } else if ((f.getReferenceTarget() != null && !f.getReferenceTarget().isBlank())
                         || f.getReferenceSemantics() != null) {
@@ -315,6 +325,7 @@ public final class SemanticValidator {
                     );
                 }
 
+                validateFieldWidgetCompatibility(e, f, normalizedType, errors);
                 validateFieldValueBehavior(e.getName(), f, fieldNames, errors);
             }
             validateFieldValueBehaviorGraph(e.getName(), effective.fields(), fieldNames, errors);
@@ -364,6 +375,7 @@ public final class SemanticValidator {
         validateRuleProfiles(effectiveModel, entitiesByLower, errors);
         validateProcedures(effectiveModel, entitiesByLower, errors);
         validatePanels(effectiveModel, entitiesByLower, errors);
+        validateGuidePages(effectiveModel, errors);
         errors = canonicalizeConceptTerminology(errors);
         semanticWarnings = canonicalizeConceptTerminology(semanticWarnings);
         for (String semanticWarning : semanticWarnings) {
@@ -613,6 +625,40 @@ public final class SemanticValidator {
         }
     }
 
+    private static void validateGuidePages(ModelAst modelAst, List<String> errors) {
+        Set<String> guidePageNames = new HashSet<>();
+        boolean sawDefault = false;
+        for (GuidePageAst guidePage : modelAst.getGuidePages()) {
+            if (!guidePageNames.add(normalize(guidePage.name()))) {
+                errors.add("GuidePage " + guidePage.name() + ": duplicate guide page name");
+            }
+            if (guidePage.isDefault()) {
+                if (sawDefault) {
+                    errors.add("GuidePage " + guidePage.name() + ": more than one guide page marked default");
+                }
+                sawDefault = true;
+            }
+            for (GuidePageGadgetAst gadget : guidePage.gadgets()) {
+                if (!hasText(gadget.name())) {
+                    errors.add("GuidePage " + guidePage.name() + ": gadget is missing a name");
+                }
+                if (!hasText(gadget.type())) {
+                    errors.add("GuidePage " + guidePage.name() + " gadget " + gadget.name() + ": gadget is missing a type");
+                }
+            }
+        }
+
+        Set<String> knownGuidePageNames = new HashSet<>(guidePageNames);
+        for (String builtinName : GuidePageDefaults.BUILTIN_NAMES) {
+            knownGuidePageNames.add(normalize(builtinName));
+        }
+        for (PanelAst panel : modelAst.getPanels()) {
+            if (hasText(panel.guidePage()) && !knownGuidePageNames.contains(normalize(panel.guidePage()))) {
+                errors.add("Panel " + panel.name() + ": guidePage not found: " + panel.guidePage());
+            }
+        }
+    }
+
     private static void validateParameterNames(String owner, List<ProcedureParameterAst> parameters, List<String> errors) {
         Set<String> names = new HashSet<>();
         for (ProcedureParameterAst parameter : parameters) {
@@ -850,6 +896,24 @@ public final class SemanticValidator {
                         fieldName,
                         "fields",
                         "Use a supported ui.width hint so responsive layout behavior stays predictable."
+                ));
+            }
+        }
+        if (hasText(fieldUi.getWidget())) {
+            String normalizedType = normalize(field.getType());
+            FieldWidgetDefaults.Compatibility compatibility =
+                    FieldWidgetDefaults.classify(toFieldShape(field, normalizedType), fieldUi.getWidget());
+            if (compatibility == FieldWidgetDefaults.Compatibility.DISCOURAGED) {
+                diagnostics.add(uxDiagnostic(
+                        "discouraged_widget",
+                        "Entity " + entityName + " field " + fieldName + ": ui.widget \""
+                                + fieldUi.getWidget().trim() + "\" is unusual for type " + field.getType()
+                                + " and may render without the effect you expect",
+                        basePath + ".widget",
+                        entityName,
+                        fieldName,
+                        "fields",
+                        "Double-check this widget/type combination, or switch to a widget better suited to this field's type."
                 ));
             }
         }
@@ -1119,6 +1183,58 @@ public final class SemanticValidator {
         }
     }
 
+    private static void validateFieldWidgetCompatibility(
+            ConceptAst entity,
+            FieldAst field,
+            String normalizedType,
+            List<String> errors
+    ) {
+        PresentationMetadataAst ui = field.getUi();
+        String widget = ui == null ? null : ui.getWidget();
+        if (!hasText(widget)) {
+            return;
+        }
+        FieldWidgetDefaults.Compatibility compatibility =
+                FieldWidgetDefaults.classify(toFieldShape(field, normalizedType), widget);
+        if (compatibility == FieldWidgetDefaults.Compatibility.UNKNOWN_WIDGET) {
+            errors.add("Entity " + entity.getName() + " field " + field.getName()
+                    + ": unknown ui.widget \"" + widget.trim() + "\" (supported: "
+                    + String.join(", ", new TreeSet<>(FieldWidgetDefaults.SUPPORTED_WIDGETS)) + ")");
+        } else if (compatibility == FieldWidgetDefaults.Compatibility.INCOMPATIBLE) {
+            errors.add("Entity " + entity.getName() + " field " + field.getName()
+                    + ": ui.widget \"" + widget.trim() + "\" is incompatible with type " + field.getType());
+        }
+    }
+
+    private static FieldWidgetDefaults.FieldShape toFieldShape(FieldAst field, String normalizedType) {
+        boolean isReference = "reference".equals(normalizedType)
+                || (field.getReferenceTarget() != null && !field.getReferenceTarget().isBlank())
+                || field.getReferenceSemantics() != null;
+        boolean isMultiReference = field.getReferenceSemantics() != null && field.getReferenceSemantics().isMultiple();
+        boolean hasEnumValues = !field.getEnumValues().isEmpty();
+        boolean isClosedEnumArray = "array".equals(normalizedType)
+                && field.getSchema() != null
+                && field.getSchema().getItems() != null
+                && "enum".equals(normalize(field.getSchema().getItems().getType()))
+                && field.getSchema().getItems().getEnumValues() != null
+                && !field.getSchema().getItems().getEnumValues().isEmpty();
+        boolean hasAnyEnumOptionIcon = field.getEnumOptions().stream()
+                .anyMatch(option -> option != null && hasText(option.getIconHint()));
+        PresentationMetadataAst ui = field.getUi();
+        boolean hasImageFieldHint = ui != null && hasText(ui.getImageField());
+        boolean hasCustomWidgetRef = ui != null && hasText(ui.getCustomWidgetRef());
+        return new FieldWidgetDefaults.FieldShape(
+                normalizedType,
+                isReference,
+                isMultiReference,
+                hasEnumValues,
+                isClosedEnumArray,
+                hasAnyEnumOptionIcon,
+                hasImageFieldHint,
+                hasCustomWidgetRef
+        );
+    }
+
     private static ValidationDiagnostic uxDiagnostic(
             String code,
             String message,
@@ -1285,6 +1401,11 @@ public final class SemanticValidator {
         );
         validateScalarReferenceTargetId(entityName, field, normalizedType, effectiveTarget, errors);
         validateReferenceSemantics(entityName, field, effectiveTarget, errors);
+        validateReferenceFieldHint(
+                entityName, field, effectiveTarget,
+                field.getUi() == null ? null : field.getUi().getImageField(),
+                "imageField", errors
+        );
     }
 
     private static boolean isScalarLookupReferenceType(String normalizedType) {

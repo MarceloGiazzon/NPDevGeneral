@@ -269,7 +269,8 @@ public class NpdevPluginConfig {
     @Bean
     public RuntimePluginRealizationProvider persistencePostgresRuntimePluginRealizationProvider(
             ObjectProvider<DataSource> dataSourceProvider,
-            @Value("${npdev.storage.mode:in-memory}") String storageMode
+            @Value("${npdev.storage.mode:in-memory}") String storageMode,
+            CompiledModel compiledModel
     ) {
         return namedRuntimePluginRealizationProvider(
                 "persistencePostgresCapabilityAdapter",
@@ -281,7 +282,7 @@ public class NpdevPluginConfig {
                     if (dataSource == null) {
                         throw new IllegalStateException("DataSource is required for postgres persistence adapter");
                     }
-                    return new PostgresPersistenceCapabilityAdapter(dataSource);
+                    return new PostgresPersistenceCapabilityAdapter(dataSource, compiledModel);
                 }
         );
     }

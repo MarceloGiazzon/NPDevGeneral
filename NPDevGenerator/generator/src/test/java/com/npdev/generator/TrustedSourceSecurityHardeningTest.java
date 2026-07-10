@@ -359,7 +359,8 @@ class TrustedSourceSecurityHardeningTest {
                 "",
                 List.of(),
                 Map.of(),
-                Map.of("trustedSourceEntrypoint", "panel/user-admin-panel.html")
+                Map.of("trustedSourceEntrypoint", "panel/user-admin-panel.html"),
+                null
         );
         return new CompiledModel(
                 "trusted.source.security.panel",

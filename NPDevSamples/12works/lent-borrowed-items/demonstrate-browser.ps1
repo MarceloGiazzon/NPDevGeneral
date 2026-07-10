@@ -62,10 +62,9 @@ if ($routines.Count -eq 0) { Fail "No browser routines found in $routineDir" }
 
 $runStamp = (Get-Date).ToString("yyyyMMdd-HHmmss")
 
-# Note: the model declares ui.widget="select" on contactRef, but the generator does not yet
-# honor a widget override on reference fields -- it always renders the search-dialog/Browse
-# picker (same as every other reference field in this batch). The routine below targets the
-# picker that is actually rendered, not the aspirational select widget.
+# The model declares ui.widget="select" on contactRef; the generator now honors a widget
+# override on reference fields directly (previously it always rendered the search-dialog/
+# Browse picker regardless), so the routine below drives the real <select> instead.
 $sharedVars = @{
     contactName = "UITEST-CONTACT-$runStamp"
 }
@@ -113,4 +112,4 @@ $summary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $OutputPath -Enco
 Write-Host ""
 Ok ("Evidence written to " + $OutputPath)
 Ok ("Screenshots/traces under " + $ctx.ArtifactDir)
-Ok ("Browser verification green across " + $routines.Count + " routine(s) (Contact create; LentItem create via search-dialog Contact picker; status updated to Returned via the MarkReturned update Flow; Flow-emitted custom event consumed by an orchestration rule).")
+Ok ("Browser verification green across " + $routines.Count + " routine(s) (Contact create; LentItem create via the select-widget Contact reference; status updated to Returned via the MarkReturned update Flow; Flow-emitted custom event consumed by an orchestration rule).")

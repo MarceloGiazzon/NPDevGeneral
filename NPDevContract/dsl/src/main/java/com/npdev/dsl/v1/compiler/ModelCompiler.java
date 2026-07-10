@@ -17,6 +17,11 @@ import com.npdev.dsl.v1.ast.EventPayloadAst;
 import com.npdev.dsl.v1.ast.EnumOptionAst;
 import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.GeneratedActionDescriptorAst;
+import com.npdev.dsl.v1.ast.GuidePageAst;
+import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
+import com.npdev.dsl.v1.ast.GuidePageRegionAst;
+import com.npdev.dsl.v1.ast.GuidePageRegionsAst;
+import com.npdev.dsl.v1.ast.GuidePageThemeAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.OrchestrationActionAst;
 import com.npdev.dsl.v1.ast.SchemaAst;
@@ -53,6 +58,11 @@ import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowStep;
 import com.npdev.dsl.v1.compiled.CompiledGeneratedActionDescriptorSpec;
+import com.npdev.dsl.v1.compiled.CompiledGuidePage;
+import com.npdev.dsl.v1.compiled.CompiledGuidePageGadget;
+import com.npdev.dsl.v1.compiled.CompiledGuidePageRegion;
+import com.npdev.dsl.v1.compiled.CompiledGuidePageRegions;
+import com.npdev.dsl.v1.compiled.CompiledGuidePageTheme;
 import com.npdev.dsl.v1.compiled.CompiledInvariant;
 import com.npdev.dsl.v1.compiled.CompiledLifecycle;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -403,6 +413,13 @@ public final class ModelCompiler {
             panels.add(compilePanel(panelAst));
         }
 
+        List<GuidePageAst> orderedGuidePages = new ArrayList<>(modelAst.getGuidePages());
+        orderedGuidePages.sort(Comparator.comparing(page -> normalize(page.name())));
+        List<CompiledGuidePage> guidePages = new ArrayList<>();
+        for (GuidePageAst guidePageAst : orderedGuidePages) {
+            guidePages.add(compileGuidePage(guidePageAst));
+        }
+
         return new CompiledModel(
                 modelAst.getNamespace(),
                 modelAst.getDslVersion(),
@@ -417,8 +434,63 @@ public final class ModelCompiler {
                 queries,
                 ruleProfiles,
                 procedures,
-                panels
+                panels,
+                guidePages
         );
+    }
+
+    private static CompiledGuidePage compileGuidePage(GuidePageAst guidePageAst) {
+        return new CompiledGuidePage(
+                guidePageAst.name(),
+                guidePageAst.isDefault(),
+                compileGuidePageRegions(guidePageAst.regions()),
+                compileGuidePageTheme(guidePageAst.theme()),
+                compileGuidePageGadgets(guidePageAst.gadgets())
+        );
+    }
+
+    private static CompiledGuidePageRegions compileGuidePageRegions(GuidePageRegionsAst regionsAst) {
+        if (regionsAst == null) {
+            return null;
+        }
+        return new CompiledGuidePageRegions(
+                regionsAst.top(),
+                compileGuidePageRegion(regionsAst.left()),
+                compileGuidePageRegion(regionsAst.right())
+        );
+    }
+
+    private static CompiledGuidePageRegion compileGuidePageRegion(GuidePageRegionAst regionAst) {
+        if (regionAst == null) {
+            return null;
+        }
+        return new CompiledGuidePageRegion(
+                regionAst.enabled(),
+                regionAst.collapsible(),
+                regionAst.defaultCollapsed(),
+                regionAst.width()
+        );
+    }
+
+    private static CompiledGuidePageTheme compileGuidePageTheme(GuidePageThemeAst themeAst) {
+        if (themeAst == null) {
+            return null;
+        }
+        return new CompiledGuidePageTheme(
+                themeAst.mode(),
+                themeAst.accent(),
+                themeAst.density(),
+                themeAst.logoText(),
+                themeAst.logoUrl()
+        );
+    }
+
+    private static List<CompiledGuidePageGadget> compileGuidePageGadgets(List<GuidePageGadgetAst> gadgetAsts) {
+        List<CompiledGuidePageGadget> out = new ArrayList<>();
+        for (GuidePageGadgetAst gadgetAst : gadgetAsts) {
+            out.add(new CompiledGuidePageGadget(gadgetAst.name(), gadgetAst.type(), gadgetAst.title()));
+        }
+        return out;
     }
 
     private static Map<String, ConceptAst> indexConcepts(List<ConceptAst> concepts) {
@@ -1023,7 +1095,8 @@ public final class ModelCompiler {
                 panelAst.enabledWhen(),
                 compilePanelActions(panelAst.actions()),
                 sortObjectMap(panelAst.explainability()),
-                sortObjectMap(panelAst.metadata())
+                sortObjectMap(panelAst.metadata()),
+                panelAst.guidePage()
         );
     }
 
@@ -1192,8 +1265,11 @@ public final class ModelCompiler {
                 metadata.getListColumnOrder(),
                 metadata.getFormColumns(),
                 metadata.getDisplayMode(),
+                metadata.getFormPresentation(),
                 metadata.getDefaultSort(),
-                metadata.getDefaultGroup()
+                metadata.getDefaultGroup(),
+                metadata.getImageField(),
+                metadata.getCustomWidgetRef()
         );
     }
 

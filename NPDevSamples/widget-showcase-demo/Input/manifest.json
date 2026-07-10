@@ -1,0 +1,15 @@
+{
+  "id": "widget-showcase-demo",
+  "title": "Widget Showcase Demo",
+  "complexity": "demo",
+  "purpose": "Live proof-of-concept for the expanded widget catalog (color, image-select, closed-enum array multiselect) and the custom-widget trusted-source escape hatch (a hand-authored star-rating control).",
+  "inputFiles": [],
+  "walkthrough": [
+    "Generate and boot the sample via NPDevSamples/scripts/generate-sample-app.ps1 and run-sample-app.ps1.",
+    "Create a Product and confirm each new widget renders and round-trips: accentColor as a color picker, category as an image-select card grid, tags as a closed-enum multiselect checkbox list, and rating as the custom star-rating control."
+  ],
+  "expectedOutcomes": [
+    "All five widgets render without console/page errors.",
+    "Values round-trip correctly on save and re-open."
+  ]
+}

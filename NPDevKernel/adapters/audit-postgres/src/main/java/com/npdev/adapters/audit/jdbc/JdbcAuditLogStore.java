@@ -2,6 +2,7 @@ package com.npdev.adapters.audit.jdbc;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.npdev.kernel.audit.AuditRecord;
 import com.npdev.kernel.ports.AuditLogStore;
 import com.npdev.kernel.ports.AuditQuery;
@@ -27,7 +28,8 @@ public class JdbcAuditLogStore implements AuditLogStore {
     private final ObjectMapper objectMapper;
 
     public JdbcAuditLogStore(DataSource dataSource) {
-        this(dataSource, new ObjectMapper());
+        this(dataSource, new ObjectMapper().findAndRegisterModules()
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS));
     }
 
     public JdbcAuditLogStore(DataSource dataSource, ObjectMapper objectMapper) {

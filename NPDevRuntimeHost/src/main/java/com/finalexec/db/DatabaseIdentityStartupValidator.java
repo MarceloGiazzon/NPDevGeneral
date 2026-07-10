@@ -19,23 +19,35 @@ public final class DatabaseIdentityStartupValidator implements ApplicationRunner
     private final String storageMode;
     private final String resolvedDatabaseName;
     private final String jdbcUrl;
+    private final boolean trialDatabaseOverride;
 
     public DatabaseIdentityStartupValidator(
             ObjectProvider<DataSource> dataSourceProvider,
             @Value("${npdev.database.engine:}") String engine,
             @Value("${npdev.storage.mode:}") String storageMode,
             @Value("${npdev.database.resolved-name:}") String resolvedDatabaseName,
-            @Value("${spring.datasource.url:}") String jdbcUrl
+            @Value("${spring.datasource.url:}") String jdbcUrl,
+            @Value("${npdev.trial.database-override:false}") boolean trialDatabaseOverride
     ) {
         this.dataSourceProvider = dataSourceProvider;
         this.engine = engine == null ? "" : engine.trim();
         this.storageMode = storageMode == null ? "" : storageMode.trim();
         this.resolvedDatabaseName = resolvedDatabaseName == null ? "" : resolvedDatabaseName.trim();
         this.jdbcUrl = jdbcUrl == null ? "" : jdbcUrl.trim();
+        this.trialDatabaseOverride = trialDatabaseOverride;
     }
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
+        if (trialDatabaseOverride) {
+            // A profile (e.g. step0) has intentionally substituted a fixed trial/local-dev
+            // database in place of whatever db.definition.json resolved -- that's a deliberate
+            // zero-setup override, not a misconfiguration, so skip the identity check entirely
+            // instead of comparing against a plan this profile doesn't honor.
+            System.out.println("NPDev database identity check skipped: npdev.trial.database-override is active "
+                    + "(trial/local-dev database intentionally overrides db.definition.json's resolved identity).");
+            return;
+        }
         if (!"jdbc".equalsIgnoreCase(storageMode) || resolvedDatabaseName.isBlank()) {
             return;
         }

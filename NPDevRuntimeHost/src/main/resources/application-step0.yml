@@ -1,3 +1,10 @@
+# Schema management (flyway.enabled / hibernate.ddl-auto) is deliberately NOT set here -- it's
+# left to fall through from the per-engine values application-npdev-db.properties already
+# computed correctly (spring.config.import in application.yml): flyway.enabled=true +
+# ddl-auto=validate for JDBC-backed engines (H2Local/H2Server/Postgres), fully excluded for
+# InMemory. Only the physical connection target is swapped to this fixed sandbox database; how
+# its schema gets created is unchanged from the app's real target -- both run H2 in
+# MODE=PostgreSQL compatibility, so the same schema-realization migrations apply either way.
 spring:
   datasource:
     url: jdbc:h2:mem:finalexec_step0;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
@@ -6,8 +13,13 @@ spring:
     driver-class-name: org.h2.Driver
   jpa:
     database-platform: org.hibernate.dialect.H2Dialect
-    hibernate:
-      ddl-auto: create-drop
     open-in-view: false
-  flyway:
-    enabled: false
+
+# step0 always boots against this fixed, ephemeral H2 database (the documented "step0-h2" trial
+# database mode, config.schema.json databaseMode enum) regardless of what db.definition.json's
+# resolved identity says -- that substitution is intentional (zero-setup trial/local dev), not a
+# misconfiguration. This flag tells DatabaseIdentityStartupValidator to skip its identity check
+# instead of comparing against a plan this profile deliberately doesn't honor.
+npdev:
+  trial:
+    database-override: true

@@ -74,6 +74,27 @@ public final class NpdevSettings {
                     "Business UI shell mode for a section (full|minimal|none).");
 
     /**
+     * Named GuidePage (declared in the model's {@code guidePages}, or one of the built-in
+     * Default/Minimal/None) assigned to a section. Concept-scope, cascading to app, then to the
+     * empty string -- an empty resolution falls back to the {@code ui.frame.mode} mapping
+     * (full/minimal/none -> Default/Minimal/None) so existing apps that only set frame mode are
+     * unaffected. Read by {@code BusinessUiEmitter.resolveGuidePage}.
+     */
+    public static final SettingKey<String> UI_GUIDE_PAGE =
+            SettingKey.string("ui.guidePage", "",
+                    "Named GuidePage assigned to a section, overriding the ui.frame.mode mapping.");
+
+    /**
+     * Site-relative path of the app's login page. Empty (default) disables the shell's
+     * unauthenticated redirect entirely, preserving the inline "not authenticated" notice. App-scope
+     * only. Read by {@code BusinessUiEmitter} to populate the generated-ui-manifest.json auth block
+     * consumed by shell.js's login redirect.
+     */
+    public static final SettingKey<String> AUTH_LOGIN_PATH =
+            SettingKey.string("auth.loginPath", "",
+                    "Site-relative path of the app's login page (empty disables shell auto-redirect).");
+
+    /**
      * Persistence adapter variant for a concept's generated CRUD, overriding the model's declared
      * binding. Empty (default) = use the binding as declared, unchanged. Generation-time selection,
      * not a live per-request switch -- the resolved value is baked into the generated service when
@@ -106,6 +127,8 @@ public final class NpdevSettings {
             LOG_LEVEL,
             FIELD_WIDGET,
             UI_FRAME_MODE,
+            UI_GUIDE_PAGE,
+            AUTH_LOGIN_PATH,
             PERSISTENCE_ADAPTER,
             DATABASE_PROVIDER
     );

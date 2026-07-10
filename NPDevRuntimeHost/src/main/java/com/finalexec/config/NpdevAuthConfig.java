@@ -3,6 +3,7 @@ package com.finalexec.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finalexec.auth.IdentityAwareContextResolver;
 import com.finalexec.auth.TenantStatusFilter;
+import com.finalexec.controlpanel.SuperUserCredentialAuthFilter;
 import com.finalexec.npdev.service.CredentialRegistryService;
 import com.finalexec.npdev.service.TenantRegistryService;
 import com.npdev.adapters.authcontext.jwt.JwtAuthenticatedContextResolver;
@@ -42,6 +43,27 @@ public class NpdevAuthConfig {
         // Base resolver decodes the principal (api-key / JWT) into tenant + actor + claim-roles;
         // the identity-aware wrapper lets the persistent identity pack override roles when populated.
         return new IdentityAwareContextResolver(new JwtAuthenticatedContextResolver(), dataSourceProvider);
+    }
+
+    @Bean
+    public SuperUserCredentialAuthFilter superUserCredentialAuthFilter(
+            CredentialRegistryService credentialRegistryService
+    ) {
+        return new SuperUserCredentialAuthFilter(credentialRegistryService);
+    }
+
+    @Bean
+    public FilterRegistrationBean<SuperUserCredentialAuthFilter> superUserCredentialAuthFilterRegistration(
+            SuperUserCredentialAuthFilter superUserCredentialAuthFilter
+    ) {
+        // Unconditional and independent of npdev.auth.mode/runtimeSettings.authEnabled(): the
+        // ControlPanel must stay reachable regardless of whether business Login is apikey/jwt/none.
+        // No-ops on its own when the X-Super-User-Key header is absent (see the filter itself).
+        FilterRegistrationBean<SuperUserCredentialAuthFilter> bean = new FilterRegistrationBean<>();
+        bean.setFilter(superUserCredentialAuthFilter);
+        bean.addUrlPatterns("/*");
+        bean.setOrder(-110);
+        return bean;
     }
 
     @Bean

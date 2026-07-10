@@ -83,6 +83,11 @@ public final class CompiledModelCanonicalJsonReader {
             panels.add(toPanel(node));
         }
 
+        List<CompiledGuidePage> guidePages = new ArrayList<>();
+        for (JsonNode node : array(root, "guidePages")) {
+            guidePages.add(toGuidePage(node));
+        }
+
         return new CompiledModel(
                 namespace,
                 dslVersion,
@@ -97,7 +102,8 @@ public final class CompiledModelCanonicalJsonReader {
                 queries,
                 ruleProfiles,
                 procedures,
-                panels
+                panels,
+                guidePages
         );
     }
 
@@ -201,8 +207,11 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalIntegerObject(node.get("listColumnOrder")),
                 optionalIntegerObject(node.get("formColumns")),
                 optionalText(node, "displayMode"),
+                optionalText(node, "formPresentation"),
                 optionalText(node, "defaultSort"),
-                optionalText(node, "defaultGroup")
+                optionalText(node, "defaultGroup"),
+                optionalText(node, "imageField"),
+                optionalText(node, "customWidgetRef")
         );
     }
 
@@ -605,8 +614,70 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "enabledWhen"),
                 toPanelActions(node.get("actions")),
                 toObjectMap(node.get("explainability")),
-                toObjectMap(node.get("metadata"))
+                toObjectMap(node.get("metadata")),
+                optionalText(node, "guidePage")
         );
+    }
+
+    private static CompiledGuidePage toGuidePage(JsonNode node) {
+        return new CompiledGuidePage(
+                text(node, "name"),
+                booleanValue(node, "default"),
+                toGuidePageRegions(node.get("regions")),
+                toGuidePageTheme(node.get("theme")),
+                toGuidePageGadgets(node.get("gadgets"))
+        );
+    }
+
+    private static CompiledGuidePageRegions toGuidePageRegions(JsonNode node) {
+        if (node == null || node.isNull() || !node.isObject()) {
+            return null;
+        }
+        return new CompiledGuidePageRegions(
+                booleanValue(node, "top"),
+                toGuidePageRegion(node.get("left")),
+                toGuidePageRegion(node.get("right"))
+        );
+    }
+
+    private static CompiledGuidePageRegion toGuidePageRegion(JsonNode node) {
+        if (node == null || node.isNull() || !node.isObject()) {
+            return null;
+        }
+        return new CompiledGuidePageRegion(
+                booleanValue(node, "enabled"),
+                booleanValue(node, "collapsible"),
+                booleanValue(node, "defaultCollapsed"),
+                intValue(node, "width", 0)
+        );
+    }
+
+    private static CompiledGuidePageTheme toGuidePageTheme(JsonNode node) {
+        if (node == null || node.isNull() || !node.isObject()) {
+            return null;
+        }
+        return new CompiledGuidePageTheme(
+                optionalText(node, "mode"),
+                optionalText(node, "accent"),
+                optionalText(node, "density"),
+                optionalText(node, "logoText"),
+                optionalText(node, "logoUrl")
+        );
+    }
+
+    private static List<CompiledGuidePageGadget> toGuidePageGadgets(JsonNode node) {
+        List<CompiledGuidePageGadget> out = new ArrayList<>();
+        if (node == null || !node.isArray()) {
+            return out;
+        }
+        for (JsonNode gadgetNode : node) {
+            out.add(new CompiledGuidePageGadget(
+                    text(gadgetNode, "name"),
+                    text(gadgetNode, "type"),
+                    optionalText(gadgetNode, "title")
+            ));
+        }
+        return out;
     }
 
     private static List<CompiledPanelDataSource> toPanelDataSources(JsonNode node) {

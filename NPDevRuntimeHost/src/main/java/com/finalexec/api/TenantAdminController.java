@@ -89,7 +89,7 @@ public class TenantAdminController {
 
     private void requireAdmin(HttpServletRequest request) {
         ExecutionContext context = runtimeContextService.currentContext(request);
-        if (!context.roles().contains("ADMIN")) {
+        if (!context.roles().contains("ADMIN") && !context.roles().contains("SUPERUSER")) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
         }
     }

@@ -5,6 +5,13 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledEnumOption;
+import com.npdev.dsl.v1.compiled.FieldWidgetDefaults;
+import com.npdev.dsl.v1.compiled.CompiledGuidePage;
+import com.npdev.dsl.v1.compiled.CompiledGuidePageGadget;
+import com.npdev.dsl.v1.compiled.CompiledGuidePageRegion;
+import com.npdev.dsl.v1.compiled.CompiledGuidePageRegions;
+import com.npdev.dsl.v1.compiled.CompiledGuidePageTheme;
+import com.npdev.dsl.v1.compiled.GuidePageDefaults;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
@@ -103,6 +110,43 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 "src/main/resources/static/npdev-business-ui/generated-ui-manifest.json",
                 manifestJson(model, persistedConcepts, superUserRole, resolver)
         );
+
+        // The shared frame (top bar + left nav) is now the platform default for EVERY generated
+        // app, not just ones that compose the workspace pack -- since Phase 4, the generic
+        // business UI itself delegates its own chrome to this same script (NPDevShell.mount in
+        // business-ui-index.mustache), so shell.js/shell.css must exist unconditionally. An app
+        // without workspace::Menu simply renders an empty System section (shell.js's own
+        // GET /api/workspace_menus 404s harmlessly and falls back to an empty list); its System
+        // section is the ONLY thing gated on that concept's presence.
+        writer.writeRelative("src/main/resources/static/shell.css", templates.render("shell.css.mustache", Map.of()));
+        writer.writeRelative("src/main/resources/static/shell.js", templates.render("shell.js.mustache", Map.of()));
+        if (conceptsByName.containsKey(MENU_CONCEPT_NAME)) {
+            writer.writeRelative("src/main/resources/npdev-seed/workspace-menu-seed.json",
+                    menuSeedJson(persistedConcepts, model));
+        }
+    }
+
+    private static final String MENU_CONCEPT_NAME = "workspace::Menu";
+
+    /**
+     * {@code workspace::Menu} starts with zero seeded rows from the generator side -- deliberately.
+     * An earlier version of this method auto-derived one BUSINESS row per persisted concept and
+     * declared Panel, on the theory that a generic-UI-only app should get a free menu. That was
+     * wrong: {@code renderNav()} in business-ui-app.mustache already lists every non-admin concept
+     * (the "business" section) and every declared Panel (the "Panels" section) unconditionally,
+     * regardless of what's in workspace::Menu -- so auto-seeding the same targets there just
+     * duplicated both sections under a redundant "Menu" header (confirmed live: every concept and
+     * panel appeared twice in the sidebar). workspace::Menu's real job, per its own original
+     * design comment in business-ui-app.mustache, is strictly an *overlay* for things NOT already
+     * covered natively -- primarily hand-authored companion pages (kind: PAGE), which
+     * Build-NpdevApp.ps1 writes into a SEPARATE seed file from definition/pages.json (never merged
+     * into this one -- this file lives under npdev-generated/, which is hash-verified at startup
+     * by StrictExecutionValidator and cannot be edited post-generation without tripping it). This
+     * file still gets written (empty) so WorkspaceMenuSeeder's {@code @ConditionalOnResource} gate
+     * still fires whenever the workspace pack is composed, even for an app with no pages.json.
+     */
+    private static String menuSeedJson(List<CompiledConcept> persistedConcepts, CompiledModel model) {
+        return "[]" + System.lineSeparator();
     }
 
     private static List<CompiledConcept> persistedConcepts(CompiledModel model) {
@@ -190,11 +234,31 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         root.put("schemaVersion", "npdev-generated-ui-manifest.v1");
         root.put("appName", model == null || model.getNamespace() == null ? "NPDev Generated App" : model.getNamespace());
         root.put("superUserRole", superUserRole == null ? "" : superUserRole.trim());
+        // Previously hardcoded to apiKey regardless of the app's real npdev.auth.mode setting --
+        // for a jwt-mode app (e.g. WmsOffice), this manifest lied about how to authenticate, so
+        // the generic business UI's own fetch() calls always sent the wrong header and never
+        // actually worked once an app switched to real login. settingResolver already carries the
+        // real app-level setting (same AUTH_MODE key NPDevRuntimeHost's own auth wiring reads).
+        String authMode = settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app());
+        boolean jwtMode = "jwt".equalsIgnoreCase(authMode);
         Map<String, Object> auth = new LinkedHashMap<>();
-        auth.put("mode", "apiKey");
-        auth.put("headerName", "X-Api-Key");
-        auth.put("devKeyHint", "api-dev");
+        auth.put("mode", jwtMode ? "jwt" : "apiKey");
+        auth.put("headerName", jwtMode ? "Authorization" : "X-Api-Key");
+        auth.put("scheme", jwtMode ? "Bearer" : "");
+        if (!jwtMode) {
+            auth.put("devKeyHint", "api-dev");
+        }
+        String loginPath = settingResolver.value(NpdevSettings.AUTH_LOGIN_PATH, SettingTarget.app());
+        auth.put("loginPath", loginPath == null ? "" : loginPath.trim());
         root.put("auth", auth);
+
+        GuidePageDefaults.Result guidePages = GuidePageDefaults.withBuiltins(model == null ? List.of() : model.getGuidePages());
+        Set<String> knownGuidePageNames = new LinkedHashSet<>();
+        for (CompiledGuidePage page : guidePages.guidePages()) {
+            knownGuidePageNames.add(page.name());
+        }
+        root.put("guidePages", guidePageNodes(guidePages.guidePages()));
+        root.put("defaultGuidePage", guidePages.defaultGuidePage());
 
         List<Map<String, Object>> conceptNodes = new ArrayList<>();
         for (CompiledConcept concept : concepts) {
@@ -209,7 +273,9 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("endpointBase", endpointBase(concept));
             node.put("formColumns", formColumns(concept));
             node.put("displayMode", displayMode(concept));
+            node.put("formPresentation", formPresentation(concept));
             node.put("frameMode", resolveFrameMode(concept, settingResolver));
+            node.put("guidePage", resolveGuidePage(concept, settingResolver, knownGuidePageNames, guidePages.defaultGuidePage()));
             node.put("fields", manifestFields(concept, conceptsByName(concepts), settingResolver));
             node.put("list", manifestList(concept, idField));
             Map<String, Object> actions = new LinkedHashMap<>();
@@ -222,7 +288,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             conceptNodes.add(node);
         }
         root.put("concepts", conceptNodes);
-        root.put("panels", panelNodes(model));
+        root.put("panels", panelNodes(model, knownGuidePageNames));
         try {
             return OBJECT_MAPPER.writeValueAsString(root) + System.lineSeparator();
         } catch (Exception exception) {
@@ -257,7 +323,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("requiredWhen", firstNonBlank(fieldUiString(field, CompiledPresentationMetadata::getRequiredWhen), ""));
             if ("array".equals(manifestType(field))) {
                 CompiledSchema schema = field.getSchema();
-                if (schema != null && schema.getItems() != null && !schema.getItems().getProperties().isEmpty()) {
+                if (schema != null && schema.getItems() != null
+                        && (!schema.getItems().getProperties().isEmpty() || "enum".equals(schema.getItems().getType()))) {
                     node.put("itemsSchema", buildItemsSchemaNode(schema.getItems()));
                 }
             } else if ("object".equals(manifestType(field))) {
@@ -268,6 +335,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             }
             Optional<Map<String, Object>> reference = referenceMetadata(field, conceptsByName, concept);
             node.put("widget", widget(field, conceptsByName, concept, settingResolver));
+            node.put("customWidgetRef", firstNonBlank(field.getUi() == null ? null : field.getUi().getCustomWidgetRef(), ""));
             node.put("enumValues", field.getEnumValues());
             node.put("enumOptions", enumOptionsManifest(field));
             node.put("enumName", enumName(concept, field));
@@ -376,7 +444,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
      * ({@code GET .../panels/{name}}, {@code POST .../panels/{name}/actions/{action}}) the same way
      * the Store/Box View sections already fetch their own data on demand.
      */
-    private static List<Map<String, Object>> panelNodes(CompiledModel model) {
+    private static List<Map<String, Object>> panelNodes(CompiledModel model, Set<String> knownGuidePageNames) {
         List<Map<String, Object>> panels = new ArrayList<>();
         if (model == null) {
             return panels;
@@ -388,6 +456,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("title", panel.title() == null || panel.title().isBlank() ? panel.name() : panel.title());
             node.put("visibility", panel.visibility() == null ? "" : panel.visibility());
             node.put("enabledWhen", panel.enabledWhen() == null ? "" : panel.enabledWhen());
+            node.put("guidePage", resolvePanelGuidePage(panel, knownGuidePageNames));
             List<Map<String, Object>> actions = new ArrayList<>();
             for (CompiledPanelAction action : panel.actions()) {
                 Map<String, Object> actionNode = new LinkedHashMap<>();
@@ -404,6 +473,106 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         return panels;
     }
 
+    private static String resolvePanelGuidePage(CompiledPanel panel, Set<String> knownGuidePageNames) {
+        String guidePage = panel.guidePage();
+        if (guidePage == null || guidePage.isBlank()) {
+            return "";
+        }
+        String trimmed = guidePage.trim();
+        if (!knownGuidePageNames.contains(trimmed)) {
+            throw new IllegalStateException("Panel " + panel.name() + ": guidePage not found: " + trimmed);
+        }
+        return trimmed;
+    }
+
+    private static List<Map<String, Object>> guidePageNodes(List<CompiledGuidePage> guidePages) {
+        List<Map<String, Object>> nodes = new ArrayList<>();
+        for (CompiledGuidePage page : guidePages) {
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("name", page.name());
+            node.put("default", page.isDefault());
+            node.put("regions", guidePageRegionsNode(page.regions()));
+            node.put("theme", guidePageThemeNode(page.theme()));
+            List<Map<String, Object>> gadgetNodes = new ArrayList<>();
+            for (CompiledGuidePageGadget gadget : page.gadgets()) {
+                Map<String, Object> gadgetNode = new LinkedHashMap<>();
+                gadgetNode.put("name", gadget.name());
+                gadgetNode.put("type", gadget.type());
+                gadgetNode.put("title", gadget.title() == null || gadget.title().isBlank() ? gadget.name() : gadget.title());
+                gadgetNodes.add(gadgetNode);
+            }
+            node.put("gadgets", gadgetNodes);
+            nodes.add(node);
+        }
+        return nodes;
+    }
+
+    private static Map<String, Object> guidePageRegionsNode(CompiledGuidePageRegions regions) {
+        Map<String, Object> node = new LinkedHashMap<>();
+        if (regions == null) {
+            node.put("top", true);
+            node.put("left", guidePageRegionNode(null));
+            node.put("right", guidePageRegionNode(null));
+            return node;
+        }
+        node.put("top", regions.top());
+        node.put("left", guidePageRegionNode(regions.left()));
+        node.put("right", guidePageRegionNode(regions.right()));
+        return node;
+    }
+
+    private static Map<String, Object> guidePageRegionNode(CompiledGuidePageRegion region) {
+        Map<String, Object> node = new LinkedHashMap<>();
+        node.put("enabled", region != null && region.enabled());
+        node.put("collapsible", region != null && region.collapsible());
+        node.put("defaultCollapsed", region != null && region.defaultCollapsed());
+        node.put("width", region == null ? 0 : region.width());
+        return node;
+    }
+
+    private static Map<String, Object> guidePageThemeNode(CompiledGuidePageTheme theme) {
+        Map<String, Object> node = new LinkedHashMap<>();
+        node.put("mode", theme == null || theme.mode() == null || theme.mode().isBlank() ? "light" : theme.mode());
+        node.put("accent", theme == null || theme.accent() == null ? "" : theme.accent());
+        node.put("density", theme == null || theme.density() == null || theme.density().isBlank() ? "comfortable" : theme.density());
+        node.put("logoText", theme == null || theme.logoText() == null ? "" : theme.logoText());
+        node.put("logoUrl", theme == null || theme.logoUrl() == null ? "" : theme.logoUrl());
+        return node;
+    }
+
+    /**
+     * Effective GuidePage for a concept section: an explicit {@code ui.guidePage} override (concept
+     * -&gt; app cascade) wins; otherwise falls back to the {@code ui.frame.mode} mapping (minimal -&gt;
+     * Minimal, none -&gt; None, full -&gt; the app's default GuidePage) so an app that only ever set
+     * frame mode keeps rendering exactly as before. An explicit override naming an unknown GuidePage
+     * fails generation rather than silently falling back, since that's authoring error, not a
+     * missing-feature default.
+     */
+    private static String resolveGuidePage(
+            CompiledConcept concept,
+            SettingResolver settingResolver,
+            Set<String> knownGuidePageNames,
+            String defaultGuidePageName
+    ) {
+        if (settingResolver == null || concept == null || concept.getName() == null || concept.getName().isBlank()) {
+            return defaultGuidePageName;
+        }
+        String explicit = settingResolver.value(NpdevSettings.UI_GUIDE_PAGE, SettingTarget.forConcept(concept.getModule(), concept.getName()));
+        if (explicit != null && !explicit.isBlank()) {
+            String trimmed = explicit.trim();
+            if (!knownGuidePageNames.contains(trimmed)) {
+                throw new IllegalStateException("Concept " + concept.getName() + ": guidePage not found: " + trimmed);
+            }
+            return trimmed;
+        }
+        String frameMode = resolveFrameMode(concept, settingResolver);
+        return switch (frameMode) {
+            case "minimal" -> GuidePageDefaults.MINIMAL_NAME;
+            case "none" -> GuidePageDefaults.NONE_NAME;
+            default -> defaultGuidePageName;
+        };
+    }
+
     private static int formColumns(CompiledConcept concept) {
         CompiledPresentationMetadata ui = concept.getUi();
         Integer columns = ui == null ? null : ui.getFormColumns();
@@ -413,6 +582,16 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     private static String displayMode(CompiledConcept concept) {
         CompiledPresentationMetadata ui = concept.getUi();
         return firstNonBlank(ui == null ? null : ui.getDisplayMode(), "");
+    }
+
+    // Controls how the generic business UI's create/edit form for this concept opens: "modal"
+    // (the platform's original popup dialog) or "standard" (renders inline in place of the
+    // grid, with a Back-to-list action) -- "standard" is the platform default so an author only
+    // sets ui.formPresentation="modal" to opt a concept back into the popup.
+    private static String formPresentation(CompiledConcept concept) {
+        CompiledPresentationMetadata ui = concept.getUi();
+        String value = ui == null ? null : ui.getFormPresentation();
+        return "modal".equals(value) ? "modal" : "standard";
     }
 
     private static String fieldUiString(
@@ -470,49 +649,41 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         // for. An unconfigured app resolves to the platform default (empty string) for every
         // field, so this is a no-op unless an author has actually declared an override. Checked
         // before the reference-field default so a single (N:1/1:1) reference field can opt into a
-        // plain "select" dropdown instead of the picker dialog.
+        // plain "select"/"autocomplete"/"image-select" instead of the picker dialog.
         if (settingResolver != null && conceptName != null && !conceptName.isBlank() && field.getName() != null) {
             String cascadeWidget = settingResolver.value(
                     NpdevSettings.FIELD_WIDGET,
                     SettingTarget.field(conceptName, field.getName())
             );
             if (cascadeWidget != null && !cascadeWidget.isBlank()) {
-                String normalized = cascadeWidget.trim();
+                String normalized = FieldWidgetDefaults.normalize(cascadeWidget);
                 if (isReference) {
-                    // "select" (plain <select>, whole candidate set fetched upfront) and
-                    // "autocomplete" (live-search suggestions, for a candidate set too large for a
-                    // <select>) are the only supported alternatives for a reference field; any other
-                    // override falls back to the picker rather than silently rendering a bare text
-                    // input over a foreign-key value.
-                    if ("select".equalsIgnoreCase(normalized)) {
-                        return "select";
-                    }
-                    if ("autocomplete".equalsIgnoreCase(normalized)) {
-                        return "autocomplete";
+                    // "select" (plain <select>, whole candidate set fetched upfront), "autocomplete"
+                    // (live-search suggestions, for a candidate set too large for a <select>) and
+                    // "image-select" (option cards with an image per candidate) are the only
+                    // supported alternatives for a reference field; any other override falls back
+                    // to the picker rather than silently rendering a bare text input over a
+                    // foreign-key value.
+                    if ("select".equals(normalized) || "autocomplete".equals(normalized) || "image-select".equals(normalized)) {
+                        return normalized;
                     }
                     return "lookup";
                 }
                 return normalized;
             }
         }
-        if (isReference) {
-            return "lookup";
+        // The field's own inline ui.widget (model.json) is honored directly for every field shape,
+        // including reference fields -- SemanticValidator's FieldWidgetDefaults.classify() has
+        // already rejected any declaration it considers structurally broken for this field's type,
+        // so no defensive re-check is needed here.
+        CompiledPresentationMetadata ui = field.getUi();
+        String declaredWidget = ui == null ? null : ui.getWidget();
+        if (declaredWidget != null && !declaredWidget.isBlank()) {
+            return FieldWidgetDefaults.normalize(declaredWidget);
         }
         String type = manifestType(field);
-        if ("enum".equals(type) && field.getEnumValues() != null && !field.getEnumValues().isEmpty()) {
-            return "select";
-        }
-        CompiledPresentationMetadata ui = field.getUi();
-        String widget = ui == null ? null : ui.getWidget();
-        if (widget != null && !widget.isBlank()) {
-            return widget.trim();
-        }
-        return switch (type) {
-            case "date" -> "date";
-            case "datetime" -> "datetime-local";
-            case "boolean" -> "checkbox";
-            default -> "text";
-        };
+        boolean hasEnumValues = field.getEnumValues() != null && !field.getEnumValues().isEmpty();
+        return FieldWidgetDefaults.defaultWidget(type, isReference, false, hasEnumValues);
     }
 
     /**
@@ -618,6 +789,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         reference.put("endpointBase", endpointBase(target));
         reference.put("displayField", displayField);
         reference.put("displayFields", displayFields);
+        reference.put("imageField", firstNonBlank(field.getUi() == null ? null : field.getUi().getImageField(), ""));
         reference.put("searchFields", searchFields);
         reference.put("pickerColumns", pickerColumns);
         reference.put("displayTemplate", firstNonBlank(referenceDisplayTemplate(field), ""));
@@ -891,6 +1063,9 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             propsNode.put(entry.getKey(), buildNestedPropertyNode(entry.getValue(), depth));
         }
         node.put("properties", propsNode);
+        if ("enum".equals(type)) {
+            node.put("enumValues", items.getEnumValues() == null ? List.of() : items.getEnumValues());
+        }
         if ("array".equals(type) && items.getItems() != null && depth < MAX_SCHEMA_NESTING_DEPTH) {
             node.put("items", buildItemsSchemaNode(items.getItems(), depth + 1));
         }

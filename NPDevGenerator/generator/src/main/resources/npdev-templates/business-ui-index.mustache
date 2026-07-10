@@ -5,27 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Business Data</title>
   <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="/shell.css">
 </head>
 <body>
-  <header class="app-bar">
-    <div class="app-bar-brand">
-      <button id="navToggle" type="button" class="nav-toggle" aria-label="Toggle navigation">☰</button>
-      <div>
-        <h1 id="appTitle">Business Data</h1>
-        <div id="status" class="status" role="status"></div>
-      </div>
-    </div>
-    <label class="api-key-field">
-      <span>API Key</span>
-      <input id="apiKey" type="password" autocomplete="off">
-    </label>
-  </header>
-  <div id="layoutRoot" class="layout">
-    <nav id="sideNav" class="side-nav"></nav>
-    <main id="app" class="workspace"></main>
-  </div>
+  <main id="app" class="workspace"></main>
   <div id="modalRoot"></div>
   <div id="pickerModalRoot"></div>
+  <script src="/shell.js" data-npdev-shell="host"></script>
   <script src="./app.js"></script>
 </body>
 </html>

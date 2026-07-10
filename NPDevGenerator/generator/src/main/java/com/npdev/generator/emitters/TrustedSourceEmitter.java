@@ -2,10 +2,13 @@ package com.npdev.generator.emitters;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledGeneratedActionDescriptorSpec;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
+import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
 import com.npdev.dsl.v1.compiled.CompiledProcedure;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.sun.source.tree.BlockTree;
@@ -37,6 +40,7 @@ import java.util.EnumSet;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -184,6 +188,7 @@ public final class TrustedSourceEmitter {
 
         List<TrustedProcedure> procedures = new ArrayList<>();
         List<TrustedPanel> panels = new ArrayList<>();
+        List<TrustedWidget> widgets = new ArrayList<>();
         for (TrustedReference reference : references) {
             ManifestEntry entry = entryByKey.get(key(reference.kind(), reference.relativePath()));
             validateHash(sourceRoot, entry);
@@ -191,6 +196,8 @@ public final class TrustedSourceEmitter {
                 procedures.add(toProcedure(reference, entry, sourceRoot));
             } else if ("panel".equals(reference.kind())) {
                 panels.add(toPanel(reference, entry, sourceRoot));
+            } else if ("widget".equals(reference.kind())) {
+                widgets.add(toWidget(entry, sourceRoot));
             }
         }
         List<TrustedFlow> flows = trustedFlowsFrom(model);
@@ -279,13 +286,19 @@ public final class TrustedSourceEmitter {
                     panel.jsSource()
             );
         }
+        for (TrustedWidget widget : widgets) {
+            writer.writeRelative(
+                    "src/main/resources/trusted-source/widget/" + widget.relativePath(),
+                    widget.source()
+            );
+        }
         writer.writeRelative(
                 "src/main/java/" + PACKAGE_PATH + "/GeneratedTrustedSourceRuntimeController.java",
-                controllerSource(procedures, panels, flows)
+                controllerSource(procedures, panels, widgets, flows)
         );
         writer.writeRelative(
                 "src/main/resources/trusted-source/trusted-source-generation-manifest.json",
-                generationManifest(entries, procedures, panels, manifestPath)
+                generationManifest(entries, procedures, panels, widgets, manifestPath)
         );
     }
 
@@ -318,6 +331,16 @@ public final class TrustedSourceEmitter {
                         requiredRoleFromVisibility(panel.visibility()),
                         panel
                 ));
+            }
+        }
+        Set<String> widgetPaths = new LinkedHashSet<>();
+        for (CompiledConcept concept : model.getConcepts()) {
+            for (CompiledField field : concept.getFields()) {
+                CompiledPresentationMetadata ui = field.getUi();
+                String customWidgetRef = ui == null ? null : ui.getCustomWidgetRef();
+                if (customWidgetRef != null && !customWidgetRef.isBlank() && widgetPaths.add(customWidgetRef.trim())) {
+                    references.add(new TrustedReference("widget", customWidgetRef.trim(), "", customWidgetRef.trim(), "", null));
+                }
             }
         }
         return references;
@@ -381,7 +404,7 @@ public final class TrustedSourceEmitter {
     }
 
     private static void validateManifestEntry(Path sourceRoot, ManifestEntry entry) {
-        if (!Set.of("procedure", "panel").contains(entry.kind())) {
+        if (!Set.of("procedure", "panel", "widget").contains(entry.kind())) {
             throw new IllegalStateException("Unsupported trusted source kind: " + entry.kind());
         }
         if (!isSafeRelativePath(entry.relativePath())) {
@@ -405,7 +428,12 @@ public final class TrustedSourceEmitter {
         if ("panel".equals(entry.kind()) && !entry.runtimeBinding().startsWith("panel:")) {
             throw new IllegalStateException("Trusted panel runtimeBinding must use panel:<route>: " + entry.relativePath());
         }
-        if (entry.requiredRole().isBlank()) {
+        if ("widget".equals(entry.kind()) && !"javascript".equals(entry.language())) {
+            throw new IllegalStateException("Trusted widget language must be javascript: " + entry.relativePath());
+        }
+        // A widget is a shared script embedded in whatever form renders it, not a routed page of
+        // its own -- it has no independent access-control role to require, unlike a procedure/panel.
+        if (!"widget".equals(entry.kind()) && entry.requiredRole().isBlank()) {
             throw new IllegalStateException("Trusted source entry requiredRole is required: " + entry.relativePath());
         }
     }
@@ -454,6 +482,13 @@ public final class TrustedSourceEmitter {
                 assets.css(),
                 assets.js()
         );
+    }
+
+    private static TrustedWidget toWidget(ManifestEntry entry, Path sourceRoot) throws IOException {
+        Path sourcePath = sourceRoot.resolve(entry.relativePath()).normalize();
+        String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
+        validatePanelJavaScript(source, entry.relativePath());
+        return new TrustedWidget(entry.relativePath(), source);
     }
 
     private static void validateHash(Path sourceRoot, ManifestEntry entry) throws IOException {
@@ -2864,7 +2899,12 @@ public final class TrustedSourceEmitter {
                 .toLowerCase(Locale.ROOT);
     }
 
-    private static String controllerSource(List<TrustedProcedure> procedures, List<TrustedPanel> panels, List<TrustedFlow> flows) {
+    private static String controllerSource(
+            List<TrustedProcedure> procedures,
+            List<TrustedPanel> panels,
+            List<TrustedWidget> widgets,
+            List<TrustedFlow> flows
+    ) {
         StringBuilder source = new StringBuilder();
         source.append("""
                 package com.npdev.generated.trusted;
@@ -3103,6 +3143,17 @@ public final class TrustedSourceEmitter {
                     .append("    public ResponseEntity<String> panelJs").append(methodSuffix(panel.id())).append("() throws Exception {\n")
                     .append("        String js = StreamUtils.copyToString(new ClassPathResource(")
                     .append(quote("trusted-source/panel/" + panel.jsResourceName()))
+                    .append(").getInputStream(), StandardCharsets.UTF_8);\n")
+                    .append("        return ResponseEntity.ok().contentType(MediaType.valueOf(\"application/javascript\")).body(js);\n")
+                    .append("    }\n\n");
+        }
+
+        for (TrustedWidget widget : widgets) {
+            String urlPath = widget.relativePath().replace('\\', '/');
+            source.append("    @GetMapping(value = ").append(quote("/generated/trusted-source/widget/" + urlPath)).append(", produces = \"application/javascript\")\n")
+                    .append("    public ResponseEntity<String> widget").append(methodSuffix(widget.relativePath())).append("() throws Exception {\n")
+                    .append("        String js = StreamUtils.copyToString(new ClassPathResource(")
+                    .append(quote("trusted-source/widget/" + urlPath))
                     .append(").getInputStream(), StandardCharsets.UTF_8);\n")
                     .append("        return ResponseEntity.ok().contentType(MediaType.valueOf(\"application/javascript\")).body(js);\n")
                     .append("    }\n\n");
@@ -3521,6 +3572,7 @@ public final class TrustedSourceEmitter {
             List<ManifestEntry> entries,
             List<TrustedProcedure> procedures,
             List<TrustedPanel> panels,
+            List<TrustedWidget> widgets,
             Path manifestPath
     ) throws IOException {
         Map<String, Object> output = new LinkedHashMap<>();
@@ -3529,6 +3581,7 @@ public final class TrustedSourceEmitter {
         output.put("overlayHarnessUsed", false);
         output.put("procedureCount", procedures.size());
         output.put("panelCount", panels.size());
+        output.put("widgetCount", widgets.size());
         output.put("entries", entries);
         return OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(output);
     }
@@ -3694,6 +3747,22 @@ public final class TrustedSourceEmitter {
     private record TrustedFlow(
             String flowName,
             String actionName
+    ) {
+    }
+
+    /**
+     * A field-level custom widget (kind {@code "widget"}): a single hash-locked, safety-scanned JS
+     * file an author registers with {@code window.NpdevCustomWidgets.register(...)} and a field
+     * opts into via {@code ui.widget: "custom"} + {@code ui.customWidgetRef: "<relativePath>"}.
+     * Unlike a panel it is not itself a routed/access-controlled page -- it's a shared script
+     * embedded inside whatever form already renders it, so it carries no route or requiredRole.
+     * {@code relativePath} (e.g. {@code "widgets/star-rating.js"}) is used as-is for the on-disk
+     * resource path, the served URL suffix, AND the manifest's {@code customWidgetRef} value the
+     * client already has -- no separate slug/id mapping to keep in sync across client and server.
+     */
+    private record TrustedWidget(
+            String relativePath,
+            String source
     ) {
     }
 

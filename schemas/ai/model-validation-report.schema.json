@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/model-validation-report.schema.json",
+  "title": "NPDev Model Validation Report",
+  "description": "Typed, loopable diagnostic report emitted by the standalone model validator (ModelValidatorMain / `npdev validate app`). Runs the same structural + semantic validation the generator runs, without generating, so an AI-authoring agent can self-correct a draft model.json before a full build.",
+  "type": "object",
+  "required": [
+    "contractVersion",
+    "status",
+    "summary",
+    "diagnostics"
+  ],
+  "properties": {
+    "contractVersion": {
+      "const": "npdev-validation-report.v2"
+    },
+    "status": {
+      "description": "passed = no errors and no warnings; warning = warnings only; failed = at least one error.",
+      "enum": [
+        "passed",
+        "warning",
+        "failed"
+      ]
+    },
+    "model": {
+      "description": "Path of the validated model.json (informational).",
+      "type": "string"
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "errors",
+        "warnings"
+      ],
+      "properties": {
+        "errors": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warnings": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/diagnostic"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "diagnostic": {
+      "type": "object",
+      "description": "One validation finding. Optional fields are omitted (not null) when the validator has no value for them.",
+      "required": [
+        "layer",
+        "severity",
+        "message"
+      ],
+      "properties": {
+        "layer": {
+          "description": "Which validation pass produced this finding.",
+          "enum": [
+            "structural",
+            "semantic",
+            "ux-metadata",
+            "release-gate"
+          ]
+        },
+        "severity": {
+          "enum": [
+            "error",
+            "warning",
+            "info"
+          ]
+        },
+        "code": {
+          "description": "Stable machine code for the finding (e.g. unknown_reference_target). Absent when the pass did not assign one.",
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "path": {
+          "description": "Authoring path to the offending node (e.g. concepts[User].fields[ghostId]).",
+          "type": "string"
+        },
+        "concept": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "section": {
+          "type": "string"
+        },
+        "ruleName": {
+          "type": "string"
+        },
+        "suggestedFix": {
+          "description": "Actionable, human-readable fix hint the AI-authoring loop can apply.",
+          "type": "string"
+        },
+        "helpKey": {
+          "description": "Documentation lookup key for this diagnostic class.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

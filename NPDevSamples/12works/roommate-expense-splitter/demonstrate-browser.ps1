@@ -12,10 +12,10 @@ $ErrorActionPreference = "Stop"
 # generated vanilla-JS business UI in a real (headless) browser via ScrapForAI and
 # asserts on the structured evidence -- console errors, page errors, network
 # failures, unexpected external requests, screenshots. Exercises Household create,
-# Member create (referencing Household via the search-dialog picker despite its
-# widget: "select" declaration being inert), then Expense create referencing both
-# Household and the payer Member via two independently-scoped pickers on the same
-# form, plus the splitWithRefs N:M bond via the checkbox-list multiselect widget.
+# Member create (referencing Household via its widget: "select" reference field,
+# now honored directly), then Expense create referencing both Household and the
+# payer Member via their own select-widget reference fields on the same form, plus
+# the splitWithRefs N:M bond via the checkbox-list multiselect widget.
 
 . (Join-Path $PSScriptRoot "..\..\scripts\sample-common.ps1")
 . (Join-Path $PSScriptRoot "..\..\scripts\browser\scrapforai-harness.ps1")
@@ -112,4 +112,4 @@ $summary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $OutputPath -Enco
 Write-Host ""
 Ok ("Evidence written to " + $OutputPath)
 Ok ("Screenshots/traces under " + $ctx.ArtifactDir)
-Ok ("Browser verification green across " + $routines.Count + " routine(s) (Household create; Member create via the search-dialog picker; Expense create referencing both Household and the payer Member via two independently-scoped pickers; splitWithRefs N:M bond exercised via the multiselect checkbox widget).")
+Ok ("Browser verification green across " + $routines.Count + " routine(s) (Household create; Member create via the select-widget Household reference; Expense create referencing both Household and the payer Member via their own select-widget reference fields; splitWithRefs N:M bond exercised via the multiselect checkbox widget).")

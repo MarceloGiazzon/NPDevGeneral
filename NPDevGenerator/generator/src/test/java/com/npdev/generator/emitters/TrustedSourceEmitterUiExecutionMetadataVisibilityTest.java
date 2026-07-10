@@ -165,7 +165,8 @@ final class TrustedSourceEmitterUiExecutionMetadataVisibilityTest {
                 "",
                 List.of(),
                 Map.of(),
-                Map.of("trustedSourceEntrypoint", "panel/item13-panel.html")
+                Map.of("trustedSourceEntrypoint", "panel/item13-panel.html"),
+                null
         );
         return new CompiledModel(
                 "item13.ui.metadata",

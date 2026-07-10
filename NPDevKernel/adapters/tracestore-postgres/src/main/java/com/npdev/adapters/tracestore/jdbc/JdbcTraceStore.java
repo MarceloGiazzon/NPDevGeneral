@@ -1,6 +1,7 @@
 package com.npdev.adapters.tracestore.jdbc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.npdev.kernel.ports.TraceQuery;
 import com.npdev.kernel.ports.TraceSummaryStore;
 import com.npdev.kernel.ports.TraceStore;
@@ -25,7 +26,8 @@ public class JdbcTraceStore implements TraceStore, TraceSummaryStore {
     private final ObjectMapper objectMapper;
 
     public JdbcTraceStore(DataSource dataSource) {
-        this(dataSource, new ObjectMapper());
+        this(dataSource, new ObjectMapper().findAndRegisterModules()
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS));
     }
 
     public JdbcTraceStore(DataSource dataSource, ObjectMapper objectMapper) {

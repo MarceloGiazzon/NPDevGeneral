@@ -4,7 +4,7 @@
   "pack": "workspace",
   "version": "1.0.0",
   "namespace": "com.npdev.workspace",
-  "description": "Built-in NPDev workspace tables: navigation Menus (internal NPDev UI + business UIs) and per-user Preferences. Generic by design so they can evolve with system maturity. userId / parentMenuId / requiredRole are soft references (plain strings) to the identity pack and to other menus; they harden into bonds when the built-in packs compose into an app.",
+  "description": "Built-in NPDev workspace tables: navigation Menus (internal NPDev UI, business UIs, and hand-authored companion pages) and per-user Preferences. Generic by design so they can evolve with system maturity. userId / parentMenuId / requiredRole are soft references (plain strings) to the identity pack and to other menus; they harden into bonds when the built-in packs compose into an app. Menu.kind: INTERNAL targets a fixed platform surface (preferences/store/boxview/promotion), BUSINESS targets a concept or declared Panel by name, PAGE targets a literal relative URL to a hand-authored static page, GROUP is a non-navigable label node whose children (via parentMenuId) form a submenu -- its target is unused and seeds as an empty string.",
   "category": "web-ui",
   "author": "NPDev",
   "concepts": [
@@ -14,7 +14,7 @@
         { "name": "id", "type": "uuid", "id": true, "required": true },
         { "name": "label", "type": "string", "required": true, "maxLength": 120 },
         { "name": "target", "type": "string", "required": true, "maxLength": 400 },
-        { "name": "kind", "type": "enum", "required": true, "enumValues": ["INTERNAL", "BUSINESS"] },
+        { "name": "kind", "type": "enum", "required": true, "enumValues": ["INTERNAL", "BUSINESS", "PAGE", "GROUP"] },
         { "name": "parentMenuId", "type": "string", "required": false, "maxLength": 64 },
         { "name": "requiredRole", "type": "string", "required": false, "maxLength": 80 },
         { "name": "ordinal", "type": "int", "required": true },

@@ -1,9 +1,21 @@
 (function () {
   "use strict";
 
+  // Runtime contract for a field.widget="custom" trusted-source widget (see TrustedSourceEmitter's
+  // "widget" kind): the author's separately-loaded, hash-locked, safety-scanned script calls
+  // window.NpdevCustomWidgets.register(field.customWidgetRef, { render(field, value) => HTMLElement })
+  // at its top level. The returned element must contain a form-associated control named field.name
+  // (a plain <input>, or a hidden input inside a wrapper -- same pattern as the built-in
+  // lookup/autocomplete/multiselect controls) so submitForm's generic form.elements[field.name].value
+  // read keeps working, and must let input/change events bubble from it so applyConditionals'
+  // existing generic listener (attached to whatever createInput returns) keeps firing on edits.
+  window.NpdevCustomWidgets = window.NpdevCustomWidgets || {
+    _registry: {},
+    register: function (name, impl) { this._registry[name] = impl; },
+    get: function (name) { return this._registry[name]; }
+  };
+
   const STORAGE_KEY = "npdev.businessUi.apiKey";
-  const NAV_COLLAPSED_KEY = "npdev.businessUi.navCollapsed";
-  const MENU_CONCEPT_NAME = "workspace::Menu";
   const PREFERENCE_CONCEPT_NAME = "workspace::Preference";
   const PREFERENCES_SECTION = { conceptName: "__preferences__" };
   const STORE_SECTION = { conceptName: "__store__" };
@@ -20,7 +32,6 @@
     roles: [],
     isSuperUser: false,
     actorId: "",
-    menuItems: [],
     preferences: { records: [], loading: false, loaded: false },
     store: { packs: [], discoverable: false, loading: false, loaded: false, filter: "", installedIntents: {} },
     boxView: { boxes: [], note: "", loading: false, loaded: false },
@@ -30,17 +41,43 @@
     declaredPanels: {}
   };
 
+  // The header/side-nav chrome this used to own (app-bar, #sideNav, #layoutRoot, nav-collapse
+  // toggle) is gone from business-ui-index.mustache -- NPDevShell.mount() (see bootstrap()) now
+  // renders and manages all of that, identically to how it renders a hand-authored page's chrome.
+  // Only #app (the content mount) and the two modal roots remain static HTML; #status and #apiKey
+  // are built here instead of queried, since there's no longer a static header for them to live in.
   const el = {
     app: document.getElementById("app"),
-    appTitle: document.getElementById("appTitle"),
-    status: document.getElementById("status"),
-    apiKey: document.getElementById("apiKey"),
     modalRoot: document.getElementById("modalRoot"),
     pickerModalRoot: document.getElementById("pickerModalRoot"),
-    sideNav: document.getElementById("sideNav"),
-    layoutRoot: document.getElementById("layoutRoot"),
-    navToggle: document.getElementById("navToggle")
+    status: document.createElement("div"),
+    apiKey: document.createElement("input")
   };
+  el.status.className = "status";
+  el.status.setAttribute("role", "status");
+  el.apiKey.id = "apiKey";
+  el.apiKey.type = "password";
+  el.apiKey.autocomplete = "off";
+
+  // A slim strip prepended to #app on every render(): always carries the last status message
+  // (load/error feedback that used to live in the header); the API Key field within it is hidden
+  // outright in jwt mode, where the shell's own identity/login flow is the real session mechanism
+  // and this field would just be redundant, unused chrome.
+  function buildAuthBar() {
+    const bar = document.createElement("div");
+    bar.className = "business-ui-authbar";
+    bar.appendChild(el.status);
+    const field = document.createElement("label");
+    field.className = "api-key-field";
+    const label = document.createElement("span");
+    label.textContent = "API Key";
+    field.appendChild(label);
+    field.appendChild(el.apiKey);
+    bar.appendChild(field);
+    el.apiKeyField = field;
+    return bar;
+  }
+  el.authBar = buildAuthBar();
 
   // Declared Panel Objects (project_vision's "code-bearing creative surfaces") are a dynamic list
   // from the manifest, unlike the fixed Store/BoxView/Promotion sentinels above -- this builds an
@@ -208,7 +245,8 @@
     const result = { "Content-Type": "application/json" };
     const apiKey = el.apiKey.value.trim();
     if (apiKey) {
-      result[state.manifest.auth.headerName || "X-Api-Key"] = apiKey;
+      const scheme = (state.manifest.auth && state.manifest.auth.scheme) || "";
+      result[state.manifest.auth.headerName || "X-Api-Key"] = scheme ? scheme + " " + apiKey : apiKey;
     }
     return result;
   }
@@ -241,7 +279,8 @@
         filter: "",
         records: [],
         totalElements: 0,
-        loading: false
+        loading: false,
+        formMode: null
       };
     }
     return state.panels[concept.conceptName];
@@ -311,15 +350,17 @@
     if (!state.manifest) {
       return;
     }
-    el.appTitle.textContent = state.manifest.appName || "Business Data";
+    document.title = state.manifest.appName || "Business Data";
+    el.apiKeyField.style.display = (state.manifest.auth && state.manifest.auth.mode === "jwt") ? "none" : "";
     el.app.innerHTML = "";
+    el.app.appendChild(el.authBar);
     const concepts = visibleConcepts();
     const activeId = state.activeConcept ? sectionId(state.activeConcept) : null;
     concepts.forEach(function (concept, index) {
       const panel = renderPanel(concept);
       const isActive = activeId ? sectionId(concept) === activeId : index === 0;
       if (!isActive) panel.style.display = "none";
-      if (isActive) applyFrameMode(concept);
+      if (isActive) applyActiveGuidePage(concept);
       el.app.appendChild(panel);
     });
     if (findConcept(PREFERENCE_CONCEPT_NAME)) {
@@ -348,11 +389,37 @@
   }
 
   // ui.frame.mode: synthetic sections (Store/Box View/Preferences/Promotion) carry no frameMode
-  // of their own and fall back to "full", same as an unconfigured real concept.
+  // of their own and fall back to "full", same as an unconfigured real concept. Kept alongside the
+  // newer GuidePage mechanism (applyActiveGuidePage) rather than replaced by it: the escape-hatch
+  // link (renderPanel) and this class pair are a small, self-contained, already-working mechanism,
+  // and concept.guidePage (Phase 2) is itself already derived FROM this same setting server-side
+  // for any concept that never declares an explicit GuidePage -- the two stay in lockstep by
+  // construction, so there's nothing to gain from tearing this out.
   function applyFrameMode(concept) {
     const frameMode = (concept && concept.frameMode) || "full";
     document.body.classList.toggle("frame-minimal", frameMode === "minimal");
     document.body.classList.toggle("frame-none", frameMode === "none");
+  }
+
+  // Applies both the legacy frame-mode classes (escape hatch support) and the shell's own
+  // GuidePage regions/theme for the section becoming active -- concept.guidePage is already
+  // fully resolved server-side (BusinessUiEmitter.resolveGuidePage), so this is a direct pass-through.
+  function activeSectionLabel(concept) {
+    if (!concept) return "";
+    if (concept.declaredPanel) return concept.declaredPanel.title;
+    if (concept === PREFERENCES_SECTION) return "Preferencias";
+    if (concept === STORE_SECTION) return "Store";
+    if (concept === BOX_VIEW_SECTION) return "Box View";
+    if (concept === PROMOTION_SECTION) return "Promotion";
+    return concept.displayName || "";
+  }
+
+  function applyActiveGuidePage(concept) {
+    applyFrameMode(concept);
+    if (window.NPDevShell && concept) {
+      window.NPDevShell.applyGuidePage(concept.guidePage || (state.manifest && state.manifest.defaultGuidePage));
+      window.NPDevShell.setContext({ title: activeSectionLabel(concept), rows: [] });
+    }
   }
 
   function showConcept(concept) {
@@ -360,7 +427,11 @@
     el.app.querySelectorAll(".concept-panel").forEach(function (p) { p.style.display = "none"; });
     const section = document.getElementById(sectionId(concept));
     if (section) section.style.display = "";
-    applyFrameMode(concept);
+    applyActiveGuidePage(concept);
+    const hash = "#" + sectionId(concept);
+    if (window.location.hash !== hash) {
+      window.location.hash = hash;
+    }
   }
 
   function showPreferences() {
@@ -388,10 +459,47 @@
     loadDeclaredPanel(panelMeta);
   }
 
+  // Hash-based deep-link support: lets a shell nav link (from this same page, or -- once landed --
+  // a hand-authored page's link into "/npdev-business-ui/index.html#concept-Foo") open the right
+  // section instead of always landing on the default. sectionId()'s output is exactly what shell.js
+  // (businessHref/sectionAnchor) already produces, so the two sides agree on the fragment without
+  // any extra coordination.
+  function resolveHashTarget(hash) {
+    if (!hash || !state.manifest) return null;
+    const id = hash.replace(/^#/, "");
+    if (!id) return null;
+    const concept = visibleConcepts().find(function (c) { return sectionId(c) === id; });
+    if (concept) return concept;
+    if (findConcept(PREFERENCE_CONCEPT_NAME) && sectionId(PREFERENCES_SECTION) === id) return PREFERENCES_SECTION;
+    if (state.isSuperUser) {
+      if (sectionId(STORE_SECTION) === id) return STORE_SECTION;
+      if (sectionId(BOX_VIEW_SECTION) === id) return BOX_VIEW_SECTION;
+      if (sectionId(PROMOTION_SECTION) === id) return PROMOTION_SECTION;
+    }
+    const panelMeta = (state.manifest.panels || []).find(function (p) { return sectionId(panelSectionRef(p)) === id; });
+    return panelMeta ? panelSectionRef(panelMeta) : null;
+  }
+
+  function activateTarget(target) {
+    if (!target) return;
+    if (target === PREFERENCES_SECTION) { showPreferences(); return; }
+    if (target === STORE_SECTION) { showStore(); return; }
+    if (target === BOX_VIEW_SECTION) { showBoxView(); return; }
+    if (target === PROMOTION_SECTION) { showPromotion(); return; }
+    if (target.declaredPanel) { showDeclaredPanel(target.declaredPanel); return; }
+    showConcept(target);
+  }
+
+  function handleHashChange() {
+    activateTarget(resolveHashTarget(window.location.hash));
+  }
+
+  window.addEventListener("hashchange", handleHashChange);
+
   function declaredPanelState(panelMeta) {
     if (!state.declaredPanels[panelMeta.name]) {
       state.declaredPanels[panelMeta.name] = {
-        loading: false, loaded: false, data: {}, fieldBindings: [], dataSources: [],
+        loading: false, loaded: false, data: {}, fieldBindings: [], dataSources: [], actions: [],
         lastActionName: "", lastActionResult: null
       };
     }
@@ -415,6 +523,10 @@
       entry.data = payload.data || {};
       entry.fieldBindings = payload.fieldBindings || [];
       entry.dataSources = payload.dataSources || [];
+      // The boot-time manifest's panelMeta.actions only carries name/label/binding/visibleWhen/
+      // enabledWhen (BusinessUiEmitter deliberately keeps it minimal) -- it has no "concept", so
+      // resolveRowSaveAction below needs the richer actions array from this live GET response.
+      entry.actions = payload.actions || [];
       entry.loaded = true;
     } catch (error) {
       setStatus(error.message, true);
@@ -561,7 +673,7 @@
     const dataSourceMeta = (entry.dataSources || []).find(function (ds) { return ds.name === dataSourceName; });
     const concept = dataSourceMeta ? String(dataSourceMeta.concept || "").toLowerCase() : "";
     if (!concept) { return null; }
-    return (panelMeta.actions || []).find(function (action) {
+    return (entry.actions || []).find(function (action) {
       return String(action.binding || "").toLowerCase() === "conceptmutation"
         && String(action.concept || "").toLowerCase() === concept;
     }) || null;
@@ -1517,12 +1629,36 @@
           return c.frameMode !== "minimal" && c.frameMode !== "none";
         }) || visibleConcepts()[0];
         if (!target) return;
+        // showConcept() updates window.location.hash to match, and the shell's own hashchange
+        // listener re-highlights its nav from that -- no need to touch any nav DOM directly here.
         showConcept(target);
-        el.sideNav.querySelectorAll("a").forEach(function (l) { l.classList.remove("active"); });
-        const link = el.sideNav.querySelector("a[href=\"#" + sectionId(target) + "\"]");
-        if (link) link.classList.add("active");
       });
       section.appendChild(escapeHatch);
+    }
+
+    // Standard (non-modal) presentation: while a create/edit is in progress, the panel shows the
+    // form INSTEAD of the grid -- filters/table/pager are skipped entirely, matching the modal
+    // presentation's "grid OR form" exclusivity without an actual popup. panel.formMode is cleared
+    // by the form's own Cancel button and by submitForm's onDone callback (see buildFormElement).
+    if (!isModalPresentation(concept) && panel.formMode) {
+      const formHeader = document.createElement("div");
+      formHeader.className = "panel-header";
+      const formTitle = document.createElement("h2");
+      formTitle.textContent = (panel.formMode.mode === "edit" ? "Edit " : "New ") + concept.displayName;
+      formHeader.appendChild(formTitle);
+      const backActions = document.createElement("div");
+      backActions.className = "panel-actions";
+      backActions.appendChild(button("« Back to list", "", function () {
+        panel.formMode = null;
+        render();
+      }));
+      formHeader.appendChild(backActions);
+      section.appendChild(formHeader);
+      section.appendChild(buildFormElement(concept, panel.formMode.mode, panel.formMode.record, function () {
+        panel.formMode = null;
+        render();
+      }));
+      return section;
     }
 
     const header = document.createElement("div");
@@ -1992,7 +2128,28 @@
     return order.map(function (name) { return { name: name, fields: byTab[name] }; });
   }
 
+  // "standard" (the platform default) renders the create/edit form inline in place of the grid,
+  // via panel.formMode (see renderPanel); "modal" opts a concept back into the original popup.
+  function isModalPresentation(concept) {
+    return concept.formPresentation === "modal";
+  }
+
   function openForm(concept, mode, record) {
+    if (isModalPresentation(concept)) {
+      const form = buildFormElement(concept, mode, record, closeModal);
+      openModal(mode === "edit" ? "Edit " + concept.displayName : "New " + concept.displayName, form);
+      return;
+    }
+    const panel = panelState(concept);
+    panel.formMode = { mode: mode, record: record };
+    render();
+  }
+
+  // Builds the create/edit <form> DOM shared by both presentations. `onDone` is called after a
+  // successful submit (see submitForm) and by the form's own Cancel button -- modal presentation
+  // passes closeModal, standard presentation passes a callback that clears panel.formMode and
+  // re-renders the grid (see renderPanel).
+  function buildFormElement(concept, mode, record, onDone) {
     const form = document.createElement("form");
     form.className = "record-form";
     form.dataset.mode = mode;
@@ -2054,17 +2211,17 @@
 
     const footer = document.createElement("div");
     footer.className = "modal-actions";
-    footer.appendChild(button("Cancel", "", closeModal));
+    footer.appendChild(button("Cancel", "", onDone));
     const submit = button(mode === "edit" ? "Save" : "Create", "primary", function () {});
     submit.type = "submit";
     footer.appendChild(submit);
     form.appendChild(footer);
     form.addEventListener("submit", function (event) {
       event.preventDefault();
-      submitForm(concept, mode, record, form);
+      submitForm(concept, mode, record, form, onDone);
     });
-    openModal(mode === "edit" ? "Edit " + concept.displayName : "New " + concept.displayName, form);
     applyConditionals(concept, form, record);
+    return form;
   }
 
   function applyConditionals(concept, form, record) {
@@ -2093,7 +2250,53 @@
     });
   }
 
+  // Loads every distinct field.widget="custom" script referenced anywhere in the manifest, once,
+  // before the app's first render -- so a custom widget is already registered by the time any form
+  // that uses it gets built. A script that 404s/errors resolves rather than rejects: createInput's
+  // "custom" branch falls back to a disabled text input with an inline note when the registry has
+  // no entry for a field, so one broken widget script degrades gracefully instead of blocking the
+  // whole app from loading.
+  async function loadCustomWidgetScripts(manifest) {
+    const paths = new Set();
+    (manifest.concepts || []).forEach(function (concept) {
+      (concept.fields || []).forEach(function (field) {
+        if (field.widget === "custom" && field.customWidgetRef) {
+          paths.add(field.customWidgetRef);
+        }
+      });
+    });
+    await Promise.all(Array.from(paths).map(function (path) {
+      return new Promise(function (resolve) {
+        const script = document.createElement("script");
+        script.src = "/generated/trusted-source/widget/" + path;
+        script.onload = resolve;
+        script.onerror = resolve;
+        document.head.appendChild(script);
+      });
+    }));
+  }
+
+  function createCustomWidgetInput(field, value) {
+    const impl = window.NpdevCustomWidgets.get(field.customWidgetRef);
+    if (impl && typeof impl.render === "function") {
+      return impl.render(field, value);
+    }
+    const fallback = document.createElement("input");
+    fallback.name = field.name;
+    fallback.type = "text";
+    fallback.disabled = true;
+    fallback.value = value === null || value === undefined ? "" : String(value);
+    fallback.title = "Custom widget \"" + field.customWidgetRef + "\" failed to load.";
+    return fallback;
+  }
+
   function createInput(field, value, recordId) {
+    if (field.widget === "custom" && field.customWidgetRef) {
+      return createCustomWidgetInput(field, value);
+    }
+    if (field.type === "array" && field.widget === "multiselect" && field.itemsSchema && field.itemsSchema.type === "enum") {
+      return createArrayEnumMultiselectInput(field, Array.isArray(value) ? value : []);
+    }
     if (field.type === "array" && field.itemsSchema) {
       return createArrayTableInput(field, Array.isArray(value) ? value : []);
     }
@@ -2112,7 +2315,13 @@
     if (field.widget === "lookup" && field.reference) {
       return createLookupInput(field, value);
     }
+    if (field.widget === "image-select" && (field.reference || (field.enumValues && field.enumValues.length))) {
+      return createImageSelectInput(field, value);
+    }
     if (field.enumValues && field.enumValues.length) {
+      if (field.widget === "autocomplete") {
+        return createEnumAutocompleteInput(field, value);
+      }
       return createEnumSelect(field, value);
     }
     if (field.type === "boolean") {
@@ -2137,6 +2346,8 @@
       input.type = "date";
     } else if (field.widget === "number" || field.type === "number" || field.type === "integer" || field.type === "decimal") {
       input.type = "number";
+    } else if (field.widget === "color") {
+      input.type = "color";
     } else if (field.widget === "email") {
       input.type = "email";
     } else if (field.widget === "tel") {
@@ -2707,6 +2918,292 @@
     return wrapper;
   }
 
+  // field.widget="multiselect" on a plain array field whose itemsSchema is a closed enum (a
+  // fixed, declared value set) -- a lighter-weight checkbox list than the generic nested array
+  // table editor (createArrayTableInput), for the common "pick some values from a fixed set" case.
+  // Unlike the many-to-many bond multiselect (createMultiSelectInput) this IS a real property on
+  // the entity: its hidden JSON-array value round-trips through the normal create/update payload,
+  // not a separate bond endpoint.
+  function createArrayEnumMultiselectInput(field, values) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "multiselect-control";
+
+    const hidden = document.createElement("input");
+    hidden.type = "hidden";
+    hidden.name = field.name;
+
+    let selected = (Array.isArray(values) ? values : []).map(function (v) { return text(v); });
+    hidden.value = JSON.stringify(selected);
+    wrapper.appendChild(hidden);
+
+    const list = document.createElement("div");
+    list.className = "multiselect-list";
+    wrapper.appendChild(list);
+
+    const options = (field.itemsSchema && Array.isArray(field.itemsSchema.enumValues)) ? field.itemsSchema.enumValues : [];
+    options.forEach(function (option) {
+      const optionValue = text(option);
+      const item = document.createElement("label");
+      item.className = "multiselect-item";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = optionValue;
+      checkbox.checked = selected.indexOf(optionValue) !== -1;
+      checkbox.addEventListener("change", function () {
+        if (checkbox.checked) {
+          if (selected.indexOf(optionValue) === -1) { selected.push(optionValue); }
+        } else {
+          selected = selected.filter(function (v) { return v !== optionValue; });
+        }
+        hidden.value = JSON.stringify(selected);
+      });
+      item.appendChild(checkbox);
+      const labelSpan = document.createElement("span");
+      labelSpan.textContent = humanize(optionValue);
+      item.appendChild(labelSpan);
+      list.appendChild(item);
+    });
+
+    return wrapper;
+  }
+
+  // field.widget="autocomplete" on an enum field: a client-side type-to-filter dropdown over the
+  // field's own (already fully known) enum option list. Unlike the reference-field autocomplete
+  // (createAutocompleteInput) there is no server round-trip -- the whole option set is filtered
+  // in the browser as the user types. Reuses the same autocomplete-* CSS classes and suggestion
+  // markup as the reference version.
+  function createEnumAutocompleteInput(field, value) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "autocomplete-control";
+
+    const hidden = document.createElement("input");
+    hidden.type = "hidden";
+    hidden.name = field.name;
+    hidden.value = text(value);
+    wrapper.appendChild(hidden);
+
+    const search = document.createElement("input");
+    search.type = "text";
+    search.className = "autocomplete-search";
+    search.placeholder = "Search options…";
+    search.autocomplete = "off";
+    wrapper.appendChild(search);
+
+    const suggestions = document.createElement("div");
+    suggestions.className = "autocomplete-suggestions";
+    suggestions.style.display = "none";
+    wrapper.appendChild(suggestions);
+
+    const options = Array.isArray(field.enumOptions) && field.enumOptions.length
+      ? field.enumOptions
+      : (field.enumValues || []).map(function (option) { return { value: option, label: option, deprecated: false }; });
+
+    if (!field.required) {
+      const clearBtn = button("×", "lookup-clear", function () {
+        hidden.value = "";
+        search.value = "";
+      });
+      clearBtn.title = "Clear selection";
+      wrapper.appendChild(clearBtn);
+    }
+
+    function selectOption(option) {
+      hidden.value = text(option.value);
+      search.value = option.label || option.value;
+      suggestions.style.display = "none";
+      suggestions.innerHTML = "";
+    }
+
+    function renderSuggestions(query) {
+      const normalized = query.trim().toLowerCase();
+      const matches = options.filter(function (option) {
+        if (option.deprecated) { return false; }
+        const label = String(option.label || option.value).toLowerCase();
+        return !normalized || label.indexOf(normalized) !== -1;
+      });
+      suggestions.innerHTML = "";
+      if (matches.length === 0) {
+        suggestions.style.display = "none";
+        return;
+      }
+      matches.forEach(function (option) {
+        const item = document.createElement("div");
+        item.className = "autocomplete-suggestion";
+        item.textContent = option.label || option.value;
+        // mousedown (not click) fires before the search input's blur handler hides the dropdown.
+        item.addEventListener("mousedown", function (e) {
+          e.preventDefault();
+          selectOption(option);
+        });
+        suggestions.appendChild(item);
+      });
+      suggestions.style.display = "";
+    }
+
+    search.addEventListener("input", function () {
+      hidden.value = "";
+      renderSuggestions(search.value);
+    });
+    search.addEventListener("focus", function () {
+      renderSuggestions(search.value);
+    });
+    search.addEventListener("blur", function () {
+      suggestions.style.display = "none";
+    });
+
+    const current = text(value);
+    if (current) {
+      const match = options.find(function (option) { return text(option.value) === current; });
+      search.value = match ? (match.label || match.value) : current;
+    }
+
+    return wrapper;
+  }
+
+  // field.widget="image-select": a grid of image+label option cards, for either an enum field
+  // (image per option.iconHint) or a single reference field (image per candidate row's
+  // field.reference.imageField). SemanticValidator only warns (never blocks) when there's no
+  // actual image source declared, so both branches degrade to a plain labeled card grid.
+  function looksLikeImagePath(value) {
+    if (!value) { return false; }
+    const trimmed = String(value).trim();
+    return /^(https?:)?\//.test(trimmed) || /\.(svg|png|jpe?g|gif|webp)$/i.test(trimmed);
+  }
+
+  function renderOptionIcon(iconValue) {
+    if (looksLikeImagePath(iconValue)) {
+      const img = document.createElement("img");
+      img.className = "image-select-icon";
+      img.src = iconValue;
+      img.alt = "";
+      return img;
+    }
+    const span = document.createElement("span");
+    span.className = "image-select-icon image-select-icon-glyph";
+    span.textContent = iconValue || "";
+    span.setAttribute("aria-hidden", "true");
+    return span;
+  }
+
+  function createImageSelectInput(field, value) {
+    return field.reference ? createReferenceImageSelectInput(field, value) : createEnumImageSelectInput(field, value);
+  }
+
+  function createEnumImageSelectInput(field, value) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "image-select-control";
+
+    const hidden = document.createElement("input");
+    hidden.type = "hidden";
+    hidden.name = field.name;
+    hidden.value = text(value);
+    wrapper.appendChild(hidden);
+
+    const grid = document.createElement("div");
+    grid.className = "image-select-grid";
+    wrapper.appendChild(grid);
+
+    const options = Array.isArray(field.enumOptions) && field.enumOptions.length
+      ? field.enumOptions
+      : (field.enumValues || []).map(function (option) { return { value: option, label: option, iconHint: "" }; });
+
+    const current = text(value);
+
+    function selectCard(card, optionValue) {
+      Array.prototype.forEach.call(grid.querySelectorAll(".image-select-card"), function (c) {
+        c.classList.remove("selected");
+      });
+      card.classList.add("selected");
+      hidden.value = optionValue;
+    }
+
+    options.forEach(function (option) {
+      if (option.deprecated) { return; }
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "image-select-card";
+      if (text(option.value) === current) { card.classList.add("selected"); }
+      if (option.iconHint) { card.appendChild(renderOptionIcon(option.iconHint)); }
+      const label = document.createElement("span");
+      label.textContent = option.label || option.value;
+      card.appendChild(label);
+      card.addEventListener("click", function () { selectCard(card, text(option.value)); });
+      grid.appendChild(card);
+    });
+
+    return wrapper;
+  }
+
+  function createReferenceImageSelectInput(field, value) {
+    const reference = field.reference || {};
+    const wrapper = document.createElement("div");
+    wrapper.className = "image-select-control";
+
+    const hidden = document.createElement("input");
+    hidden.type = "hidden";
+    hidden.name = field.name;
+    hidden.value = text(value);
+    wrapper.appendChild(hidden);
+
+    const grid = document.createElement("div");
+    grid.className = "image-select-grid";
+    grid.innerHTML = "<div class='empty'>Loading…</div>";
+    wrapper.appendChild(grid);
+
+    const current = text(value);
+
+    function selectCard(card, id) {
+      Array.prototype.forEach.call(grid.querySelectorAll(".image-select-card"), function (c) {
+        c.classList.remove("selected");
+      });
+      card.classList.add("selected");
+      hidden.value = id;
+    }
+
+    async function loadOptions() {
+      if (!reference.endpointBase || !reference.targetIdField) {
+        grid.innerHTML = "<div class='empty'>Reference metadata is incomplete.</div>";
+        return;
+      }
+      const params = new URLSearchParams();
+      params.set("page", "0");
+      params.set("size", "200");
+      params.set("sort", reference.displayField || reference.targetIdField);
+      params.set("direction", "asc");
+      try {
+        const payload = await fetchJson(reference.endpointBase + "?" + params.toString(), { method: "GET", headers: headers() });
+        const rows = Array.isArray(payload.content) ? payload.content : [];
+        grid.innerHTML = "";
+        if (rows.length === 0) {
+          grid.innerHTML = "<div class='empty'>No records available.</div>";
+          return;
+        }
+        rows.forEach(function (row) {
+          const isViaRef = reference.via && reference.via !== "" && reference.anchorField && reference.anchorField !== reference.targetIdField;
+          const id = isViaRef ? text(row[reference.anchorField]) : text(row[reference.targetIdField]);
+          const card = document.createElement("button");
+          card.type = "button";
+          card.className = "image-select-card";
+          if (id === current) { card.classList.add("selected"); }
+          const imageValue = reference.imageField ? row[reference.imageField] : null;
+          const cardLabel = lookupLabel(reference, row);
+          if (imageValue) { card.appendChild(renderOptionIcon(imageValue)); }
+          const label = document.createElement("span");
+          label.textContent = cardLabel;
+          card.appendChild(label);
+          card.addEventListener("click", function () { selectCard(card, id); });
+          grid.appendChild(card);
+          state.referenceLabels[referenceCacheKey(reference, id)] = { status: "resolved", label: cardLabel, row: row };
+        });
+      } catch (error) {
+        grid.innerHTML = "<div class='empty'>" + text(error.message) + "</div>";
+      }
+    }
+
+    loadOptions();
+    return wrapper;
+  }
+
   function openPickerDialog(field, onSelect) {
     const reference = field.reference || {};
     const content = document.createElement("div");
@@ -2830,7 +3327,7 @@
     return parts.length ? parts.join(" / ") : text(row[reference.targetIdField]);
   }
 
-  async function submitForm(concept, mode, record, form) {
+  async function submitForm(concept, mode, record, form, onDone) {
     const values = currentFormValues(concept, form, record);
     const payload = {};
     const bondFieldsToSync = [];
@@ -2900,7 +3397,7 @@
           { method: "PUT", headers: headers(), body: JSON.stringify(sync.anchors) }
         );
       }
-      closeModal();
+      onDone();
       setStatus(mode === "edit" ? "Record updated." : "Record created.", false);
       await reloadAfterMutation(concept);
     } catch (error) {
@@ -3030,28 +3527,23 @@
     return String(value);
   }
 
-  function setNavCollapsed(collapsed) {
-    if (el.layoutRoot) {
-      el.layoutRoot.classList.toggle("nav-collapsed", collapsed);
-    }
-    localStorage.setItem(NAV_COLLAPSED_KEY, collapsed ? "1" : "0");
-  }
-
   async function bootstrap() {
-    const storedKey = localStorage.getItem(STORAGE_KEY);
+    // Falls back to the shared shell.js token key (npdev.shell.token) so a jwt-mode app's own
+    // login page (which has no reason to know this SPA's own dedicated storage key) still keeps
+    // this UI logged in -- same login, one shared session, not two separate ones to maintain.
+    const storedKey = localStorage.getItem(STORAGE_KEY) || localStorage.getItem("npdev.shell.token");
     if (storedKey) {
       el.apiKey.value = storedKey;
     }
     el.apiKey.addEventListener("input", function () {
       localStorage.setItem(STORAGE_KEY, el.apiKey.value.trim());
     });
-    if (el.navToggle) {
-      setNavCollapsed(localStorage.getItem(NAV_COLLAPSED_KEY) === "1");
-      el.navToggle.addEventListener("click", function () {
-        setNavCollapsed(!el.layoutRoot.classList.contains("nav-collapsed"));
-      });
-    }
     state.manifest = await fetchJson("./generated-ui-manifest.json");
+    await loadCustomWidgetScripts(state.manifest);
+    // Set before NPDevShell.mount() below, which paints its logo from document.title synchronously
+    // -- setting this later (e.g. inside render()) would leave the shell's own logo showing the
+    // page's static <title> until some later re-render happened to run.
+    document.title = state.manifest.appName || "Business Data";
     if (state.manifest.auth && state.manifest.auth.devKeyHint) {
       el.apiKey.placeholder = "dev/smoke: " + state.manifest.auth.devKeyHint;
       if (!el.apiKey.value) {
@@ -3059,9 +3551,31 @@
       }
     }
     await loadPrincipal();
-    await loadMenuItems();
-    renderNav();
+    // Delegates all chrome (header, nav tree, right rail) to the shared shell -- same runtime as
+    // any hand-authored page, just told about business concepts/declared Panels via
+    // deriveNativeGroups since those have no natural home in the shell's own generic sections.
+    if (window.NPDevShell) {
+      window.NPDevShell.mount({ deriveNativeGroups: deriveNativeGroups });
+    }
     render();
+    // A hash present at load (a deep link from a hand-authored page, or a bookmarked/shared URL)
+    // overrides render()'s own index-0 default section. Otherwise, publish that default into the
+    // hash so the shell's own nav (which highlights purely by comparing href to location.hash)
+    // shows the right item as active from the very first paint, not just after the first click.
+    const hashTarget = resolveHashTarget(window.location.hash);
+    if (hashTarget) {
+      activateTarget(hashTarget);
+    } else {
+      // render() picks concepts[0] as the default active section by position, but (unlike
+      // showConcept) never actually records it into state.activeConcept -- do that here so the
+      // hash-publish below, and any later showConcept-based comparison, agree on what's active.
+      if (!state.activeConcept) {
+        state.activeConcept = visibleConcepts()[0] || null;
+      }
+      if (state.activeConcept) {
+        window.location.hash = "#" + sectionId(state.activeConcept);
+      }
+    }
     await Promise.all(visibleConcepts().map(loadPanel));
   }
 
@@ -3079,136 +3593,24 @@
     state.isSuperUser = Boolean(superUserRole) && state.roles.indexOf(superUserRole) !== -1;
   }
 
-  // workspace::Menu rows are an optional, app-author-curated overlay on top of the auto-generated
-  // per-concept nav: when the table is empty (the common case until an app author populates it),
-  // this is a no-op and the nav looks exactly as it always has.
-  async function loadMenuItems() {
-    state.menuItems = [];
-    const concept = findConcept(MENU_CONCEPT_NAME);
-    if (!concept) return;
-    try {
-      const payload = await fetchJson(concept.endpointBase + "?page=0&size=200&sort=ordinal&direction=asc", {
-        method: "GET",
-        headers: headers()
-      });
-      const rows = Array.isArray(payload.content) ? payload.content : [];
-      state.menuItems = rows.filter(function (row) {
-        return row.visible !== false && (!row.requiredRole || state.roles.indexOf(row.requiredRole) !== -1);
-      });
-    } catch (error) {
-      state.menuItems = [];
-    }
-  }
-
-  // Resolves a workspace::Menu row's free-text "target" to something the nav can link to:
-  // kind BUSINESS targets a concept by conceptName/displayName; kind INTERNAL only recognizes
-  // "preferences" today. Unresolvable rows are silently skipped rather than breaking the nav.
-  function resolveMenuTarget(item) {
-    if (item.kind === "BUSINESS") {
-      return visibleConcepts().find(function (c) {
-        return c.conceptName === item.target || c.displayName === item.target;
-      }) || null;
-    }
-    if (item.kind === "INTERNAL") {
-      const key = (item.target || "").trim().toLowerCase();
-      if (key === "preferences" && findConcept(PREFERENCE_CONCEPT_NAME)) {
-        return PREFERENCES_SECTION;
-      }
-      // Store/Box View/Promotion are themselves super-user-only surfaces, so a Menu row
-      // routing to one only resolves for a super-user viewer -- a non-super-user with a
-      // misconfigured Menu row simply sees no extra link, the same as an unresolvable target.
-      if (state.isSuperUser) {
-        if (key === "store") {
-          return STORE_SECTION;
-        }
-        if (key === "boxview" || key === "box-view" || key === "box_view") {
-          return BOX_VIEW_SECTION;
-        }
-        if (key === "promotion") {
-          return PROMOTION_SECTION;
-        }
-      }
-    }
-    return null;
-  }
-
-  function renderNav() {
-    if (!el.sideNav || !state.manifest) return;
-    el.sideNav.innerHTML = "";
-    const concepts = visibleConcepts();
-    const business = concepts.filter(function (c) { return !conceptIsAdmin(c); });
-    const admin = concepts.filter(conceptIsAdmin);
-    const nav = { first: true };
-
-    function addLink(concept, labelOverride, excludeFromDefault) {
-      const a = document.createElement("a");
-      a.href = "#" + sectionId(concept);
-      a.textContent = labelOverride || concept.displayName;
-      if (!excludeFromDefault && nav.first) {
-        a.classList.add("active");
-        if (!state.activeConcept) state.activeConcept = concept;
-        nav.first = false;
-      }
-      a.addEventListener("click", function (e) {
-        e.preventDefault();
-        if (concept === PREFERENCES_SECTION) {
-          showPreferences();
-        } else if (concept === STORE_SECTION) {
-          showStore();
-        } else if (concept === BOX_VIEW_SECTION) {
-          showBoxView();
-        } else if (concept === PROMOTION_SECTION) {
-          showPromotion();
-        } else if (concept.declaredPanel) {
-          showDeclaredPanel(concept.declaredPanel);
-        } else {
-          showConcept(concept);
-        }
-        el.sideNav.querySelectorAll("a").forEach(function (l) { l.classList.remove("active"); });
-        a.classList.add("active");
-      });
-      el.sideNav.appendChild(a);
-    }
-
-    if (findConcept(PREFERENCE_CONCEPT_NAME)) {
-      addLink(PREFERENCES_SECTION, "My Preferences", true);
-    }
-    if (state.menuItems.length) {
-      const menuHeader = document.createElement("div");
-      menuHeader.className = "nav-group-header";
-      menuHeader.textContent = "Menu";
-      el.sideNav.appendChild(menuHeader);
-      state.menuItems.forEach(function (item) {
-        const target = resolveMenuTarget(item);
-        if (target) addLink(target, item.label, true);
-      });
-    }
-
-    business.forEach(function (concept) { addLink(concept); });
-    const visibleDeclaredPanels = (state.manifest.panels || []).filter(function (panelMeta) {
-      return evaluateWhen(panelMeta.visibility, panelContextValues());
+  // Supplies NPDevShell.mount()'s "Dados"/"Paineis" groups: plain business concepts and declared
+  // Panels have no natural home in the shell's own System (workspace::Menu-curated) or NPDev
+  // (admin-gated) sections, so without this an app that has never authored a menu.json/Menu row
+  // would show NO nav at all for its own concepts -- this is the direct replacement for what
+  // renderNav()'s "business"/"Panels" groups used to render, minus the DOM building (the shell
+  // does that now); admin concepts are intentionally excluded here since renderNpdevSection
+  // already covers them.
+  function deriveNativeGroups() {
+    const concepts = visibleConcepts().filter(function (c) { return !conceptIsAdmin(c); });
+    const data = concepts.map(function (concept) {
+      return { label: concept.displayName, hash: sectionId(concept) };
     });
-    if (visibleDeclaredPanels.length) {
-      const panelsHeader = document.createElement("div");
-      panelsHeader.className = "nav-group-header";
-      panelsHeader.textContent = "Panels";
-      el.sideNav.appendChild(panelsHeader);
-      visibleDeclaredPanels.forEach(function (panelMeta) {
-        addLink(panelSectionRef(panelMeta), panelMeta.title, true);
+    const panels = (state.manifest.panels || [])
+      .filter(function (panelMeta) { return evaluateWhen(panelMeta.visibility, panelContextValues()); })
+      .map(function (panelMeta) {
+        return { label: panelMeta.title, hash: sectionId(panelSectionRef(panelMeta)) };
       });
-    }
-    if (admin.length || state.isSuperUser) {
-      const header = document.createElement("div");
-      header.className = "nav-group-header";
-      header.textContent = "Admin";
-      el.sideNav.appendChild(header);
-      admin.forEach(function (concept) { addLink(concept); });
-      if (state.isSuperUser) {
-        addLink(STORE_SECTION, "Store", true);
-        addLink(BOX_VIEW_SECTION, "Box View", true);
-        addLink(PROMOTION_SECTION, "Promotion", true);
-      }
-    }
+    return { data: data, panels: panels };
   }
 
   bootstrap().catch(function (error) {

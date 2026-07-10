@@ -12,7 +12,7 @@ $ErrorActionPreference = "Stop"
 # vanilla-JS business UI in a real (headless) browser via ScrapForAI and asserts on
 # the structured evidence -- console errors, page errors, network failures,
 # unexpected external requests, screenshots. Exercises Event create, then Guest and
-# Task create (both referencing the same Event via the search-dialog picker), then
+# Task create (both referencing the same Event via its select-widget reference field), then
 # renews the Guest's RSVP via the UpdateRsvp update Flow (which emits a custom
 # GuestRsvpUpdated event).
 
@@ -111,4 +111,4 @@ $summary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $OutputPath -Enco
 Write-Host ""
 Ok ("Evidence written to " + $OutputPath)
 Ok ("Screenshots/traces under " + $ctx.ArtifactDir)
-Ok ("Browser verification green across " + $routines.Count + " routine(s) (Event create; Guest and Task create both referencing the same Event via the search-dialog picker; RSVP status updated via the UpdateRsvp update Flow, which emits a custom GuestRsvpUpdated event).")
+Ok ("Browser verification green across " + $routines.Count + " routine(s) (Event create; Guest and Task create both referencing the same Event via its select-widget reference field; RSVP status updated via the UpdateRsvp update Flow, which emits a custom GuestRsvpUpdated event).")

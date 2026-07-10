@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/npdev-seed.schema.json",
+  "title": "NPDev Seed/Mock Data File",
+  "description": "AppGen-authoring-only convention (definition/seeds/<id>.json), consumed at build time by Build-NpdevApp.ps1 and at runtime by SeedDataService/DataSeedAdminController. Not seen by the model compiler.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "label", "records"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "description": "Stable identifier, must match the filename stem (definition/seeds/<id>.json)."
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["smart", "raw"],
+      "default": "smart",
+      "description": "'smart' resolves $ref:alias placeholders and expands repeatOver blocks before saving. 'raw' saves every record exactly as written and rejects alias/repeatOver/$ref: usage at load time."
+    },
+    "records": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/record" }
+    }
+  },
+  "$defs": {
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["concept"],
+      "oneOf": [
+        { "required": ["data"] },
+        { "required": ["repeatOver"] }
+      ],
+      "not": {
+        "required": ["alias", "repeatOver"]
+      },
+      "properties": {
+        "concept": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Concept name exactly as declared in model.json (matches the generic CRUD REST path's underlying concept, e.g. 'Produto')."
+        },
+        "alias": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_]+$",
+          "description": "smart kind only. Optional local name a later record's data can reference via \"$ref:<alias>\". Only single (non-repeatOver) records may carry an alias."
+        },
+        "id": {
+          "type": "string",
+          "description": "raw kind only. Explicit id for this record; if omitted the runner generates one."
+        },
+        "data": {
+          "type": "object",
+          "description": "Field values, same shape as a POST /api/<concept> body. In 'smart' mode, a string value of the exact form \"$ref:<alias>\" is replaced with that alias's generated id."
+        },
+        "repeatOver": {
+          "type": "object",
+          "description": "smart kind only. Bulk-generates one record per combination of the declared integer ranges (Cartesian product).",
+          "additionalProperties": false,
+          "required": ["vars"],
+          "properties": {
+            "vars": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "array",
+                "items": { "type": "integer" },
+                "minItems": 2,
+                "maxItems": 2,
+                "description": "[min, max] inclusive."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

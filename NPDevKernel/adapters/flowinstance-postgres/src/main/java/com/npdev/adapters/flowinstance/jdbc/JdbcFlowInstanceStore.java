@@ -29,7 +29,8 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
     private final ObjectMapper objectMapper;
 
     public JdbcFlowInstanceStore(DataSource dataSource) {
-        this(dataSource, new ObjectMapper());
+        this(dataSource, new ObjectMapper().findAndRegisterModules()
+                .disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS));
     }
 
     public JdbcFlowInstanceStore(DataSource dataSource, ObjectMapper objectMapper) {

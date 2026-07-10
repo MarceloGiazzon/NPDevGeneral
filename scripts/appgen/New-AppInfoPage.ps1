@@ -29,48 +29,56 @@ param(
   [string[]]$CompanionFiles = @(),
   [string]$BuilderName = '',
   [string]$ConsoleLaunch = '',
-  [int]$ConsolePort = 0
+  [int]$ConsolePort = 0,
+  [string]$LoginPath = '',
+  [string]$HomePath = ''
 )
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force -Path $StaticDir | Out-Null
 $base = "http://localhost:$Port"
 $rows = New-Object System.Collections.Generic.List[object]
-function Add-InfoRow($p, $v, $o = '') { $rows.Add([pscustomobject]@{ p = $p; v = "$v"; o = "$o" }) }
+function Add-InfoRow($section, $p, $v, $o = '') { $rows.Add([pscustomobject]@{ s = $section; p = $p; v = "$v"; o = "$o" }) }
 
-Add-InfoRow 'App definition'        $AppFolder
-Add-InfoRow 'Model'                 (Join-Path $AppFolder 'definition\model.json')
-Add-InfoRow 'Generated output root' $OutRoot
-Add-InfoRow 'Generated app'         $GeneratedAppRoot
-Add-InfoRow 'Runnable jar'          (Join-Path $GeneratedAppRoot 'build\libs\FinalExec-0.1.0.jar')
-Add-InfoRow 'Ops toolbox'           $OpsDir
-if ($Engine -eq 'H2Server' -and $DbName) { Add-InfoRow 'DB file' (Join-Path $DbDataRoot "$DbName.mv.db") }
-Add-InfoRow 'Base URL'              $base $base
-Add-InfoRow 'Operator UI (app)'     "$base/npdev-ui" "$base/npdev-ui"
-Add-InfoRow 'Business UI (concepts)' "$base/npdev-business-ui/" "$base/npdev-business-ui/"
-Add-InfoRow 'Info page'             "$base/info.html" "$base/info.html"
-Add-InfoRow 'API key header'        'X-Api-Key: dev-key'
-Add-InfoRow 'Flows list'            "$base/api/flows" "$base/api/flows"
-foreach ($f in $Flows)    { Add-InfoRow "Execute $f" "$base/api/flows/$f/execute" '' }
-Add-InfoRow 'Audit'                 "$base/api/audit" "$base/api/audit"
-Add-InfoRow 'Storage summary'       "$base/api/admin/storage/summary" "$base/api/admin/storage/summary"
-foreach ($c in $Concepts) { $cp = $c.ToLower() + 's'; Add-InfoRow "CRUD $c" "$base/api/$cp" "$base/api/$cp" }
-foreach ($f in $CompanionFiles) { Add-InfoRow "Companion $f" "$base/$f" "$base/$f" }
+Add-InfoRow 'Paths' 'App definition'        $AppFolder
+Add-InfoRow 'Paths' 'Model'                 (Join-Path $AppFolder 'definition\model.json')
+Add-InfoRow 'Paths' 'Generated output root' $OutRoot
+Add-InfoRow 'Paths' 'Generated app'         $GeneratedAppRoot
+Add-InfoRow 'Paths' 'Runnable jar'          (Join-Path $GeneratedAppRoot 'build\libs\FinalExec-0.1.0.jar')
+Add-InfoRow 'Paths' 'Ops toolbox'           $OpsDir
+Add-InfoRow 'Paths' 'Super User key file'   (Join-Path $OpsDir 'SUPER_USER_KEY.txt')
+if ($Engine -eq 'H2Server' -and $DbName) { Add-InfoRow 'Paths' 'DB file' (Join-Path $DbDataRoot "$DbName.mv.db") }
+Add-InfoRow 'URLs' 'Base URL'              $base $base
+Add-InfoRow 'URLs' 'Operator UI (app)'     "$base/npdev-ui" "$base/npdev-ui"
+Add-InfoRow 'URLs' 'Business UI (concepts)' "$base/npdev-business-ui/" "$base/npdev-business-ui/"
+Add-InfoRow 'URLs' 'Info page'             "$base/info.html" "$base/info.html"
+Add-InfoRow 'URLs' 'App tree'              "$base/app-tree.html" "$base/app-tree.html"
+Add-InfoRow 'URLs' 'Control Panel'         "$base/control-panel.html" "$base/control-panel.html"
+if ($LoginPath) { Add-InfoRow 'URLs' 'Login' "$base$LoginPath" "$base$LoginPath" }
+if ($HomePath)  { Add-InfoRow 'URLs' 'Home'  "$base$HomePath"  "$base$HomePath" }
+Add-InfoRow 'URLs' 'API key header'        'X-Api-Key: dev-key'
+Add-InfoRow 'Flows' 'Flows list'            "$base/api/flows" "$base/api/flows"
+foreach ($f in $Flows)    { Add-InfoRow 'Flows' "Execute $f" "$base/api/flows/$f/execute" '' }
+Add-InfoRow 'Monitoring' 'Health'                "$base/actuator/health" "$base/actuator/health"
+Add-InfoRow 'Monitoring' 'Audit'                 "$base/api/audit" "$base/api/audit"
+Add-InfoRow 'Monitoring' 'Storage summary'       "$base/api/admin/storage/summary" "$base/api/admin/storage/summary"
+foreach ($c in $Concepts) { $cp = $c.ToLower() + 's'; Add-InfoRow 'Concepts' "CRUD $c" "$base/api/$cp" "$base/api/$cp" }
+foreach ($f in $CompanionFiles) { Add-InfoRow 'Companion Files' "Companion $f" "$base/$f" "$base/$f" }
 if ($Engine -eq 'H2Server') {
-  Add-InfoRow 'DB engine' 'H2Server'
-  Add-InfoRow 'JDBC URL' $JdbcUrl
-  Add-InfoRow 'DB user / password' 'sa / (empty)'
-  Add-InfoRow 'DB driver' 'org.h2.Driver 2.2.224'
+  Add-InfoRow 'Database' 'DB engine' 'H2Server'
+  Add-InfoRow 'Database' 'JDBC URL' $JdbcUrl
+  Add-InfoRow 'Database' 'DB user / password' 'sa / (empty)'
+  Add-InfoRow 'Database' 'DB driver' 'org.h2.Driver 2.2.224'
 } else {
-  Add-InfoRow 'DB engine' $Engine
-  Add-InfoRow 'DB access' 'in-process, not externally reachable'
+  Add-InfoRow 'Database' 'DB engine' $Engine
+  Add-InfoRow 'Database' 'DB access' 'in-process, not externally reachable'
 }
-if ($ConsoleLaunch) { Add-InfoRow 'Console (local)' $ConsoleLaunch }
-Add-InfoRow 'Builder script' 'D:\WorkSpace\NPDev\NPDev_General\scripts\appgen\Build-AppGenApp.ps1'
-if ($BuilderName) { Add-InfoRow 'Generate cmd' "& 'D:\WorkSpace\NPDev\NPDev_General\scripts\appgen\Build-AppGenApp.ps1' -App $BuilderName" }
-Add-InfoRow 'Build cmd' ("& '" + (Join-Path $OpsDir 'Build-App.ps1') + "'")
-Add-InfoRow 'Start cmd' ("& '" + (Join-Path $OpsDir 'Start-App.ps1') + "'")
-Add-InfoRow 'Test cmd'  ("& '" + (Join-Path $OpsDir 'Test-App.ps1') + "'")
-Add-InfoRow 'Stop cmd'  ("& '" + (Join-Path $OpsDir 'Stop-App.ps1') + "'")
+if ($ConsoleLaunch) { Add-InfoRow 'Console' 'Console (local)' $ConsoleLaunch }
+Add-InfoRow 'Commands' 'Builder script' 'D:\WorkSpace\NPDev\NPDev_General\scripts\appgen\Build-AppGenApp.ps1'
+if ($BuilderName) { Add-InfoRow 'Commands' 'Generate cmd' "& 'D:\WorkSpace\NPDev\NPDev_General\scripts\appgen\Build-AppGenApp.ps1' -App $BuilderName" }
+Add-InfoRow 'Commands' 'Build cmd' ("& '" + (Join-Path $OpsDir 'Build-App.ps1') + "'")
+Add-InfoRow 'Commands' 'Start cmd' ("& '" + (Join-Path $OpsDir 'Start-App.ps1') + "'")
+Add-InfoRow 'Commands' 'Test cmd'  ("& '" + (Join-Path $OpsDir 'Test-App.ps1') + "'")
+Add-InfoRow 'Commands' 'Stop cmd'  ("& '" + (Join-Path $OpsDir 'Stop-App.ps1') + "'")
 
 $json = $rows | ConvertTo-Json -Depth 4
 if ($rows.Count -eq 1) { $json = "[$json]" }
@@ -89,6 +97,7 @@ $tpl = @'
  th,td{border-bottom:1px solid #2a2a2a;padding:6px 10px;text-align:left;vertical-align:top}
  th{position:sticky;top:0;background:#222;color:#9bd}
  td.p{white-space:nowrap;color:#9bd}
+ tr.section td{background:#181818;color:#7fa;font-weight:bold;padding:5px 10px;letter-spacing:.04em;text-transform:uppercase;font-size:12px}
  code{color:#cde;word-break:break-all}
  button{background:#2d6cdf;color:#fff;border:0;border-radius:4px;padding:3px 9px;cursor:pointer;font-size:14px}
  .open{background:none;border:0;cursor:pointer;font-size:16px;color:#9bd}
@@ -113,16 +122,34 @@ function openUrl(u){
   if(!/\/api\//.test(u)){ window.open(u,'_blank'); return; }
   fetch(u,{headers:{'X-Api-Key':KEY}}).then(r=>r.text()).then(t=>{const w=window.open('','_blank');w.document.title=u;w.document.body.style.cssText='background:#111;color:#cde;font-family:monospace';w.document.body.innerHTML='<pre style="white-space:pre-wrap;padding:12px">'+t.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</pre>';}).catch(e=>alert(e));
 }
+function mkSectionRow(s){
+  const tr=document.createElement('tr'); tr.className='section'; tr.dataset.section=s;
+  const td=document.createElement('td'); td.colSpan=4; td.textContent=s; tr.appendChild(td);
+  return tr;
+}
 function mkRow(r){
-  const tr=document.createElement('tr'); tr.dataset.k=(r.p+' '+r.v).toLowerCase();
+  const tr=document.createElement('tr'); tr.dataset.section=r.s; tr.dataset.k=(r.p+' '+r.v).toLowerCase();
   const p=document.createElement('td'); p.className='p'; p.textContent=r.p; tr.appendChild(p);
   const v=document.createElement('td'); const c=document.createElement('code'); c.textContent=r.v; v.appendChild(c); tr.appendChild(v);
   const cc=document.createElement('td'); const b=document.createElement('button'); b.innerHTML='&#128203;'; b.title='Copy value'; b.onclick=()=>copy(r.v,b); cc.appendChild(b); tr.appendChild(cc);
   const oc=document.createElement('td'); if(r.o){const a=document.createElement('button');a.className='open';a.innerHTML='&#128279;';a.title='Open';a.onclick=()=>openUrl(r.o);oc.appendChild(a);}else{const s=document.createElement('span');s.className='dash';s.textContent='-';oc.appendChild(s);} tr.appendChild(oc);
   return tr;
 }
-DATA.forEach(r=>tb.appendChild(mkRow(r)));
-function doFilter(){const q=document.getElementById('flt').value.toLowerCase();[...tb.children].forEach(tr=>{tr.style.display=tr.dataset.k.includes(q)?'':'none';});}
+let lastSection=null;
+DATA.forEach(r=>{ if(r.s!==lastSection){ tb.appendChild(mkSectionRow(r.s)); lastSection=r.s; } tb.appendChild(mkRow(r)); });
+function doFilter(){
+  const q=document.getElementById('flt').value.toLowerCase();
+  const visibleSections=new Set();
+  [...tb.children].forEach(tr=>{
+    if(tr.classList.contains('section')) return;
+    const show=tr.dataset.k.includes(q);
+    tr.style.display=show?'':'none';
+    if(show) visibleSections.add(tr.dataset.section);
+  });
+  [...tb.children].forEach(tr=>{
+    if(tr.classList.contains('section')) tr.style.display=visibleSections.has(tr.dataset.section)?'':'none';
+  });
+}
 </script>
 __CONSOLE__
 </body></html>

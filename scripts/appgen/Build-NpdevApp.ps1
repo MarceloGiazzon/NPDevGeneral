@@ -113,18 +113,14 @@ if ($Config.trialDefaults) {
   Set-JsonProp $Config.trialDefaults 'pluginPackageDirectory' (Join-Path $ArtifactRoot 'npdev-generated\src\main\resources\npdev\plugin-packages')
 }
 Set-JsonProp $Model '$schema' (Join-Path $ContractSchemas 'model.schema.json')
-# Resolve pack $ref paths to absolute so they survive model.json staging (relative refs
-# are relative to the source definition folder, not the staged build-output copy).
-if ($Model.packs) {
-  $srcModelDir = Split-Path -Parent $ModelSrc
-  foreach ($pack in $Model.packs) {
-    $rawRef = $pack.'$ref'
-    if ($rawRef -and -not [System.IO.Path]::IsPathRooted($rawRef)) {
-      $absRef = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($srcModelDir, $rawRef))
-      $pack | Add-Member -NotePropertyName '$ref' -NotePropertyValue $absRef -Force
-    }
-  }
-}
+# Pack $ref paths are left as-authored (relative). ModelSourceResolver requires pack refs to
+# stay relative and resolves them against the staged model.json's own directory -- which already
+# contains a full copy of the source definition folder (step 2 above copies every top-level item,
+# packs/ included), so a pack authored under definition/packs/... resolves correctly without any
+# rewriting. Rewriting to an absolute path here (as a previous version of this script did) actively
+# breaks generation: ModelSourceResolver.resolveJsonRefUnderRoot explicitly rejects any pack $ref
+# that is rooted/absolute ("Pack $ref must be relative, not a drive path"), so an app whose pack is
+# colocated under its own definition/ folder (the supported, working pattern) would fail to build.
 # 'console' is an AppGen-only field; the generator's config schema is additionalProperties:false,
 # so strip it from the staged config before generation (we already captured $ConsoleMode).
 if ($Config.PSObject.Properties.Name -contains 'console') { $Config.PSObject.Properties.Remove('console') }
@@ -157,6 +153,123 @@ if (Test-Path -LiteralPath $WebSrc) {
   Get-ChildItem -LiteralPath $WebSrc -Force | ForEach-Object {
     Copy-Item -LiteralPath $_.FullName -Destination $StaticDst -Recurse -Force
   }
+}
+
+# ---- 4c. emit a workspace::Menu seed for declared companion pages + menu tree ----
+# definition\pages.json is an AppGen-authoring-only convention (like the existing 'console'
+# field further down this script) -- an array of { path, label, requiredRole, ordinal } for
+# hand-authored web/ pages. definition\menu.json is a sibling, optional convention: a
+# multi-level tree ({ label, ordinal, requiredRole?, kind?, target?, children? }) that lets an
+# app author declare hierarchical navigation (System sub-menu groups, e.g. WmsOffice's
+# Demanda/Cadastros/Consultas/Desenvolvimento). Neither is ever forwarded to the generator
+# (which has no visibility into web/ or navigation hierarchy at all).
+# IMPORTANT: this must NOT touch the generator's own npdev-generated/.../workspace-menu-seed.json
+# -- that tree is hash-verified at startup by StrictExecutionValidator, and editing it after
+# generation trips a "strict execution signature mismatch" (confirmed live). Instead this writes
+# a SEPARATE seed file directly under the App module's own (non-generated, AppGen-owned)
+# src/main/resources/, the same boundary the web/ mount above already uses. WorkspaceMenuSeeder
+# (NPDevRuntimeHost) reads both files at startup and inserts the union, only while the table is
+# empty for the tenant -- both are optional, so an app with neither is unaffected.
+#
+# menu.json rows are flattened depth-first into rows carrying a synthetic 'key'/'parentKey' pair
+# (not persisted columns -- WorkspaceMenuSeeder resolves them into real parent_menu_id values at
+# seed time and drops them). pages.json entries are appended afterwards as extra roots, so an app
+# with only pages.json (no menu.json) produces the exact same flat seed as before this feature.
+$PagesJsonPath = Join-Path $Definition 'pages.json'
+$MenuJsonPath  = Join-Path $Definition 'menu.json'
+$hasPages = Test-Path -LiteralPath $PagesJsonPath
+$hasMenu  = Test-Path -LiteralPath $MenuJsonPath
+if ($hasPages -or $hasMenu) {
+  $menuSeedRows = @()
+  $menuTreePageTargets = New-Object 'System.Collections.Generic.HashSet[string]'
+  $nextOrdinal = 1000
+  $nextKey = 0
+
+  if ($hasMenu) {
+    Write-Step "Flattening declared menu hierarchy from $MenuJsonPath."
+    $declaredMenuTree = @(Read-JsonFile $MenuJsonPath)
+
+    function Add-MenuNode {
+      param($Node, [string]$ParentKey)
+      $script:nextKey += 1
+      $ownKey = "n$($script:nextKey)"
+      $nodeKind = if ($null -ne $Node.kind) { $Node.kind } elseif ($Node.children) { 'GROUP' } else { 'BUSINESS' }
+      $nodeTarget = if ($null -ne $Node.target) { $Node.target } else { '' }
+      $nodeRequiredRole = if ($null -ne $Node.requiredRole) { $Node.requiredRole } else { $null }
+      if ($nodeKind -eq 'PAGE' -and $nodeTarget) { [void]$script:menuTreePageTargets.Add($nodeTarget) }
+      $script:menuSeedRows += [ordered]@{
+        key          = $ownKey
+        parentKey    = $ParentKey
+        label        = $Node.label
+        target       = $nodeTarget
+        kind         = $nodeKind
+        ordinal      = if ($null -ne $Node.ordinal) { $Node.ordinal } else { 0 }
+        requiredRole = $nodeRequiredRole
+        visible      = $true
+      }
+      if ($Node.children) {
+        foreach ($child in @($Node.children)) { Add-MenuNode -Node $child -ParentKey $ownKey }
+      }
+    }
+
+    foreach ($rootNode in $declaredMenuTree) { Add-MenuNode -Node $rootNode -ParentKey $null }
+  }
+
+  if ($hasPages) {
+    Write-Step "Emitting workspace::Menu seed for declared companion pages from $PagesJsonPath."
+    $declaredPages = @(Read-JsonFile $PagesJsonPath)
+    # A page already placed inside the menu.json tree (as a PAGE node with a matching target) is
+    # skipped here so it isn't seeded twice -- once nested in its declared group, once as a root.
+    foreach ($page in $declaredPages) {
+      if ($menuTreePageTargets.Contains($page.path)) { continue }
+      $pageOrdinal = if ($null -ne $page.ordinal) { $page.ordinal } else { $nextOrdinal }
+      $pageRequiredRole = if ($null -ne $page.requiredRole) { $page.requiredRole } else { $null }
+      $menuSeedRows += [ordered]@{
+        label        = $page.label
+        target       = $page.path
+        kind         = 'PAGE'
+        ordinal      = $pageOrdinal
+        requiredRole = $pageRequiredRole
+        visible      = $true
+      }
+      $nextOrdinal += 10
+    }
+  }
+
+  $PageSeedDst = Join-Path $GeneratedAppRoot 'src\main\resources\npdev-seed\workspace-menu-pages-seed.json'
+  Write-JsonFile $menuSeedRows $PageSeedDst
+  Write-Step "workspace-menu-pages-seed.json written with $($menuSeedRows.Count) row(s)."
+}
+
+# ---- 4d. copy definition/seeds/*.json (smart/raw mock-data seeds) into npdev-seed/data-seeds/ ----
+# definition/seeds/<id>.json is an AppGen-authoring-only convention (like pages.json/menu.json
+# above) -- never forwarded to the generator. Copied verbatim (no flattening, unlike menu.json)
+# into a classpath folder SeedDataService (NPDevRuntimeHost) reads at runtime via
+# DataSeedAdminController (GET /api/admin/seeds, POST /api/admin/seeds/{id}/run). A generated
+# index.json manifest lists id/label/description/kind for each file so the runtime doesn't need
+# to scan the classpath inside a packaged jar.
+$SeedsSrcDir = Join-Path $Definition 'seeds'
+if (Test-Path -LiteralPath $SeedsSrcDir) {
+  $SeedsDstDir = Join-Path $GeneratedAppRoot 'src\main\resources\npdev-seed\data-seeds'
+  New-Item -ItemType Directory -Force -Path $SeedsDstDir | Out-Null
+  Write-Step "Copying declared data seeds from $SeedsSrcDir."
+  $seedManifest = @()
+  Get-ChildItem -LiteralPath $SeedsSrcDir -Filter '*.json' -File | ForEach-Object {
+    $seedJson = Read-JsonFile $_.FullName
+    if (-not $seedJson.id) { throw "Seed file $($_.FullName) is missing required 'id'." }
+    if ($seedJson.id -ne [System.IO.Path]::GetFileNameWithoutExtension($_.Name)) {
+      throw "Seed file $($_.FullName): 'id' ($($seedJson.id)) must match the filename stem."
+    }
+    Copy-Item -LiteralPath $_.FullName -Destination $SeedsDstDir -Force
+    $seedManifest += [ordered]@{
+      id          = $seedJson.id
+      label       = $seedJson.label
+      description = $seedJson.description
+      kind        = if ($seedJson.kind) { $seedJson.kind } else { 'smart' }
+    }
+  }
+  Write-JsonFile $seedManifest (Join-Path $SeedsDstDir 'index.json')
+  Write-Step "data-seeds/index.json written with $($seedManifest.Count) seed(s)."
 }
 
 # ---- 5. resolve RuntimeHost libs ------------------------------------------
@@ -213,8 +326,9 @@ if ($plan.engine -eq 'InMemory') { Write-Host 'InMemory: no environment to start
 if ($plan.engine -eq 'H2Server') {
   New-Item -ItemType Directory -Force -Path $plan.resolvedDataRoot | Out-Null
   $jar = @(Get-ChildItem -Path 'D:\WorkSpace\NPDev\Build', (Join-Path $env:USERPROFILE '.gradle\caches') -Recurse -Filter 'h2-2*.jar' -ErrorAction SilentlyContinue) |
-         Where-Object { $_.FullName -notlike '*\gradle-8*\lib\*' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-  if ($null -eq $jar) { throw 'No standalone h2-2*.jar found under Build or ~/.gradle. Build an app once to populate the gradle cache.' }
+         Where-Object { $_.FullName -notlike '*\gradle-8*\lib\*' -and $_.Name -notlike '*-sources.jar' -and $_.Name -notlike '*-javadoc.jar' } |
+         Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  if ($null -eq $jar) { throw 'No standalone h2-2*.jar (binary, non-sources/javadoc) found under Build or ~/.gradle. Build an app once to populate the gradle cache.' }
   $pidFile = Join-Path $PSScriptRoot 'h2server.pid'
   $logFile = Join-Path $PSScriptRoot 'h2server.log'
   if (Test-Path -LiteralPath $pidFile) {
@@ -318,17 +432,41 @@ if (Test-Path -LiteralPath $pidFile) {
 $portBusy = Get-NetTCPConnection -LocalPort $plan.serverPort -State Listen -ErrorAction SilentlyContinue
 if ($portBusy) { Write-Host "Port $($plan.serverPort) is already in use (PID $(($portBusy.OwningProcess | Sort-Object -Unique) -join ', ')). Stop that first (Stop-App.ps1) to avoid a duplicate." -ForegroundColor Yellow; exit 0 }
 Write-Host "Starting $($plan.appName) on $($plan.baseUrl) (profiles: $($plan.springProfiles))"
+# Start-Process -RedirectStandardOutput overwrites app.out.log on every restart -- archive whatever
+# was in it first (e.g. a first-boot SUPER USER KEY banner) so a later restart never destroys the
+# only place a one-time value like that was ever shown. app.out.log itself still only ever shows
+# the CURRENT run's live output, unchanged.
+if (Test-Path -LiteralPath $logFile) {
+  $historyFile = Join-Path $PSScriptRoot 'app.out.history.log'
+  Add-Content -LiteralPath $historyFile -Value "`n----- run ending $(Get-Date -Format o) -----"
+  Get-Content -LiteralPath $logFile -Raw -ErrorAction SilentlyContinue | Add-Content -LiteralPath $historyFile
+}
 $args = @('-jar', $jar.FullName, "--server.port=$($plan.serverPort)", "--spring.profiles.active=$($plan.springProfiles)")
 $proc = Start-Process -FilePath 'java' -ArgumentList $args -WorkingDirectory $plan.appRoot -PassThru -RedirectStandardOutput $logFile -RedirectStandardError (Join-Path $PSScriptRoot 'app.err.log') -WindowStyle Hidden
 $proc.Id | Set-Content -LiteralPath $pidFile -Encoding ascii
 Write-Host "Started PID $($proc.Id). Logs: $logFile"
 Write-Host 'Waiting for health...'
+# /actuator/health, not /api/flows -- it needs no credential under any auth.mode (apiKey or jwt),
+# unlike /api/flows which 401s once an app switches to jwt (X-Api-Key stops being valid), which
+# previously made this loop report a false "did not report healthy" for a genuinely-up app.
 $ok = $false
 for ($i = 0; $i -lt 60; $i++) {
   Start-Sleep -Seconds 2
-  try { Invoke-RestMethod -Method GET -Uri "$($plan.baseUrl)/api/flows" -Headers @{ 'X-Api-Key' = $plan.apiKey } -TimeoutSec 3 | Out-Null; $ok = $true; break } catch { }
+  try { $h = Invoke-RestMethod -Method GET -Uri "$($plan.baseUrl)/actuator/health" -TimeoutSec 3; if ($h.status -eq 'UP') { $ok = $true; break } } catch { }
 }
-if ($ok) { Write-Host "App is UP at $($plan.baseUrl)/api/flows" } else { Write-Host 'App did not report healthy in time; check logs.' -ForegroundColor Yellow }
+if ($ok) { Write-Host "App is UP at $($plan.baseUrl)/actuator/health" } else { Write-Host 'App did not report healthy in time; check logs.' -ForegroundColor Yellow }
+# On a first-ever boot, SuperUserBootstrapper writes the one-time Super User key to
+# SUPER_USER_KEY.txt in the app's own working directory (it doesn't know about _ops). Relocate it
+# here so there's exactly ONE fixed, documented place to look -- the same path control-panel.html's
+# own unlock instructions point to. No-op on every later restart (the file won't exist).
+$keyFileSource = Join-Path $plan.appRoot 'SUPER_USER_KEY.txt'
+if (Test-Path -LiteralPath $keyFileSource) {
+  $keyFileDest = Join-Path $PSScriptRoot 'SUPER_USER_KEY.txt'
+  Move-Item -LiteralPath $keyFileSource -Destination $keyFileDest -Force
+  Write-Host ''
+  Write-Host "First boot: your Super User key is saved at $keyFileDest" -ForegroundColor Green
+  Write-Host 'Open that file and paste its contents into control-panel.html to unlock it.' -ForegroundColor Green
+}
 exit 0
 '@
 Set-Content -LiteralPath (Join-Path $OpsDir 'Start-App.ps1') -Value $StartApp -Encoding UTF8
@@ -347,11 +485,60 @@ exit 0
 '@
 Set-Content -LiteralPath (Join-Path $OpsDir 'Stop-App.ps1') -Value $StopApp -Encoding UTF8
 
+# Recovery for a lost Super User key: no network endpoint can safely do this (there's no
+# authenticated Super User yet to ask, same chicken-and-egg BootstrapAdminController has), so this
+# requires filesystem/process access to the server -- the appropriate trust boundary for "reissue
+# the app's own master credential." Starts the app once with npdev.superuser.force-reissue=true
+# (SuperUserBootstrapper revokes any existing Super User credential then issues a fresh one),
+# captures the new key straight from this one run's log, then restarts normally.
+$ReissueSuperUserKey = @'
+$ErrorActionPreference = 'Stop'
+$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') | ConvertFrom-Json
+$pidFile = Join-Path $PSScriptRoot 'app.pid'
+if (Test-Path -LiteralPath $pidFile) {
+  Write-Host 'Stopping the app first...'
+  & (Join-Path $PSScriptRoot 'Stop-App.ps1') | Out-Null
+}
+$startEnv = Join-Path $PSScriptRoot 'Start-Environment.ps1'
+if (Test-Path -LiteralPath $startEnv) { & $startEnv }
+$jar = Get-ChildItem -LiteralPath $plan.appRoot -Recurse -Filter 'FinalExec-*.jar' -ErrorAction SilentlyContinue |
+       Where-Object { $_.FullName -like '*\build\libs\*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
+if ($null -eq $jar) { Write-Host 'Runnable jar not found. Run Build-App.ps1 first.' -ForegroundColor Red; exit 1 }
+$logFile = Join-Path $PSScriptRoot 'app.out.log'
+$keyFileSource = Join-Path $plan.appRoot 'SUPER_USER_KEY.txt'
+Remove-Item -LiteralPath $keyFileSource -Force -ErrorAction SilentlyContinue
+Write-Host 'Starting the app once with npdev.superuser.force-reissue=true...'
+$args = @('-jar', $jar.FullName, "--server.port=$($plan.serverPort)", "--spring.profiles.active=$($plan.springProfiles)", '--npdev.superuser.force-reissue=true')
+$proc = Start-Process -FilePath 'java' -ArgumentList $args -WorkingDirectory $plan.appRoot -PassThru -RedirectStandardOutput $logFile -RedirectStandardError (Join-Path $PSScriptRoot 'app.err.log') -WindowStyle Hidden
+$proc.Id | Set-Content -LiteralPath $pidFile -Encoding ascii
+$newKey = $null
+for ($i = 0; $i -lt 60; $i++) {
+  Start-Sleep -Seconds 2
+  if (Test-Path -LiteralPath $keyFileSource) { $newKey = (Get-Content -Raw -LiteralPath $keyFileSource).Trim(); break }
+}
+& (Join-Path $PSScriptRoot 'Stop-App.ps1') | Out-Null
+if ($null -eq $newKey) {
+  Write-Host 'Did not see SUPER_USER_KEY.txt appear in time -- check app.out.log directly.' -ForegroundColor Red
+  exit 1
+}
+Remove-Item -LiteralPath $keyFileSource -Force -ErrorAction SilentlyContinue
+$keyFileDest = Join-Path $PSScriptRoot 'SUPER_USER_KEY.txt'
+Set-Content -LiteralPath $keyFileDest -Value $newKey -Encoding UTF8
+Write-Host ''
+Write-Host "NEW Super User key saved at $keyFileDest" -ForegroundColor Green
+Write-Host "  $newKey"
+Write-Host ''
+Write-Host 'Restarting normally...'
+& (Join-Path $PSScriptRoot 'Start-App.ps1')
+exit 0
+'@
+Set-Content -LiteralPath (Join-Path $OpsDir 'Reissue-SuperUserKey.ps1') -Value $ReissueSuperUserKey -Encoding UTF8
+
 $StatusApp = @'
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') | ConvertFrom-Json
-try { Invoke-RestMethod -Method GET -Uri "$($plan.baseUrl)/api/flows" -Headers @{ 'X-Api-Key' = $plan.apiKey } -TimeoutSec 3 | Out-Null; Write-Host "UP   - $($plan.baseUrl)/api/flows reachable" }
-catch { Write-Host "DOWN - $($plan.baseUrl)/api/flows not reachable" }
+try { $h = Invoke-RestMethod -Method GET -Uri "$($plan.baseUrl)/actuator/health" -TimeoutSec 3; if ($h.status -eq 'UP') { Write-Host "UP   - $($plan.baseUrl)/actuator/health reports UP" } else { Write-Host "DOWN - $($plan.baseUrl)/actuator/health reports $($h.status)" } }
+catch { Write-Host "DOWN - $($plan.baseUrl)/actuator/health not reachable" }
 exit 0
 '@
 Set-Content -LiteralPath (Join-Path $OpsDir 'Status-App.ps1') -Value $StatusApp -Encoding UTF8
@@ -416,6 +603,16 @@ if (Test-Path -LiteralPath $WebSrc) { $companionFiles = @(Get-ChildItem -Literal
 $companionFiles += 'info.html'
 $ConsolePort = $ServerPort + 100
 $consoleLaunch = if ($ConsoleMode -ne 'none') { "& '$(Join-Path $OpsDir 'Serve-AppConsole.ps1')'" } else { '' }
+# Optional info-page rows, left blank/absent unless the app author declared them under
+# config.json's "defaults" bag (a free-form settingId -> value map -- no schema change needed).
+$loginPath = ''
+$homePath = ''
+if ($Config.defaults) {
+  $loginPathProp = $Config.defaults.PSObject.Properties['auth.loginPath']
+  if ($loginPathProp -and $loginPathProp.Value) { $loginPath = "$($loginPathProp.Value)" }
+  $homePathProp = $Config.defaults.PSObject.Properties['ui.homePath']
+  if ($homePathProp -and $homePathProp.Value) { $homePath = "$($homePathProp.Value)" }
+}
 $infoArgs = @{
   StaticDir        = (Join-Path $GeneratedAppRoot 'src\main\resources\static')
   AppId            = $AppId
@@ -429,14 +626,29 @@ $infoArgs = @{
   DbDataRoot       = $DataRoot
   DbName           = "$($DbPlan.resolvedDatabaseName)"
   Flows            = @($Model.flows | ForEach-Object { $_.name })
-  Concepts         = @($Model.concepts | ForEach-Object { $_.name })
+  Concepts         = @($Model.concepts | ForEach-Object {
+    if ($_.PSObject.Properties.Name -contains 'name' -and $_.name) {
+      $_.name
+    } elseif ($_.PSObject.Properties.Name -contains '$ref') {
+      # one-file-per-concept authoring: model.json's concepts array holds $ref
+      # pointers, not inline objects, so the name must be read from the target file.
+      (Read-JsonFile (Join-Path $StagedInput $_.'$ref')).name
+    }
+  })
   CompanionFiles   = $companionFiles
   BuilderName      = (Split-Path -Leaf $AppFolder)
   ConsoleLaunch    = $consoleLaunch
   ConsolePort      = $(if ($ConsoleMode -ne 'none') { $ConsolePort } else { 0 })
+  LoginPath        = $loginPath
+  HomePath         = $homePath
 }
 & (Join-Path $PSScriptRoot 'New-AppInfoPage.ps1') @infoArgs
 Write-Step "Emitted interactive info page: http://localhost:$ServerPort/info.html"
+
+& (Join-Path $PSScriptRoot 'New-ControlPanelPage.ps1') `
+  -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') `
+  -AppId $AppId -Port $ServerPort -OutRoot $OutRoot
+Write-Step "Emitted ControlPanel page: http://localhost:$ServerPort/control-panel.html"
 
 # ---- emit the local control console (if enabled in config.console.mode) -----
 if ($ConsoleMode -ne 'none') {

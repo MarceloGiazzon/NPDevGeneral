@@ -37,7 +37,7 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$AppFolder = 'D:\WorkSpace\NPDev\AppGen\apps\Claude',
+  [string]$AppFolder = 'D:\WorkSpace\NPDev\AppGen\apps\_official\Claude',
   [string]$ProductRepo = 'D:\WorkSpace\NPDev\NPDev_General',
   [string]$RuntimeCurrent = 'D:\WorkSpace\NPDev\AppGen\generator-runtime\current',
   [string]$OutRoot = 'D:\WorkSpace\NPDev\Build\generated-finalapps\claude-support-desk',

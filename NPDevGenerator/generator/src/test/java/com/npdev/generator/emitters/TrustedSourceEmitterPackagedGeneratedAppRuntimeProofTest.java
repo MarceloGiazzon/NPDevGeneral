@@ -448,7 +448,8 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                 "",
                 List.of(),
                 Map.of(),
-                Map.of("trustedSourceEntrypoint", "panel/item12-panel.html")
+                Map.of("trustedSourceEntrypoint", "panel/item12-panel.html"),
+                null
         );
         CompiledFlow flow = new CompiledFlow(
                 "CreateItem12UserFlow",

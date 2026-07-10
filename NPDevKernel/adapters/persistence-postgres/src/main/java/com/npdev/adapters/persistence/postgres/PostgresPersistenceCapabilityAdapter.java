@@ -1,6 +1,10 @@
 
 package com.npdev.adapters.persistence.postgres;
 
+import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.dsl.v1.compiled.CompiledLifecycle;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.ports.PersistenceCapabilityContract;
 
 import javax.sql.DataSource;
@@ -39,10 +43,22 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class PostgresPersistenceCapabilityAdapter implements PersistenceCapabilityContract {
 
     private final DataSource dataSource;
+    private final CompiledModel compiledModel;
     private final Map<String, TableColumns> tableColumnsCache = new ConcurrentHashMap<>();
 
     public PostgresPersistenceCapabilityAdapter(DataSource dataSource) {
+        this(dataSource, null);
+    }
+
+    // Flow-compiled createConcept/updateConcept steps dispatch straight to this adapter's save(),
+    // bypassing the generated per-concept service's enforceWithKernel/validateLifecycleTransitions
+    // check that generic CRUD PUT/POST goes through (that check only exists in generated code, not
+    // here). Without compiledModel, a concept's lifecycle-declared transitions were silently
+    // unenforced on this path -- confirmed live: a flow-driven update jumped a Recebimento straight
+    // from its initial stage to its terminal stage, skipping two required stages, with no error.
+    public PostgresPersistenceCapabilityAdapter(DataSource dataSource, CompiledModel compiledModel) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
+        this.compiledModel = compiledModel;
     }
 
     @Override
@@ -70,6 +86,7 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
 
         try (Connection connection = dataSource.getConnection()) {
             TableColumns tableColumns = resolveTableColumns(connection, table);
+            enforceLifecycleTransition(connection, concept, table, tableColumns, id, runtimeRecord);
             Map<String, Object> sqlRecord = normalizeRecordForSave(table, runtimeRecord, tableColumns);
             String idColumn = resolveIdColumn(table, tableColumns);
 
@@ -77,11 +94,12 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
             ensureColumnFirst(columns, idColumn);
 
             String sql = buildUpsertSql(connection, table, columns, idColumn);
+            Map<String, String> dslTypeByColumn = dslTypeByColumn(concept, table, tableColumns);
             try (PreparedStatement ps = connection.prepareStatement(sql)) {
                 int idx = 1;
                 for (String column : columns) {
                     Object value = sqlRecord.get(column);
-                    value = coerceValueForColumn(column, value);
+                    value = coerceValueForColumn(column, value, dslTypeByColumn.get(column));
                     ps.setObject(idx++, value);
                 }
                 ps.executeUpdate();
@@ -100,6 +118,111 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
             }
             throw new IllegalStateException("Postgres persistence save failed for table " + table + ": " + e.getMessage(), e);
         }
+    }
+
+    private void enforceLifecycleTransition(
+            Connection connection,
+            Object concept,
+            String table,
+            TableColumns tableColumns,
+            Object id,
+            Map<String, Object> runtimeRecord
+    ) throws SQLException {
+        if (compiledModel == null) {
+            return;
+        }
+        CompiledConcept compiledConcept = findCompiledConcept(concept);
+        if (compiledConcept == null) {
+            return;
+        }
+        CompiledLifecycle lifecycle = compiledConcept.getLifecycle();
+        if (lifecycle == null || lifecycle.getStatusField() == null || lifecycle.getStatusField().isBlank()) {
+            return;
+        }
+        String statusField = lifecycle.getStatusField();
+        if (!runtimeRecord.containsKey(statusField)) {
+            return;
+        }
+        String statusColumn = resolveColumn(table, statusField, tableColumns);
+        String idColumn = resolveIdColumn(table, tableColumns);
+        if (statusColumn == null) {
+            return;
+        }
+
+        String previousValue = null;
+        boolean rowExists = false;
+        String sql = "SELECT " + statusColumn + " FROM " + table + " WHERE " + idColumn + " = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setObject(1, coerceValueForColumn(idColumn, id));
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    rowExists = true;
+                    Object raw = rs.getObject(1);
+                    previousValue = raw == null ? null : String.valueOf(raw);
+                }
+            }
+        }
+        if (!rowExists || previousValue == null) {
+            return;
+        }
+
+        Object nextValueRaw = runtimeRecord.get(statusField);
+        String nextValue = nextValueRaw == null ? null : String.valueOf(nextValueRaw);
+        if (previousValue.equals(nextValue)) {
+            return;
+        }
+        String fromValue = previousValue;
+        boolean allowed = lifecycle.getTransitions().stream()
+                .anyMatch(transition -> fromValue.equals(transition.getFrom())
+                        && Objects.equals(nextValue, transition.getTo()));
+        if (!allowed) {
+            throw new IllegalArgumentException(
+                    "Status transition from '" + previousValue + "' to '" + nextValue
+                            + "' is not allowed for " + compiledConcept.getName());
+        }
+    }
+
+    /**
+     * Maps each of the target concept's declared "date"/"datetime" fields onto its resolved
+     * column name, so {@link #coerceValueForColumn} can convert the JSON-string value it receives
+     * from a Flow's runtime payload into a real {@code java.sql.Date}/{@code Timestamp} instead of
+     * relying on {@code isDateColumn}/{@code isTimestampColumn}'s English-naming-convention
+     * heuristic (which never matched Portuguese-named columns like {@code data_movimento} —
+     * confirmed live: every date-bearing WmsOffice concept saved via a Flow's createConcept/
+     * updateConcept step failed against Postgres with "column is of type date but expression is
+     * of type character varying" until this lookup was added). Empty when the model doesn't know
+     * the concept (mirrors every other {@code compiledModel == null} guard in this class).
+     */
+    private Map<String, String> dslTypeByColumn(Object concept, String table, TableColumns tableColumns) {
+        CompiledConcept compiledConcept = findCompiledConcept(concept);
+        if (compiledConcept == null) {
+            return Map.of();
+        }
+        Map<String, String> out = new LinkedHashMap<>();
+        for (CompiledField field : compiledConcept.getFields()) {
+            String dslType = field.getDslType();
+            if (!"date".equals(dslType) && !"datetime".equals(dslType)) {
+                continue;
+            }
+            String column = resolveColumn(table, field.getName(), tableColumns);
+            if (column != null) {
+                out.put(column, dslType);
+            }
+        }
+        return out;
+    }
+
+    private CompiledConcept findCompiledConcept(Object concept) {
+        if (concept == null || compiledModel == null) {
+            return null;
+        }
+        String name = String.valueOf(concept);
+        for (CompiledConcept candidate : compiledModel.getConcepts()) {
+            if (candidate.getName().equalsIgnoreCase(name)) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     private static boolean isIntegrityConstraintViolation(SQLException exception) {
@@ -603,6 +726,21 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
         sb.append(String.join(", ", Collections.nCopies(columns.size(), "?")));
         sb.append(")");
         return sb.toString();
+    }
+
+    private static Object coerceValueForColumn(String column, Object value, String knownDslType) {
+        // Model-driven check first (exact, works for any column-naming language) -- falls back to
+        // the heuristic-based overload's English-naming guesses only when the caller has no
+        // CompiledModel field-type info for this column (e.g. the id-lookup/delete call sites).
+        if (value instanceof CharSequence) {
+            if ("date".equals(knownDslType)) {
+                return coerceDate(value);
+            }
+            if ("datetime".equals(knownDslType)) {
+                return coerceTimestamp(value);
+            }
+        }
+        return coerceValueForColumn(column, value);
     }
 
     private static Object coerceValueForColumn(String column, Object value) {

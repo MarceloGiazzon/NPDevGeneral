@@ -86,7 +86,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 int index = 1;
                 for (String column : columnNames) {
-                    statement.setObject(index++, coerceValue(column, dbRecord.get(column)));
+                    statement.setObject(index++, coerceValue(column, dbRecord.get(column), shape.dslTypeByColumn().get(column)));
                 }
                 statement.executeUpdate();
             }
@@ -209,15 +209,17 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             String idColumn = "id";
             Map<String, String> columnByField = new LinkedHashMap<>();
             Map<String, String> fieldByColumn = new LinkedHashMap<>();
+            Map<String, String> dslTypeByColumn = new LinkedHashMap<>();
             for (CompiledField field : concept.getFields()) {
                 String column = toDbColumn(field.getName());
                 columnByField.put(field.getName().toLowerCase(Locale.ROOT), column);
                 fieldByColumn.put(column.toLowerCase(Locale.ROOT), field.getName());
+                dslTypeByColumn.put(column.toLowerCase(Locale.ROOT), field.getDslType());
                 if (field.isId()) {
                     idColumn = column;
                 }
             }
-            out.put(normalize(concept.getName()), new ConceptShape(concept.getName(), table, idColumn, columnByField, fieldByColumn));
+            out.put(normalize(concept.getName()), new ConceptShape(concept.getName(), table, idColumn, columnByField, fieldByColumn, dslTypeByColumn));
         }
         return Map.copyOf(out);
     }
@@ -260,7 +262,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
 
     private static final ObjectMapper JSON_COLUMN_MAPPER = new ObjectMapper();
 
-    private static Object coerceValue(String column, Object value) {
+    private static Object coerceValue(String column, Object value, String dslType) {
         if (value == null) {
             return null;
         }
@@ -279,7 +281,30 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
                 throw new IllegalStateException("Failed to serialize column \"" + column + "\" to JSON", exception);
             }
         }
+        if (value instanceof String text && !text.isBlank()) {
+            // A "date"/"datetime" DSL field's JSON value is always a plain ISO-8601 string (the
+            // REST layer never sends a java.sql.Date/Timestamp). H2's JDBC driver silently casts a
+            // bound VARCHAR into a DATE/TIMESTAMP column; real Postgres does not
+            // ("column is of type date but expression is of type character varying") and rejects
+            // it outright, so every date/datetime-bearing concept (Lote, Recebimento, Expedicao,
+            // Movimento, DocumentoFiscal, InventarioArquivo, ...) failed to save under Postgres
+            // specifically until this conversion was added.
+            if ("date".equals(dslType)) {
+                return java.sql.Date.valueOf(java.time.LocalDate.parse(text));
+            }
+            if ("datetime".equals(dslType)) {
+                return java.sql.Timestamp.from(parseDateTime(text));
+            }
+        }
         return value;
+    }
+
+    private static java.time.Instant parseDateTime(String text) {
+        try {
+            return java.time.OffsetDateTime.parse(text).toInstant();
+        } catch (java.time.format.DateTimeParseException ignored) {
+            return java.time.LocalDateTime.parse(text).atZone(java.time.ZoneId.systemDefault()).toInstant();
+        }
     }
 
     private static Object coerceId(Object value) {
@@ -339,7 +364,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             String tableName,
             String idColumn,
             Map<String, String> columnByField,
-            Map<String, String> fieldByColumn
+            Map<String, String> fieldByColumn,
+            Map<String, String> dslTypeByColumn
     ) {
     }
 

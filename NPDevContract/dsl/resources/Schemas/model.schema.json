@@ -225,6 +225,19 @@
         ]
       }
     },
+    "guidePages": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/guidePage"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
     "metadata": {
       "type": "object"
     },
@@ -633,7 +646,7 @@
               "items": {
                 "properties": {
                   "type": {
-                    "const": "object"
+                    "enum": ["object", "enum"]
                   }
                 },
                 "required": [
@@ -980,11 +993,23 @@
           "type": "string",
           "minLength": 1
         },
+        "formPresentation": {
+          "type": "string",
+          "enum": ["modal", "standard"]
+        },
         "defaultSort": {
           "type": "string",
           "minLength": 1
         },
         "defaultGroup": {
+          "type": "string",
+          "minLength": 1
+        },
+        "imageField": {
+          "type": "string",
+          "minLength": 1
+        },
+        "customWidgetRef": {
           "type": "string",
           "minLength": 1
         }
@@ -1237,7 +1262,11 @@
         },
         "mode": {
           "type": "string",
-          "enum": ["create", "update", "delete"],
+          "enum": [
+            "create",
+            "update",
+            "delete"
+          ],
           "description": "When set on a concept-nested event, generated CRUD publishes this event directly from the matching mutation step (in addition to any Flow's own emitEvent step) -- no Flow required to reach it."
         }
       },
@@ -2588,6 +2617,10 @@
         },
         "metadata": {
           "type": "object"
+        },
+        "guidePage": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "additionalProperties": false
@@ -2768,6 +2801,116 @@
         },
         "metadata": {
           "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "guidePage": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "default": {
+          "type": "boolean"
+        },
+        "regions": {
+          "$ref": "#/$defs/guidePageRegions"
+        },
+        "theme": {
+          "$ref": "#/$defs/guidePageTheme"
+        },
+        "gadgets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/guidePageGadget"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "guidePageRegions": {
+      "type": "object",
+      "properties": {
+        "top": {
+          "type": "boolean"
+        },
+        "left": {
+          "$ref": "#/$defs/guidePageRegion"
+        },
+        "right": {
+          "$ref": "#/$defs/guidePageRegion"
+        }
+      },
+      "additionalProperties": false
+    },
+    "guidePageRegion": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "collapsible": {
+          "type": "boolean"
+        },
+        "defaultCollapsed": {
+          "type": "boolean"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "guidePageTheme": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "accent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "density": {
+          "type": "string",
+          "minLength": 1
+        },
+        "logoText": {
+          "type": "string",
+          "minLength": 1
+        },
+        "logoUrl": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "guidePageGadget": {
+      "type": "object",
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "additionalProperties": false

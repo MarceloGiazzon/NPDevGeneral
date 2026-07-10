@@ -2,6 +2,7 @@ package com.npdev.adapters.eventstore.jdbc;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.npdev.kernel.events.EventEnvelope;
 import com.npdev.kernel.events.EventMetaSummary;
 import com.npdev.kernel.ports.EventMetaStore;
@@ -27,7 +28,8 @@ public class JdbcEventStore implements EventStore, EventMetaStore {
     private final ObjectMapper objectMapper;
 
     public JdbcEventStore(DataSource dataSource) {
-        this(dataSource, new ObjectMapper());
+        this(dataSource, new ObjectMapper().findAndRegisterModules()
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS));
     }
 
     public JdbcEventStore(DataSource dataSource, ObjectMapper objectMapper) {

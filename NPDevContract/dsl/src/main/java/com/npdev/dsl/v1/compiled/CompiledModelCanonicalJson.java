@@ -58,6 +58,7 @@ public final class CompiledModelCanonicalJson {
         root.set("ruleProfiles", toRuleProfiles(model));
         root.set("procedures", toProcedures(model));
         root.set("panels", toPanels(model));
+        root.set("guidePages", toGuidePages(model));
         return root;
     }
 
@@ -229,8 +230,11 @@ public final class CompiledModelCanonicalJson {
             node.put("formColumns", metadata.getFormColumns());
         }
         node.put("displayMode", safe(metadata.getDisplayMode()));
+        node.put("formPresentation", safe(metadata.getFormPresentation()));
         node.put("defaultSort", safe(metadata.getDefaultSort()));
         node.put("defaultGroup", safe(metadata.getDefaultGroup()));
+        node.put("imageField", safe(metadata.getImageField()));
+        node.put("customWidgetRef", safe(metadata.getCustomWidgetRef()));
         return node;
     }
 
@@ -485,9 +489,79 @@ public final class CompiledModelCanonicalJson {
             node.set("actions", toPanelActions(panel.actions()));
             node.set("explainability", toObjectMap(panel.explainability()));
             node.set("metadata", toObjectMap(panel.metadata()));
+            node.put("guidePage", safe(panel.guidePage()));
             panels.add(node);
         }
         return panels;
+    }
+
+    private static ArrayNode toGuidePages(CompiledModel model) {
+        ArrayNode guidePages = JsonNodeFactory.instance.arrayNode();
+        List<CompiledGuidePage> sorted = new ArrayList<>(model.getGuidePages());
+        sorted.sort(Comparator.comparing(page -> normalize(page.name())));
+        for (CompiledGuidePage page : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(page.name()));
+            node.put("default", page.isDefault());
+            node.set("regions", toGuidePageRegions(page.regions()));
+            node.set("theme", toGuidePageTheme(page.theme()));
+            node.set("gadgets", toGuidePageGadgets(page.gadgets()));
+            guidePages.add(node);
+        }
+        return guidePages;
+    }
+
+    private static JsonNode toGuidePageRegions(CompiledGuidePageRegions regions) {
+        if (regions == null) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("top", regions.top());
+        node.set("left", toGuidePageRegion(regions.left()));
+        node.set("right", toGuidePageRegion(regions.right()));
+        return node;
+    }
+
+    private static JsonNode toGuidePageRegion(CompiledGuidePageRegion region) {
+        if (region == null) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("enabled", region.enabled());
+        node.put("collapsible", region.collapsible());
+        node.put("defaultCollapsed", region.defaultCollapsed());
+        node.put("width", region.width());
+        return node;
+    }
+
+    private static JsonNode toGuidePageTheme(CompiledGuidePageTheme theme) {
+        if (theme == null) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("mode", safe(theme.mode()));
+        node.put("accent", safe(theme.accent()));
+        node.put("density", safe(theme.density()));
+        node.put("logoText", safe(theme.logoText()));
+        node.put("logoUrl", safe(theme.logoUrl()));
+        return node;
+    }
+
+    private static ArrayNode toGuidePageGadgets(List<CompiledGuidePageGadget> gadgets) {
+        ArrayNode out = JsonNodeFactory.instance.arrayNode();
+        if (gadgets == null) {
+            return out;
+        }
+        List<CompiledGuidePageGadget> sorted = new ArrayList<>(gadgets);
+        sorted.sort(Comparator.comparing(gadget -> normalize(gadget.name())));
+        for (CompiledGuidePageGadget gadget : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(gadget.name()));
+            node.put("type", safe(gadget.type()));
+            node.put("title", safe(gadget.title()));
+            out.add(node);
+        }
+        return out;
     }
 
     private static ArrayNode toPanelDataSources(List<CompiledPanelDataSource> dataSources) {

@@ -18,6 +18,7 @@ public final class CompiledModel {
     private final List<CompiledRuleProfile> ruleProfiles;
     private final List<CompiledProcedure> procedures;
     private final List<CompiledPanel> panels;
+    private final List<CompiledGuidePage> guidePages;
 
     public CompiledModel(String namespace, String version, Map<String, ? extends CompiledEntity> entitiesByName) {
         this(namespace, "1.0.0", version, entitiesByName, List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
@@ -102,6 +103,27 @@ public final class CompiledModel {
             List<CompiledProcedure> procedures,
             List<CompiledPanel> panels
     ) {
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, List.of());
+    }
+
+    public CompiledModel(
+            String namespace,
+            String dslVersion,
+            String version,
+            Map<String, ? extends CompiledEntity> entitiesByName,
+            List<CompiledDomainType> domainTypes,
+            List<CompiledCapability> capabilities,
+            List<CompiledCapabilityBinding> bindings,
+            List<CompiledEvent> events,
+            List<CompiledFlow> flows,
+            List<CompiledOrchestration> orchestrationRules,
+            List<CompiledQuery> queries,
+            List<CompiledRuleProfile> ruleProfiles,
+            List<CompiledProcedure> procedures,
+            List<CompiledPanel> panels,
+            List<CompiledGuidePage> guidePages
+    ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
         this.version = version;
@@ -120,6 +142,7 @@ public final class CompiledModel {
         this.ruleProfiles = new ArrayList<>(ruleProfiles);
         this.procedures = new ArrayList<>(procedures);
         this.panels = new ArrayList<>(panels);
+        this.guidePages = new ArrayList<>(guidePages);
     }
 
     public String getNamespace() { return namespace; }
@@ -200,6 +223,10 @@ public final class CompiledModel {
 
     public List<CompiledPanel> getPanels() {
         return Collections.unmodifiableList(panels);
+    }
+
+    public List<CompiledGuidePage> getGuidePages() {
+        return Collections.unmodifiableList(guidePages);
     }
 
     public Optional<CompiledFlow> findFlow(String flowName) {
