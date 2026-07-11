@@ -156,6 +156,7 @@ public final class JsonModelParser {
         List<ProcedureAst> procedures = new ArrayList<>();
         List<PanelAst> panels = new ArrayList<>();
         List<GuidePageAst> guidePages = new ArrayList<>();
+        List<AggregateAst> aggregates = new ArrayList<>();
         List<String> parserWarnings = new ArrayList<>(sourceWarnings == null ? List.of() : sourceWarnings);
         Map<String, ConceptAst> conceptsByLowerName = new LinkedHashMap<>();
 
@@ -502,6 +503,7 @@ public final class JsonModelParser {
         procedures.addAll(parseProcedures(root.get("procedures")));
         panels.addAll(parsePanels(root.get("panels")));
         guidePages.addAll(parseGuidePages(root.get("guidePages")));
+        aggregates.addAll(parseAggregates(root.get("aggregates")));
 
         return new ModelAst(
                 namespace,
@@ -519,6 +521,7 @@ public final class JsonModelParser {
                 procedures,
                 panels,
                 guidePages,
+                aggregates,
                 parserWarnings
         );
     }
@@ -732,6 +735,53 @@ public final class JsonModelParser {
                     parseObjectMap(panelNode.get("explainability")),
                     parseObjectMap(panelNode.get("metadata")),
                     readText(panelNode, "guidePage")
+            ));
+        }
+        return out;
+    }
+
+    private static List<AggregateAst> parseAggregates(JsonNode node) throws IOException {
+        List<AggregateAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("aggregates must be an array");
+        }
+        for (JsonNode aggregateNode : node) {
+            String name = requiredText(aggregateNode, "name");
+            out.add(new AggregateAst(
+                    name,
+                    requiredText(aggregateNode, "root"),
+                    parseAggregateCollections(aggregateNode.get("collections"),
+                            "aggregates[" + name + "].collections"),
+                    parseObjectMap(aggregateNode.get("metadata"))
+            ));
+        }
+        return out;
+    }
+
+    private static List<AggregateCollectionAst> parseAggregateCollections(JsonNode node, String path)
+            throws IOException {
+        List<AggregateCollectionAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException(path + " must be an array");
+        }
+        for (JsonNode collectionNode : node) {
+            String name = requiredText(collectionNode, "name");
+            out.add(new AggregateCollectionAst(
+                    name,
+                    requiredText(collectionNode, "concept"),
+                    readText(collectionNode, "via"),
+                    requiredText(collectionNode, "childField"),
+                    readText(collectionNode, "ownership"),
+                    readText(collectionNode, "orderBy"),
+                    parseAggregateCollections(collectionNode.get("collections"),
+                            path + "[" + name + "].collections"),
+                    parseObjectMap(collectionNode.get("metadata"))
             ));
         }
         return out;

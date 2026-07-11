@@ -1,5 +1,6 @@
 package com.npdev.dsl.v1.resolution;
 
+import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.CapabilityAst;
 import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
@@ -93,6 +94,7 @@ public final class ModelResolver {
                 resolvedProcedures,
                 resolvedPanels,
                 resolvedGuidePages,
+                source.getAggregates(),
                 source.getParserWarnings()
         );
         return ResolvedModel.from(resolvedAst);

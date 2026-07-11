@@ -17,6 +17,8 @@ import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.ast.OrchestrationActionAst;
 import com.npdev.dsl.v1.ast.OrchestrationAst;
 import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
+import com.npdev.dsl.v1.ast.AggregateAst;
+import com.npdev.dsl.v1.ast.AggregateCollectionAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
 import com.npdev.dsl.v1.compiled.FieldWidgetDefaults;
@@ -376,6 +378,7 @@ public final class SemanticValidator {
         validateProcedures(effectiveModel, entitiesByLower, errors);
         validatePanels(effectiveModel, entitiesByLower, errors);
         validateGuidePages(effectiveModel, errors);
+        validateAggregates(effectiveModel, entitiesByLower, errors);
         errors = canonicalizeConceptTerminology(errors);
         semanticWarnings = canonicalizeConceptTerminology(semanticWarnings);
         for (String semanticWarning : semanticWarnings) {
@@ -532,6 +535,69 @@ public final class SemanticValidator {
             validateProcedureSteps(procedureName, stepPath + ".else", step.elseSteps(), entitiesByLower, queryNames, procedureNames, errors);
             validateProcedureSteps(procedureName, stepPath + ".steps", step.steps(), entitiesByLower, queryNames, procedureNames, errors);
             index++;
+        }
+    }
+
+    private static void validateAggregates(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
+        Set<String> aggregateNames = new HashSet<>();
+        for (AggregateAst aggregate : modelAst.getAggregates()) {
+            if (!aggregateNames.add(normalize(aggregate.name()))) {
+                errors.add("Aggregate " + aggregate.name() + ": duplicate aggregate name");
+            }
+            if (!hasText(aggregate.root())) {
+                errors.add("Aggregate " + aggregate.name() + ": root concept is required");
+            } else if (!entitiesByLower.containsKey(normalize(aggregate.root()))) {
+                errors.add("Aggregate " + aggregate.name() + ": root concept not found: " + aggregate.root());
+            }
+            validateAggregateCollections(
+                    aggregate.name(),
+                    "Aggregate " + aggregate.name(),
+                    aggregate.collections(),
+                    entitiesByLower,
+                    new HashSet<>(),
+                    errors);
+        }
+    }
+
+    private static void validateAggregateCollections(
+            String aggregateName,
+            String path,
+            List<AggregateCollectionAst> collections,
+            Map<String, ConceptAst> entitiesByLower,
+            Set<String> conceptChain,
+            List<String> errors) {
+        Set<String> siblingNames = new HashSet<>();
+        for (AggregateCollectionAst collection : collections) {
+            String here = path + " collection " + collection.name();
+            if (!siblingNames.add(normalize(collection.name()))) {
+                errors.add(here + ": duplicate collection name among siblings");
+            }
+            if (!hasText(collection.childField())) {
+                errors.add(here + ": childField is required");
+            }
+            String normalizedConcept = normalize(collection.concept());
+            if (!hasText(collection.concept())) {
+                errors.add(here + ": concept is required");
+            } else if (!entitiesByLower.containsKey(normalizedConcept)) {
+                errors.add(here + ": concept not found: " + collection.concept());
+            }
+            if (hasText(collection.ownership())
+                    && !normalize(collection.ownership()).equals("owned")
+                    && !normalize(collection.ownership()).equals("referenced")) {
+                errors.add(here + ": ownership must be 'owned' or 'referenced', found: " + collection.ownership());
+            }
+            // Guard against an owned composition cycle (a concept owning an ancestor concept).
+            boolean owned = !hasText(collection.ownership()) || normalize(collection.ownership()).equals("owned");
+            if (owned && hasText(collection.concept()) && conceptChain.contains(normalizedConcept)) {
+                errors.add(here + ": owned composition cycle detected on concept " + collection.concept());
+                continue;
+            }
+            Set<String> nextChain = new HashSet<>(conceptChain);
+            if (hasText(collection.concept())) {
+                nextChain.add(normalizedConcept);
+            }
+            validateAggregateCollections(aggregateName, here, collection.collections(),
+                    entitiesByLower, nextChain, errors);
         }
     }
 
