@@ -93,6 +93,11 @@ public final class CompiledModelCanonicalJsonReader {
             aggregates.add(toAggregate(node));
         }
 
+        List<CompiledAutoPanel> autoPanels = new ArrayList<>();
+        for (JsonNode node : array(root, "autoPanels")) {
+            autoPanels.add(toAutoPanel(node));
+        }
+
         return new CompiledModel(
                 namespace,
                 dslVersion,
@@ -109,7 +114,36 @@ public final class CompiledModelCanonicalJsonReader {
                 procedures,
                 panels,
                 guidePages,
-                aggregates
+                aggregates,
+                autoPanels
+        );
+    }
+
+    private static CompiledAutoPanel toAutoPanel(JsonNode node) {
+        return new CompiledAutoPanel(
+                optionalText(node, "name"),
+                optionalText(node, "concept"),
+                optionalText(node, "aggregate"),
+                optionalText(node, "route"),
+                toStringList(node.get("surfaces")),
+                toAutoPanelSurface(node.get("selection")),
+                toAutoPanelSurface(node.get("detail")),
+                toAutoPanelSurface(node.get("transaction")),
+                toAutoPanelSurface(node.get("prompt")),
+                toObjectMap(node.get("metadata"))
+        );
+    }
+
+    private static CompiledAutoPanelSurface toAutoPanelSurface(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        return new CompiledAutoPanelSurface(
+                toStringList(node.get("filters")),
+                toStringList(node.get("columns")),
+                toStringList(node.get("fields")),
+                optionalText(node, "labelField"),
+                toObjectMap(node.get("metadata"))
         );
     }
 

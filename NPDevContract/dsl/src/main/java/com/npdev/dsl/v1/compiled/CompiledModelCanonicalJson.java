@@ -60,7 +60,60 @@ public final class CompiledModelCanonicalJson {
         root.set("panels", toPanels(model));
         root.set("guidePages", toGuidePages(model));
         root.set("aggregates", toAggregates(model));
+        root.set("autoPanels", toAutoPanels(model));
         return root;
+    }
+
+    private static ArrayNode toAutoPanels(CompiledModel model) {
+        ArrayNode autoPanels = JsonNodeFactory.instance.arrayNode();
+        List<CompiledAutoPanel> sorted = new ArrayList<>(model.getAutoPanels());
+        sorted.sort(Comparator.comparing(autoPanel -> normalize(autoPanelSortKey(autoPanel))));
+        for (CompiledAutoPanel autoPanel : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(autoPanel.name()));
+            node.put("concept", safe(autoPanel.concept()));
+            node.put("aggregate", safe(autoPanel.aggregate()));
+            node.put("route", safe(autoPanel.route()));
+            ArrayNode surfaces = JsonNodeFactory.instance.arrayNode();
+            autoPanel.surfaces().forEach(surfaces::add);
+            node.set("surfaces", surfaces);
+            node.set("selection", toAutoPanelSurface(autoPanel.selection()));
+            node.set("detail", toAutoPanelSurface(autoPanel.detail()));
+            node.set("transaction", toAutoPanelSurface(autoPanel.transaction()));
+            node.set("prompt", toAutoPanelSurface(autoPanel.prompt()));
+            node.set("metadata", toObjectMap(autoPanel.metadata()));
+            autoPanels.add(node);
+        }
+        return autoPanels;
+    }
+
+    private static String autoPanelSortKey(CompiledAutoPanel autoPanel) {
+        if (autoPanel.name() != null && !autoPanel.name().isBlank()) {
+            return autoPanel.name();
+        }
+        if (autoPanel.concept() != null && !autoPanel.concept().isBlank()) {
+            return autoPanel.concept();
+        }
+        return autoPanel.aggregate() == null ? "" : autoPanel.aggregate();
+    }
+
+    private static JsonNode toAutoPanelSurface(CompiledAutoPanelSurface surface) {
+        if (surface == null) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        ArrayNode filters = JsonNodeFactory.instance.arrayNode();
+        surface.filters().forEach(filters::add);
+        node.set("filters", filters);
+        ArrayNode columns = JsonNodeFactory.instance.arrayNode();
+        surface.columns().forEach(columns::add);
+        node.set("columns", columns);
+        ArrayNode fields = JsonNodeFactory.instance.arrayNode();
+        surface.fields().forEach(fields::add);
+        node.set("fields", fields);
+        node.put("labelField", safe(surface.labelField()));
+        node.set("metadata", toObjectMap(surface.metadata()));
+        return node;
     }
 
     private static ArrayNode toAggregates(CompiledModel model) {

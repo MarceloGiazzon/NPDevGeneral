@@ -157,6 +157,7 @@ public final class JsonModelParser {
         List<PanelAst> panels = new ArrayList<>();
         List<GuidePageAst> guidePages = new ArrayList<>();
         List<AggregateAst> aggregates = new ArrayList<>();
+        List<AutoPanelAst> autoPanels = new ArrayList<>();
         List<String> parserWarnings = new ArrayList<>(sourceWarnings == null ? List.of() : sourceWarnings);
         Map<String, ConceptAst> conceptsByLowerName = new LinkedHashMap<>();
 
@@ -504,6 +505,7 @@ public final class JsonModelParser {
         panels.addAll(parsePanels(root.get("panels")));
         guidePages.addAll(parseGuidePages(root.get("guidePages")));
         aggregates.addAll(parseAggregates(root.get("aggregates")));
+        autoPanels.addAll(parseAutoPanels(root.get("autoPanels")));
 
         return new ModelAst(
                 namespace,
@@ -522,6 +524,7 @@ public final class JsonModelParser {
                 panels,
                 guidePages,
                 aggregates,
+                autoPanels,
                 parserWarnings
         );
     }
@@ -785,6 +788,44 @@ public final class JsonModelParser {
             ));
         }
         return out;
+    }
+
+    private static List<AutoPanelAst> parseAutoPanels(JsonNode node) throws IOException {
+        List<AutoPanelAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("autoPanels must be an array");
+        }
+        for (JsonNode autoPanelNode : node) {
+            out.add(new AutoPanelAst(
+                    readText(autoPanelNode, "name"),
+                    readText(autoPanelNode, "concept"),
+                    readText(autoPanelNode, "aggregate"),
+                    readText(autoPanelNode, "route"),
+                    parseTextArray(autoPanelNode.get("surfaces")),
+                    parseAutoPanelSurface(autoPanelNode.get("selection")),
+                    parseAutoPanelSurface(autoPanelNode.get("detail")),
+                    parseAutoPanelSurface(autoPanelNode.get("transaction")),
+                    parseAutoPanelSurface(autoPanelNode.get("prompt")),
+                    parseObjectMap(autoPanelNode.get("metadata"))
+            ));
+        }
+        return out;
+    }
+
+    private static AutoPanelSurfaceAst parseAutoPanelSurface(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        return new AutoPanelSurfaceAst(
+                parseTextArray(node.get("filters")),
+                parseTextArray(node.get("columns")),
+                parseTextArray(node.get("fields")),
+                readText(node, "labelField"),
+                parseObjectMap(node.get("metadata"))
+        );
     }
 
     private static List<GuidePageAst> parseGuidePages(JsonNode node) throws IOException {

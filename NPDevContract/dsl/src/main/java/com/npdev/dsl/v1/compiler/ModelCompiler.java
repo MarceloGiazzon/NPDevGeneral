@@ -19,6 +19,8 @@ import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.GeneratedActionDescriptorAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
+import com.npdev.dsl.v1.ast.AutoPanelAst;
+import com.npdev.dsl.v1.ast.AutoPanelSurfaceAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
 import com.npdev.dsl.v1.ast.GuidePageRegionAst;
@@ -73,6 +75,8 @@ import com.npdev.dsl.v1.compiled.CompiledOrchestrationAction;
 import com.npdev.dsl.v1.compiled.CompiledOrchestrationTrigger;
 import com.npdev.dsl.v1.compiled.CompiledAggregate;
 import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
+import com.npdev.dsl.v1.compiled.CompiledAutoPanel;
+import com.npdev.dsl.v1.compiled.CompiledAutoPanelSurface;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPanelDataSource;
@@ -431,6 +435,13 @@ public final class ModelCompiler {
             aggregates.add(compileAggregate(aggregateAst));
         }
 
+        List<AutoPanelAst> orderedAutoPanels = new ArrayList<>(modelAst.getAutoPanels());
+        orderedAutoPanels.sort(Comparator.comparing(autoPanel -> normalize(autoPanelKey(autoPanel))));
+        List<CompiledAutoPanel> autoPanels = new ArrayList<>();
+        for (AutoPanelAst autoPanelAst : orderedAutoPanels) {
+            autoPanels.add(compileAutoPanel(autoPanelAst));
+        }
+
         return new CompiledModel(
                 modelAst.getNamespace(),
                 modelAst.getDslVersion(),
@@ -447,7 +458,46 @@ public final class ModelCompiler {
                 procedures,
                 panels,
                 guidePages,
-                aggregates
+                aggregates,
+                autoPanels
+        );
+    }
+
+    private static String autoPanelKey(AutoPanelAst autoPanel) {
+        if (autoPanel.name() != null && !autoPanel.name().isBlank()) {
+            return autoPanel.name();
+        }
+        if (autoPanel.concept() != null && !autoPanel.concept().isBlank()) {
+            return autoPanel.concept();
+        }
+        return autoPanel.aggregate() == null ? "" : autoPanel.aggregate();
+    }
+
+    private static CompiledAutoPanel compileAutoPanel(AutoPanelAst autoPanelAst) {
+        return new CompiledAutoPanel(
+                autoPanelAst.name(),
+                autoPanelAst.concept(),
+                autoPanelAst.aggregate(),
+                autoPanelAst.route(),
+                new ArrayList<>(autoPanelAst.surfaces()),
+                compileAutoPanelSurface(autoPanelAst.selection()),
+                compileAutoPanelSurface(autoPanelAst.detail()),
+                compileAutoPanelSurface(autoPanelAst.transaction()),
+                compileAutoPanelSurface(autoPanelAst.prompt()),
+                sortObjectMap(autoPanelAst.metadata())
+        );
+    }
+
+    private static CompiledAutoPanelSurface compileAutoPanelSurface(AutoPanelSurfaceAst surface) {
+        if (surface == null) {
+            return null;
+        }
+        return new CompiledAutoPanelSurface(
+                new ArrayList<>(surface.filters()),
+                new ArrayList<>(surface.columns()),
+                new ArrayList<>(surface.fields()),
+                surface.labelField(),
+                sortObjectMap(surface.metadata())
         );
     }
 

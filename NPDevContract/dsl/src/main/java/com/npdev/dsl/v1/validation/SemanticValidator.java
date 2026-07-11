@@ -19,6 +19,7 @@ import com.npdev.dsl.v1.ast.OrchestrationAst;
 import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
+import com.npdev.dsl.v1.ast.AutoPanelAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
 import com.npdev.dsl.v1.compiled.FieldWidgetDefaults;
@@ -379,6 +380,7 @@ public final class SemanticValidator {
         validatePanels(effectiveModel, entitiesByLower, errors);
         validateGuidePages(effectiveModel, errors);
         validateAggregates(effectiveModel, entitiesByLower, errors);
+        validateAutoPanels(effectiveModel, entitiesByLower, errors);
         errors = canonicalizeConceptTerminology(errors);
         semanticWarnings = canonicalizeConceptTerminology(semanticWarnings);
         for (String semanticWarning : semanticWarnings) {
@@ -599,6 +601,55 @@ public final class SemanticValidator {
             validateAggregateCollections(aggregateName, here, collection.collections(),
                     entitiesByLower, nextChain, errors);
         }
+    }
+
+    private static void validateAutoPanels(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
+        Set<String> aggregateNames = modelAst.getAggregates().stream()
+                .map(AggregateAst::name)
+                .map(SemanticValidator::normalize)
+                .collect(Collectors.toSet());
+        Set<String> autoPanelNames = new HashSet<>();
+        for (AutoPanelAst autoPanel : modelAst.getAutoPanels()) {
+            String label = hasText(autoPanel.name()) ? autoPanel.name()
+                    : firstNonBlankBinding(autoPanel);
+            String here = "AutoPanel " + label;
+
+            if (hasText(autoPanel.name()) && !autoPanelNames.add(normalize(autoPanel.name()))) {
+                errors.add(here + ": duplicate autoPanel name");
+            }
+
+            boolean hasConcept = hasText(autoPanel.concept());
+            boolean hasAggregate = hasText(autoPanel.aggregate());
+            if (hasConcept == hasAggregate) {
+                errors.add(here + ": exactly one of concept or aggregate must be declared");
+            }
+            if (hasConcept && !entitiesByLower.containsKey(normalize(autoPanel.concept()))) {
+                errors.add(here + ": concept not found: " + autoPanel.concept());
+            }
+            if (hasAggregate && !aggregateNames.contains(normalize(autoPanel.aggregate()))) {
+                errors.add(here + ": aggregate not found: " + autoPanel.aggregate());
+            }
+
+            for (String surface : autoPanel.surfaces()) {
+                String normalizedSurface = normalize(surface);
+                if (!normalizedSurface.equals("selection")
+                        && !normalizedSurface.equals("detail")
+                        && !normalizedSurface.equals("transaction")
+                        && !normalizedSurface.equals("prompt")) {
+                    errors.add(here + ": unknown surface: " + surface);
+                }
+            }
+        }
+    }
+
+    private static String firstNonBlankBinding(AutoPanelAst autoPanel) {
+        if (hasText(autoPanel.concept())) {
+            return autoPanel.concept();
+        }
+        if (hasText(autoPanel.aggregate())) {
+            return autoPanel.aggregate();
+        }
+        return "(unbound)";
     }
 
     private static void validatePanels(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {

@@ -249,6 +249,19 @@
         ]
       }
     },
+    "autoPanels": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/autoPanel"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
     "metadata": {
       "type": "object"
     },
@@ -333,6 +346,89 @@
           "items": {
             "$ref": "#/$defs/aggregateCollection"
           }
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "autoPanel": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "concept": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregate": {
+          "type": "string",
+          "minLength": 1
+        },
+        "route": {
+          "type": "string",
+          "minLength": 1
+        },
+        "surfaces": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "selection",
+              "detail",
+              "transaction",
+              "prompt"
+            ]
+          }
+        },
+        "selection": {
+          "$ref": "#/$defs/autoPanelSurface"
+        },
+        "detail": {
+          "$ref": "#/$defs/autoPanelSurface"
+        },
+        "transaction": {
+          "$ref": "#/$defs/autoPanelSurface"
+        },
+        "prompt": {
+          "$ref": "#/$defs/autoPanelSurface"
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "autoPanelSurface": {
+      "type": "object",
+      "properties": {
+        "filters": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "labelField": {
+          "type": "string",
+          "minLength": 1
         },
         "metadata": {
           "type": "object"

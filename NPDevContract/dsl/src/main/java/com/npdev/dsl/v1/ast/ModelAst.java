@@ -24,6 +24,7 @@ public final class ModelAst {
     private final List<PanelAst> panels;
     private final List<GuidePageAst> guidePages;
     private final List<AggregateAst> aggregates;
+    private final List<AutoPanelAst> autoPanels;
     private final List<String> parserWarnings;
 
     public ModelAst(String namespace, String version, List<? extends EntityAst> entities) {
@@ -170,6 +171,31 @@ public final class ModelAst {
             List<AggregateAst> aggregates,
             List<String> parserWarnings
     ) {
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates,
+                List.of(), parserWarnings);
+    }
+
+    public ModelAst(
+            String namespace,
+            String dslVersion,
+            String version,
+            List<? extends EntityAst> entities,
+            List<DomainTypeAst> domainTypes,
+            List<CapabilityAst> capabilities,
+            List<CapabilityBindingAst> bindings,
+            List<EventAst> events,
+            List<FlowAst> flows,
+            List<OrchestrationAst> orchestrationRules,
+            List<QueryAst> queries,
+            List<RuleProfileAst> ruleProfiles,
+            List<ProcedureAst> procedures,
+            List<PanelAst> panels,
+            List<GuidePageAst> guidePages,
+            List<AggregateAst> aggregates,
+            List<AutoPanelAst> autoPanels,
+            List<String> parserWarnings
+    ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
         this.version = version;
@@ -186,6 +212,7 @@ public final class ModelAst {
         this.panels = new ArrayList<>(panels);
         this.guidePages = new ArrayList<>(guidePages);
         this.aggregates = new ArrayList<>(aggregates);
+        this.autoPanels = new ArrayList<>(autoPanels);
         this.parserWarnings = new ArrayList<>(parserWarnings);
     }
 
@@ -251,6 +278,10 @@ public final class ModelAst {
 
     public List<AggregateAst> getAggregates() {
         return Collections.unmodifiableList(aggregates);
+    }
+
+    public List<AutoPanelAst> getAutoPanels() {
+        return Collections.unmodifiableList(autoPanels);
     }
 
     public List<String> getParserWarnings() {
