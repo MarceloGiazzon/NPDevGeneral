@@ -4,6 +4,7 @@
   "surfaceProfileProperty": "npdev.runtime.surface-profile",
   "enforcedByProperty": "npdev.runtime.supported-surface-enforced",
   "allowedControllers": [
+    "AggregateApiController",
     "DirectExecutionGatewayController",
     "ExecutionMonitorController",
     "RuntimeMetadataController",
@@ -39,6 +40,7 @@
   ],
   "testOnlyControllers": [],
   "supportedCoreServiceComponents": [
+    "AggregateRuntime",
     "BetaSecurityRoleEvaluator",
     "ArtifactLocalJavaSourceCapabilityHandler",
     "CanonicalSourceArtifactStore",
