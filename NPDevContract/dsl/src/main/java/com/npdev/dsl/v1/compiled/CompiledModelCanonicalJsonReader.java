@@ -88,6 +88,11 @@ public final class CompiledModelCanonicalJsonReader {
             guidePages.add(toGuidePage(node));
         }
 
+        List<CompiledAggregate> aggregates = new ArrayList<>();
+        for (JsonNode node : array(root, "aggregates")) {
+            aggregates.add(toAggregate(node));
+        }
+
         return new CompiledModel(
                 namespace,
                 dslVersion,
@@ -103,8 +108,38 @@ public final class CompiledModelCanonicalJsonReader {
                 ruleProfiles,
                 procedures,
                 panels,
-                guidePages
+                guidePages,
+                aggregates
         );
+    }
+
+    private static CompiledAggregate toAggregate(JsonNode node) {
+        return new CompiledAggregate(
+                text(node, "name"),
+                text(node, "root"),
+                toAggregateCollections(node.get("collections")),
+                toObjectMap(node.get("metadata"))
+        );
+    }
+
+    private static List<CompiledAggregateCollection> toAggregateCollections(JsonNode node) {
+        List<CompiledAggregateCollection> out = new ArrayList<>();
+        if (node == null || !node.isArray()) {
+            return out;
+        }
+        for (JsonNode collectionNode : node) {
+            out.add(new CompiledAggregateCollection(
+                    text(collectionNode, "name"),
+                    text(collectionNode, "concept"),
+                    optionalText(collectionNode, "via"),
+                    text(collectionNode, "childField"),
+                    optionalText(collectionNode, "ownership"),
+                    optionalText(collectionNode, "orderBy"),
+                    toAggregateCollections(collectionNode.get("collections")),
+                    toObjectMap(collectionNode.get("metadata"))
+            ));
+        }
+        return out;
     }
 
     private static CompiledDomainType toDomainType(JsonNode node) {

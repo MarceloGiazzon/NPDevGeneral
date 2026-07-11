@@ -59,7 +59,40 @@ public final class CompiledModelCanonicalJson {
         root.set("procedures", toProcedures(model));
         root.set("panels", toPanels(model));
         root.set("guidePages", toGuidePages(model));
+        root.set("aggregates", toAggregates(model));
         return root;
+    }
+
+    private static ArrayNode toAggregates(CompiledModel model) {
+        ArrayNode aggregates = JsonNodeFactory.instance.arrayNode();
+        List<CompiledAggregate> sorted = new ArrayList<>(model.getAggregates());
+        sorted.sort(Comparator.comparing(aggregate -> normalize(aggregate.name())));
+        for (CompiledAggregate aggregate : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(aggregate.name()));
+            node.put("root", safe(aggregate.root()));
+            node.set("collections", toAggregateCollections(aggregate.collections()));
+            node.set("metadata", toObjectMap(aggregate.metadata()));
+            aggregates.add(node);
+        }
+        return aggregates;
+    }
+
+    private static ArrayNode toAggregateCollections(List<CompiledAggregateCollection> collections) {
+        ArrayNode array = JsonNodeFactory.instance.arrayNode();
+        for (CompiledAggregateCollection collection : collections) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(collection.name()));
+            node.put("concept", safe(collection.concept()));
+            node.put("via", safe(collection.via()));
+            node.put("childField", safe(collection.childField()));
+            node.put("ownership", safe(collection.ownership()));
+            node.put("orderBy", safe(collection.orderBy()));
+            node.set("collections", toAggregateCollections(collection.collections()));
+            node.set("metadata", toObjectMap(collection.metadata()));
+            array.add(node);
+        }
+        return array;
     }
 
     private static ArrayNode toConcepts(CompiledModel model) {

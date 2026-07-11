@@ -17,6 +17,8 @@ import com.npdev.dsl.v1.ast.EventPayloadAst;
 import com.npdev.dsl.v1.ast.EnumOptionAst;
 import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.GeneratedActionDescriptorAst;
+import com.npdev.dsl.v1.ast.AggregateAst;
+import com.npdev.dsl.v1.ast.AggregateCollectionAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
 import com.npdev.dsl.v1.ast.GuidePageRegionAst;
@@ -69,6 +71,8 @@ import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledOrchestration;
 import com.npdev.dsl.v1.compiled.CompiledOrchestrationAction;
 import com.npdev.dsl.v1.compiled.CompiledOrchestrationTrigger;
+import com.npdev.dsl.v1.compiled.CompiledAggregate;
+import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPanelDataSource;
@@ -420,6 +424,13 @@ public final class ModelCompiler {
             guidePages.add(compileGuidePage(guidePageAst));
         }
 
+        List<AggregateAst> orderedAggregates = new ArrayList<>(modelAst.getAggregates());
+        orderedAggregates.sort(Comparator.comparing(aggregate -> normalize(aggregate.name())));
+        List<CompiledAggregate> aggregates = new ArrayList<>();
+        for (AggregateAst aggregateAst : orderedAggregates) {
+            aggregates.add(compileAggregate(aggregateAst));
+        }
+
         return new CompiledModel(
                 modelAst.getNamespace(),
                 modelAst.getDslVersion(),
@@ -435,8 +446,36 @@ public final class ModelCompiler {
                 ruleProfiles,
                 procedures,
                 panels,
-                guidePages
+                guidePages,
+                aggregates
         );
+    }
+
+    private static CompiledAggregate compileAggregate(AggregateAst aggregateAst) {
+        return new CompiledAggregate(
+                aggregateAst.name(),
+                aggregateAst.root(),
+                compileAggregateCollections(aggregateAst.collections()),
+                sortObjectMap(aggregateAst.metadata())
+        );
+    }
+
+    private static List<CompiledAggregateCollection> compileAggregateCollections(
+            List<AggregateCollectionAst> collections) {
+        List<CompiledAggregateCollection> out = new ArrayList<>();
+        for (AggregateCollectionAst collection : collections) {
+            out.add(new CompiledAggregateCollection(
+                    collection.name(),
+                    collection.concept(),
+                    collection.via(),
+                    collection.childField(),
+                    collection.ownership(),
+                    collection.orderBy(),
+                    compileAggregateCollections(collection.collections()),
+                    sortObjectMap(collection.metadata())
+            ));
+        }
+        return out;
     }
 
     private static CompiledGuidePage compileGuidePage(GuidePageAst guidePageAst) {
