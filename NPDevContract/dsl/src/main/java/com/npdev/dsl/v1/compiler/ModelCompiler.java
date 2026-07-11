@@ -442,6 +442,31 @@ public final class ModelCompiler {
             autoPanels.add(compileAutoPanel(autoPanelAst));
         }
 
+        // Expand concept-bound AutoPanels into ordinary panels (Selection/Detail/Transaction),
+        // reading defaults from the concept. Aggregate-bound AutoPanels are expanded later (P4).
+        Map<String, ConceptAst> conceptsByNormalizedName = new LinkedHashMap<>();
+        for (ConceptAst concept : modelAst.getConcepts()) {
+            conceptsByNormalizedName.put(normalize(concept.getName()), concept);
+        }
+        for (CompiledAutoPanel autoPanel : autoPanels) {
+            if (autoPanel.concept() == null || autoPanel.concept().isBlank()) {
+                continue;
+            }
+            ConceptAst concept = conceptsByNormalizedName.get(normalize(autoPanel.concept()));
+            if (concept == null) {
+                continue; // unresolved concept already reported by SemanticValidator
+            }
+            List<String> fieldNames = new ArrayList<>();
+            String idField = null;
+            for (FieldAst field : concept.getFields()) {
+                fieldNames.add(field.getName());
+                if (idField == null && field.isId()) {
+                    idField = field.getName();
+                }
+            }
+            panels.addAll(AutoPanelExpander.expand(autoPanel, fieldNames, idField));
+        }
+
         return new CompiledModel(
                 modelAst.getNamespace(),
                 modelAst.getDslVersion(),
