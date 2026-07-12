@@ -73,9 +73,11 @@ public class RuntimeUiMetadataController {
     @GetMapping("/panels/{panelName}")
     public Map<String, Object> loadPanel(
             HttpServletRequest request,
-            @PathVariable String panelName
+            @PathVariable String panelName,
+            @RequestParam(required = false) String id
     ) {
-        return run(() -> requirePanelRuntime().loadPanel(panelName, Map.of(), currentContext(request)));
+        Map<String, Object> input = (id == null || id.isBlank()) ? Map.of() : Map.of("id", id);
+        return run(() -> requirePanelRuntime().loadPanel(panelName, input, currentContext(request)));
     }
 
     @PostMapping("/panels/{panelName}/actions/{actionName}")

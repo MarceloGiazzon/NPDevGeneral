@@ -49,6 +49,7 @@ public class PanelRuntime {
     private final ConceptGateway conceptGateway;
     private final CapabilityDispatcher capabilityDispatcher;
     private final EventBus eventBus;
+    private final AggregateRuntime aggregateRuntime;
 
     public PanelRuntime(
             RuntimeMetadataService runtimeMetadataService,
@@ -58,6 +59,7 @@ public class PanelRuntime {
                 runtimeMetadataService,
                 permissionAwareUiMetadataService,
                 (CompiledModel) null,
+                null,
                 null,
                 null,
                 null
@@ -71,7 +73,8 @@ public class PanelRuntime {
             ObjectProvider<CompiledModel> compiledModel,
             ObjectProvider<ConceptGateway> conceptGateway,
             ObjectProvider<CapabilityDispatcher> capabilityDispatcher,
-            ObjectProvider<EventBus> eventBus
+            ObjectProvider<EventBus> eventBus,
+            ObjectProvider<AggregateRuntime> aggregateRuntime
     ) {
         this(
                 runtimeMetadataService,
@@ -79,7 +82,8 @@ public class PanelRuntime {
                 compiledModel == null ? null : compiledModel.getIfAvailable(),
                 conceptGateway == null ? null : conceptGateway.getIfAvailable(),
                 capabilityDispatcher == null ? null : capabilityDispatcher.getIfAvailable(),
-                eventBus == null ? null : eventBus.getIfAvailable()
+                eventBus == null ? null : eventBus.getIfAvailable(),
+                aggregateRuntime == null ? null : aggregateRuntime.getIfAvailable()
         );
     }
 
@@ -91,12 +95,26 @@ public class PanelRuntime {
             CapabilityDispatcher capabilityDispatcher,
             EventBus eventBus
     ) {
+        this(runtimeMetadataService, permissionAwareUiMetadataService, compiledModel, conceptGateway,
+                capabilityDispatcher, eventBus, null);
+    }
+
+    public PanelRuntime(
+            RuntimeMetadataService runtimeMetadataService,
+            PermissionAwareUiMetadataService permissionAwareUiMetadataService,
+            CompiledModel compiledModel,
+            ConceptGateway conceptGateway,
+            CapabilityDispatcher capabilityDispatcher,
+            EventBus eventBus,
+            AggregateRuntime aggregateRuntime
+    ) {
         this.runtimeMetadataService = runtimeMetadataService;
         this.permissionAwareUiMetadataService = permissionAwareUiMetadataService;
         this.compiledModel = compiledModel;
         this.conceptGateway = conceptGateway;
         this.capabilityDispatcher = capabilityDispatcher;
         this.eventBus = eventBus;
+        this.aggregateRuntime = aggregateRuntime;
     }
 
     public Map<String, Object> renderConceptPanel(String conceptName, ExecutionContext context) {
@@ -137,6 +155,13 @@ public class PanelRuntime {
         CompiledPanel panel = requirePanel(panelName);
         ExecutionContext effectiveContext = interactiveContext(context);
         Map<String, Object> safeInput = safeInput(input);
+
+        // Aggregate Workbench (ADR-0005): the Transaction surface of an aggregate-bound AutoPanel.
+        // Its data is the aggregate tree loaded by root id, not flat dataSources.
+        if (panel.metadata() != null && "aggregate".equals(panel.metadata().get("dataVia"))) {
+            return loadWorkbench(panel, safeInput, effectiveContext);
+        }
+
         int traceStart = traceStartIndex();
         Map<String, Object> data = new LinkedHashMap<>();
         List<Map<String, Object>> dataSourceSummaries = new ArrayList<>();
@@ -502,6 +527,42 @@ public class PanelRuntime {
             case MAP_VALUE -> ProcedureStep.mapValue(stepName(step), refOf(step.value(), "input"), target);
             case RETURN -> ProcedureStep.returnValue(stepName(step), refOf(step.value(), target == null ? "input" : target));
         };
+    }
+
+    // Serve an aggregate Workbench: the metadata.workbench descriptor (header/sections/bands) plus,
+    // when a root id is supplied, the nested aggregate tree loaded via AggregateRuntime (P0). With no
+    // id (e.g. the "new" route) only the descriptor is returned so the client can render an empty shell.
+    private Map<String, Object> loadWorkbench(CompiledPanel panel, Map<String, Object> input, ExecutionContext context) {
+        Map<String, Object> workbench = castMap(panel.metadata().get("workbench"));
+        String aggregate = stringValue(workbench.get("aggregate"));
+        String rootId = stringValue(input.get("id"));
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("endpointVersion", ENDPOINT_VERSION);
+        response.put("surfaceType", "panel-runtime");
+        response.put("operation", "loadWorkbench");
+        response.put("panelName", panel.name());
+        response.put("route", safe(panel.route()));
+        response.put("title", safe(panel.title()));
+        response.put("tenantId", context.tenantId());
+        response.put("actorId", context.actorId());
+        response.put("aggregate", aggregate);
+        response.put("workbench", workbench);
+
+        if (rootId.isBlank()) {
+            response.put("data", Map.of());
+        } else if (aggregateRuntime == null) {
+            response.put("data", Map.of());
+            response.put("dataError", "Aggregate runtime is not configured.");
+        } else {
+            try {
+                response.put("data", aggregateRuntime.load(aggregate, rootId, context));
+            } catch (IllegalArgumentException ex) {
+                response.put("data", Map.of());
+                response.put("dataError", ex.getMessage());
+            }
+        }
+        return response;
     }
 
     private CompiledPanel requirePanel(String panelName) {
