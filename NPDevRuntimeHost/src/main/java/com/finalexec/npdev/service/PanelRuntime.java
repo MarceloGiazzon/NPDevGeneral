@@ -8,6 +8,7 @@ import com.npdev.dsl.v1.compiled.CompiledPanelFieldBinding;
 import com.npdev.dsl.v1.compiled.CompiledProcedure;
 import com.npdev.dsl.v1.compiled.CompiledProcedureStep;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
+import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.CapabilityErrorKind;
@@ -188,6 +189,10 @@ public class PanelRuntime {
             dataSourceSummaries.add(dataSourceSummary(dataSource, flatChildren));
         }
 
+        // Tier-A computed columns: evaluate each declared expression per row and fold the value into
+        // the row's data so it renders as a (derived) column. See ADR-0004 §L3 / AutoPanel expansion.
+        applyComputedColumns(panel, data);
+
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("endpointVersion", ENDPOINT_VERSION);
         response.put("surfaceType", "panel-runtime");
@@ -341,6 +346,59 @@ public class PanelRuntime {
     private static Map<String, Object> dataMap(Map<String, Object> record) {
         Object data = record.get("data");
         return data instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+    }
+
+    // Evaluate the panel's declared computed columns (metadata.computed = [{col, expr}]) against each
+    // loaded row and fold the derived values into that row's data. Expressions are parsed once; a per-row
+    // evaluation failure leaves the column absent rather than failing the whole page load.
+    @SuppressWarnings("unchecked")
+    private static void applyComputedColumns(CompiledPanel panel, Map<String, Object> data) {
+        Object computedMeta = panel.metadata() == null ? null : panel.metadata().get("computed");
+        if (!(computedMeta instanceof List<?> computedList) || computedList.isEmpty()) {
+            return;
+        }
+        List<Map.Entry<String, ComputedExpression.Node>> compiled = new ArrayList<>();
+        for (Object item : computedList) {
+            if (!(item instanceof Map<?, ?> entry)) {
+                continue;
+            }
+            Object col = entry.get("col");
+            Object expr = entry.get("expr");
+            if (col == null || expr == null) {
+                continue;
+            }
+            try {
+                compiled.add(Map.entry(col.toString(), ComputedExpression.parse(expr.toString())));
+            } catch (ComputedExpression.ExpressionException ignored) {
+                // invalid expression already surfaced by SemanticValidator; skip at runtime
+            }
+        }
+        if (compiled.isEmpty()) {
+            return;
+        }
+        for (Object value : data.values()) {
+            if (!(value instanceof List<?> rows)) {
+                continue;
+            }
+            for (Object rowObj : rows) {
+                if (!(rowObj instanceof Map<?, ?> rawRow)) {
+                    continue;
+                }
+                Map<String, Object> row = (Map<String, Object>) rawRow;
+                Map<String, Object> fields = dataMap(row);
+                Map<String, Object> vars = new LinkedHashMap<>(fields);
+                vars.put("id", row.get("id"));
+                Map<String, Object> augmented = new LinkedHashMap<>(fields);
+                for (Map.Entry<String, ComputedExpression.Node> c : compiled) {
+                    try {
+                        augmented.put(c.getKey(), c.getValue().eval(vars));
+                    } catch (RuntimeException ignored) {
+                        // leave the computed column absent on evaluation failure
+                    }
+                }
+                row.put("data", augmented);
+            }
+        }
     }
 
     private Object executeConceptMutation(
