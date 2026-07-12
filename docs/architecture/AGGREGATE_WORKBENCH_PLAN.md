@@ -264,6 +264,17 @@ create + Estágio transition (predemanda→demandagerada) round-trip persisted t
   changes. Any change needed reveals a missing knob → fold back into P1–P6.
 - **Risk:** low (validation phase).
 
+### Polish (post-P7) ✅ DONE (verified live in-browser 2026-07-12, commit fb16649)
+Three descriptor-driven client primitives on the served workbench page, all declared under
+`transaction.metadata` and verified via ScrapForAI on an H2 app:
+- **Reactive recompute (C7):** `recompute: <procedure>` → debounced (450ms) invoke on every cell edit,
+  patches derived fields in place, restores caret via `data-fkey` focus keys.
+- **Band row picker (C6 "Seleciona Ruas"):** `bandPickers.<band> = {panel,label,columns}` → modal that
+  fetches the source Selection panel and appends picked rows (overlapping columns copied).
+- **Per-region edit buffers (C8):** store keeps a baseline; each region bar shows a "revert" that
+  discards only that region's staged edits; invoke/recompute `patch()` in place (baseline preserved).
+The in-browser pass caught + fixed a real bug (`clone(undefined)` aborted revert on a new record).
+
 ---
 
 ## 6. Cross-cutting
