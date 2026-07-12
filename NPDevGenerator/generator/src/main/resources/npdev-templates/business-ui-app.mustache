@@ -512,6 +512,9 @@
   // already enforces permission/tenant scoping through ConceptGateway for any concept-bound
   // dataSource or action.
   async function loadDeclaredPanel(panelMeta) {
+    // Aggregate Workbench panels render as a link to their own served page (see renderDeclaredPanel);
+    // they are not backed by the generic loadPanel data shape, so skip the fetch entirely.
+    if (panelMeta.workbenchUrl) { return; }
     const entry = declaredPanelState(panelMeta);
     entry.loading = true;
     render();
@@ -557,6 +560,23 @@
     const section = document.createElement("section");
     section.className = "concept-panel";
     section.id = sectionId(panelSectionRef(panelMeta));
+
+    // Aggregate Workbench: render a link to its dedicated served page rather than the generic
+    // panel body (the multi-level editor lives at /npdev-workbench/<name>.html). ADR-0005.
+    if (panelMeta.workbenchUrl) {
+      const wbHeader = document.createElement("div");
+      wbHeader.className = "panel-header";
+      const wbTitle = document.createElement("h2");
+      wbTitle.textContent = panelMeta.title || panelMeta.name;
+      wbHeader.appendChild(wbTitle);
+      section.appendChild(wbHeader);
+      const link = document.createElement("a");
+      link.className = "declared-panel-body";
+      link.href = panelMeta.workbenchUrl;
+      link.textContent = "Open " + (panelMeta.title || panelMeta.name) + " workbench →";
+      section.appendChild(link);
+      return section;
+    }
 
     const header = document.createElement("div");
     header.className = "panel-header";

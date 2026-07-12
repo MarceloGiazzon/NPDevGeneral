@@ -61,6 +61,12 @@ public class BusinessUiEmitterWorkbenchTest {
         assertTrue(html.contains("/api/runtime/metadata/ui/panels/"), "page fetches loadWorkbench");
         assertTrue(html.contains("/api/runtime/aggregate/"), "page commits via the aggregate POST");
         assertFalse(html.contains("{{"), "no unrendered mustache placeholders");
+
+        // The nav manifest links the workbench panel straight to its served page.
+        String manifest = Files.readString(out.resolve("src/main/resources/static/npdev-business-ui/generated-ui-manifest.json"));
+        assertTrue(manifest.contains("\"workbenchUrl\":\"/npdev-workbench/ExpedicaoWorkbench.html\"")
+                        || manifest.contains("\"workbenchUrl\" : \"/npdev-workbench/ExpedicaoWorkbench.html\""),
+                "manifest should link the workbench panel to its page; got: " + manifest);
     }
 
     @Test

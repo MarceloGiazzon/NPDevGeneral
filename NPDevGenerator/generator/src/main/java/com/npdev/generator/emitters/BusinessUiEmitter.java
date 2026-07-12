@@ -487,6 +487,11 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("visibility", panel.visibility() == null ? "" : panel.visibility());
             node.put("enabledWhen", panel.enabledWhen() == null ? "" : panel.enabledWhen());
             node.put("guidePage", resolvePanelGuidePage(panel, knownGuidePageNames));
+            // Aggregate Workbench panels are rendered by their own served page, not the generic
+            // panel renderer; the nav links straight to it (ADR-0005).
+            if (panel.metadata() != null && "aggregate".equals(panel.metadata().get("dataVia"))) {
+                node.put("workbenchUrl", "/npdev-workbench/" + panel.name() + ".html");
+            }
             List<Map<String, Object>> actions = new ArrayList<>();
             for (CompiledPanelAction action : panel.actions()) {
                 Map<String, Object> actionNode = new LinkedHashMap<>();
