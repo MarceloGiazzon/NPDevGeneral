@@ -2,6 +2,8 @@ package com.npdev.dsl.v1.compiler;
 
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.SelectorAst;
+import com.npdev.dsl.v1.compiled.CompiledAggregate;
+import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanel;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelComputed;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelSurface;
@@ -74,6 +76,72 @@ final class AutoPanelExpander {
             panels.add(promptPanel(autoPanel, concept, base, baseRoute, fieldNames, idField));
         }
         return panels;
+    }
+
+    /**
+     * Expand an aggregate-bound AutoPanel into a multi-level Transaction — the Aggregate Workbench
+     * (ADR-0005: the Transaction surface of an aggregate-bound AutoPanel). The structure is derived
+     * from the aggregate's composition tree: the root concept becomes the header, each first-level
+     * owned collection becomes a master grid section, and that collection's own child collections
+     * become the section's parallel bands. Carried as a {@code metadata.workbench} descriptor the
+     * runtime loads via AggregateRuntime (P0) and the client renders as header + grid + band.
+     *
+     * <p>Synthesized in the compiler (post-validation), so it is not subject to the one-level
+     * panel-nesting cap that governs hand-authored panels.
+     */
+    static CompiledPanel expandAggregateWorkbench(
+            CompiledAutoPanel autoPanel, CompiledAggregate aggregate, Map<String, List<String>> fieldsByConcept) {
+        String base = hasText(autoPanel.name()) ? autoPanel.name() : aggregate.name();
+        String baseRoute = hasText(autoPanel.route())
+                ? autoPanel.route()
+                : "/" + aggregate.name().toLowerCase(Locale.ROOT);
+        String rootConcept = aggregate.root();
+
+        Map<String, Object> workbench = new LinkedHashMap<>();
+        workbench.put("aggregate", aggregate.name());
+        workbench.put("root", rootConcept);
+        Map<String, Object> header = new LinkedHashMap<>();
+        header.put("fields", columnsFor(fieldsByConcept, rootConcept));
+        workbench.put("header", header);
+        List<Map<String, Object>> sections = new ArrayList<>();
+        for (CompiledAggregateCollection collection : aggregate.collections()) {
+            sections.add(sectionDescriptor(collection, fieldsByConcept));
+        }
+        workbench.put("sections", sections);
+
+        Map<String, Object> metadata = surfaceMetadata(base, "transaction", rootConcept);
+        metadata.put("dataVia", "aggregate");
+        metadata.put("workbench", workbench);
+
+        CompiledPanelLayout layout = new CompiledPanelLayout("stack", List.of(), List.of(), Map.of());
+        return new CompiledPanel(
+                base + "Workbench", baseRoute + "/{id}", rootConcept,
+                List.of(conceptDataSource(rootConcept)), layout, List.of(), null, null,
+                List.of(), Map.of(), metadata, null);
+    }
+
+    private static Map<String, Object> sectionDescriptor(
+            CompiledAggregateCollection collection, Map<String, List<String>> fieldsByConcept) {
+        Map<String, Object> section = new LinkedHashMap<>();
+        section.put("collection", collection.name());
+        section.put("concept", collection.concept());
+        section.put("childField", collection.childField());
+        section.put("columns", columnsFor(fieldsByConcept, collection.concept()));
+        List<Map<String, Object>> bands = new ArrayList<>();
+        for (CompiledAggregateCollection child : collection.collections()) {
+            Map<String, Object> band = new LinkedHashMap<>();
+            band.put("collection", child.name());
+            band.put("concept", child.concept());
+            band.put("childField", child.childField());
+            band.put("columns", columnsFor(fieldsByConcept, child.concept()));
+            bands.add(band);
+        }
+        section.put("bands", bands);
+        return section;
+    }
+
+    private static List<String> columnsFor(Map<String, List<String>> fieldsByConcept, String concept) {
+        return new ArrayList<>(fieldsByConcept.getOrDefault(normalize(concept), List.of()));
     }
 
     /**

@@ -448,8 +448,18 @@ public final class ModelCompiler {
         // Expand concept-bound AutoPanels into ordinary panels (Selection/Detail/Transaction/Prompt),
         // reading defaults from the concept. Aggregate-bound AutoPanels are expanded later (P4).
         Map<String, ConceptAst> conceptsByNormalizedName = new LinkedHashMap<>();
+        Map<String, List<String>> fieldNamesByConcept = new LinkedHashMap<>();
         for (ConceptAst concept : modelAst.getConcepts()) {
             conceptsByNormalizedName.put(normalize(concept.getName()), concept);
+            List<String> names = new ArrayList<>();
+            for (FieldAst field : concept.getFields()) {
+                names.add(field.getName());
+            }
+            fieldNamesByConcept.put(normalize(concept.getName()), names);
+        }
+        Map<String, CompiledAggregate> aggregatesByNormalizedName = new LinkedHashMap<>();
+        for (CompiledAggregate aggregate : aggregates) {
+            aggregatesByNormalizedName.put(normalize(aggregate.name()), aggregate);
         }
         // Registry of each concept's Prompt picker, so a form's FK field can auto-wire to it.
         Map<String, AutoPanelExpander.PromptRef> promptsByConcept = new LinkedHashMap<>();
@@ -467,14 +477,18 @@ public final class ModelCompiler {
             }
         }
         for (CompiledAutoPanel autoPanel : autoPanels) {
-            if (autoPanel.concept() == null || autoPanel.concept().isBlank()) {
-                continue;
+            if (autoPanel.concept() != null && !autoPanel.concept().isBlank()) {
+                ConceptAst concept = conceptsByNormalizedName.get(normalize(autoPanel.concept()));
+                if (concept != null) {
+                    panels.addAll(AutoPanelExpander.expand(autoPanel, concept.getFields(), promptsByConcept));
+                }
+            } else if (autoPanel.aggregate() != null && !autoPanel.aggregate().isBlank()) {
+                // Aggregate-bound: the Transaction surface becomes the multi-level Aggregate Workbench.
+                CompiledAggregate aggregate = aggregatesByNormalizedName.get(normalize(autoPanel.aggregate()));
+                if (aggregate != null) {
+                    panels.add(AutoPanelExpander.expandAggregateWorkbench(autoPanel, aggregate, fieldNamesByConcept));
+                }
             }
-            ConceptAst concept = conceptsByNormalizedName.get(normalize(autoPanel.concept()));
-            if (concept == null) {
-                continue; // unresolved concept already reported by SemanticValidator
-            }
-            panels.addAll(AutoPanelExpander.expand(autoPanel, concept.getFields(), promptsByConcept));
         }
 
         // Expand standalone selectors into reusable picker panels.
