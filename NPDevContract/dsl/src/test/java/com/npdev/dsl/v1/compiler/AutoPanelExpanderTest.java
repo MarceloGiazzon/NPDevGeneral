@@ -8,6 +8,7 @@ import com.npdev.dsl.v1.parser.JsonModelParser;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -129,6 +130,64 @@ class AutoPanelExpanderTest {
         CompiledPanel prompt = panel(model, "ClientePrompt");
         assertEquals("nome", prompt.metadata().get("labelField"));
         assertEquals(List.of("nome", "email"), prompt.layout().fields());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void formForeignKeyFieldsAutoWireToTargetPrompt() throws Exception {
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.ap", "version": "1.0",
+              "concepts": [
+                { "name": "Provider", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "fullName", "type": "string" } ] },
+                { "name": "Appointment", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "providerId", "type": "reference", "reference": { "target": "Provider", "displayField": "fullName" } },
+                  { "name": "notes", "type": "string" } ] }
+              ],
+              "autoPanels": [ { "concept": "Provider" }, { "concept": "Appointment" } ]
+            }
+            """;
+        CompiledModel model = compile(json);
+
+        CompiledPanel form = panel(model, "AppointmentForm");
+        List<Map<String, Object>> fkFields = (List<Map<String, Object>>) form.metadata().get("fkFields");
+        assertNotNull(fkFields, "the form should declare fkFields for its reference field");
+        assertEquals(1, fkFields.size());
+
+        Map<String, Object> fk = fkFields.get(0);
+        assertEquals("providerId", fk.get("field"));
+        assertEquals("Provider", fk.get("targetConcept"));
+        assertEquals("ProviderPrompt", fk.get("prompt"));
+        assertEquals("id", fk.get("returnField"));
+        assertEquals("fullName", fk.get("labelField"));
+    }
+
+    @Test
+    void noFkWiringWhenTargetHasNoPrompt() throws Exception {
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.ap", "version": "1.0",
+              "concepts": [
+                { "name": "Provider", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "fullName", "type": "string" } ] },
+                { "name": "Appointment", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "providerId", "type": "reference", "reference": { "target": "Provider" } } ] }
+              ],
+              "autoPanels": [
+                { "concept": "Provider", "surfaces": ["selection"] },
+                { "concept": "Appointment" }
+              ]
+            }
+            """;
+        CompiledModel model = compile(json);
+        // Provider has no prompt surface (surfaces=[selection]), so Appointment's FK cannot wire.
+        CompiledPanel form = panel(model, "AppointmentForm");
+        assertNull(form.metadata().get("fkFields"));
     }
 
     @Test

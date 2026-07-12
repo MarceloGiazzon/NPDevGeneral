@@ -1,5 +1,6 @@
 package com.npdev.dsl.v1.compiler;
 
+import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanel;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelSurface;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
@@ -17,9 +18,9 @@ import java.util.Map;
 /**
  * Expands a concept-bound {@link CompiledAutoPanel} into the coordinated set of
  * ordinary {@link CompiledPanel} surfaces it stands for — Selection (list),
- * Detail (view), Transaction (form) — reading defaults from the concept's fields
- * (ADR-0005). The synthesized panels reuse the entire existing panel pipeline;
- * the AutoPanel record is retained separately as the declarative intent.
+ * Detail (view), Transaction (form), Prompt (picker) — reading defaults from the
+ * concept's fields (ADR-0005). The synthesized panels reuse the entire existing
+ * panel pipeline; the AutoPanel record is retained separately as the intent.
  *
  * <p>Aggregate-bound AutoPanels are NOT expanded here — their Transaction becomes
  * the multi-level Aggregate Workbench, delivered in a later phase (P4).
@@ -29,16 +30,29 @@ final class AutoPanelExpander {
     private AutoPanelExpander() {
     }
 
+    /** How another concept's form field should open this concept's Prompt picker. */
+    record PromptRef(String promptPanel, String returnField, String labelField) {
+    }
+
     /**
-     * @param autoPanel  a concept-bound compiled AutoPanel
-     * @param fieldNames declared field names of the bound concept, in order
-     * @param idField    the concept's id field name (may be null)
+     * @param autoPanel        a concept-bound compiled AutoPanel
+     * @param fields           declared fields of the bound concept, in order
+     * @param promptsByConcept normalized-concept-name -> its Prompt picker (for FK auto-wiring on forms)
      */
-    static List<CompiledPanel> expand(CompiledAutoPanel autoPanel, List<String> fieldNames, String idField) {
+    static List<CompiledPanel> expand(
+            CompiledAutoPanel autoPanel, List<FieldAst> fields, Map<String, PromptRef> promptsByConcept) {
         List<CompiledPanel> panels = new ArrayList<>();
         String concept = autoPanel.concept();
         if (concept == null || concept.isBlank()) {
             return panels; // aggregate-bound (or unbound) — not handled here
+        }
+        List<String> fieldNames = new ArrayList<>();
+        String idField = null;
+        for (FieldAst field : fields) {
+            fieldNames.add(field.getName());
+            if (idField == null && field.isId()) {
+                idField = field.getName();
+            }
         }
         String base = hasText(autoPanel.name()) ? autoPanel.name() : concept;
         String baseRoute = hasText(autoPanel.route())
@@ -52,12 +66,36 @@ final class AutoPanelExpander {
             panels.add(detailPanel(autoPanel, concept, base, baseRoute, fieldNames));
         }
         if (surfaceEnabled(autoPanel, "transaction")) {
-            panels.add(transactionPanel(autoPanel, concept, base, baseRoute, fieldNames, idField));
+            panels.add(transactionPanel(autoPanel, concept, base, baseRoute, fields, idField, promptsByConcept));
         }
         if (surfaceEnabled(autoPanel, "prompt")) {
             panels.add(promptPanel(autoPanel, concept, base, baseRoute, fieldNames, idField));
         }
         return panels;
+    }
+
+    /**
+     * The Prompt picker this AutoPanel exposes, for FK fields on other concepts' forms to target —
+     * or null if this AutoPanel is not concept-bound or does not emit a prompt surface.
+     */
+    static PromptRef promptRefFor(CompiledAutoPanel autoPanel, List<FieldAst> targetFields) {
+        if (autoPanel.concept() == null || autoPanel.concept().isBlank()) {
+            return null;
+        }
+        if (!surfaceEnabled(autoPanel, "prompt")) {
+            return null;
+        }
+        String base = hasText(autoPanel.name()) ? autoPanel.name() : autoPanel.concept();
+        List<String> names = new ArrayList<>();
+        String idField = null;
+        for (FieldAst field : targetFields) {
+            names.add(field.getName());
+            if (idField == null && field.isId()) {
+                idField = field.getName();
+            }
+        }
+        String labelField = promptLabelField(autoPanel, names, idField);
+        return new PromptRef(base + "Prompt", idField == null ? "" : idField, labelField == null ? "" : labelField);
     }
 
     private static boolean surfaceEnabled(CompiledAutoPanel autoPanel, String surface) {
@@ -71,11 +109,10 @@ final class AutoPanelExpander {
     private static CompiledPanel selectionPanel(
             CompiledAutoPanel autoPanel, String concept, String base, String baseRoute, List<String> fieldNames) {
         List<String> columns = override(autoPanel.selection(), CompiledAutoPanelSurface::columns, fieldNames);
-        CompiledPanelDataSource rows = conceptDataSource(concept);
         CompiledPanelLayout layout = new CompiledPanelLayout("table", List.of(), columns, Map.of());
         return new CompiledPanel(
                 base + "Selection", baseRoute, concept,
-                List.of(rows), layout, List.of(), null, null,
+                List.of(conceptDataSource(concept)), layout, List.of(), null, null,
                 List.of(newRecordAction(concept)),
                 Map.of(), surfaceMetadata(base, "selection", concept), null);
     }
@@ -93,23 +130,51 @@ final class AutoPanelExpander {
 
     private static CompiledPanel transactionPanel(
             CompiledAutoPanel autoPanel, String concept, String base, String baseRoute,
-            List<String> fieldNames, String idField) {
+            List<FieldAst> fields, String idField, Map<String, PromptRef> promptsByConcept) {
         List<String> defaultEditable = new ArrayList<>();
-        for (String field : fieldNames) {
-            if (idField == null || !field.equalsIgnoreCase(idField)) {
-                defaultEditable.add(field);
+        for (FieldAst field : fields) {
+            if (idField == null || !field.getName().equalsIgnoreCase(idField)) {
+                defaultEditable.add(field.getName());
             }
         }
-        List<String> fields = override(autoPanel.transaction(), CompiledAutoPanelSurface::fields, defaultEditable);
-        CompiledPanelLayout layout = new CompiledPanelLayout("form", List.of(), fields, Map.of());
-        List<CompiledPanelFieldBinding> bindings = bindings(fields, true);
+        List<String> formFields = override(autoPanel.transaction(), CompiledAutoPanelSurface::fields, defaultEditable);
+        CompiledPanelLayout layout = new CompiledPanelLayout("form", List.of(), formFields, Map.of());
+        List<CompiledPanelFieldBinding> bindings = bindings(formFields, true);
         List<CompiledPanelAction> actions = List.of(
                 mutationAction("save", "Save", concept, "save"),
                 mutationAction("delete", "Delete", concept, "delete"));
+
+        Map<String, Object> metadata = surfaceMetadata(base, "transaction", concept);
+        // FK auto-wiring: an editable field that references another concept opens that concept's
+        // Prompt picker (if it has one). The runtime/UI reads metadata.fkFields to render the picker.
+        List<Map<String, Object>> fkFields = new ArrayList<>();
+        for (FieldAst field : fields) {
+            String target = field.getReferenceTarget();
+            if (target == null || target.isBlank()) {
+                continue;
+            }
+            if (formFields.stream().noneMatch(ff -> ff.equalsIgnoreCase(field.getName()))) {
+                continue;
+            }
+            PromptRef ref = promptsByConcept.get(normalize(target));
+            if (ref == null) {
+                continue; // target concept has no prompt surface to open
+            }
+            Map<String, Object> fk = new LinkedHashMap<>();
+            fk.put("field", field.getName());
+            fk.put("targetConcept", target);
+            fk.put("prompt", ref.promptPanel());
+            fk.put("returnField", ref.returnField());
+            fk.put("labelField", ref.labelField());
+            fkFields.add(fk);
+        }
+        if (!fkFields.isEmpty()) {
+            metadata.put("fkFields", fkFields);
+        }
         return new CompiledPanel(
                 base + "Form", baseRoute + "/edit", concept,
                 List.of(conceptDataSource(concept)), layout, bindings, null, null,
-                actions, Map.of(), surfaceMetadata(base, "transaction", concept), null);
+                actions, Map.of(), metadata, null);
     }
 
     /**
@@ -189,6 +254,10 @@ final class AutoPanelExpander {
             }
         }
         return new ArrayList<>(fallback);
+    }
+
+    private static String normalize(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
 
     private static boolean hasText(String value) {
