@@ -138,10 +138,18 @@ public final class CompiledModelCanonicalJsonReader {
         if (node == null || node.isNull()) {
             return null;
         }
+        List<CompiledAutoPanelComputed> computed = new ArrayList<>();
+        JsonNode computedNode = node.get("computed");
+        if (computedNode != null && computedNode.isArray()) {
+            for (JsonNode c : computedNode) {
+                computed.add(new CompiledAutoPanelComputed(optionalText(c, "col"), optionalText(c, "expr")));
+            }
+        }
         return new CompiledAutoPanelSurface(
                 toStringList(node.get("filters")),
                 toStringList(node.get("columns")),
                 toStringList(node.get("fields")),
+                computed,
                 optionalText(node, "labelField"),
                 toObjectMap(node.get("metadata"))
         );

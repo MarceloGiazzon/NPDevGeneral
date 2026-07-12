@@ -20,6 +20,8 @@ import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
 import com.npdev.dsl.v1.ast.AutoPanelAst;
+import com.npdev.dsl.v1.ast.AutoPanelComputedAst;
+import com.npdev.dsl.v1.ast.AutoPanelSurfaceAst;
 import com.npdev.dsl.v1.ast.SelectorAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
@@ -655,6 +657,24 @@ public final class SemanticValidator {
                         && !normalizedSurface.equals("prompt")) {
                     errors.add(here + ": unknown surface: " + surface);
                 }
+            }
+
+            validateSurfaceComputed(here, "selection", autoPanel.selection(), errors);
+            validateSurfaceComputed(here, "detail", autoPanel.detail(), errors);
+            validateSurfaceComputed(here, "transaction", autoPanel.transaction(), errors);
+            validateSurfaceComputed(here, "prompt", autoPanel.prompt(), errors);
+        }
+    }
+
+    private static void validateSurfaceComputed(
+            String panelLabel, String surface, AutoPanelSurfaceAst surfaceAst, List<String> errors) {
+        if (surfaceAst == null) {
+            return;
+        }
+        Set<String> cols = new HashSet<>();
+        for (AutoPanelComputedAst computed : surfaceAst.computed()) {
+            if (!cols.add(normalize(computed.col()))) {
+                errors.add(panelLabel + " " + surface + ": duplicate computed column: " + computed.col());
             }
         }
     }

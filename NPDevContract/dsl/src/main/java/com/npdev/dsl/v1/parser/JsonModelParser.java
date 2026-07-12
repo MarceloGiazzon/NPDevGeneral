@@ -841,7 +841,7 @@ public final class JsonModelParser {
         return out;
     }
 
-    private static AutoPanelSurfaceAst parseAutoPanelSurface(JsonNode node) {
+    private static AutoPanelSurfaceAst parseAutoPanelSurface(JsonNode node) throws IOException {
         if (node == null || node.isNull()) {
             return null;
         }
@@ -849,9 +849,27 @@ public final class JsonModelParser {
                 parseTextArray(node.get("filters")),
                 parseTextArray(node.get("columns")),
                 parseTextArray(node.get("fields")),
+                parseAutoPanelComputed(node.get("computed")),
                 readText(node, "labelField"),
                 parseObjectMap(node.get("metadata"))
         );
+    }
+
+    private static List<AutoPanelComputedAst> parseAutoPanelComputed(JsonNode node) throws IOException {
+        List<AutoPanelComputedAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("autoPanel surface computed must be an array");
+        }
+        for (JsonNode computedNode : node) {
+            out.add(new AutoPanelComputedAst(
+                    requiredText(computedNode, "col"),
+                    requiredText(computedNode, "expr")
+            ));
+        }
+        return out;
     }
 
     private static List<GuidePageAst> parseGuidePages(JsonNode node) throws IOException {

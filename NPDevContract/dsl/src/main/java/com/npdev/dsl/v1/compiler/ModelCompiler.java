@@ -20,6 +20,7 @@ import com.npdev.dsl.v1.ast.GeneratedActionDescriptorAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
 import com.npdev.dsl.v1.ast.AutoPanelAst;
+import com.npdev.dsl.v1.ast.AutoPanelComputedAst;
 import com.npdev.dsl.v1.ast.AutoPanelSurfaceAst;
 import com.npdev.dsl.v1.ast.SelectorAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
@@ -77,6 +78,7 @@ import com.npdev.dsl.v1.compiled.CompiledOrchestrationTrigger;
 import com.npdev.dsl.v1.compiled.CompiledAggregate;
 import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanel;
+import com.npdev.dsl.v1.compiled.CompiledAutoPanelComputed;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelSurface;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
@@ -537,10 +539,15 @@ public final class ModelCompiler {
         if (surface == null) {
             return null;
         }
+        List<CompiledAutoPanelComputed> computed = new ArrayList<>();
+        for (AutoPanelComputedAst c : surface.computed()) {
+            computed.add(new CompiledAutoPanelComputed(c.col(), c.expr()));
+        }
         return new CompiledAutoPanelSurface(
                 new ArrayList<>(surface.filters()),
                 new ArrayList<>(surface.columns()),
                 new ArrayList<>(surface.fields()),
+                computed,
                 surface.labelField(),
                 sortObjectMap(surface.metadata())
         );

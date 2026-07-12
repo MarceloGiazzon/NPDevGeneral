@@ -439,6 +439,27 @@
             "minLength": 1
           }
         },
+        "computed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "col",
+              "expr"
+            ],
+            "properties": {
+              "col": {
+                "type": "string",
+                "minLength": 1
+              },
+              "expr": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
         "labelField": {
           "type": "string",
           "minLength": 1

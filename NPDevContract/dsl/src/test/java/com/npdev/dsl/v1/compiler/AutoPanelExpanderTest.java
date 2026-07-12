@@ -191,6 +191,44 @@ class AutoPanelExpanderTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void computedColumnsBecomeLayoutColumnsAndMetadata() throws Exception {
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.ap", "version": "1.0",
+              "concepts": [
+                { "name": "Item", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "pos", "type": "integer" },
+                  { "name": "cxAvulsas", "type": "integer" } ] }
+              ],
+              "autoPanels": [
+                { "concept": "Item", "surfaces": ["selection", "transaction"],
+                  "selection": { "columns": ["pos", "cxAvulsas"],
+                                 "computed": [{ "col": "total", "expr": "pos*42 + cxAvulsas" }] },
+                  "transaction": { "fields": ["pos", "cxAvulsas"],
+                                   "computed": [{ "col": "total", "expr": "pos*42 + cxAvulsas" }] } }
+              ]
+            }
+            """;
+        CompiledModel model = compile(json);
+
+        // Selection: computed column appended to the layout, expression recorded in metadata.
+        CompiledPanel selection = panel(model, "ItemSelection");
+        assertEquals(List.of("pos", "cxAvulsas", "total"), selection.layout().fields());
+        List<Map<String, Object>> computed = (List<Map<String, Object>>) selection.metadata().get("computed");
+        assertNotNull(computed);
+        assertEquals("total", computed.get(0).get("col"));
+        assertEquals("pos*42 + cxAvulsas", computed.get(0).get("expr"));
+
+        // Transaction: computed column is a display field, but gets no editable binding.
+        CompiledPanel form = panel(model, "ItemForm");
+        assertEquals(List.of("pos", "cxAvulsas", "total"), form.layout().fields());
+        assertEquals(2, form.fieldBindings().size(), "only the two editable fields have bindings");
+        assertTrue(form.fieldBindings().stream().noneMatch(b -> "total".equalsIgnoreCase(b.field())));
+    }
+
+    @Test
     void surfacesAndOverridesAreHonored() throws Exception {
         String json = """
             {

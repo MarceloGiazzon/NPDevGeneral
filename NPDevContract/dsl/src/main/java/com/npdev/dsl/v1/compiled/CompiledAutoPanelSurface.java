@@ -8,6 +8,7 @@ public record CompiledAutoPanelSurface(
         List<String> filters,
         List<String> columns,
         List<String> fields,
+        List<CompiledAutoPanelComputed> computed,
         String labelField,
         Map<String, Object> metadata
 ) {
@@ -15,6 +16,7 @@ public record CompiledAutoPanelSurface(
         filters = filters == null ? List.of() : List.copyOf(filters);
         columns = columns == null ? List.of() : List.copyOf(columns);
         fields = fields == null ? List.of() : List.copyOf(fields);
+        computed = computed == null ? List.of() : List.copyOf(computed);
         metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
     }
 }

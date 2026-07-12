@@ -3,6 +3,7 @@ package com.npdev.dsl.v1.compiler;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.SelectorAst;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanel;
+import com.npdev.dsl.v1.compiled.CompiledAutoPanelComputed;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelSurface;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
@@ -110,23 +111,52 @@ final class AutoPanelExpander {
     private static CompiledPanel selectionPanel(
             CompiledAutoPanel autoPanel, String concept, String base, String baseRoute, List<String> fieldNames) {
         List<String> columns = override(autoPanel.selection(), CompiledAutoPanelSurface::columns, fieldNames);
-        CompiledPanelLayout layout = new CompiledPanelLayout("table", List.of(), columns, Map.of());
+        Map<String, Object> metadata = surfaceMetadata(base, "selection", concept);
+        List<String> layoutCols = withComputed(autoPanel.selection(), columns, metadata);
+        CompiledPanelLayout layout = new CompiledPanelLayout("table", List.of(), layoutCols, Map.of());
         return new CompiledPanel(
                 base + "Selection", baseRoute, concept,
                 List.of(conceptDataSource(concept)), layout, List.of(), null, null,
                 List.of(newRecordAction(concept)),
-                Map.of(), surfaceMetadata(base, "selection", concept), null);
+                Map.of(), metadata, null);
     }
 
     private static CompiledPanel detailPanel(
             CompiledAutoPanel autoPanel, String concept, String base, String baseRoute, List<String> fieldNames) {
         List<String> fields = override(autoPanel.detail(), CompiledAutoPanelSurface::fields, fieldNames);
-        CompiledPanelLayout layout = new CompiledPanelLayout("detail", List.of(), fields, Map.of());
         List<CompiledPanelFieldBinding> bindings = bindings(fields, false);
+        Map<String, Object> metadata = surfaceMetadata(base, "detail", concept);
+        List<String> layoutCols = withComputed(autoPanel.detail(), fields, metadata);
+        CompiledPanelLayout layout = new CompiledPanelLayout("detail", List.of(), layoutCols, Map.of());
         return new CompiledPanel(
                 base + "Detail", baseRoute + "/{id}", concept,
                 List.of(conceptDataSource(concept)), layout, bindings, null, null,
-                List.of(), Map.of(), surfaceMetadata(base, "detail", concept), null);
+                List.of(), Map.of(), metadata, null);
+    }
+
+    /**
+     * Append the surface's computed columns to the display list (if not already present) and record
+     * their expressions under {@code metadata.computed} for the client's Tier-A reactive evaluator.
+     * The returned list is used for the layout only — computed columns get no editable binding.
+     */
+    private static List<String> withComputed(
+            CompiledAutoPanelSurface surface, List<String> baseCols, Map<String, Object> metadata) {
+        List<String> layoutCols = new ArrayList<>(baseCols);
+        if (surface == null || surface.computed().isEmpty()) {
+            return layoutCols;
+        }
+        List<Map<String, Object>> computed = new ArrayList<>();
+        for (CompiledAutoPanelComputed c : surface.computed()) {
+            if (layoutCols.stream().noneMatch(col -> col.equalsIgnoreCase(c.col()))) {
+                layoutCols.add(c.col());
+            }
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("col", c.col());
+            entry.put("expr", c.expr());
+            computed.add(entry);
+        }
+        metadata.put("computed", computed);
+        return layoutCols;
     }
 
     private static CompiledPanel transactionPanel(
@@ -139,13 +169,15 @@ final class AutoPanelExpander {
             }
         }
         List<String> formFields = override(autoPanel.transaction(), CompiledAutoPanelSurface::fields, defaultEditable);
-        CompiledPanelLayout layout = new CompiledPanelLayout("form", List.of(), formFields, Map.of());
         List<CompiledPanelFieldBinding> bindings = bindings(formFields, true);
         List<CompiledPanelAction> actions = List.of(
                 mutationAction("save", "Save", concept, "save"),
                 mutationAction("delete", "Delete", concept, "delete"));
 
         Map<String, Object> metadata = surfaceMetadata(base, "transaction", concept);
+        // Computed columns are read-only display fields on the form (no editable binding).
+        List<String> layoutFields = withComputed(autoPanel.transaction(), formFields, metadata);
+        CompiledPanelLayout layout = new CompiledPanelLayout("form", List.of(), layoutFields, Map.of());
         // FK auto-wiring: an editable field that references another concept opens that concept's
         // Prompt picker (if it has one). The runtime/UI reads metadata.fkFields to render the picker.
         List<Map<String, Object>> fkFields = new ArrayList<>();

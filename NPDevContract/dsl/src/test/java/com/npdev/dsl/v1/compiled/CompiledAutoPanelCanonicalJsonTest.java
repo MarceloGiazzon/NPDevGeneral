@@ -18,10 +18,11 @@ class CompiledAutoPanelCanonicalJsonTest {
         CompiledAutoPanel rich = new CompiledAutoPanel(
                 "ExpedicaoWorkWith", null, "Expedicao", "/expedicao",
                 List.of("selection", "detail", "transaction"),
-                new CompiledAutoPanelSurface(List.of("cliente", "situacao"), List.of("id", "cliente"), List.of(), null, Map.of()),
+                new CompiledAutoPanelSurface(List.of("cliente", "situacao"), List.of("id", "cliente"),
+                        List.of(), List.of(new CompiledAutoPanelComputed("total", "pos*cxPad + cxAvulsas")), null, Map.of()),
                 null,
-                new CompiledAutoPanelSurface(List.of(), List.of(), List.of("cliente", "veiculo", "observacao"), null, Map.of()),
-                new CompiledAutoPanelSurface(List.of(), List.of(), List.of(), "cliente", Map.of()),
+                new CompiledAutoPanelSurface(List.of(), List.of(), List.of("cliente", "veiculo", "observacao"), List.of(), null, Map.of()),
+                new CompiledAutoPanelSurface(List.of(), List.of(), List.of(), List.of(), "cliente", Map.of()),
                 Map.of());
 
         return new CompiledModel(
@@ -51,6 +52,9 @@ class CompiledAutoPanelCanonicalJsonTest {
         assertNotNull(rich.selection());
         assertEquals(List.of("cliente", "situacao"), rich.selection().filters());
         assertEquals(List.of("id", "cliente"), rich.selection().columns());
+        assertEquals(1, rich.selection().computed().size());
+        assertEquals("total", rich.selection().computed().get(0).col());
+        assertEquals("pos*cxPad + cxAvulsas", rich.selection().computed().get(0).expr());
         assertNull(rich.detail(), "unset detail stays null");
         assertEquals(List.of("cliente", "veiculo", "observacao"), rich.transaction().fields());
         assertEquals("cliente", rich.prompt().labelField());

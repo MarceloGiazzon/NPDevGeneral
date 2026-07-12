@@ -111,6 +111,14 @@ public final class CompiledModelCanonicalJson {
         ArrayNode fields = JsonNodeFactory.instance.arrayNode();
         surface.fields().forEach(fields::add);
         node.set("fields", fields);
+        ArrayNode computed = JsonNodeFactory.instance.arrayNode();
+        for (CompiledAutoPanelComputed c : surface.computed()) {
+            ObjectNode cn = JsonNodeFactory.instance.objectNode();
+            cn.put("col", safe(c.col()));
+            cn.put("expr", safe(c.expr()));
+            computed.add(cn);
+        }
+        node.set("computed", computed);
         node.put("labelField", safe(surface.labelField()));
         node.set("metadata", toObjectMap(surface.metadata()));
         return node;
