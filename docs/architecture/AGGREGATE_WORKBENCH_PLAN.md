@@ -242,8 +242,13 @@ Workbench. **Lifts the one-level nesting cap at
   commit persists the whole tree.
 - **Risk:** medium (business logic is app-side, not platform).
 
-### P7 — WMS conformance via AutoPanels + generality proof
+### P7 — WMS conformance via AutoPanels + generality proof ✅ DONE (verified live 2026-07-12)
 **Goal:** C12; prove no new primitives needed.
+**Result:** Authored Expedicao (itens→{origens,destinos}, 5-state estagio lifecycle) and Recebimento
+(itens→{destinos}, 3-state estagio lifecycle) as slim `autoPanels`. Both `ExpedicaoWorkbench.html`
+and `RecebimentoWorkbench.html` emitted with **zero generator changes** (C12 met). Live on H2:8199 —
+descriptors carry differing bands (2 vs 1) + differing lifecycles (5/4 vs 3/2 states/transitions);
+create + Estágio transition (predemanda→demandagerada) round-trip persisted the whole tree intact.
 - Author Expedicao and Recebimento as **AutoPanels** (Recebimento = same shape, `grids:[destinos]`,
   `RecebimentoEstagio`); `CentroConferenciaRecebimento` as a confirm surface / override.
 - **Acceptance:** C12 — both editors live from slim AutoPanel declarations with zero generator
