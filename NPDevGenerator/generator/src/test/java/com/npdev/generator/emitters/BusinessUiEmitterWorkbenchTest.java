@@ -61,6 +61,7 @@ public class BusinessUiEmitterWorkbenchTest {
         assertTrue(html.contains("var SELECTION_PANEL = \"ExpedicaoSelection\""), "page knows its root Selection list panel");
         assertTrue(html.contains("var FILTERS ="), "page has the client filter list");
         assertTrue(html.contains("stateInfo"), "page has lifecycle gating (status + editability)");
+        assertTrue(html.contains("lc.transitions"), "page renders lifecycle transition actions (Confirmar …)");
         assertTrue(html.contains("/api/runtime/metadata/ui/panels/"), "page fetches loadWorkbench");
         assertTrue(html.contains("/api/runtime/aggregate/"), "page commits via the aggregate POST");
         assertFalse(html.contains("{{"), "no unrendered mustache placeholders");

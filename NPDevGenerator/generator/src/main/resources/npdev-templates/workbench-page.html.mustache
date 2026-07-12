@@ -182,21 +182,31 @@
       app.append(barDiv);
       return;
     }
-    var save = el('<button class="btn">Save</button>');
     var msg = el('<span class="msg"></span>');
-    save.onclick = function () {
-      save.disabled = true; msg.className = "msg"; msg.textContent = "Saving…";
+    function commitDraft(label) {
+      msg.className = "msg"; msg.textContent = (label || "Saving") + "…";
       fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate),
         { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(store.toDraft()) })
         .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, b: b }; }); })
         .then(function (res) {
-          save.disabled = false;
-          if (res.ok) { msg.className = "msg ok"; msg.textContent = "Saved."; store = createStore({ workbench: store.descriptor, title: store.title, aggregate: store.aggregate, data: res.b }); render(); }
-          else { msg.className = "msg err"; msg.textContent = "Save failed: " + (res.b && res.b.message || r.status); }
+          if (res.ok) { msg.className = "msg ok"; msg.textContent = (label || "Saved") + "."; store = createStore({ workbench: store.descriptor, title: store.title, aggregate: store.aggregate, data: res.b }); render(); }
+          else { msg.className = "msg err"; msg.textContent = "Failed: " + (res.b && res.b.message || r.status); }
         })
-        .catch(function (e) { save.disabled = false; msg.className = "msg err"; msg.textContent = "Save error: " + e; });
-    };
-    barDiv.append(save); barDiv.append(msg); app.append(barDiv);
+        .catch(function (e) { msg.className = "msg err"; msg.textContent = "Error: " + e; });
+    }
+    var save = el('<button class="btn">Save</button>'); save.onclick = function () { commitDraft("Saved"); };
+    barDiv.append(save);
+    // Lifecycle transition actions available from the current state (e.g. "Confirmar Saída"): set the
+    // status field to the target state and commit; the persistence adapter enforces the legal transition.
+    var lc = store.descriptor.lifecycle;
+    if (lc && lc.statusField && si.value) {
+      (lc.transitions || []).filter(function (t) { return t.from === si.value; }).forEach(function (t) {
+        var b = el('<button class="btn" style="background:var(--np-ok);margin-left:6px">' + (t.label || ("→ " + t.to)) + '</button>');
+        b.onclick = function () { store.editHeader(lc.statusField, t.to); commitDraft(t.label || ("→ " + t.to)); };
+        barDiv.append(b);
+      });
+    }
+    barDiv.append(msg); app.append(barDiv);
   }
 
   // List mode: with no ?id, show the root records (from the Selection panel), filter client-side on
