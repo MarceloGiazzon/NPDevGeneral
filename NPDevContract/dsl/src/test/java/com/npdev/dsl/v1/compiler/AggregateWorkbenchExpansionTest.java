@@ -53,10 +53,17 @@ class AggregateWorkbenchExpansionTest {
                       ] }
                   ] }
               ],
-              "autoPanels": [ { "aggregate": "Expedicao" } ]
+              "autoPanels": [ { "aggregate": "Expedicao", "selection": { "filters": ["cliente"] } } ]
             }
             """;
         CompiledModel model = compile(json);
+
+        // The aggregate AutoPanel also emits a root Selection (list) panel for the workbench page.
+        CompiledPanel selection = model.getPanels().stream()
+                .filter(p -> "ExpedicaoSelection".equals(p.name())).findFirst()
+                .orElseThrow(() -> new AssertionError("expected a root ExpedicaoSelection panel"));
+        assertEquals("table", selection.layout().type());
+        assertEquals("/expedicao", selection.route());
 
         CompiledPanel workbench = model.getPanels().stream()
                 .filter(p -> "ExpedicaoWorkbench".equals(p.name())).findFirst()
@@ -67,6 +74,8 @@ class AggregateWorkbenchExpansionTest {
         assertEquals("/expedicao/{id}", workbench.route());
         assertEquals("Expedicao", workbench.dataSources().get(0).concept());
         assertEquals("aggregate", workbench.metadata().get("dataVia"));
+        assertEquals("ExpedicaoSelection", workbench.metadata().get("selectionPanel"));
+        assertEquals(List.of("cliente"), workbench.metadata().get("filters"));
 
         Map<String, Object> wb = (Map<String, Object>) workbench.metadata().get("workbench");
         assertNotNull(wb);

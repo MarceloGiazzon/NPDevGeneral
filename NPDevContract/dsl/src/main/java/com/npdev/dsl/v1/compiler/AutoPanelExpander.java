@@ -89,13 +89,15 @@ final class AutoPanelExpander {
      * <p>Synthesized in the compiler (post-validation), so it is not subject to the one-level
      * panel-nesting cap that governs hand-authored panels.
      */
-    static CompiledPanel expandAggregateWorkbench(
+    static List<CompiledPanel> expandAggregateWorkbench(
             CompiledAutoPanel autoPanel, CompiledAggregate aggregate, Map<String, List<String>> fieldsByConcept) {
         String base = hasText(autoPanel.name()) ? autoPanel.name() : aggregate.name();
         String baseRoute = hasText(autoPanel.route())
                 ? autoPanel.route()
                 : "/" + aggregate.name().toLowerCase(Locale.ROOT);
         String rootConcept = aggregate.root();
+        String selectionPanelName = base + "Selection";
+        List<String> filters = autoPanel.selection() == null ? List.of() : autoPanel.selection().filters();
 
         Map<String, Object> workbench = new LinkedHashMap<>();
         workbench.put("aggregate", aggregate.name());
@@ -112,12 +114,28 @@ final class AutoPanelExpander {
         Map<String, Object> metadata = surfaceMetadata(base, "transaction", rootConcept);
         metadata.put("dataVia", "aggregate");
         metadata.put("workbench", workbench);
+        // Root-selection: the served page lists roots (via this Selection panel) and opens one by id,
+        // filtering client-side on the declared filter fields.
+        metadata.put("selectionPanel", selectionPanelName);
+        metadata.put("filters", new ArrayList<>(filters));
 
         CompiledPanelLayout layout = new CompiledPanelLayout("stack", List.of(), List.of(), Map.of());
-        return new CompiledPanel(
+        CompiledPanel workbenchPanel = new CompiledPanel(
                 base + "Workbench", baseRoute + "/{id}", rootConcept,
                 List.of(conceptDataSource(rootConcept)), layout, List.of(), null, null,
                 List.of(), Map.of(), metadata, null);
+
+        // A Selection over the root concept supplies the list rows to the workbench page.
+        List<String> rootColumns = override(autoPanel.selection(), CompiledAutoPanelSurface::columns,
+                columnsFor(fieldsByConcept, rootConcept));
+        CompiledPanelLayout selLayout = new CompiledPanelLayout("table", List.of(), rootColumns, Map.of());
+        CompiledPanel selectionPanel = new CompiledPanel(
+                selectionPanelName, baseRoute, rootConcept,
+                List.of(conceptDataSource(rootConcept)), selLayout, List.of(), null, null,
+                List.of(newRecordAction(rootConcept)), Map.of(),
+                surfaceMetadata(base, "selection", rootConcept), null);
+
+        return List.of(workbenchPanel, selectionPanel);
     }
 
     private static Map<String, Object> sectionDescriptor(

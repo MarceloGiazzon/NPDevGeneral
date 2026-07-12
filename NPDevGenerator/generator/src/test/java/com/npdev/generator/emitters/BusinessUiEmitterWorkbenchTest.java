@@ -58,6 +58,8 @@ public class BusinessUiEmitterWorkbenchTest {
         assertTrue(Files.exists(page), "expected a served workbench page for the aggregate AutoPanel");
         String html = Files.readString(page);
         assertTrue(html.contains("var PANEL = \"ExpedicaoWorkbench\""), "page targets its panel");
+        assertTrue(html.contains("var SELECTION_PANEL = \"ExpedicaoSelection\""), "page knows its root Selection list panel");
+        assertTrue(html.contains("var FILTERS ="), "page has the client filter list");
         assertTrue(html.contains("/api/runtime/metadata/ui/panels/"), "page fetches loadWorkbench");
         assertTrue(html.contains("/api/runtime/aggregate/"), "page commits via the aggregate POST");
         assertFalse(html.contains("{{"), "no unrendered mustache placeholders");

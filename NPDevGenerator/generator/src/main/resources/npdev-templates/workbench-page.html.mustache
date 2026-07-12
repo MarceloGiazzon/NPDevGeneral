@@ -53,6 +53,8 @@
    Auth mirrors the shell: token from localStorage -> Authorization: Bearer + X-Api-Key. */
 (function () {
   var PANEL = "{{panelName}}";
+  var SELECTION_PANEL = "{{selectionPanel}}";
+  var FILTERS = {{{filtersJson}}};
   var TOKEN_KEYS = ["npdev.shell.token", "npdev.businessUi.apiKey"];
 
   function token() { for (var i = 0; i < TOKEN_KEYS.length; i++) { var t = localStorage.getItem(TOKEN_KEYS[i]); if (t) return t; } return null; }
@@ -177,9 +179,74 @@
     barDiv.append(save); barDiv.append(msg); app.append(barDiv);
   }
 
+  // List mode: with no ?id, show the root records (from the Selection panel), filter client-side on
+  // the declared filter fields, and open one in the editor by navigating to ?id=<rowId>.
+  var listState = { rows: [], columns: [], filters: {} };
+  function openRow(id) { location.search = "?id=" + encodeURIComponent(id); }
+  function filteredRows() {
+    return listState.rows.filter(function (r) {
+      return FILTERS.every(function (f) {
+        var q = (listState.filters[f] || "").toLowerCase();
+        if (!q) return true;
+        return String((r.data || {})[f] == null ? "" : (r.data || {})[f]).toLowerCase().indexOf(q) >= 0;
+      });
+    });
+  }
+  function renderList() {
+    var app = document.getElementById("app"); app.innerHTML = "";
+    app.append(el('<h1>{{title}} <span class="chip">' + listState.rows.length + ' records</span></h1>'));
+    app.append(el('<p class="sub">Select a record to open its workbench, or create a new one.</p>'));
+    if (FILTERS.length) {
+      var fbar = el('<form class="grid2"></form>');
+      FILTERS.forEach(function (f) {
+        fbar.append(el('<label>' + f + ':</label>'));
+        var d = el("<div></div>");
+        var i = el('<input>'); i.value = listState.filters[f] || "";
+        i.oninput = function (e) { listState.filters[f] = e.target.value; renderTableOnly(); };
+        d.append(i); fbar.append(d);
+      });
+      var reg = el('<div class="region r-items"></div>'); var rb = el('<div class="body"></div>');
+      rb.append(fbar); reg.append(rb); app.append(reg);
+    }
+    app.append(el('<div id="listtable"></div>'));
+    renderTableOnly();
+    var barDiv = el('<div style="margin:8px 0"></div>');
+    var neu = el('<button class="btn">New</button>'); neu.onclick = function () { openRow("new"); };
+    barDiv.append(neu); app.append(barDiv);
+  }
+  function renderTableOnly() {
+    var host = document.getElementById("listtable"); if (!host) return; host.innerHTML = "";
+    var rows = filteredRows();
+    var tbl = el("<table></table>");
+    tbl.append(el("<tr>" + listState.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "</tr>"));
+    rows.forEach(function (r) {
+      var tr = el('<tr class="master"></tr>');
+      listState.columns.forEach(function (c) { var v = (r.data || {})[c]; tr.append(el("<td>" + (v == null ? "" : String(v)) + "</td>")); });
+      tr.onclick = function () { openRow(r.id); };
+      tbl.append(tr);
+    });
+    host.append(tbl);
+  }
+  function loadList() {
+    if (!SELECTION_PANEL) { document.getElementById("app").innerHTML = '<p class="sub">No selection panel configured.</p>'; return; }
+    fetch("/api/runtime/metadata/ui/panels/" + encodeURIComponent(SELECTION_PANEL), { headers: authHeaders() })
+      .then(function (r) { return r.json(); })
+      .then(function (p) {
+        var rows = null; var data = p.data || {};
+        Object.keys(data).forEach(function (k) { if (Array.isArray(data[k]) && rows === null) rows = data[k]; });
+        listState.rows = rows || [];
+        listState.columns = (p.layout && p.layout.fields) || [];
+        renderList();
+      })
+      .catch(function (e) { document.getElementById("app").innerHTML = '<p class="sub">Failed to load list: ' + e + '</p>'; });
+  }
+
   function boot() {
     var id = new URLSearchParams(location.search).get("id") || "";
-    var url = "/api/runtime/metadata/ui/panels/" + encodeURIComponent(PANEL) + (id ? "?id=" + encodeURIComponent(id) : "");
+    if (!id) { loadList(); return; }
+    // "new" loads the workbench descriptor with an empty tree (server returns descriptor + data:{}).
+    var wbId = (id === "new") ? "" : id;
+    var url = "/api/runtime/metadata/ui/panels/" + encodeURIComponent(PANEL) + (wbId ? "?id=" + encodeURIComponent(wbId) : "");
     fetch(url, { headers: authHeaders() })
       .then(function (r) { return r.json(); })
       .then(function (resp) { store = createStore(resp); render(); })

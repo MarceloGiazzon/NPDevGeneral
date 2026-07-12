@@ -486,7 +486,7 @@ public final class ModelCompiler {
                 // Aggregate-bound: the Transaction surface becomes the multi-level Aggregate Workbench.
                 CompiledAggregate aggregate = aggregatesByNormalizedName.get(normalize(autoPanel.aggregate()));
                 if (aggregate != null) {
-                    panels.add(AutoPanelExpander.expandAggregateWorkbench(autoPanel, aggregate, fieldNamesByConcept));
+                    panels.addAll(AutoPanelExpander.expandAggregateWorkbench(autoPanel, aggregate, fieldNamesByConcept));
                 }
             }
         }

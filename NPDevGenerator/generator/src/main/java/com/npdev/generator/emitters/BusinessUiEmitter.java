@@ -146,10 +146,20 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             if (workbench instanceof Map<?, ?> workbenchMap && workbenchMap.get("aggregate") != null) {
                 aggregateName = String.valueOf(workbenchMap.get("aggregate"));
             }
+            String selectionPanel = metadata.get("selectionPanel") == null ? "" : String.valueOf(metadata.get("selectionPanel"));
+            String filtersJson = "[]";
+            try {
+                Object filters = metadata.get("filters");
+                filtersJson = OBJECT_MAPPER.writeValueAsString(filters == null ? List.of() : filters);
+            } catch (com.fasterxml.jackson.core.JsonProcessingException ignored) {
+                // fall back to empty filter list
+            }
             Map<String, Object> ctx = new LinkedHashMap<>();
             ctx.put("panelName", panel.name());
             ctx.put("aggregateName", aggregateName);
             ctx.put("title", panel.title() == null || panel.title().isBlank() ? panel.name() : panel.title());
+            ctx.put("selectionPanel", selectionPanel);
+            ctx.put("filtersJson", filtersJson);
             writer.writeRelative(
                     "src/main/resources/static/npdev-workbench/" + panel.name() + ".html",
                     templates.render("workbench-page.html.mustache", ctx));
