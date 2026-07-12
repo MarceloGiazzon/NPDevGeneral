@@ -29,9 +29,18 @@ class AggregateWorkbenchExpansionTest {
             {
               "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
               "concepts": [
-                { "name": "Expedicao", "fields": [
-                  { "name": "id", "type": "uuid", "id": true, "required": true },
-                  { "name": "cliente", "type": "string" } ] },
+                { "name": "Expedicao",
+                  "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true },
+                    { "name": "cliente", "type": "string" },
+                    { "name": "estagio", "type": "string" } ],
+                  "lifecycle": {
+                    "statusField": "estagio",
+                    "states": [
+                      { "value": "aberta", "label": "Aberta", "initial": true },
+                      { "value": "confirmada", "label": "Confirmada", "terminal": true } ],
+                    "transitions": [ { "from": "aberta", "to": "confirmada", "actionLabel": "Confirmar" } ]
+                  } },
                 { "name": "ExpedicaoItem", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "expedicaoId", "type": "uuid" },
@@ -81,7 +90,18 @@ class AggregateWorkbenchExpansionTest {
         assertNotNull(wb);
         assertEquals("Expedicao", wb.get("aggregate"));
         assertEquals("Expedicao", wb.get("root"));
-        assertEquals(List.of("cliente", "id"), ((Map<String, Object>) wb.get("header")).get("fields"));
+        assertEquals(List.of("cliente", "estagio", "id"), ((Map<String, Object>) wb.get("header")).get("fields"));
+
+        // The root concept's lifecycle drives the status chip + per-state editability gating.
+        Map<String, Object> lifecycle = (Map<String, Object>) wb.get("lifecycle");
+        assertNotNull(lifecycle, "workbench descriptor should carry the root lifecycle");
+        assertEquals("estagio", lifecycle.get("statusField"));
+        List<Map<String, Object>> states = (List<Map<String, Object>>) lifecycle.get("states");
+        Map<String, Object> aberta = states.stream().filter(s -> "aberta".equals(s.get("value"))).findFirst().orElseThrow();
+        Map<String, Object> confirmada = states.stream().filter(s -> "confirmada".equals(s.get("value"))).findFirst().orElseThrow();
+        assertEquals("Aberta", aberta.get("label"));
+        assertEquals(Boolean.TRUE, aberta.get("editable"), "non-terminal state is editable");
+        assertEquals(Boolean.FALSE, confirmada.get("editable"), "terminal state is read-only");
 
         List<Map<String, Object>> sections = (List<Map<String, Object>>) wb.get("sections");
         assertEquals(1, sections.size(), "one first-level collection -> one section");

@@ -1,7 +1,11 @@
 package com.npdev.dsl.v1.compiler;
 
+import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.FieldAst;
+import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.SelectorAst;
+import com.npdev.dsl.v1.ast.StateMachineStateAst;
+import com.npdev.dsl.v1.ast.StateTransitionAst;
 import com.npdev.dsl.v1.compiled.CompiledAggregate;
 import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanel;
@@ -90,7 +94,8 @@ final class AutoPanelExpander {
      * panel-nesting cap that governs hand-authored panels.
      */
     static List<CompiledPanel> expandAggregateWorkbench(
-            CompiledAutoPanel autoPanel, CompiledAggregate aggregate, Map<String, List<String>> fieldsByConcept) {
+            CompiledAutoPanel autoPanel, CompiledAggregate aggregate, Map<String, List<String>> fieldsByConcept,
+            Map<String, ConceptAst> conceptsByName) {
         String base = hasText(autoPanel.name()) ? autoPanel.name() : aggregate.name();
         String baseRoute = hasText(autoPanel.route())
                 ? autoPanel.route()
@@ -110,6 +115,13 @@ final class AutoPanelExpander {
             sections.add(sectionDescriptor(collection, fieldsByConcept));
         }
         workbench.put("sections", sections);
+        // Lifecycle gating (ADR-0005 / P5): the root concept's declared state machine drives the
+        // status chip + per-state editability in the client.
+        Map<String, Object> lifecycle = lifecycleDescriptor(
+                conceptsByName == null ? null : conceptsByName.get(normalize(rootConcept)));
+        if (lifecycle != null) {
+            workbench.put("lifecycle", lifecycle);
+        }
 
         Map<String, Object> metadata = surfaceMetadata(base, "transaction", rootConcept);
         metadata.put("dataVia", "aggregate");
@@ -160,6 +172,44 @@ final class AutoPanelExpander {
 
     private static List<String> columnsFor(Map<String, List<String>> fieldsByConcept, String concept) {
         return new ArrayList<>(fieldsByConcept.getOrDefault(normalize(concept), List.of()));
+    }
+
+    /**
+     * Project the root concept's declared lifecycle into a client-facing descriptor: the status field,
+     * each state's label + editability (a terminal state, or one flagged {@code metadata.editable=false},
+     * is read-only), and the transitions. Null when the concept has no lifecycle (no gating).
+     */
+    private static Map<String, Object> lifecycleDescriptor(ConceptAst concept) {
+        if (concept == null || concept.getLifecycle() == null) {
+            return null;
+        }
+        LifecycleAst lifecycle = concept.getLifecycle();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("statusField", lifecycle.getStatusField() == null ? "" : lifecycle.getStatusField());
+        List<Map<String, Object>> states = new ArrayList<>();
+        for (StateMachineStateAst state : lifecycle.getStates()) {
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("value", state.getValue());
+            node.put("label", hasText(state.getLabel()) ? state.getLabel() : state.getValue());
+            node.put("terminal", state.isTerminal());
+            boolean editable = !state.isTerminal()
+                    && !"false".equalsIgnoreCase(String.valueOf(state.getMetadata().get("editable")));
+            node.put("editable", editable);
+            states.add(node);
+        }
+        out.put("states", states);
+        List<Map<String, Object>> transitions = new ArrayList<>();
+        for (StateTransitionAst transition : lifecycle.getTransitions()) {
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("from", transition.getFrom());
+            node.put("to", transition.getTo());
+            if (hasText(transition.getActionLabel())) {
+                node.put("label", transition.getActionLabel());
+            }
+            transitions.add(node);
+        }
+        out.put("transitions", transitions);
+        return out;
     }
 
     /**

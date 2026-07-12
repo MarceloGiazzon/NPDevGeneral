@@ -83,6 +83,14 @@
       deleteRow: function (c, id) { draft[c] = (draft[c] || []).filter(function (r) { return String(r.id) !== String(id); }); dirty.sections[c] = true; },
       addBandRow: function (c, id, b) { var r = findRow(c, id); if (!r) return null; var br = { id: genId() }; (r[b] = r[b] || []).push(br); dirty.sections[c] = true; return br.id; },
       deleteBandRow: function (c, id, b, bid) { var r = findRow(c, id); if (!r) return; r[b] = (r[b] || []).filter(function (x) { return String(x.id) !== String(bid); }); dirty.sections[c] = true; },
+      // Lifecycle gating: the root's current state -> label + editability (terminal/read-only states).
+      stateInfo: function () {
+        var lc = descriptor.lifecycle;
+        if (!lc || !lc.statusField) { return { editable: true, label: null }; }
+        var val = draft[lc.statusField];
+        var st = (lc.states || []).filter(function (s) { return s.value === val; })[0];
+        return { value: val, label: st ? st.label : val, editable: st ? !!st.editable : true };
+      },
       toDraft: function () { return clone(draft); },
       view: function () {
         var hf = (descriptor.header && descriptor.header.fields) || [];
@@ -107,15 +115,20 @@
   }
 
   var el = function (h) { var t = document.createElement("template"); t.innerHTML = h.trim(); return t.content.firstChild; };
-  var cell = function (val, on) { var i = el('<input class="cell">'); i.value = val == null ? "" : String(val); i.oninput = function (e) { on(e.target.value); }; return i; };
+  var EDITABLE = true;
+  var cell = function (val, on) { var i = el('<input class="cell">'); i.value = val == null ? "" : String(val); i.oninput = function (e) { on(e.target.value); }; if (!EDITABLE) { i.readOnly = true; } return i; };
 
   var store = null, selected = null;
 
   function render() {
     var v = store.view();
+    var si = store.stateInfo();
+    EDITABLE = si.editable;
     if (selected == null && v.sections[0] && v.sections[0].rows[0]) selected = v.sections[0].rows[0].id;
     var app = document.getElementById("app"); app.innerHTML = "";
-    app.append(el('<h1>' + v.title + ' <span class="chip ' + (v.dirty ? 'dirty' : '') + '">' + (v.dirty ? 'unsaved' : 'workbench') + '</span></h1>'));
+    var stateChip = si.label ? ' <span class="chip">' + si.label + '</span>' : '';
+    var roChip = EDITABLE ? '' : ' <span class="chip" style="background:var(--np-danger)">read-only</span>';
+    app.append(el('<h1>' + v.title + ' <span class="chip ' + (v.dirty ? 'dirty' : '') + '">' + (v.dirty ? 'unsaved' : 'workbench') + '</span>' + stateChip + roChip + '</h1>'));
     app.append(el('<p class="sub">Aggregate: <b>' + v.aggregate + '</b></p>'));
 
     var head = el('<div class="region r-head"></div>');
@@ -132,12 +145,13 @@
       sec.rows.forEach(function (r) {
         var tr = el('<tr class="master ' + (r.id === selected ? "sel" : "") + '"></tr>');
         sec.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(r.values[c], function (val) { store.editRow(sec.collection, r.id, c, val); })); tr.append(td); });
-        var del = el('<td><span class="rowbtn">✕</span></td>'); del.firstChild.onclick = function (e) { e.stopPropagation(); store.deleteRow(sec.collection, r.id); if (selected === r.id) selected = null; render(); };
+        var del = el('<td></td>');
+        if (EDITABLE) { var x = el('<span class="rowbtn">✕</span>'); x.onclick = function (e) { e.stopPropagation(); store.deleteRow(sec.collection, r.id); if (selected === r.id) selected = null; render(); }; del.append(x); }
         tr.append(del); tr.onclick = function () { selected = r.id; render(); }; tbl.append(tr);
       });
       ib.append(tbl);
-      var add = el('<span class="addrow">+ add row</span>'); add.onclick = function () { selected = store.addRow(sec.collection); render(); };
-      ib.append(add); items.append(ib); app.append(items);
+      if (EDITABLE) { var add = el('<span class="addrow">+ add row</span>'); add.onclick = function () { selected = store.addRow(sec.collection); render(); }; ib.append(add); }
+      items.append(ib); app.append(items);
 
       var selRow = sec.rows.filter(function (r) { return r.id === selected; })[0];
       if (sec.bandDefs.length && selRow) {
@@ -150,18 +164,24 @@
           (selRow.bands[bd.collection] || []).forEach(function (br) {
             var tr = el("<tr></tr>");
             bd.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(br.values[c], function (val) { store.editBandRow(sec.collection, selRow.id, bd.collection, br.id, c, val); })); tr.append(td); });
-            var del = el('<td><span class="rowbtn">✕</span></td>'); del.firstChild.onclick = function () { store.deleteBandRow(sec.collection, selRow.id, bd.collection, br.id); render(); };
+            var del = el('<td></td>');
+            if (EDITABLE) { var bx = el('<span class="rowbtn">✕</span>'); bx.onclick = function () { store.deleteBandRow(sec.collection, selRow.id, bd.collection, br.id); render(); }; del.append(bx); }
             tr.append(del); gt.append(tr);
           });
           g.append(gt);
-          var add2 = el('<span class="addrow">+ add row</span>'); add2.onclick = function () { store.addBandRow(sec.collection, selRow.id, bd.collection); render(); };
-          g.append(add2); grids.append(g);
+          if (EDITABLE) { var add2 = el('<span class="addrow">+ add row</span>'); add2.onclick = function () { store.addBandRow(sec.collection, selRow.id, bd.collection); render(); }; g.append(add2); }
+          grids.append(g);
         });
         bb.append(grids); band.append(bb); app.append(band);
       }
     });
 
     var barDiv = el('<div style="margin:8px 0"></div>');
+    if (!EDITABLE) {
+      barDiv.append(el('<span class="sub">Read-only' + (si.label ? ' — Fase: ' + si.label : '') + '. Editing is disabled in this state.</span>'));
+      app.append(barDiv);
+      return;
+    }
     var save = el('<button class="btn">Save</button>');
     var msg = el('<span class="msg"></span>');
     save.onclick = function () {
