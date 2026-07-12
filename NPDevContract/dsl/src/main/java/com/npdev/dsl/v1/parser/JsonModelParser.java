@@ -158,6 +158,7 @@ public final class JsonModelParser {
         List<GuidePageAst> guidePages = new ArrayList<>();
         List<AggregateAst> aggregates = new ArrayList<>();
         List<AutoPanelAst> autoPanels = new ArrayList<>();
+        List<SelectorAst> selectors = new ArrayList<>();
         List<String> parserWarnings = new ArrayList<>(sourceWarnings == null ? List.of() : sourceWarnings);
         Map<String, ConceptAst> conceptsByLowerName = new LinkedHashMap<>();
 
@@ -506,6 +507,7 @@ public final class JsonModelParser {
         guidePages.addAll(parseGuidePages(root.get("guidePages")));
         aggregates.addAll(parseAggregates(root.get("aggregates")));
         autoPanels.addAll(parseAutoPanels(root.get("autoPanels")));
+        selectors.addAll(parseSelectors(root.get("selectors")));
 
         return new ModelAst(
                 namespace,
@@ -525,6 +527,7 @@ public final class JsonModelParser {
                 guidePages,
                 aggregates,
                 autoPanels,
+                selectors,
                 parserWarnings
         );
     }
@@ -810,6 +813,29 @@ public final class JsonModelParser {
                     parseAutoPanelSurface(autoPanelNode.get("transaction")),
                     parseAutoPanelSurface(autoPanelNode.get("prompt")),
                     parseObjectMap(autoPanelNode.get("metadata"))
+            ));
+        }
+        return out;
+    }
+
+    private static List<SelectorAst> parseSelectors(JsonNode node) throws IOException {
+        List<SelectorAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("selectors must be an array");
+        }
+        for (JsonNode selectorNode : node) {
+            Boolean multiSelect = readOptionalBoolean(selectorNode, "multiSelect");
+            out.add(new SelectorAst(
+                    requiredText(selectorNode, "name"),
+                    requiredText(selectorNode, "concept"),
+                    multiSelect != null && multiSelect,
+                    parseTextArray(selectorNode.get("filters")),
+                    parseTextArray(selectorNode.get("columns")),
+                    parseObjectMap(selectorNode.get("returnMapping")),
+                    parseObjectMap(selectorNode.get("metadata"))
             ));
         }
         return out;

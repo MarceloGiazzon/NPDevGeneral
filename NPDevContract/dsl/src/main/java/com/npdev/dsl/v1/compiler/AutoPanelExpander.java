@@ -1,6 +1,7 @@
 package com.npdev.dsl.v1.compiler;
 
 import com.npdev.dsl.v1.ast.FieldAst;
+import com.npdev.dsl.v1.ast.SelectorAst;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanel;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelSurface;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
@@ -210,6 +211,31 @@ final class AutoPanelExpander {
             }
         }
         return idField;
+    }
+
+    /**
+     * Expand a standalone {@link SelectorAst} into a reusable picker panel (named after the
+     * selector, so grids/fields can reference it by name). Metadata carries the pick contract
+     * (multiSelect, filters, returnMapping) for the runtime/UI to interpret.
+     */
+    static CompiledPanel expandSelector(SelectorAst selector, List<String> fieldNames) {
+        List<String> columns = selector.columns().isEmpty()
+                ? new ArrayList<>(fieldNames)
+                : new ArrayList<>(selector.columns());
+        CompiledPanelLayout layout = new CompiledPanelLayout("table", List.of(), columns, Map.of());
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("generatedBy", "selector");
+        metadata.put("surface", "selector");
+        metadata.put("concept", selector.concept());
+        metadata.put("multiSelect", selector.multiSelect());
+        metadata.put("filters", new ArrayList<>(selector.filters()));
+        metadata.put("returnMapping", new LinkedHashMap<>(selector.returnMapping()));
+        return new CompiledPanel(
+                selector.name(),
+                "/select/" + selector.name().toLowerCase(Locale.ROOT),
+                selector.concept(),
+                List.of(conceptDataSource(selector.concept())), layout, List.of(), null, null,
+                List.of(), Map.of(), metadata, null);
     }
 
     private static CompiledPanelDataSource conceptDataSource(String concept) {

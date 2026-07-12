@@ -20,6 +20,7 @@ import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
 import com.npdev.dsl.v1.ast.AutoPanelAst;
+import com.npdev.dsl.v1.ast.SelectorAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
 import com.npdev.dsl.v1.compiled.FieldWidgetDefaults;
@@ -381,6 +382,7 @@ public final class SemanticValidator {
         validateGuidePages(effectiveModel, errors);
         validateAggregates(effectiveModel, entitiesByLower, errors);
         validateAutoPanels(effectiveModel, entitiesByLower, errors);
+        validateSelectors(effectiveModel, entitiesByLower, errors);
         errors = canonicalizeConceptTerminology(errors);
         semanticWarnings = canonicalizeConceptTerminology(semanticWarnings);
         for (String semanticWarning : semanticWarnings) {
@@ -600,6 +602,21 @@ public final class SemanticValidator {
             }
             validateAggregateCollections(aggregateName, here, collection.collections(),
                     entitiesByLower, nextChain, errors);
+        }
+    }
+
+    private static void validateSelectors(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
+        Set<String> selectorNames = new HashSet<>();
+        for (SelectorAst selector : modelAst.getSelectors()) {
+            String here = "Selector " + selector.name();
+            if (!selectorNames.add(normalize(selector.name()))) {
+                errors.add(here + ": duplicate selector name");
+            }
+            if (!hasText(selector.concept())) {
+                errors.add(here + ": concept is required");
+            } else if (!entitiesByLower.containsKey(normalize(selector.concept()))) {
+                errors.add(here + ": concept not found: " + selector.concept());
+            }
         }
     }
 

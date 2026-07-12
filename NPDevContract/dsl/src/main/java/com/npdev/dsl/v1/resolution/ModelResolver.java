@@ -97,6 +97,7 @@ public final class ModelResolver {
                 resolvedGuidePages,
                 source.getAggregates(),
                 source.getAutoPanels(),
+                source.getSelectors(),
                 source.getParserWarnings()
         );
         return ResolvedModel.from(resolvedAst);

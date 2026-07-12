@@ -262,6 +262,19 @@
         ]
       }
     },
+    "selectors": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/selector"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
     "metadata": {
       "type": "object"
     },
@@ -429,6 +442,47 @@
         "labelField": {
           "type": "string",
           "minLength": 1
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "selector": {
+      "type": "object",
+      "required": [
+        "name",
+        "concept"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "concept": {
+          "type": "string",
+          "minLength": 1
+        },
+        "multiSelect": {
+          "type": "boolean"
+        },
+        "filters": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "returnMapping": {
+          "type": "object"
         },
         "metadata": {
           "type": "object"

@@ -21,6 +21,7 @@ import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
 import com.npdev.dsl.v1.ast.AutoPanelAst;
 import com.npdev.dsl.v1.ast.AutoPanelSurfaceAst;
+import com.npdev.dsl.v1.ast.SelectorAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
 import com.npdev.dsl.v1.ast.GuidePageRegionAst;
@@ -472,6 +473,18 @@ public final class ModelCompiler {
                 continue; // unresolved concept already reported by SemanticValidator
             }
             panels.addAll(AutoPanelExpander.expand(autoPanel, concept.getFields(), promptsByConcept));
+        }
+
+        // Expand standalone selectors into reusable picker panels.
+        for (SelectorAst selector : modelAst.getSelectors()) {
+            ConceptAst concept = conceptsByNormalizedName.get(normalize(selector.concept()));
+            List<String> fieldNames = new ArrayList<>();
+            if (concept != null) {
+                for (FieldAst field : concept.getFields()) {
+                    fieldNames.add(field.getName());
+                }
+            }
+            panels.add(AutoPanelExpander.expandSelector(selector, fieldNames));
         }
 
         return new CompiledModel(
