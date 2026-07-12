@@ -115,6 +115,9 @@ class AggregateRuntimeCommitTest {
         // childField wired: the item points back to E1, the origem back to I1.
         assertEquals("E1", store.read(new ConceptReadRequest("ExpedicaoItem", "I1", null), ctx).get().data().get("expedicaoId"));
         assertEquals("I1", store.read(new ConceptReadRequest("MovtoOrigem", "O1", null), ctx).get().data().get("itemSeq"));
+        // The id field must be present in the write payload (DefaultConceptGateway enforces it).
+        assertEquals("E1", store.read(new ConceptReadRequest("Expedicao", "E1", null), ctx).get().data().get("id"));
+        assertEquals("I1", store.read(new ConceptReadRequest("ExpedicaoItem", "I1", null), ctx).get().data().get("id"));
 
         // 2. Commit a modified tree: change I1's field, drop O1, add a new item I2 (no id -> generated).
         Map<String, Object> draft2 = new java.util.LinkedHashMap<>(Map.of(

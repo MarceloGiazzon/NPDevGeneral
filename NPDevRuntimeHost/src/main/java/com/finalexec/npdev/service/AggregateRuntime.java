@@ -97,6 +97,7 @@ public class AggregateRuntime {
         String rootId = idOrNew(rootDraft.get("id"));
         Set<String> rootCollectionKeys = collectionNames(aggregate.collections());
         Map<String, Object> rootFields = scalarFields(rootDraft, rootCollectionKeys, null, null);
+        rootFields.put("id", rootId); // the gateway requires the id field present in the write payload
         gateway.save(new ConceptWriteRequest(aggregate.root(), rootId, ctx.tenantId(), rootFields), ctx);
 
         commitCollections(aggregate.collections(), rootDraft, rootId, gateway, ctx);
@@ -118,6 +119,7 @@ public class AggregateRuntime {
                 String childId = idOrNew(row.get("id"));
                 keptIds.add(childId);
                 Map<String, Object> fields = scalarFields(row, grandKeys, collection.childField(), parentId);
+                fields.put("id", childId); // the gateway requires the id field present in the write payload
                 gateway.save(new ConceptWriteRequest(collection.concept(), childId, ctx.tenantId(), fields), ctx);
                 commitCollections(collection.collections(), row, childId, gateway, ctx);
             }
