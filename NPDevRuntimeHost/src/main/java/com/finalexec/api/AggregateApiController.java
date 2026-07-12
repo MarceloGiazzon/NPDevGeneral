@@ -8,6 +8,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -15,8 +17,9 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.Map;
 
 /**
- * Read a declared aggregate as a nested tree.
- * {@code GET /api/runtime/aggregate/{aggregateName}/{rootId}}. See ADR-0004 / P0.
+ * Read and commit a declared aggregate as a nested tree.
+ * {@code GET /api/runtime/aggregate/{name}/{rootId}} loads;
+ * {@code POST /api/runtime/aggregate/{name}} commits a draft tree. See ADR-0004 / P0 / P4.
  */
 @RestController
 @RequestMapping({"/api/v1/runtime/aggregate", "/api/runtime/aggregate"})
@@ -48,6 +51,21 @@ public class AggregateApiController {
             return requireAggregateRuntime().load(aggregateName, rootId, currentContext(request));
         } catch (IllegalArgumentException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage());
+        } catch (IllegalStateException ex) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+        }
+    }
+
+    @PostMapping("/{aggregateName}")
+    public Map<String, Object> commit(
+            HttpServletRequest request,
+            @PathVariable String aggregateName,
+            @RequestBody(required = false) Map<String, Object> draft
+    ) {
+        try {
+            return requireAggregateRuntime().commit(aggregateName, draft, currentContext(request));
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
         } catch (IllegalStateException ex) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
         }

@@ -8,23 +8,25 @@ import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptListRequest;
 import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
+import com.npdev.kernel.concepts.ConceptWriteRequest;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 
 /**
- * Loads a declared aggregate as a nested tree: the root record plus every owned
- * child collection, recursively, joined by each collection's {@code childField}.
- *
- * <p>P0 slice 2 of the Aggregate Workbench (ADR-0004). Read-only for now; the
- * draft patch/commit boundary arrives with P4/P6.
+ * Loads and commits a declared aggregate as a nested tree: the root record plus
+ * every owned child collection, recursively, joined by each collection's
+ * {@code childField}. Part of the Aggregate Workbench (ADR-0004 / ADR-0005).
  */
 @Service
 public class AggregateRuntime {
@@ -75,6 +77,107 @@ public class AggregateRuntime {
             tree.put(collection.name(), loadCollection(collection, rootId, gateway, effectiveContext));
         }
         return tree;
+    }
+
+    /**
+     * Commit a draft aggregate tree: upsert the root and every owned child (assigning each child's
+     * {@code childField} to its parent id), and delete any currently-persisted child no longer present
+     * in the draft (reconcile, cascading down the tree). New rows without an {@code id} are assigned one.
+     * Returns the freshly re-loaded tree.
+     *
+     * @throws IllegalArgumentException if the aggregate is unknown
+     * @throws IllegalStateException    if no ConceptGateway is available
+     */
+    public Map<String, Object> commit(String aggregateName, Map<String, Object> draft, ExecutionContext context) {
+        CompiledAggregate aggregate = findAggregate(aggregateName);
+        ExecutionContext ctx = context == null ? ExecutionContext.anonymous() : context;
+        ConceptGateway gateway = requireConceptGateway();
+        Map<String, Object> rootDraft = draft == null ? Map.of() : draft;
+
+        String rootId = idOrNew(rootDraft.get("id"));
+        Set<String> rootCollectionKeys = collectionNames(aggregate.collections());
+        Map<String, Object> rootFields = scalarFields(rootDraft, rootCollectionKeys, null, null);
+        gateway.save(new ConceptWriteRequest(aggregate.root(), rootId, ctx.tenantId(), rootFields), ctx);
+
+        commitCollections(aggregate.collections(), rootDraft, rootId, gateway, ctx);
+        return load(aggregate.name(), rootId, ctx);
+    }
+
+    private void commitCollections(
+            List<CompiledAggregateCollection> collections,
+            Map<String, Object> parentDraft,
+            String parentId,
+            ConceptGateway gateway,
+            ExecutionContext ctx
+    ) {
+        for (CompiledAggregateCollection collection : collections) {
+            List<Map<String, Object>> draftRows = asRowList(parentDraft.get(collection.name()));
+            Set<String> grandKeys = collectionNames(collection.collections());
+            Set<String> keptIds = new LinkedHashSet<>();
+            for (Map<String, Object> row : draftRows) {
+                String childId = idOrNew(row.get("id"));
+                keptIds.add(childId);
+                Map<String, Object> fields = scalarFields(row, grandKeys, collection.childField(), parentId);
+                gateway.save(new ConceptWriteRequest(collection.concept(), childId, ctx.tenantId(), fields), ctx);
+                commitCollections(collection.collections(), row, childId, gateway, ctx);
+            }
+            // Reconcile: delete persisted children of this parent that are absent from the draft.
+            List<ConceptRecord> current = gateway.list(
+                    new ConceptListRequest(collection.concept(), null, collection.childField(), parentId), ctx);
+            for (ConceptRecord existing : current) {
+                if (!keptIds.contains(existing.id())) {
+                    gateway.delete(new ConceptReadRequest(collection.concept(), existing.id(), null), ctx);
+                }
+            }
+        }
+    }
+
+    /** The row's scalar fields to persist: drop id/aggregate/child-collection keys; set childField=parentId. */
+    private static Map<String, Object> scalarFields(
+            Map<String, Object> row, Set<String> collectionKeys, String childField, String parentId) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : row.entrySet()) {
+            String key = entry.getKey();
+            if (key.equals("id") || key.equals("aggregate") || key.equals("__children")
+                    || collectionKeys.contains(normalize(key))) {
+                continue;
+            }
+            fields.put(key, entry.getValue());
+        }
+        if (childField != null && !childField.isBlank()) {
+            fields.put(childField, parentId);
+        }
+        return fields;
+    }
+
+    private static Set<String> collectionNames(List<CompiledAggregateCollection> collections) {
+        Set<String> names = new LinkedHashSet<>();
+        for (CompiledAggregateCollection collection : collections) {
+            names.add(normalize(collection.name()));
+        }
+        return names;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> asRowList(Object value) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        if (value instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> map) {
+                    rows.add((Map<String, Object>) map);
+                }
+            }
+        }
+        return rows;
+    }
+
+    private static String idOrNew(Object value) {
+        String id = value == null ? null : String.valueOf(value);
+        return (id == null || id.isBlank()) ? UUID.randomUUID().toString() : id;
+    }
+
+    private static String normalize(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
 
     private List<Map<String, Object>> loadCollection(
