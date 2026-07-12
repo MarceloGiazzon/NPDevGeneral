@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}} — Workbench</title>
+<style>
+  :root{
+    --np-bg:#eef1f5; --np-ink:#1c2733; --np-muted:#5a6b7b; --np-line:#c9d3de;
+    --np-header:#c0c0ff; --np-l2:#d9dde2; --np-l3:#d6f0d6; --np-accent:#2b6cb0;
+    --np-grid-head:#34506b; --np-danger:#b23; --np-ok:#227a34; --np-chip:#5a6b7b;
+    --np-font:"Segoe UI",Roboto,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:13px/1.4 var(--np-font);color:var(--np-ink);background:var(--np-bg)}
+  .app{max-width:1200px;margin:0 auto;padding:14px}
+  h1{font-size:15px;margin:0 0 2px}
+  .sub{color:var(--np-muted);font-size:12px;margin:0 0 12px}
+  .region{border:1px solid var(--np-line);border-radius:6px;margin-bottom:10px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+  .bar{display:flex;align-items:center;gap:12px;color:#fff;padding:5px 12px;font-weight:600;font-size:12.5px}
+  .bar.head{background:#778899}.bar.items{background:#8894a0}.bar.band{background:#5a8a5a}
+  .body{padding:10px 12px}
+  .r-head{background:var(--np-header)}.r-items{background:var(--np-l2)}.r-band{background:var(--np-l3)}
+  .grow{flex:1}
+  .chip{background:var(--np-chip);color:#fff;border-radius:10px;padding:1px 9px;font-size:11px}
+  .chip.dirty{background:#c9761d}
+  form.grid2{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:5px 8px;align-items:center}
+  label{color:var(--np-muted)}
+  input{font:12px var(--np-font);padding:2px 5px;border:1px solid var(--np-line);border-radius:3px;background:#fff}
+  input.cell{width:100%;border-color:transparent;background:transparent}
+  input.cell:focus{border-color:var(--np-accent);background:#fff}
+  table{border-collapse:collapse;width:100%;font-size:12px;background:#fff}
+  th{background:var(--np-grid-head);color:#fff;text-align:left;padding:3px 7px;font-weight:600;white-space:nowrap}
+  td{border-bottom:1px solid #e6ebf0;padding:1px 4px;white-space:nowrap}
+  tr.sel td{background:#dcecff}
+  tr.master{cursor:pointer}
+  .rowbtn{color:var(--np-danger);cursor:pointer;font-weight:700;padding:0 5px}
+  .addrow{color:var(--np-accent);cursor:pointer;font-size:12px;display:inline-block;margin-top:4px}
+  .grids{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
+  .gwrap{min-width:220px}
+  .gwrap h4{margin:0 0 3px;font-size:12px;color:#456}
+  .btn{background:var(--np-accent);color:#fff;border:0;border-radius:4px;padding:5px 14px;font:12px var(--np-font);cursor:pointer}
+  .msg{margin-left:10px;font-size:12px}
+  .msg.ok{color:var(--np-ok)}.msg.err{color:var(--np-danger)}
+</style>
+</head>
+<body>
+<div class="app" id="app"><p class="sub">Loading workbench…</p></div>
+
+<script>
+/* Generated Aggregate Workbench page for panel "{{panelName}}" (aggregate {{aggregateName}}).
+   Descriptor-driven generic client: fetches loadWorkbench, renders header/grid/band, POSTs commit.
+   Auth mirrors the shell: token from localStorage -> Authorization: Bearer + X-Api-Key. */
+(function () {
+  var PANEL = "{{panelName}}";
+  var TOKEN_KEYS = ["npdev.shell.token", "npdev.businessUi.apiKey"];
+
+  function token() { for (var i = 0; i < TOKEN_KEYS.length; i++) { var t = localStorage.getItem(TOKEN_KEYS[i]); if (t) return t; } return null; }
+  function authHeaders() { var t = token(); return t ? { "Authorization": "Bearer " + t, "X-Api-Key": t } : {}; }
+
+  var clone = function (v) { return JSON.parse(JSON.stringify(v)); };
+  var pick = function (o, fs) { var r = {}; (fs || []).forEach(function (f) { r[f] = o == null ? undefined : o[f]; }); return r; };
+  var genId = function () { return "new-" + Math.random().toString(36).slice(2, 10); };
+
+  function createStore(resp) {
+    var descriptor = resp.workbench || {};
+    var draft = clone(resp.data || {});
+    (descriptor.sections || []).forEach(function (s) { if (!Array.isArray(draft[s.collection])) draft[s.collection] = []; });
+    var dirty = { header: false, sections: {} };
+    function sectionDef(c) { return (descriptor.sections || []).filter(function (s) { return s.collection === c; })[0]; }
+    function findRow(c, id) { return (draft[c] || []).filter(function (r) { return String(r.id) === String(id); })[0]; }
+    return {
+      aggregate: descriptor.aggregate || resp.aggregate,
+      title: resp.title,
+      descriptor: descriptor,
+      isDirty: function () { var d = dirty.header; Object.keys(dirty.sections).forEach(function (k) { d = d || dirty.sections[k]; }); return d; },
+      editHeader: function (f, v) { draft[f] = v; dirty.header = true; },
+      editRow: function (c, id, f, v) { var r = findRow(c, id); if (r) { r[f] = v; dirty.sections[c] = true; } },
+      editBandRow: function (c, id, b, bid, f, v) { var r = findRow(c, id); if (r) { var br = (r[b] || []).filter(function (x) { return String(x.id) === String(bid); })[0]; if (br) { br[f] = v; dirty.sections[c] = true; } } },
+      addRow: function (c) { var row = { id: genId() }; (sectionDef(c).bands || []).forEach(function (b) { row[b.collection] = []; }); (draft[c] = draft[c] || []).push(row); dirty.sections[c] = true; return row.id; },
+      deleteRow: function (c, id) { draft[c] = (draft[c] || []).filter(function (r) { return String(r.id) !== String(id); }); dirty.sections[c] = true; },
+      addBandRow: function (c, id, b) { var r = findRow(c, id); if (!r) return null; var br = { id: genId() }; (r[b] = r[b] || []).push(br); dirty.sections[c] = true; return br.id; },
+      deleteBandRow: function (c, id, b, bid) { var r = findRow(c, id); if (!r) return; r[b] = (r[b] || []).filter(function (x) { return String(x.id) !== String(bid); }); dirty.sections[c] = true; },
+      toDraft: function () { return clone(draft); },
+      view: function () {
+        var hf = (descriptor.header && descriptor.header.fields) || [];
+        return {
+          aggregate: this.aggregate, title: this.title, dirty: this.isDirty(),
+          header: { fields: hf, values: pick(draft, hf) },
+          sections: (descriptor.sections || []).map(function (s) {
+            return {
+              collection: s.collection, columns: s.columns || [],
+              bandDefs: (s.bands || []).map(function (b) { return { collection: b.collection, columns: b.columns || [] }; }),
+              rows: (draft[s.collection] || []).map(function (r) {
+                return {
+                  id: r.id, values: pick(r, s.columns || []),
+                  bands: (s.bands || []).reduce(function (acc, b) { acc[b.collection] = (r[b.collection] || []).map(function (br) { return { id: br.id, values: pick(br, b.columns || []) }; }); return acc; }, {})
+                };
+              })
+            };
+          })
+        };
+      }
+    };
+  }
+
+  var el = function (h) { var t = document.createElement("template"); t.innerHTML = h.trim(); return t.content.firstChild; };
+  var cell = function (val, on) { var i = el('<input class="cell">'); i.value = val == null ? "" : String(val); i.oninput = function (e) { on(e.target.value); }; return i; };
+
+  var store = null, selected = null;
+
+  function render() {
+    var v = store.view();
+    if (selected == null && v.sections[0] && v.sections[0].rows[0]) selected = v.sections[0].rows[0].id;
+    var app = document.getElementById("app"); app.innerHTML = "";
+    app.append(el('<h1>' + v.title + ' <span class="chip ' + (v.dirty ? 'dirty' : '') + '">' + (v.dirty ? 'unsaved' : 'workbench') + '</span></h1>'));
+    app.append(el('<p class="sub">Aggregate: <b>' + v.aggregate + '</b></p>'));
+
+    var head = el('<div class="region r-head"></div>');
+    head.append(el('<div class="bar head"><span>Header</span></div>'));
+    var hb = el('<div class="body"></div>'); var f = el('<form class="grid2"></form>');
+    v.header.fields.forEach(function (fld) { f.append(el('<label>' + fld + ':</label>')); var d = el("<div></div>"); d.append(cell(v.header.values[fld], function (val) { store.editHeader(fld, val); })); f.append(d); });
+    hb.append(f); head.append(hb); app.append(head);
+
+    v.sections.forEach(function (sec) {
+      var items = el('<div class="region r-items"></div>');
+      items.append(el('<div class="bar items"><span>' + sec.collection + '</span><span class="grow"></span><span class="chip">' + sec.rows.length + ' rows</span></div>'));
+      var ib = el('<div class="body"></div>'); var tbl = el("<table></table>");
+      tbl.append(el("<tr>" + sec.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "<th></th></tr>"));
+      sec.rows.forEach(function (r) {
+        var tr = el('<tr class="master ' + (r.id === selected ? "sel" : "") + '"></tr>');
+        sec.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(r.values[c], function (val) { store.editRow(sec.collection, r.id, c, val); })); tr.append(td); });
+        var del = el('<td><span class="rowbtn">✕</span></td>'); del.firstChild.onclick = function (e) { e.stopPropagation(); store.deleteRow(sec.collection, r.id); if (selected === r.id) selected = null; render(); };
+        tr.append(del); tr.onclick = function () { selected = r.id; render(); }; tbl.append(tr);
+      });
+      ib.append(tbl);
+      var add = el('<span class="addrow">+ add row</span>'); add.onclick = function () { selected = store.addRow(sec.collection); render(); };
+      ib.append(add); items.append(ib); app.append(items);
+
+      var selRow = sec.rows.filter(function (r) { return r.id === selected; })[0];
+      if (sec.bandDefs.length && selRow) {
+        var band = el('<div class="region r-band"></div>');
+        band.append(el('<div class="bar band"><span>' + sec.collection + ' → bands (row ' + selRow.id + ')</span></div>'));
+        var bb = el('<div class="body"></div>'); var grids = el('<div class="grids"></div>');
+        sec.bandDefs.forEach(function (bd) {
+          var g = el('<div class="gwrap"></div>'); g.append(el("<h4>" + bd.collection + "</h4>"));
+          var gt = el("<table></table>"); gt.append(el("<tr>" + bd.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "<th></th></tr>"));
+          (selRow.bands[bd.collection] || []).forEach(function (br) {
+            var tr = el("<tr></tr>");
+            bd.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(br.values[c], function (val) { store.editBandRow(sec.collection, selRow.id, bd.collection, br.id, c, val); })); tr.append(td); });
+            var del = el('<td><span class="rowbtn">✕</span></td>'); del.firstChild.onclick = function () { store.deleteBandRow(sec.collection, selRow.id, bd.collection, br.id); render(); };
+            tr.append(del); gt.append(tr);
+          });
+          g.append(gt);
+          var add2 = el('<span class="addrow">+ add row</span>'); add2.onclick = function () { store.addBandRow(sec.collection, selRow.id, bd.collection); render(); };
+          g.append(add2); grids.append(g);
+        });
+        bb.append(grids); band.append(bb); app.append(band);
+      }
+    });
+
+    var barDiv = el('<div style="margin:8px 0"></div>');
+    var save = el('<button class="btn">Save</button>');
+    var msg = el('<span class="msg"></span>');
+    save.onclick = function () {
+      save.disabled = true; msg.className = "msg"; msg.textContent = "Saving…";
+      fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate),
+        { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(store.toDraft()) })
+        .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, b: b }; }); })
+        .then(function (res) {
+          save.disabled = false;
+          if (res.ok) { msg.className = "msg ok"; msg.textContent = "Saved."; store = createStore({ workbench: store.descriptor, title: store.title, aggregate: store.aggregate, data: res.b }); render(); }
+          else { msg.className = "msg err"; msg.textContent = "Save failed: " + (res.b && res.b.message || r.status); }
+        })
+        .catch(function (e) { save.disabled = false; msg.className = "msg err"; msg.textContent = "Save error: " + e; });
+    };
+    barDiv.append(save); barDiv.append(msg); app.append(barDiv);
+  }
+
+  function boot() {
+    var id = new URLSearchParams(location.search).get("id") || "";
+    var url = "/api/runtime/metadata/ui/panels/" + encodeURIComponent(PANEL) + (id ? "?id=" + encodeURIComponent(id) : "");
+    fetch(url, { headers: authHeaders() })
+      .then(function (r) { return r.json(); })
+      .then(function (resp) { store = createStore(resp); render(); })
+      .catch(function (e) { document.getElementById("app").innerHTML = '<p class="sub">Failed to load workbench: ' + e + '</p>'; });
+  }
+  document.addEventListener("DOMContentLoaded", boot);
+}());
+</script>
+</body>
+</html>

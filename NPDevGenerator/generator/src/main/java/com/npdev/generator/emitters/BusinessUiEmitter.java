@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledEnumOption;
 import com.npdev.dsl.v1.compiled.FieldWidgetDefaults;
 import com.npdev.dsl.v1.compiled.CompiledGuidePage;
@@ -123,6 +124,35 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         if (conceptsByName.containsKey(MENU_CONCEPT_NAME)) {
             writer.writeRelative("src/main/resources/npdev-seed/workspace-menu-seed.json",
                     menuSeedJson(persistedConcepts, model));
+        }
+
+        emitWorkbenchPages(model);
+    }
+
+    /**
+     * Emit a self-contained Aggregate Workbench page (ADR-0005) per aggregate-bound AutoPanel
+     * (a panel synthesized with {@code metadata.dataVia == "aggregate"}). The page fetches its
+     * workbench descriptor + tree from {@code loadWorkbench} and commits via the aggregate POST.
+     * Served as a static asset at {@code /npdev-workbench/<PanelName>.html}.
+     */
+    private void emitWorkbenchPages(CompiledModel model) {
+        for (CompiledPanel panel : model.getPanels()) {
+            Map<String, Object> metadata = panel.metadata();
+            if (metadata == null || !"aggregate".equals(metadata.get("dataVia"))) {
+                continue;
+            }
+            String aggregateName = "";
+            Object workbench = metadata.get("workbench");
+            if (workbench instanceof Map<?, ?> workbenchMap && workbenchMap.get("aggregate") != null) {
+                aggregateName = String.valueOf(workbenchMap.get("aggregate"));
+            }
+            Map<String, Object> ctx = new LinkedHashMap<>();
+            ctx.put("panelName", panel.name());
+            ctx.put("aggregateName", aggregateName);
+            ctx.put("title", panel.title() == null || panel.title().isBlank() ? panel.name() : panel.title());
+            writer.writeRelative(
+                    "src/main/resources/static/npdev-workbench/" + panel.name() + ".html",
+                    templates.render("workbench-page.html.mustache", ctx));
         }
     }
 
