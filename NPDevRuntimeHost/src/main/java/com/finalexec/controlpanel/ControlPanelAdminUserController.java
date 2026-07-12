@@ -4,6 +4,7 @@ import com.finalexec.auth.IdentityProvisioning;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -33,20 +34,20 @@ public class ControlPanelAdminUserController {
 
     private static final String ADMIN_ROLE_NAME = "ADMIN";
 
-    private final DataSource dataSource;
+    private final ObjectProvider<DataSource> dataSourceProvider;
     private final RuntimeContextService runtimeContextService;
     private final String credentialTable;
     private final String credentialUserIdColumn;
     private final String credentialPasswordColumn;
 
     public ControlPanelAdminUserController(
-            DataSource dataSource,
+            ObjectProvider<DataSource> dataSourceProvider,
             RuntimeContextService runtimeContextService,
             @Value("${npdev.auth.login.credential-table:usuarios}") String credentialTable,
             @Value("${npdev.auth.login.credential-user-id-column:user_id}") String credentialUserIdColumn,
             @Value("${npdev.auth.login.credential-password-column:senha_hash}") String credentialPasswordColumn
     ) {
-        this.dataSource = dataSource;
+        this.dataSourceProvider = dataSourceProvider;
         this.runtimeContextService = runtimeContextService;
         this.credentialTable = credentialTable;
         this.credentialUserIdColumn = credentialUserIdColumn;
@@ -63,6 +64,13 @@ public class ControlPanelAdminUserController {
         ExecutionContext context = runtimeContextService.currentContext(httpRequest);
         if (!context.hasRole("SUPERUSER")) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
+        }
+
+        DataSource dataSource = dataSourceProvider.getIfAvailable();
+        if (dataSource == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "ControlPanel unavailable in InMemory mode -- requires a physical database "
+                            + "(H2Local/H2Server/Postgres).");
         }
 
         String tenantId = request.tenantId() == null ? null : request.tenantId().trim();
