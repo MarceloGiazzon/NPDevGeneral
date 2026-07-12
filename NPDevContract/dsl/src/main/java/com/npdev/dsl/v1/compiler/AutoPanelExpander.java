@@ -54,6 +54,9 @@ final class AutoPanelExpander {
         if (surfaceEnabled(autoPanel, "transaction")) {
             panels.add(transactionPanel(autoPanel, concept, base, baseRoute, fieldNames, idField));
         }
+        if (surfaceEnabled(autoPanel, "prompt")) {
+            panels.add(promptPanel(autoPanel, concept, base, baseRoute, fieldNames, idField));
+        }
         return panels;
     }
 
@@ -107,6 +110,41 @@ final class AutoPanelExpander {
                 base + "Form", baseRoute + "/edit", concept,
                 List.of(conceptDataSource(concept)), layout, bindings, null, null,
                 actions, Map.of(), surfaceMetadata(base, "transaction", concept), null);
+    }
+
+    /**
+     * A modal picker over the concept: choose one row (for foreign-key selection from other forms).
+     * Read-only table; metadata declares the display {@code labelField} and the {@code returnField}
+     * (the value handed back to the caller). Multi-select pickers over stock locations are an
+     * aggregate/band concern (P4), not a single-concept surface.
+     */
+    private static CompiledPanel promptPanel(
+            CompiledAutoPanel autoPanel, String concept, String base, String baseRoute,
+            List<String> fieldNames, String idField) {
+        String labelField = promptLabelField(autoPanel, fieldNames, idField);
+        List<String> columns = override(autoPanel.prompt(), CompiledAutoPanelSurface::columns, fieldNames);
+        CompiledPanelLayout layout = new CompiledPanelLayout("table", List.of(), columns, Map.of());
+        Map<String, Object> metadata = surfaceMetadata(base, "prompt", concept);
+        metadata.put("labelField", labelField == null ? "" : labelField);
+        metadata.put("returnField", idField == null ? "" : idField);
+        metadata.put("multiSelect", false);
+        return new CompiledPanel(
+                base + "Prompt", baseRoute + "/prompt", concept,
+                List.of(conceptDataSource(concept)), layout, List.of(), null, null,
+                List.of(), Map.of(), metadata, null);
+    }
+
+    /** Prompt display field: explicit override, else the first non-id field, else the id field. */
+    private static String promptLabelField(CompiledAutoPanel autoPanel, List<String> fieldNames, String idField) {
+        if (autoPanel.prompt() != null && hasText(autoPanel.prompt().labelField())) {
+            return autoPanel.prompt().labelField();
+        }
+        for (String field : fieldNames) {
+            if (idField == null || !field.equalsIgnoreCase(idField)) {
+                return field;
+            }
+        }
+        return idField;
     }
 
     private static CompiledPanelDataSource conceptDataSource(String concept) {

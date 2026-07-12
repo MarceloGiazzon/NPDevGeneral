@@ -78,6 +78,60 @@ class AutoPanelExpanderTest {
     }
 
     @Test
+    void promptSurfaceIsEmittedAsAPicker() throws Exception {
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.ap", "version": "1.0",
+              "concepts": [
+                { "name": "Cliente", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "nome", "type": "string" },
+                  { "name": "email", "type": "string" } ] }
+              ],
+              "autoPanels": [ { "concept": "Cliente" } ]
+            }
+            """;
+        CompiledModel model = compile(json);
+
+        // The prompt surface is part of the default set, alongside selection/detail/transaction.
+        CompiledPanel prompt = panel(model, "ClientePrompt");
+        assertEquals("table", prompt.layout().type());
+        assertEquals("/cliente/prompt", prompt.route());
+        assertEquals("prompt", prompt.metadata().get("surface"));
+        // Default labelField = first non-id field; returnField = the id.
+        assertEquals("email", prompt.metadata().get("labelField"));
+        assertEquals("id", prompt.metadata().get("returnField"));
+        assertEquals(Boolean.FALSE, prompt.metadata().get("multiSelect"));
+        assertTrue(prompt.actions().isEmpty(), "a prompt is a read-only picker");
+    }
+
+    @Test
+    void promptLabelFieldAndColumnsAreOverridable() throws Exception {
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.ap", "version": "1.0",
+              "concepts": [
+                { "name": "Cliente", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "nome", "type": "string" },
+                  { "name": "email", "type": "string" } ] }
+              ],
+              "autoPanels": [
+                { "concept": "Cliente", "surfaces": ["prompt"],
+                  "prompt": { "labelField": "nome", "columns": ["nome", "email"] } }
+              ]
+            }
+            """;
+        CompiledModel model = compile(json);
+
+        // Only the prompt surface is emitted.
+        assertTrue(model.getPanels().stream().noneMatch(p -> "ClienteSelection".equals(p.name())));
+        CompiledPanel prompt = panel(model, "ClientePrompt");
+        assertEquals("nome", prompt.metadata().get("labelField"));
+        assertEquals(List.of("nome", "email"), prompt.layout().fields());
+    }
+
+    @Test
     void surfacesAndOverridesAreHonored() throws Exception {
         String json = """
             {
