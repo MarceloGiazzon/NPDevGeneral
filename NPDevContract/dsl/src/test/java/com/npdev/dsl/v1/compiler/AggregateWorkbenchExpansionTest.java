@@ -63,7 +63,13 @@ class AggregateWorkbenchExpansionTest {
                   ] }
               ],
               "autoPanels": [ { "aggregate": "Expedicao", "selection": { "filters": ["cliente"] },
-                "transaction": { "metadata": { "actions": [
+                "transaction": { "metadata": {
+                  "recompute": "Recalcular",
+                  "bandPickers": {
+                    "origens": { "panel": "MovtoOrigemSelection", "label": "Seleciona Ruas", "columns": ["local"] },
+                    "semvias": { "label": "ignored — no panel" }
+                  },
+                  "actions": [
                   { "label": "Gerar Demanda", "procedure": "GerarDemanda" },
                   { "procedure": "Recalcular" },
                   { "label": "no-op" } ] } } } ]
@@ -130,5 +136,18 @@ class AggregateWorkbenchExpansionTest {
         assertEquals("MovtoOrigem", bands.get(0).get("concept"));
         assertEquals("itemSeq", bands.get(0).get("childField"));
         assertEquals(List.of("id", "itemSeq", "local"), bands.get(1).get("columns"));
+
+        // Reactive recompute (P3): the declared procedure surfaces on the workbench descriptor.
+        assertEquals("Recalcular", wb.get("recompute"), "recompute procedure projected onto the workbench");
+
+        // Per-band picker (C6): the origens band gets a picker; the entry without a panel is dropped;
+        // destinos (undeclared) has none.
+        Map<String, Object> origens = bands.get(0);
+        Map<String, Object> picker = (Map<String, Object>) origens.get("picker");
+        assertNotNull(picker, "origens band should carry its declared picker");
+        assertEquals("MovtoOrigemSelection", picker.get("panel"));
+        assertEquals("Seleciona Ruas", picker.get("label"));
+        assertEquals(List.of("local"), picker.get("columns"));
+        assertNull(bands.get(1).get("picker"), "undeclared band has no picker");
     }
 }

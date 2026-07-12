@@ -42,6 +42,16 @@
   .btn{background:var(--np-accent);color:#fff;border:0;border-radius:4px;padding:5px 14px;font:12px var(--np-font);cursor:pointer}
   .msg{margin-left:10px;font-size:12px}
   .msg.ok{color:var(--np-ok)}.msg.err{color:var(--np-danger)}
+  .rev{cursor:pointer;color:#fff;font-size:11px;opacity:.85;text-decoration:underline;background:none;border:0}
+  .rev:hover{opacity:1}
+  .pick{cursor:pointer;color:var(--np-accent);font-size:12px;display:inline-block;margin-top:4px;margin-left:12px}
+  .modal{position:fixed;inset:0;background:rgba(20,28,38,.45);display:flex;align-items:center;justify-content:center;z-index:50}
+  .modal-card{background:#fff;border-radius:8px;max-width:640px;width:92%;max-height:80vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+  .modal-hd{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--np-line);font-weight:600}
+  .modal-bd{padding:6px 14px}
+  .modal-ft{display:flex;gap:8px;justify-content:flex-end;padding:10px 14px;border-top:1px solid var(--np-line)}
+  .modal tr.master.sel td{background:#dcecff}
+  .btn.ghost{background:#e6ebf0;color:var(--np-ink)}
 </style>
 </head>
 <body>
@@ -60,7 +70,7 @@
   function token() { for (var i = 0; i < TOKEN_KEYS.length; i++) { var t = localStorage.getItem(TOKEN_KEYS[i]); if (t) return t; } return null; }
   function authHeaders() { var t = token(); return t ? { "Authorization": "Bearer " + t, "X-Api-Key": t } : {}; }
 
-  var clone = function (v) { return JSON.parse(JSON.stringify(v)); };
+  var clone = function (v) { return v === undefined ? undefined : JSON.parse(JSON.stringify(v)); };
   var pick = function (o, fs) { var r = {}; (fs || []).forEach(function (f) { r[f] = o == null ? undefined : o[f]; }); return r; };
   var genId = function () { return "new-" + Math.random().toString(36).slice(2, 10); };
 
@@ -68,6 +78,8 @@
     var descriptor = resp.workbench || {};
     var draft = clone(resp.data || {});
     (descriptor.sections || []).forEach(function (s) { if (!Array.isArray(draft[s.collection])) draft[s.collection] = []; });
+    // baseline = the last persisted (or freshly loaded) tree; per-region revert (C8) restores from it.
+    var baseline = clone(draft);
     var dirty = { header: false, sections: {} };
     function sectionDef(c) { return (descriptor.sections || []).filter(function (s) { return s.collection === c; })[0]; }
     function findRow(c, id) { return (draft[c] || []).filter(function (r) { return String(r.id) === String(id); })[0]; }
@@ -82,7 +94,23 @@
       addRow: function (c) { var row = { id: genId() }; (sectionDef(c).bands || []).forEach(function (b) { row[b.collection] = []; }); (draft[c] = draft[c] || []).push(row); dirty.sections[c] = true; return row.id; },
       deleteRow: function (c, id) { draft[c] = (draft[c] || []).filter(function (r) { return String(r.id) !== String(id); }); dirty.sections[c] = true; },
       addBandRow: function (c, id, b) { var r = findRow(c, id); if (!r) return null; var br = { id: genId() }; (r[b] = r[b] || []).push(br); dirty.sections[c] = true; return br.id; },
+      // Add a band row seeded from a picked source row (C6): copy overlapping columns, assign a fresh id.
+      addBandRowFrom: function (c, id, b, values) { var r = findRow(c, id); if (!r) return null; var br = Object.assign({}, values || {}); br.id = genId(); (r[b] = r[b] || []).push(br); dirty.sections[c] = true; return br.id; },
       deleteBandRow: function (c, id, b, bid) { var r = findRow(c, id); if (!r) return; r[b] = (r[b] || []).filter(function (x) { return String(x.id) !== String(bid); }); dirty.sections[c] = true; },
+      // Per-region edit buffer (C8): true when the region has staged, uncommitted changes vs the baseline.
+      regionDirty: function (scope, c) { return scope === "header" ? !!dirty.header : !!dirty.sections[c]; },
+      // Discard a single region's staged changes back to the baseline, leaving other regions untouched.
+      revertRegion: function (scope, c) {
+        if (scope === "header") { ((descriptor.header && descriptor.header.fields) || []).forEach(function (f) { draft[f] = clone(baseline[f]); }); var lc = descriptor.lifecycle; if (lc && lc.statusField) draft[lc.statusField] = clone(baseline[lc.statusField]); dirty.header = false; }
+        else { draft[c] = clone(baseline[c] || []); dirty.sections[c] = false; }
+      },
+      // Replace the working draft with a server-computed tree (invoke/recompute), preserving the baseline.
+      // Marks every region dirty since the whole draft may have shifted; the user reviews and Saves.
+      patch: function (newData) {
+        draft = clone(newData || {});
+        (descriptor.sections || []).forEach(function (s) { if (!Array.isArray(draft[s.collection])) draft[s.collection] = []; dirty.sections[s.collection] = true; });
+        dirty.header = true;
+      },
       // Lifecycle gating: the root's current state -> label + editability (terminal/read-only states).
       stateInfo: function () {
         var lc = descriptor.lifecycle;
@@ -100,7 +128,7 @@
           sections: (descriptor.sections || []).map(function (s) {
             return {
               collection: s.collection, columns: s.columns || [],
-              bandDefs: (s.bands || []).map(function (b) { return { collection: b.collection, columns: b.columns || [] }; }),
+              bandDefs: (s.bands || []).map(function (b) { return { collection: b.collection, columns: b.columns || [], picker: b.picker || null }; }),
               rows: (draft[s.collection] || []).map(function (r) {
                 return {
                   id: r.id, values: pick(r, s.columns || []),
@@ -116,7 +144,34 @@
 
   var el = function (h) { var t = document.createElement("template"); t.innerHTML = h.trim(); return t.content.firstChild; };
   var EDITABLE = true;
-  var cell = function (val, on) { var i = el('<input class="cell">'); i.value = val == null ? "" : String(val); i.oninput = function (e) { on(e.target.value); }; if (!EDITABLE) { i.readOnly = true; } return i; };
+  // Focus tracking so a debounced recompute re-render can restore the caret to the cell being edited.
+  var activeFocusKey = null, restoreFocus = false;
+  var cell = function (val, on, key) {
+    var i = el('<input class="cell">');
+    i.value = val == null ? "" : String(val);
+    if (key) { i.setAttribute("data-fkey", key); i.addEventListener("focus", function () { activeFocusKey = key; }); }
+    i.oninput = function (e) { on(e.target.value); scheduleRecompute(); };
+    if (!EDITABLE) { i.readOnly = true; }
+    return i;
+  };
+
+  // Reactive recompute (P3/C7): debounce cell edits, invoke the declared recompute procedure over the
+  // draft, patch derived fields in place, and re-render — restoring focus to the cell being typed in.
+  var recomputeTimer = null;
+  function scheduleRecompute() {
+    if (!store || !EDITABLE) return;
+    var proc = store.descriptor.recompute;
+    if (!proc) return;
+    if (recomputeTimer) clearTimeout(recomputeTimer);
+    recomputeTimer = setTimeout(function () { runRecompute(proc); }, 450);
+  }
+  function runRecompute(proc) {
+    fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate) + "/invoke/" + encodeURIComponent(proc),
+      { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(store.toDraft()) })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (patched) { if (patched) { store.patch(patched); restoreFocus = true; render(); } })
+      .catch(function () { /* recompute is best-effort; keep the user's draft on failure */ });
+  }
 
   var store = null, selected = null;
 
@@ -132,19 +187,23 @@
     app.append(el('<p class="sub">Aggregate: <b>' + v.aggregate + '</b></p>'));
 
     var head = el('<div class="region r-head"></div>');
-    head.append(el('<div class="bar head"><span>Header</span></div>'));
+    var headBar = el('<div class="bar head"><span>Header</span><span class="grow"></span></div>');
+    if (EDITABLE && store.regionDirty("header")) headBar.append(regionRevert("header", null));
+    head.append(headBar);
     var hb = el('<div class="body"></div>'); var f = el('<form class="grid2"></form>');
-    v.header.fields.forEach(function (fld) { f.append(el('<label>' + fld + ':</label>')); var d = el("<div></div>"); d.append(cell(v.header.values[fld], function (val) { store.editHeader(fld, val); })); f.append(d); });
+    v.header.fields.forEach(function (fld) { f.append(el('<label>' + fld + ':</label>')); var d = el("<div></div>"); d.append(cell(v.header.values[fld], function (val) { store.editHeader(fld, val); }, "h:" + fld)); f.append(d); });
     hb.append(f); head.append(hb); app.append(head);
 
     v.sections.forEach(function (sec) {
       var items = el('<div class="region r-items"></div>');
-      items.append(el('<div class="bar items"><span>' + sec.collection + '</span><span class="grow"></span><span class="chip">' + sec.rows.length + ' rows</span></div>'));
+      var itemsBar = el('<div class="bar items"><span>' + sec.collection + '</span><span class="grow"></span><span class="chip">' + sec.rows.length + ' rows</span></div>');
+      if (EDITABLE && store.regionDirty("section", sec.collection)) itemsBar.append(regionRevert("section", sec.collection));
+      items.append(itemsBar);
       var ib = el('<div class="body"></div>'); var tbl = el("<table></table>");
       tbl.append(el("<tr>" + sec.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "<th></th></tr>"));
       sec.rows.forEach(function (r) {
         var tr = el('<tr class="master ' + (r.id === selected ? "sel" : "") + '"></tr>');
-        sec.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(r.values[c], function (val) { store.editRow(sec.collection, r.id, c, val); })); tr.append(td); });
+        sec.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(r.values[c], function (val) { store.editRow(sec.collection, r.id, c, val); }, "s:" + sec.collection + ":" + r.id + ":" + c)); tr.append(td); });
         var del = el('<td></td>');
         if (EDITABLE) { var x = el('<span class="rowbtn">✕</span>'); x.onclick = function (e) { e.stopPropagation(); store.deleteRow(sec.collection, r.id); if (selected === r.id) selected = null; render(); }; del.append(x); }
         tr.append(del); tr.onclick = function () { selected = r.id; render(); }; tbl.append(tr);
@@ -163,13 +222,17 @@
           var gt = el("<table></table>"); gt.append(el("<tr>" + bd.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "<th></th></tr>"));
           (selRow.bands[bd.collection] || []).forEach(function (br) {
             var tr = el("<tr></tr>");
-            bd.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(br.values[c], function (val) { store.editBandRow(sec.collection, selRow.id, bd.collection, br.id, c, val); })); tr.append(td); });
+            bd.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(br.values[c], function (val) { store.editBandRow(sec.collection, selRow.id, bd.collection, br.id, c, val); }, "b:" + sec.collection + ":" + selRow.id + ":" + bd.collection + ":" + br.id + ":" + c)); tr.append(td); });
             var del = el('<td></td>');
             if (EDITABLE) { var bx = el('<span class="rowbtn">✕</span>'); bx.onclick = function () { store.deleteBandRow(sec.collection, selRow.id, bd.collection, br.id); render(); }; del.append(bx); }
             tr.append(del); gt.append(tr);
           });
           g.append(gt);
-          if (EDITABLE) { var add2 = el('<span class="addrow">+ add row</span>'); add2.onclick = function () { store.addBandRow(sec.collection, selRow.id, bd.collection); render(); }; g.append(add2); }
+          if (EDITABLE) {
+            var add2 = el('<span class="addrow">+ add row</span>'); add2.onclick = function () { store.addBandRow(sec.collection, selRow.id, bd.collection); render(); }; g.append(add2);
+            // C6 "Seleciona …": pick band rows from a source Selection panel via a modal, instead of blank add.
+            if (bd.picker) { var pk = el('<span class="pick">＋ ' + (bd.picker.label || "Selecionar") + '</span>'); pk.onclick = (function (secC, rowId, band) { return function () { openBandPicker(secC, rowId, band); }; })(sec.collection, selRow.id, bd); g.append(pk); }
+          }
           grids.append(g);
         });
         bb.append(grids); band.append(bb); app.append(band);
@@ -214,7 +277,7 @@
         { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(store.toDraft()) })
         .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, b: b }; }); })
         .then(function (res) {
-          if (res.ok) { msg.className = "msg ok"; msg.textContent = (action.label || "Done") + " — review and Save."; store = createStore({ workbench: store.descriptor, title: store.title, aggregate: store.aggregate, data: res.b }); render(); }
+          if (res.ok) { msg.className = "msg ok"; msg.textContent = (action.label || "Done") + " — review and Save."; store.patch(res.b); render(); }
           else { msg.className = "msg err"; msg.textContent = "Failed: " + (res.b && res.b.message || "error"); }
         })
         .catch(function (e) { msg.className = "msg err"; msg.textContent = "Error: " + e; });
@@ -227,6 +290,71 @@
       });
     }
     barDiv.append(msg); app.append(barDiv);
+
+    // Restore caret to the cell being typed in after a recompute-triggered re-render (P3).
+    if (restoreFocus && activeFocusKey) {
+      var box = app.querySelector('[data-fkey="' + (window.CSS && CSS.escape ? CSS.escape(activeFocusKey) : activeFocusKey) + '"]');
+      if (box) { box.focus(); try { var n = box.value.length; box.setSelectionRange(n, n); } catch (e) { } }
+    }
+    restoreFocus = false;
+  }
+
+  // A per-region revert control (C8): discards that region's staged edits back to the baseline.
+  function regionRevert(scope, c) {
+    var b = el('<button class="rev" title="Discard changes in this region">⟲ revert</button>');
+    b.onclick = function (e) { e.stopPropagation(); store.revertRegion(scope, c); render(); };
+    return b;
+  }
+
+  // C6 band picker modal: fetch candidate rows from the band's source Selection panel and let the user
+  // check some to append as band rows (columns overlapping the band are copied from the picked source row).
+  function openBandPicker(secCollection, rowId, bd) {
+    var picker = bd.picker; if (!picker || !picker.panel) return;
+    var cols = picker.columns && picker.columns.length ? picker.columns : bd.columns;
+    var chosen = {};
+    var overlay = el('<div class="modal"></div>');
+    var card = el('<div class="modal-card"></div>');
+    card.append(el('<div class="modal-hd"><span>' + (picker.label || "Selecionar") + '</span></div>'));
+    var body = el('<div class="modal-bd"><p class="sub">Loading…</p></div>');
+    card.append(body);
+    var ft = el('<div class="modal-ft"></div>');
+    var cancel = el('<button class="btn ghost">Cancelar</button>'); cancel.onclick = function () { overlay.remove(); };
+    var add = el('<button class="btn">Adicionar</button>');
+    add.onclick = function () {
+      Object.keys(chosen).forEach(function (k) {
+        var src = chosen[k]; var values = {};
+        bd.columns.forEach(function (c) { if (src && src[c] !== undefined) values[c] = src[c]; });
+        store.addBandRowFrom(secCollection, rowId, bd.collection, values);
+      });
+      overlay.remove(); render();
+    };
+    ft.append(cancel); ft.append(add); card.append(ft);
+    overlay.append(card); overlay.onclick = function (e) { if (e.target === overlay) overlay.remove(); };
+    document.body.append(overlay);
+    fetch("/api/runtime/metadata/ui/panels/" + encodeURIComponent(picker.panel), { headers: authHeaders() })
+      .then(function (r) { return r.json(); })
+      .then(function (p) {
+        var rows = null; var data = p.data || {};
+        Object.keys(data).forEach(function (kk) { if (Array.isArray(data[kk]) && rows === null) rows = data[kk]; });
+        rows = rows || [];
+        body.innerHTML = "";
+        if (!rows.length) { body.append(el('<p class="sub">No records available.</p>')); return; }
+        var tbl = el("<table></table>");
+        tbl.append(el("<tr><th></th>" + cols.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "</tr>"));
+        rows.forEach(function (r) {
+          var d = r.data || {};
+          var tr = el('<tr class="master"></tr>');
+          var ck = el('<td><input type="checkbox"></td>');
+          var box = ck.querySelector("input");
+          box.onchange = function () { if (box.checked) { chosen[r.id] = d; tr.classList.add("sel"); } else { delete chosen[r.id]; tr.classList.remove("sel"); } };
+          tr.append(ck);
+          cols.forEach(function (c) { tr.append(el("<td>" + (d[c] == null ? "" : String(d[c])) + "</td>")); });
+          tr.onclick = function (e) { if (e.target !== box) { box.checked = !box.checked; box.onchange(); } };
+          tbl.append(tr);
+        });
+        body.append(tbl);
+      })
+      .catch(function (e) { body.innerHTML = '<p class="sub">Failed to load: ' + e + '</p>'; });
   }
 
   // List mode: with no ?id, show the root records (from the Selection panel), filter client-side on

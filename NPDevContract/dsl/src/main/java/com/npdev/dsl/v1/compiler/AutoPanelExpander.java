@@ -110,9 +110,12 @@ final class AutoPanelExpander {
         Map<String, Object> header = new LinkedHashMap<>();
         header.put("fields", columnsFor(fieldsByConcept, rootConcept));
         workbench.put("header", header);
+        // Per-band pickers (C6 "Seleciona …"): declared under transaction.metadata.bandPickers keyed by band
+        // collection name; each attaches a source Selection panel the client offers as a modal row picker.
+        Map<String, Map<String, Object>> bandPickers = bandPickers(autoPanel.transaction());
         List<Map<String, Object>> sections = new ArrayList<>();
         for (CompiledAggregateCollection collection : aggregate.collections()) {
-            sections.add(sectionDescriptor(collection, fieldsByConcept));
+            sections.add(sectionDescriptor(collection, fieldsByConcept, bandPickers));
         }
         workbench.put("sections", sections);
         // Lifecycle gating (ADR-0005 / P5): the root concept's declared state machine drives the
@@ -127,6 +130,12 @@ final class AutoPanelExpander {
         List<Map<String, Object>> actions = workbenchActions(autoPanel.transaction());
         if (!actions.isEmpty()) {
             workbench.put("actions", actions);
+        }
+        // Reactive recompute (C7/P3): a procedure named under transaction.metadata.recompute is invoked
+        // (debounced) by the client on every cell edit, patching derived fields as the user types.
+        String recompute = recomputeProcedure(autoPanel.transaction());
+        if (recompute != null) {
+            workbench.put("recompute", recompute);
         }
 
         Map<String, Object> metadata = surfaceMetadata(base, "transaction", rootConcept);
@@ -190,7 +199,8 @@ final class AutoPanelExpander {
     }
 
     private static Map<String, Object> sectionDescriptor(
-            CompiledAggregateCollection collection, Map<String, List<String>> fieldsByConcept) {
+            CompiledAggregateCollection collection, Map<String, List<String>> fieldsByConcept,
+            Map<String, Map<String, Object>> bandPickers) {
         Map<String, Object> section = new LinkedHashMap<>();
         section.put("collection", collection.name());
         section.put("concept", collection.concept());
@@ -203,10 +213,69 @@ final class AutoPanelExpander {
             band.put("concept", child.concept());
             band.put("childField", child.childField());
             band.put("columns", columnsFor(fieldsByConcept, child.concept()));
+            Map<String, Object> picker = bandPickers.get(child.name());
+            if (picker != null) {
+                band.put("picker", picker);
+            }
             bands.add(band);
         }
         section.put("bands", bands);
         return section;
+    }
+
+    /**
+     * Read the reactive recompute procedure name from {@code transaction.metadata.recompute}. Accepts either
+     * a bare string or an object with a {@code procedure} key. Null when unset.
+     */
+    private static String recomputeProcedure(CompiledAutoPanelSurface transaction) {
+        if (transaction == null) {
+            return null;
+        }
+        Object declared = transaction.metadata().get("recompute");
+        if (declared instanceof Map<?, ?> map) {
+            declared = map.get("procedure");
+        }
+        if (declared == null || String.valueOf(declared).isBlank()) {
+            return null;
+        }
+        return String.valueOf(declared).trim();
+    }
+
+    /**
+     * Read per-band row pickers from {@code transaction.metadata.bandPickers}: an object keyed by band
+     * collection name, each value {@code {panel, label, columns?}} naming a source Selection panel the client
+     * offers as a modal picker (C6 "Seleciona Ruas"). Entries lacking a panel are skipped.
+     */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Map<String, Object>> bandPickers(CompiledAutoPanelSurface transaction) {
+        Map<String, Map<String, Object>> pickers = new LinkedHashMap<>();
+        if (transaction == null) {
+            return pickers;
+        }
+        Object declared = transaction.metadata().get("bandPickers");
+        if (!(declared instanceof Map<?, ?> map)) {
+            return pickers;
+        }
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (!(entry.getValue() instanceof Map<?, ?> spec)) {
+                continue;
+            }
+            Object panel = spec.get("panel");
+            if (panel == null || String.valueOf(panel).isBlank()) {
+                continue;
+            }
+            Map<String, Object> picker = new LinkedHashMap<>();
+            picker.put("panel", String.valueOf(panel).trim());
+            Object label = spec.get("label");
+            picker.put("label", label == null || String.valueOf(label).isBlank()
+                    ? "Selecionar" : String.valueOf(label));
+            Object columns = spec.get("columns");
+            if (columns instanceof List<?> cols) {
+                picker.put("columns", cols.stream().map(String::valueOf).toList());
+            }
+            pickers.put(String.valueOf(entry.getKey()), picker);
+        }
+        return pickers;
     }
 
     private static List<String> columnsFor(Map<String, List<String>> fieldsByConcept, String concept) {
