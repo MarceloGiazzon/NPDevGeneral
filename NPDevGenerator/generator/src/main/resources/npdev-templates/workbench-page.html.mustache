@@ -206,6 +206,26 @@
         barDiv.append(b);
       });
     }
+    // Procedure-over-aggregate actions (P6): invoke a declared procedure over the current draft and patch
+    // it in place (no persistence — the user reviews and commits explicitly). Only offered while editable.
+    function invokeAction(action) {
+      msg.className = "msg"; msg.textContent = (action.label || "Running") + "…";
+      fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate) + "/invoke/" + encodeURIComponent(action.procedure),
+        { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(store.toDraft()) })
+        .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, b: b }; }); })
+        .then(function (res) {
+          if (res.ok) { msg.className = "msg ok"; msg.textContent = (action.label || "Done") + " — review and Save."; store = createStore({ workbench: store.descriptor, title: store.title, aggregate: store.aggregate, data: res.b }); render(); }
+          else { msg.className = "msg err"; msg.textContent = "Failed: " + (res.b && res.b.message || "error"); }
+        })
+        .catch(function (e) { msg.className = "msg err"; msg.textContent = "Error: " + e; });
+    }
+    if (EDITABLE) {
+      (store.descriptor.actions || []).forEach(function (a) {
+        var b = el('<button class="btn" style="background:var(--np-accent);margin-left:6px">' + (a.label || a.procedure) + '</button>');
+        b.onclick = function () { invokeAction(a); };
+        barDiv.append(b);
+      });
+    }
     barDiv.append(msg); app.append(barDiv);
   }
 

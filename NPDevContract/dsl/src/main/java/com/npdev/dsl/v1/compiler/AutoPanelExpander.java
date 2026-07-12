@@ -122,6 +122,12 @@ final class AutoPanelExpander {
         if (lifecycle != null) {
             workbench.put("lifecycle", lifecycle);
         }
+        // Procedure-over-aggregate actions (ADR-0004 / P6): declared under transaction.metadata.actions,
+        // each becomes a workbench button that invokes the procedure over the current draft and patches it.
+        List<Map<String, Object>> actions = workbenchActions(autoPanel.transaction());
+        if (!actions.isEmpty()) {
+            workbench.put("actions", actions);
+        }
 
         Map<String, Object> metadata = surfaceMetadata(base, "transaction", rootConcept);
         metadata.put("dataVia", "aggregate");
@@ -148,6 +154,39 @@ final class AutoPanelExpander {
                 surfaceMetadata(base, "selection", rootConcept), null);
 
         return List.of(workbenchPanel, selectionPanel);
+    }
+
+    /**
+     * Read the workbench's procedure-invoke actions from {@code transaction.metadata.actions}: a list of
+     * {@code {label, procedure}} objects. Entries lacking a procedure name are skipped; the label defaults
+     * to the procedure name. This is the P6 seam before a first-class {@code actions} authoring slot.
+     */
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> workbenchActions(CompiledAutoPanelSurface transaction) {
+        List<Map<String, Object>> actions = new ArrayList<>();
+        if (transaction == null) {
+            return actions;
+        }
+        Object declared = transaction.metadata().get("actions");
+        if (!(declared instanceof List<?> list)) {
+            return actions;
+        }
+        for (Object entry : list) {
+            if (!(entry instanceof Map<?, ?> map)) {
+                continue;
+            }
+            Object procedure = map.get("procedure");
+            if (procedure == null || String.valueOf(procedure).isBlank()) {
+                continue;
+            }
+            Object label = map.get("label");
+            Map<String, Object> action = new LinkedHashMap<>();
+            action.put("label", label == null || String.valueOf(label).isBlank()
+                    ? String.valueOf(procedure) : String.valueOf(label));
+            action.put("procedure", String.valueOf(procedure).trim());
+            actions.add(action);
+        }
+        return actions;
     }
 
     private static Map<String, Object> sectionDescriptor(

@@ -62,7 +62,11 @@ class AggregateWorkbenchExpansionTest {
                       ] }
                   ] }
               ],
-              "autoPanels": [ { "aggregate": "Expedicao", "selection": { "filters": ["cliente"] } } ]
+              "autoPanels": [ { "aggregate": "Expedicao", "selection": { "filters": ["cliente"] },
+                "transaction": { "metadata": { "actions": [
+                  { "label": "Gerar Demanda", "procedure": "GerarDemanda" },
+                  { "procedure": "Recalcular" },
+                  { "label": "no-op" } ] } } } ]
             }
             """;
         CompiledModel model = compile(json);
@@ -102,6 +106,16 @@ class AggregateWorkbenchExpansionTest {
         assertEquals("Aberta", aberta.get("label"));
         assertEquals(Boolean.TRUE, aberta.get("editable"), "non-terminal state is editable");
         assertEquals(Boolean.FALSE, confirmada.get("editable"), "terminal state is read-only");
+
+        // Procedure-over-aggregate actions (P6): declared under transaction.metadata.actions; the entry
+        // without a procedure is dropped, and a missing label defaults to the procedure name.
+        List<Map<String, Object>> actions = (List<Map<String, Object>>) wb.get("actions");
+        assertNotNull(actions, "workbench descriptor should carry declared invoke actions");
+        assertEquals(2, actions.size(), "the label-only entry (no procedure) is skipped");
+        assertEquals("Gerar Demanda", actions.get(0).get("label"));
+        assertEquals("GerarDemanda", actions.get(0).get("procedure"));
+        assertEquals("Recalcular", actions.get(1).get("label"), "label defaults to the procedure name");
+        assertEquals("Recalcular", actions.get(1).get("procedure"));
 
         List<Map<String, Object>> sections = (List<Map<String, Object>>) wb.get("sections");
         assertEquals(1, sections.size(), "one first-level collection -> one section");

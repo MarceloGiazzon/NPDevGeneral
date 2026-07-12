@@ -53,6 +53,7 @@
     "GenericMountedCapabilityHandler",
     "PanelRuntime",
     "PermissionAwareUiMetadataService",
+    "ProcedureRunner",
     "PublicationChainReferenceResolver",
     "PublicationExecutorService",
     "PublicationRollbackExecutorService",

@@ -5,13 +5,9 @@ import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPanelDataSource;
 import com.npdev.dsl.v1.compiled.CompiledPanelFieldBinding;
-import com.npdev.dsl.v1.compiled.CompiledProcedure;
-import com.npdev.dsl.v1.compiled.CompiledProcedureStep;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.kernel.ExecutionContext;
-import com.npdev.kernel.CapabilityResult;
-import com.npdev.kernel.CapabilityErrorKind;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptGatewayTraceRecord;
 import com.npdev.kernel.concepts.ConceptListRequest;
@@ -20,11 +16,7 @@ import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptWriteRequest;
 import com.npdev.kernel.ports.CapabilityDispatcher;
 import com.npdev.kernel.ports.EventBus;
-import com.npdev.kernel.procedures.DefaultProcedureExecutor;
-import com.npdev.kernel.procedures.ProcedureDefinition;
 import com.npdev.kernel.procedures.ProcedureExecutionResult;
-import com.npdev.kernel.procedures.ProcedureStep;
-import com.npdev.kernel.procedures.ProcedureStepType;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -50,6 +42,7 @@ public class PanelRuntime {
     private final CapabilityDispatcher capabilityDispatcher;
     private final EventBus eventBus;
     private final AggregateRuntime aggregateRuntime;
+    private final ProcedureRunner procedureRunner;
 
     public PanelRuntime(
             RuntimeMetadataService runtimeMetadataService,
@@ -115,6 +108,7 @@ public class PanelRuntime {
         this.capabilityDispatcher = capabilityDispatcher;
         this.eventBus = eventBus;
         this.aggregateRuntime = aggregateRuntime;
+        this.procedureRunner = new ProcedureRunner(compiledModel, conceptGateway, capabilityDispatcher, eventBus);
     }
 
     public Map<String, Object> renderConceptPanel(String conceptName, ExecutionContext context) {
@@ -456,77 +450,7 @@ public class PanelRuntime {
             Map<String, Object> input,
             ExecutionContext context
     ) {
-        if (!hasText(procedureName)) {
-            throw new IllegalArgumentException("Panel action requires a procedure name.");
-        }
-        Map<String, ProcedureDefinition> procedures = buildProcedureDefinitions();
-        ProcedureDefinition definition = procedures.get(procedureName);
-        if (definition == null) {
-            throw new IllegalArgumentException("Procedure not found for panel action: " + procedureName);
-        }
-        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                requireConceptGateway(),
-                capabilityDispatcher == null ? PanelRuntime::capabilityUnavailable : capabilityDispatcher,
-                eventBus == null ? event -> { } : eventBus,
-                procedures
-        );
-        return executor.execute(definition, input, context);
-    }
-
-    private Map<String, ProcedureDefinition> buildProcedureDefinitions() {
-        if (compiledModel == null) {
-            return Map.of();
-        }
-        Map<String, ProcedureDefinition> definitions = new LinkedHashMap<>();
-        for (CompiledProcedure procedure : compiledModel.getProcedures()) {
-            definitions.put(procedure.name(), toProcedureDefinition(procedure));
-        }
-        return Map.copyOf(definitions);
-    }
-
-    private static ProcedureDefinition toProcedureDefinition(CompiledProcedure procedure) {
-        return new ProcedureDefinition(
-                procedure.name(),
-                procedure.steps().stream().map(PanelRuntime::toProcedureStep).toList()
-        );
-    }
-
-    private static ProcedureStep toProcedureStep(CompiledProcedureStep step) {
-        ProcedureStepType type = ProcedureStep.parseType(step.type());
-        String target = normalized(step.target());
-        String concept = normalized(step.concept());
-        return switch (type) {
-            case READ_CONCEPT -> ProcedureStep.readConcept(stepName(step), concept, refOf(step.id(), "id"), target);
-            case LIST_CONCEPTS -> ProcedureStep.listConcepts(stepName(step), concept, target);
-            case RUN_QUERY -> ProcedureStep.runQuery(stepName(step), normalized(step.query()), concept, target);
-            case SAVE_CONCEPT -> ProcedureStep.saveConcept(stepName(step), concept, refOf(step.id(), "id"), dataRef(step), target);
-            case DELETE_CONCEPT -> ProcedureStep.deleteConcept(stepName(step), concept, refOf(step.id(), "id"));
-            case CALL_CAPABILITY -> ProcedureStep.callCapability(
-                    stepName(step),
-                    normalized(step.capability()),
-                    "",
-                    "",
-                    normalized(step.operation()),
-                    step.args().values().stream().map(value -> refOf(value, String.valueOf(value))).toList(),
-                    target
-            );
-            case PUBLISH_EVENT -> ProcedureStep.publishEvent(stepName(step), normalized(step.event()), dataRef(step));
-            case CALL_PROCEDURE -> ProcedureStep.callProcedure(stepName(step), normalized(step.procedure()), dataRef(step), target);
-            case IF -> ProcedureStep.ifThenElse(
-                    stepName(step),
-                    refOf(step.condition(), "condition"),
-                    step.thenSteps().stream().map(PanelRuntime::toProcedureStep).toList(),
-                    step.elseSteps().stream().map(PanelRuntime::toProcedureStep).toList()
-            );
-            case FOR_EACH -> ProcedureStep.forEach(
-                    stepName(step),
-                    refOf(step.items(), "items"),
-                    normalized(step.as()) == null ? "item" : normalized(step.as()),
-                    step.steps().stream().map(PanelRuntime::toProcedureStep).toList()
-            );
-            case MAP_VALUE -> ProcedureStep.mapValue(stepName(step), refOf(step.value(), "input"), target);
-            case RETURN -> ProcedureStep.returnValue(stepName(step), refOf(step.value(), target == null ? "input" : target));
-        };
+        return procedureRunner.execute(procedureName, input, context);
     }
 
     // Serve an aggregate Workbench: the metadata.workbench descriptor (header/sections/bands) plus,
@@ -825,45 +749,6 @@ public class PanelRuntime {
         out.put("id", record.id());
         out.put("data", record.data());
         return out;
-    }
-
-    private static CapabilityResult capabilityUnavailable(com.npdev.kernel.CapabilityCall call, Map<String, Object> state) {
-        return CapabilityResult.failure(
-                "CAPABILITY_UNAVAILABLE",
-                "Panel procedure execution has no capability dispatcher for " + (call == null ? "" : call.capability()),
-                CapabilityErrorKind.PERMANENT,
-                Map.of()
-        );
-    }
-
-    private static String dataRef(CompiledProcedureStep step) {
-        if (step.data() != null && !step.data().isEmpty()) {
-            Object input = step.data().get("input");
-            if (input != null) {
-                return refOf(input, "input");
-            }
-            Object payload = step.data().get("payload");
-            if (payload != null) {
-                return refOf(payload, "input");
-            }
-        }
-        return "input";
-    }
-
-    private static String refOf(Object value, String fallback) {
-        if (value == null) {
-            return fallback;
-        }
-        String text = String.valueOf(value).trim();
-        if (text.isBlank()) {
-            return fallback;
-        }
-        return text.startsWith("$") ? text.substring(1) : text;
-    }
-
-    private static String stepName(CompiledProcedureStep step) {
-        String name = normalized(step.name());
-        return name == null ? "panel-procedure-step" : name;
     }
 
     private static String firstNonBlank(String first, String second) {

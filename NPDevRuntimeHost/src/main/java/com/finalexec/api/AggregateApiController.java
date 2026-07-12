@@ -71,6 +71,27 @@ public class AggregateApiController {
         }
     }
 
+    /**
+     * Invoke a declared procedure over an in-flight draft and return the patched draft (no persistence).
+     * {@code POST /api/runtime/aggregate/{name}/invoke/{procedure}} with the draft tree as the body.
+     * See ADR-0004 / P6 — procedure-over-aggregate (e.g. "Gerar Demanda"/recompute).
+     */
+    @PostMapping("/{aggregateName}/invoke/{procedureName}")
+    public Map<String, Object> invoke(
+            HttpServletRequest request,
+            @PathVariable String aggregateName,
+            @PathVariable String procedureName,
+            @RequestBody(required = false) Map<String, Object> draft
+    ) {
+        try {
+            return requireAggregateRuntime().invoke(aggregateName, procedureName, draft, currentContext(request));
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
+        } catch (IllegalStateException ex) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+        }
+    }
+
     private ExecutionContext currentContext(HttpServletRequest request) {
         return runtimeContextService.currentContext(request);
     }

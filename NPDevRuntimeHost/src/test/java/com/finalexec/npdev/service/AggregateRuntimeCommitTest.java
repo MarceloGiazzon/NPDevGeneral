@@ -47,6 +47,11 @@ class AggregateRuntimeCommitTest {
                     { "name": "origens", "concept": "MovtoOrigem", "childField": "itemSeq", "ownership": "owned" }
                   ] }
               ] }
+          ],
+          "procedures": [
+            { "name": "GerarDemanda", "steps": [
+              { "type": "assign", "value": "$cliente", "target": "clienteEcho" }
+            ] }
           ]
         }
         """;
@@ -133,5 +138,33 @@ class AggregateRuntimeCommitTest {
         assertEquals("307", store.read(new ConceptReadRequest("ExpedicaoItem", "I1", null), ctx).get().data().get("produtoId"));
         List<Map<String, Object>> itens = (List<Map<String, Object>>) back2.get("itens");
         assertEquals(2, itens.size());
+    }
+
+    /** invoke() runs a declared procedure over the draft and returns the patched draft without persisting (P6 slice 2). */
+    @Test
+    void invokeRunsProcedureOverDraftAndReturnsPatchedDraftWithoutPersisting() throws Exception {
+        Store store = new Store();
+        CompiledModel model = compiledModel();
+        AggregateRuntime runtime = new AggregateRuntime(model, store, new ProcedureRunner(model, store, null, null));
+        ExecutionContext ctx = ExecutionContext.anonymous();
+
+        Map<String, Object> draft = new java.util.LinkedHashMap<>(Map.of(
+                "id", "E9", "cliente", "Alimentos",
+                "itens", List.of(new java.util.LinkedHashMap<>(Map.of("id", "I9", "produtoId", "306")))));
+
+        Map<String, Object> patched = runtime.invoke("Expedicao", "GerarDemanda", draft, ctx);
+
+        // The procedure patched the draft (clienteEcho = cliente) and the original tree survives.
+        assertEquals("Alimentos", patched.get("clienteEcho"), "procedure output patched into the draft");
+        assertEquals("Alimentos", patched.get("cliente"));
+        assertEquals("E9", patched.get("id"));
+        assertNull(patched.get("input"), "internal input echo is stripped from the returned draft");
+        // invoke must NOT persist — the store is untouched until the user commits.
+        assertEquals(0, store.count("Expedicao"), "invoke does not persist the root");
+        assertEquals(0, store.count("ExpedicaoItem"), "invoke does not persist children");
+
+        // Unknown procedure / aggregate are rejected distinctly.
+        assertThrows(IllegalArgumentException.class, () -> runtime.invoke("Expedicao", "Nope", draft, ctx));
+        assertThrows(IllegalArgumentException.class, () -> runtime.invoke("Nope", "GerarDemanda", draft, ctx));
     }
 }

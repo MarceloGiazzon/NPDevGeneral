@@ -9,6 +9,7 @@ import com.npdev.kernel.concepts.ConceptListRequest;
 import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptWriteRequest;
+import com.npdev.kernel.procedures.ProcedureExecutionResult;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -33,21 +34,29 @@ public class AggregateRuntime {
 
     private final CompiledModel compiledModel;
     private final ConceptGateway conceptGateway;
+    private final ProcedureRunner procedureRunner;
 
     @Autowired
     public AggregateRuntime(
             ObjectProvider<CompiledModel> compiledModel,
-            ObjectProvider<ConceptGateway> conceptGateway
+            ObjectProvider<ConceptGateway> conceptGateway,
+            ObjectProvider<ProcedureRunner> procedureRunner
     ) {
         this(
                 compiledModel == null ? null : compiledModel.getIfAvailable(),
-                conceptGateway == null ? null : conceptGateway.getIfAvailable()
+                conceptGateway == null ? null : conceptGateway.getIfAvailable(),
+                procedureRunner == null ? null : procedureRunner.getIfAvailable()
         );
     }
 
     public AggregateRuntime(CompiledModel compiledModel, ConceptGateway conceptGateway) {
+        this(compiledModel, conceptGateway, null);
+    }
+
+    public AggregateRuntime(CompiledModel compiledModel, ConceptGateway conceptGateway, ProcedureRunner procedureRunner) {
         this.compiledModel = compiledModel;
         this.conceptGateway = conceptGateway;
+        this.procedureRunner = procedureRunner;
     }
 
     /**
@@ -102,6 +111,38 @@ public class AggregateRuntime {
 
         commitCollections(aggregate.collections(), rootDraft, rootId, gateway, ctx);
         return load(aggregate.name(), rootId, ctx);
+    }
+
+    /**
+     * Invoke a declared procedure over an in-flight aggregate draft and return the patched draft
+     * (procedure-over-aggregate, e.g. "Gerar Demanda"/recompute). The draft is passed as the procedure
+     * input; the procedure's resulting state — its top-level fields plus any step targets, minus the
+     * internal {@code input} echo — is returned as the new draft. This does NOT persist: the client
+     * re-renders the returned draft and the user commits (or discards) it explicitly.
+     *
+     * @throws IllegalArgumentException if the aggregate or procedure is unknown
+     * @throws IllegalStateException    if no ProcedureRunner is wired or the procedure fails
+     */
+    public Map<String, Object> invoke(
+            String aggregateName, String procedureName, Map<String, Object> draft, ExecutionContext context) {
+        findAggregate(aggregateName); // validate the aggregate exists before touching the procedure
+        ExecutionContext ctx = context == null ? ExecutionContext.anonymous() : context;
+        if (procedureRunner == null) {
+            throw new IllegalStateException("No ProcedureRunner is available to invoke procedures over aggregates.");
+        }
+        if (!procedureRunner.hasProcedure(procedureName)) {
+            throw new IllegalArgumentException("Procedure not found: " + procedureName);
+        }
+        ProcedureExecutionResult result =
+                procedureRunner.execute(procedureName, draft == null ? Map.of() : draft, ctx);
+        if (!result.ok()) {
+            throw new IllegalStateException(
+                    "Procedure " + procedureName + " failed: "
+                            + result.failureCode() + " " + result.failureMessage());
+        }
+        Map<String, Object> patched = new LinkedHashMap<>(result.state());
+        patched.remove("input"); // drop the executor's echo of the initial input
+        return patched;
     }
 
     private void commitCollections(
