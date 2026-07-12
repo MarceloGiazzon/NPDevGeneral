@@ -24,6 +24,7 @@ import com.npdev.dsl.v1.ast.AutoPanelComputedAst;
 import com.npdev.dsl.v1.ast.AutoPanelSurfaceAst;
 import com.npdev.dsl.v1.ast.SelectorAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
+import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
 import com.npdev.dsl.v1.compiled.FieldWidgetDefaults;
 import com.npdev.dsl.v1.compiled.GuidePageDefaults;
@@ -675,6 +676,12 @@ public final class SemanticValidator {
         for (AutoPanelComputedAst computed : surfaceAst.computed()) {
             if (!cols.add(normalize(computed.col()))) {
                 errors.add(panelLabel + " " + surface + ": duplicate computed column: " + computed.col());
+            }
+            try {
+                ComputedExpression.validate(computed.expr());
+            } catch (ComputedExpression.ExpressionException ex) {
+                errors.add(panelLabel + " " + surface + " computed column " + computed.col()
+                        + ": invalid expression: " + ex.getMessage());
             }
         }
     }
