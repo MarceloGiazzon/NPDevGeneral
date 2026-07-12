@@ -228,8 +228,17 @@ Workbench. **Lifts the one-level nesting cap at
 - **Acceptance:** C9 — Estágio transitions gate editability & actions across all levels.
 - **Risk:** medium.
 
-### P6 — Procedure-over-aggregate + commit boundary (Tier B) + slots
+### P6 — Procedure-over-aggregate + commit boundary (Tier B) + slots ✅ DONE (verified live 2026-07-12)
 **Goal:** C10, C11.
+**Result:** Slice 1 (commit 472cf38) — lifecycle transition actions (the "Confirmar" half of C10):
+a button per transition from the current state sets the status field + commits; the persistence
+adapter enforces the legal transition. Slice 2 (commit 952f39e) — procedure-over-aggregate invoke:
+extracted a shared `ProcedureRunner` @Service (breaking the AggregateRuntime↔PanelRuntime cycle),
+added `AggregateRuntime.invoke` + `POST /api/runtime/aggregate/{name}/invoke/{proc}` returning the
+patched draft WITHOUT persisting, and a workbench invoke-button per `transaction.metadata.actions`
+entry (review-then-Save). Verified live on H2: invoke patches the draft (404 until commit), commit
+persists, unknown procedure 400s. App-side bespoke procedures (procGerarDemanda etc.) are authoring,
+not platform. C11 (commit boundary + cascade) landed in P4's AggregateRuntime.commit reconcile.
 - **Schema:** action `binding: procedure`; `transaction.recompute.procedure`;
   `procedureSlot`/`validationSlot`.
 - **Kernel** (`AggregateController`): `invoke(procedure, draft) → tree` (procedures may loop —
