@@ -951,7 +951,6 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                         ":adapters:notification-inproc:jar",
                         ":adapters:persistence-inproc:jar",
                         ":adapters:persistence-postgres:jar",
-                        ":adapters:request-context-default:jar",
                         ":adapters:resume-bootstrap-spring:jar",
                         ":adapters:runtime-validation:jar",
                         ":adapters:schema-validator-default:jar",
