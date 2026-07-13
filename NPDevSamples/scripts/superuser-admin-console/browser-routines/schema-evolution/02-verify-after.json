@@ -14,11 +14,11 @@
     { "action": "assertTextContains", "selector": "#concept-Project", "text": "EVO-PROJECT", "label": "(a) NO DATA LOSS -- the row created before the schema evolved is still here" },
 
     { "action": "click", "selector": "#concept-Project tr:has-text(\"EVO-PROJECT\") button:has-text(\"Edit\")", "label": "Open the edit form for the pre-evolution row" },
-    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "visible" },
-    { "action": "assertVisible", "selector": "#modalRoot [name=\"internalCode\"]", "label": "The newly-added column renders on this OLD record's edit form (manifest/UI picked up the migration)" },
-    { "action": "fill", "selector": "#modalRoot [name=\"internalCode\"]", "valueFromVariable": "internalCodeValue", "label": "(c) NEW COLUMN IS USABLE -- write through it" },
-    { "action": "click", "selector": "#modalRoot button:has-text(\"Save\")" },
-    { "action": "waitForSelector", "selector": "#modalRoot form", "state": "detached", "label": "Modal closes only on a successful update" },
+    { "action": "waitForSelector", "selector": "#concept-Project form", "state": "visible" },
+    { "action": "assertVisible", "selector": "#concept-Project [name=\"internalCode\"]", "label": "The newly-added column renders on this OLD record's edit form (manifest/UI picked up the migration)" },
+    { "action": "fill", "selector": "#concept-Project [name=\"internalCode\"]", "valueFromVariable": "internalCodeValue", "label": "(c) NEW COLUMN IS USABLE -- write through it" },
+    { "action": "click", "selector": "#concept-Project button:has-text(\"Save\")" },
+    { "action": "waitForSelector", "selector": "#concept-Project form", "state": "detached", "label": "Modal closes only on a successful update" },
 
     { "action": "reload", "label": "Force a fresh fetch from the server (not client cache) to prove the value really persisted" },
     { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-Project\"]", "state": "visible" },
