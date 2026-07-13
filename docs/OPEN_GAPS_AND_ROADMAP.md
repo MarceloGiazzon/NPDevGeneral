@@ -66,8 +66,8 @@
 | HYG-1 | Uncommitted working-tree + unignored dirs | Hygiene | DONE | P3 | S |
 | HYG-2 | Uncommitted completed features at risk | Hygiene | DONE (stale memory) | P2 | M |
 
-**Design boundaries (not scheduled — reference only):** `ARCH-7`, `ARCH-loop`, `ARCH-upload`,
-`ARCH-compound-unique`, `ARCH-6` (see §6).
+**Design boundaries:** all six (`ARCH-6` / `ARCH-compound-unique` / `ARCH-13` / `ARCH-7` /
+`ARCH-upload` / `ARCH-loop`) lifted 2026-07-13 (see §7); §6 is now empty.
 
 ---
 
@@ -487,18 +487,14 @@
 
 ## 6. Accepted design boundaries (reference — not scheduled)
 
-These are documented constraints. Design around them; do not file as bugs. **Boundaries marked
-"✅ re-verified 2026-07-13" were re-checked against committed code during the roadmap-implementation
-audit; the two struck-through entries were found stale and corrected below.**
+**Empty as of 2026-07-13.** All six of this section's original entries (`ARCH-6`, `ARCH-7`,
+`ARCH-loop`, `ARCH-upload`, `ARCH-compound-unique`, `ARCH-13`) have been lifted into supported
+platform features via [BOUNDARY_LIFT_ROADMAP.md](BOUNDARY_LIFT_ROADMAP.md); see §7 for what each one
+became. `ARCH-loop` (Flows had no loop step; Procedures already did) was the last of the six, lifted
+by LIFT-LOOP-P1–P5.
 
 | ID | Boundary | Workaround |
 |---|---|---|
-| ARCH-7 | Procedure cannot feed live filtered DB data into a `plugin:java-source` capability (`listConcepts`/`runQuery` ignore `where`, return all rows; `List<ConceptRecord>` not importable) | Keep capabilities pure functions over caller-supplied data. Multi-arg `capabilityCall`s work (matched by name + exact param count). *(Not re-verified 2026-07-13 — trust prior evidence.)* |
-| **ARCH-loop** *(CORRECTED 2026-07-13)* | **No loop step in FLOWS only.** ~~No loop step type in Flows or Procedures~~ — **Procedures DO loop.** The `procedureStep` `type` enum declares `"loop"` and `"forEach"` (both alias to `ProcedureStepType.FOR_EACH`, [`ProcedureStep.java:209`](../NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/ProcedureStep.java#L209)) and are fully executed by [`DefaultProcedureExecutor.forEach`](../NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java#L154) with a `maxLoopIterations` safety cap. Flow step enum has `branch`/`if` but no iteration (✅ re-verified). | Iterate inside a **Procedure** (`forEach`/`loop` step). Only genuine Flow-level bulk logic needs a hand-authored `web/` CRUD-REST loop. |
-| ARCH-upload | No server-side multipart / file-upload primitive (✅ re-verified 2026-07-13 — 0 `multipart`/`MultipartFile` refs in runtime-host main) | Browser `FileReader` + client-side parse, then CRUD writes. |
-| ARCH-compound-unique | Compound (multi-field) `unique` invariants rejected by generator (✅ re-verified 2026-07-13 — `SemanticValidator.java:363` still throws "compound unique … not supported yet") | A Flow (not Procedure): caller supplies existing rows, `capabilityCall` compares, `branch` with `==` returns-or-creates. `createConcept` input must ref only the concept's own fields (`$input.dados`). |
-| ARCH-6 | Invariant `expression` grammar (`CelInvariantEngine`) is hand-rolled: top-level `\|\|`/`&&` over fixed atoms, no parens, no unary `!`, no arithmetic | Write rules in pure DNF via De Morgan's law. For arithmetic value expressions, reuse `com.npdev.dsl.v1.expr.ComputedExpression` (arithmetic/comparison/logical/parens/field-refs). *(Not re-verified 2026-07-13 — trust prior evidence.)* |
-| **ARCH-13** *(NARROWED 2026-07-13)* | Boundary now applies **only to the standalone declared `panel{}` (Tier 2)** — it still has no generic create-row/delete-row (only per-row update). The **aggregate Workbench** surface (a *different* surface) **now supports `rowOps: [add, delete]`** — 6 references in [`workbench-page.html.mustache`](../NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache), landed in Aggregate Workbench P4. So the WMS multi-level add/remove-child need is met; only the plain declared Panel remains gapped. | For a standalone declared Panel: hand-authored `web/*.html` (Tier 1) against CRUD REST. For multi-level child add/delete: use an **aggregate-bound AutoPanel / Workbench** (`rowOps`). |
 
 ---
 
@@ -517,6 +513,12 @@ All in the working tree at capture; confirm committed. Full root-cause narrative
 | #10 | Panel dataSource `where` was dead code; now post-filters `field ==`/`!=`. `orderBy` also now applied (ARCH-10b, fixed 2026-07-12). |
 | #11 | date/datetime fields failed under real Postgres (H2 masked); now model-driven via `CompiledField.getDslType()` |
 | #12 | `Build-NpdevApp.ps1` rewrote pack `$ref` to absolute path (resolver rejected); rewrite removed |
+| ARCH-7 *(lifted 2026-07-13, LIFT-QUERY-P1–P4)* | A procedure couldn't feed live *filtered* DB data into a `plugin:java-source` capability (`listConcepts`/`runQuery` ignored `where`, returning all rows; results were assumed "not importable"). Now: `runQuery` honors the named query's `where`/`orderBy`/`limit` via a new shared kernel `ConceptQueryFilterSupport` (also collapses a duplicate copy that used to live only in `PanelRuntime`); research proved the capability dispatcher already passes a `List<ConceptRecord>` through to a capability arg with no new code needed (name+arity matching, reflection, generic erasure) — the missing piece was proof, not code, so a new integration test exercises `runQuery(where) → callCapability(rows)` end-to-end against a capability with no DB handle of its own. `callCapability` procedure steps are now validated (capability/operation exist, arity matches) where previously **no validation existed at all**; the editor's procedure step UI gained capability/operation/args fields (also previously entirely absent) plus a "query → capability" preset button. |
+| ARCH-13 *(lifted 2026-07-13, LIFT-ROWOPS-P1–P4)* | The standalone declared `panel{}` (Tier 2) had no generic create-row/delete-row (only per-row update). Now: a `panelDataSource` can declare `rowOps: [add, delete]` (+ optional `addFormFields`), validated by `SemanticValidator`; `PanelRuntime.createRow`/`deleteRow` write through `ConceptGateway` with parent-FK injection for nested dataSources and tenant enforcement via the same `DefaultConceptGateway` fallback every other panel write already used; the generated declared-panel UI renders a header add-row form + per-row delete button for any dataSource with `rowOps` set (both the declared-fieldBindings and generic-JSON render paths); the editor's panel designer authors the whole `dataSources[]` array (previously not exposed at all, not just missing rowOps). Corrects this roadmap's original premise that the Workbench had a portable `rowOps` shape to reuse — it didn't; see LIFT-ROWOPS's §4 correction note in [BOUNDARY_LIFT_ROADMAP.md](BOUNDARY_LIFT_ROADMAP.md). |
+| ARCH-compound-unique *(lifted 2026-07-13, LIFT-UNIQUE-P1–P3)* | Compound (multi-field) `unique` invariants were rejected by the generator (`SemanticValidator.java:363` threw "compound unique … not supported yet"). Now: schema/DSL accept an ordered `fields[]` on a `unique` invariant (`CompiledInvariant` carries the list); `SchemaRealizationEmitter` emits a tenant-scoped composite `UNIQUE` constraint; `CelInvariantEngine` evaluates a compound rule at runtime with a pluggable `CompoundUniqueValueLookup` (InMemory pre-check via the generated service's `ConceptStore` scan; JDBC enforcement via the DB constraint + the already constraint-name-agnostic `mapDataIntegrityViolation`); the invariant editor and the 409 response body already supported this generically once the server-side gate was lifted. |
+| ARCH-6 *(lifted 2026-07-13, LIFT-EXPR-P1–P3)* | Invariant `expression` grammar (`CelInvariantEngine`) was hand-rolled: top-level `\|\|`/`&&` over fixed atoms, no parens, no unary `!`, no arithmetic. `ComputedExpression` (`com.npdev.dsl.v1.expr`) is now boolean-complete (parens/`!`/`null`/dotted paths/`evaluateBoolean`) and `CelInvariantEngine.evaluateExpression` tries it first for every invariant, falling back to the legacy atom matcher only for CEL-specific syntax it can't parse (`.matches()`, `.uniqueBy()`, `.all()`/`.exists()` quantifiers, `conflicts()`/`overlapsProvider()`, `scope.exists()`, `[*]` wildcards) — a strict superset, not a replacement, since those forms have no ComputedExpression equivalent. `SemanticValidator` now statically checks boolean-shape + unknown-field references for the ComputedExpression-parseable subset at `validateModel` time. |
+| ARCH-upload *(lifted 2026-07-13, LIFT-UPLOAD-P1–P5; P6 WMS wiring deferred)* | No server-side multipart / file-upload primitive existed (0 `multipart`/`MultipartFile` refs). Now: kernel `FileStoreContract` port + `file-store-inproc` filesystem adapter (tenant-prefixed, path-traversal-safe, streaming — the `file-store-objectstore` S3 half deferred, needs external SDK/infra this session couldn't provision); schema/DSL `file` field type (`contentTypes`/`maxSizeBytes`/`multiple`, maps to a JSON handle column, forbids `unique`/`reference`); `FileUploadController` (`POST/GET/DELETE /api/files`) validates type/size and enforces tenant isolation via the handle key's tenant prefix; generated forms get a real upload/download widget; the editor authors `file` fields. Verified genuinely live: `TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest` generates, compiles, and boots a real FinalApp with all of this wired in (caught and fixed a missing adapter-jar entry in the test's own build list before it passed). |
+| ARCH-loop *(lifted 2026-07-13, LIFT-LOOP-P1–P5)* | Flows had `branch`/`if` but no iteration (Procedures already looped via `forEach`/`loop` → `FOR_EACH`). Now: a `forEach` flow step (`collection`/`itemKey`/nested `steps`/`maxLoopIterations`) compiles, validates (itemKey can't shadow reserved flow state or its own collection root or an enclosing loop's itemKey; nested `await` rejected — durable resume of an in-flight await *inside* an iteration is deferred), and executes durably: `KernelRunner.executeForEachStep` treats the whole loop as one atomic top-level step position, checkpointing iteration progress into `state` via the existing `StepProgressRecorder` without advancing the outer step index, so a crash mid-loop resumes at the right iteration with no duplicated side effects — proven by a genuine crash simulation (freezing the executing thread forever right after a durable checkpoint write, then resuming on a brand-new `KernelRunner` sharing only the store). `CompiledModelFlowDefinitionProvider` projects it for generated apps (confirmed live: a `forEach` flow boots inside a real packaged FinalApp); the flow builder gained the first nested step-list editor in `ui-react` (`branch`'s `then` had never been rendered either) for authoring the loop body inline. |
 
 ---
 
@@ -532,3 +534,40 @@ All in the working tree at capture; confirm committed. Full root-cause narrative
   gapped). ARCH-upload / ARCH-compound-unique re-verified as still-valid boundaries. FlywayEmitter
   confirmed fully deleted (BOND-B2 moot). Corresponding correction mirrored to the
   `npdev-platform-gaps` memory.
+- **2026-07-13** — LIFT-EXPR-P1–P3 (see [BOUNDARY_LIFT_ROADMAP.md](BOUNDARY_LIFT_ROADMAP.md)) lifted
+  **ARCH-6**, moved §6 → §7. `CelInvariantEngine` now delegates to a boolean-complete
+  `ComputedExpression` for every invariant expression the unified grammar can parse (parens/`!`/
+  arithmetic/dotted paths), falling back to the legacy atom matcher only for its CEL-specific
+  extensions (regex/quantifiers/`conflicts()`/`scope.exists()`) that have no ComputedExpression
+  equivalent — a superset, not the "delete the matcher" replacement the roadmap originally assumed.
+- **2026-07-13** — LIFT-UNIQUE-P1–P5 lifted **ARCH-compound-unique**; LIFT-ROWOPS-P1–P4 lifted
+  **ARCH-13**, both moved §6 → §7. LIFT-ROWOPS also corrected a false premise: the Workbench has no
+  portable `rowOps` shape (grep found zero references anywhere in compiled types/schema/templates
+  before this work); its add/delete-row is unconditional client JS + a full-tree diff/reconcile
+  commit, not discrete row operations. `rowOps` on a declared Panel dataSource was designed fresh,
+  not ported.
+- **2026-07-13** — LIFT-QUERY-P1–P4 lifted **ARCH-7**, moved §6 → §7. Confirmed by research (not
+  assumption) that the capability dispatcher already passes query results through to a capability
+  arg with zero new code — the real gaps were `runQuery` ignoring `where` (fixed via a new shared
+  `ConceptQueryFilterSupport`, also deduping `PanelRuntime`'s private copy of the same logic),
+  missing end-to-end test proof, and `callCapability` procedure steps having no validation and no
+  editor UI at all (not just missing arity checks / a missing template).
+- **2026-07-13** — LIFT-UPLOAD-P1–P5 lifted **ARCH-upload**, moved §6 → §7 (P6 WMS wiring deferred,
+  app-side model out of this session's reach). New `file-store-inproc` filesystem adapter (the
+  `file-store-objectstore` S3 half deliberately deferred — unverifiable without external
+  infrastructure); `file` field type; `FileUploadController` multipart endpoints; generated-form and
+  editor UI. Caught a real regression via `TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest`
+  (a test that generates+compiles+boots a real FinalApp): the new adapter jar wasn't in that test's
+  own hardcoded build list, so the generated app failed to compile until fixed — genuine live
+  verification for RuntimeHost changes, which otherwise have no standalone build in this repo.
+- **2026-07-13** — LIFT-LOOP-P1–P5 lifted **ARCH-loop**, moved §6 → §7 — the sixth and final boundary,
+  closing [BOUNDARY_LIFT_ROADMAP.md](BOUNDARY_LIFT_ROADMAP.md)'s 27-phase objective in full (with the
+  two documented LIFT-UPLOAD scope-downs standing as additive follow-ups, not blockers). `forEach`
+  flow steps now compile/validate/execute durably: `KernelRunner.executeForEachStep` checkpoints
+  iteration progress into flow state without advancing the outer step index, proven by a genuine
+  crash simulation (freeze the executing thread forever right after a durable checkpoint commit, then
+  resume on a brand-new `KernelRunner` sharing only the store — not merely a thrown-and-caught
+  exception, which the engine already treats as a terminal failure, not a crash). Also fixed, during
+  P1, a real latent bug in `ModelResolver.cloneStep()` (used by every flow's specialization/hook-merge
+  resolution) that was silently dropping the new loop fields via a stale constructor call — caught by
+  a genuine round-trip test, not a code-review guess. §6 is now empty.
