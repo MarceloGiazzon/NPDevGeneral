@@ -259,10 +259,12 @@ public class NpdevPluginConfig {
     }
 
     @Bean
-    public RuntimePluginRealizationProvider persistenceInMemoryRuntimePluginRealizationProvider() {
+    public RuntimePluginRealizationProvider persistenceInMemoryRuntimePluginRealizationProvider(
+            CompiledModel compiledModel
+    ) {
         return namedRuntimePluginRealizationProvider(
                 "persistenceInMemoryCapabilityAdapter",
-                InMemoryPersistenceCapabilityAdapter::new
+                () -> new InMemoryPersistenceCapabilityAdapter(compiledModel)
         );
     }
 
@@ -277,7 +279,7 @@ public class NpdevPluginConfig {
                 () -> {
                     DataSource dataSource = dataSourceProvider.getIfAvailable();
                     if ("in-memory".equalsIgnoreCase(storageMode)) {
-                        return new InMemoryPersistenceCapabilityAdapter();
+                        return new InMemoryPersistenceCapabilityAdapter(compiledModel);
                     }
                     if (dataSource == null) {
                         throw new IllegalStateException("DataSource is required for postgres persistence adapter");

@@ -69,6 +69,7 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
     public Object save(Object concept, Object entity) {
         String table = tableName(concept);
         Map<String, Object> runtimeRecord = mutableRecord(entity);
+        applyFieldDefaults(concept, runtimeRecord);
         String conceptIdField = inferredRuntimeIdField(concept, table);
 
         Object id = runtimeRecord.get("id");
@@ -210,6 +211,28 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
             }
         }
         return out;
+    }
+
+    // Flow-compiled createConcept/updateConcept steps dispatch straight to save() (see the
+    // constructor note above), bypassing ConceptGatewaySemanticPolicy.applyDefaultsAndDerivedValues
+    // -- the pass generic CRUD create goes through. Without this, a flow create that omits a field
+    // with a declared default persisted it as null/missing instead of the default (ARCH-8b).
+    // Scoped to literal defaultValue only, matching the CRUD path's simplest/most common case --
+    // defaultExpression (computed from other fields) is not evaluated here.
+    private void applyFieldDefaults(Object concept, Map<String, Object> runtimeRecord) {
+        CompiledConcept compiledConcept = findCompiledConcept(concept);
+        if (compiledConcept == null) {
+            return;
+        }
+        for (CompiledField field : compiledConcept.getFields()) {
+            if (field.getSchema() == null || field.getSchema().getDefaultValue() == null) {
+                continue;
+            }
+            Object existing = runtimeRecord.get(field.getName());
+            if (existing == null || (existing instanceof String text && text.isBlank())) {
+                runtimeRecord.put(field.getName(), field.getSchema().getDefaultValue());
+            }
+        }
     }
 
     private CompiledConcept findCompiledConcept(Object concept) {

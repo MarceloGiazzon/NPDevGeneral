@@ -1,5 +1,8 @@
 package com.npdev.adapters.persistence.inproc;
 
+import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.ports.PersistenceCapabilityContract;
 
 import java.util.ArrayList;
@@ -16,6 +19,20 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class InMemoryPersistenceCapabilityAdapter implements PersistenceCapabilityContract {
     private final Map<String, Map<Object, Map<String, Object>>> storeByConcept = new ConcurrentHashMap<>();
+    private final CompiledModel compiledModel;
+
+    public InMemoryPersistenceCapabilityAdapter() {
+        this(null);
+    }
+
+    // See PostgresPersistenceCapabilityAdapter's constructor note: flow-compiled createConcept/
+    // updateConcept steps dispatch straight to save(), bypassing the ConceptGatewaySemanticPolicy
+    // defaults pass generic CRUD create goes through. Without compiledModel, a flow create under
+    // InMemory storage that omits a field with a declared default persisted it as null/missing
+    // (ARCH-8b).
+    public InMemoryPersistenceCapabilityAdapter(CompiledModel compiledModel) {
+        this.compiledModel = compiledModel;
+    }
 
     @Override
     public Object save(Object entity) {
@@ -25,6 +42,7 @@ public final class InMemoryPersistenceCapabilityAdapter implements PersistenceCa
     public Object save(Object concept, Object entity) {
         String conceptKey = normalizeConcept(concept);
         Map<String, Object> record = mutableRecord(entity);
+        applyFieldDefaults(concept, record);
         String conceptIdField = inferredRuntimeIdField(concept);
 
         Object id = record.get("id");
@@ -109,6 +127,34 @@ public final class InMemoryPersistenceCapabilityAdapter implements PersistenceCa
     public Object unique(Object concept, Object field, Object value) {
         boolean exists = (Boolean) exists(concept, field, value);
         return !exists;
+    }
+
+    // Scoped to literal defaultValue only, matching PostgresPersistenceCapabilityAdapter's pass --
+    // defaultExpression (computed from other fields) is not evaluated here.
+    private void applyFieldDefaults(Object concept, Map<String, Object> record) {
+        if (compiledModel == null) {
+            return;
+        }
+        String name = normalizeConcept(concept);
+        CompiledConcept compiledConcept = null;
+        for (CompiledConcept candidate : compiledModel.getConcepts()) {
+            if (candidate.getName().equalsIgnoreCase(name)) {
+                compiledConcept = candidate;
+                break;
+            }
+        }
+        if (compiledConcept == null) {
+            return;
+        }
+        for (CompiledField field : compiledConcept.getFields()) {
+            if (field.getSchema() == null || field.getSchema().getDefaultValue() == null) {
+                continue;
+            }
+            Object existing = record.get(field.getName());
+            if (existing == null || (existing instanceof String text && text.isBlank())) {
+                record.put(field.getName(), field.getSchema().getDefaultValue());
+            }
+        }
     }
 
     private static String normalizeConcept(Object concept) {
