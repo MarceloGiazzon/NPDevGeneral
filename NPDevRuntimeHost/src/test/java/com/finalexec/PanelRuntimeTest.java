@@ -12,6 +12,7 @@ import com.npdev.dsl.v1.compiled.CompiledPanelDataSource;
 import com.npdev.dsl.v1.compiled.CompiledPanelLayout;
 import com.npdev.dsl.v1.compiled.CompiledProcedure;
 import com.npdev.dsl.v1.compiled.CompiledProcedureStep;
+import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGatewayOperation;
 import com.npdev.kernel.concepts.ConceptGatewaySemanticPolicy;
@@ -230,6 +231,119 @@ class PanelRuntimeTest {
         List<ConceptGatewayTraceRecord> gatewayTrace = (List<ConceptGatewayTraceRecord>) loaded.get("gatewayTrace");
         long listCalls = gatewayTrace.stream().filter(record -> record.operation() == ConceptGatewayOperation.LIST).count();
         assertEquals(3, listCalls, "1 parent list + 1 filtered child list per parent row (N+1 for 2 parents)");
+    }
+
+    @Test
+    void loadPanelAppliesDeclaredOrderByDescendingNumericField() {
+        DefaultConceptGateway gateway = new DefaultConceptGateway(
+                new InMemoryConceptStore(),
+                PermissionEvaluator.allowAll(),
+                TenantIsolationPolicy.STRICT_EQUALS,
+                AuditLogStore.noop(),
+                ConceptGatewaySemanticPolicy.noop(),
+                new CollectingTraceSink()
+        );
+        ExecutionContext context = ExecutionContext.of("dev", "operator").withRoles(Set.of("OPERATOR"));
+        gateway.save(new ConceptWriteRequest("Ticket", "t-1", null, Map.of("subject", "Low", "priority", 1)), context);
+        gateway.save(new ConceptWriteRequest("Ticket", "t-2", null, Map.of("subject", "High", "priority", 3)), context);
+        gateway.save(new ConceptWriteRequest("Ticket", "t-3", null, Map.of("subject", "Medium", "priority", 2)), context);
+
+        PanelRuntime runtime = new PanelRuntime(metadataService, null, orderByPanelModel("priority desc"), gateway, null, null);
+        Map<String, Object> loaded = runtime.loadPanel("TicketPanel", Map.of(), context);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) loaded.get("data");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> tickets = (List<Map<String, Object>>) data.get("tickets");
+
+        assertEquals(3, tickets.size());
+        assertEquals(3, priorityOf(tickets.get(0)));
+        assertEquals(2, priorityOf(tickets.get(1)));
+        assertEquals(1, priorityOf(tickets.get(2)));
+    }
+
+    @Test
+    void loadPanelAppliesDeclaredOrderByAscendingByDefault() {
+        DefaultConceptGateway gateway = new DefaultConceptGateway(
+                new InMemoryConceptStore(),
+                PermissionEvaluator.allowAll(),
+                TenantIsolationPolicy.STRICT_EQUALS,
+                AuditLogStore.noop(),
+                ConceptGatewaySemanticPolicy.noop(),
+                new CollectingTraceSink()
+        );
+        ExecutionContext context = ExecutionContext.of("dev", "operator").withRoles(Set.of("OPERATOR"));
+        gateway.save(new ConceptWriteRequest("Ticket", "t-1", null, Map.of("subject", "Charlie", "priority", 1)), context);
+        gateway.save(new ConceptWriteRequest("Ticket", "t-2", null, Map.of("subject", "Alpha", "priority", 3)), context);
+        gateway.save(new ConceptWriteRequest("Ticket", "t-3", null, Map.of("subject", "Bravo", "priority", 2)), context);
+
+        PanelRuntime runtime = new PanelRuntime(metadataService, null, orderByPanelModel("subject"), gateway, null, null);
+        Map<String, Object> loaded = runtime.loadPanel("TicketPanel", Map.of(), context);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) loaded.get("data");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> tickets = (List<Map<String, Object>>) data.get("tickets");
+
+        assertEquals(3, tickets.size());
+        assertEquals("Alpha", subjectOf(tickets.get(0)));
+        assertEquals("Bravo", subjectOf(tickets.get(1)));
+        assertEquals("Charlie", subjectOf(tickets.get(2)));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object priorityOf(Map<String, Object> record) {
+        return ((Map<String, Object>) record.get("data")).get("priority");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object subjectOf(Map<String, Object> record) {
+        return ((Map<String, Object>) record.get("data")).get("subject");
+    }
+
+    private static CompiledModel orderByPanelModel(String orderBySpec) {
+        CompiledQuery query = new CompiledQuery(
+                "TicketsOrdered",
+                "Ticket",
+                null,
+                List.of(orderBySpec),
+                null,
+                List.of(),
+                List.of(),
+                null,
+                null,
+                Map.of()
+        );
+        CompiledPanel panel = new CompiledPanel(
+                "TicketPanel",
+                "/tickets",
+                "Tickets",
+                List.of(new CompiledPanelDataSource("tickets", null, "TicketsOrdered", null, Map.of(), null, null, null)),
+                new CompiledPanelLayout("table", List.of(), List.of("subject", "priority"), Map.of()),
+                List.of(),
+                null,
+                null,
+                List.of(),
+                Map.of(),
+                Map.of(),
+                null
+        );
+        return new CompiledModel(
+                "panel.runtime.orderby",
+                "1.0.0",
+                "1.0.0",
+                Map.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(query),
+                List.of(),
+                List.of(),
+                List.of(panel)
+        );
     }
 
     private static CompiledModel nestedPanelModel() {

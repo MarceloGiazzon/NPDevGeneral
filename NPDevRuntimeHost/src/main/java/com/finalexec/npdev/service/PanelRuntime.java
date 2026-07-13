@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -329,7 +330,8 @@ public class PanelRuntime {
                     .list(new ConceptListRequest(conceptName, null, filterField, filterValue), context).stream()
                     .map(PanelRuntime::toRecordMap)
                     .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
-            return applyQueryWhereFilter(rows, resolveDataSourceQuery(dataSource));
+            Optional<CompiledQuery> query = resolveDataSourceQuery(dataSource);
+            return applyQueryOrderBy(applyQueryWhereFilter(rows, query), query);
         }
         return fallbackDataSource(
                 "PANEL_DATASOURCE_UNBOUND",
@@ -571,6 +573,74 @@ public class PanelRuntime {
             }
         }
         return filtered;
+    }
+
+    /**
+     * Applies a query's declared {@code orderBy} (list of field names, each optionally suffixed
+     * {@code " desc"}/{@code " asc"}, default ascending) as a stable multi-field sort on records
+     * already fetched from the concept gateway -- mirrors {@link #applyQueryWhereFilter} in scope
+     * and post-filter placement.
+     */
+    private static List<Map<String, Object>> applyQueryOrderBy(List<Map<String, Object>> rows, Optional<CompiledQuery> query) {
+        List<String> orderBy = query.map(CompiledQuery::orderBy).orElse(List.of());
+        if (orderBy.isEmpty()) {
+            return rows;
+        }
+        List<Map<String, Object>> sorted = new ArrayList<>(rows);
+        Comparator<Map<String, Object>> comparator = null;
+        for (String spec : orderBy) {
+            if (!hasText(spec)) {
+                continue;
+            }
+            String trimmed = spec.trim();
+            boolean descending = false;
+            String field = trimmed;
+            int spaceIndex = trimmed.lastIndexOf(' ');
+            if (spaceIndex > 0) {
+                String direction = trimmed.substring(spaceIndex + 1).trim();
+                if ("desc".equalsIgnoreCase(direction) || "descending".equalsIgnoreCase(direction)) {
+                    descending = true;
+                    field = trimmed.substring(0, spaceIndex).trim();
+                } else if ("asc".equalsIgnoreCase(direction) || "ascending".equalsIgnoreCase(direction)) {
+                    field = trimmed.substring(0, spaceIndex).trim();
+                }
+            }
+            if (field.isEmpty()) {
+                continue;
+            }
+            String fieldName = field;
+            Comparator<Map<String, Object>> fieldComparator =
+                    (left, right) -> compareOrderableValues(orderByFieldValue(left, fieldName), orderByFieldValue(right, fieldName));
+            if (descending) {
+                fieldComparator = fieldComparator.reversed();
+            }
+            comparator = comparator == null ? fieldComparator : comparator.thenComparing(fieldComparator);
+        }
+        if (comparator != null) {
+            sorted.sort(comparator);
+        }
+        return sorted;
+    }
+
+    private static Object orderByFieldValue(Map<String, Object> row, String field) {
+        Object dataObj = row.get("data");
+        return dataObj instanceof Map<?, ?> data ? data.get(field) : null;
+    }
+
+    private static int compareOrderableValues(Object left, Object right) {
+        if (left == null && right == null) {
+            return 0;
+        }
+        if (left == null) {
+            return 1;
+        }
+        if (right == null) {
+            return -1;
+        }
+        if (left instanceof Number leftNumber && right instanceof Number rightNumber) {
+            return Double.compare(leftNumber.doubleValue(), rightNumber.doubleValue());
+        }
+        return String.valueOf(left).compareTo(String.valueOf(right));
     }
 
     private static Object parseWhereLiteral(String text) {
