@@ -541,6 +541,84 @@ class ModelSourceResolverTest {
     }
 
     @Test
+    void packConceptWithConnectableAnchorIsPreservedInResolvedModel() throws Exception {
+        // BOND-B6: a bond from a root concept to a pack-namespaced concept must survive the full
+        // JSON -> ModelSourceResolver pipeline intact, including the connectable:anchor field the
+        // bond resolves against -- not just at the pre-built CompiledConcept level.
+        write("packs/catalog.json", """
+                {
+                  "pack": "catalog",
+                  "version": "1.0",
+                  "dslVersion": "1.0.0",
+                  "concepts": [
+                    {
+                      "name": "Product",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        { "name": "skuId", "type": "string", "unique": true, "connectable": "anchor" }
+                      ]
+                    }
+                  ]
+                }
+                """);
+        Path model = write("model.json", """
+                {
+                  "namespace": "order.app",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [{ "$ref": "packs/catalog.json" }],
+                  "concepts": [
+                    {
+                      "name": "Order",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        {
+                          "name": "productId",
+                          "type": "reference",
+                          "required": true,
+                          "reference": {
+                            "target": "catalog::Product",
+                            "via": "skuId",
+                            "onDelete": "restrict"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+                """);
+
+        JsonNode concepts = new ModelSourceResolver().resolve(model).resolvedRoot().get("concepts");
+        assertEquals(2, concepts.size(), "Should have catalog::Product and Order after pack merge");
+
+        boolean foundPackConcept = false;
+        boolean foundOrderConcept = false;
+        for (JsonNode concept : concepts) {
+            String name = concept.get("name").asText();
+            if ("catalog::Product".equals(name)) {
+                foundPackConcept = true;
+                boolean skuAnchorFound = false;
+                for (JsonNode field : concept.get("fields")) {
+                    if ("skuId".equals(field.get("name").asText())) {
+                        assertEquals("anchor", field.get("connectable").asText(),
+                                "connectable:anchor must survive pack merge");
+                        skuAnchorFound = true;
+                    }
+                }
+                assertTrue(skuAnchorFound, "skuId anchor field should be present after merge");
+            }
+            if ("Order".equals(name)) {
+                foundOrderConcept = true;
+                assertEquals("catalog::Product",
+                        concept.get("fields").get(1).get("reference").get("target").asText(),
+                        "Bond's reference target must stay pack-namespaced after merge");
+            }
+        }
+        assertTrue(foundPackConcept, "catalog::Product must be present after pack merge");
+        assertTrue(foundOrderConcept, "Order must be present after pack merge");
+    }
+
+    @Test
     void packFragmentRejectsIdentityFields() throws Exception {
         write("pack/catalog/fragments/product.json", """
                 {

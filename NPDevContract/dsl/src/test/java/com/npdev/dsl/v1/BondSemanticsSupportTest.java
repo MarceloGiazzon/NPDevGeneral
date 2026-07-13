@@ -371,4 +371,63 @@ class BondSemanticsSupportTest {
                 "Expected schema validation to reject an unknown onDelete policy at parse time."
         );
     }
+
+    @Test
+    void crossPackBondPassesSemanticValidation() throws Exception {
+        // BOND-B6: a bond to a pack-namespaced concept (catalog::Product) must validate cleanly
+        // through the full JSON -> parse (with pack resolution) -> SemanticValidator pipeline, not
+        // just at the pre-built CompiledConcept level.
+        Path tempDir = Files.createTempDirectory("npdev-cross-pack-");
+        Path packsDir = tempDir.resolve("packs");
+        Files.createDirectories(packsDir);
+        Files.writeString(packsDir.resolve("catalog.json"), """
+                {
+                  "pack": "catalog",
+                  "version": "1.0",
+                  "dslVersion": "1.0.0",
+                  "concepts": [
+                    {
+                      "name": "Product",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        { "name": "skuId", "type": "string", "unique": true, "connectable": "anchor" }
+                      ]
+                    }
+                  ]
+                }
+                """);
+        Path modelFile = tempDir.resolve("model.json");
+        Files.writeString(modelFile, """
+                {
+                  "namespace": "order.app",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [{ "$ref": "packs/catalog.json" }],
+                  "concepts": [
+                    {
+                      "name": "Order",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        {
+                          "name": "productId",
+                          "type": "reference",
+                          "required": true,
+                          "reference": {
+                            "target": "catalog::Product",
+                            "via": "skuId",
+                            "onDelete": "restrict"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+                """);
+
+        ModelAst model = new JsonModelParser().parse(modelFile);
+        var result = new SemanticValidator().validateWithWarnings(model);
+
+        assertTrue(!result.hasErrors(),
+                "Cross-pack bond with valid anchor should pass validation. Errors: " + result.getErrors());
+    }
 }
