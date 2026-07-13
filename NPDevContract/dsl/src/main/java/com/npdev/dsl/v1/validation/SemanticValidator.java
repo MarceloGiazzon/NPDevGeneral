@@ -384,7 +384,7 @@ public final class SemanticValidator {
         validatePanels(effectiveModel, entitiesByLower, errors);
         validateGuidePages(effectiveModel, errors);
         validateAggregates(effectiveModel, entitiesByLower, errors);
-        validateAutoPanels(effectiveModel, entitiesByLower, errors);
+        validateAutoPanels(effectiveModel, entitiesByLower, errors, warnings);
         validateSelectors(effectiveModel, entitiesByLower, errors);
         errors = canonicalizeConceptTerminology(errors);
         semanticWarnings = canonicalizeConceptTerminology(semanticWarnings);
@@ -623,7 +623,8 @@ public final class SemanticValidator {
         }
     }
 
-    private static void validateAutoPanels(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
+    private static void validateAutoPanels(
+            ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors, List<String> warnings) {
         Set<String> aggregateNames = modelAst.getAggregates().stream()
                 .map(AggregateAst::name)
                 .map(SemanticValidator::normalize)
@@ -660,15 +661,15 @@ public final class SemanticValidator {
                 }
             }
 
-            validateSurfaceComputed(here, "selection", autoPanel.selection(), errors);
-            validateSurfaceComputed(here, "detail", autoPanel.detail(), errors);
-            validateSurfaceComputed(here, "transaction", autoPanel.transaction(), errors);
-            validateSurfaceComputed(here, "prompt", autoPanel.prompt(), errors);
+            validateSurfaceComputed(here, "selection", autoPanel.selection(), errors, warnings);
+            validateSurfaceComputed(here, "detail", autoPanel.detail(), errors, warnings);
+            validateSurfaceComputed(here, "transaction", autoPanel.transaction(), errors, warnings);
+            validateSurfaceComputed(here, "prompt", autoPanel.prompt(), errors, warnings);
         }
     }
 
     private static void validateSurfaceComputed(
-            String panelLabel, String surface, AutoPanelSurfaceAst surfaceAst, List<String> errors) {
+            String panelLabel, String surface, AutoPanelSurfaceAst surfaceAst, List<String> errors, List<String> warnings) {
         if (surfaceAst == null) {
             return;
         }
@@ -684,6 +685,24 @@ public final class SemanticValidator {
                         + ": invalid expression: " + ex.getMessage());
             }
         }
+        // AW-P3: computed[] is compiled into the workbench descriptor's metadata for introspection,
+        // but no client evaluator reads it -- the live keystroke-recompute UX is delivered entirely
+        // by transaction.metadata.recompute (a server-round-trip procedure). Warn rather than let a
+        // declared computed[] silently do nothing on this surface, without blocking authoring.
+        if (!surfaceAst.computed().isEmpty() && !hasText(recomputeProcedureName(surfaceAst))) {
+            warnings.add(panelLabel + " " + surface + ": declares computed[] but no "
+                    + "transaction.metadata.recompute procedure -- computed[] stays panel metadata "
+                    + "only and will NOT recompute live in the generated page unless a recompute "
+                    + "procedure is also declared.");
+        }
+    }
+
+    private static String recomputeProcedureName(AutoPanelSurfaceAst surfaceAst) {
+        Object declared = surfaceAst.metadata().get("recompute");
+        if (declared instanceof Map<?, ?> map) {
+            declared = map.get("procedure");
+        }
+        return declared == null ? null : String.valueOf(declared).trim();
     }
 
     private static String firstNonBlankBinding(AutoPanelAst autoPanel) {
