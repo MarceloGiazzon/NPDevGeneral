@@ -117,7 +117,12 @@
         if (!lc || !lc.statusField) { return { editable: true, label: null }; }
         var val = draft[lc.statusField];
         var st = (lc.states || []).filter(function (s) { return s.value === val; })[0];
-        return { value: val, label: st ? st.label : val, editable: st ? !!st.editable : true };
+        return {
+          value: val, label: st ? st.label : val, editable: st ? !!st.editable : true,
+          // AW-P5: optional per-state action-rail gating (declared procedure names this state
+          // permits). null/absent means no restriction -- every declared action stays enabled.
+          allowedActions: st && st.allowedActions ? st.allowedActions : null
+        };
       },
       toDraft: function () { return clone(draft); },
       view: function () {
@@ -283,11 +288,13 @@
         .catch(function (e) { msg.className = "msg err"; msg.textContent = "Error: " + e; });
     }
     if (EDITABLE) {
-      (store.descriptor.actions || []).forEach(function (a) {
-        var b = el('<button class="btn" style="background:var(--np-accent);margin-left:6px">' + (a.label || a.procedure) + '</button>');
-        b.onclick = function () { invokeAction(a); };
-        barDiv.append(b);
-      });
+      (store.descriptor.actions || [])
+        .filter(function (a) { return !si.allowedActions || si.allowedActions.indexOf(a.procedure) !== -1; })
+        .forEach(function (a) {
+          var b = el('<button class="btn" style="background:var(--np-accent);margin-left:6px">' + (a.label || a.procedure) + '</button>');
+          b.onclick = function () { invokeAction(a); };
+          barDiv.append(b);
+        });
     }
     barDiv.append(msg); app.append(barDiv);
 

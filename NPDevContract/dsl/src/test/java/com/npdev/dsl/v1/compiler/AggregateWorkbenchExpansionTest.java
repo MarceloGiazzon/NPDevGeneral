@@ -37,7 +37,8 @@ class AggregateWorkbenchExpansionTest {
                   "lifecycle": {
                     "statusField": "estagio",
                     "states": [
-                      { "value": "aberta", "label": "Aberta", "initial": true },
+                      { "value": "aberta", "label": "Aberta", "initial": true,
+                        "metadata": { "allowedActions": "GerarDemanda" } },
                       { "value": "confirmada", "label": "Confirmada", "terminal": true } ],
                     "transitions": [ { "from": "aberta", "to": "confirmada", "actionLabel": "Confirmar" } ]
                   } },
@@ -112,6 +113,13 @@ class AggregateWorkbenchExpansionTest {
         assertEquals("Aberta", aberta.get("label"));
         assertEquals(Boolean.TRUE, aberta.get("editable"), "non-terminal state is editable");
         assertEquals(Boolean.FALSE, confirmada.get("editable"), "terminal state is read-only");
+
+        // AW-P5: per-state allowedActions gating, declared as a comma-separated metadata string
+        // (metadata is a flat string map in the schema, so this reuses the "editable" convention).
+        assertEquals(List.of("GerarDemanda"), aberta.get("allowedActions"),
+                "aberta declares allowedActions -- only GerarDemanda is permitted there");
+        assertNull(confirmada.get("allowedActions"),
+                "confirmada declares no allowedActions -- absent means no restriction");
 
         // Procedure-over-aggregate actions (P6): declared under transaction.metadata.actions; the entry
         // without a procedure is dropped, and a missing label defaults to the procedure name.
