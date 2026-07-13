@@ -346,6 +346,73 @@ class PanelRuntimeTest {
         );
     }
 
+    @Test
+    void loadPanelEchoesPanelMetadataForABandPickerToConsume() {
+        // AW-P2: a selectors[]-expanded panel's returnMapping must reach the client through
+        // loadPanel's response so a bandPicker referencing it by name can use the declared pick
+        // contract instead of guessing from overlapping column names.
+        DefaultConceptGateway gateway = new DefaultConceptGateway(
+                new InMemoryConceptStore(),
+                PermissionEvaluator.allowAll(),
+                TenantIsolationPolicy.STRICT_EQUALS,
+                AuditLogStore.noop(),
+                ConceptGatewaySemanticPolicy.noop(),
+                new CollectingTraceSink()
+        );
+        PanelRuntime runtime = new PanelRuntime(metadataService, null, selectorPanelModel(), gateway, null, null);
+
+        Map<String, Object> loaded = runtime.loadPanel(
+                "SelecionaRuas", Map.of(), ExecutionContext.of("dev", "operator").withRoles(Set.of("OPERATOR")));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metadata = (Map<String, Object>) loaded.get("metadata");
+        assertEquals("selector", metadata.get("surface"));
+        assertEquals(Boolean.TRUE, metadata.get("multiSelect"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> returnMapping = (Map<String, Object>) metadata.get("returnMapping");
+        assertEquals("rua", returnMapping.get("local"));
+    }
+
+    private static CompiledModel selectorPanelModel() {
+        CompiledPanel panel = new CompiledPanel(
+                "SelecionaRuas",
+                "/select/selecionaruas",
+                "LocalArmazenagem",
+                List.of(new CompiledPanelDataSource("rows", "LocalArmazenagem", null, null, Map.of(), null, null, null)),
+                new CompiledPanelLayout("table", List.of(), List.of("rua", "maxPos"), Map.of()),
+                List.of(),
+                null,
+                null,
+                List.of(),
+                Map.of(),
+                Map.of(
+                        "generatedBy", "selector",
+                        "surface", "selector",
+                        "concept", "LocalArmazenagem",
+                        "multiSelect", true,
+                        "filters", List.of("area", "rua"),
+                        "returnMapping", Map.of("local", "rua", "maxPos", "maxPos")
+                ),
+                null
+        );
+        return new CompiledModel(
+                "panel.runtime.selector",
+                "1.0.0",
+                "1.0.0",
+                Map.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(panel)
+        );
+    }
+
     private static CompiledModel nestedPanelModel() {
         CompiledPanel panel = new CompiledPanel(
                 "MovimentoDetailPanel",

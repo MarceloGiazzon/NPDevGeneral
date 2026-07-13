@@ -319,6 +319,10 @@
     var picker = bd.picker; if (!picker || !picker.panel) return;
     var cols = picker.columns && picker.columns.length ? picker.columns : bd.columns;
     var chosen = {};
+    // AW-P2: when the referenced panel is a selectors[]-expanded picker, its own metadata carries
+    // the declared pick contract (returnMapping: { targetField: sourceField }). Falls back to the
+    // pre-existing overlapping-column-name copy for a hand-authored panel with no returnMapping.
+    var returnMapping = null;
     var overlay = el('<div class="modal"></div>');
     var card = el('<div class="modal-card"></div>');
     card.append(el('<div class="modal-hd"><span>' + (picker.label || "Selecionar") + '</span></div>'));
@@ -330,7 +334,14 @@
     add.onclick = function () {
       Object.keys(chosen).forEach(function (k) {
         var src = chosen[k]; var values = {};
-        bd.columns.forEach(function (c) { if (src && src[c] !== undefined) values[c] = src[c]; });
+        if (returnMapping && Object.keys(returnMapping).length) {
+          Object.keys(returnMapping).forEach(function (targetField) {
+            var sourceField = returnMapping[targetField];
+            if (src && src[sourceField] !== undefined) values[targetField] = src[sourceField];
+          });
+        } else {
+          bd.columns.forEach(function (c) { if (src && src[c] !== undefined) values[c] = src[c]; });
+        }
         store.addBandRowFrom(secCollection, rowId, bd.collection, values);
       });
       overlay.remove(); render();
@@ -341,6 +352,9 @@
     fetch("/api/runtime/metadata/ui/panels/" + encodeURIComponent(picker.panel), { headers: authHeaders() })
       .then(function (r) { return r.json(); })
       .then(function (p) {
+        if (p.metadata && p.metadata.returnMapping && Object.keys(p.metadata.returnMapping).length) {
+          returnMapping = p.metadata.returnMapping;
+        }
         var rows = null; var data = p.data || {};
         Object.keys(data).forEach(function (kk) { if (Array.isArray(data[kk]) && rows === null) rows = data[kk]; });
         rows = rows || [];

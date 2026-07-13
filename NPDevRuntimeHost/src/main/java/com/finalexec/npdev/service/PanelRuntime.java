@@ -229,6 +229,10 @@ public class PanelRuntime {
         response.put("fields", panelFields(panel));
         response.put("fieldBindings", panelFieldBindings(panel));
         response.put("actions", panelActions(panel));
+        // AW-P2: echo the compiled panel's own metadata (e.g. a selectors[]-expanded panel's
+        // multiSelect/returnMapping/filters) so a caller referencing this panel as a bandPicker
+        // source can consume the selector's declared pick contract instead of guessing from columns.
+        response.put("metadata", panel.metadata() == null ? Map.of() : panel.metadata());
         response.put("fallbackUi", dataSourceSummaries.stream().anyMatch(item -> Boolean.TRUE.equals(item.get("fallback"))));
         response.put("layout", panel.layout() == null ? Map.of() : Map.of(
                 "type", safe(panel.layout().type()),
