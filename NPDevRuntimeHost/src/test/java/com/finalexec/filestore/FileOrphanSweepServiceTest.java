@@ -14,7 +14,6 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.ObjectProvider;
 
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,14 +27,16 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 /**
- * HARDEN-GC-P3: proves the orphan sweep reaps an unreferenced, past-grace-window object; leaves a
- * referenced object alone regardless of age; and leaves a fresh (still-within-grace-window)
- * unreferenced object alone (it might be an in-flight upload for a create request that hasn't
- * saved yet).
+ * HARDEN-GC-P3: integration smoke test proving {@link FileOrphanSweepService} wires correctly to a
+ * real {@link FileSystemFileStoreAdapter} and a real {@link ConceptStore} -- reaps an unreferenced,
+ * past-grace-window object; leaves a referenced object alone regardless of age; and leaves a fresh
+ * (still-within-grace-window) unreferenced object alone. The reclamation algorithm itself
+ * (including the no-file-fields and null-model edge cases) is exercised with fakes and gate-tested
+ * coverage by {@code FileOrphanSweeperTest} in {@code :adapters:expression-cel:test} -- this class
+ * intentionally does not re-test those cases, only the real-adapter wiring.
  */
 class FileOrphanSweepServiceTest {
 
@@ -76,22 +77,6 @@ class FileOrphanSweepServiceTest {
                 "the old, unreferenced object must be reclaimed");
         fileStore.head(referenced.storeId(), referenced.key()); // must not throw: still referenced
         fileStore.head(orphanFresh.storeId(), orphanFresh.key()); // must not throw: inside grace window
-    }
-
-    @Test
-    void sweepIsANoOpWhenTheModelHasNoFileFields() {
-        FileSystemFileStoreAdapter fileStore = new FileSystemFileStoreAdapter(tempRoot);
-        fileStore.put("dev", "x.txt", "text/plain", 1, new ByteArrayInputStream(new byte[] {1}));
-        CompiledConcept concept = new CompiledConcept("Plain", "Plain", "plains",
-                List.of(new CompiledField("id", "uuid", "java.util.UUID", true, true, true)));
-        CompiledModel model = new CompiledModel("harden.gc.sweep.plain", "1.0.0", "1.0.0", Map.of(concept.getName(), concept));
-
-        FileOrphanSweepService sweep = new FileOrphanSweepService(
-                fileStore, objectProvider(model), new FakeConceptStore(), 24L);
-
-        FileOrphanSweepService.SweepResult result = sweep.sweep();
-        assertEquals(0, result.scanned());
-        assertEquals(0, result.deleted());
     }
 
     private static void setLastModified(Path file, Instant instant) throws Exception {
