@@ -556,6 +556,84 @@
     }
   }
 
+  // LIFT-ROWOPS-P3/P2: declared-Panel dataSource row create/delete, gated purely by the dataSource's
+  // declared rowOps (see PanelRuntime#createRow/#deleteRow and dataSourceSummary). parentId is only
+  // sent for a child (nested) dataSource -- the server injects it into the child's FK column.
+  async function createDeclaredPanelRow(panelMeta, dataSourceName, data, parentId) {
+    try {
+      const body = { data: data || {} };
+      if (parentId) { body.parentId = parentId; }
+      await fetchJson(
+        "/api/runtime/metadata/ui/panels/" + encodeURIComponent(panelMeta.name)
+          + "/dataSources/" + encodeURIComponent(dataSourceName) + "/rows",
+        { method: "POST", headers: headers(), body: JSON.stringify(body) }
+      );
+      setStatus("Row added to \"" + dataSourceName + "\".", false);
+      await loadDeclaredPanel(panelMeta);
+    } catch (error) {
+      setStatus(error.message, true);
+      render();
+    }
+  }
+
+  async function deleteDeclaredPanelRow(panelMeta, dataSourceName, id) {
+    try {
+      await fetchJson(
+        "/api/runtime/metadata/ui/panels/" + encodeURIComponent(panelMeta.name)
+          + "/dataSources/" + encodeURIComponent(dataSourceName) + "/rows/" + encodeURIComponent(id),
+        { method: "DELETE", headers: headers() }
+      );
+      setStatus("Row removed from \"" + dataSourceName + "\".", false);
+      await loadDeclaredPanel(panelMeta);
+    } catch (error) {
+      setStatus(error.message, true);
+      render();
+    }
+  }
+
+  function declaredPanelDataSourceMeta(entry, dataSourceName) {
+    return (entry.dataSources || []).find(function (ds) { return ds.name === dataSourceName; }) || null;
+  }
+
+  // Header "+ add row" form for a dataSource with rowOps:[add]. Fields come from the declared
+  // addFormFields (falling back to the declared table columns, if any) so authors get a usable
+  // form even without hand-listing addFormFields for every add-able dataSource.
+  function renderDeclaredPanelAddRowForm(panelMeta, entry, dataSourceName, columns) {
+    const dataSourceMeta = declaredPanelDataSourceMeta(entry, dataSourceName);
+    const rowOps = (dataSourceMeta && dataSourceMeta.rowOps) || [];
+    if (rowOps.indexOf("add") === -1) { return null; }
+    const fieldNames = (dataSourceMeta.addFormFields && dataSourceMeta.addFormFields.length)
+      ? dataSourceMeta.addFormFields
+      : (columns || []).map(function (column) { return column.sourceField; });
+    const form = document.createElement("div");
+    form.className = "declared-panel-add-row";
+    const inputsByField = {};
+    fieldNames.forEach(function (field) {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.placeholder = field;
+      input.className = "declared-panel-edit-input";
+      inputsByField[field] = input;
+      form.appendChild(input);
+    });
+    form.appendChild(button("+ Add row", "secondary small", function () {
+      const data = {};
+      Object.keys(inputsByField).forEach(function (field) { data[field] = inputsByField[field].value; });
+      const parentId = dataSourceMeta.parentDataSource ? currentDeclaredPanelParentId(entry, dataSourceMeta) : null;
+      createDeclaredPanelRow(panelMeta, dataSourceName, data, parentId);
+    }));
+    return form;
+  }
+
+  // A child dataSource's add-row form needs the id of the (currently loaded) parent row it belongs
+  // to. Tier 2 nesting is one level only, so the parent row is whichever single row is currently
+  // rendered for dataSource.parentDataSource -- consistent with how __children is attached server-side.
+  function currentDeclaredPanelParentId(entry, dataSourceMeta) {
+    const parentRows = entry.data ? entry.data[dataSourceMeta.parentDataSource] : null;
+    if (Array.isArray(parentRows) && parentRows.length === 1) { return parentRows[0].id; }
+    return null;
+  }
+
   function renderDeclaredPanel(panelMeta) {
     const section = document.createElement("section");
     section.className = "concept-panel";
@@ -634,18 +712,24 @@
   // objects becomes a table (mirrors every other records table in this file), anything else a
   // formatted JSON block. Kept as the guaranteed-unchanged fallback for any dataSource that has no
   // matching declared fieldBindings -- see renderDeclaredPanelValue below for the declared-column path.
-  function renderDeclaredPanelValueGeneric(value) {
+  // panelMeta/entry/dataSourceName are optional (omitted for action-result rendering, which has no
+  // row-delete concept) -- when supplied and the dataSource has rowOps:[delete], each row gets a
+  // delete button, same as the declared-column table.
+  function renderDeclaredPanelValueGeneric(value, panelMeta, entry, dataSourceName) {
     if (Array.isArray(value) && value.length && value.every(function (item) {
       return item && typeof item === "object" && !Array.isArray(item);
     })) {
+      const dataSourceMeta = entry ? declaredPanelDataSourceMeta(entry, dataSourceName) : null;
+      const deletable = Boolean(dataSourceMeta && (dataSourceMeta.rowOps || []).indexOf("delete") !== -1);
       const props = Array.from(value.reduce(function (set, item) {
         Object.keys(item).forEach(function (key) { set.add(key); });
         return set;
       }, new Set()));
       const table = document.createElement("table");
       table.className = "records";
+      const headerLabels = deletable ? props.concat([""]) : props;
       const thead = document.createElement("thead");
-      thead.appendChild(headerRow(props));
+      thead.appendChild(headerRow(headerLabels));
       table.appendChild(thead);
       const tbody = document.createElement("tbody");
       value.forEach(function (item) {
@@ -655,6 +739,13 @@
           td.textContent = formatValue(item[prop]);
           tr.appendChild(td);
         });
+        if (deletable) {
+          const actionTd = document.createElement("td");
+          actionTd.appendChild(button("✕", "secondary small", function () {
+            deleteDeclaredPanelRow(panelMeta, dataSourceName, item.id);
+          }));
+          tr.appendChild(actionTd);
+        }
         tbody.appendChild(tr);
       });
       table.appendChild(tbody);
@@ -712,8 +803,10 @@
     table.className = "records";
     const editableColumns = columns.filter(function (column) { return column.editable; });
     const saveAction = editableColumns.length ? resolveRowSaveAction(panelMeta, entry, dataSourceName) : null;
+    const dataSourceMeta = declaredPanelDataSourceMeta(entry, dataSourceName);
+    const deletable = Boolean(dataSourceMeta && (dataSourceMeta.rowOps || []).indexOf("delete") !== -1);
     const headerLabels = columns.map(function (column) { return column.label || column.field; });
-    if (saveAction) { headerLabels.push(""); }
+    if (saveAction || deletable) { headerLabels.push(""); }
     const thead = document.createElement("thead");
     thead.appendChild(headerRow(headerLabels));
     table.appendChild(thead);
@@ -738,16 +831,23 @@
         }
         tr.appendChild(td);
       });
-      if (saveAction) {
+      if (saveAction || deletable) {
         const actionTd = document.createElement("td");
-        actionTd.appendChild(button("Save", "secondary small", function () {
-          const data = Object.assign({}, rowData);
-          Object.keys(inputsByField).forEach(function (field) {
-            const input = inputsByField[field];
-            data[field] = input.type === "number" ? Number(input.value) : input.value;
-          });
-          executeDeclaredPanelAction(panelMeta, saveAction.name, { id: row.id, data: data });
-        }));
+        if (saveAction) {
+          actionTd.appendChild(button("Save", "secondary small", function () {
+            const data = Object.assign({}, rowData);
+            Object.keys(inputsByField).forEach(function (field) {
+              const input = inputsByField[field];
+              data[field] = input.type === "number" ? Number(input.value) : input.value;
+            });
+            executeDeclaredPanelAction(panelMeta, saveAction.name, { id: row.id, data: data });
+          }));
+        }
+        if (deletable) {
+          actionTd.appendChild(button("✕", "secondary small", function () {
+            deleteDeclaredPanelRow(panelMeta, dataSourceName, row.id);
+          }));
+        }
         tr.appendChild(actionTd);
       }
       tbody.appendChild(tr);
@@ -772,10 +872,16 @@
 
   function renderDeclaredPanelValue(value, entry, dataSourceName, panelMeta) {
     const columns = declaredPanelColumns(entry.fieldBindings, dataSourceName);
-    if (columns && Array.isArray(value)) {
-      return renderDeclaredColumnsTable(value, columns, dataSourceName, panelMeta, entry);
-    }
-    return renderDeclaredPanelValueGeneric(value);
+    const table = (columns && Array.isArray(value))
+      ? renderDeclaredColumnsTable(value, columns, dataSourceName, panelMeta, entry)
+      : renderDeclaredPanelValueGeneric(value, panelMeta, entry, dataSourceName);
+
+    const addForm = renderDeclaredPanelAddRowForm(panelMeta, entry, dataSourceName, columns);
+    if (!addForm) { return table; }
+    const wrapper = document.createElement("div");
+    wrapper.appendChild(addForm);
+    wrapper.appendChild(table);
+    return wrapper;
   }
 
   // Read-only "app store" view of every built-in platform pack the generator found on disk,
@@ -1961,6 +2067,24 @@
 
   function renderFieldValue(target, field, value, includeRawId) {
     target.innerHTML = "";
+    if (field.type === "file") {
+      if (!value || !value.key) {
+        target.textContent = "-";
+        return;
+      }
+      const link = document.createElement("a");
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = value.originalName || "Download";
+      link.href = "/api/files?" + new URLSearchParams({
+        storeId: value.storeId || "",
+        key: value.key || "",
+        contentType: value.contentType || "",
+        originalName: value.originalName || ""
+      }).toString();
+      target.appendChild(link);
+      return;
+    }
     if (field.type === "array" && Array.isArray(value)) {
       if (value.length === 0) {
         target.textContent = "-";
@@ -2314,6 +2438,9 @@
     if (field.widget === "custom" && field.customWidgetRef) {
       return createCustomWidgetInput(field, value);
     }
+    if (field.type === "file") {
+      return createFileInput(field, value);
+    }
     if (field.type === "array" && field.widget === "multiselect" && field.itemsSchema && field.itemsSchema.type === "enum") {
       return createArrayEnumMultiselectInput(field, Array.isArray(value) ? value : []);
     }
@@ -2666,6 +2793,86 @@
         });
       }
     }
+
+    return wrapper;
+  }
+
+  // LIFT-UPLOAD-P4: a `file`-typed field. Mirrors createLookupInput's hidden-input-plus-display
+  // skeleton -- the "true" submitted value is a FileHandle JSON blob (not user-typed), held in a
+  // hidden input, with a status label + optional download link rendered around it. Picking a new
+  // file immediately uploads it (multipart, outside the record's own JSON save request) and only
+  // updates the hidden input on success; the record's own create/update POST still carries just
+  // the returned handle, never raw bytes.
+  function createFileInput(field, value) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "file-control";
+
+    const hidden = document.createElement("input");
+    hidden.type = "hidden";
+    hidden.name = field.name;
+    hidden.value = value && typeof value === "object" ? JSON.stringify(value) : "";
+    wrapper.appendChild(hidden);
+
+    const status = document.createElement("span");
+    status.className = "file-control-status";
+    status.textContent = value && value.originalName ? value.originalName : "(no file)";
+    wrapper.appendChild(status);
+
+    const downloadLink = document.createElement("a");
+    downloadLink.className = "file-control-download";
+    downloadLink.target = "_blank";
+    downloadLink.rel = "noopener";
+    downloadLink.style.display = "none";
+    downloadLink.textContent = "Download";
+    wrapper.appendChild(downloadLink);
+
+    function refreshDownloadLink(handle) {
+      if (handle && handle.key) {
+        downloadLink.href = "/api/files?" + new URLSearchParams({
+          storeId: handle.storeId || "",
+          key: handle.key || "",
+          contentType: handle.contentType || "",
+          originalName: handle.originalName || ""
+        }).toString();
+        downloadLink.style.display = "";
+      } else {
+        downloadLink.style.display = "none";
+      }
+    }
+    refreshDownloadLink(value);
+
+    const picker = document.createElement("input");
+    picker.type = "file";
+    if (field.fileContentTypes && field.fileContentTypes.length) {
+      picker.accept = field.fileContentTypes.join(",");
+    }
+    picker.onchange = async function () {
+      const chosen = picker.files && picker.files[0];
+      if (!chosen) { return; }
+      status.textContent = "Uploading…";
+      try {
+        const formData = new FormData();
+        formData.append("file", chosen);
+        const uploadHeaders = headers();
+        delete uploadHeaders["Content-Type"]; // let the browser set the multipart boundary
+        const response = await fetch(
+          "/api/files/" + encodeURIComponent(field.concept || "") + "/" + encodeURIComponent(field.name),
+          { method: "POST", headers: uploadHeaders, body: formData }
+        );
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(errorText || ("Upload failed: " + response.status));
+        }
+        const savedHandle = await response.json();
+        hidden.value = JSON.stringify(savedHandle);
+        status.textContent = savedHandle.originalName || chosen.name;
+        refreshDownloadLink(savedHandle);
+      } catch (error) {
+        status.textContent = "Upload failed";
+        setStatus(error.message, true);
+      }
+    };
+    wrapper.appendChild(picker);
 
     return wrapper;
   }
@@ -3380,6 +3587,18 @@
         let objValue;
         try { objValue = JSON.parse(control.value || "{}"); } catch (e) { objValue = {}; }
         payload[field.name] = objValue;
+        continue;
+      }
+      if (field.type === "file") {
+        // The hidden input holds the FileHandle JSON that createFileInput's upload set (or the
+        // record's existing value, unchanged, if the author didn't pick a new file this edit).
+        if (required && !control.value) {
+          setStatus((field.label || field.name) + " requires an uploaded file.", true);
+          return;
+        }
+        if (control.value) {
+          try { payload[field.name] = JSON.parse(control.value); } catch (e) { /* leave unset on parse failure */ }
+        }
         continue;
       }
       const rawValue = control.type === "checkbox" ? control.checked : text(control.value).trim();

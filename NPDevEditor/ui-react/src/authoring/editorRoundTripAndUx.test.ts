@@ -79,6 +79,61 @@ describe("Step 46 editor round-trip and UX confidence", () => {
     expect(result.snapshot.lastAppliedCanonicalText).toBe(snapshot.lastAppliedCanonicalText);
   });
 
+  it("LIFT-LOOP: round-trips a forEach flow step's collection/itemKey/loop body/maxLoopIterations", async () => {
+    const forEachFlowShape = {
+      namespace: "trial.roundtrip",
+      dslVersion: "1.0.0",
+      version: "1.0",
+      concepts: [
+        {
+          name: "Order",
+          fields: [{ name: "id", type: "uuid", id: true, required: true }]
+        }
+      ],
+      enums: [],
+      flows: [
+        {
+          name: "ProcessOrders",
+          input: { concept: "Order", mode: "update" },
+          steps: [
+            {
+              name: "process-orders",
+              type: "forEach",
+              collection: "input.orders",
+              itemKey: "order",
+              maxLoopIterations: 500,
+              steps: [
+                {
+                  name: "return-item",
+                  type: "return",
+                  value: "order"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      queries: [],
+      ruleProfiles: [],
+      procedures: [],
+      panels: [],
+      metadata: {}
+    } as unknown as AuthoringModelDocument;
+
+    const snapshot = createSynchronizedJsonSnapshot(forEachFlowShape, validateModelDocument);
+    const result = applySynchronizedJsonDraft(snapshot, snapshot.draftText, validateModelDocument);
+
+    expect(result.snapshot.issues).toEqual([]);
+    const roundTripped = JSON.parse(result.snapshot.lastAppliedCanonicalText) as AuthoringModelDocument;
+    const forEachStep = roundTripped.flows[0].steps?.[0];
+    expect(forEachStep?.type).toBe("forEach");
+    expect(forEachStep?.collection).toBe("input.orders");
+    expect(forEachStep?.itemKey).toBe("order");
+    expect(forEachStep?.maxLoopIterations).toBe(500);
+    expect(forEachStep?.steps).toHaveLength(1);
+    expect(forEachStep?.steps?.[0]?.type).toBe("return");
+  });
+
   it("surfaces the expected validation issue for an empty concept list without losing draft stability", async () => {
     const emptyConceptShape = {
       namespace: "trial.roundtrip",

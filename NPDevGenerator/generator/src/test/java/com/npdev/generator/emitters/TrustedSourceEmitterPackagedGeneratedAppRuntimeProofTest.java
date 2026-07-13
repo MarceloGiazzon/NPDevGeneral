@@ -792,6 +792,33 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                           "payload": "actionResult"
                         }
                       ]
+                    },
+                    {
+                      "name": "SumItem12NamesForEachFlow",
+                      "concept": "Item12User",
+                      "startEndpoint": true,
+                      "steps": [
+                        {
+                          "name": "emitPerNameEvent",
+                          "type": "forEach",
+                          "collection": "input.names",
+                          "itemKey": "name",
+                          "maxLoopIterations": 50,
+                          "steps": [
+                            {
+                              "name": "emitNameSeen",
+                              "type": "event",
+                              "event": "generated.flow.SumItem12NamesForEachFlow.nameSeen",
+                              "payload": "name"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "returnInput",
+                          "type": "return",
+                          "value": "input"
+                        }
+                      ]
                     }
                   ],
                   "panels": [
@@ -945,6 +972,7 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                         ":adapters:circuit-inproc:jar",
                         ":adapters:circuit-postgres:jar",
                         ":adapters:expression-cel:jar",
+                        ":adapters:file-store-inproc:jar",
                         ":adapters:flow-compiled:jar",
                         ":adapters:json-jackson:jar",
                         ":adapters:metrics-micrometer:jar",

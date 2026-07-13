@@ -119,6 +119,26 @@ public final class GeneratedCrudRuntimeSupport {
         boolean exists(String fieldName, Object value, ID excludeId);
     }
 
+    /** LIFT-UNIQUE-P3: existence check for a compound-unique invariant's field group, at the
+     * concept-name level (mirrors {@link RuntimeInvariantEngineFactory.CompoundUniqueValueLookup}). */
+    @FunctionalInterface
+    public interface CompoundUniqueValueLookup {
+        boolean exists(
+                String entityName,
+                List<String> fieldNames,
+                List<Object> values,
+                UUID excludeId,
+                Map<String, Object> payload
+        );
+    }
+
+    /** LIFT-UNIQUE-P3: existence check for a compound-unique invariant's field group, scoped to
+     * a single generated service's own store (mirrors {@link UniqueFieldLookup}). */
+    @FunctionalInterface
+    public interface CompoundUniqueFieldLookup<ID> {
+        boolean exists(List<String> fieldNames, List<Object> values, ID excludeId);
+    }
+
     public record InvariantViolationDetail(
             String code,
             String concept,
@@ -357,6 +377,19 @@ public final class GeneratedCrudRuntimeSupport {
             Consumer<ID> deleteById,
             UniqueFieldLookup<ID> uniqueFieldLookup
     ) {
+        return persistenceCapability(findById, findAll, save, existsById, deleteById, uniqueFieldLookup, null);
+    }
+
+    /** LIFT-UNIQUE-P3: overload adding a compound-unique field lookup. */
+    public static <T, ID> PersistenceCapability<T, ID> persistenceCapability(
+            Function<ID, Optional<T>> findById,
+            Supplier<List<T>> findAll,
+            Function<T, T> save,
+            Predicate<ID> existsById,
+            Consumer<ID> deleteById,
+            UniqueFieldLookup<ID> uniqueFieldLookup,
+            CompoundUniqueFieldLookup<ID> compoundUniqueFieldLookup
+    ) {
         return new PersistenceCapability<>() {
             @Override
             public Optional<T> findById(ID id) {
@@ -395,6 +428,12 @@ public final class GeneratedCrudRuntimeSupport {
             @Override
             public boolean existsUnique(String fieldName, Object value, ID excludeId) {
                 return uniqueFieldLookup != null && uniqueFieldLookup.exists(fieldName, value, excludeId);
+            }
+
+            @Override
+            public boolean existsUniqueCompound(List<String> fieldNames, List<Object> values, ID excludeId) {
+                return compoundUniqueFieldLookup != null
+                        && compoundUniqueFieldLookup.exists(fieldNames, values, excludeId);
             }
         };
     }
@@ -813,7 +852,17 @@ public final class GeneratedCrudRuntimeSupport {
             Map<String, Object> payload,
             UniqueValueLookup uniqueValueLookup
     ) {
-        return validateEntityDetailed(entityName, payload, uniqueValueLookup).stream()
+        return validateEntity(entityName, payload, uniqueValueLookup, null);
+    }
+
+    /** LIFT-UNIQUE-P3: overload adding a compound-unique lookup. */
+    public List<String> validateEntity(
+            String entityName,
+            Map<String, Object> payload,
+            UniqueValueLookup uniqueValueLookup,
+            CompoundUniqueValueLookup compoundUniqueValueLookup
+    ) {
+        return validateEntityDetailed(entityName, payload, uniqueValueLookup, compoundUniqueValueLookup).stream()
                 .map(InvariantViolationDetail::message)
                 .toList();
     }
@@ -822,6 +871,16 @@ public final class GeneratedCrudRuntimeSupport {
             String entityName,
             Map<String, Object> payload,
             UniqueValueLookup uniqueValueLookup
+    ) {
+        return validateEntityDetailed(entityName, payload, uniqueValueLookup, null);
+    }
+
+    /** LIFT-UNIQUE-P3: overload adding a compound-unique lookup. */
+    public List<InvariantViolationDetail> validateEntityDetailed(
+            String entityName,
+            Map<String, Object> payload,
+            UniqueValueLookup uniqueValueLookup,
+            CompoundUniqueValueLookup compoundUniqueValueLookup
     ) {
         Optional<CompiledConcept> entityOpt = findEntity(entityName);
         if (entityOpt.isEmpty()) {
@@ -889,7 +948,15 @@ public final class GeneratedCrudRuntimeSupport {
                     ) {
                         return scopeExists(conceptName, fieldPath, expectedValue);
                     }
-                }
+                },
+                (requestedEntity, fieldNames, values, rawPayload) -> compoundUniqueValueLookup != null
+                        && compoundUniqueValueLookup.exists(
+                        requestedEntity,
+                        fieldNames,
+                        values,
+                        extractCurrentId(rawPayload),
+                        toPayloadMap(rawPayload, normalizedPayload)
+                )
         );
         List<String> refs = entity.getInvariants().stream()
                 .filter(invariant -> invariant != null && invariant.getRef() != null && !invariant.getRef().isBlank())

@@ -179,6 +179,13 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
                         step.getAwaitPayloadMatch()
                 ));
                 case "return" -> out.add(FlowStepDefinition.returnValue(name, step.getReturnValueRef()));
+                case "foreach" -> out.add(FlowStepDefinition.forEach(
+                        name,
+                        step.getCollectionRef(),
+                        step.getItemKey(),
+                        toFlowSteps(step.getLoopSteps(), flowConcept, adapterIdByCapability, capabilityOperationsByCapability),
+                        step.getMaxLoopIterations()
+                ));
                 default -> throw new IllegalArgumentException(
                         "Unsupported flow step type '" + step.getType() + "' in flow concept " + flowConcept
                 );

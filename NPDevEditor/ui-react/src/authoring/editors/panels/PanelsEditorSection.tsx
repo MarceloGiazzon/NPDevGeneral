@@ -1,6 +1,7 @@
 import React from "react";
 import type { AuthoringPanel, AuthoringPanelAction } from "../modelDocumentTypes";
 import PanelActionEditor from "./PanelActionEditor";
+import PanelDataSourcesEditor from "./PanelDataSourcesEditor";
 
 type PanelsEditorSectionProps = {
   panels: AuthoringPanel[];
@@ -202,6 +203,14 @@ export default function PanelsEditorSection({
                   </select>
                 </label>
               </div>
+
+              <PanelDataSourcesEditor
+                panel={panel}
+                panels={panels}
+                panelIndex={panelIndex}
+                conceptNames={conceptNames}
+                onChange={onChange}
+              />
 
               <div className="authoring-editor-stack">
                 {(panel.actions ?? []).map((action, actionIndex) => (

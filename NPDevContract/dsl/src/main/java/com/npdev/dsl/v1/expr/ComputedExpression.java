@@ -16,6 +16,16 @@ import java.util.Map;
  * on a syntax error (used for author-time validation). {@link #evaluate} is
  * lenient at runtime: an unknown/blank/non-numeric operand coerces to 0 for
  * arithmetic so a display column never crashes a page load.
+ *
+ * <p>Field references may be dotted paths ({@code cliente.tipo}) to reach nested
+ * scope values; the scope map is looked up by the full dotted name first, then by
+ * walking nested {@code Map} values segment by segment.
+ *
+ * <p>Null semantics: {@code null == null} is true, {@code null == <anything else>}
+ * (including {@code ""}) is false. Arithmetic/relational operators treat a null
+ * operand as 0, consistent with the existing lenient-coercion behavior for missing
+ * fields. {@link #evaluateBoolean} is a strict entry point for invariant-style
+ * usage: the top-level result must be a {@link Boolean} or it throws.
  */
 public final class ComputedExpression {
 
@@ -32,6 +42,15 @@ public final class ComputedExpression {
     /** A parsed expression node. */
     public interface Node {
         Object eval(Map<String, Object> vars);
+
+        /** True if this node's operator always yields a boolean, without evaluating. */
+        default boolean looksBoolean() {
+            return false;
+        }
+
+        /** Collect all field/variable names referenced by this node (and its children). */
+        default void collectFields(java.util.Set<String> out) {
+        }
     }
 
     /** Parse an expression into an AST, or throw {@link ExpressionException}. */
@@ -49,17 +68,79 @@ public final class ComputedExpression {
         return parse(expression).eval(vars);
     }
 
+    /**
+     * Parse and evaluate as a strict boolean (invariant-style usage). Throws
+     * {@link ExpressionException} if the expression doesn't parse or its
+     * top-level result isn't a {@link Boolean}.
+     */
+    public static boolean evaluateBoolean(String expression, Map<String, Object> vars) {
+        Object result = parse(expression).eval(vars);
+        if (!(result instanceof Boolean b)) {
+            throw new ExpressionException(
+                    "expression did not evaluate to a boolean: " + expression
+                            + " (result=" + result + ")");
+        }
+        return b;
+    }
+
+    /**
+     * The set of field/variable names (dotted paths kept whole) referenced anywhere in the
+     * expression. Used for compile-time "unknown field" validation. Throws
+     * {@link ExpressionException} if the expression doesn't parse.
+     */
+    public static java.util.Set<String> referencedFields(String expression) {
+        java.util.Set<String> out = new java.util.LinkedHashSet<>();
+        parse(expression).collectFields(out);
+        return out;
+    }
+
+    /**
+     * True if the expression's top-level operator always yields a boolean (comparison,
+     * {@code &&}/{@code ||}, unary {@code !}, or a boolean literal) — a syntactic check, not an
+     * evaluation, so it doesn't require variable bindings. Used for compile-time validation of
+     * invariant expressions, which must be boolean-shaped. Throws {@link ExpressionException} if
+     * the expression doesn't parse.
+     */
+    public static boolean isBooleanShaped(String expression) {
+        return parse(expression).looksBoolean();
+    }
+
     // ---- AST ---------------------------------------------------------------
 
     private record Literal(Object value) implements Node {
         public Object eval(Map<String, Object> vars) {
             return value;
         }
+
+        public boolean looksBoolean() {
+            return value instanceof Boolean;
+        }
     }
 
     private record Var(String name) implements Node {
         public Object eval(Map<String, Object> vars) {
-            return vars == null ? null : vars.get(name);
+            if (vars == null) {
+                return null;
+            }
+            if (vars.containsKey(name)) {
+                return vars.get(name);
+            }
+            if (name.indexOf('.') < 0) {
+                return null;
+            }
+            // Dotted path not present as a literal key: walk nested maps segment by segment.
+            Object current = vars;
+            for (String segment : name.split("\\.")) {
+                if (!(current instanceof Map<?, ?> map)) {
+                    return null;
+                }
+                current = map.get(segment);
+            }
+            return current;
+        }
+
+        public void collectFields(java.util.Set<String> out) {
+            out.add(name);
         }
     }
 
@@ -68,9 +149,29 @@ public final class ComputedExpression {
             Object v = operand.eval(vars);
             return "!".equals(op) ? !truthy(v) : number(-toNumber(v));
         }
+
+        public boolean looksBoolean() {
+            return "!".equals(op);
+        }
+
+        public void collectFields(java.util.Set<String> out) {
+            operand.collectFields(out);
+        }
     }
 
+    private static final java.util.Set<String> BOOLEAN_OPS = java.util.Set.of(
+            "&&", "||", "==", "!=", "<", "<=", ">", ">=");
+
     private record Binary(String op, Node left, Node right) implements Node {
+        public boolean looksBoolean() {
+            return BOOLEAN_OPS.contains(op);
+        }
+
+        public void collectFields(java.util.Set<String> out) {
+            left.collectFields(out);
+            right.collectFields(out);
+        }
+
         public Object eval(Map<String, Object> vars) {
             switch (op) {
                 case "&&": return truthy(left.eval(vars)) && truthy(right.eval(vars));
@@ -154,6 +255,9 @@ public final class ComputedExpression {
     }
 
     private static boolean equalsLoose(Object l, Object r) {
+        if (l == null || r == null) {
+            return l == null && r == null;
+        }
         if (l instanceof Number || r instanceof Number) {
             return toNumber(l) == toNumber(r);
         }
@@ -204,6 +308,15 @@ public final class ComputedExpression {
                 int start = i;
                 while (i < n && (Character.isLetterOrDigit(s.charAt(i)) || s.charAt(i) == '_')) {
                     i++;
+                }
+                // Dotted field path: consume ".segment" chains (cliente.tipo), but not a
+                // trailing '.' with nothing after it (leave that as a syntax error downstream).
+                while (i < n && s.charAt(i) == '.' && i + 1 < n
+                        && (Character.isLetter(s.charAt(i + 1)) || s.charAt(i + 1) == '_')) {
+                    i++;
+                    while (i < n && (Character.isLetterOrDigit(s.charAt(i)) || s.charAt(i) == '_')) {
+                        i++;
+                    }
                 }
                 tokens.add(new Token("IDENT", s.substring(start, i)));
                 continue;

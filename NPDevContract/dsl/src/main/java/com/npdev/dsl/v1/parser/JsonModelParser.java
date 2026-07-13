@@ -245,6 +245,7 @@ public final class JsonModelParser {
                         f.get("ui"),
                         "concepts[" + name + "].fields[" + fname + "].ui"
                 );
+                FileMetadataAst fileMetadata = parseFileMetadata(f.get("file"));
 
                 fields.add(new FieldAst(
                         fname,
@@ -260,7 +261,8 @@ public final class JsonModelParser {
                         enumOptions,
                         fieldUi,
                         connectable,
-                        renamedFrom
+                        renamedFrom,
+                        fileMetadata
                 ));
             }
 
@@ -978,7 +980,9 @@ public final class JsonModelParser {
                     parseObjectMap(dataSourceNode.get("params")),
                     readText(dataSourceNode, "parentDataSource"),
                     readText(dataSourceNode, "parentField"),
-                    readText(dataSourceNode, "childField")
+                    readText(dataSourceNode, "childField"),
+                    parseTextArray(dataSourceNode.get("rowOps")),
+                    parseTextArray(dataSourceNode.get("addFormFields"))
             ));
         }
         return out;
@@ -1142,6 +1146,18 @@ public final class JsonModelParser {
             throw new IOException("Field '" + key + "' must be long when provided");
         }
         return value.longValue();
+    }
+
+    /** LIFT-UPLOAD-P2: parses a field's `file: {contentTypes, maxSizeBytes, multiple}` block. */
+    private static FileMetadataAst parseFileMetadata(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        List<String> contentTypes = parseTextArray(node.get("contentTypes"));
+        JsonNode maxSizeNode = node.get("maxSizeBytes");
+        Long maxSizeBytes = maxSizeNode != null && maxSizeNode.isNumber() ? maxSizeNode.asLong() : null;
+        boolean multiple = node.has("multiple") && node.get("multiple").asBoolean(false);
+        return new FileMetadataAst(contentTypes, maxSizeBytes, multiple);
     }
 
     private static List<String> parseTextArray(JsonNode node) {
@@ -1336,6 +1352,16 @@ public final class JsonModelParser {
             elseSteps = parseStepList(flowName + "." + stepName + ".else", elseNode);
         }
 
+        // LIFT-LOOP-P1: forEach/loop flow step -- collectionRef/itemKey/loopSteps/maxLoopIterations.
+        String collectionRef = readText(stepNode, "collection");
+        String itemKey = readText(stepNode, "itemKey");
+        List<StepAst> loopSteps = List.of();
+        JsonNode loopStepsNode = stepNode.get("steps");
+        if (loopStepsNode != null && loopStepsNode.isArray()) {
+            loopSteps = parseStepList(flowName + "." + stepName + ".steps", loopStepsNode);
+        }
+        Integer maxLoopIterations = readOptionalInt(stepNode, "maxLoopIterations");
+
         if ("invariant".equals(type)) {
             if ((checkpoint == null || checkpoint.isBlank()) && scope != null && !scope.isBlank()) {
                 checkpoint = "pre";
@@ -1384,7 +1410,11 @@ public final class JsonModelParser {
                 delaySeconds,
                 returnValue,
                 action,
-                generatedActionName
+                generatedActionName,
+                collectionRef,
+                itemKey,
+                loopSteps,
+                maxLoopIterations
         );
     }
 
@@ -1957,6 +1987,7 @@ public final class JsonModelParser {
             case "assign", "map" -> "map";
             case "waitforevent", "awaitevent", "await_event", "await" -> "await";
             case "return" -> "return";
+            case "foreach", "loop" -> "forEach";
             default -> type;
         };
     }

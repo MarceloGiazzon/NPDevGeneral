@@ -20,6 +20,7 @@ public final class CompiledField {
     private final CompiledPresentationMetadata ui;
     private final String connectable;
     private final String renamedFrom;
+    private final CompiledFileMetadata file;
 
     public CompiledField(String name, String dslType, String javaType, boolean id, boolean required, boolean unique) {
         this(name, dslType, javaType, id, required, unique, List.of(), null, null, null, null, List.of(), null);
@@ -124,6 +125,29 @@ public final class CompiledField {
             String connectable,
             String renamedFrom
     ) {
+        this(name, dslType, javaType, id, required, unique, enumValues, referenceTarget, referenceSemantics,
+                domainType, schema, enumOptions, ui, connectable, renamedFrom, null);
+    }
+
+    /** LIFT-UPLOAD-P2: {@code file} carries a `file`-typed field's contentTypes/maxSizeBytes/multiple. */
+    public CompiledField(
+            String name,
+            String dslType,
+            String javaType,
+            boolean id,
+            boolean required,
+            boolean unique,
+            List<String> enumValues,
+            String referenceTarget,
+            CompiledReferenceSemantics referenceSemantics,
+            String domainType,
+            CompiledSchema schema,
+            List<CompiledEnumOption> enumOptions,
+            CompiledPresentationMetadata ui,
+            String connectable,
+            String renamedFrom,
+            CompiledFileMetadata file
+    ) {
         this.name = name;
         this.dslType = dslType;
         this.javaType = javaType;
@@ -139,6 +163,7 @@ public final class CompiledField {
         this.ui = ui;
         this.connectable = connectable;
         this.renamedFrom = renamedFrom;
+        this.file = file;
     }
 
     public CompiledField(
@@ -188,4 +213,6 @@ public final class CompiledField {
     public String getConnectable() { return connectable; }
     /** The previous field name this field was renamed from, or null if this is not a declared rename. */
     public String getRenamedFrom() { return renamedFrom; }
+    /** LIFT-UPLOAD-P2: contentTypes/maxSizeBytes/multiple for a `file`-typed field; null otherwise. */
+    public CompiledFileMetadata getFile() { return file; }
 }

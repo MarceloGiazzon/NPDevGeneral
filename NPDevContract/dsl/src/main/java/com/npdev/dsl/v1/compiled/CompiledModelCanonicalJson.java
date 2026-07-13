@@ -210,6 +210,7 @@ public final class CompiledModelCanonicalJson {
                 invariantNode.put("type", safe(invariant.getType()));
                 invariantNode.put("field", safe(invariant.getField()));
                 invariantNode.put("expression", safe(invariant.getExpression()));
+                invariantNode.set("fields", toStringArray(invariant.getFields()));
                 invariantsNode.add(invariantNode);
             }
             node.set("invariants", invariantsNode);
@@ -675,6 +676,8 @@ public final class CompiledModelCanonicalJson {
             node.put("parentDataSource", safe(dataSource.parentDataSource()));
             node.put("parentField", safe(dataSource.parentField()));
             node.put("childField", safe(dataSource.childField()));
+            node.set("rowOps", toStringArray(dataSource.rowOps()));
+            node.set("addFormFields", toStringArray(dataSource.addFormFields()));
             out.add(node);
         }
         return out;

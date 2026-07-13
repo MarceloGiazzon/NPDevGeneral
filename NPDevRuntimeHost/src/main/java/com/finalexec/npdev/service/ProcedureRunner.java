@@ -93,7 +93,9 @@ public class ProcedureRunner {
                 conceptGateway,
                 capabilityDispatcher == null ? ProcedureRunner::capabilityUnavailable : capabilityDispatcher,
                 eventBus == null ? event -> { } : eventBus,
-                procedures
+                procedures,
+                com.npdev.kernel.procedures.ProcedureExecutionLimits.defaults(),
+                buildQueriesByName()
         );
         return executor.execute(definition, input == null ? Map.of() : input,
                 context == null ? ExecutionContext.anonymous() : context);
@@ -108,6 +110,19 @@ public class ProcedureRunner {
             definitions.put(procedure.name(), toProcedureDefinition(procedure));
         }
         return Map.copyOf(definitions);
+    }
+
+    /** LIFT-QUERY-P1: lets a {@code runQuery} procedure step resolve its declared query's
+     * where/orderBy/limit instead of always returning every row for the concept. */
+    private Map<String, com.npdev.dsl.v1.compiled.CompiledQuery> buildQueriesByName() {
+        if (compiledModel == null) {
+            return Map.of();
+        }
+        Map<String, com.npdev.dsl.v1.compiled.CompiledQuery> queries = new LinkedHashMap<>();
+        for (com.npdev.dsl.v1.compiled.CompiledQuery query : compiledModel.getQueries()) {
+            queries.put(query.name(), query);
+        }
+        return Map.copyOf(queries);
     }
 
     private static ProcedureDefinition toProcedureDefinition(CompiledProcedure procedure) {

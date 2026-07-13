@@ -2,6 +2,7 @@ package com.npdev.dsl.v1.compiler;
 
 import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.FieldAst;
+import com.npdev.dsl.v1.ast.FileMetadataAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.ast.OrchestrationAst;
@@ -48,6 +49,7 @@ import com.npdev.dsl.v1.ast.RuleProfileAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
 import com.npdev.dsl.v1.ast.StateTransitionAst;
 import com.npdev.dsl.v1.ast.StepAst;
+import com.npdev.dsl.v1.compiled.CompiledFileMetadata;
 import com.npdev.dsl.v1.compiled.CompiledCapability;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityCall;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityBinding;
@@ -157,28 +159,32 @@ public final class ModelCompiler {
             LinkedHashMap<String, CompiledInvariant> invariantsByCanonicalRef = new LinkedHashMap<>();
             Map<String, String> invariantRefAlias = new LinkedHashMap<>();
 
-            // Derive unique fields from entity invariants (type=unique, single-field for now).
+            // Derive unique fields from entity invariants (type=unique). A single-field unique
+            // also marks the CompiledField.unique flag; a compound (multi-field) unique is
+            // carried only on the CompiledInvariant's ordered fields list (LIFT-UNIQUE-P1) since
+            // it doesn't correspond to any one field's own uniqueness.
             //
             // IMPORTANT:
             // Treat field names case-insensitively so that an invariant like ["Email"]
             // still applies to a field named "email".
             Set<String> uniqueFromInvariantsLower = new HashSet<>();
             for (InvariantAst inv : effective.invariants()) {
-                if ("unique".equalsIgnoreCase(inv.getType()) && inv.getFields().size() == 1) {
-                    String invField = inv.getFields().get(0);
-                    if (invField != null) {
-                        uniqueFromInvariantsLower.add(invField.toLowerCase(Locale.ROOT));
-                        String canonicalRef = invariantCanonicalRef(inv);
-                        registerInvariant(
-                                invariantsByCanonicalRef,
-                                invariantRefAlias,
-                                canonicalRef,
-                                "unique",
-                                invField,
-                                null,
-                                List.of("unique(" + invField + ")")
-                        );
+                if ("unique".equalsIgnoreCase(inv.getType()) && inv.getFields() != null && !inv.getFields().isEmpty()) {
+                    List<String> invFields = inv.getFields();
+                    if (invFields.size() == 1) {
+                        uniqueFromInvariantsLower.add(invFields.get(0).toLowerCase(Locale.ROOT));
                     }
+                    String canonicalRef = invariantCanonicalRef(inv);
+                    registerInvariant(
+                            invariantsByCanonicalRef,
+                            invariantRefAlias,
+                            canonicalRef,
+                            "unique",
+                            invFields.get(0),
+                            null,
+                            invFields,
+                            List.of("unique(" + String.join(",", invFields) + ")")
+                    );
                 } else if ("expression".equalsIgnoreCase(inv.getType())) {
                     String expr = inv.getExpression();
                     if (expr != null && !expr.isBlank()) {
@@ -227,7 +233,8 @@ public final class ModelCompiler {
                         toCompiledEnumOptions(f.getEnumOptions()),
                         toCompiledPresentationMetadata(f.getUi()),
                         f.getConnectable(),
-                        f.getRenamedFrom()
+                        f.getRenamedFrom(),
+                        toCompiledFileMetadata(f.getFile())
                 ));
 
                 if (f.isRequired()) {
@@ -1124,6 +1131,14 @@ public final class ModelCompiler {
                     invariantRefsByConcept,
                     invariantRefAliasByConcept
             );
+            List<CompiledFlowStep> loopSteps = compileFlowSteps(
+                    stepAst.getLoopSteps(),
+                    capabilityTypesByName,
+                    operationsByCapability,
+                    flowConcept,
+                    invariantRefsByConcept,
+                    invariantRefAliasByConcept
+            );
 
             out.add(new CompiledFlowStep(
                     stepAst.getName(),
@@ -1147,7 +1162,11 @@ public final class ModelCompiler {
                     stepAst.getReturnValue(),
                     capabilityCall,
                     toCompiledActionMetadata(stepAst.getAction()),
-                    stepAst.getGeneratedActionName()
+                    stepAst.getGeneratedActionName(),
+                    stepAst.getCollectionRef(),
+                    stepAst.getItemKey(),
+                    loopSteps,
+                    stepAst.getMaxLoopIterations()
             ));
         }
         return out;
@@ -1262,6 +1281,9 @@ public final class ModelCompiler {
             return out;
         }
         for (PanelDataSourceAst dataSource : dataSources) {
+            List<String> rowOps = new ArrayList<>(dataSource.rowOps());
+            rowOps.replaceAll(op -> op == null ? "" : op.trim().toLowerCase(Locale.ROOT));
+            rowOps.sort(String.CASE_INSENSITIVE_ORDER);
             out.add(new CompiledPanelDataSource(
                     dataSource.name(),
                     dataSource.concept(),
@@ -1270,7 +1292,9 @@ public final class ModelCompiler {
                     sortObjectMap(dataSource.params()),
                     dataSource.parentDataSource(),
                     dataSource.parentField(),
-                    dataSource.childField()
+                    dataSource.childField(),
+                    List.copyOf(rowOps),
+                    List.copyOf(dataSource.addFormFields())
             ));
         }
         out.sort(Comparator.comparing(dataSource -> normalize(dataSource.name())));
@@ -1384,6 +1408,13 @@ public final class ModelCompiler {
                 referenceSemantics.getVia(),
                 referenceSemantics.getOnDelete()
         );
+    }
+
+    private static CompiledFileMetadata toCompiledFileMetadata(FileMetadataAst file) {
+        if (file == null) {
+            return null;
+        }
+        return new CompiledFileMetadata(file.contentTypes(), file.maxSizeBytes(), file.multiple());
     }
 
     private static CompiledPresentationMetadata toCompiledPresentationMetadata(PresentationMetadataAst metadata) {
@@ -1620,8 +1651,8 @@ public final class ModelCompiler {
 
         if ("unique".equalsIgnoreCase(invariant.getType())
                 && invariant.getFields() != null
-                && invariant.getFields().size() == 1) {
-            return "unique(" + invariant.getFields().get(0) + ")";
+                && !invariant.getFields().isEmpty()) {
+            return "unique(" + String.join(",", invariant.getFields()) + ")";
         }
 
         String expression = invariant.getExpression();
@@ -1643,13 +1674,26 @@ public final class ModelCompiler {
             String expression,
             List<String> aliases
     ) {
+        registerInvariant(invariantsByCanonicalRef, invariantRefAlias, canonicalRef, type, field, expression, null, aliases);
+    }
+
+    private static void registerInvariant(
+            Map<String, CompiledInvariant> invariantsByCanonicalRef,
+            Map<String, String> invariantRefAlias,
+            String canonicalRef,
+            String type,
+            String field,
+            String expression,
+            List<String> fields,
+            List<String> aliases
+    ) {
         if (canonicalRef == null || canonicalRef.isBlank()) {
             return;
         }
 
         invariantsByCanonicalRef.putIfAbsent(
                 canonicalRef,
-                new CompiledInvariant(canonicalRef, type, field, expression)
+                new CompiledInvariant(canonicalRef, type, field, expression, fields)
         );
         invariantRefAlias.put(normalize(canonicalRef), canonicalRef);
         if (aliases == null || aliases.isEmpty()) {

@@ -956,7 +956,11 @@ public final class ModelResolver {
                 step.getDelaySeconds(),
                 step.getReturnValue(),
                 cloneActionMetadata(step.getAction()),
-                step.getGeneratedActionName()
+                step.getGeneratedActionName(),
+                step.getCollectionRef(),
+                step.getItemKey(),
+                cloneSteps(step.getLoopSteps()),
+                step.getMaxLoopIterations()
         );
     }
 

@@ -83,7 +83,8 @@ public final class SemanticValidator {
             "enum",
             "reference",
             "object",
-            "array"
+            "array",
+            "file"
     );
     private static final Set<String> DOMAIN_BASE_TYPES = Set.of(
             "string",
@@ -143,6 +144,8 @@ public final class SemanticValidator {
             Set.of("conceptquery", "runquery", "run_query");
     private static final Set<String> PROCEDURE_CALL_STEP_TYPES =
             Set.of("procedurecall", "callprocedure", "call_procedure");
+    private static final Set<String> PROCEDURE_CAPABILITY_CALL_STEP_TYPES =
+            Set.of("capabilitycall", "callcapability", "call_capability");
     private static final Set<String> PROCEDURE_BRANCH_STEP_TYPES =
             Set.of("condition", "if");
     private static final Set<String> PROCEDURE_LOOP_STEP_TYPES =
@@ -346,21 +349,28 @@ public final class SemanticValidator {
                     }
                 }
 
-                // Fields referenced must exist
+                // Fields referenced must exist. Dotted paths (cliente.tipo) check their
+                // root segment only — nested-field existence isn't modeled here.
                 for (String fn : referencedFields(inv)) {
-                    if (!fieldNames.contains(normalize(fn))) {
+                    String rootSegment = fn.contains(".") ? fn.substring(0, fn.indexOf('.')) : fn;
+                    if (!fieldNames.contains(normalize(rootSegment))) {
                         errors.add("Entity " + e.getName() + " invariant " + inv.getType()
                                 + ": references unknown field " + fn);
                     }
                 }
 
-                // MVP: unique supports only single-field unique
+                // LIFT-UNIQUE-P1: unique supports one or more fields (compound unique).
                 if ("unique".equalsIgnoreCase(inv.getType())) {
                     if (inv.getFields() == null || inv.getFields().isEmpty()) {
                         errors.add("Entity " + e.getName() + " invariant unique: must declare fields");
-                    } else if (inv.getFields().size() != 1) {
-                        errors.add("Entity " + e.getName()
-                                + " invariant unique: compound unique (multiple fields) not supported yet: " + inv.getFields());
+                    } else {
+                        Set<String> seen = new HashSet<>();
+                        for (String fn : inv.getFields()) {
+                            if (fn != null && !seen.add(normalize(fn))) {
+                                errors.add("Entity " + e.getName()
+                                        + " invariant unique: duplicate field '" + fn + "' in " + inv.getFields());
+                            }
+                        }
                     }
                 } else if ("expression".equalsIgnoreCase(inv.getType())) {
                     String expression = inv.getExpression();
@@ -369,6 +379,8 @@ public final class SemanticValidator {
                     } else if (!supportsExpressionFormat(expression)) {
                         errors.add("Entity " + e.getName()
                                 + " invariant expression: unsupported expression format: " + expression);
+                    } else {
+                        validateInvariantExpressionShape(e.getName(), expression, errors);
                     }
                 }
             }
@@ -481,6 +493,10 @@ public final class SemanticValidator {
                 .map(QueryAst::name)
                 .map(SemanticValidator::normalize)
                 .collect(Collectors.toSet());
+        Map<String, CapabilityAst> capabilitiesByLower = new HashMap<>();
+        for (CapabilityAst capability : modelAst.getCapabilities()) {
+            capabilitiesByLower.put(normalize(capability.getName()), capability);
+        }
         Set<String> seen = new HashSet<>();
         for (ProcedureAst procedure : modelAst.getProcedures()) {
             String procedureName = procedure.name();
@@ -498,6 +514,7 @@ public final class SemanticValidator {
                     entitiesByLower,
                     queryNames,
                     procedureNames,
+                    capabilitiesByLower,
                     errors
             );
         }
@@ -510,6 +527,7 @@ public final class SemanticValidator {
             Map<String, ConceptAst> entitiesByLower,
             Set<String> queryNames,
             Set<String> procedureNames,
+            Map<String, CapabilityAst> capabilitiesByLower,
             List<String> errors
     ) {
         int index = 0;
@@ -532,16 +550,76 @@ public final class SemanticValidator {
                     && !procedureNames.contains(normalize(step.procedure()))) {
                 errors.add("Procedure " + procedureName + " step " + stepPath + ": procedure not found: " + step.procedure());
             }
+            if (PROCEDURE_CAPABILITY_CALL_STEP_TYPES.contains(type)) {
+                validateProcedureCapabilityCall(procedureName, stepPath, step, capabilitiesByLower, errors);
+            }
             if (PROCEDURE_BRANCH_STEP_TYPES.contains(type) && !hasText(step.condition())) {
                 errors.add("Procedure " + procedureName + " step " + stepPath + ": condition is required");
             }
             if (PROCEDURE_LOOP_STEP_TYPES.contains(type) && !hasText(step.items())) {
                 errors.add("Procedure " + procedureName + " step " + stepPath + ": forEach requires items");
             }
-            validateProcedureSteps(procedureName, stepPath + ".then", step.thenSteps(), entitiesByLower, queryNames, procedureNames, errors);
-            validateProcedureSteps(procedureName, stepPath + ".else", step.elseSteps(), entitiesByLower, queryNames, procedureNames, errors);
-            validateProcedureSteps(procedureName, stepPath + ".steps", step.steps(), entitiesByLower, queryNames, procedureNames, errors);
+            validateProcedureSteps(procedureName, stepPath + ".then", step.thenSteps(), entitiesByLower, queryNames, procedureNames, capabilitiesByLower, errors);
+            validateProcedureSteps(procedureName, stepPath + ".else", step.elseSteps(), entitiesByLower, queryNames, procedureNames, capabilitiesByLower, errors);
+            validateProcedureSteps(procedureName, stepPath + ".steps", step.steps(), entitiesByLower, queryNames, procedureNames, capabilitiesByLower, errors);
             index++;
+        }
+    }
+
+    /**
+     * LIFT-QUERY-P3: a {@code callCapability} procedure step references a declared capability +
+     * operation, and its arg count matches that operation's declared {@code input} arity -- the
+     * dispatcher itself matches by name+arity only (no type-checking, per LIFT-QUERY-P2's
+     * research), so this is the only place a mismatched arity gets caught before runtime.
+     */
+    private static void validateProcedureCapabilityCall(
+            String procedureName,
+            String stepPath,
+            ProcedureStepAst step,
+            Map<String, CapabilityAst> capabilitiesByLower,
+            List<String> errors
+    ) {
+        if (!hasText(step.capability())) {
+            errors.add("Procedure " + procedureName + " step " + stepPath + ": capability is required for callCapability");
+            return;
+        }
+        CapabilityAst capability = capabilitiesByLower.get(normalize(step.capability()));
+        if (capability == null) {
+            errors.add("Procedure " + procedureName + " step " + stepPath + ": capability not found: " + step.capability());
+            return;
+        }
+        if (!hasText(step.operation())) {
+            errors.add("Procedure " + procedureName + " step " + stepPath + ": operation is required for callCapability");
+            return;
+        }
+        Optional<CapabilityOperationAst> operation = capability.getOperations().stream()
+                .filter(op -> normalize(op.getName()).equals(normalize(step.operation())))
+                .findFirst();
+        if (operation.isEmpty()) {
+            errors.add("Procedure " + procedureName + " step " + stepPath + ": capability " + step.capability()
+                    + " has no operation named " + step.operation());
+            return;
+        }
+        // Arity is declared one of two ways depending on authoring style: the legacy plain-array
+        // `input: ["a","b"]` shorthand (CapabilityOperationAst.getInput()), or the schemaObject
+        // form (`input: {type: object, properties: {a: {...}, b: {...}}}`) that's the only shape
+        // the JSON Schema's capabilityOperation.input actually accepts today. The bare-string
+        // `"operations": ["save", "unique"]` shorthand declares neither -- no contract to check
+        // arity against, so it's skipped rather than flagged (consistent with treating an
+        // underspecified operation as accepting anything, its existing behavior everywhere else).
+        Integer declaredArity = null;
+        if (!operation.get().getInput().isEmpty()) {
+            declaredArity = operation.get().getInput().size();
+        } else if (operation.get().getInputSchema() != null && !operation.get().getInputSchema().getProperties().isEmpty()) {
+            declaredArity = operation.get().getInputSchema().getProperties().size();
+        }
+        if (declaredArity == null) {
+            return;
+        }
+        int actualArity = step.args() == null ? 0 : step.args().size();
+        if (!declaredArity.equals(actualArity)) {
+            errors.add("Procedure " + procedureName + " step " + stepPath + ": capability " + step.capability() + "."
+                    + step.operation() + " expects " + declaredArity + " arg(s) but this call supplies " + actualArity);
         }
     }
 
@@ -776,6 +854,7 @@ public final class SemanticValidator {
                                 + ": a child dataSource (parentDataSource declared) must be concept/query-bound, not procedure-bound");
                     }
                 }
+                validatePanelRowOps(panel, dataSource, entitiesByLower, errors);
             }
             for (PanelActionAst action : panel.actions()) {
                 String binding = normalize(action.binding());
@@ -801,6 +880,56 @@ public final class SemanticValidator {
                     errors.add("Panel " + panel.name() + " action " + action.name()
                             + ": flow not found: " + action.flow());
                 }
+            }
+        }
+    }
+
+    private static final Set<String> PANEL_ROW_OPS = Set.of("add", "delete");
+
+    /**
+     * LIFT-ROWOPS-P1: a declared Panel dataSource may opt into {@code rowOps: [add, delete]} (an
+     * optional header add-row form via {@code addFormFields}). Row mutation writes through the
+     * generic CRUD gateway (LIFT-ROWOPS-P3), so it needs a concept target -- not a query/procedure
+     * dataSource -- and, for a child (nested) dataSource, the parent-FK {@code childField} that the
+     * existing nesting validation above already requires.
+     */
+    private static void validatePanelRowOps(
+            PanelAst panel,
+            PanelDataSourceAst dataSource,
+            Map<String, ConceptAst> entitiesByLower,
+            List<String> errors
+    ) {
+        if (dataSource.rowOps() == null || dataSource.rowOps().isEmpty()) {
+            return;
+        }
+        Set<String> seen = new HashSet<>();
+        for (String op : dataSource.rowOps()) {
+            String normalizedOp = normalize(op);
+            if (!PANEL_ROW_OPS.contains(normalizedOp)) {
+                errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
+                        + ": unsupported rowOps value '" + op + "' (must be add or delete)");
+            } else if (!seen.add(normalizedOp)) {
+                errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
+                        + ": duplicate rowOps value '" + op + "'");
+            }
+        }
+        if (!hasText(dataSource.concept())) {
+            errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
+                    + ": rowOps requires a concept-bound dataSource (query/procedure dataSources can't be mutated)");
+            return;
+        }
+        ConceptAst concept = entitiesByLower.get(normalize(dataSource.concept()));
+        if (concept == null || dataSource.addFormFields() == null || dataSource.addFormFields().isEmpty()) {
+            return;
+        }
+        Set<String> conceptFieldNames = concept.getFields().stream()
+                .map(FieldAst::getName)
+                .map(SemanticValidator::normalize)
+                .collect(Collectors.toSet());
+        for (String fieldName : dataSource.addFormFields()) {
+            if (!conceptFieldNames.contains(normalize(fieldName))) {
+                errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
+                        + ": addFormFields references unknown field " + fieldName + " on concept " + dataSource.concept());
             }
         }
     }
@@ -2110,10 +2239,128 @@ public final class SemanticValidator {
                         errors
                 );
                 case "await" -> validateAwaitStep(flow, step, eventNames, errors);
+                case "foreach" -> validateForEachStep(
+                        flow,
+                        step,
+                        operationsByCapability,
+                        eventNames,
+                        conceptInvariantRefs,
+                        referencedCapabilities,
+                        knownStepNames,
+                        errors
+                );
                 default -> errors.add("Flow " + flow.getName() + " step " + step.getName()
                         + ": unsupported step type " + step.getType());
             }
         }
+    }
+
+    /** LIFT-LOOP-P4: flow state keys a forEach itemKey must never shadow -- KernelRunner writes
+     * {@code state.put(itemKey, item)} on every iteration, so reusing one of these silently
+     * clobbers framework-critical state (e.g. itemKey="input" would overwrite the flow's own
+     * input mid-loop, corrupting every later {@code input.*} reference in that same iteration). */
+    private static final Set<String> RESERVED_FLOW_STATE_KEYS = Set.of(
+            "input", "last", "executionid", "correlationid", "causationid",
+            "tenantid", "actorid", "_npdeventityname"
+    );
+
+    private static final int MAX_LOOP_ITERATIONS_CEILING = 1_000_000;
+
+    /**
+     * LIFT-LOOP-P1/P4: {@code forEach} flow step validation. Collection/itemKey/non-empty body are
+     * already required by the JSON Schema; this adds the semantic checks the schema can't express:
+     * item-var shadowing (of reserved flow state, the loop's own collection, and any enclosing
+     * loop's item variable), a sane ceiling on {@code maxLoopIterations}, and the P1 design decision
+     * to reject {@code await} nested inside a loop body (durable resume of an in-flight await
+     * *inside* a loop iteration is deliberately deferred to a later slice -- see
+     * BOUNDARY_LIFT_ROADMAP.md's risk register).
+     */
+    private static void validateForEachStep(
+            FlowAst flow,
+            StepAst step,
+            Map<String, Set<String>> operationsByCapability,
+            Set<String> eventNames,
+            Set<String> conceptInvariantRefs,
+            Set<String> referencedCapabilities,
+            Set<String> knownStepNames,
+            List<String> errors
+    ) {
+        String itemKey = step.getItemKey();
+        String normalizedItemKey = normalize(itemKey);
+        if (hasText(itemKey) && RESERVED_FLOW_STATE_KEYS.contains(normalizedItemKey)) {
+            errors.add("Flow " + flow.getName() + " step " + step.getName()
+                    + ": itemKey '" + itemKey + "' shadows a reserved flow state key");
+        }
+        if (hasText(itemKey) && hasText(step.getCollectionRef())) {
+            String collectionRoot = normalize(step.getCollectionRef()).split("\\.", 2)[0];
+            if (normalizedItemKey.equals(collectionRoot)) {
+                errors.add("Flow " + flow.getName() + " step " + step.getName()
+                        + ": itemKey must not shadow its own collection reference");
+            }
+        }
+        if (step.getMaxLoopIterations() != null) {
+            if (step.getMaxLoopIterations() <= 0) {
+                errors.add("Flow " + flow.getName() + " step " + step.getName()
+                        + ": maxLoopIterations must be positive");
+            } else if (step.getMaxLoopIterations() > MAX_LOOP_ITERATIONS_CEILING) {
+                errors.add("Flow " + flow.getName() + " step " + step.getName()
+                        + ": maxLoopIterations must not exceed " + MAX_LOOP_ITERATIONS_CEILING);
+            }
+        }
+        if (containsAwaitStep(step.getLoopSteps())) {
+            errors.add("Flow " + flow.getName() + " step " + step.getName()
+                    + ": await is not supported inside a forEach loop body yet");
+        }
+        if (hasText(itemKey)) {
+            checkNestedItemKeyShadowing(flow, step, normalizedItemKey, step.getLoopSteps(), errors);
+        }
+        validateFlowSteps(
+                flow,
+                step.getLoopSteps(),
+                operationsByCapability,
+                eventNames,
+                conceptInvariantRefs,
+                referencedCapabilities,
+                knownStepNames,
+                errors
+        );
+    }
+
+    /** LIFT-LOOP-P4: flags a nested forEach reusing an enclosing loop's itemKey -- the inner
+     * loop's {@code state.put(itemKey, item)} would silently shadow the outer item for the rest
+     * of that inner iteration, a common source of "wrong item" authoring bugs. */
+    private static void checkNestedItemKeyShadowing(
+            FlowAst flow,
+            StepAst outerStep,
+            String outerItemKey,
+            List<StepAst> steps,
+            List<String> errors
+    ) {
+        for (StepAst step : steps) {
+            String type = normalize(step.getType());
+            if ("foreach".equals(type) && outerItemKey.equals(normalize(step.getItemKey()))) {
+                errors.add("Flow " + flow.getName() + " step " + step.getName()
+                        + ": itemKey '" + step.getItemKey() + "' shadows enclosing forEach step "
+                        + outerStep.getName() + "'s item variable");
+            }
+            checkNestedItemKeyShadowing(flow, outerStep, outerItemKey, step.getThenSteps(), errors);
+            checkNestedItemKeyShadowing(flow, outerStep, outerItemKey, step.getElseSteps(), errors);
+            checkNestedItemKeyShadowing(flow, outerStep, outerItemKey, step.getLoopSteps(), errors);
+        }
+    }
+
+    private static boolean containsAwaitStep(List<StepAst> steps) {
+        for (StepAst step : steps) {
+            String type = normalize(step.getType());
+            if ("await".equals(type)) {
+                return true;
+            }
+            if (containsAwaitStep(step.getThenSteps()) || containsAwaitStep(step.getElseSteps())
+                    || containsAwaitStep(step.getLoopSteps())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void validateInvariantStep(
@@ -3121,6 +3368,9 @@ public final class SemanticValidator {
             if (!step.getElseSteps().isEmpty()) {
                 validateFlowStepTechnologyNeutrality(step.getElseSteps(), errors);
             }
+            if (!step.getLoopSteps().isEmpty()) {
+                validateFlowStepTechnologyNeutrality(step.getLoopSteps(), errors);
+            }
         }
     }
 
@@ -3162,6 +3412,16 @@ public final class SemanticValidator {
             String expression = inv.getExpression();
             if (expression == null || expression.isBlank()) return List.of();
 
+            // LIFT-EXPR-P3: prefer the unified ComputedExpression grammar (covers parens/!/
+            // arithmetic/dotted paths, so compound expressions get real field checking instead
+            // of being silently skipped). Falls back to the legacy single-shape regexes for
+            // CEL-specific syntax ComputedExpression doesn't parse (matches/uniqueBy/etc).
+            try {
+                return List.copyOf(ComputedExpression.referencedFields(expression));
+            } catch (ComputedExpression.ExpressionException ignored) {
+                // fall through to legacy extraction
+            }
+
             Matcher matchesMatcher = FIELD_MATCHES_PATTERN.matcher(expression);
             if (matchesMatcher.matches()) return List.of(matchesMatcher.group(1));
 
@@ -3174,6 +3434,24 @@ public final class SemanticValidator {
             return List.of();
         }
         return inv.getFields();
+    }
+
+    /**
+     * LIFT-EXPR-P3: static boolean-shape check for the ComputedExpression-parseable subset of
+     * invariant expressions (comparisons/&&/||/!/parens/arithmetic). Expressions using
+     * CEL-specific syntax (regex .matches(), .uniqueBy(), .all()/.exists() quantifiers,
+     * conflicts()/scope.exists()) don't parse here and are left to runtime validation
+     * (CelInvariantEngine), which remains their source of truth.
+     */
+    private static void validateInvariantExpressionShape(String entityName, String expression, List<String> errors) {
+        try {
+            if (!ComputedExpression.isBooleanShaped(expression)) {
+                errors.add("Entity " + entityName
+                        + " invariant expression: expression must evaluate to a boolean: " + expression);
+            }
+        } catch (ComputedExpression.ExpressionException ignored) {
+            // CEL-specific syntax; no static shape check available for it yet.
+        }
     }
 
     private static void validateFieldValueBehavior(

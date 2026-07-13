@@ -4,11 +4,13 @@ import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledInvariant;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.kernel.ports.InvariantEngine;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -55,6 +57,15 @@ public final class CelInvariantEngine implements InvariantEngine {
         boolean exists(String entityName, String fieldName, Object value, Object payload);
     }
 
+    /** LIFT-UNIQUE-P3: existence check for a compound (multi-field) unique invariant. */
+    @FunctionalInterface
+    public interface CompoundUniqueValueChecker {
+        /**
+         * @return true when a row already matches every (field, value) pair and violates uniqueness.
+         */
+        boolean exists(String entityName, List<String> fields, List<Object> values, Object payload);
+    }
+
     @FunctionalInterface
     public interface ConflictChecker {
         boolean conflicts(
@@ -84,6 +95,8 @@ public final class CelInvariantEngine implements InvariantEngine {
     }
 
     private static final UniqueValueChecker NO_UNIQUE_CHECKER = (entity, field, value, payload) -> false;
+    private static final CompoundUniqueValueChecker NO_COMPOUND_UNIQUE_CHECKER =
+            (entity, fields, values, payload) -> false;
     private static final ConflictChecker NO_CONFLICT_CHECKER =
             (resourceField, resourceId, startsAtField, startsAt, durationField, durationMinutes, excludeId, payload) -> false;
     private static final ScopeChecker NO_SCOPE_CHECKER =
@@ -91,6 +104,7 @@ public final class CelInvariantEngine implements InvariantEngine {
 
     private final Map<String, EntityRules> rulesByEntity;
     private final UniqueValueChecker uniqueValueChecker;
+    private final CompoundUniqueValueChecker compoundUniqueValueChecker;
     private final ConflictChecker conflictChecker;
     private final ScopeChecker scopeChecker;
 
@@ -120,10 +134,21 @@ public final class CelInvariantEngine implements InvariantEngine {
             ConflictChecker conflictChecker,
             ScopeChecker scopeChecker
     ) {
+        this(rulesByEntity, uniqueValueChecker, conflictChecker, scopeChecker, NO_COMPOUND_UNIQUE_CHECKER);
+    }
+
+    public CelInvariantEngine(
+            Map<String, EntityRules> rulesByEntity,
+            UniqueValueChecker uniqueValueChecker,
+            ConflictChecker conflictChecker,
+            ScopeChecker scopeChecker,
+            CompoundUniqueValueChecker compoundUniqueValueChecker
+    ) {
         Objects.requireNonNull(rulesByEntity, "rulesByEntity");
         this.uniqueValueChecker = uniqueValueChecker == null ? NO_UNIQUE_CHECKER : uniqueValueChecker;
         this.conflictChecker = conflictChecker == null ? NO_CONFLICT_CHECKER : conflictChecker;
         this.scopeChecker = scopeChecker == null ? NO_SCOPE_CHECKER : scopeChecker;
+        this.compoundUniqueValueChecker = compoundUniqueValueChecker == null ? NO_COMPOUND_UNIQUE_CHECKER : compoundUniqueValueChecker;
 
         Map<String, EntityRules> normalized = new LinkedHashMap<>();
         for (Map.Entry<String, EntityRules> e : rulesByEntity.entrySet()) {
@@ -157,6 +182,16 @@ public final class CelInvariantEngine implements InvariantEngine {
             ConflictChecker conflictChecker,
             ScopeChecker scopeChecker
     ) {
+        return fromCompiledModel(model, uniqueValueChecker, conflictChecker, scopeChecker, NO_COMPOUND_UNIQUE_CHECKER);
+    }
+
+    public static CelInvariantEngine fromCompiledModel(
+            CompiledModel model,
+            UniqueValueChecker uniqueValueChecker,
+            ConflictChecker conflictChecker,
+            ScopeChecker scopeChecker,
+            CompoundUniqueValueChecker compoundUniqueValueChecker
+    ) {
         Objects.requireNonNull(model, "model");
 
         Map<String, EntityRules> rules = new LinkedHashMap<>();
@@ -164,7 +199,7 @@ public final class CelInvariantEngine implements InvariantEngine {
             rules.put(entity.getName(), EntityRules.fromCompiledConcept(entity));
         }
 
-        return new CelInvariantEngine(rules, uniqueValueChecker, conflictChecker, scopeChecker);
+        return new CelInvariantEngine(rules, uniqueValueChecker, conflictChecker, scopeChecker, compoundUniqueValueChecker);
     }
 
     @Override
@@ -298,13 +333,18 @@ public final class CelInvariantEngine implements InvariantEngine {
                     }
                     String type = invariant.getType() == null ? "" : invariant.getType().trim().toLowerCase(Locale.ROOT);
                     String normalizedRef = normalize(invariant.getRef());
-                    compiledRules.put(normalizedRef, new InvariantRule(type, invariant.getField(), invariant.getExpression()));
+                    compiledRules.put(normalizedRef,
+                            new InvariantRule(type, invariant.getField(), invariant.getExpression(), invariant.getFields()));
                     orderedRefs.add(invariant.getRef());
 
                     if ("required".equals(type) && invariant.getField() != null && !invariant.getField().isBlank()) {
                         requiredFields.add(invariant.getField());
-                    } else if ("unique".equals(type) && invariant.getField() != null && !invariant.getField().isBlank()) {
-                        uniqueFields.add(invariant.getField());
+                    } else if ("unique".equals(type)
+                            && invariant.getFields() != null
+                            && invariant.getFields().size() == 1) {
+                        // LIFT-UNIQUE-P3: compound (2+ field) unique invariants stay out of this
+                        // single-field set and are enforced via evaluateCompoundUniqueRule instead.
+                        uniqueFields.add(invariant.getFields().get(0));
                     } else if ("expression".equals(type)
                             && invariant.getExpression() != null
                             && !invariant.getExpression().isBlank()) {
@@ -423,7 +463,9 @@ public final class CelInvariantEngine implements InvariantEngine {
 
         return switch (rule.type()) {
             case "required" -> evaluateRequiredRule(entityName, payload, invariantRef, rule.field());
-            case "unique" -> evaluateUniqueRule(entityName, payload, invariantRef, rule.field());
+            case "unique" -> rule.fields().size() > 1
+                    ? evaluateCompoundUniqueRule(entityName, payload, invariantRef, rule.fields())
+                    : evaluateUniqueRule(entityName, payload, invariantRef, rule.field());
             case "expression" -> evaluateExpressionRule(entityName, payload, invariantRef, rule.expression(), state);
             default -> RuleEvaluationResult.fail(
                     "INVARIANT_UNKNOWN_REF",
@@ -478,6 +520,41 @@ public final class CelInvariantEngine implements InvariantEngine {
                         "field", field,
                         "fieldPath", field,
                         "value", value,
+                        "invariantRef", invariantRef,
+                        "violationKind", "unique"
+                )
+        );
+    }
+
+    /** LIFT-UNIQUE-P3: compound (2+ field) unique invariant. Mirrors evaluateUniqueRule's
+     * "missing value -> success" leniency: if any field in the group is absent, the group can't
+     * collide yet, so the check is skipped (consistent with the single-field behavior above). */
+    private RuleEvaluationResult evaluateCompoundUniqueRule(
+            String entityName,
+            Object payload,
+            String invariantRef,
+            List<String> fields
+    ) {
+        List<Object> values = new ArrayList<>(fields.size());
+        for (String field : fields) {
+            Object value = readFieldValue(payload, field);
+            if (isMissing(value)) {
+                return RuleEvaluationResult.success();
+            }
+            values.add(value);
+        }
+        if (!compoundUniqueValueChecker.exists(entityName, fields, values, payload)) {
+            return RuleEvaluationResult.success();
+        }
+        String fieldList = String.join(", ", fields);
+        return RuleEvaluationResult.fail(
+                "INVARIANT_FAIL",
+                "Entity " + entityName + ": unique constraint violated for fields (" + fieldList
+                        + ") (ref=" + invariantRef + ")",
+                Map.of(
+                        "fields", fields,
+                        "fieldPath", fieldList,
+                        "values", values,
                         "invariantRef", invariantRef,
                         "violationKind", "unique"
                 )
@@ -684,9 +761,60 @@ public final class CelInvariantEngine implements InvariantEngine {
         }
     }
 
+    /**
+     * Adapts an arbitrary payload (Map or POJO) to the {@code Map<String,Object>} scope
+     * {@link ComputedExpression} expects, resolving every lookup through {@link #readFieldValue}
+     * so dotted/case-insensitive/reflection field resolution stays identical to the legacy
+     * matcher's behavior. Only {@code get}/{@code containsKey} are exercised by ComputedExpression.
+     */
+    private static final class FieldPathScope extends AbstractMap<String, Object> {
+        private final Object payload;
+
+        FieldPathScope(Object payload) {
+            this.payload = payload;
+        }
+
+        @Override
+        public Object get(Object key) {
+            return key instanceof String fieldPath ? readFieldValue(payload, fieldPath) : null;
+        }
+
+        @Override
+        public boolean containsKey(Object key) {
+            return true;
+        }
+
+        @Override
+        public Set<Entry<String, Object>> entrySet() {
+            return Collections.emptySet();
+        }
+    }
+
     private ExpressionResult evaluateExpression(Object payload, String expression, Map<String, Object> state) {
         if (expression == null || expression.isBlank()) {
             return ExpressionResult.failure("blank expression");
+        }
+
+        // LIFT-EXPR-P2: try the unified ComputedExpression grammar first — it's a strict
+        // superset (parens, unary !, arithmetic-in-comparisons, dotted paths) of the legacy
+        // atom/DNF matcher below. It throws ExpressionException on any syntax it doesn't
+        // recognize (regex .matches(), .uniqueBy(), .all()/.exists() quantifiers, conflicts()/
+        // overlapsProvider(), scope.exists(), [*] wildcards), so those CEL-specific forms fall
+        // through unchanged to the legacy matcher, which is the only implementation for them.
+        try {
+            boolean ok = ComputedExpression.evaluateBoolean(expression, new FieldPathScope(payload));
+            if (ok) {
+                return ExpressionResult.success();
+            }
+            // Best-effort fieldPath so simple "field op value" failures still attribute to a
+            // field for UI highlighting, matching the legacy matcher's behavior for that shape.
+            // Compound (&&/||/paren/!) expressions are new capability with no prior fieldPath
+            // to preserve, so they report the expression with no single fieldPath.
+            Matcher simpleComparison = COMPARISON_PATTERN.matcher(expression);
+            String fieldPath = simpleComparison.matches() ? simpleComparison.group(1) : null;
+            return ExpressionResult.failure("expression evaluated to false", fieldPath);
+        } catch (ComputedExpression.ExpressionException legacySyntax) {
+            // fall through
         }
 
         List<String> disjuncts = splitLogicalExpression(expression, "||");
@@ -1392,6 +1520,15 @@ public final class CelInvariantEngine implements InvariantEngine {
     ) {
     }
 
-    private record InvariantRule(String type, String field, String expression) {
+    private record InvariantRule(String type, String field, String expression, List<String> fields) {
+        private InvariantRule {
+            fields = (fields == null || fields.isEmpty())
+                    ? (field == null ? List.of() : List.of(field))
+                    : List.copyOf(fields);
+        }
+
+        InvariantRule(String type, String field, String expression) {
+            this(type, field, expression, null);
+        }
     }
 }

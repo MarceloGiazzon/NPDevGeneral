@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.dsl.v1.compiled.CompiledInvariant;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.dsl.v1.compiled.SqlTypeSupport;
@@ -279,6 +280,34 @@ public final class SchemaRealizationEmitter {
                         .append(column)
                         .append(");\n");
             }
+        }
+
+        // LIFT-UNIQUE-P2: compound (multi-field) unique invariants get one composite UNIQUE
+        // constraint each, tenant-scoped the same way as ordinary single-field uniques above
+        // (two tenants may legitimately share a (tenantId, email) pair otherwise).
+        Map<String, CompiledField> fieldsByLowerName = new LinkedHashMap<>();
+        for (CompiledField field : concept.getFields()) {
+            fieldsByLowerName.put(field.getName().toLowerCase(Locale.ROOT), field);
+        }
+        for (CompiledInvariant invariant : concept.getInvariants()) {
+            if (!"unique".equalsIgnoreCase(invariant.getType()) || invariant.getFields().size() < 2) {
+                continue;
+            }
+            List<String> columns = new ArrayList<>();
+            for (String fieldName : invariant.getFields()) {
+                CompiledField field = fieldsByLowerName.get(fieldName.toLowerCase(Locale.ROOT));
+                if (field != null) {
+                    columns.add(SqlIdentifierSupport.columnName(field));
+                }
+            }
+            if (columns.size() < 2) {
+                continue;
+            }
+            String constraint = truncate("uq_" + table + "_" + String.join("_", columns));
+            String constraintSql = "ALTER TABLE " + table
+                    + " ADD CONSTRAINT " + constraint
+                    + " UNIQUE (tenant_id, " + String.join(", ", columns) + ")";
+            sql.append(addConstraintIfMissing(engine, table, constraint, constraintSql));
         }
         sql.append("\n");
     }

@@ -207,11 +207,15 @@ public final class CompiledModelCanonicalJsonReader {
 
         List<CompiledInvariant> invariants = new ArrayList<>();
         for (JsonNode invariantNode : array(node, "invariants")) {
+            List<String> invariantFields = toStringList(invariantNode.get("fields"));
             invariants.add(new CompiledInvariant(
                     optionalText(invariantNode, "ref"),
                     optionalText(invariantNode, "type"),
                     optionalText(invariantNode, "field"),
-                    optionalText(invariantNode, "expression")
+                    optionalText(invariantNode, "expression"),
+                    invariantFields.isEmpty() && optionalText(invariantNode, "field") != null
+                            ? List.of(optionalText(invariantNode, "field"))
+                            : invariantFields
             ));
         }
 
@@ -771,7 +775,9 @@ public final class CompiledModelCanonicalJsonReader {
                     toObjectMap(dataSourceNode.get("params")),
                     optionalText(dataSourceNode, "parentDataSource"),
                     optionalText(dataSourceNode, "parentField"),
-                    optionalText(dataSourceNode, "childField")
+                    optionalText(dataSourceNode, "childField"),
+                    toStringList(dataSourceNode.get("rowOps")),
+                    toStringList(dataSourceNode.get("addFormFields"))
             ));
         }
         return out;

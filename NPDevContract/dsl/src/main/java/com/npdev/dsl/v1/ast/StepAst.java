@@ -32,6 +32,10 @@ public final class StepAst {
     private final String returnValue;
     private final ActionMetadataAst action;
     private final String generatedActionName;
+    private final String collectionRef;
+    private final String itemKey;
+    private final List<StepAst> loopSteps;
+    private final Integer maxLoopIterations;
 
     public StepAst(
             String name,
@@ -160,6 +164,44 @@ public final class StepAst {
             ActionMetadataAst action,
             String generatedActionName
     ) {
+        this(name, type, checkpoint, scope, invariants, capability, operation, capabilityPolicy, input, output, args,
+                event, payload, data, condition, thenSteps, elseSteps, awaitEvent, awaitRef, awaitMatchCorrelation,
+                awaitPayloadMatch, delaySeconds, returnValue, action, generatedActionName, null, null, List.of(), null);
+    }
+
+    /** LIFT-LOOP-P1: canonical constructor, adding {@code collectionRef}/{@code itemKey}/
+     * {@code loopSteps}/{@code maxLoopIterations} for a {@code forEach} flow step. */
+    public StepAst(
+            String name,
+            String type,
+            String checkpoint,
+            String scope,
+            List<String> invariants,
+            String capability,
+            String operation,
+            CapabilityPolicyAst capabilityPolicy,
+            String input,
+            String output,
+            List<String> args,
+            String event,
+            String payload,
+            Map<String, String> data,
+            String condition,
+            List<StepAst> thenSteps,
+            List<StepAst> elseSteps,
+            String awaitEvent,
+            String awaitRef,
+            Boolean awaitMatchCorrelation,
+            Map<String, String> awaitPayloadMatch,
+            Long delaySeconds,
+            String returnValue,
+            ActionMetadataAst action,
+            String generatedActionName,
+            String collectionRef,
+            String itemKey,
+            List<StepAst> loopSteps,
+            Integer maxLoopIterations
+    ) {
         this.name = name;
         this.type = type;
         this.checkpoint = checkpoint;
@@ -185,6 +227,10 @@ public final class StepAst {
         this.returnValue = returnValue;
         this.action = action;
         this.generatedActionName = generatedActionName;
+        this.collectionRef = collectionRef;
+        this.itemKey = itemKey;
+        this.loopSteps = loopSteps == null ? List.of() : new ArrayList<>(loopSteps);
+        this.maxLoopIterations = maxLoopIterations;
     }
 
     public String getName() { return name; }
@@ -248,4 +294,14 @@ public final class StepAst {
     public ActionMetadataAst getAction() { return action; }
 
     public String getGeneratedActionName() { return generatedActionName; }
+
+    public String getCollectionRef() { return collectionRef; }
+
+    public String getItemKey() { return itemKey; }
+
+    public List<StepAst> getLoopSteps() {
+        return Collections.unmodifiableList(loopSteps);
+    }
+
+    public Integer getMaxLoopIterations() { return maxLoopIterations; }
 }

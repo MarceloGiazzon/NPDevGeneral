@@ -96,7 +96,8 @@ public class {{entityName}}ServiceBase {
                 this::saveToConceptStore,
                 id -> findByIdFromConceptStore(id).isPresent(),
                 this::deleteFromConceptStore,
-                this::existsUniqueInConceptStore
+                this::existsUniqueInConceptStore,
+                this::existsUniqueCompoundInConceptStore
         );
     }
 
@@ -438,7 +439,9 @@ public class {{entityName}}ServiceBase {
                 entityName,
                 payload,
                 (requestedEntityName, fieldName, value, excludeId, invariantPayload) ->
-                        persistence.existsUnique(fieldName, value, excludeId)
+                        persistence.existsUnique(fieldName, value, excludeId),
+                (requestedEntityName, fieldNames, values, excludeId, invariantPayload) ->
+                        persistence.existsUniqueCompound(fieldNames, values, excludeId)
         );
         if (!violations.isEmpty()) {
             throw new GeneratedCrudRuntimeSupport.InvariantViolationException(violations);
@@ -623,6 +626,32 @@ public class {{entityName}}ServiceBase {
             }
             Object existingValue = record.data().get(normalizedField);
             if (uniqueValuesEqual(existingValue, value)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // LIFT-UNIQUE-P3: compound-unique pre-check, same full-scan-of-the-tenant strategy as
+    // existsUniqueInConceptStore above, extended to require every (field, value) pair to match
+    // the same candidate row (an AND across columns, not an OR of independent field checks).
+    private boolean existsUniqueCompoundInConceptStore(List<String> fieldNames, List<Object> values, UUID excludeId) {
+        if (fieldNames == null || fieldNames.isEmpty() || values == null || fieldNames.size() != values.size()) {
+            return false;
+        }
+        for (ConceptRecord record : conceptStore.findAll(currentTenantId(), CONCEPT_NAME)) {
+            if (excludeId != null && String.valueOf(excludeId).equalsIgnoreCase(record.id())) {
+                continue;
+            }
+            boolean allMatch = true;
+            for (int i = 0; i < fieldNames.size(); i++) {
+                Object existingValue = record.data().get(fieldNames.get(i));
+                if (!uniqueValuesEqual(existingValue, values.get(i))) {
+                    allMatch = false;
+                    break;
+                }
+            }
+            if (allMatch) {
                 return true;
             }
         }

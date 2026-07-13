@@ -345,6 +345,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         for (CompiledField field : concept.getFields()) {
             Map<String, Object> node = new LinkedHashMap<>();
             node.put("name", field.getName());
+            node.put("concept", concept.getName());
             node.put("label", fieldLabel(field));
             node.put("columnName", toSnake(field.getName()));
             node.put("type", manifestType(field));
@@ -384,6 +385,11 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 node.put("reference", value);
                 node.put("tableDisplay", referenceTableDisplayMetadata());
             });
+            if ("file".equals(manifestType(field)) && field.getFile() != null) {
+                node.put("fileContentTypes", field.getFile().contentTypes());
+                node.put("fileMaxSizeBytes", field.getFile().maxSizeBytes());
+                node.put("fileMultiple", field.getFile().multiple());
+            }
             fields.add(node);
         }
         return fields;
@@ -759,7 +765,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     }
 
     private static boolean isSortable(CompiledField field) {
-        return !List.of("object", "array").contains(manifestType(field));
+        return !List.of("object", "array", "file").contains(manifestType(field));
     }
 
     private static boolean isFilterable(CompiledField field) {

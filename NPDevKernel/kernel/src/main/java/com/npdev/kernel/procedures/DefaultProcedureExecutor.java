@@ -1,10 +1,12 @@
 package com.npdev.kernel.procedures;
 
+import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptListRequest;
+import com.npdev.kernel.concepts.ConceptQueryFilterSupport;
 import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptWriteRequest;
@@ -24,11 +26,16 @@ import java.util.Optional;
 import java.util.UUID;
 
 public final class DefaultProcedureExecutor implements ProcedureExecutor {
+    /** LIFT-QUERY-P1: soft cap applied to a {@code runQuery} step's results when the query
+     * declares no explicit {@code limit}, so a capability is never handed an unbounded list. */
+    private static final int DEFAULT_QUERY_ROW_CAP = 1_000;
+
     private final ConceptGateway conceptGateway;
     private final CapabilityDispatcher capabilityDispatcher;
     private final EventBus eventBus;
     private final Map<String, ProcedureDefinition> procedureRegistry;
     private final ProcedureExecutionLimits limits;
+    private final Map<String, CompiledQuery> queriesByName;
 
     public DefaultProcedureExecutor(
             ConceptGateway conceptGateway,
@@ -54,11 +61,36 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
             Map<String, ProcedureDefinition> procedureRegistry,
             ProcedureExecutionLimits limits
     ) {
+        this(conceptGateway, capabilityDispatcher, eventBus, procedureRegistry, limits, Map.of());
+    }
+
+    /** LIFT-QUERY-P1: {@code queriesByName} (keyed case-insensitively) lets {@code runQuery} steps
+     * honor their declared query's {@code where}/{@code orderBy}/{@code limit} instead of always
+     * returning every row for the concept. Defaults to empty so existing callers compile unchanged
+     * -- a {@code runQuery} step referencing a name absent from this map still runs, just unfiltered
+     * (its prior behavior), rather than failing. */
+    public DefaultProcedureExecutor(
+            ConceptGateway conceptGateway,
+            CapabilityDispatcher capabilityDispatcher,
+            EventBus eventBus,
+            Map<String, ProcedureDefinition> procedureRegistry,
+            ProcedureExecutionLimits limits,
+            Map<String, CompiledQuery> queriesByName
+    ) {
         this.conceptGateway = Objects.requireNonNull(conceptGateway, "conceptGateway");
         this.capabilityDispatcher = Objects.requireNonNull(capabilityDispatcher, "capabilityDispatcher");
         this.eventBus = eventBus == null ? event -> { } : eventBus;
         this.procedureRegistry = procedureRegistry == null ? Map.of() : Map.copyOf(procedureRegistry);
         this.limits = limits == null ? ProcedureExecutionLimits.defaults() : limits;
+        Map<String, CompiledQuery> normalizedQueries = new java.util.LinkedHashMap<>();
+        if (queriesByName != null) {
+            for (Map.Entry<String, CompiledQuery> entry : queriesByName.entrySet()) {
+                if (entry.getKey() != null && entry.getValue() != null) {
+                    normalizedQueries.put(entry.getKey().trim().toLowerCase(java.util.Locale.ROOT), entry.getValue());
+                }
+            }
+        }
+        this.queriesByName = Map.copyOf(normalizedQueries);
     }
 
     @Override
@@ -186,6 +218,18 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
             return ProcedureStepResult.failure(step, "QUERY_UNSUPPORTED", "Procedure query steps require conceptName in the current runtime.");
         }
         List<ConceptRecord> records = conceptGateway.list(new ConceptListRequest(step.conceptName(), null), context);
+        // LIFT-QUERY-P1: the query name is threaded through the (legacy-named) "operation" slot --
+        // see ProcedureStep.runQuery. Absent from queriesByName -> unfiltered, same as before this fix.
+        CompiledQuery query = step.operation() == null
+                ? null
+                : queriesByName.get(step.operation().trim().toLowerCase(java.util.Locale.ROOT));
+        if (query != null) {
+            records = ConceptQueryFilterSupport.applyWhere(records, query.where());
+            records = ConceptQueryFilterSupport.applyOrderBy(records, query.orderBy());
+            records = ConceptQueryFilterSupport.applyLimit(records, query.limit(), DEFAULT_QUERY_ROW_CAP);
+        } else {
+            records = ConceptQueryFilterSupport.applyLimit(records, null, DEFAULT_QUERY_ROW_CAP);
+        }
         putOutput(state, step.outputKey(), records);
         return ProcedureStepResult.success(step);
     }

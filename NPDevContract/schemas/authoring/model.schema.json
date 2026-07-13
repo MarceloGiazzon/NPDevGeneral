@@ -707,7 +707,8 @@
             "enum",
             "reference",
             "object",
-            "array"
+            "array",
+            "file"
           ]
         },
         "id": {
@@ -742,6 +743,29 @@
         "renamedFrom": {
           "type": "string",
           "description": "Declares this field is a rename of a previously-existing column with this name, so a regeneration's schema-lifecycle classifies it as a rename instead of an unrelated remove+add."
+        },
+        "file": {
+          "type": "object",
+          "description": "Metadata for a file-typed field (LIFT-UPLOAD). The persisted value is a FileHandle (or list, if multiple), never raw bytes.",
+          "properties": {
+            "contentTypes": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "maxSizeBytes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "multiple": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "additionalProperties": false
         },
         "enumValues": {
           "type": "array",
@@ -933,6 +957,24 @@
                 ]
               }
             ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "file"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "unique": {
+                "const": false
+              },
+              "reference": false,
+              "ref": false
+            }
           }
         }
       ],
@@ -2034,7 +2076,9 @@
             "createConcept",
             "updateConcept",
             "assign",
-            "evaluateInvariant"
+            "evaluateInvariant",
+            "forEach",
+            "loop"
           ]
         },
         "checkpoint": {
@@ -2172,6 +2216,28 @@
         "value": {
           "type": "string",
           "minLength": 1
+        },
+        "collection": {
+          "type": "string",
+          "minLength": 1,
+          "description": "LIFT-LOOP: state ref to the collection a forEach flow step iterates."
+        },
+        "itemKey": {
+          "type": "string",
+          "minLength": 1,
+          "description": "LIFT-LOOP: state variable name each forEach iteration's item is bound to."
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/flowStep"
+          },
+          "description": "LIFT-LOOP: the forEach loop body, executed once per item."
+        },
+        "maxLoopIterations": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "LIFT-LOOP: safety cap on forEach iterations, mirroring Procedures' forEach."
         }
       },
       "allOf": [
@@ -2393,6 +2459,30 @@
             "required": [
               "value"
             ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "forEach",
+                  "loop"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "collection",
+              "itemKey",
+              "steps"
+            ],
+            "properties": {
+              "steps": {
+                "minItems": 1
+              }
+            }
           }
         }
       ],
@@ -2913,6 +3003,23 @@
         "childField": {
           "type": "string",
           "minLength": 1
+        },
+        "rowOps": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "add",
+              "delete"
+            ]
+          }
+        },
+        "addFormFields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       },
       "additionalProperties": false

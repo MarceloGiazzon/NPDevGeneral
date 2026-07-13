@@ -1272,6 +1272,22 @@ button:disabled {
   gap: 12px;
 }
 
+.authoring-inline-error,
+.authoring-inline-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.authoring-inline-error {
+  color: #b3261e;
+}
+
+.authoring-inline-hint {
+  color: #5f7388;
+  font-style: italic;
+}
+
 .authoring-form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

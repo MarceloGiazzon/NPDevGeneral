@@ -76,7 +76,7 @@ export default function FieldDetailsEditor({
               }))
             }
           >
-            {["string", "int", "integer", "long", "boolean", "uuid", "date", "datetime", "enum", "reference", "object", "array"].map(
+            {["string", "int", "integer", "long", "boolean", "uuid", "date", "datetime", "enum", "reference", "object", "array", "file"].map(
               (type) => (
                 <option key={type} value={type}>
                   {type}
@@ -140,9 +140,10 @@ export default function FieldDetailsEditor({
           />
           ID field
         </label>
-        <label>
+        <label title={selectedField.type === "file" ? "A file field can't be unique (LIFT-UPLOAD)" : undefined}>
           <input
             type="checkbox"
+            disabled={selectedField.type === "file"}
             checked={Boolean(selectedField.unique)}
             onChange={(event) =>
               onUpdateField(selectedField.name, (field) => {
@@ -157,9 +158,10 @@ export default function FieldDetailsEditor({
           />
           Unique
         </label>
-        <label>
+        <label title={selectedField.type === "file" ? "A file field can't be an anchor (LIFT-UPLOAD)" : undefined}>
           <input
             type="checkbox"
+            disabled={selectedField.type === "file"}
             checked={selectedField.connectable === "anchor"}
             onChange={(event) =>
               onUpdateField(selectedField.name, (field) => ({
@@ -272,6 +274,60 @@ export default function FieldDetailsEditor({
             }))
           }
         />
+      ) : null}
+
+      {selectedField.type === "file" ? (
+        <div className="authoring-form-grid">
+          <label>
+            Allowed content types (comma-separated)
+            <input
+              value={(selectedField.file?.contentTypes ?? []).join(", ")}
+              placeholder="application/pdf, image/png"
+              onChange={(event) =>
+                onUpdateField(selectedField.name, (field) => ({
+                  ...field,
+                  file: {
+                    ...field.file,
+                    contentTypes: event.target.value
+                      .split(",")
+                      .map((value) => value.trim())
+                      .filter(Boolean)
+                  }
+                }))
+              }
+            />
+          </label>
+          <label>
+            Max size (bytes)
+            <input
+              type="number"
+              min={1}
+              value={selectedField.file?.maxSizeBytes ?? ""}
+              onChange={(event) =>
+                onUpdateField(selectedField.name, (field) => ({
+                  ...field,
+                  file: {
+                    ...field.file,
+                    maxSizeBytes: event.target.value ? Number(event.target.value) : undefined
+                  }
+                }))
+              }
+            />
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={Boolean(selectedField.file?.multiple)}
+              onChange={(event) =>
+                onUpdateField(selectedField.name, (field) => ({
+                  ...field,
+                  file: { ...field.file, multiple: event.target.checked }
+                }))
+              }
+            />
+            Multiple files
+          </label>
+        </div>
       ) : null}
 
       <VisibilityConditionBuilder

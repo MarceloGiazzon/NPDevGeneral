@@ -19,6 +19,7 @@ public final class FieldAst {
     private final PresentationMetadataAst ui;
     private final String connectable;
     private final String renamedFrom;
+    private final FileMetadataAst file;
 
     public FieldAst(String name, String type, boolean id, boolean required, boolean unique) {
         this(name, type, id, required, unique, List.of(), null, null, null, null, List.of(), null);
@@ -117,6 +118,28 @@ public final class FieldAst {
             String connectable,
             String renamedFrom
     ) {
+        this(name, type, id, required, unique, enumValues, referenceTarget, referenceSemantics,
+                domainType, schema, enumOptions, ui, connectable, renamedFrom, null);
+    }
+
+    /** LIFT-UPLOAD-P2: {@code file} carries a `file`-typed field's contentTypes/maxSizeBytes/multiple. */
+    public FieldAst(
+            String name,
+            String type,
+            boolean id,
+            boolean required,
+            boolean unique,
+            List<String> enumValues,
+            String referenceTarget,
+            ReferenceSemanticsAst referenceSemantics,
+            String domainType,
+            SchemaAst schema,
+            List<EnumOptionAst> enumOptions,
+            PresentationMetadataAst ui,
+            String connectable,
+            String renamedFrom,
+            FileMetadataAst file
+    ) {
         this.name = name;
         this.type = type;
         this.id = id;
@@ -131,6 +154,7 @@ public final class FieldAst {
         this.ui = ui;
         this.connectable = connectable;
         this.renamedFrom = renamedFrom;
+        this.file = file;
     }
 
     public String getName() { return name; }
@@ -149,4 +173,6 @@ public final class FieldAst {
     public String getConnectable() { return connectable; }
     /** The previous field name this field was renamed from, or null if this is not a declared rename. */
     public String getRenamedFrom() { return renamedFrom; }
+    /** LIFT-UPLOAD-P2: contentTypes/maxSizeBytes/multiple for a `file`-typed field; null otherwise. */
+    public FileMetadataAst getFile() { return file; }
 }

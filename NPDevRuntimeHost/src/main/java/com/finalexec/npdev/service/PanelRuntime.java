@@ -11,6 +11,7 @@ import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptGatewayTraceRecord;
 import com.npdev.kernel.concepts.ConceptListRequest;
+import com.npdev.kernel.concepts.ConceptQueryFilterSupport;
 import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptWriteRequest;
@@ -24,7 +25,6 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -330,12 +330,16 @@ public class PanelRuntime {
                         "ConceptGateway is required for executable panel data."
                 );
             }
-            List<Map<String, Object>> rows = requireConceptGateway()
-                    .list(new ConceptListRequest(conceptName, null, filterField, filterValue), context).stream()
+            List<ConceptRecord> records = requireConceptGateway()
+                    .list(new ConceptListRequest(conceptName, null, filterField, filterValue), context);
+            Optional<CompiledQuery> query = resolveDataSourceQuery(dataSource);
+            // LIFT-QUERY-P1: where/orderBy now come from the shared kernel predicate also used by
+            // DefaultProcedureExecutor's runQuery step, instead of a second copy of this logic.
+            records = ConceptQueryFilterSupport.applyWhere(records, query.map(CompiledQuery::where).orElse(null));
+            records = ConceptQueryFilterSupport.applyOrderBy(records, query.map(CompiledQuery::orderBy).orElse(List.of()));
+            return records.stream()
                     .map(PanelRuntime::toRecordMap)
                     .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
-            Optional<CompiledQuery> query = resolveDataSourceQuery(dataSource);
-            return applyQueryOrderBy(applyQueryWhereFilter(rows, query), query);
         }
         return fallbackDataSource(
                 "PANEL_DATASOURCE_UNBOUND",
@@ -352,6 +356,11 @@ public class PanelRuntime {
         summary.put("query", safe(dataSource.query()));
         summary.put("procedure", safe(dataSource.procedure()));
         summary.put("parentDataSource", safe(dataSource.parentDataSource()));
+        summary.put("childField", safe(dataSource.childField()));
+        // LIFT-ROWOPS-P2: the client add/delete-row UI is gated entirely off this declared list --
+        // no rowOps means no add/delete control is rendered for this dataSource.
+        summary.put("rowOps", dataSource.rowOps());
+        summary.put("addFormFields", dataSource.addFormFields());
         summary.put("recordCount", value instanceof Collection<?> collection ? collection.size() : 0);
         summary.put("fallback", fallback);
         if (fallback && value instanceof Map<?, ?> fallbackMap) {
@@ -451,6 +460,119 @@ public class PanelRuntime {
         return toRecordMap(saved);
     }
 
+    /**
+     * LIFT-ROWOPS-P3: creates a row in a declared Panel dataSource that opted into
+     * {@code rowOps: [add]}. For a nested (child) dataSource, {@code input.parentId} is required
+     * and gets written into the child's FK ({@code childField}) automatically -- the same
+     * parent-binding a Workbench child row gets from {@code AggregateRuntime.commitCollections},
+     * just for a single row instead of a whole draft tree. Tenant scoping is enforced by
+     * {@link ConceptGateway} itself (a null request tenantId falls back to the caller's own
+     * context tenant), the same as every other panel/aggregate write in this class.
+     */
+    public Map<String, Object> createRow(
+            String panelName,
+            String dataSourceName,
+            Map<String, Object> input,
+            ExecutionContext context
+    ) {
+        CompiledPanel panel = requirePanel(panelName);
+        CompiledPanelDataSource dataSource = requireDataSource(panel, dataSourceName);
+        if (!dataSource.supportsAdd()) {
+            throw new IllegalArgumentException(
+                    "Panel " + panel.name() + " dataSource " + dataSource.name() + " does not support add");
+        }
+        String conceptName = resolveDataSourceConcept(dataSource);
+        if (!hasText(conceptName)) {
+            throw new IllegalStateException(
+                    "Panel " + panel.name() + " dataSource " + dataSource.name() + " has no concept to create against");
+        }
+        ExecutionContext effectiveContext = interactiveContext(context);
+        Map<String, Object> safeInput = safeInput(input);
+
+        Map<String, Object> data = castMap(safeInput.get("data"));
+        if (data.isEmpty()) {
+            data = new LinkedHashMap<>(safeInput);
+            data.remove("id");
+            data.remove("parentId");
+        } else {
+            data = new LinkedHashMap<>(data);
+        }
+
+        if (hasText(dataSource.parentDataSource())) {
+            String parentId = stringValue(safeInput.get("parentId"));
+            if (parentId.isBlank()) {
+                throw new IllegalArgumentException(
+                        "Panel " + panel.name() + " dataSource " + dataSource.name()
+                                + " is a child dataSource; parentId is required to create a row");
+            }
+            data.put(dataSource.childField(), parentId);
+        }
+
+        String id = UUID.randomUUID().toString();
+        ConceptRecord saved = requireConceptGateway().save(new ConceptWriteRequest(conceptName, id, null, data), effectiveContext);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("endpointVersion", ENDPOINT_VERSION);
+        response.put("surfaceType", "panel-runtime");
+        response.put("operation", "createRow");
+        response.put("panelName", panel.name());
+        response.put("dataSourceName", dataSource.name());
+        response.put("status", "OK");
+        response.put("result", toRecordMap(saved));
+        return response;
+    }
+
+    /**
+     * LIFT-ROWOPS-P3: deletes a row from a declared Panel dataSource that opted into
+     * {@code rowOps: [delete]}.
+     */
+    public Map<String, Object> deleteRow(
+            String panelName,
+            String dataSourceName,
+            String id,
+            ExecutionContext context
+    ) {
+        CompiledPanel panel = requirePanel(panelName);
+        CompiledPanelDataSource dataSource = requireDataSource(panel, dataSourceName);
+        if (!dataSource.supportsDelete()) {
+            throw new IllegalArgumentException(
+                    "Panel " + panel.name() + " dataSource " + dataSource.name() + " does not support delete");
+        }
+        String conceptName = resolveDataSourceConcept(dataSource);
+        if (!hasText(conceptName)) {
+            throw new IllegalStateException(
+                    "Panel " + panel.name() + " dataSource " + dataSource.name() + " has no concept to delete against");
+        }
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("id must be non-blank");
+        }
+        String rowId = id.trim();
+        ExecutionContext effectiveContext = interactiveContext(context);
+        requireConceptGateway().delete(new ConceptReadRequest(conceptName, rowId, null), effectiveContext);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("endpointVersion", ENDPOINT_VERSION);
+        response.put("surfaceType", "panel-runtime");
+        response.put("operation", "deleteRow");
+        response.put("panelName", panel.name());
+        response.put("dataSourceName", dataSource.name());
+        response.put("status", "OK");
+        response.put("result", Map.of("deleted", true, "concept", conceptName, "id", rowId));
+        return response;
+    }
+
+    private static CompiledPanelDataSource requireDataSource(CompiledPanel panel, String dataSourceName) {
+        if (dataSourceName == null || dataSourceName.isBlank()) {
+            throw new IllegalArgumentException("dataSourceName must be non-blank");
+        }
+        for (CompiledPanelDataSource dataSource : panel.dataSources()) {
+            if (dataSourceName.trim().equalsIgnoreCase(dataSource.name())) {
+                return dataSource;
+            }
+        }
+        throw new IllegalArgumentException("Panel dataSource not found: " + dataSourceName);
+    }
+
     private ProcedureExecutionResult executeProcedure(
             String procedureName,
             Map<String, Object> input,
@@ -536,143 +658,6 @@ public class PanelRuntime {
                 .findFirst();
     }
 
-    /**
-     * Applies a query's declared {@code where} clause as an in-process post-filter on records
-     * already fetched from the concept gateway. Deliberately scoped to the same single-field
-     * {@code field == literal} / {@code field != literal} shape every query in practice declares
-     * (mirrors CelInvariantEngine's own documented DNF-only scope) -- not a general expression
-     * evaluator. A clause outside this shape is left unenforced (rows pass through unfiltered)
-     * rather than failing the whole panel load.
-     */
-    private static List<Map<String, Object>> applyQueryWhereFilter(List<Map<String, Object>> rows, Optional<CompiledQuery> query) {
-        String where = query.map(CompiledQuery::where).orElse(null);
-        if (!hasText(where)) {
-            return rows;
-        }
-        String trimmed = where.trim();
-        boolean negate;
-        int opIndex = trimmed.indexOf("!=");
-        if (opIndex >= 0) {
-            negate = true;
-        } else {
-            opIndex = trimmed.indexOf("==");
-            negate = false;
-            if (opIndex < 0) {
-                return rows;
-            }
-        }
-        String field = trimmed.substring(0, opIndex).trim();
-        String literalText = trimmed.substring(opIndex + 2).trim();
-        if (field.isEmpty()) {
-            return rows;
-        }
-        Object literal = parseWhereLiteral(literalText);
-        List<Map<String, Object>> filtered = new ArrayList<>();
-        for (Map<String, Object> row : rows) {
-            Object dataObj = row.get("data");
-            Object fieldValue = dataObj instanceof Map<?, ?> data ? data.get(field) : null;
-            boolean equal = Objects.equals(normalizeForCompare(fieldValue), normalizeForCompare(literal));
-            if (equal != negate) {
-                filtered.add(row);
-            }
-        }
-        return filtered;
-    }
-
-    /**
-     * Applies a query's declared {@code orderBy} (list of field names, each optionally suffixed
-     * {@code " desc"}/{@code " asc"}, default ascending) as a stable multi-field sort on records
-     * already fetched from the concept gateway -- mirrors {@link #applyQueryWhereFilter} in scope
-     * and post-filter placement.
-     */
-    private static List<Map<String, Object>> applyQueryOrderBy(List<Map<String, Object>> rows, Optional<CompiledQuery> query) {
-        List<String> orderBy = query.map(CompiledQuery::orderBy).orElse(List.of());
-        if (orderBy.isEmpty()) {
-            return rows;
-        }
-        List<Map<String, Object>> sorted = new ArrayList<>(rows);
-        Comparator<Map<String, Object>> comparator = null;
-        for (String spec : orderBy) {
-            if (!hasText(spec)) {
-                continue;
-            }
-            String trimmed = spec.trim();
-            boolean descending = false;
-            String field = trimmed;
-            int spaceIndex = trimmed.lastIndexOf(' ');
-            if (spaceIndex > 0) {
-                String direction = trimmed.substring(spaceIndex + 1).trim();
-                if ("desc".equalsIgnoreCase(direction) || "descending".equalsIgnoreCase(direction)) {
-                    descending = true;
-                    field = trimmed.substring(0, spaceIndex).trim();
-                } else if ("asc".equalsIgnoreCase(direction) || "ascending".equalsIgnoreCase(direction)) {
-                    field = trimmed.substring(0, spaceIndex).trim();
-                }
-            }
-            if (field.isEmpty()) {
-                continue;
-            }
-            String fieldName = field;
-            Comparator<Map<String, Object>> fieldComparator =
-                    (left, right) -> compareOrderableValues(orderByFieldValue(left, fieldName), orderByFieldValue(right, fieldName));
-            if (descending) {
-                fieldComparator = fieldComparator.reversed();
-            }
-            comparator = comparator == null ? fieldComparator : comparator.thenComparing(fieldComparator);
-        }
-        if (comparator != null) {
-            sorted.sort(comparator);
-        }
-        return sorted;
-    }
-
-    private static Object orderByFieldValue(Map<String, Object> row, String field) {
-        Object dataObj = row.get("data");
-        return dataObj instanceof Map<?, ?> data ? data.get(field) : null;
-    }
-
-    private static int compareOrderableValues(Object left, Object right) {
-        if (left == null && right == null) {
-            return 0;
-        }
-        if (left == null) {
-            return 1;
-        }
-        if (right == null) {
-            return -1;
-        }
-        if (left instanceof Number leftNumber && right instanceof Number rightNumber) {
-            return Double.compare(leftNumber.doubleValue(), rightNumber.doubleValue());
-        }
-        return String.valueOf(left).compareTo(String.valueOf(right));
-    }
-
-    private static Object parseWhereLiteral(String text) {
-        if (text.length() >= 2 && text.startsWith("'") && text.endsWith("'")) {
-            return text.substring(1, text.length() - 1);
-        }
-        if ("true".equalsIgnoreCase(text)) {
-            return Boolean.TRUE;
-        }
-        if ("false".equalsIgnoreCase(text)) {
-            return Boolean.FALSE;
-        }
-        try {
-            return Double.parseDouble(text);
-        } catch (NumberFormatException ignored) {
-            return text;
-        }
-    }
-
-    private static Object normalizeForCompare(Object value) {
-        if (value instanceof Number number) {
-            return number.doubleValue();
-        }
-        if (value != null) {
-            return String.valueOf(value);
-        }
-        return null;
-    }
 
     private String primaryPanelConcept(CompiledPanel panel) {
         for (CompiledPanelDataSource dataSource : panel.dataSources()) {

@@ -21,6 +21,10 @@ public final class SqlTypeSupport {
                 case "date" -> "DATE";
                 case "datetime" -> "TIMESTAMP WITH TIME ZONE";
                 case "object", "array" -> "JSONB";
+                // LIFT-UPLOAD-P2: a file field stores a FileHandle (or list, if multiple) as JSON --
+                // bytes never go in the primary DB row, only the handle that locates them in a
+                // FileStoreContract adapter.
+                case "file" -> "JSONB";
                 case "enum", "string" -> "VARCHAR(255)";
                 default -> "VARCHAR(255)";
             };

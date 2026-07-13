@@ -7,6 +7,7 @@ import com.npdev.kernel.ExecutionContext;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -88,6 +89,28 @@ public class RuntimeUiMetadataController {
             @RequestBody(required = false) Map<String, Object> body
     ) {
         return run(() -> requirePanelRuntime().executeAction(panelName, actionName, body, currentContext(request)));
+    }
+
+    /** LIFT-ROWOPS-P3: creates a row in a declared Panel dataSource with {@code rowOps: [add]}. */
+    @PostMapping("/panels/{panelName}/dataSources/{dataSourceName}/rows")
+    public Map<String, Object> createPanelRow(
+            HttpServletRequest request,
+            @PathVariable String panelName,
+            @PathVariable String dataSourceName,
+            @RequestBody(required = false) Map<String, Object> body
+    ) {
+        return run(() -> requirePanelRuntime().createRow(panelName, dataSourceName, body, currentContext(request)));
+    }
+
+    /** LIFT-ROWOPS-P3: deletes a row from a declared Panel dataSource with {@code rowOps: [delete]}. */
+    @DeleteMapping("/panels/{panelName}/dataSources/{dataSourceName}/rows/{id}")
+    public Map<String, Object> deletePanelRow(
+            HttpServletRequest request,
+            @PathVariable String panelName,
+            @PathVariable String dataSourceName,
+            @PathVariable String id
+    ) {
+        return run(() -> requirePanelRuntime().deleteRow(panelName, dataSourceName, id, currentContext(request)));
     }
 
     private ExecutionContext currentContext(HttpServletRequest request) {

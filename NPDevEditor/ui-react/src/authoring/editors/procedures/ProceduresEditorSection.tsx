@@ -15,6 +15,7 @@ const STEP_TYPES = [
   "readConcept",
   "saveConcept",
   "runQuery",
+  "callCapability",
   "callProcedure",
   "publishEvent",
   "return"
@@ -26,6 +27,30 @@ function buildDefaultStep(): AuthoringProcedureStep {
     type: "return",
     value: "$input"
   };
+}
+
+/**
+ * LIFT-QUERY-P4: the "query -> capability" preset from ADR discussion -- a runQuery step whose
+ * output feeds directly into a callCapability step's single arg. Mirrors the pattern proven in
+ * DefaultProcedureExecutorQueryToCapabilityTest: capabilities receive exactly the filtered rows,
+ * with no data handle of their own (sandbox intact).
+ */
+function buildQueryToCapabilityPreset(stepCount: number): AuthoringProcedureStep[] {
+  const queryStepName = `query-${stepCount + 1}`;
+  const rowsTarget = `rows${stepCount + 1}`;
+  return [
+    {
+      name: queryStepName,
+      type: "runQuery",
+      target: rowsTarget
+    },
+    {
+      name: `call-capability-${stepCount + 2}`,
+      type: "callCapability",
+      args: { rows: rowsTarget },
+      target: `result${stepCount + 2}`
+    }
+  ];
 }
 
 export default function ProceduresEditorSection({
@@ -138,30 +163,51 @@ export default function ProceduresEditorSection({
                 ))}
               </div>
 
-              <button
-                type="button"
-                className="authoring-secondary-inline"
-                onClick={() =>
-                  onChange(
-                    procedures.map((entry, index) =>
-                      index === procedureIndex
-                        ? {
-                            ...entry,
-                            steps: [
-                              ...(entry.steps ?? []),
-                              {
-                                ...buildDefaultStep(),
-                                name: `step-${(entry.steps ?? []).length + 1}`
-                              }
-                            ]
-                          }
-                        : entry
+              <div className="authoring-inline-actions">
+                <button
+                  type="button"
+                  className="authoring-secondary-inline"
+                  onClick={() =>
+                    onChange(
+                      procedures.map((entry, index) =>
+                        index === procedureIndex
+                          ? {
+                              ...entry,
+                              steps: [
+                                ...(entry.steps ?? []),
+                                {
+                                  ...buildDefaultStep(),
+                                  name: `step-${(entry.steps ?? []).length + 1}`
+                                }
+                              ]
+                            }
+                          : entry
+                      )
                     )
-                  )
-                }
-              >
-                Add step
-              </button>
+                  }
+                >
+                  Add step
+                </button>
+                <button
+                  type="button"
+                  className="authoring-secondary-inline"
+                  onClick={() =>
+                    onChange(
+                      procedures.map((entry, index) =>
+                        index === procedureIndex
+                          ? {
+                              ...entry,
+                              steps: [...(entry.steps ?? []), ...buildQueryToCapabilityPreset((entry.steps ?? []).length)]
+                            }
+                          : entry
+                      )
+                    )
+                  }
+                  title="Adds a runQuery step whose output feeds a callCapability step's arg"
+                >
+                  Add query → capability
+                </button>
+              </div>
             </article>
           ))
         )}
