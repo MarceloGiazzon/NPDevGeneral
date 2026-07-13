@@ -650,6 +650,12 @@ Write-Step "Emitted interactive info page: http://localhost:$ServerPort/info.htm
   -AppId $AppId -Port $ServerPort -OutRoot $OutRoot
 Write-Step "Emitted ControlPanel page: http://localhost:$ServerPort/control-panel.html"
 
+# info.html links to app-tree.html unconditionally, so it must actually exist -- emit it here
+# too (cheap: reads model.json/config.json only, no live app/DB needed).
+& (Join-Path $PSScriptRoot 'New-AppTreePage.ps1') `
+  -AppFolder $AppFolder -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') -AppId $AppId
+Write-Step "Emitted app tree page: http://localhost:$ServerPort/app-tree.html"
+
 # ---- emit the local control console (if enabled in config.console.mode) -----
 if ($ConsoleMode -ne 'none') {
   & (Join-Path $PSScriptRoot 'New-AppConsole.ps1') -OpsDir $OpsDir -AppId $AppId -ConsolePort $ConsolePort -OutRoot $OutRoot -Mode $ConsoleMode

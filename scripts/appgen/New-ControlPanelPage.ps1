@@ -77,6 +77,9 @@ $tpl = @'
  .adv-section:first-child{border-top:0;padding-top:0;margin-top:0}
  #gate{display:none}
  #locked .sub{margin-bottom:18px}
+ .keybox{background:#14301f;border:1px solid #2d6c3f;border-radius:8px;padding:12px 14px;margin:10px 0 16px}
+ .keybox .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}
+ .keybox code{flex:1;min-width:220px;color:#cfe;word-break:break-all}
 </style></head><body>
 <header>
   <h1>__APP__ &mdash; Control Panel</h1>
@@ -89,13 +92,19 @@ $tpl = @'
   <section id="locked">
     <h2>Unlock the Control Panel</h2>
     <div class="sub">
-      The very first time this application started, it saved a one-time key to a file at:
-      <br /><code>__KEYFILEPATH__</code><br />
-      Open that file, copy its contents, and paste it below. That key is your master password for
-      this page only. Once you've saved it somewhere safe (a password manager, a note), you can
-      delete that file &mdash; it isn't needed again. If it's already gone and you don't have the
-      key saved anywhere, run <code>Reissue-SuperUserKey.ps1</code> from this app's ops folder to
-      get a new one (it will recreate that same file).
+      The very first time this application started, it saved a one-time key to a file at the path
+      below. Open that file, copy its contents, and paste it into the field below. That key is
+      your master password for this page only. Once you've saved it somewhere safe (a password
+      manager, a note), you can delete that file &mdash; it isn't needed again. If it's already
+      gone and you don't have the key saved anywhere, run <code>Reissue-SuperUserKey.ps1</code>
+      from this app's ops folder to get a new one (it will recreate that same file).
+    </div>
+    <div class="keybox">
+      <b>&#128273; Super User key file</b>
+      <div class="row">
+        <code id="keyFilePath">__KEYFILEPATH__</code>
+        <button class="small" id="copyKeyPath">&#128203; Copy path</button>
+      </div>
     </div>
     <form id="unlockForm" onsubmit="return false;">
       <div class="field">
@@ -205,12 +214,16 @@ const BASE = '__BASE__';
 const $ = (id) => document.getElementById(id);
 function key() { return localStorage.getItem('npdev.controlpanel.key') || ''; }
 function slugify(v) { return (v || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''); }
+function flashCopyBtn(btn){ const o = btn.dataset.o || btn.innerHTML; btn.dataset.o = o; btn.innerHTML = '&#10003; Copied'; setTimeout(() => btn.innerHTML = o, 1200); }
+function legacyCopy(v, btn){ try { const t = document.createElement('textarea'); t.value = v; t.style.position = 'fixed'; t.style.opacity = '0'; document.body.appendChild(t); t.focus(); t.select(); document.execCommand('copy'); document.body.removeChild(t); flashCopyBtn(btn); } catch (e) { btn.innerHTML = '&#10007; Failed'; } }
+function copyText(v, btn){ if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(v).then(() => flashCopyBtn(btn)).catch(() => legacyCopy(v, btn)); } else { legacyCopy(v, btn); } }
 
 window.addEventListener('DOMContentLoaded', function () {
   const saved = localStorage.getItem('npdev.controlpanel.key');
   if (saved) { $('key').value = saved; unlock(); }
 
   $('saveKey').addEventListener('click', unlock);
+  $('copyKeyPath').addEventListener('click', function () { copyText($('keyFilePath').textContent, $('copyKeyPath')); });
   $('qsName').addEventListener('input', function () {
     if (!$('qsId').dataset.touched) $('qsId').value = slugify($('qsName').value);
   });

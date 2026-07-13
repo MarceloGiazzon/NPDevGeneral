@@ -501,11 +501,24 @@ $infoArgs = @{
   ConsolePort      = $(if ($ConsoleMode -ne 'none') { $ConsolePort } else { 0 })
 }
 & (Join-Path $PSScriptRoot 'New-AppInfoPage.ps1') @infoArgs
+Write-Step "Emitted interactive info page: http://localhost:$ServerPort/info.html"
+
+# info.html links to control-panel.html and app-tree.html unconditionally -- both were
+# missing entirely for this builder, leaving two dead links. Emit them like every other
+# NPDev-built app does (Build-NpdevApp.ps1's equivalent calls).
+& (Join-Path $PSScriptRoot 'New-ControlPanelPage.ps1') `
+  -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') `
+  -AppId 'claude-support-desk' -Port $ServerPort -OutRoot $OutRoot
+Write-Step "Emitted ControlPanel page: http://localhost:$ServerPort/control-panel.html"
+
+& (Join-Path $PSScriptRoot 'New-AppTreePage.ps1') `
+  -AppFolder $AppFolder -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') -AppId 'claude-support-desk'
+Write-Step "Emitted app tree page: http://localhost:$ServerPort/app-tree.html"
+
 if ($ConsoleMode -ne 'none') {
   & (Join-Path $PSScriptRoot 'New-AppConsole.ps1') -OpsDir $OpsDir -AppId 'claude-support-desk' -ConsolePort $ConsolePort -OutRoot $OutRoot -Mode $ConsoleMode
   Write-Step "Emitted local console (mode=$ConsoleMode): & '$OpsDir\Serve-AppConsole.ps1'  ->  http://127.0.0.1:$ConsolePort/"
 }
-Write-Step "Emitted interactive info page: http://localhost:$ServerPort/info.html"
 
 # ----------------------------------------------------------------------------
 # 7. RUN_COMMANDS.md + report
