@@ -7,8 +7,10 @@ acceptance criteria to make NPDev generate the WmsOffice receiving/shipping scre
 a reusable **AutoPanel** — with the multi-level editor as the Transaction surface of an
 aggregate-bound AutoPanel.
 
-Status: Proposed — 2026-07-11, **revised** for the AutoPanel tier (ADR-0005). P0 slice 1 (aggregate
-contract) committed; P4 reactive core spike-proven (see §8).
+Status: **Reconciled 2026-07-12** — P0, P1, P4, P6, P7, and Polish are DONE (verified live, all
+committed). P2, P3, P5 are PARTIAL: their schema/DSL/validation layers are committed, but each has a
+specific remaining generator/runtime wiring gap called out in its section below (not a full re-run —
+just the missing slice). See §5 for per-phase evidence (commit hashes, file paths).
 
 > **Realignment note.** This plan was originally workbench-first. Per ADR-0005 the primary authoring
 > surface is now the **AutoPanel** (a slim, concept/aggregate-bound pattern that the generator
@@ -153,53 +155,85 @@ change from the pre-ADR-0005 order: the AutoPanel + single-concept expansion (P1
 useful value *before* the hard multi-level work, and the old "workbench page kind" becomes P1's
 expansion target rather than a standalone phase.
 
-### P0 — `Aggregate` model primitive
+### P0 — `Aggregate` model primitive ✅ DONE (reconciled 2026-07-12)
 **Goal:** declare a composition tree; read it nested. **Status: slice 1 committed** (`0147868`).
 - **Schema** (4 mirrors): `aggregates[]` + recursive `aggregateCollection`. ✅ done.
 - **DSL** (`ast/`, `parser`, `resolution`, `validation`): `AggregateAst`/`AggregateCollectionAst`,
   parse, resolve-passthrough, `validateAggregates`. ✅ done.
-- **Slice 2 (pending):** `CompiledAggregate` + `ModelCompiler` + `CompiledModel` (+ canonical JSON
-  read/write) + kernel `AggregateController.load(aggregate, rootId) → tree` +
-  `RuntimeApiEmitter` nested-read endpoint.
-- **Acceptance:** `GET /api/aggregate/Expedicao/{id}` returns `itens[]→{origens[],destinos[]}` JSON.
+- **Slice 2 — DONE:** `CompiledAggregate`/`CompiledAggregateCollection` wired into `ModelCompiler`/
+  `CompiledModel` with canonical JSON round-trip (committed `887ab34`, "P0(2a): compile aggregates
+  into CompiledModel + canonical JSON round-trip"). Nested-read endpoint landed as a hand-written
+  RuntimeHost controller rather than a generator-emitted one — `AggregateApiController`
+  (`GET /api/runtime/aggregate/{aggregateName}/{rootId}`) backed by `AggregateRuntime`, committed
+  `f57b84c` ("P0(2b): AggregateRuntime + nested-read endpoint (runtime host)"). `RuntimeApiEmitter`
+  itself emits nothing aggregate-specific — the read path is fixed platform code, not per-app
+  generated code, which satisfies the acceptance criterion without matching the plan's original
+  file-location guess.
+- **Acceptance:** `GET /api/runtime/aggregate/Expedicao/{id}` returns `itens[]→{origens[],destinos[]}`
+  JSON. ✅ met (verified live per P4/P6/P7 evidence).
 - **Risk:** low. Foundation only.
 
-### P1 — `AutoPanel` primitive + single-concept expansion  ← new heart (ADR-0005)
+### P1 — `AutoPanel` primitive + single-concept expansion  ← new heart (ADR-0005) ✅ DONE (reconciled 2026-07-12)
 **Goal:** a slim concept-bound AutoPanel expands into wired Selection + Detail + Transaction
 (single level), reading concept defaults. Delivers C1, C2 and a full CRUD applet for *any* concept.
-- **Schema:** `autoPanels[]` (`name?`, `concept` | `aggregate`, `surfaces[]`, per-surface config
-  blocks `selection`/`prompt`/`detail`/`transaction`, each optional). Introduce `workbenches[]` +
-  `selectors[]` as the **expansion target** (also hand-authorable escape hatch).
-- **DSL:** `AutoPanelAst`/`CompiledAutoPanel` + a **default-derivation** pass that reads the concept
-  (fields, id, bonds, ui labels, widget/datatype defaults) to fill unspecified surface config.
-- **Generator** (`BusinessUiEmitter` + new `autopanel-expander` + `workbench.mustache`): expand each
-  AutoPanel into Selection (filtered list), Detail (view), Transaction (single-level form); wire
-  routes, workspace-menu nav, permissions. Bootstrap the template-emitted reactive store runtime
-  (`npdev-generated/` hash-guarded — emit, never post-edit).
-- **Runtime** (`PanelRuntime` sibling `WorkbenchRuntime`): serve surface metadata + data.
+- **Schema:** `autoPanels[]` present in all 4 schema mirrors. ✅ done.
+- **DSL:** `AutoPanelAst`/`AutoPanelSurfaceAst`/`AutoPanelComputedAst`/`CompiledAutoPanel` + the
+  default-derivation pass lives in `compiler/AutoPanelExpander.java` (reads concept fields/id/bonds/
+  ui labels/widget defaults); validated in `SemanticValidator`. Committed `ee4b083` ("P1(1): AutoPanel
+  primitive contract — schema + AST + validation + compiled").
+- **Generator:** expansion + emission live in `BusinessUiEmitter.java` + template
+  `workbench-page.html.mustache` — there is no separately-named `autopanel-expander` module (the
+  expansion pass is DSL-side, in `AutoPanelExpander`); routes/nav/permissions wired.
+- **Runtime:** `PanelRuntime` (not a separately-named `WorkbenchRuntime` — the plan's proposed name
+  never landed; `WorkbenchRuntimeTest.java` actually tests `PanelRuntime`) serves surface metadata +
+  data, committed `96c0773` ("P4(runtime): PanelRuntime serves the aggregate Workbench").
 - **Acceptance:** `autoPanels:[{concept:"Cliente"}]` yields a working list+detail+form applet;
-  Expedicao's C1 (Selection) and C2 (Transaction header) live.
-- **Risk:** medium-high (the default-derivation contract must be predictable + overridable).
+  Expedicao's C1 (Selection) and C2 (Transaction header) are live. ✅ met — all functional pieces
+  exist and are committed; only class/file *names* differ from the plan's proposal.
+- **Risk:** medium-high (the default-derivation contract must be predictable + overridable) — proved
+  out; every derived default is inspectable via the compiled descriptor.
 
-### P2 — `Prompt` surface / `SelectorGrid` + FK wiring
+### P2 — `Prompt` surface / `SelectorGrid` + FK wiring — PARTIAL (reconciled 2026-07-12)
 **Goal:** C6. Closes platform gap #14 (modal picker).
-- **Schema:** `selectors[]` full (`concept`, `multiSelect`, `filters`, `columns`, `returnMapping`);
-  `prompt` surface config; `picker` ref usable from any form field.
-- **Generator:** emit the modal `SelectorGrid`; auto-attach a Prompt to FK fields across all
-  generated forms (from bonds); return-mapping appends/binds rows.
-- **Acceptance:** C6 — Seleciona Ruas filters + multi-select → returns rows; FK fields get prompts.
-- **Risk:** medium.
+- **Schema:** full `selectors[]` (`concept`, `multiSelect`, `filters`, `columns`, `returnMapping`) +
+  `SelectorAst` + `AutoPanelExpander.expandSelector` + `SemanticValidator.validateSelectors`.
+  Committed `3757336` ("P2(3): standalone selectors[] primitive -> reusable picker panel"). ✅ done.
+- **Still missing:** no dedicated `SelectorGrid` component — a selector expands into a generic
+  picker panel, not a distinct modal grid class. The `bandPickers.<band>` mechanism the Polish pass
+  shipped (`AutoPanelExpander.bandPickers()`, `workbench-page.html.mustache`'s `openBandPicker`) is a
+  **separate, ad hoc** in-browser modal that references an existing panel *by name* via
+  `transaction.metadata.bandPickers` — it is not fed by `selectors[]` and does not close this gap.
+  FK-field auto-attach of a Prompt from bonds is still driven by the pre-existing `promptsByConcept`
+  mechanism, not by `selectors[]`.
+- **Acceptance:** C6 — Seleciona Ruas filters + multi-select → returns rows (met via `bandPickers`,
+  not via this primitive); FK fields auto-getting a `selectors[]`-backed Prompt — **not met**.
+- **Remaining scope for AW-P2:** either (a) declare `bandPickers` as sugar that compiles to a
+  `selectors[]` reference so there's one mechanism, or (b) wire automatic FK→Prompt attachment from
+  bonds using `selectors[]`. Re-scope AW-P2 to just this; drop the "SelectorGrid class" framing.
+- **Risk:** medium → now low-medium (schema/validation risk retired; remaining work is wiring, not design).
 
-### P3 — Tier-A computed columns + reactive store
+### P3 — Tier-A computed columns + reactive store — PARTIAL (reconciled 2026-07-12)
 **Goal:** C4 — live client recompute, available to any generated surface.
-- **Schema:** `computed[]` (`col`, `expr`) on grid/section/band regions.
-- **DSL:** validate `expr` parses (reuse `expression-cel` grammar); expose row/item scope vars.
-- **Generator:** emit computed-field registrations into the store; ship the client CEL evaluator
-  (compile CEL→JS or bundle a small interpreter) in the emitted runtime.
-- **Kernel:** reuse `expression-cel` adapter to re-validate the same expr server-side on commit.
-- **Acceptance:** C4 — editing Pos/CxAvulsas updates Total/Sub-Total/Máximo/Pendente instantly;
-  server recompute agrees. (Node core already proves the math: §8.)
-- **Risk:** medium (client/server CEL parity).
+- **Schema:** `computed[]` (`col`, `expr`) — `model.schema.json:442`. ✅ done.
+- **DSL:** `AutoPanelComputedAst`/`CompiledAutoPanelComputed`; expression engine
+  `NPDevContract/dsl/.../expr/ComputedExpression.java` + `ComputedExpressionTest`/
+  `ComputedExpressionValidationTest`, committed `8756812` ("P3(2): ComputedExpression engine + real
+  computed-expr validation"). `AutoPanelExpander.withComputed()` writes `metadata.computed` into the
+  compiled descriptor. Server-side re-validation: `842801c` ("P3(3): server-side computed columns in
+  PanelRuntime"). ✅ done.
+- **Still missing:** the generated `workbench-page.html.mustache` never consumes `metadata.computed` —
+  no client CEL/expression evaluator wired into the emitted page. What Polish shipped instead
+  (`recompute: <procedure>` under `transaction.metadata`, debounced invoke-on-edit) is a **server
+  round-trip via a procedure**, not a client-side evaluation of the declared `computed[]` expression —
+  it satisfies the *live-recompute-on-keystroke* UX (C4) but does not evaluate `computed[]` itself, so
+  the two mechanisms currently coexist without one subsuming the other.
+- **Acceptance:** C4 — editing Pos/CxAvulsas updates Total/Sub-Total/Máximo/Pendente instantly and
+  server recompute agrees — ✅ met, via the `recompute:` procedure path, not the `computed[]` client
+  evaluator.
+- **Remaining scope for AW-P3:** decide whether `computed[]` client-eval is still needed given
+  `recompute:` already delivers the UX, or fold `computed[]` into `recompute` as its declarative
+  source (procedure derived from the expression) to avoid two competing mechanisms.
+- **Risk:** medium (client/server CEL parity) — now mostly moot since the server-round-trip path sidesteps parity entirely; revisit only if `recompute`'s network round-trip proves too slow for dense grids.
 
 ### P4 — Multi-level Transaction: Sections→Bands over an aggregate  ← hardest
 **Goal:** C3, C5, C7, C8 — an aggregate-bound AutoPanel's Transaction becomes the Aggregate
@@ -218,15 +252,31 @@ Workbench. **Lifts the one-level nesting cap at
 - **Risk:** **high** — the primitive stands or falls here. De-risked by the spike; validate the
   `display: all` DOM-weight path with virtualization before committing.
 
-### P5 — Lifecycle state machine + gating
+### P5 — Lifecycle state machine + gating — PARTIAL (reconciled 2026-07-12)
 **Goal:** C9.
-- **Schema:** `lifecycles[]` (`states`, `transitions`, per-state `{editableSurfaces, allowedActions}`);
-  `lifecycle` ref on AutoPanel/transaction.
-- **DSL:** validate transitions reference declared states.
-- **Kernel:** bind to FlowEngine; emit transition endpoints.
-- **Generator:** emit status chip + surface/region enable-disable + action-rail gating from state.
-- **Acceptance:** C9 — Estágio transitions gate editability & actions across all levels.
-- **Risk:** medium.
+- **Delivered:** region-level editable/read-only gating driven by the **pre-existing singular**
+  `lifecycle` construct (`LifecycleAst`/`CompiledLifecycle`, unchanged) — `AutoPanelExpander
+  .lifecycleDescriptor` projects the root concept's lifecycle into the workbench descriptor
+  (statusField, states with editable/terminal flags, transitions); the template renders a status chip
+  and makes the whole panel read-only in non-editable/terminal states. Committed `4f133b1` ("P5(1):
+  lifecycle gating — status chip + per-state editability in the workbench").
+- **Still missing (the plan's actual new-primitive scope):**
+  1. No `lifecycles[]` **array** schema construct — P5 deliberately reused the existing singular
+     `lifecycle`, so there's no new DSL surface or its validation.
+  2. No per-state `allowedActions` — only whole-panel editable/read-only toggles by state; individual
+     actions/regions are not independently gated.
+  3. No dedicated `/transition` endpoint and no FlowEngine binding — P6's transition buttons drive
+     declared *procedures* directly (`AggregateApiController`, `952f39e`), not a lifecycle-declared
+     transition list through a kernel-owned transition path.
+- **Acceptance:** C9 — Estágio transitions gate editability (region-level) ✅ met; action-level gating
+  across all levels — **not met**.
+- **Remaining scope for AW-P5:** narrow to per-state `allowedActions` (action-rail gating) only, since
+  region editability and the status chip already ship. Decide whether `lifecycles[]` (plural, new
+  schema) is still worth adding or whether the existing singular `lifecycle` should just grow an
+  optional `allowedActions` map per state — the latter is less invasive and reuses everything P5
+  already committed.
+- **Risk:** medium → now low (state machine + validation infrastructure already exists via the
+  singular `lifecycle`; remaining work is additive, not new design).
 
 ### P6 — Procedure-over-aggregate + commit boundary (Tier B) + slots ✅ DONE (verified live 2026-07-12)
 **Goal:** C10, C11.
