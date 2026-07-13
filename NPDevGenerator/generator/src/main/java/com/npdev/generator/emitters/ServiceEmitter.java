@@ -43,6 +43,7 @@ public final class ServiceEmitter extends AbstractEmitter {
 
             List<Map<String, Object>> fields = new ArrayList<>();
             List<Map<String, Object>> uniqueFields = new ArrayList<>();
+            List<Map<String, Object>> fileFields = new ArrayList<>();
             List<Map<String, Object>> referenceFinders = new ArrayList<>();
             List<Map<String, Object>> manyToManyBonds = new ArrayList<>();
             List<Map<String, Object>> expressionInvariants = new ArrayList<>();
@@ -99,6 +100,18 @@ public final class ServiceEmitter extends AbstractEmitter {
 
                 fields.add(fm);
 
+                // HARDEN-GC-P1/P2: a file-typed field's stored FileHandle(s) must be reclaimed
+                // through FileStoreContract when the owning record is deleted or the field is
+                // replaced -- the generated delete()/update() bodies below need this concept's
+                // file-field list at generation time (there is no cheap way to discover it from
+                // the entity's runtime type alone).
+                if ("file".equalsIgnoreCase(f.getDslType())) {
+                    Map<String, Object> ffm = new HashMap<>();
+                    ffm.put("name", f.getName());
+                    ffm.put("capName", cap(f.getName()));
+                    fileFields.add(ffm);
+                }
+
                 boolean unique = false;
                 try { unique = f.isUnique(); } catch (Exception ignored) {}
                 if (unique) {
@@ -124,6 +137,8 @@ public final class ServiceEmitter extends AbstractEmitter {
             ctx.put("dtoPackage", "com.npdev.generated.dtos");
             ctx.put("fields", fields);
             ctx.put("uniqueFields", uniqueFields);
+            ctx.put("fileFields", fileFields);
+            ctx.put("hasFileFields", !fileFields.isEmpty());
             ctx.put("referenceFinders", referenceFinders);
             ctx.put("manyToManyBonds", manyToManyBonds);
             ctx.put("expressionInvariants", expressionInvariants);

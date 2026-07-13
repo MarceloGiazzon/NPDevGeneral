@@ -34,6 +34,12 @@ dependencies {
     testImplementation 'org.postgresql:postgresql:42.7.4'
     testImplementation 'org.flywaydb:flyway-core:10.10.0'
     testImplementation 'org.flywaydb:flyway-database-postgresql:10.10.0'
+
+    // HARDEN-OBJSTORE-P4: live packaged-app proof needs a real MinIO endpoint + an S3 client to
+    // assert bytes landed in the bucket under the tenant prefix.
+    testImplementation platform('software.amazon.awssdk:bom:2.28.11')
+    testImplementation 'software.amazon.awssdk:s3'
+    testImplementation 'org.testcontainers:minio:1.21.4'
 }
 
 tasks.named('run') {

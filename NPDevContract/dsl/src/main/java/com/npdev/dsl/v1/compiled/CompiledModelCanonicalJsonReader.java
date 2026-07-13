@@ -249,7 +249,26 @@ public final class CompiledModelCanonicalJsonReader {
                 toEnumOptions(node.get("enumOptions")),
                 toPresentationMetadata(node.get("ui")),
                 optionalText(node, "connectable"),
-                optionalText(node, "renamedFrom")
+                optionalText(node, "renamedFrom"),
+                toFileMetadata(node.get("file"))
+        );
+    }
+
+    /**
+     * HARDEN-OBJSTORE: this reader previously fell back to the 15-arg {@link CompiledField}
+     * constructor (which always sets {@code file} to null), so a file field's
+     * contentTypes/maxSizeBytes/multiple constraints never survived the compiled-model.json
+     * round-trip -- silently defeating {@code FileUploadController}'s upload-time validation in
+     * every generated app.
+     */
+    private static CompiledFileMetadata toFileMetadata(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return null;
+        }
+        return new CompiledFileMetadata(
+                toStringList(node.get("contentTypes")),
+                optionalLongObject(node.get("maxSizeBytes")),
+                booleanValue(node, "multiple")
         );
     }
 

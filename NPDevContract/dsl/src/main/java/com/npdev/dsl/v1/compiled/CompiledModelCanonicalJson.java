@@ -189,6 +189,7 @@ public final class CompiledModelCanonicalJson {
                 fieldNode.put("domainType", safe(field.getDomainType()));
                 fieldNode.set("schema", toSchema(field.getSchema()));
                 fieldNode.set("ui", toPresentationMetadata(field.getUi()));
+                fieldNode.set("file", toFileMetadata(field.getFile()));
                 fieldsNode.add(fieldNode);
             }
             node.set("fields", fieldsNode);
@@ -1096,6 +1097,27 @@ public final class CompiledModelCanonicalJson {
         node.put("defaultFilter", safe(referenceSemantics.getDefaultFilter()));
         node.put("via", safe(referenceSemantics.getVia()));
         node.put("onDelete", safe(referenceSemantics.getOnDelete()));
+        return node;
+    }
+
+    /**
+     * HARDEN-OBJSTORE: {@code file} was previously dropped by this hand-rolled writer (only the
+     * generic Jackson getter-based serialization picked it up), so every generated app's runtime
+     * {@code CompiledModel} silently lost a file field's contentTypes/maxSizeBytes/multiple
+     * constraints on read-back, defeating {@code FileUploadController}'s upload-time validation.
+     */
+    private static JsonNode toFileMetadata(CompiledFileMetadata file) {
+        if (file == null) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.set("contentTypes", toStringArray(file.contentTypes()));
+        if (file.maxSizeBytes() == null) {
+            node.putNull("maxSizeBytes");
+        } else {
+            node.put("maxSizeBytes", file.maxSizeBytes());
+        }
+        node.put("multiple", file.multiple());
         return node;
     }
 

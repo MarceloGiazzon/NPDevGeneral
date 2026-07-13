@@ -739,6 +739,11 @@ public final class ModelCompiler {
             case "enum" -> "String";
             case "reference" -> "java.util.UUID";
             case "object", "array" -> "com.fasterxml.jackson.databind.JsonNode";
+            // HARDEN-OBJSTORE: a file field's SQL column is JSONB (SqlTypeSupport) storing a
+            // FileHandle (or list, if multiple) -- without this case it fell through to the
+            // "String" default, mismatching the JSONB column and breaking entity (de)serialization
+            // for any model that declares a file field through the real authoring pipeline.
+            case "file" -> "com.fasterxml.jackson.databind.JsonNode";
             default -> "String";
         };
     }

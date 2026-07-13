@@ -26,7 +26,8 @@
     "StorageSummaryController",
     "PromotionController",
     "TenantAdminController",
-    "CredentialAdminController"
+    "CredentialAdminController",
+    "FileUploadController"
   ],
   "deferredControllers": [
     "HelloController",

@@ -38,6 +38,9 @@ public class {{entityName}}ServiceBase {
     protected final ConceptStore conceptStore;
     protected final KernelRunner kernelRunner;
     protected final java.util.Optional<com.npdev.kernel.coda.CodaHook> codaHook;
+    // HARDEN-GC-P1/P2: an ObjectProvider (never a hard bean dependency) so a concept with no file
+    // fields never needs FileStoreContract to be resolvable at all.
+    protected final org.springframework.beans.factory.ObjectProvider<com.npdev.kernel.ports.FileStoreContract> fileStoreProvider;
     // JavaTimeModule lets this convert an entity's java.time fields at all, but the module's own
     // default for WRITE_DATES_AS_TIMESTAMPS is true -- without disabling it, mapFromEntity's
     // OBJECT_MAPPER.convertValue(entity, MAP_TYPE) silently turns an OffsetDateTime field into a
@@ -63,11 +66,13 @@ public class {{entityName}}ServiceBase {
             ConceptStore conceptStore,
             KernelRunner kernelRunner,
             java.util.Optional<com.npdev.kernel.coda.CodaHook> codaHook,
-            org.springframework.beans.factory.ObjectProvider<javax.sql.DataSource> dataSourceProvider
+            org.springframework.beans.factory.ObjectProvider<javax.sql.DataSource> dataSourceProvider,
+            org.springframework.beans.factory.ObjectProvider<com.npdev.kernel.ports.FileStoreContract> fileStoreProvider
     ) {
         this.runtimeSupport = runtimeSupport;
         this.conceptGateway = conceptGateway;
         this.codaHook = codaHook == null ? java.util.Optional.empty() : codaHook;
+        this.fileStoreProvider = fileStoreProvider;
 {{#hasPersistenceAdapterOverride}}
         // Adapters personalization cascade (persistence.adapter resolved at generation time):
         // an override other than the binding-declared default wraps the underlying ConceptStore
@@ -244,10 +249,26 @@ public class {{entityName}}ServiceBase {
         enforceWithConceptGateway("{{conceptName}}", id, updatePayload);
 {{/kernelControlled}}
 {{/hasUpdateFlow}}
+{{#hasFileFields}}
+        // HARDEN-GC-P2: snapshot the pre-update value(s) BEFORE applyUpdateFields mutates
+        // `existing` in place -- there is no other way to recover "what was there before".
+{{#fileFields}}
+        com.fasterxml.jackson.databind.JsonNode previous{{capName}} = existing.get{{capName}}();
+{{/fileFields}}
+{{/hasFileFields}}
         runtimeSupport.applyUpdateFields("{{conceptName}}", source, existing);
         existing.setVersion((existing.getVersion() == null ? 0L : existing.getVersion()) + 1);
 
         {{entityName}} updated = saveWithIntegrityMapping(existing);
+{{#hasFileFields}}
+        // HARDEN-GC-P2: only after a successful save -- a failed save must never orphan the
+        // still-referenced old file. Store-delete failures are logged and tolerated (see
+        // GeneratedCrudRuntimeSupport.cascadeReplacedFileField).
+{{#fileFields}}
+        GeneratedCrudRuntimeSupport.cascadeReplacedFileField(fileStoreProvider.getIfAvailable(),
+                "{{conceptName}}", previous{{capName}}, updated.get{{capName}}());
+{{/fileFields}}
+{{/hasFileFields}}
 {{#codaAllowed}}
         codaHook.ifPresent(hook -> hook.afterUpdate("{{conceptName}}", updated, crudCtx));
 {{/codaAllowed}}
@@ -272,7 +293,13 @@ public class {{entityName}}ServiceBase {
 {{#kernelControlled}}
         runtimeSupport.checkCrudPermission("{{conceptName}}", "DELETE", crudCtx);
 {{/kernelControlled}}
+{{#hasFileFields}}
+        Optional<{{entityName}}> toDelete = persistence.findById(id);
+        if (toDelete.isEmpty()) return false;
+{{/hasFileFields}}
+{{^hasFileFields}}
         if (!persistence.existsById(id)) return false;
+{{/hasFileFields}}
 {{#codaAllowed}}
         codaHook.ifPresent(hook -> hook.beforeDelete("{{conceptName}}", id, crudCtx));
 {{/codaAllowed}}
@@ -285,6 +312,15 @@ public class {{entityName}}ServiceBase {
 {{/kernelControlled}}
 {{/hasDeleteFlow}}
         deleteWithIntegrityMapping(id);
+{{#hasFileFields}}
+        // HARDEN-GC-P1: cascade AFTER the record delete succeeds -- a store-delete failure is
+        // logged and tolerated (never rethrown), so it can never abort the delete that already
+        // committed; a future orphan sweep reclaims any straggler bytes.
+{{#fileFields}}
+        GeneratedCrudRuntimeSupport.deleteFileHandles(fileStoreProvider.getIfAvailable(),
+                GeneratedCrudRuntimeSupport.extractFileHandleRefs(toDelete.get().get{{capName}}()), "{{conceptName}}");
+{{/fileFields}}
+{{/hasFileFields}}
 {{#codaAllowed}}
         codaHook.ifPresent(hook -> hook.afterDelete("{{conceptName}}", id, crudCtx));
 {{/codaAllowed}}

@@ -117,7 +117,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         for (int index = 1; index <= metaData.getColumnCount(); index++) {
             String column = metaData.getColumnLabel(index);
             Object value = resultSet.getObject(index);
-            if (isJsonColumnType(metaData, index)) {
+            if (isJsonColumnType(metaData, index) || isJsonDslField(shape, column)) {
                 value = parseJsonColumnValue(column, value);
             }
             String field = shape.fieldByColumn().getOrDefault(column.toLowerCase(Locale.ROOT), toRuntimeField(column));
@@ -134,6 +134,22 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         return typeName != null && (
                 "JSON".equalsIgnoreCase(typeName) || "JSONB".equalsIgnoreCase(typeName)
         );
+    }
+
+    /**
+     * HARDEN-GC: {@code isJsonColumnType} trusts the JDBC driver's reported column type name, which
+     * H2 does not reliably report as "JSON"/"JSONB" for a JSON column (confirmed live: a {@code
+     * file}-typed field's column came back with a type name that failed that check, so the already
+     * JSON-encoded write-side string was handed straight through instead of being parsed --
+     * `attachment` field values round-tripped as a raw JSON string instead of a nested
+     * object/array, silently defeating any code reading the field's structure, e.g. the
+     * delete/replace-cascade file-field extraction). The DSL's own declared type (object/array/file
+     * all map to a JSON/JSONB column per SqlTypeSupport) is authoritative and engine-independent,
+     * so prefer it over trusting the driver.
+     */
+    private static boolean isJsonDslField(ConceptShape shape, String column) {
+        String dslType = shape.dslTypeByColumn().get(column.toLowerCase(Locale.ROOT));
+        return "object".equalsIgnoreCase(dslType) || "array".equalsIgnoreCase(dslType) || "file".equalsIgnoreCase(dslType);
     }
 
     /**
@@ -270,13 +286,17 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             return coerceId(value);
         }
         if (value instanceof Map<?, ?> || value instanceof List<?>) {
-            // Object/array DSL fields map to a JSON/JSONB column (SqlTypeSupport). Handing the
+            // Object/array/file DSL fields map to a JSON/JSONB column (SqlTypeSupport). Handing the
             // JDBC driver a raw Map/List makes it default to JAVA_OBJECT, which H2 (and Postgres)
             // both reject for a JSON-typed column ("Data conversion error converting JAVA_OBJECT
-            // to JSON") -- write the JSON text representation instead, the standard plain-JDBC
-            // idiom both engines accept for a JSON column via setObject/setString.
+            // to JSON"). Binding the JSON text as a java.lang.String isn't safe either: H2's JSON
+            // column treats a bound String as a JSON *string value* and quotes/escapes it rather
+            // than storing it as the object it represents (confirmed live: a file field's handle
+            // round-tripped as a JSON-encoded string instead of a nested object, silently defeating
+            // GeneratedCrudRuntimeSupport's file-field extraction on delete/replace-cascade).
+            // Binding raw JSON bytes instead is accepted as JSON content by both H2 and Postgres.
             try {
-                return JSON_COLUMN_MAPPER.writeValueAsString(value);
+                return JSON_COLUMN_MAPPER.writeValueAsBytes(value);
             } catch (Exception exception) {
                 throw new IllegalStateException("Failed to serialize column \"" + column + "\" to JSON", exception);
             }

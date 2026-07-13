@@ -18,8 +18,9 @@ public class {{entityName}}Service extends {{entityName}}ServiceBase {
             ConceptStore conceptStore,
             KernelRunner kernelRunner,
             Optional<CodaHook> codaHook,
-            org.springframework.beans.factory.ObjectProvider<javax.sql.DataSource> dataSourceProvider
+            org.springframework.beans.factory.ObjectProvider<javax.sql.DataSource> dataSourceProvider,
+            org.springframework.beans.factory.ObjectProvider<com.npdev.kernel.ports.FileStoreContract> fileStoreProvider
     ) {
-        super(runtimeSupport, conceptGateway, conceptStore, kernelRunner, codaHook, dataSourceProvider);
+        super(runtimeSupport, conceptGateway, conceptStore, kernelRunner, codaHook, dataSourceProvider, fileStoreProvider);
     }
 }

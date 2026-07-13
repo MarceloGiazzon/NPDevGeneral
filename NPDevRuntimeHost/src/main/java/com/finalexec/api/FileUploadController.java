@@ -31,6 +31,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * LIFT-UPLOAD-P3: the only server-side multipart surface in the platform. Uploads validate the
@@ -49,6 +50,14 @@ import java.util.Optional;
 @RestController
 @RequestMapping("/api/files")
 public class FileUploadController {
+
+    /**
+     * HARDEN-DL-P2: content-types safe to render inline in-browser; everything else is forced to
+     * {@code attachment} so a stored-XSS payload (e.g. HTML/SVG that slipped past an upload
+     * allowlist) can never execute from the app's own origin.
+     */
+    private static final Set<String> INLINE_SAFE_CONTENT_TYPES = Set.of(
+            "image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf");
 
     private final FileStoreContract fileStore;
     private final ObjectProvider<CompiledModel> compiledModel;
@@ -104,23 +113,33 @@ public class FileUploadController {
             HttpServletRequest request,
             HttpServletResponse response,
             @RequestParam String storeId,
-            @RequestParam String key,
-            @RequestParam(required = false) String contentType,
-            @RequestParam(required = false) String originalName
+            @RequestParam String key
     ) {
+        // HARDEN-DL-P1: contentType/originalName are intentionally no longer accepted as request
+        // params -- a caller-supplied content-type is half the stored-XSS primitive. The
+        // authoritative type/name come only from what the store recorded at upload time. A stale
+        // client still sending those params is tolerated (Spring ignores unbound query params);
+        // it just no longer has any effect.
         requireOwnedByCaller(request, key);
-        FileHandle handle = new FileHandle(
-                storeId, key,
-                contentType == null || contentType.isBlank() ? MediaType.APPLICATION_OCTET_STREAM_VALUE : contentType,
-                0,
-                originalName == null || originalName.isBlank() ? "file" : originalName
-        );
+        FileHandle handle;
+        try {
+            handle = fileStore.head(storeId, key);
+        } catch (NoSuchElementException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No file for key: " + key);
+        }
+
+        boolean inlineSafe = INLINE_SAFE_CONTENT_TYPES.contains(handle.contentType().toLowerCase(Locale.ROOT));
         response.setContentType(handle.contentType());
-        response.setHeader("Content-Disposition", "inline; filename=\"" + sanitizeHeaderValue(handle.originalName()) + "\"");
+        response.setHeader("Content-Disposition",
+                (inlineSafe ? "inline" : "attachment") + "; filename=\"" + sanitizeHeaderValue(handle.originalName()) + "\"");
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        response.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
         try {
             fileStore.get(handle, response.getOutputStream());
         } catch (NoSuchElementException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No file for key: " + key);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to stream file for key " + key, e);
         }
     }
 

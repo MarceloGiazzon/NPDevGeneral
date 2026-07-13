@@ -63,6 +63,7 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -2248,6 +2249,103 @@ public final class GeneratedCrudRuntimeSupport {
             ))));
         }
         return Optional.empty();
+    }
+
+    /** HARDEN-GC-P1/P2: a bare (storeId, key) pointer into a {@link com.npdev.kernel.ports.FileStoreContract}. */
+    public record FileHandleRef(String storeId, String key) {
+    }
+
+    /**
+     * HARDEN-GC-P1/P2: reads every {@code FileHandle} referenced by a file-typed field's stored
+     * JSON value -- a single object for {@code multiple:false}, an array for {@code multiple:true}.
+     * Malformed/partial entries (missing storeId or key) are skipped rather than failing the
+     * caller, since this runs on the delete/update hot path.
+     */
+    public static List<FileHandleRef> extractFileHandleRefs(JsonNode fieldValue) {
+        List<FileHandleRef> refs = new ArrayList<>();
+        if (fieldValue == null || fieldValue.isNull() || fieldValue.isMissingNode()) {
+            return refs;
+        }
+        if (fieldValue.isArray()) {
+            for (JsonNode item : fieldValue) {
+                FileHandleRef ref = toFileHandleRef(item);
+                if (ref != null) {
+                    refs.add(ref);
+                }
+            }
+        } else {
+            FileHandleRef ref = toFileHandleRef(fieldValue);
+            if (ref != null) {
+                refs.add(ref);
+            }
+        }
+        return refs;
+    }
+
+    private static FileHandleRef toFileHandleRef(JsonNode node) {
+        if (node == null || node.isNull() || !node.isObject()) {
+            return null;
+        }
+        String storeId = node.path("storeId").asText(null);
+        String key = node.path("key").asText(null);
+        if (storeId == null || storeId.isBlank() || key == null || key.isBlank()) {
+            return null;
+        }
+        return new FileHandleRef(storeId, key);
+    }
+
+    /**
+     * HARDEN-GC-P1: deletes every referenced file's bytes through {@code fileStore}, tolerating
+     * (log + continue) an individual store failure so a store outage never aborts the record
+     * mutation that triggered the cascade -- {@code fileStore} being unavailable is itself
+     * tolerated the same way, since a delete-cascade is best-effort GC, not a correctness gate.
+     */
+    public static void deleteFileHandles(
+            com.npdev.kernel.ports.FileStoreContract fileStore,
+            List<FileHandleRef> refs,
+            String conceptName
+    ) {
+        if (fileStore == null || refs == null || refs.isEmpty()) {
+            return;
+        }
+        for (FileHandleRef ref : refs) {
+            try {
+                fileStore.delete(new com.npdev.kernel.ports.FileHandle(
+                        ref.storeId(), ref.key(), "application/octet-stream", 0, "file"));
+            } catch (RuntimeException exception) {
+                LOG.log(Level.WARNING, "Failed to delete file bytes for " + conceptName + " key=" + ref.key()
+                        + " (tolerated: a future orphan sweep can reclaim stragglers)", exception);
+            }
+        }
+    }
+
+    /**
+     * HARDEN-GC-P2: after a successful update, deletes whichever of {@code oldValue}'s file
+     * handles are no longer present in {@code newValue} -- covers both a {@code multiple:false}
+     * replacement and a {@code multiple:true} field losing some of its entries. Never called
+     * before the save succeeds, so a failed save can never orphan the still-referenced old file.
+     */
+    public static void cascadeReplacedFileField(
+            com.npdev.kernel.ports.FileStoreContract fileStore,
+            String conceptName,
+            JsonNode oldValue,
+            JsonNode newValue
+    ) {
+        List<FileHandleRef> oldRefs = extractFileHandleRefs(oldValue);
+        if (oldRefs.isEmpty() || fileStore == null) {
+            return;
+        }
+        Set<String> newKeys = new HashSet<>();
+        for (FileHandleRef ref : extractFileHandleRefs(newValue)) {
+            newKeys.add(ref.key());
+        }
+        List<FileHandleRef> orphaned = new ArrayList<>();
+        for (FileHandleRef ref : oldRefs) {
+            if (!newKeys.contains(ref.key())) {
+                orphaned.add(ref);
+            }
+        }
+        deleteFileHandles(fileStore, orphaned, conceptName);
     }
 
     private static boolean isForeignKeyViolation(Throwable exception) {

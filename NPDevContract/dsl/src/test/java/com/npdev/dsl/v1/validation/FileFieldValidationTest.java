@@ -49,6 +49,10 @@ class FileFieldValidationTest {
                 .findFirst().orElseThrow();
 
         assertEquals("file", field.getDslType());
+        // HARDEN-OBJSTORE: pins a real bug -- ModelCompiler.toJavaType had no "file" case, so it
+        // fell through to the "String" default, mismatching the JSONB column below and breaking
+        // entity (de)serialization for any model declaring a file field through real authoring.
+        assertEquals("com.fasterxml.jackson.databind.JsonNode", field.getJavaType());
         assertNotNull(field.getFile());
         assertEquals(List.of("application/pdf", "image/png"), field.getFile().contentTypes());
         assertEquals(5242880L, field.getFile().maxSizeBytes());
