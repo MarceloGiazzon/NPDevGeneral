@@ -45,10 +45,22 @@ public class TenantRegistryService {
         this.dataSourceProvider = dataSourceProvider;
     }
 
+    /** Reserved sentinel meaning "no tenant registered" throughout the auth/execution layer
+     * ({@code DefaultExecutionAuthorizationPolicy}) -- registering it as a real tenant would make
+     * every flow/event/execution silently 403 under it, so reject it here rather than let that
+     * surface as a confusing runtime denial later. */
+    private static final String RESERVED_DEFAULT_TENANT_ID = "default";
+
     public Map<String, Object> create(String tenantId, String displayName) {
         String id = normalize(tenantId);
         if (id == null) {
             throw new IllegalArgumentException("tenantId is required");
+        }
+        if (RESERVED_DEFAULT_TENANT_ID.equals(id)) {
+            throw new IllegalArgumentException(
+                    "tenantId \"default\" is a reserved sentinel (means \"no tenant\") and cannot be "
+                            + "registered as a real tenant -- flow/event/execution auth would silently "
+                            + "deny every request under it. Choose a different tenantId.");
         }
         DataSource dataSource = requireDataSource();
         String sql = "INSERT INTO " + NpdevTenantTable.NAME

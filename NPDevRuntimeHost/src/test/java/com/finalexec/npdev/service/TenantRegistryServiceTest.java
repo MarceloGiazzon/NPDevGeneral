@@ -29,7 +29,7 @@ class TenantRegistryServiceTest {
         String url = "jdbc:h2:mem:" + getClass().getSimpleName() + System.nanoTime() + ";DB_CLOSE_DELAY=-1";
         DataSource dataSource = new SingleConnectionUrlDataSource(url);
         try (Connection c = dataSource.getConnection(); Statement s = c.createStatement()) {
-            s.execute("CREATE TABLE npdev_tenant (tenant_id VARCHAR(120) PRIMARY KEY, display_name VARCHAR(255), status VARCHAR(32), created_at_ms BIGINT)");
+            s.execute("CREATE TABLE npdev_tenant (tenant_id VARCHAR(120) PRIMARY KEY, display_name VARCHAR(255), status VARCHAR(32), created_at_ms BIGINT, persistence_mode VARCHAR(32))");
         }
         service = new TenantRegistryService(new FixedProvider(dataSource));
     }
@@ -73,6 +73,16 @@ class TenantRegistryServiceTest {
     void setStatusOnUnknownTenantIsRejected() {
         assertThrows(IllegalArgumentException.class,
                 () -> service.setStatus("ghost", TenantRegistryService.Status.DISABLED));
+    }
+
+    @Test
+    void creatingTheReservedDefaultTenantIdIsRejected() {
+        // "default" is a reserved sentinel in DefaultExecutionAuthorizationPolicy meaning
+        // "no tenant registered" -- registering it as a real tenant would make every
+        // flow/event/execution silently 403 under it (ARCH-15). Fail fast instead.
+        assertThrows(IllegalArgumentException.class, () -> service.create("default", "Default"));
+        assertThrows(IllegalArgumentException.class, () -> service.create("DEFAULT", "Default"));
+        assertTrue(service.list().isEmpty());
     }
 
     @Test
