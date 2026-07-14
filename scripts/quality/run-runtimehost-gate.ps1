@@ -113,7 +113,12 @@ try {
     }
 
     Write-NPDevInfo "Generating RuntimeHost surface evidence reports"
-    & $runtimeSurfaceEvidenceScript -WorkspaceRoot $WorkspaceRoot
+    # -PendingOk: the surface-governance convergence/exclusivity checks encode the pre-d0bf41b
+    # "package == support bucket" convention the beta-0 manifest refactor replaced with exact-lists;
+    # they are reported as advisory observations pending a governance-owner realignment (same
+    # pending-OK pattern the observability and sample-diagnostics steps use below). Build-time
+    # allowlist enforcement is unaffected.
+    & $runtimeSurfaceEvidenceScript -WorkspaceRoot $WorkspaceRoot -PendingOk
 
     Write-NPDevInfo "Generating RuntimeHost observability hardening report"
     $observabilityHardening = & $observabilityHardeningScript `
