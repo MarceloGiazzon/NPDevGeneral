@@ -418,8 +418,29 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             if ("datetime".equals(dslType)) {
                 return java.sql.Timestamp.from(parseDateTime(text));
             }
+            // LNCH-5: a filter value arriving as a String (e.g. a REST query parameter) against a
+            // numeric column must bind as a number -- H2 silently casts a VARCHAR, but real Postgres
+            // rejects "int = varchar". Leave non-numeric text untouched.
+            if (isNumericDslType(dslType)) {
+                try {
+                    return new java.math.BigDecimal(text.trim());
+                } catch (NumberFormatException ignored) {
+                    return value;
+                }
+            }
         }
         return value;
+    }
+
+    private static boolean isNumericDslType(String dslType) {
+        if (dslType == null) {
+            return false;
+        }
+        return switch (dslType.trim().toLowerCase(Locale.ROOT)) {
+            case "int", "integer", "long", "bigint", "decimal", "number", "numeric",
+                    "float", "double", "money", "currency" -> true;
+            default -> false;
+        };
     }
 
     private static java.time.Instant parseDateTime(String text) {

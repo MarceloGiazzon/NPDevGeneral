@@ -100,6 +100,20 @@ class ConceptQueryPushDownTest {
         assertEquals(24, neq.total());
     }
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("adapters")
+    void stringValuedNumericFilterComparesNumerically(Supplier<ConceptStore> factory) {
+        // A REST query parameter arrives as a String even for a numeric column; both adapters must
+        // compare it numerically (not lexically, where "9" > "20").
+        ConceptStore store = factory.get();
+        for (int i = 1; i <= 25; i++) {
+            store.save(widget(TENANT_A, "w-" + i, i));
+        }
+        ConceptPage gt = store.query(TENANT_A, CONCEPT, new ConceptQuery(
+                List.of(new ConceptQuery.Filter("qty", ConceptQuery.Operator.GT, "20")), List.of(), 0, 50));
+        assertEquals(5, gt.total(), "qty > \"20\" must match 21..25, comparing as numbers");
+    }
+
     @Test
     void jdbcAdapterRejectsUnknownFilterFieldRatherThanConcatenatingIt() {
         // Injection-safety: the JDBC adapter compiles column names from the model whitelist only.

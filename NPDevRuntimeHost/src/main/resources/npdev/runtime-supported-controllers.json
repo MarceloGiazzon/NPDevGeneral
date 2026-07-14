@@ -5,6 +5,7 @@
   "enforcedByProperty": "npdev.runtime.supported-surface-enforced",
   "allowedControllers": [
     "AggregateApiController",
+    "ConceptQueryController",
     "DirectExecutionGatewayController",
     "ExecutionMonitorController",
     "RuntimeMetadataController",
