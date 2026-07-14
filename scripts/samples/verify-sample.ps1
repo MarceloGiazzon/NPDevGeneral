@@ -56,7 +56,7 @@ foreach ($sampleId in $SampleIds) {
             -WorkspaceRoot $WorkspaceRoot `
             -WorkingDirectory $appRoot `
             -Executable $gradlew `
-            -Arguments @("--no-daemon", "--console=plain", "-p", $appRoot, "enforceSingleMigrationSource", "test") `
+            -Arguments @("--no-daemon", "--console=plain", "-p", $appRoot, "enforceSingleSchemaRealizationSource", "test") `
             -LogPath $verificationLogPath
 
         if ([string]$verificationCommand.status -ne "passed") {

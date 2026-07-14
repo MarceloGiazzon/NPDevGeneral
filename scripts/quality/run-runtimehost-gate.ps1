@@ -81,7 +81,7 @@ try {
             -WorkspaceRoot $WorkspaceRoot `
             -WorkingDirectory $assembledAppRoot `
             -Executable $assembledGradleWrapper `
-            -Arguments @("--no-daemon", "--console=plain", "enforceSingleMigrationSource", "test") `
+            -Arguments @("--no-daemon", "--console=plain", "enforceSingleSchemaRealizationSource", "test") `
             -LogPath $verificationLogPath
 
         if ([string]$verificationCommand.status -ne "passed") {
@@ -199,7 +199,7 @@ $report = [pscustomobject]@{
     sampleId = $SampleId
     assembledAppRoot = $assembledAppRoot
     generationMarker = $generationMarkerEvidence
-    verificationTasks = @("enforceSingleMigrationSource", "test")
+    verificationTasks = @("enforceSingleSchemaRealizationSource", "test")
     verificationCommand = $verificationCommand
     cleanup = $cleanupEvidence
     observabilityHardening = if ($null -eq $observabilityHardening) {
