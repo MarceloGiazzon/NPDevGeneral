@@ -17,6 +17,8 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -36,7 +38,12 @@ public final class ModelSourceResolver {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final JsonSchemaResourceValidator PACK_SCHEMA_VALIDATOR =
             new JsonSchemaResourceValidator("/schema/pack.schema.json");
-    private static final Set<String> MODEL_ARRAY_KEYS = Set.of(
+    // Insertion-ordered on purpose: resolveRoot iterates these to build the emitted model.json's
+    // key order, and Java's immutable Set.of(...) has a per-JVM-randomized iteration order, so two
+    // generation runs (two JVMs) would otherwise reorder the resolved model.json's keys and break
+    // the deterministic-generation gate. LinkedHashSet pins the order; containment checks are
+    // unaffected.
+    private static final Set<String> MODEL_ARRAY_KEYS = orderedSet(
             "concepts",
             "domainTypes",
             "capabilities",
@@ -52,7 +59,7 @@ public final class ModelSourceResolver {
             "panels",
             "guidePages"
     );
-    private static final Set<String> ROOT_SCALAR_KEYS = Set.of(
+    private static final Set<String> ROOT_SCALAR_KEYS = orderedSet(
             "$schema",
             "schemaVersion",
             "dslVersion",
@@ -88,6 +95,11 @@ public final class ModelSourceResolver {
 
     private final int maxIncludeDepth;
     private final int maxIncludedFiles;
+
+    /** Deterministic-iteration immutable set: preserves argument order, unlike {@link Set#of}. */
+    private static Set<String> orderedSet(String... keys) {
+        return Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(keys)));
+    }
 
     public ModelSourceResolver() {
         this(DEFAULT_MAX_INCLUDE_DEPTH, DEFAULT_MAX_INCLUDED_FILES);

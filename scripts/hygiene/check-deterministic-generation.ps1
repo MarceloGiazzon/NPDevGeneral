@@ -30,7 +30,11 @@ Ensure-NPDevFile $cleanScript "Sample cleanup script"
 function Get-ArtifactFingerprint([string]$RootPath) {
     $files = @(Get-ChildItem -LiteralPath $RootPath -Recurse -File -Force | Where-Object {
             $_.FullName -notmatch "\\.gradle\\" -and
-            $_.FullName -notmatch "\\build\\"
+            $_.FullName -notmatch "\\build\\" -and
+            # Intentional, non-reproducible provenance emitted at final-app assembly time (commit,
+            # branch, wall-clock generation timestamp) -- BuildInfoEmitter deliberately keeps it OUT
+            # of the generator's deterministic artifact tree, so it must not fail a determinism check.
+            $_.Name -ne "npdev-build-info.properties"
         })
     $entries = foreach ($file in $files) {
         [pscustomobject]@{
