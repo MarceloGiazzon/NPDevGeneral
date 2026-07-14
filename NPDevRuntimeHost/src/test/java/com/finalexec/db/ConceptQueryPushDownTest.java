@@ -66,7 +66,8 @@ class ConceptQueryPushDownTest {
         assertEquals(25, all.total(), "total counts all of tenant A's filtered rows");
         assertEquals(25, all.items().size());
         assertFalse(all.hasMore());
-        assertFalse(all.items().toString().contains("b-1"), "tenant B's row must never leak");
+        assertTrue(all.items().stream().allMatch(r -> String.valueOf(r.data().get("name")).startsWith("w-")),
+                "only tenant A's widgets are returned -- tenant B's row must never leak");
 
         // Filter qty > 20 => 21..25 (5 rows), sorted qty descending.
         ConceptPage gt = store.query(TENANT_A, CONCEPT, new ConceptQuery(
