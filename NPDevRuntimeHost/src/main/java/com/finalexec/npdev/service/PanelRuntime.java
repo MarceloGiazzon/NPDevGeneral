@@ -548,7 +548,17 @@ public class PanelRuntime {
         }
         String rowId = id.trim();
         ExecutionContext effectiveContext = interactiveContext(context);
-        requireConceptGateway().delete(new ConceptReadRequest(conceptName, rowId, null), effectiveContext);
+        ConceptGateway gateway = requireConceptGateway();
+        // Confirm the row is visible in the caller's own tenant before deleting. Without this, a
+        // delete for a row owned by another tenant scopes to the caller's (empty) tenant, deletes
+        // nothing, yet still reports deleted:true -- a silent, misleading no-op. Reading first makes
+        // the panel delete tenant-safe and truthful: a row the caller cannot see cannot be deleted,
+        // and the caller is told so explicitly instead of receiving a false success.
+        if (gateway.read(new ConceptReadRequest(conceptName, rowId, null), effectiveContext).isEmpty()) {
+            throw new IllegalArgumentException(
+                    "No " + conceptName + " row '" + rowId + "' is visible to this tenant to delete");
+        }
+        gateway.delete(new ConceptReadRequest(conceptName, rowId, null), effectiveContext);
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("endpointVersion", ENDPOINT_VERSION);
