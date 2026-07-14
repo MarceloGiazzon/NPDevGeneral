@@ -29,7 +29,14 @@
 >
 > **Decisions taken:** skills home = `.claude/skills/` via a targeted `!.claude/skills/` un-ignore
 > (so they function as real Claude Code skills and are tracked). Live error→fix pair capture is now
-> built (Phase 3+ above). CI trigger for the new gate left to the maintainer, same open call as `BOND-B4`.
+> built (Phase 3+ above). **CI trigger resolved:** rather than flip the heavy ~120-min
+> `workflow_dispatch`-only workflows (the `BOND-B4` tension), the fast pure-Python gate runs
+> automatically on PRs via `.github/workflows/ai-knowledge-gate.yml` (path-filtered to the knowledge
+> substrate). **Real-path proof:** the capture path was exercised through the real Gradle validator
+> (fail→fix on a sample model) — which surfaced that the validator emits a generic
+> `semantic_validation_error` code with unquoted identifiers in the message; the normalizer now falls
+> back to a keyword-templatized message signature for generic codes, so real diagnostics cluster
+> name-agnostically (`flow <id> step <id>: references unknown capability <id>`).
 
 > **Status:** Proposal / hand-off plan · **Created:** 2026-07-13 · **Branch at capture:** `beta1-vision-spine`
 > **Audience:** an implementing AI agent (and its human reviewer) picking this up cold.

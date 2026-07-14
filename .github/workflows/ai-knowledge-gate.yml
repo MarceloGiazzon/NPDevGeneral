@@ -1,0 +1,42 @@
+name: AI Knowledge Gate
+
+# Lightweight (seconds, pure-Python -- no Java/Gradle/Playwright), so UNLIKE the heavy
+# workflow_dispatch-only workflows this one runs automatically on every PR that touches the AI
+# knowledge substrate. It guards three invariants:
+#   1. knowledge/platform-status.json is not stale vs the gaps ledger (someone edited the ledger
+#      without regenerating the derived projection),
+#   2. every knowledge/cards/*.json validates,
+#   3. the shared failure-signature normalizer behaves.
+on:
+  pull_request:
+    paths:
+      - 'docs/OPEN_GAPS_AND_ROADMAP.md'
+      - 'knowledge/**'
+      - 'scripts/ai/**'
+      - 'schemas/ai/knowledge-card.schema.json'
+      - 'scripts/quality/run-ai-knowledge-gate.ps1'
+      - '.github/workflows/ai-knowledge-gate.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ai-knowledge-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ai-knowledge-gate:
+    name: AI knowledge substrate gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run AI knowledge gate
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/quality/run-ai-knowledge-gate.ps1

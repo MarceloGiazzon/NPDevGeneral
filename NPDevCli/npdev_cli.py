@@ -40,11 +40,11 @@ def repo_root() -> Path:
 # human review. Disable with NPDEV_AI_CAPTURE=0. Writes ONLY to the external Build root, never the repo.
 _CAPTURE_DISABLED = {"0", "false", "no", "off", ""}
 
-try:  # share the ONE signature normalizer so capture sigs match the rest of the pipeline
+try:  # share the ONE signature implementation so capture sigs match the rest of the pipeline
     sys.path.insert(0, str(repo_root() / "scripts" / "ai"))
-    from failure_signatures import normalize as _normalize_sig  # type: ignore
+    from failure_signatures import diagnostic_signature as _diagnostic_signature  # type: ignore
 except Exception:  # portability: if scripts/ai is absent, capture simply no-ops
-    _normalize_sig = None
+    _diagnostic_signature = None
 
 
 def _ai_build_root() -> Path:
@@ -64,13 +64,7 @@ def _utc_now() -> str:
 
 
 def _diag_sig(diag: dict) -> str:
-    code = diag.get("code")
-    if code:
-        return f"code:{code}"
-    if _normalize_sig is None:
-        return "unknown"
-    return _normalize_sig(diag.get("message", ""), diag.get("path"),
-                          diag.get("concept"), diag.get("field")) or "unknown"
+    return _diagnostic_signature(diag) if _diagnostic_signature else "unknown"
 
 
 def _trunc(value: object, limit: int = 300) -> object:
@@ -122,7 +116,7 @@ def _capture_validation(model_path: Path, report: dict) -> None:
     """Journal this validation; emit a candidate when a prior diagnostic was resolved. Never raises."""
     if os.environ.get("NPDEV_AI_CAPTURE", "1").strip().lower() in _CAPTURE_DISABLED:
         return
-    if _normalize_sig is None:
+    if _diagnostic_signature is None:
         return
     try:
         status = report.get("status")

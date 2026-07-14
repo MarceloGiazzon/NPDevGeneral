@@ -29,7 +29,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from failure_signatures import normalize
+from failure_signatures import diagnostic_signature, normalize
 from npdev_ai_common import build_root, repo_root
 
 
@@ -82,11 +82,7 @@ def _cluster(candidates: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
 
 
 def _sig_of(diag: dict[str, Any]) -> str:
-    code = diag.get("code")
-    if code:
-        return f"code:{code}"
-    return normalize(diag.get("message", ""), diag.get("path"),
-                     diag.get("concept"), diag.get("field")) or "unknown"
+    return diagnostic_signature(diag)
 
 
 def _representative(cluster: dict[str, Any]) -> dict[str, Any]:
