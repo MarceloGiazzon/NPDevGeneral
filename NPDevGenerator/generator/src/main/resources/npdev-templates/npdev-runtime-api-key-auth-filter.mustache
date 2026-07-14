@@ -40,6 +40,16 @@ public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
         if (uri == null) {
             return true;
         }
+        // An earlier filter in the chain (e.g. SuperUserCredentialAuthFilter, order -110) may already
+        // have authenticated this request via a completely independent credential (the ControlPanel's
+        // X-Super-User-Key) and set the claims attribute. This filter must not clobber that
+        // stronger/first identity -- neither by overwriting it with a weaker api-key principal nor by
+        // rejecting the whole request when a stray or invalid X-Api-Key header is also present. Skip
+        // entirely once the request is already authenticated. Mirrors the identical guard in
+        // JwtBearerAuthFilter.
+        if (request.getAttribute(CLAIMS_ATTRIBUTE) != null) {
+            return true;
+        }
         if (normalize(request.getHeader("X-Api-Key")) != null || normalize(request.getHeader("X-API-Key")) != null) {
             return false;
         }
