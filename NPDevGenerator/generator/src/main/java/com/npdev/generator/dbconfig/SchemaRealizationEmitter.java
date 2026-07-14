@@ -6,6 +6,9 @@ import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledInvariant;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledPanel;
+import com.npdev.dsl.v1.compiled.CompiledPanelDataSource;
+import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.dsl.v1.compiled.SqlTypeSupport;
 import com.npdev.generator.bonds.BondModelSupport;
@@ -22,6 +25,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -69,8 +73,13 @@ public final class SchemaRealizationEmitter {
             for (CompiledConcept concept : model.getConcepts()) {
                 validateNoReservedColumnCollision(concept);
             }
+            // LNCH-6: the fields a compiled panel/query filters, sorts, or joins children by get a
+            // tenant-composite secondary index, so the LNCH-5 SQL push-down uses index scans instead
+            // of sequential scans on large tables.
+            Map<String, Set<String>> implicitIndexFields = collectImplicitIndexFields(model);
             for (CompiledConcept concept : model.getConcepts()) {
-                appendBusinessTable(sql, concept, plan.engine(), conceptsByName);
+                appendBusinessTable(sql, concept, plan.engine(), conceptsByName,
+                        implicitIndexFields.getOrDefault(concept.getName().toLowerCase(Locale.ROOT), Set.of()));
             }
             appendBonds(sql, model, plan.engine(), conceptsByName);
         }
@@ -214,7 +223,7 @@ public final class SchemaRealizationEmitter {
     }
 
     private static void appendBusinessTable(StringBuilder sql, CompiledConcept concept, DatabaseEngine engine,
-            Map<String, CompiledConcept> conceptsByName) {
+            Map<String, CompiledConcept> conceptsByName, Set<String> implicitIndexFields) {
         String table = SqlIdentifierSupport.tableName(concept);
         List<String> lines = new ArrayList<>();
         String idColumn = null;
@@ -309,7 +318,136 @@ public final class SchemaRealizationEmitter {
                     + " UNIQUE (tenant_id, " + String.join(", ", columns) + ")";
             sql.append(addConstraintIfMissing(engine, table, constraint, constraintSql));
         }
+
+        appendSecondaryIndexes(sql, concept, table, implicitIndexFields);
         sql.append("\n");
+    }
+
+    /**
+     * LNCH-6: emits a tenant-composite {@code (tenant_id, col)} secondary index for each model field a
+     * panel/query filters, sorts, or joins children by. Fields that are already indexed -- the primary
+     * key, and unique fields (which get a {@code ux_} tenant-composite unique index above) -- are
+     * skipped so we never emit a redundant index. Index names are truncated to stay within identifier
+     * limits, matching the unique-index naming.
+     */
+    private static void appendSecondaryIndexes(StringBuilder sql, CompiledConcept concept, String table,
+            Set<String> indexFields) {
+        if (indexFields == null || indexFields.isEmpty()) {
+            return;
+        }
+        Map<String, CompiledField> fieldsByLowerName = new LinkedHashMap<>();
+        for (CompiledField field : concept.getFields()) {
+            fieldsByLowerName.put(field.getName().toLowerCase(Locale.ROOT), field);
+        }
+        Set<String> emittedColumns = new LinkedHashSet<>();
+        for (String fieldName : indexFields) {
+            CompiledField field = fieldsByLowerName.get(fieldName.toLowerCase(Locale.ROOT));
+            if (field == null || field.isId() || field.isUnique()) {
+                continue;
+            }
+            String column = SqlIdentifierSupport.columnName(field);
+            if (!emittedColumns.add(column.toLowerCase(Locale.ROOT))) {
+                continue;
+            }
+            sql.append("CREATE INDEX IF NOT EXISTS ")
+                    .append(truncate("idx_" + table + "_" + column))
+                    .append(" ON ")
+                    .append(table)
+                    .append(" (tenant_id, ")
+                    .append(column)
+                    .append(");\n");
+        }
+    }
+
+    /**
+     * LNCH-6: gathers, per concept, the field names worth a secondary index because a compiled
+     * panel/query touches them in a WHERE, ORDER BY, or parent-child join:
+     * <ul>
+     *   <li>every query's {@code where} field and {@code orderBy} fields (on the query's concept);</li>
+     *   <li>every panel data source's {@code childField} (the FK a nested detail filters children by,
+     *       on the child data source's concept).</li>
+     * </ul>
+     * These are exactly the columns the LNCH-5 push-down constrains, so indexing them turns the
+     * generated grid's queries from sequential scans into index scans.
+     */
+    private static Map<String, Set<String>> collectImplicitIndexFields(CompiledModel model) {
+        Map<String, Set<String>> byConcept = new LinkedHashMap<>();
+        for (CompiledQuery query : model.getQueries()) {
+            String concept = query.concept();
+            if (concept == null || concept.isBlank()) {
+                continue;
+            }
+            String whereField = extractWhereField(query.where());
+            if (whereField != null) {
+                byConcept.computeIfAbsent(concept.toLowerCase(Locale.ROOT), key -> new LinkedHashSet<>()).add(whereField);
+            }
+            for (String orderBy : query.orderBy()) {
+                String field = extractOrderByField(orderBy);
+                if (field != null) {
+                    byConcept.computeIfAbsent(concept.toLowerCase(Locale.ROOT), key -> new LinkedHashSet<>()).add(field);
+                }
+            }
+        }
+        for (CompiledPanel panel : model.getPanels()) {
+            for (CompiledPanelDataSource dataSource : panel.dataSources()) {
+                String concept = dataSource.concept();
+                String childField = dataSource.childField();
+                if (concept != null && !concept.isBlank() && childField != null && !childField.isBlank()) {
+                    byConcept.computeIfAbsent(concept.toLowerCase(Locale.ROOT), key -> new LinkedHashSet<>())
+                            .add(childField.trim());
+                }
+            }
+        }
+        return byConcept;
+    }
+
+    /** Extracts the single field name on the left of a query {@code where}'s first comparison. */
+    private static String extractWhereField(String where) {
+        if (where == null || where.isBlank()) {
+            return null;
+        }
+        int cut = where.length();
+        for (String op : new String[]{"==", "!=", "<=", ">=", "<", ">", "="}) {
+            int index = where.indexOf(op);
+            if (index >= 0) {
+                cut = Math.min(cut, index);
+            }
+        }
+        if (cut >= where.length()) {
+            return null;
+        }
+        String field = where.substring(0, cut).trim();
+        return isIdentifier(field) ? field : null;
+    }
+
+    /** Strips a trailing {@code asc}/{@code desc} direction from an {@code orderBy} term. */
+    private static String extractOrderByField(String orderBy) {
+        if (orderBy == null || orderBy.isBlank()) {
+            return null;
+        }
+        String field = orderBy.trim();
+        int space = field.lastIndexOf(' ');
+        if (space > 0) {
+            String direction = field.substring(space + 1).trim().toLowerCase(Locale.ROOT);
+            if (direction.equals("asc") || direction.equals("desc")
+                    || direction.equals("ascending") || direction.equals("descending")) {
+                field = field.substring(0, space).trim();
+            }
+        }
+        return isIdentifier(field) ? field : null;
+    }
+
+    private static boolean isIdentifier(String value) {
+        if (value == null || value.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (!Character.isLetterOrDigit(ch) && ch != '_') {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
