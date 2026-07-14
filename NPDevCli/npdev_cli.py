@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import shutil
+import hashlib
 import json
 import os
 import re
@@ -13,9 +14,11 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "0.8.0"
+VERSION = "0.9.0"
 
 
 class CliError(Exception):
@@ -27,6 +30,158 @@ def repo_root() -> Path:
     if env_root:
         return Path(env_root).expanduser().resolve()
     return Path(__file__).resolve().parents[1]
+
+
+# --- validate/fix loop capture (idea 2, live increment) -------------------------------------------
+# Best-effort, failure-isolated instrumentation of the validate loop: every semantic validation is
+# journaled per model identity; when a diagnostic that was present in a prior run disappears, the
+# {resolved diagnostics, model diff} pair is written as a raw candidate under <Build>/npdev-ai/capture.
+# scripts/ai/promote_candidates.py later clusters recurring candidates into draft knowledge cards for
+# human review. Disable with NPDEV_AI_CAPTURE=0. Writes ONLY to the external Build root, never the repo.
+_CAPTURE_DISABLED = {"0", "false", "no", "off", ""}
+
+try:  # share the ONE signature normalizer so capture sigs match the rest of the pipeline
+    sys.path.insert(0, str(repo_root() / "scripts" / "ai"))
+    from failure_signatures import normalize as _normalize_sig  # type: ignore
+except Exception:  # portability: if scripts/ai is absent, capture simply no-ops
+    _normalize_sig = None
+
+
+def _ai_build_root() -> Path:
+    env = os.environ.get("NPDEV_BUILD_ROOT")
+    if env and env.strip():
+        return Path(env).expanduser().resolve()
+    cursor = repo_root()
+    while cursor is not None and cursor.name != "NPDev_General":
+        cursor = cursor.parent if cursor.parent != cursor else None
+    if cursor is not None and cursor.parent is not None:
+        return cursor.parent / "Build"
+    return repo_root().parent / "Build"
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _diag_sig(diag: dict) -> str:
+    code = diag.get("code")
+    if code:
+        return f"code:{code}"
+    if _normalize_sig is None:
+        return "unknown"
+    return _normalize_sig(diag.get("message", ""), diag.get("path"),
+                          diag.get("concept"), diag.get("field")) or "unknown"
+
+
+def _trunc(value: object, limit: int = 300) -> object:
+    try:
+        text = json.dumps(value, ensure_ascii=False)
+    except Exception:
+        text = str(value)
+    return value if len(text) <= limit else text[:limit] + "...<truncated>"
+
+
+_MISSING = object()
+
+
+def _json_diff(before: object, after: object, path: str = "$", ops: list | None = None) -> list:
+    """Compact structural diff of two JSON values (add/remove/change ops), size-bounded."""
+    if ops is None:
+        ops = []
+    if before is None and after is not None:
+        ops.append({"op": "add", "path": path, "after": "<entire model>"})
+        return ops
+    if len(ops) > 200:
+        return ops
+    if isinstance(after, dict) and isinstance(before, dict):
+        for key in sorted(set(before) | set(after)):
+            child = f"{path}.{key}"
+            if key not in before:
+                ops.append({"op": "add", "path": child, "after": _trunc(after[key])})
+            elif key not in after:
+                ops.append({"op": "remove", "path": child, "before": _trunc(before[key])})
+            else:
+                _json_diff(before[key], after[key], child, ops)
+    elif isinstance(after, list) and isinstance(before, list):
+        for i in range(max(len(before), len(after))):
+            child = f"{path}[{i}]"
+            bv = before[i] if i < len(before) else _MISSING
+            av = after[i] if i < len(after) else _MISSING
+            if bv is _MISSING:
+                ops.append({"op": "add", "path": child, "after": _trunc(av)})
+            elif av is _MISSING:
+                ops.append({"op": "remove", "path": child, "before": _trunc(bv)})
+            elif bv != av:
+                _json_diff(bv, av, child, ops)
+    elif before != after:
+        ops.append({"op": "change", "path": path, "before": _trunc(before), "after": _trunc(after)})
+    return ops
+
+
+def _capture_validation(model_path: Path, report: dict) -> None:
+    """Journal this validation; emit a candidate when a prior diagnostic was resolved. Never raises."""
+    if os.environ.get("NPDEV_AI_CAPTURE", "1").strip().lower() in _CAPTURE_DISABLED:
+        return
+    if _normalize_sig is None:
+        return
+    try:
+        status = report.get("status")
+        errors = [d for d in report.get("diagnostics", [])
+                  if isinstance(d, dict) and str(d.get("severity", "error")).lower() == "error"]
+        try:
+            raw = read_json(Path(model_path).expanduser())
+        except Exception:
+            raw = {}
+        namespace = str((raw.get("namespace") or raw.get("model") or "")).strip() if isinstance(raw, dict) else ""
+        key = namespace or str(Path(model_path).expanduser().resolve())
+        key_hash = hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
+
+        cap = _ai_build_root() / "npdev-ai" / "capture"
+        journal_dir = cap / "journal"
+        cand_dir = cap / "candidates"
+        journal_dir.mkdir(parents=True, exist_ok=True)
+        cand_dir.mkdir(parents=True, exist_ok=True)
+        journal_path = journal_dir / f"{key_hash}.json"
+
+        cur_sigs = [_diag_sig(d) for d in errors]
+        cur_sig_set = set(cur_sigs)
+
+        prev = None
+        if journal_path.exists():
+            with contextlib.suppress(Exception):
+                prev = read_json(journal_path)
+
+        if isinstance(prev, dict):
+            prev_sigs = prev.get("signatures", []) or []
+            prev_errors = prev.get("errors", []) or []
+            prev_map = dict(zip(prev_sigs, prev_errors))
+            resolved = sorted(set(prev_sigs) - cur_sig_set)
+            diff = _json_diff(prev.get("model"), raw)
+            if resolved and diff:
+                candidate = {
+                    "schemaVersion": "capture-candidate.v1",
+                    "capturedAt": _utc_now(),
+                    "modelKey": key,
+                    "outcomeBefore": prev.get("status"),
+                    "outcomeAfter": status,
+                    "resolvedSignatures": resolved,
+                    "resolvedDiagnostics": [prev_map[s] for s in resolved if s in prev_map],
+                    "remainingSignatures": sorted(cur_sig_set),
+                    "diff": diff,
+                }
+                out = cand_dir / f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{key_hash}-{uuid.uuid4().hex[:8]}.json"
+                out.write_text(json.dumps(candidate, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+        if status == "passed":
+            with contextlib.suppress(Exception):
+                journal_path.unlink()  # cycle complete -- start fresh on the next failing edit
+        else:
+            journal_path.write_text(json.dumps({
+                "updatedAt": _utc_now(), "modelKey": key, "status": status,
+                "signatures": cur_sigs, "errors": errors, "model": raw,
+            }, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except Exception:
+        return  # capture must never break validation
 
 
 def read_json(path: Path) -> dict:
@@ -629,6 +784,7 @@ def run_validate_semantic(model_path: Path, report_out: Path | None) -> int:
             )
         report = read_json(report_target)
 
+    _capture_validation(model, report)
     print(json.dumps(report, indent=2))
     return 2 if report.get("status") == "failed" else 0
 

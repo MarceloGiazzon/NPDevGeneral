@@ -73,8 +73,10 @@ ai-times-workbench/
 # Generated evidence and local script caches
 /scripts/reports/
 
-# Local Claude Code session state (auto-accumulated permission log, not shared config)
-.claude/
+# Local Claude Code session state (auto-accumulated permission log, not shared config).
+# Ignore everything under .claude/ EXCEPT shared, tracked project skills.
+.claude/*
+!.claude/skills/
 **/__pycache__/
 
 

@@ -58,7 +58,16 @@ These are the files most often edited; reading any one whole burns 40–100k tok
   `Start-App.ps1` / `Stop-App.ps1` / `Start-Environment.ps1` (starts H2Server TCP).
 - **Validate a model:** `:NPDevContract:dsl:validateModel -PmodelPath=<p> -PreportOut=<p>`.
 - **Quality gates:** `scripts/quality/run-generator-gate.ps1`, `run-runtimehost-gate.ps1`,
-  `run-frontend-gate.ps1`, `run-beta-release-gate.ps1`.
+  `run-frontend-gate.ps1`, `run-beta-release-gate.ps1`, `run-ai-knowledge-gate.ps1`.
+- **AI knowledge substrate:** durable platform findings live as `knowledge/cards/*.json`
+  (schema `schemas/ai/knowledge-card.schema.json`); `knowledge/platform-status.json` is a **derived**
+  projection of the gaps ledger (regen via `scripts/ai/extract_platform_status.py`, never hand-edit).
+  `scripts/ai/build_knowledge.py` fans these + golden scenarios into `<Build>/npdev-ai/`
+  (`rag-index.json`, `failure-index.json`, `capabilities.json`) that the MCP tools
+  `npdev_search_examples` / `npdev_search_fix` / `npdev_check_support` consume. See
+  `docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md`.
+- **Maintainer skills** (tracked, un-ignored under `.claude/skills/`): `rebuild-app` (three-cache
+  refresh via `scripts/appgen/Rebuild-And-Restage.ps1`) and `verify-in-browser` (ScrapForAI).
 - **After changing kernel/adapter Java, restage jars before regenerating an app:**
   `scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars -RuntimeHostLibsDir D:\WorkSpace\NPDev\Build\runtimehost-libs`
   — the sync default dir does NOT match `Build-NpdevApp.ps1`'s default, so pass `-RuntimeHostLibsDir`

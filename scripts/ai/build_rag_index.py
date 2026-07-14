@@ -68,6 +68,36 @@ def chunk_markdown(rel_path: str, text: str) -> list[dict[str, Any]]:
     return chunks
 
 
+def chunk_cards(root: Path) -> list[dict[str, Any]]:
+    """One chunk per active knowledge card (idea 1: merge maintainer findings into retrieval).
+
+    Cards live in knowledge/cards/*.json; superseded ones are skipped. The card body is already
+    capped at 4000 chars (knowledge-card.schema.json) to index whole, matching the doc/sample cap.
+    """
+    cards_dir = root / "knowledge" / "cards"
+    chunks: list[dict[str, Any]] = []
+    if not cards_dir.exists():
+        return chunks
+    for path in sorted(cards_dir.glob("*.json")):
+        try:
+            card = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(card, dict) or card.get("status", "active") != "active":
+            continue
+        rel = path.relative_to(root).as_posix()
+        keywords = list(card.get("keywords") or []) + list(card.get("appliesTo") or [])
+        chunks.append({
+            "id": f"{rel}#card:{card.get('id')}",
+            "title": card.get("title") or card.get("id"),
+            "objectType": "knowledge-card",
+            "source": rel,
+            "keywords": _keywords(card.get("title") or "") + [str(k).lower() for k in keywords],
+            "text": str(card.get("body") or "")[:4000],
+        })
+    return chunks
+
+
 def chunk_sample(rel_path: str, model: dict[str, Any]) -> list[dict[str, Any]]:
     chunks: list[dict[str, Any]] = []
     for key in SAMPLE_OBJECT_KEYS:
@@ -127,6 +157,8 @@ def main(_argv: list[str]) -> int:
         path = root / rel
         if path.exists():
             chunks.extend(chunk_markdown(rel, path.read_text(encoding="utf-8")))
+
+    chunks.extend(chunk_cards(root))
 
     samples_dir = root / "NPDevSamples"
     if samples_dir.exists():

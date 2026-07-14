@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "knowledge-card.v1",
+  "id": "generator-runtime-cache-refresh",
+  "type": "gotcha",
+  "title": "AppGen generator-runtime jar cache is not auto-synced -- refresh it after generator changes",
+  "body": "`AppGen/generator-runtime/current` is the jar cache the AppGen builders read from. It is NOT refreshed automatically when you rebuild the generator. After changing generator Java, refresh it explicitly:\n\n```powershell\nAppGen/generator-runtime/prepare-npdev-generator-runtime.ps1 -RuntimeRoot D:\\WorkSpace\\NPDev\\AppGen\\generator-runtime\n```\n\nPass `-RuntimeRoot` explicitly. This is a SEPARATE cache from the runtimehost-libs staging (see runtimehost-libs-dir-mismatch) -- a generator change needs this refresh; a kernel/adapter change needs the libs restage; a change touching both needs both. Rebuild-And-Restage.ps1 does all of them in order.",
+  "keywords": ["generator-runtime", "current", "cache", "prepare-npdev-generator-runtime", "RuntimeRoot", "stale", "build-ops"],
+  "appliesTo": ["build-ops"],
+  "sourceRefs": ["CLAUDE.md", "appgen_finalapp_recipe"],
+  "status": "active"
+}

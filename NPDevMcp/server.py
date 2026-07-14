@@ -13,6 +13,8 @@ that exposes the NPDev authoring pipeline as typed tools. It wraps the portable 
   - npdev_get_schema     : exact authoring grammar for an object type
   - npdev_list_schemas   : discover available schemas
   - npdev_search_examples: retrieve real, working example snippets (RAG; reads the Phase 3 index)
+  - npdev_search_fix      : given a validator diagnostic, retrieve precedent fixes by failure signature
+  - npdev_check_support   : is a feature a known gap/constraint/lifted boundary? (queries the ledger projection)
   - npdev_migration_diff : classify a schema change as safe-additive vs destructive
   - npdev_generate       : run the real generator (slow/mutating -- gate in your client)
 
@@ -30,8 +32,18 @@ from pathlib import Path
 from typing import Any
 
 SERVER_NAME = "npdev-mcp"
-SERVER_VERSION = "0.1.0"
+SERVER_VERSION = "0.2.0"
 DEFAULT_PROTOCOL_VERSION = "2024-11-05"
+
+# Share ONE signature normalizer with the offline builder (scripts/ai/failure_signatures.py) so
+# an authored card signature and a live diagnostic normalize identically -- otherwise lookups miss.
+_SCRIPTS_AI = Path(__file__).resolve().parents[1] / "scripts" / "ai"
+if str(_SCRIPTS_AI) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_AI))
+try:
+    from failure_signatures import normalize as normalize_signature
+except Exception:  # pragma: no cover - only if scripts/ai is absent
+    normalize_signature = None
 
 
 def repo_root() -> Path:
@@ -185,6 +197,119 @@ def tool_search_examples(arguments: dict[str, Any]) -> dict[str, Any]:
     return _text(json.dumps({"query": query, "matches": matches}, indent=2))
 
 
+def tool_search_fix(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Retrieve precedent fixes for a validator diagnostic, keyed by normalized failure signature."""
+    message = (arguments.get("message") or "").strip()
+    if not message:
+        return _text_error("message is required (paste the validator diagnostic text)")
+    if normalize_signature is None:
+        return _text_error("failure_signatures normalizer unavailable (scripts/ai not found)")
+    limit = int(arguments.get("limit") or 5)
+    index_path = build_root() / "npdev-ai" / "failure-index.json"
+    if not index_path.exists():
+        return _text_error(
+            "failure index not built yet -- run: python scripts/ai/build_knowledge.py "
+            f"(expected at {index_path})"
+        )
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    signatures = index.get("signatures", [])
+    query_sig = normalize_signature(message, arguments.get("path"),
+                                    arguments.get("concept"), arguments.get("field"))
+
+    exact = [s for s in signatures if s.get("signature") == query_sig]
+    if exact:
+        matches = [{"match": "signature", "signature": s["signature"], "examples": s["examples"]}
+                   for s in exact]
+        return _text(json.dumps({"query": message, "normalized": query_sig, "matches": matches[:limit]},
+                                indent=2))
+
+    # Keyword fallback: rank signatures by term overlap across signature + example message/fix text.
+    terms = [t for t in _tokenize(message) if t]
+    scored = []
+    for sig in signatures:
+        haystack = (sig.get("signature", "") + " " + " ".join(
+            f"{ex.get('message','')} {ex.get('fix','')}" for ex in sig.get("examples", [])
+        )).lower()
+        score = sum(haystack.count(term) for term in terms)
+        if score > 0:
+            scored.append((score, sig))
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    matches = [{"match": "keyword", "score": score, "signature": sig["signature"],
+                "examples": sig["examples"]} for score, sig in scored[:limit]]
+    return _text(json.dumps({"query": message, "normalized": query_sig, "matches": matches}, indent=2))
+
+
+def tool_check_support(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Cheap pre-check: is a feature a KNOWN gap/constraint/lifted item? Never fabricates a positive."""
+    feature = (arguments.get("feature") or "").strip()
+    if not feature:
+        return _text_error("feature is required (a ledger id like 'ARCH-10b' or free text like 'panel orderBy')")
+    caps_path = build_root() / "npdev-ai" / "capabilities.json"
+    if not caps_path.exists():
+        return _text_error(
+            "capabilities projection not built yet -- run: python scripts/ai/build_knowledge.py "
+            f"(expected at {caps_path})"
+        )
+    caps = json.loads(caps_path.read_text(encoding="utf-8"))
+    items = caps.get("items", [])
+    cards = caps.get("cards", [])
+
+    # 1. Exact ledger-id hit.
+    for item in items:
+        if str(item.get("id", "")).lower() == feature.lower():
+            return _text(json.dumps({"resolvedBy": "ledger-id", "result": item,
+                                     "disclaimer": _CAPS_DISCLAIMER}, indent=2))
+
+    # 2. Keyword match over ledger items + constraint/gap cards.
+    terms = [t for t in _tokenize(feature) if t]
+    item_hits = _score_records(items, terms, ("id", "title", "notes", "category"))
+    card_hits = _score_records(cards, terms, ("id", "title", "body", "keywords", "appliesTo"))
+    if item_hits or card_hits:
+        return _text(json.dumps({
+            "resolvedBy": "keyword",
+            "ledgerItems": item_hits[:5],
+            "knowledgeCards": card_hits[:5],
+            "disclaimer": _CAPS_DISCLAIMER,
+        }, indent=2))
+
+    # 3. Nothing tracked -- explicitly UNKNOWN, never "supported".
+    return _text(json.dumps({
+        "resolvedBy": "none",
+        "result": "unknown",
+        "message": (
+            f"No tracked gap, constraint, or lifted boundary matches '{feature}'. This is NOT a "
+            "guarantee of support -- absence of a known gap only means nothing is recorded. To check "
+            "whether the shape is AUTHORABLE, fetch the object-type grammar via npdev_get_schema."
+        ),
+        "disclaimer": _CAPS_DISCLAIMER,
+    }, indent=2))
+
+
+_CAPS_DISCLAIMER = (
+    "Status reflects the gaps ledger as of the last knowledge build. DONE/LIFTED = fixed or now "
+    "supported; OPEN/PARTIAL = still gapped; BOUNDARY = accepted constraint."
+)
+
+
+def _score_records(records: list[dict[str, Any]], terms: list[str],
+                   keys: tuple[str, ...]) -> list[dict[str, Any]]:
+    # Coverage-first: a record matching MORE distinct query terms ranks above one that merely repeats
+    # a single term many times (so 'panel orderBy' surfaces the orderBy item, not a panel-heavy one),
+    # with total frequency as the tie-breaker.
+    scored = []
+    for rec in records:
+        haystack = " ".join(
+            " ".join(map(str, v)) if isinstance(v := rec.get(k, ""), list) else str(v)
+            for k in keys
+        ).lower()
+        counts = [haystack.count(term) for term in terms]
+        coverage = sum(1 for c in counts if c > 0)
+        if coverage > 0:
+            scored.append(((coverage, sum(counts)), rec))
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    return [rec for _, rec in scored]
+
+
 def tool_migration_diff(arguments: dict[str, Any]) -> dict[str, Any]:
     baseline = arguments.get("baseline")
     current = arguments.get("current")
@@ -208,6 +333,11 @@ def tool_generate(arguments: dict[str, Any]) -> dict[str, Any]:
     return _passthrough(result)
 
 
+# A directly-relevant maintainer finding should outrank an incidental doc keyword hit, so
+# knowledge-card chunks (idea 1) get a fixed relevance boost over doc/sample chunks.
+KNOWLEDGE_CARD_BOOST = 1.5
+
+
 def _rank_chunks(chunks: list[dict[str, Any]], query: str, limit: int) -> list[dict[str, Any]]:
     terms = [t for t in _tokenize(query) if t]
     scored = []
@@ -217,6 +347,8 @@ def _rank_chunks(chunks: list[dict[str, Any]], query: str, limit: int) -> list[d
         ).lower()
         score = sum(haystack.count(term) for term in terms)
         if score > 0:
+            if chunk.get("objectType") == "knowledge-card":
+                score *= KNOWLEDGE_CARD_BOOST
             scored.append((score, chunk))
     scored.sort(key=lambda pair: pair[0], reverse=True)
     return [
@@ -320,6 +452,44 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "npdev_search_fix",
+        "description": (
+            "Given a validator diagnostic you just received, retrieve PRECEDENT fixes -- how this "
+            "same class of error was resolved before -- keyed by a normalized failure signature "
+            "(identifiers templated out, so 'concept Foo references unknown Bar' matches 'concept X "
+            "references unknown Y'). Use this the moment npdev_validate reports an error, before "
+            "guessing a correction. Falls back to keyword ranking when no exact signature matches."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "message": {"type": "string", "description": "The diagnostic message text to resolve."},
+                "path": {"type": "string", "description": "Optional JSON pointer from the diagnostic."},
+                "concept": {"type": "string", "description": "Optional concept name to template out."},
+                "field": {"type": "string", "description": "Optional field name to template out."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+            },
+            "required": ["message"],
+        },
+    },
+    {
+        "name": "npdev_check_support",
+        "description": (
+            "Cheap pre-check BEFORE committing to a model shape: is a feature a KNOWN gap, "
+            "constraint, or already-lifted boundary? Accepts a ledger id ('ARCH-10b') or free text "
+            "('panel orderBy', 'file upload'). Returns the tracked status (DONE/LIFTED/OPEN/PARTIAL/"
+            "BOUNDARY) with notes, or an explicit 'unknown' -- it never fabricates a 'supported'. "
+            "For whether a shape is AUTHORABLE at all, use npdev_get_schema instead."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "feature": {"type": "string", "description": "A ledger id or a free-text feature phrase."},
+            },
+            "required": ["feature"],
+        },
+    },
+    {
         "name": "npdev_migration_diff",
         "description": (
             "Classify a schema change (baseline storage snapshot -> current model) as safe-additive "
@@ -392,6 +562,8 @@ TOOL_HANDLERS = {
     "npdev_list_schemas": tool_list_schemas,
     "npdev_get_schema": tool_get_schema,
     "npdev_search_examples": tool_search_examples,
+    "npdev_search_fix": tool_search_fix,
+    "npdev_check_support": tool_check_support,
     "npdev_migration_diff": tool_migration_diff,
     "npdev_generate": tool_generate,
 }
