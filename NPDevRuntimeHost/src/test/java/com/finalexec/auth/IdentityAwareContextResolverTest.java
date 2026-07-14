@@ -38,11 +38,12 @@ class IdentityAwareContextResolverTest {
         String url = "jdbc:h2:mem:" + getClass().getSimpleName() + System.nanoTime() + ";DB_CLOSE_DELAY=-1";
         dataSource = new SingleConnectionUrlDataSource(url);
         try (Connection c = dataSource.getConnection(); Statement s = c.createStatement()) {
-            s.execute("CREATE TABLE identity_users (id UUID PRIMARY KEY, username VARCHAR(120), active BOOLEAN, tenant_id VARCHAR(120))");
+            s.execute("CREATE TABLE identity_users (id UUID PRIMARY KEY, username VARCHAR(120), active BOOLEAN, tenant_id VARCHAR(120), token_version INT)");
             s.execute("CREATE TABLE identity_roles (id UUID PRIMARY KEY, name VARCHAR(120), tenant_id VARCHAR(120))");
             s.execute("CREATE TABLE identity_user_roles (id UUID PRIMARY KEY, user_id UUID, role_id UUID, tenant_id VARCHAR(120))");
-            s.execute("INSERT INTO identity_users VALUES ('11111111-1111-1111-1111-111111111111','charlie',TRUE,'tenantx')");
-            s.execute("INSERT INTO identity_users VALUES ('33333333-3333-3333-3333-333333333333','dormant',FALSE,'tenantx')");
+            s.execute("INSERT INTO identity_users VALUES ('11111111-1111-1111-1111-111111111111','charlie',TRUE,'tenantx',2)");
+            s.execute("INSERT INTO identity_users VALUES ('33333333-3333-3333-3333-333333333333','dormant',FALSE,'tenantx',NULL)");
+            s.execute("INSERT INTO identity_users VALUES ('44444444-4444-4444-4444-444444444444','eve',TRUE,'tenantx',NULL)");
             s.execute("INSERT INTO identity_roles VALUES ('22222222-2222-2222-2222-222222222222','ADMIN','tenantx')");
             s.execute("INSERT INTO identity_user_roles VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222','tenantx')");
             s.execute("INSERT INTO identity_user_roles VALUES ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','33333333-3333-3333-3333-333333333333','22222222-2222-2222-2222-222222222222','tenantx')");
@@ -52,6 +53,11 @@ class IdentityAwareContextResolverTest {
 
     private ExecutionContext resolve(String tenant, String actor) {
         return resolver.resolveFromPrincipal(Map.of("tenant_id", tenant, "actor_id", actor), Map.of());
+    }
+
+    private ExecutionContext resolveWithTokenVersion(String tenant, String actor, int tv) {
+        return resolver.resolveFromPrincipal(
+                Map.of("tenant_id", tenant, "actor_id", actor, "tv", tv), Map.of());
     }
 
     @Test
@@ -81,6 +87,33 @@ class IdentityAwareContextResolverTest {
                 new IdentityAwareContextResolver(CLAIMS_DELEGATE, new FixedProvider(emptyDataSource()));
         assertEquals(Set.of("USER"), noTables.resolveFromPrincipal(
                 Map.of("tenant_id", "tenantx", "actor_id", "charlie"), Map.of()).roles());
+    }
+
+    @Test
+    void tokenWithCurrentVersionIsAccepted() {
+        assertEquals(Set.of("ADMIN"), resolveWithTokenVersion("tenantx", "charlie", 2).roles());
+    }
+
+    @Test
+    void tokenWithStaleVersionIsRejected() {
+        org.springframework.web.server.ResponseStatusException thrown = org.junit.jupiter.api.Assertions.assertThrows(
+                org.springframework.web.server.ResponseStatusException.class,
+                () -> resolveWithTokenVersion("tenantx", "charlie", 1));
+        assertEquals(org.springframework.http.HttpStatus.UNAUTHORIZED, thrown.getStatusCode());
+    }
+
+    @Test
+    void tokenWithNoTvClaimIsNeverRejected() {
+        // Pre-LNCH-4 tokens (minted before revocation existed) carry no 'tv' claim at all -- must
+        // keep working exactly as before, not be treated as "version 0 vs current 2" and rejected.
+        assertEquals(Set.of("ADMIN"), resolve("tenantx", "charlie").roles());
+    }
+
+    @Test
+    void nullStoredTokenVersionIsTreatedAsZero() {
+        // 'eve' has a NULL token_version column (a pre-migration row, or a user who has never had
+        // sessions revoked) -- a token minted with tv=0 must still be accepted.
+        assertEquals(Set.of("USER"), resolveWithTokenVersion("tenantx", "eve", 0).roles());
     }
 
     private DataSource emptyDataSource() {

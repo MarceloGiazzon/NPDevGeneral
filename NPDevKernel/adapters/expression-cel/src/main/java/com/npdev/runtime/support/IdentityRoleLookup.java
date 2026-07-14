@@ -30,7 +30,44 @@ public final class IdentityRoleLookup {
               AND ur.tenant_id = ? AND r.tenant_id = ?
             """;
 
+    private static final String TOKEN_VERSION_QUERY = """
+            SELECT token_version FROM identity_users WHERE username = ? AND tenant_id = ? AND active = TRUE
+            """;
+
     private IdentityRoleLookup() {
+    }
+
+    /**
+     * LNCH-4: the actor's current {@code token_version} from the identity pack -- the revocation
+     * counter a minted JWT's {@code tv} claim is checked against on every request (see
+     * {@code IdentityAwareContextResolver} / {@code GeneratedCrudRuntimeSupport}). Incrementing this
+     * column (password reset, an explicit "revoke sessions" admin action) invalidates every token
+     * minted before the increment, without a growing denylist table to prune.
+     *
+     * <p>Returns {@code 0} (never blocks) when the actor is unknown, inactive, the identity tables are
+     * absent, or the column itself is NULL (pre-migration rows) -- a caller with a token minted before
+     * this feature existed (no {@code tv} claim) is never affected; a caller with a {@code tv} claim
+     * only fails the comparison once the stored version has genuinely been bumped past it.</p>
+     */
+    public static int tokenVersion(DataSource dataSource, String tenantId, String actorId) {
+        if (dataSource == null || actorId == null || actorId.isBlank()) {
+            return 0;
+        }
+        String tenant = tenantId == null || tenantId.isBlank() ? "default" : tenantId;
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(TOKEN_VERSION_QUERY)) {
+            statement.setString(1, actorId);
+            statement.setString(2, tenant);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) {
+                    return 0;
+                }
+                int version = resultSet.getInt(1);
+                return resultSet.wasNull() ? 0 : version;
+            }
+        } catch (SQLException exception) {
+            return 0;
+        }
     }
 
     public static Set<String> rolesFor(DataSource dataSource, String tenantId, String actorId) {

@@ -45,6 +45,17 @@ public final class JwtSigner {
     }
 
     public String sign(String tenantId, String actorId, Iterable<String> roles) {
+        return sign(tenantId, actorId, roles, 0);
+    }
+
+    /**
+     * LNCH-4: {@code tokenVersion} is stamped into the {@code tv} claim, checked on every request
+     * against the identity pack's live {@code identity_users.token_version}
+     * ({@code com.npdev.runtime.support.IdentityRoleLookup#tokenVersion}). Bumping the stored version
+     * (password reset, an explicit revoke) invalidates every token minted with an older version,
+     * immediately, without a denylist.
+     */
+    public String sign(String tenantId, String actorId, Iterable<String> roles, int tokenVersion) {
         try {
             long nowEpochSeconds = System.currentTimeMillis() / 1000L;
             Map<String, Object> header = new LinkedHashMap<>();
@@ -63,6 +74,7 @@ public final class JwtSigner {
             claims.put("sub", actorId);
             claims.put("tenant_id", tenantId);
             claims.put("roles", roles);
+            claims.put("tv", tokenVersion);
 
             String headerSegment = base64UrlEncode(objectMapper.writeValueAsBytes(header));
             String payloadSegment = base64UrlEncode(objectMapper.writeValueAsBytes(claims));

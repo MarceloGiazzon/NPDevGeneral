@@ -84,8 +84,9 @@ public class LoginController {
         }
 
         try (Connection connection = dataSource.getConnection()) {
-            String userSql = "SELECT id, active FROM identity_users WHERE username = ? AND tenant_id = ?";
+            String userSql = "SELECT id, active, token_version FROM identity_users WHERE username = ? AND tenant_id = ?";
             String userId;
+            int tokenVersion;
             try (PreparedStatement ps = connection.prepareStatement(userSql)) {
                 ps.setString(1, username);
                 ps.setString(2, tenantId);
@@ -94,6 +95,10 @@ public class LoginController {
                         return unauthorized();
                     }
                     userId = rs.getString("id");
+                    tokenVersion = rs.getInt("token_version");
+                    if (rs.wasNull()) {
+                        tokenVersion = 0;
+                    }
                 }
             }
 
@@ -117,7 +122,7 @@ public class LoginController {
 
             Set<String> roles = IdentityRoleLookup.rolesFor(dataSource, tenantId, username);
             JwtSigner signer = new JwtSigner(objectMapper, privateKey, issuer, audience, expirySeconds);
-            String token = signer.sign(tenantId, username, roles);
+            String token = signer.sign(tenantId, username, roles, tokenVersion);
 
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("token", token);

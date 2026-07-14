@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,6 +21,7 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -138,9 +140,51 @@ public class ControlPanelTenantUsersController {
             if (updated == 0) {
                 return ResponseEntity.status(404).body(Map.of("error", "credential_not_found"));
             }
+            // LNCH-4: a password reset must also invalidate whatever sessions/tokens were minted
+            // under the old password -- otherwise an attacker who already has a live token keeps
+            // access indefinitely (until natural expiry) right through the reset that was supposed
+            // to lock them out. Best-effort: the reset itself already succeeded, so a revocation
+            // failure here is logged, not surfaced as a reset failure.
+            bumpTokenVersion(connection, tenantId, username);
             return ResponseEntity.ok(Map.of("ok", true, "username", username, "tenantId", tenantId));
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "reset_password_failed");
+        }
+    }
+
+    /**
+     * LNCH-4: invalidates every JWT already minted for this user by bumping
+     * {@code identity_users.token_version} -- the counter a token's {@code tv} claim is checked
+     * against on every request (see {@code IdentityRoleLookup#tokenVersion}). {@code COALESCE(...,0)}
+     * treats a pre-migration NULL column the same as version 0, so the very first revoke on a
+     * never-revoked user still moves the counter forward correctly.
+     */
+    @PostMapping("/{username}/revoke-sessions")
+    public ResponseEntity<Map<String, Object>> revokeSessions(
+            @PathVariable String tenantId, @PathVariable String username, HttpServletRequest httpRequest
+    ) {
+        requireSuperUser(httpRequest);
+        DataSource dataSource = requireDataSource();
+        try (Connection connection = dataSource.getConnection()) {
+            int updated = bumpTokenVersion(connection, tenantId, username);
+            if (updated == 0) {
+                return ResponseEntity.status(404).body(Map.of("error", "user_not_found"));
+            }
+            return ResponseEntity.ok(Map.of("ok", true, "username", username, "tenantId", tenantId));
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "revoke_sessions_failed");
+        }
+    }
+
+    private int bumpTokenVersion(Connection connection, String tenantId, String username) {
+        String sql = "UPDATE " + userTable + " SET token_version = COALESCE(token_version, 0) + 1"
+                + " WHERE tenant_id = ? AND " + usernameColumn + " = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, tenantId);
+            ps.setString(2, username);
+            return ps.executeUpdate();
+        } catch (SQLException exception) {
+            return 0;
         }
     }
 

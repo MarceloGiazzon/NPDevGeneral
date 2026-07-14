@@ -15,7 +15,8 @@
         { "name": "username", "type": "string", "required": true, "unique": true, "maxLength": 120 },
         { "name": "displayName", "type": "string", "required": true, "maxLength": 200 },
         { "name": "email", "type": "string", "required": false, "maxLength": 200 },
-        { "name": "active", "type": "boolean", "required": true }
+        { "name": "active", "type": "boolean", "required": true },
+        { "name": "tokenVersion", "type": "int", "required": false }
       ]
     },
     {

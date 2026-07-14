@@ -2792,6 +2792,17 @@ public final class GeneratedCrudRuntimeSupport {
                 return ExecutionContext.anonymous();
             }
 
+            // LNCH-4: a token minted with a 'tv' claim is only valid while it still matches the
+            // identity pack's live token_version for this (tenant, actor) -- same revocation contract
+            // IdentityAwareContextResolver enforces on the RuntimeHost admin/business-UI path. Only
+            // checked when actorId itself resolved (this path's own claim key, unlike the JWT resolver,
+            // has no 'sub' fallback -- see below); otherwise IdentityRoleLookup.tokenVersion's
+            // null-actor guard would report version 0 and falsely "revoke" every non-zero-versioned
+            // token whose actor didn't resolve here, rather than correctly no-op'ing.
+            if (actorId != null && isTokenRevoked(claims.get("tv"), tenantId, actorId)) {
+                return ExecutionContext.anonymous();
+            }
+
             // Identity-backed roles (when the identity pack is populated for this tenant+actor) are
             // authoritative over the principal's claim-roles -- same supplement-with-fallback contract
             // the RuntimeHost IdentityAwareContextResolver applies, kept consistent across both
@@ -2803,6 +2814,19 @@ public final class GeneratedCrudRuntimeSupport {
         } catch (Exception ignored) {
             return ExecutionContext.anonymous();
         }
+    }
+
+    private boolean isTokenRevoked(Object rawTokenVersion, String tenantId, String actorId) {
+        if (rawTokenVersion == null) {
+            return false;
+        }
+        int claimedVersion;
+        try {
+            claimedVersion = Integer.parseInt(String.valueOf(rawTokenVersion));
+        } catch (NumberFormatException malformed) {
+            return false;
+        }
+        return claimedVersion != IdentityRoleLookup.tokenVersion(dataSource, tenantId, actorId);
     }
 
     private static Set<String> parseRoles(Object rawRoles) {
