@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.kernel.concepts.ConceptPage;
+import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.ports.ConceptStore;
 
@@ -69,6 +71,107 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed listing concept " + conceptName + " from JDBC store", exception);
         }
+    }
+
+    /**
+     * LNCH-5: pushes the filter/sort/page window down to SQL. Column names are resolved through the
+     * compiled model's field->column whitelist (never taken from raw input), and every filter value
+     * is a bound parameter, so this is not a string-concatenation injection surface. {@code total} is
+     * a matching {@code COUNT(*)} rather than a materialize-everything count, and {@code LIMIT}/{@code
+     * OFFSET} keep the JVM from ever holding more than one page. A stable {@code ORDER BY} (the id
+     * column when the caller declares no sort) makes OFFSET paging deterministic.
+     */
+    @Override
+    public ConceptPage query(String tenantId, String conceptName, ConceptQuery query) {
+        ConceptShape shape = shape(conceptName);
+        ConceptQuery effective = query == null ? ConceptQuery.firstPage() : query;
+
+        List<String> whereClauses = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+        whereClauses.add("tenant_id = ?");
+        params.add(tenantId);
+        for (ConceptQuery.Filter filter : effective.filters()) {
+            String column = requireColumn(shape, filter.field());
+            String dslType = shape.dslTypeByColumn().get(column.toLowerCase(Locale.ROOT));
+            whereClauses.add(column + " " + sqlOperator(filter.operator()) + " ?");
+            params.add(coerceValue(column, filter.value(), dslType));
+        }
+        String whereSql = String.join(" AND ", whereClauses);
+        String orderSql = orderByClause(shape, effective.sorts());
+
+        try (Connection connection = dataSource.getConnection()) {
+            long total;
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT COUNT(*) FROM " + shape.tableName() + " WHERE " + whereSql)) {
+                bindParams(statement, params, 1);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    resultSet.next();
+                    total = resultSet.getLong(1);
+                }
+            }
+
+            List<ConceptRecord> items = new ArrayList<>();
+            String pageSql = "SELECT * FROM " + shape.tableName() + " WHERE " + whereSql + orderSql
+                    + " LIMIT ? OFFSET ?";
+            try (PreparedStatement statement = connection.prepareStatement(pageSql)) {
+                int nextIndex = bindParams(statement, params, 1);
+                statement.setInt(nextIndex++, effective.limit());
+                statement.setInt(nextIndex, effective.offset());
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    while (resultSet.next()) {
+                        items.add(toRecord(shape, tenantId, resultSet));
+                    }
+                }
+            }
+            return ConceptPage.of(items, total, effective.offset());
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed querying concept " + conceptName + " from JDBC store", exception);
+        }
+    }
+
+    private String requireColumn(ConceptShape shape, String field) {
+        String column = shape.columnByField().get(field.toLowerCase(Locale.ROOT));
+        if (column == null && shape.idColumn().equalsIgnoreCase(toDbColumn(field))) {
+            column = shape.idColumn();
+        }
+        if (column == null) {
+            throw new IllegalArgumentException(
+                    "Unknown query field '" + field + "' for concept " + shape.conceptName()
+                            + " -- only declared fields may be filtered or sorted");
+        }
+        return column;
+    }
+
+    private String orderByClause(ConceptShape shape, List<ConceptQuery.Sort> sorts) {
+        if (sorts.isEmpty()) {
+            // OFFSET paging is only deterministic under a stable order; default to the primary key.
+            return " ORDER BY " + shape.idColumn();
+        }
+        List<String> terms = new ArrayList<>();
+        for (ConceptQuery.Sort sort : sorts) {
+            String column = requireColumn(shape, sort.field());
+            terms.add(column + (sort.descending() ? " DESC" : " ASC"));
+        }
+        return " ORDER BY " + String.join(", ", terms);
+    }
+
+    private static String sqlOperator(ConceptQuery.Operator operator) {
+        return switch (operator) {
+            case EQ -> "=";
+            case NEQ -> "<>";
+            case LT -> "<";
+            case LTE -> "<=";
+            case GT -> ">";
+            case GTE -> ">=";
+        };
+    }
+
+    private int bindParams(PreparedStatement statement, List<Object> params, int startIndex) throws SQLException {
+        int index = startIndex;
+        for (Object param : params) {
+            statement.setObject(index++, param);
+        }
+        return index;
     }
 
     @Override

@@ -122,6 +122,38 @@ public final class DefaultConceptGateway implements ConceptGateway {
         return records;
     }
 
+    @Override
+    public ConceptPage query(ConceptQueryRequest request, ExecutionContext context) {
+        ExecutionContext effectiveContext = normalizeContext(context);
+        String tenantId = enforceTenant(request.tenantId(), effectiveContext, "CONCEPT_LIST", request.conceptName(), "*");
+        enforcePermission(effectiveContext, "concept.list", request.conceptName(), "CONCEPT_LIST", "*");
+
+        ConceptGatewayRequestContext requestContext = requestContext(
+                ConceptGatewayOperation.LIST,
+                request.conceptName(),
+                "*",
+                tenantId,
+                Map.of(),
+                effectiveContext,
+                Optional.empty()
+        );
+        ConceptSemanticDecision decision = evaluateRuleProfiles(
+                requestContext,
+                ruleProfilesForRead(effectiveContext)
+        );
+
+        // Push the filter/sort/page window down to the store (SQL LIMIT/OFFSET on JDBC), then apply
+        // per-record field visibility to the returned page only -- never materialize the whole table.
+        ConceptPage page = store.query(tenantId, request.conceptName(), request.query());
+        List<ConceptRecord> visible = new ArrayList<>(page.items().size());
+        for (ConceptRecord item : page.items()) {
+            visible.add(semanticPolicy.filterVisibleFields(item, requestContext));
+        }
+        audit(effectiveContext, "CONCEPT_LIST", request.conceptName(), "*", "SUCCESS", "allowed", tenantId);
+        trace(requestContext, "SUCCESS", "allowed", decision);
+        return new ConceptPage(visible, page.total(), page.hasMore());
+    }
+
     private static boolean matchesExact(ConceptRecord record, String field, String value) {
         if (field == null) {
             return true;
