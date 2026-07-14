@@ -121,10 +121,11 @@ $tpl = @'
       <h2>Quick Start: set up a new workspace</h2>
       <div class="sub">
         A <strong>workspace</strong> is a fully separate copy of this application's data &mdash;
-        its own warehouses, products, and logins, kept apart from any other workspace on this
-        server. Use this if you're setting things up for a new customer, a new demo, or just
-        starting fresh. This does three things at once: creates the workspace, loads some starter
-        data into it (optional), and creates the first login for it.
+        its own records and its own logins, kept apart from every other workspace. All workspaces
+        share this application's <em>one</em> database: every record is tagged with the workspace
+        it belongs to, and users only ever see their own workspace's records. Use this when
+        setting up a new customer, a new demo, or a fresh start. It does three things at once:
+        creates the workspace, loads starter data into it (optional), and creates its first login.
       </div>
       <div class="row">
         <div class="field">
@@ -175,9 +176,10 @@ $tpl = @'
       <div class="adv-section">
         <h3 style="margin:0 0 4px;font-size:14px">Workspaces</h3>
         <div class="sub" style="margin-bottom:8px">
-          Every workspace ever created on this server. "Disable" blocks all of that workspace's
-          users from logging in or using the app, without deleting any of its data &mdash; useful
-          for suspending a customer without losing their information.
+          Every workspace on this server, with its sign-in link. "Users" shows who can log in to
+          that workspace &mdash; passwords are stored one-way encrypted and can never be shown,
+          but you can set a new one there. "Disable" blocks all of that workspace's users from
+          logging in, without deleting any data &mdash; useful for suspending a customer.
         </div>
         <div id="tenantsTable"></div>
       </div>
@@ -187,7 +189,7 @@ $tpl = @'
         <div class="sub" style="margin-bottom:8px">Pick a workspace, then click Run next to a starter dataset to load it in.</div>
         <div class="field" style="max-width:260px">
           <label for="seedTenantId">Into which workspace?</label>
-          <input type="text" id="seedTenantId" placeholder="acme" />
+          <select id="seedTenantId"><option value="">(choose a workspace)</option></select>
         </div>
         <div id="seedsTable"></div>
       </div>
@@ -197,7 +199,7 @@ $tpl = @'
         <div class="sub" style="margin-bottom:8px">Creates one more login for an existing workspace (not a Super User &mdash; a regular Admin, same as Quick Start's first login).</div>
         <form id="addLoginForm" onsubmit="return false;">
           <div class="row">
-            <div class="field"><label>Workspace ID</label><input type="text" id="tuTenantId" placeholder="acme" /></div>
+            <div class="field"><label>Workspace</label><select id="tuTenantId"><option value="">(choose a workspace)</option></select></div>
             <div class="field"><label>Username</label><input type="text" id="tuUsername" autocomplete="username" /></div>
             <div class="field"><label>Their name</label><input type="text" id="tuDisplayName" autocomplete="name" /></div>
             <div class="field"><label>Password</label><input type="password" id="tuPassword" autocomplete="new-password" /></div>
@@ -210,7 +212,10 @@ $tpl = @'
   </div>
 </main>
 <script>
-const BASE = '__BASE__';
+// Same-origin when served by the app (works via localhost, 127.0.0.1, or a LAN IP);
+// the absolute fallback only matters for the reference copy opened from disk.
+const BASE = (location.protocol === 'file:') ? '__BASE__' : '';
+const ORIGIN = (location.protocol === 'file:') ? '__BASE__' : location.origin;
 const $ = (id) => document.getElementById(id);
 function key() { return localStorage.getItem('npdev.controlpanel.key') || ''; }
 function slugify(v) { return (v || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''); }
@@ -328,26 +333,124 @@ async function loadTenants() {
   } catch (e) { /* Advanced section only; Quick Start already reports its own errors */ }
 }
 
+function loginUrl(tenantId) { return ORIGIN + '/login.html?tenant=' + encodeURIComponent(tenantId); }
+
+function populateTenantSelects(rows) {
+  ['seedTenantId', 'tuTenantId'].forEach(function (id) {
+    const select = $(id);
+    const current = select.value;
+    while (select.options.length > 1) select.remove(1);
+    rows.forEach(function (t) {
+      const opt = document.createElement('option');
+      opt.value = t.tenantId;
+      opt.textContent = (t.displayName ? t.displayName + ' (' + t.tenantId + ')' : t.tenantId)
+        + (t.status === 'DISABLED' ? ' - disabled' : '');
+      select.appendChild(opt);
+    });
+    select.value = current;
+  });
+}
+
 function renderTenants(rows) {
+  populateTenantSelects(rows);
   const el = $('tenantsTable');
   if (!rows.length) { el.innerHTML = '<div class="muted">No workspaces yet &mdash; use Quick Start above to create the first one.</div>'; return; }
   const table = document.createElement('table');
-  table.innerHTML = '<thead><tr><th>Workspace</th><th>Name</th><th>Status</th><th></th></tr></thead>';
+  table.innerHTML = '<thead><tr><th>Workspace</th><th>Name</th><th>Status</th><th>Sign-in link</th><th></th></tr></thead>';
   const tbody = document.createElement('tbody');
   rows.forEach(function (t) {
     const tr = document.createElement('tr');
-    const action = t.status === 'DISABLED' ? 'enable' : 'disable';
-    tr.innerHTML = '<td>' + escHtml(t.tenantId) + '</td><td>' + escHtml(t.displayName || '') + '</td><td>' + escHtml(t.status) + '</td><td></td>';
+    tr.innerHTML = '<td>' + escHtml(t.tenantId) + '</td><td>' + escHtml(t.displayName || '') + '</td><td>' + escHtml(t.status) + '</td><td></td><td style="white-space:nowrap"></td>';
+
+    const linkCell = tr.children[3];
+    const a = document.createElement('a');
+    a.href = loginUrl(t.tenantId);
+    a.target = '_blank';
+    a.textContent = 'login.html?tenant=' + t.tenantId;
+    a.style.color = '#7fb2ff';
+    linkCell.appendChild(a);
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'small';
+    copyBtn.style.marginLeft = '6px';
+    copyBtn.innerHTML = '&#128203;';
+    copyBtn.title = 'Copy full sign-in link';
+    copyBtn.onclick = function () { copyText(loginUrl(t.tenantId), copyBtn); };
+    linkCell.appendChild(copyBtn);
+
+    const actions = tr.children[4];
+    const usersBtn = document.createElement('button');
+    usersBtn.className = 'small';
+    usersBtn.textContent = 'Users';
+    usersBtn.onclick = function () { toggleUsersRow(t.tenantId, tr, usersBtn); };
+    actions.appendChild(usersBtn);
     const btn = document.createElement('button');
     btn.className = 'small';
+    btn.style.marginLeft = '6px';
+    const action = t.status === 'DISABLED' ? 'enable' : 'disable';
     btn.textContent = action === 'enable' ? 'Enable' : 'Disable';
     btn.onclick = function () { toggleTenant(t.tenantId, action); };
-    tr.lastElementChild.appendChild(btn);
+    actions.appendChild(btn);
+
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
   el.innerHTML = '';
   el.appendChild(table);
+}
+
+async function toggleUsersRow(tenantId, tr, btn) {
+  if (tr.nextElementSibling && tr.nextElementSibling.dataset.usersFor === tenantId) {
+    tr.nextElementSibling.remove();
+    btn.textContent = 'Users';
+    return;
+  }
+  btn.disabled = true;
+  try {
+    const users = await api('/api/admin/tenants/' + encodeURIComponent(tenantId) + '/users');
+    const row = document.createElement('tr');
+    row.dataset.usersFor = tenantId;
+    const cell = document.createElement('td');
+    cell.colSpan = 5;
+    cell.style.background = '#151515';
+    if (!users || !users.length) {
+      cell.innerHTML = '<span class="muted">No logins in this workspace yet &mdash; add one below under "Add another login".</span>';
+    } else {
+      const inner = document.createElement('table');
+      inner.innerHTML = '<thead><tr><th>Username</th><th>Name</th><th>Roles</th><th>Password</th></tr></thead>';
+      const tb = document.createElement('tbody');
+      users.forEach(function (u) {
+        const r = document.createElement('tr');
+        r.innerHTML = '<td>' + escHtml(u.username) + '</td><td>' + escHtml(u.displayName || '') + '</td><td>'
+          + escHtml((u.roles || []).join(', ')) + '</td><td></td>';
+        const reset = document.createElement('button');
+        reset.className = 'small';
+        reset.textContent = u.hasPassword ? 'Set new password' : 'Set password';
+        reset.title = 'Passwords are stored one-way encrypted and cannot be shown; you can only set a new one.';
+        reset.onclick = function () { resetUserPassword(tenantId, u.username); };
+        r.lastElementChild.appendChild(reset);
+        tb.appendChild(r);
+      });
+      inner.appendChild(tb);
+      cell.appendChild(inner);
+    }
+    row.appendChild(cell);
+    tr.after(row);
+    btn.textContent = 'Hide users';
+  } catch (e) {
+    alert('Could not load users: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function resetUserPassword(tenantId, username) {
+  const pwd = prompt('New password for "' + username + '" in workspace "' + tenantId + '":');
+  if (!pwd) return;
+  try {
+    await api('/api/admin/tenants/' + encodeURIComponent(tenantId) + '/users/' + encodeURIComponent(username) + '/password',
+      { method: 'PUT', body: JSON.stringify({ password: pwd }) });
+    alert('Password updated for "' + username + '".');
+  } catch (e) { alert('Failed: ' + e.message); }
 }
 
 async function toggleTenant(tenantId, action) {

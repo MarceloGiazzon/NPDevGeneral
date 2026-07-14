@@ -3,6 +3,9 @@ package com.finalexec.auth;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.Instant;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -49,6 +52,47 @@ public final class IdentityProvisioning {
             ps.setString(3, displayName);
             ps.setString(4, tenantId);
             ps.executeUpdate();
+        }
+        ensureTenantRegistered(connection, tenantId);
+    }
+
+    /**
+     * Belt-and-suspenders companion to {@code TenantAutoRegistrationRunner} (which reconciles at
+     * every boot): registers a tenant the moment its first identity user is provisioned, in the
+     * SAME transaction, so a tenant created via a path that never calls
+     * {@code TenantRegistryService.create()} directly (e.g. an anonymous first-boot
+     * {@code BootstrapAdminController} signup) still shows up in the ControlPanel's workspace list
+     * immediately, not just after the next restart. Skips the reserved "default" sentinel (see
+     * {@code TenantRegistryService.RESERVED_DEFAULT_TENANT_ID}) and silently no-ops if the row
+     * already exists (idempotent, race-safe).
+     */
+    public static void ensureTenantRegistered(Connection connection, String tenantId) throws Exception {
+        if (tenantId == null || tenantId.isBlank()
+                || "default".equals(tenantId.trim().toLowerCase(Locale.ROOT))) {
+            return;
+        }
+        String id = tenantId.trim();
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT COUNT(*) FROM npdev_tenant WHERE tenant_id = ?")) {
+            ps.setString(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                if (rs.getInt(1) > 0) {
+                    return;
+                }
+            }
+        }
+        try (PreparedStatement ps = connection.prepareStatement(
+                "INSERT INTO npdev_tenant (tenant_id, display_name, status, created_at_ms) "
+                        + "VALUES (?, ?, 'ACTIVE', ?)")) {
+            ps.setString(1, id);
+            ps.setString(2, id);
+            ps.setLong(3, Instant.now().toEpochMilli());
+            ps.executeUpdate();
+        } catch (SQLException raceLost) {
+            if (raceLost.getSQLState() == null || !raceLost.getSQLState().startsWith("23")) {
+                throw raceLost;
+            }
         }
     }
 
