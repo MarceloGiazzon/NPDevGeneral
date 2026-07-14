@@ -46,6 +46,7 @@ public class LoginController {
     private final String issuer;
     private final String audience;
     private final long expirySeconds;
+    private final LoginThrottle throttle = new LoginThrottle();
 
     public LoginController(
             DataSource dataSource,
@@ -80,7 +81,15 @@ public class LoginController {
         String password = request.password();
 
         if (username == null || username.isBlank() || password == null || password.isBlank()) {
-            return unauthorized();
+            return unauthorized(tenantId, username);
+        }
+
+        // LNCH-4: checked BEFORE any credential lookup, and uniformly for every rejection reason
+        // below (unknown user, inactive, wrong password) -- a locked-out window rejects every
+        // attempt without distinguishing right-shaped guesses from wrong ones, and without leaking
+        // via timing/response differences which specific check would otherwise have failed.
+        if (throttle.isLocked(tenantId, username)) {
+            return tooManyAttempts(tenantId, username);
         }
 
         try (Connection connection = dataSource.getConnection()) {
@@ -92,7 +101,7 @@ public class LoginController {
                 ps.setString(2, tenantId);
                 try (ResultSet rs = ps.executeQuery()) {
                     if (!rs.next() || !rs.getBoolean("active")) {
-                        return unauthorized();
+                        return unauthorized(tenantId, username);
                     }
                     userId = rs.getString("id");
                     tokenVersion = rs.getInt("token_version");
@@ -110,16 +119,17 @@ public class LoginController {
                 ps.setString(2, tenantId);
                 try (ResultSet rs = ps.executeQuery()) {
                     if (!rs.next()) {
-                        return unauthorized();
+                        return unauthorized(tenantId, username);
                     }
                     storedHash = rs.getString(1);
                 }
             }
 
             if (!PasswordHasher.verify(password, storedHash)) {
-                return unauthorized();
+                return unauthorized(tenantId, username);
             }
 
+            throttle.recordSuccess(tenantId, username);
             Set<String> roles = IdentityRoleLookup.rolesFor(dataSource, tenantId, username);
             JwtSigner signer = new JwtSigner(objectMapper, privateKey, issuer, audience, expirySeconds);
             String token = signer.sign(tenantId, username, roles, tokenVersion);
@@ -131,12 +141,22 @@ public class LoginController {
             body.put("roles", roles);
             return ResponseEntity.ok(body);
         } catch (Exception exception) {
-            return unauthorized();
+            return unauthorized(tenantId, username);
         }
     }
 
-    private static ResponseEntity<Map<String, Object>> unauthorized() {
+    private ResponseEntity<Map<String, Object>> unauthorized(String tenantId, String username) {
+        if (username != null && !username.isBlank()) {
+            throttle.recordFailure(tenantId, username);
+        }
         return ResponseEntity.status(401).body(Map.of("error", "invalid_credentials"));
+    }
+
+    private ResponseEntity<Map<String, Object>> tooManyAttempts(String tenantId, String username) {
+        long retryAfterSeconds = throttle.retryAfterSeconds(tenantId, username);
+        return ResponseEntity.status(429)
+                .header("Retry-After", String.valueOf(retryAfterSeconds))
+                .body(Map.of("error", "too_many_attempts", "retryAfterSeconds", retryAfterSeconds));
     }
 
     private static String readKeyFile(ResourceLoader resourceLoader, String path) throws Exception {
