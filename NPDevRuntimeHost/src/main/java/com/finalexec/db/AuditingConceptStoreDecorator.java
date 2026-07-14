@@ -1,5 +1,7 @@
 package com.finalexec.db;
 
+import com.npdev.kernel.concepts.ConceptPage;
+import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.ports.ConceptStore;
 
@@ -47,6 +49,18 @@ public final class AuditingConceptStoreDecorator implements ConceptStore {
     public void deleteById(String tenantId, String conceptName, String id) {
         log("deleteById", id);
         delegate.deleteById(tenantId, conceptName, id);
+    }
+
+    /**
+     * LNCH-5: forwards to the delegate's own {@code query} override (the JDBC adapter's SQL
+     * push-down) rather than falling through to {@link ConceptStore}'s default (fetch-all + in-memory
+     * filter) -- without this override, wrapping a concept in this decorator would silently downgrade
+     * every paged/filtered/sorted read for that concept back to the fetch-all path.
+     */
+    @Override
+    public ConceptPage query(String tenantId, String conceptName, ConceptQuery query) {
+        log("query", "");
+        return delegate.query(tenantId, conceptName, query);
     }
 
     private void log(String operation, String id) {

@@ -1,5 +1,7 @@
 package com.finalexec.db;
 
+import com.npdev.kernel.concepts.ConceptPage;
+import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.ports.ConceptStore;
 import org.springframework.beans.factory.ObjectProvider;
@@ -58,6 +60,12 @@ public final class TenantControlledConceptStoreDecorator implements ConceptStore
     @Override
     public void deleteById(String tenantId, String conceptName, String id) {
         effectiveStore(tenantId).deleteById(tenantId, conceptName, id);
+    }
+
+    /** LNCH-5: forwards to the resolved delegate's own SQL push-down (see AuditingConceptStoreDecorator's twin). */
+    @Override
+    public ConceptPage query(String tenantId, String conceptName, ConceptQuery query) {
+        return effectiveStore(tenantId).query(tenantId, conceptName, query);
     }
 
     private ConceptStore effectiveStore(String tenantId) {

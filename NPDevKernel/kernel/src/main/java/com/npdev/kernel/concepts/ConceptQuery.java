@@ -46,7 +46,9 @@ public record ConceptQuery(
     }
 
     public enum Operator {
-        EQ("=="), NEQ("!="), LT("<"), LTE("<="), GT(">"), GTE(">=");
+        EQ("=="), NEQ("!="), LT("<"), LTE("<="), GT(">"), GTE(">="),
+        /** Case-insensitive substring match -- SQL {@code LIKE '%value%'} on the JDBC adapters. */
+        CONTAINS("contains");
 
         private final String token;
 

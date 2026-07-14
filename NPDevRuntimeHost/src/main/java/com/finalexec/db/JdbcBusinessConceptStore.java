@@ -92,6 +92,14 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         params.add(tenantId);
         for (ConceptQuery.Filter filter : effective.filters()) {
             String column = requireColumn(shape, filter.field());
+            if (filter.operator() == ConceptQuery.Operator.CONTAINS) {
+                // CAST to VARCHAR first: Postgres's LOWER() rejects non-text input outright (unlike
+                // H2, which silently coerces), so a "contains" filter against a numeric/UUID column
+                // would otherwise work under H2 in dev and fail under Postgres in production.
+                whereClauses.add("LOWER(CAST(" + column + " AS VARCHAR)) LIKE ? ESCAPE '\\'");
+                params.add("%" + likeEscape(String.valueOf(filter.value()).toLowerCase(Locale.ROOT)) + "%");
+                continue;
+            }
             String dslType = shape.dslTypeByColumn().get(column.toLowerCase(Locale.ROOT));
             whereClauses.add(column + " " + sqlOperator(filter.operator()) + " ?");
             params.add(coerceValue(column, filter.value(), dslType));
@@ -163,7 +171,13 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             case LTE -> "<=";
             case GT -> ">";
             case GTE -> ">=";
+            case CONTAINS -> throw new IllegalStateException("CONTAINS is compiled to LIKE, not a binary operator");
         };
+    }
+
+    /** Escapes LIKE wildcard characters in a literal search term bound as a parameter. */
+    private static String likeEscape(String value) {
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     private int bindParams(PreparedStatement statement, List<Object> params, int startIndex) throws SQLException {

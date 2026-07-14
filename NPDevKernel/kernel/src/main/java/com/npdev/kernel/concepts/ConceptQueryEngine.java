@@ -56,6 +56,9 @@ public final class ConceptQueryEngine {
             case LTE -> compare(actual, expected) <= 0;
             case GT -> compare(actual, expected) > 0;
             case GTE -> compare(actual, expected) >= 0;
+            case CONTAINS -> actual != null && expected != null
+                    && String.valueOf(actual).toLowerCase(java.util.Locale.ROOT)
+                            .contains(String.valueOf(expected).toLowerCase(java.util.Locale.ROOT));
         };
     }
 

@@ -68,7 +68,8 @@ public class GeneratedConceptCrudController {
                 {{serviceVariable}}::getById,
                 {{serviceVariable}}::create,
                 {{serviceVariable}}::update,
-                {{serviceVariable}}::delete
+                {{serviceVariable}}::delete,
+                {{serviceVariable}}::page
         ));
 {{/concepts}}
         this.concepts = Collections.unmodifiableMap(bindings);
@@ -96,6 +97,37 @@ public class GeneratedConceptCrudController {
         }
         String safeDirection = normalizeDirection(direction);
 
+        // LNCH-5: the free-text 'filter' param is an OR-across-every-filterable-field substring
+        // search, which the single-field AND-combined ConceptQuery contract can't express -- so it
+        // stays on the legacy fetch-all-then-in-memory-filter path below. Every OTHER request shape
+        // (no filter; only structured 'where' clauses, which ARE single-field comparisons) pushes the
+        // filter/sort/page window down to the store instead of streaming the whole table through the
+        // JVM. This is the common case: a grid with no search box open on a large concept.
+        if (filter == null || filter.isBlank()) {
+            WhereClausesResult parsedClauses = parseWhereClauses(binding.metadata(), where);
+            if (parsedClauses.error() != null) {
+                return badRequest("invalid_filter", parsedClauses.error());
+            }
+            List<com.npdev.kernel.concepts.ConceptQuery.Filter> queryFilters = new ArrayList<>();
+            for (WhereClause clause : parsedClauses.clauses()) {
+                queryFilters.add(new com.npdev.kernel.concepts.ConceptQuery.Filter(
+                        clause.field(), toConceptQueryOperator(clause.operator()), clause.value()));
+            }
+            com.npdev.kernel.concepts.ConceptQuery query = new com.npdev.kernel.concepts.ConceptQuery(
+                    queryFilters,
+                    List.of(new com.npdev.kernel.concepts.ConceptQuery.Sort(sortField, "desc".equals(safeDirection))),
+                    safePage * safeSize,
+                    safeSize
+            );
+            com.npdev.kernel.concepts.ConceptPage pushedDown = binding.page().apply(query);
+            List<Map<String, Object>> content = new ArrayList<>(pushedDown.items().size());
+            for (com.npdev.kernel.concepts.ConceptRecord record : pushedDown.items()) {
+                content.add(toRecordFromConceptRecord(binding.metadata(), record));
+            }
+            return ResponseEntity.ok(listResponse(
+                    content, safePage, safeSize, pushedDown.total(), sortField, safeDirection, filter, where));
+        }
+
         List<Map<String, Object>> rows = new ArrayList<>();
         for (Object record : binding.list().get()) {
             rows.add(toRecord(binding.metadata(), record));
@@ -112,16 +144,41 @@ public class GeneratedConceptCrudController {
         int to = Math.min(total, from + safeSize);
         List<Map<String, Object>> content = rows.subList(from, to);
 
+        return ResponseEntity.ok(listResponse(
+                content, safePage, safeSize, total, sortField, safeDirection, filter, where));
+    }
+
+    private static Map<String, Object> listResponse(
+            List<Map<String, Object>> content,
+            int page,
+            int size,
+            long totalElements,
+            String sort,
+            String direction,
+            String filter,
+            String where
+    ) {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("content", content);
-        response.put("page", safePage);
-        response.put("size", safeSize);
-        response.put("totalElements", total);
-        response.put("sort", sortField);
-        response.put("direction", safeDirection);
+        response.put("page", page);
+        response.put("size", size);
+        response.put("totalElements", totalElements);
+        response.put("sort", sort);
+        response.put("direction", direction);
         response.put("filter", filter == null ? "" : filter.trim());
         response.put("where", where == null ? "" : where.trim());
-        return ResponseEntity.ok(response);
+        return response;
+    }
+
+    private static Map<String, Object> toRecordFromConceptRecord(
+            ConceptMetadata metadata,
+            com.npdev.kernel.concepts.ConceptRecord record
+    ) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (FieldMetadata field : metadata.fields()) {
+            out.put(field.name(), record.data().get(field.name()));
+        }
+        return out;
     }
 
     @GetMapping("/{conceptName}/{id}")
@@ -273,30 +330,11 @@ public class GeneratedConceptCrudController {
             List<Map<String, Object>> rows,
             String where
     ) {
-        if (where == null || where.isBlank()) {
-            return new FilterResult(rows, null);
+        WhereClausesResult parsedClauses = parseWhereClauses(metadata, where);
+        if (parsedClauses.error() != null) {
+            return new FilterResult(rows, parsedClauses.error());
         }
-        List<WhereClause> clauses = new ArrayList<>();
-        for (String rawClause : where.split("[;,]")) {
-            if (rawClause == null || rawClause.isBlank()) {
-                continue;
-            }
-            WhereClause parsed = parseWhereClause(rawClause.trim());
-            if (parsed == null) {
-                return new FilterResult(rows, "Invalid where clause: " + rawClause.trim());
-            }
-            FieldMetadata field = metadata.field(parsed.field());
-            if (field == null) {
-                return new FilterResult(rows, "Unknown where field: " + parsed.field());
-            }
-            if (!field.enumValues().isEmpty()
-                    && !"contains".equals(parsed.operator())
-                    && field.enumValues().stream().noneMatch(value -> value.equals(parsed.value()))) {
-                return new FilterResult(rows, "Invalid enum value for where field " + parsed.field()
-                        + ": " + parsed.value() + " (allowed: " + field.enumValues() + ")");
-            }
-            clauses.add(parsed);
-        }
+        List<WhereClause> clauses = parsedClauses.clauses();
         if (clauses.isEmpty()) {
             return new FilterResult(rows, null);
         }
@@ -314,6 +352,49 @@ public class GeneratedConceptCrudController {
             }
         }
         return new FilterResult(filtered, null);
+    }
+
+    /**
+     * Parses and validates the {@code where} DSL (field:op:value, comma/semicolon-separated) against
+     * declared field metadata -- shared by the legacy in-memory {@link #applyWhere} path and the
+     * LNCH-5 push-down path in {@link #list}, so both agree on exactly the same syntax and error
+     * messages.
+     */
+    private static WhereClausesResult parseWhereClauses(ConceptMetadata metadata, String where) {
+        List<WhereClause> clauses = new ArrayList<>();
+        if (where == null || where.isBlank()) {
+            return new WhereClausesResult(clauses, null);
+        }
+        for (String rawClause : where.split("[;,]")) {
+            if (rawClause == null || rawClause.isBlank()) {
+                continue;
+            }
+            WhereClause parsed = parseWhereClause(rawClause.trim());
+            if (parsed == null) {
+                return new WhereClausesResult(clauses, "Invalid where clause: " + rawClause.trim());
+            }
+            FieldMetadata field = metadata.field(parsed.field());
+            if (field == null) {
+                return new WhereClausesResult(clauses, "Unknown where field: " + parsed.field());
+            }
+            if (!field.enumValues().isEmpty()
+                    && !"contains".equals(parsed.operator())
+                    && field.enumValues().stream().noneMatch(value -> value.equals(parsed.value()))) {
+                return new WhereClausesResult(clauses, "Invalid enum value for where field " + parsed.field()
+                        + ": " + parsed.value() + " (allowed: " + field.enumValues() + ")");
+            }
+            clauses.add(parsed);
+        }
+        return new WhereClausesResult(clauses, null);
+    }
+
+    private static com.npdev.kernel.concepts.ConceptQuery.Operator toConceptQueryOperator(String whereOperator) {
+        return switch (whereOperator) {
+            case "eq" -> com.npdev.kernel.concepts.ConceptQuery.Operator.EQ;
+            case "ne" -> com.npdev.kernel.concepts.ConceptQuery.Operator.NEQ;
+            case "contains" -> com.npdev.kernel.concepts.ConceptQuery.Operator.CONTAINS;
+            default -> throw new IllegalStateException("Unhandled where operator: " + whereOperator);
+        };
     }
 
     private static WhereClause parseWhereClause(String rawClause) {
@@ -502,13 +583,17 @@ public class GeneratedConceptCrudController {
     private record WhereClause(String field, String operator, String value) {
     }
 
+    private record WhereClausesResult(List<WhereClause> clauses, String error) {
+    }
+
     private record ConceptBinding<T>(
             ConceptMetadata metadata,
             Supplier<List<T>> list,
             Function<UUID, Optional<T>> getById,
             Function<Map<String, Object>, T> create,
             BiFunction<UUID, Map<String, Object>, Optional<T>> update,
-            Predicate<UUID> delete
+            Predicate<UUID> delete,
+            Function<com.npdev.kernel.concepts.ConceptQuery, com.npdev.kernel.concepts.ConceptPage> page
     ) {
         static <T> ConceptBinding<T> of(
                 ConceptMetadata metadata,
@@ -516,9 +601,10 @@ public class GeneratedConceptCrudController {
                 Function<UUID, Optional<T>> getById,
                 Function<Map<String, Object>, T> create,
                 BiFunction<UUID, Map<String, Object>, Optional<T>> update,
-                Predicate<UUID> delete
+                Predicate<UUID> delete,
+                Function<com.npdev.kernel.concepts.ConceptQuery, com.npdev.kernel.concepts.ConceptPage> page
         ) {
-            return new ConceptBinding<>(metadata, list, getById, create, update, delete);
+            return new ConceptBinding<>(metadata, list, getById, create, update, delete, page);
         }
     }
 }

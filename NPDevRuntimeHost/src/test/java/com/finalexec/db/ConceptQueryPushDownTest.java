@@ -115,6 +115,37 @@ class ConceptQueryPushDownTest {
         assertEquals(5, gt.total(), "qty > \"20\" must match 21..25, comparing as numbers");
     }
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("adapters")
+    void containsOperatorMatchesSubstringCaseInsensitively(Supplier<ConceptStore> factory) {
+        ConceptStore store = factory.get();
+        store.save(widget(TENANT_A, "Blue Widget", 1));
+        store.save(widget(TENANT_A, "Red Widget", 2));
+        store.save(widget(TENANT_A, "Green Gadget", 3));
+
+        ConceptPage widgets = store.query(TENANT_A, CONCEPT, new ConceptQuery(
+                List.of(new ConceptQuery.Filter("name", ConceptQuery.Operator.CONTAINS, "WIDGET")),
+                List.of(ConceptQuery.Sort.asc("name")), 0, 50));
+        assertEquals(2, widgets.total());
+        assertEquals("Blue Widget", widgets.items().get(0).data().get("name"));
+        assertEquals("Red Widget", widgets.items().get(1).data().get("name"));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("adapters")
+    void containsOperatorMatchesSubstringOnNonStringColumnWithoutErroring(Supplier<ConceptStore> factory) {
+        // A "contains" filter against a numeric column must not error under either adapter (real
+        // Postgres rejects LOWER() on a non-text argument outright unless the JDBC store casts first).
+        ConceptStore store = factory.get();
+        store.save(widget(TENANT_A, "w-1", 123));
+        store.save(widget(TENANT_A, "w-2", 456));
+
+        ConceptPage matched = store.query(TENANT_A, CONCEPT, new ConceptQuery(
+                List.of(new ConceptQuery.Filter("qty", ConceptQuery.Operator.CONTAINS, "23")), List.of(), 0, 50));
+        assertEquals(1, matched.total());
+        assertEquals("w-1", matched.items().get(0).data().get("name"));
+    }
+
     @Test
     void jdbcAdapterRejectsUnknownFilterFieldRatherThanConcatenatingIt() {
         // Injection-safety: the JDBC adapter compiles column names from the model whitelist only.
