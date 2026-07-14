@@ -559,6 +559,12 @@
             "$ref": "#/$defs/invariant"
           }
         },
+        "indexes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/index"
+          }
+        },
         "events": {
           "type": "array",
           "items": {
@@ -1356,6 +1362,30 @@
         "inputFormHint": {
           "type": "string",
           "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "index": {
+      "type": "object",
+      "required": [
+        "fields"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "unique": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false

@@ -311,6 +311,23 @@ public final class JsonModelParser {
                 }
             }
 
+            List<IndexAst> indexes = new ArrayList<>();
+            JsonNode indexesNode = ent.get("indexes");
+            if (indexesNode != null) {
+                if (!indexesNode.isArray()) {
+                    throw new IOException("Concept " + name + " indexes must be an array");
+                }
+                for (JsonNode idx : indexesNode) {
+                    List<String> indexFields = parseTextArray(idx.get("fields"));
+                    if (indexFields == null || indexFields.isEmpty()) {
+                        throw new IOException("Concept " + name + " index must declare a non-empty 'fields' array");
+                    }
+                    String indexName = readText(idx, "name");
+                    boolean indexUnique = idx.has("unique") && idx.get("unique").asBoolean(false);
+                    indexes.add(new IndexAst(indexName, indexFields, indexUnique));
+                }
+            }
+
             JsonNode conceptEventsNode = ent.get("events");
             if (conceptEventsNode != null) {
                 if (!conceptEventsNode.isArray()) {
@@ -335,7 +352,7 @@ public final class JsonModelParser {
 
             TruthLevel truthLevel = TruthLevel.fromStringOrDefault(readText(ent, "truthLevel"));
             String module = readText(ent, "module");
-            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel, module);
+            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel, module, indexes);
             concepts.add(concept);
             conceptsByLowerName.put(name.toLowerCase(Locale.ROOT), concept);
         }

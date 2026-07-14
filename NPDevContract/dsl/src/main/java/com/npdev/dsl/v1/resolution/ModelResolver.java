@@ -14,6 +14,7 @@ import com.npdev.dsl.v1.ast.EventPayloadAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.FlowHookAst;
+import com.npdev.dsl.v1.ast.IndexAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.ModelAst;
@@ -191,7 +192,8 @@ public final class ModelResolver {
                 sanitizeLifecycle(concept.getLifecycle()),
                 copyPresentationMetadata(concept.getUi()),
                 concept.getTruthLevel(),
-                concept.getModule()
+                concept.getModule(),
+                concept.getIndexes()
         );
     }
 
@@ -238,6 +240,9 @@ public final class ModelResolver {
                 ? sanitizeLifecycle(specialization.getLifecycle())
                 : sanitizeLifecycle(base.getLifecycle());
 
+        List<IndexAst> mergedIndexes = new ArrayList<>(base.getIndexes());
+        mergedIndexes.addAll(specialization.getIndexes());
+
         return new ConceptAst(
                 specialization.getName(),
                 null,
@@ -248,7 +253,8 @@ public final class ModelResolver {
                 mergedLifecycle,
                 mergePresentationMetadata(base.getUi(), specialization.getUi()),
                 specialization.getTruthLevel(),
-                firstNonBlank(specialization.getModule(), base.getModule())
+                firstNonBlank(specialization.getModule(), base.getModule()),
+                mergedIndexes
         );
     }
 

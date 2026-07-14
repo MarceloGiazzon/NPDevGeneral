@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.dsl.v1.compiled.CompiledIndex;
 import com.npdev.dsl.v1.compiled.CompiledInvariant;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
@@ -320,7 +321,59 @@ public final class SchemaRealizationEmitter {
         }
 
         appendSecondaryIndexes(sql, concept, table, implicitIndexFields);
+        appendExplicitIndexes(sql, concept, table, engine);
         sql.append("\n");
+    }
+
+    /**
+     * LNCH-6: emits an author-declared secondary index for each entry in a concept's {@code
+     * indexes:[]} -- the escape hatch for query patterns the implicit panel/query-predicate indexing
+     * ({@link #appendSecondaryIndexes}) can't express: a multi-column index, or a field only ever
+     * touched by hand-authored SQL/procedures. {@code unique: true} emits a tenant-composite UNIQUE
+     * constraint (via the same {@link #addConstraintIfMissing} Postgres-safe guard the compound-unique
+     * invariants use) instead of a plain index. Field names that don't resolve to a declared field are
+     * dropped rather than failing generation, matching the compound-unique invariant's leniency; an
+     * index left with no resolvable columns is skipped entirely.
+     */
+    private static void appendExplicitIndexes(StringBuilder sql, CompiledConcept concept, String table,
+            DatabaseEngine engine) {
+        if (concept.getIndexes().isEmpty()) {
+            return;
+        }
+        Map<String, CompiledField> fieldsByLowerName = new LinkedHashMap<>();
+        for (CompiledField field : concept.getFields()) {
+            fieldsByLowerName.put(field.getName().toLowerCase(Locale.ROOT), field);
+        }
+        for (CompiledIndex index : concept.getIndexes()) {
+            List<String> columns = new ArrayList<>();
+            for (String fieldName : index.getFields()) {
+                CompiledField field = fieldsByLowerName.get(fieldName.toLowerCase(Locale.ROOT));
+                if (field != null) {
+                    columns.add(SqlIdentifierSupport.columnName(field));
+                }
+            }
+            if (columns.isEmpty()) {
+                continue;
+            }
+            String baseName = (index.getName() != null && !index.getName().isBlank())
+                    ? index.getName()
+                    : String.join("_", columns);
+            if (index.isUnique()) {
+                String constraint = truncate("uqx_" + table + "_" + baseName);
+                String constraintSql = "ALTER TABLE " + table
+                        + " ADD CONSTRAINT " + constraint
+                        + " UNIQUE (tenant_id, " + String.join(", ", columns) + ")";
+                sql.append(addConstraintIfMissing(engine, table, constraint, constraintSql));
+            } else {
+                sql.append("CREATE INDEX IF NOT EXISTS ")
+                        .append(truncate("idxx_" + table + "_" + baseName))
+                        .append(" ON ")
+                        .append(table)
+                        .append(" (tenant_id, ")
+                        .append(String.join(", ", columns))
+                        .append(");\n");
+            }
+        }
     }
 
     /**

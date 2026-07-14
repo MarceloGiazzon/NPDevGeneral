@@ -29,6 +29,7 @@ import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
 import com.npdev.dsl.v1.ast.GuidePageRegionAst;
 import com.npdev.dsl.v1.ast.GuidePageRegionsAst;
 import com.npdev.dsl.v1.ast.GuidePageThemeAst;
+import com.npdev.dsl.v1.ast.IndexAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.OrchestrationActionAst;
 import com.npdev.dsl.v1.ast.SchemaAst;
@@ -57,6 +58,7 @@ import com.npdev.dsl.v1.compiled.CompiledActionMetadata;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityExecutionPolicy;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityOperation;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledIndex;
 import com.npdev.dsl.v1.compiled.CompiledDomainType;
 import com.npdev.dsl.v1.compiled.CompiledDomainTypeUi;
 import com.npdev.dsl.v1.compiled.CompiledEnumOption;
@@ -256,6 +258,11 @@ public final class ModelCompiler {
             List<CompiledInvariant> compiledInvariants = new ArrayList<>(invariantsByCanonicalRef.values());
             compiledInvariants.sort(Comparator.comparing(invariant -> normalize(invariant.getRef())));
 
+            List<CompiledIndex> compiledIndexes = new ArrayList<>();
+            for (IndexAst index : concept.getIndexes()) {
+                compiledIndexes.add(new CompiledIndex(index.getName(), index.getFields(), index.isUnique()));
+            }
+
             concepts.put(
                     concept.getName(),
                     new CompiledConcept(
@@ -268,7 +275,8 @@ public final class ModelCompiler {
                             toCompiledLifecycle(effective.lifecycle()),
                             toCompiledPresentationMetadata(concept.getUi()),
                             concept.getTruthLevel() == null ? null : concept.getTruthLevel().code(),
-                            concept.getModule()
+                            concept.getModule(),
+                            compiledIndexes
                     )
             );
             List<String> invariantRefs = new ArrayList<>(invariantsByCanonicalRef.keySet());
