@@ -31,7 +31,13 @@ public class NpdevFileStoreConfig {
     @Bean
     @ConditionalOnProperty(name = "npdev.filestore.provider", havingValue = "inproc", matchIfMissing = true)
     public FileStoreContract inprocFileStoreContract(
-            @Value("${npdev.filestore.root:${user.dir}\\npdev-files}") String root
+            // LNCH-7: '/' (not '\\') in the default -- Java's NIO Path accepts '/' on Windows too,
+            // but a literal backslash inside a *property value string* is not a path separator to
+            // Linux at all, just an ordinary character; the whole "${user.dir}\npdev-files" string
+            // became one bogus single-segment directory name on the container's Linux filesystem
+            // (confirmed live: docker compose up on Alpine failed with
+            // "AccessDeniedException: /app\npdev-files" when trying to create it).
+            @Value("${npdev.filestore.root:${user.dir}/npdev-files}") String root
     ) {
         return new FileSystemFileStoreAdapter(Path.of(root));
     }

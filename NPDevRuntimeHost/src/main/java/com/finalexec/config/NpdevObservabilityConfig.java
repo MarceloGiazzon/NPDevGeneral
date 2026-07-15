@@ -135,7 +135,10 @@ public class NpdevObservabilityConfig {
     @Bean
     public StrictExecutionValidator strictExecutionValidator(
             @Value("${npdev.strict-execution.enabled:true}") boolean strictExecutionEnabled,
-            @Value("${npdev.strict-execution.generated-root:${user.dir}\\npdev-generated}") String strictExecutionGeneratedRoot,
+            // LNCH-7: '/' not '\\' -- see NpdevFileStoreConfig's identical fix; a literal backslash
+            // in a property-default string is not a path separator on Linux, so this resolved to a
+            // single bogus directory name instead of user.dir/npdev-generated under Docker/Alpine.
+            @Value("${npdev.strict-execution.generated-root:${user.dir}/npdev-generated}") String strictExecutionGeneratedRoot,
             @Value("${npdev.execution.mode:governed}") String executionMode,
             @Value("${npdev.runtime.surface-profile:supported-core}") String surfaceProfile,
             @Value("${npdev.runtime.supported-surface-enforced:true}") boolean supportedSurfaceEnforced

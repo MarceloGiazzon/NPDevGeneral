@@ -20,6 +20,7 @@ import com.npdev.generator.assembly.FinalAppAssembler;
 import com.npdev.generator.api.GeneratorFacade;
 import com.npdev.generator.packs.BuiltinPackComposer;
 import com.npdev.generator.settings.ConfigSettingsReader;
+import com.npdev.generator.dbconfig.DockerDeploymentEmitter;
 import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
 import com.npdev.generator.dbconfig.OperationalRunbookEmitter;
 import com.npdev.generator.dbconfig.UserDatabaseDefinitionLoader;
@@ -164,6 +165,10 @@ public final class GeneratorMain {
             new BuildInfoEmitter().emit(compiled, assemblyResult.finalAppRoot());
             System.out.println("Generated build-info: " + assemblyResult.finalAppRoot()
                     .resolve(BuildInfoEmitter.RELATIVE_PATH).toAbsolutePath().normalize());
+
+            new DockerDeploymentEmitter().emit(config, assemblyResult.finalAppRoot(), databasePlan);
+            System.out.println("Generated Docker deployment: "
+                    + assemblyResult.finalAppRoot().resolve("docker-compose.yml").toAbsolutePath().normalize());
         }
     }
 
