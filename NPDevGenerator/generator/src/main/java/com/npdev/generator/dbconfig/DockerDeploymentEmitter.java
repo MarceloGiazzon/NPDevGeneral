@@ -52,6 +52,14 @@ public final class DockerDeploymentEmitter {
         write(root.resolve(".env.example"), postgresEngine ? envExamplePostgres(dbName) : envExampleStandalone());
         write(root.resolve("deploy").resolve("Caddyfile"), caddyfile(serverPort));
         write(root.resolve(".dockerignore"), dockerIgnore());
+        if (postgresEngine) {
+            // LNCH-9: backup/restore only makes sense for the Postgres-first path -- InMemory/
+            // H2Local/H2Server are dev/test engines embedded in the app process (see the standalone
+            // compose comment above); their "backup" story is documented file-copy semantics
+            // (docs/DEPLOYMENT.md), not a script, since there's no separate service to dump.
+            write(root.resolve("deploy").resolve("backup.sh"), backupScript());
+            write(root.resolve("deploy").resolve("restore.sh"), restoreScript());
+        }
     }
 
     private static String dockerfile(String jarName, int serverPort) {
@@ -97,7 +105,11 @@ public final class DockerDeploymentEmitter {
                 # Postgres, both healthchecked, app waiting on Postgres before starting. The optional
                 # `proxy` profile (`docker compose --profile proxy up`) adds a Caddy TLS-terminating
                 # reverse proxy in front (see deploy/Caddyfile) -- generated apps never terminate TLS
-                # themselves.
+                # themselves. The optional `objectstore` profile
+                # (`docker compose --profile objectstore up`) adds a MinIO service for LNCH-14's
+                # S3-compatible file-store adapter -- set NPDEV_FILESTORE_PROVIDER=objectstore in
+                # .env to point the app at it instead of the default in-process file store (see
+                # docs/DEPLOYMENT.md for the one-time bucket-creation step).
                 #
                 # First run: copy .env.example to .env and set real secrets before `docker compose up`.
                 name: %s
@@ -125,6 +137,16 @@ public final class DockerDeploymentEmitter {
                       # them to underscores, so 'npdev.auth.api-keys' binds from NPDEV_AUTH_APIKEYS,
                       # not the more intuitive NPDEV_AUTH_API_KEYS (which would silently no-op).
                       NPDEV_AUTH_APIKEYS: ${NPDEV_AUTH_APIKEYS:?NPDEV_AUTH_APIKEYS must be set in .env}
+                      # LNCH-14: defaults to the in-process file store (unchanged behavior) --
+                      # set NPDEV_FILESTORE_PROVIDER=objectstore in .env (with the `objectstore`
+                      # compose profile active) to switch to the S3-compatible adapter against the
+                      # MinIO service below. Blank values are harmless when provider=inproc.
+                      NPDEV_FILESTORE_PROVIDER: ${NPDEV_FILESTORE_PROVIDER:-inproc}
+                      NPDEV_FILESTORE_OBJECTSTORE_BUCKET: ${NPDEV_FILESTORE_OBJECTSTORE_BUCKET:-npdev-files}
+                      NPDEV_FILESTORE_OBJECTSTORE_ENDPOINT: ${NPDEV_FILESTORE_OBJECTSTORE_ENDPOINT:-http://minio:9000}
+                      NPDEV_FILESTORE_OBJECTSTORE_REGION: ${NPDEV_FILESTORE_OBJECTSTORE_REGION:-us-east-1}
+                      NPDEV_FILESTORE_OBJECTSTORE_ACCESSKEYID: ${MINIO_ROOT_USER:-}
+                      NPDEV_FILESTORE_OBJECTSTORE_SECRETACCESSKEY: ${MINIO_ROOT_PASSWORD:-}
                     ports:
                       - "${APP_PORT:-%d}:%d"
                     volumes:
@@ -172,11 +194,35 @@ public final class DockerDeploymentEmitter {
                       - caddy-data:/data
                     restart: unless-stopped
 
+                  # LNCH-14: S3-compatible object storage for the file-store-objectstore adapter
+                  # (proven against a real MinIO instance in the adapter's own Testcontainers
+                  # test -- this service is the same thing, wired into the deployment story).
+                  # Opt in with `docker compose --profile objectstore up` AND
+                  # NPDEV_FILESTORE_PROVIDER=objectstore in .env; the app ignores this service
+                  # entirely otherwise. The bucket is NOT auto-created -- see docs/DEPLOYMENT.md
+                  # for the one-time `mc mb` step after first bringing MinIO up.
+                  minio:
+                    image: minio/minio:RELEASE.2024-08-29T01-40-52Z
+                    profiles: ["objectstore"]
+                    command: server /data --console-address ":9001"
+                    environment:
+                      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-npdev}
+                      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set in .env to use the objectstore profile}
+                    volumes:
+                      - minio-data:/data
+                    healthcheck:
+                      test: ["CMD", "mc", "ready", "local"]
+                      interval: 5s
+                      timeout: 5s
+                      retries: 10
+                    restart: unless-stopped
+
                 volumes:
                   pgdata:
                   npdev-files:
                   app-data:
                   caddy-data:
+                  minio-data:
                 """.formatted(appId, serverPort, serverPort, serverPort);
     }
 
@@ -302,6 +348,16 @@ public final class DockerDeploymentEmitter {
                 # yet) and writes it to SUPER_USER_KEY.txt in the app container's working directory.
                 # After first `docker compose up`, retrieve it with:
                 #   docker compose exec app cat SUPER_USER_KEY.txt
+
+                # LNCH-14: object storage (MinIO) -- OPTIONAL. Leave NPDEV_FILESTORE_PROVIDER unset
+                # (defaults to inproc) unless you bring the `objectstore` compose profile up
+                # (`docker compose --profile objectstore up`). MINIO_ROOT_USER/PASSWORD double as
+                # both the MinIO server's own admin credentials AND the S3 access key/secret the
+                # app authenticates with -- see docs/DEPLOYMENT.md for the one-time bucket-creation
+                # step MinIO needs after its first boot.
+                # NPDEV_FILESTORE_PROVIDER=objectstore
+                MINIO_ROOT_USER=npdev
+                MINIO_ROOT_PASSWORD=change-me-to-a-real-secret
                 """.formatted(dbName);
     }
 
@@ -318,6 +374,76 @@ public final class DockerDeploymentEmitter {
                 	reverse_proxy app:%d
                 }
                 """.formatted(serverPort);
+    }
+
+    private static String backupScript() {
+        return """
+                #!/usr/bin/env bash
+                # LNCH-9: dumps the compose stack's Postgres database via `pg_dump` run INSIDE the
+                # postgres container (docker compose exec -T), so it works identically regardless of
+                # whether the pg_dump client is installed on the host. Run from the FinalApp root
+                # (where docker-compose.yml and .env live).
+                set -euo pipefail
+                cd "$(dirname "$0")/.."
+
+                if [ ! -f .env ]; then
+                    echo "backup.sh: .env not found -- copy .env.example to .env first" >&2
+                    exit 1
+                fi
+                set -a
+                source .env
+                set +a
+                POSTGRES_DB="${POSTGRES_DB:-npdev}"
+                POSTGRES_USER="${POSTGRES_USER:-npdev}"
+
+                mkdir -p backups
+                out="backups/${POSTGRES_DB}-$(date -u +%Y%m%dT%H%M%SZ).sql"
+                echo "Backing up ${POSTGRES_DB} to ${out} ..."
+                # --clean --if-exists: the target of a restore is normally a database that ALREADY
+                # has this app's schema (Flyway/schema-realization already ran) -- without these
+                # flags, restoring produces a flood of "relation already exists" / duplicate-key
+                # errors instead of a clean replace (confirmed live). The IF EXISTS guard makes the
+                # DROP statements safe even against an empty database too.
+                docker compose exec -T postgres pg_dump --clean --if-exists -U "$POSTGRES_USER" -d "$POSTGRES_DB" > "$out"
+                echo "Done: ${out}"
+                """;
+    }
+
+    private static String restoreScript() {
+        return """
+                #!/usr/bin/env bash
+                # LNCH-9: restores a `backup.sh` dump into the compose stack's Postgres database.
+                # DESTRUCTIVE: this replaces the target database's contents. Requires an explicit
+                # --yes flag as a deliberate confirmation step -- there is no prompt to bypass by
+                # accident in a scripted/CI context.
+                set -euo pipefail
+                cd "$(dirname "$0")/.."
+
+                dump_file="${1:-}"
+                confirm="${2:-}"
+                if [ -z "$dump_file" ] || [ "$confirm" != "--yes" ]; then
+                    echo "Usage: deploy/restore.sh <dump-file.sql> --yes" >&2
+                    echo "  (the --yes flag is required: this REPLACES the target database's data)" >&2
+                    exit 1
+                fi
+                if [ ! -f "$dump_file" ]; then
+                    echo "restore.sh: dump file not found: ${dump_file}" >&2
+                    exit 1
+                fi
+                if [ ! -f .env ]; then
+                    echo "restore.sh: .env not found -- copy .env.example to .env first" >&2
+                    exit 1
+                fi
+                set -a
+                source .env
+                set +a
+                POSTGRES_DB="${POSTGRES_DB:-npdev}"
+                POSTGRES_USER="${POSTGRES_USER:-npdev}"
+
+                echo "Restoring ${dump_file} into ${POSTGRES_DB} ..."
+                docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$dump_file"
+                echo "Done. Restart the app so it re-validates against the restored data: docker compose restart app"
+                """;
     }
 
     private static String dockerIgnore() {

@@ -59,6 +59,28 @@ means every regeneration needs a matching new Postgres database. For a stable pr
 across redeploys, set `database.databaseName` explicitly. `.env.example`'s `POSTGRES_DB` default
 is generated to match the model's resolved database name either way.
 
+## Object storage (LNCH-14, Postgres-first shape only)
+
+By default the app stores uploaded files via `file-store-inproc` (a local filesystem directory,
+`npdev-files:/app/data/files` in the compose file) — fine for a single instance, but not
+multi-instance-safe and not externally durable. The `file-store-objectstore` adapter (S3-compatible:
+AWS S3, MinIO, Cloudflare R2) is a complete, independently-tested alternative — proven against a
+real MinIO instance in its own Testcontainers suite (`S3ObjectStoreFileStoreAdapterMinioLiveTest`).
+
+To switch a Postgres-engine app to it locally via the optional `objectstore` compose profile:
+
+```powershell
+docker compose --profile objectstore up -d --build
+# MinIO does not auto-create its bucket -- one-time setup after MinIO is up:
+docker compose exec minio mc alias set local http://localhost:9000 <MINIO_ROOT_USER> <MINIO_ROOT_PASSWORD>
+docker compose exec minio mc mb local/npdev-files
+docker compose restart app   # NPDEV_FILESTORE_PROVIDER=objectstore must be set in .env first
+```
+
+For a real cloud provider (AWS S3, R2, ...) instead of the local MinIO service, set
+`NPDEV_FILESTORE_OBJECTSTORE_ENDPOINT`/`_BUCKET`/`_REGION`/`_ACCESSKEYID`/`_SECRETACCESSKEY` in
+`.env` directly and skip the `objectstore` compose profile (no local MinIO container needed).
+
 ## TLS
 
 The `proxy` profile's `deploy/Caddyfile` uses `tls internal` by default — Caddy issues its own
