@@ -814,7 +814,7 @@ private final EventBus eventBus;
         );
         flowInstanceStore.save(initialInstance);
 
-        return executeFlowInstance(flow, input, initialInstance, 0, traceId, effectiveContext);
+        return executeFlowInstanceTracked(flow, input, initialInstance, 0, traceId, effectiveContext);
     }
 
     @Override
@@ -905,7 +905,7 @@ private final EventBus eventBus;
         }
 
         Object input = existing.state().get("input");
-        return executeFlowInstance(
+        return executeFlowInstanceTracked(
                 flowOpt.get(),
                 input,
                 existing,
@@ -3064,6 +3064,84 @@ private final EventBus eventBus;
             return new CircuitGate(true, true);
         }
         return new CircuitGate(true, false);
+    }
+
+    // LNCH-8: single choke point for both fresh-start (execute) and resumed (resumeExecution)
+    // flow runs, so a flow/procedure OUTCOME metric + a single-line structured log line are
+    // recorded exactly once per terminal-or-waiting return, without touching executeFlowInstance's
+    // large existing body (which already emits its own per-step debug logs).
+    private ExecutionResult executeFlowInstanceTracked(
+            FlowDefinition flow,
+            Object input,
+            FlowInstance initialInstance,
+            int startStepIndex,
+            String traceId,
+            ExecutionContext executionContext
+    ) {
+        long startedAtMs = nowEpochMillis();
+        ExecutionResult result = executeFlowInstance(flow, input, initialInstance, startStepIndex, traceId, executionContext);
+        long durationMs = nowEpochMillis() - startedAtMs;
+        String outcome = flowOutcomeTag(result.getStatus());
+        logFlowOutcome(flow.getName(), result, outcome, durationMs);
+        recordFlowOutcomeMetric(flow.getName(), outcome, durationMs);
+        return result;
+    }
+
+    private void logFlowOutcome(String flowName, ExecutionResult result, String outcome, long durationMs) {
+        LOG.info(String.format(
+                "{\"event\":\"npdev.flow.outcome\",\"flowName\":\"%s\",\"executionId\":\"%s\","
+                        + "\"correlationId\":\"%s\",\"outcome\":\"%s\",\"status\":\"%s\",\"durationMs\":%d}",
+                jsonEscape(flowName),
+                jsonEscape(result.getExecutionId()),
+                jsonEscape(result.getCorrelationId()),
+                jsonEscape(outcome),
+                result.getStatus() == null ? "" : result.getStatus().name(),
+                durationMs
+        ));
+    }
+
+    private void recordFlowOutcomeMetric(String flowName, String outcome, long durationMs) {
+        Map<String, String> tags = new LinkedHashMap<>();
+        tags.put("flowName", safeTag(flowName, "<none>"));
+        tags.put("outcome", outcome);
+        safeMetricInc("npdev.flow.outcome", tags);
+        safeMetricObserveMs("npdev.flow.duration_ms", durationMs, tags);
+    }
+
+    private static String flowOutcomeTag(ExecutionStatus status) {
+        if (status == null) {
+            return "unknown";
+        }
+        return switch (status) {
+            case OK -> "success";
+            case WAITING_EVENT -> "waiting";
+            default -> "failure";
+        };
+    }
+
+    private static String jsonEscape(String value) {
+        if (value == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            switch (c) {
+                case '"' -> sb.append("\\\"");
+                case '\\' -> sb.append("\\\\");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                default -> {
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+                }
+            }
+        }
+        return sb.toString();
     }
 
     private void safeMetricInc(String name, Map<String, String> tags) {

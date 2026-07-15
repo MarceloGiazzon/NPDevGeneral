@@ -71,6 +71,9 @@ dependencies {
     implementation 'org.postgresql:postgresql:42.7.4'
 
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    // LNCH-8: the Prometheus registry so /actuator/prometheus actually exposes something --
+    // Actuator alone only gives the generic /actuator/metrics JSON view, not the scrape format.
+    implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation 'com.networknt:json-schema-validator:1.5.6'
 
     // HARDEN-OBJSTORE-P2: the S3-compatible file-store adapter (file-store-objectstore, staged via

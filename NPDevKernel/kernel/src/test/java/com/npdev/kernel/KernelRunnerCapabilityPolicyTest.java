@@ -307,6 +307,47 @@ class KernelRunnerCapabilityPolicyTest {
     }
 
     @Test
+    void recordsFlowOutcomeMetricForSuccessAndFailure() {
+        RecordingMetricsSink metricsSink = new RecordingMetricsSink();
+        KernelRunner successRunner = runnerWithCapabilityStep(
+                new CapabilityExecutionPolicy(1, 0, 0, null, null),
+                (call, state) -> CapabilityResult.success(Map.of("id", "u-1")),
+                CircuitBreakerStateStore.noop(),
+                BulkheadStore.noop(),
+                IdempotencyStore.noop(),
+                metricsSink
+        );
+        ExecutionResult ok = successRunner.execute("CreateUser", Map.of("email", "a@b.com"));
+        assertEquals(ExecutionStatus.OK, ok.getStatus());
+
+        KernelRunner failureRunner = runnerWithCapabilityStep(
+                new CapabilityExecutionPolicy(1, 0, 0, null, null),
+                (call, state) -> CapabilityResult.failure(
+                        "TRANSIENT_NETWORK",
+                        "temporary outage",
+                        CapabilityErrorKind.TRANSIENT,
+                        Map.of()
+                ),
+                CircuitBreakerStateStore.noop(),
+                BulkheadStore.noop(),
+                IdempotencyStore.noop(),
+                metricsSink
+        );
+        ExecutionResult failed = failureRunner.execute("CreateUser", Map.of("email", "a@b.com"));
+        assertEquals(ExecutionStatus.CAPABILITY_FAILED, failed.getStatus());
+
+        assertTrue(metricsSink.counter("npdev.flow.outcome") >= 2, "Expected a flow.outcome metric per execute() call");
+        assertTrue(
+                metricsSink.anyTagValue("npdev.flow.outcome", "outcome", "success"),
+                "Expected outcome=success tag for the OK run"
+        );
+        assertTrue(
+                metricsSink.anyTagValue("npdev.flow.outcome", "outcome", "failure"),
+                "Expected outcome=failure tag for the CAPABILITY_FAILED run"
+        );
+    }
+
+    @Test
     void capabilityPolicyOverrideCanReduceRetryAttemptsPerOperation() {
         AtomicInteger attempts = new AtomicInteger();
         CapabilityPolicyOverrides overrides = new CapabilityPolicyOverrides(Map.of(

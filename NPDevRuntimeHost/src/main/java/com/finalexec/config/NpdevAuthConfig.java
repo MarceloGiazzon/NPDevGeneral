@@ -46,6 +46,44 @@ public class NpdevAuthConfig {
     }
 
     @Bean
+    public CorrelationIdFilter correlationIdFilter() {
+        return new CorrelationIdFilter();
+    }
+
+    @Bean
+    public FilterRegistrationBean<CorrelationIdFilter> correlationIdFilterRegistration(
+            CorrelationIdFilter correlationIdFilter
+    ) {
+        // Runs before every other filter (lowest order) so every subsequent filter's own log
+        // lines are already covered by the MDC correlationId.
+        FilterRegistrationBean<CorrelationIdFilter> bean = new FilterRegistrationBean<>();
+        bean.setFilter(correlationIdFilter);
+        bean.addUrlPatterns("/*");
+        bean.setOrder(-120);
+        return bean;
+    }
+
+    @Bean
+    public ActuatorAdminGuardFilter actuatorAdminGuardFilter() {
+        return new ActuatorAdminGuardFilter();
+    }
+
+    @Bean
+    public FilterRegistrationBean<ActuatorAdminGuardFilter> actuatorAdminGuardFilterRegistration(
+            ActuatorAdminGuardFilter actuatorAdminGuardFilter
+    ) {
+        // After SuperUserCredentialAuthFilter (-110) so the SUPERUSER claim it resolves (if any)
+        // is already on the request attribute this filter checks. /actuator/health is
+        // deliberately NOT covered -- it must stay reachable unauthenticated for the Docker
+        // healthcheck (LNCH-7).
+        FilterRegistrationBean<ActuatorAdminGuardFilter> bean = new FilterRegistrationBean<>();
+        bean.setFilter(actuatorAdminGuardFilter);
+        bean.addUrlPatterns("/actuator/metrics", "/actuator/metrics/*", "/actuator/prometheus");
+        bean.setOrder(-105);
+        return bean;
+    }
+
+    @Bean
     public SuperUserCredentialAuthFilter superUserCredentialAuthFilter(
             CredentialRegistryService credentialRegistryService
     ) {
