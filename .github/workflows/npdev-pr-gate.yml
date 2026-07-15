@@ -1,0 +1,116 @@
+name: NPDev PR Gate
+
+# LNCH-19: "a PR that breaks a gate shows red on GitHub without any human running a script."
+# Deliberately a NEW, faster workflow rather than adding `pull_request` to the existing
+# `npdev-ci-validation.yml` Linux job -- that job is scoped for on-demand/release use (Postgres
+# Testcontainers kernel adapters, Playwright, full maturity-report bootstrap, ~120min) and running
+# all of that on every single PR would be slow and expensive. This workflow runs the doc's actual
+# "on PR" DoD subset -- DSL (which includes ReleaseGateValidatorTest, so ReleaseGateValidator is
+# exercised without a separate step), kernel inproc adapters, generator, and a RuntimeHost smoke
+# via a real generated sample app's own test task -- and leaves the Postgres-Testcontainers kernel
+# adapters + integrationTest + Playwright + full maturity bootstrap to the existing nightly-scoped
+# workflow_dispatch job. Style follows ai-knowledge-gate.yml (this repo's prior art for
+# lightweight PR-triggered gates, referenced by docs/LAUNCH_READINESS_GAPS.md's LNCH-19 write-up).
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: npdev-pr-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-gate:
+    name: PR gate (DSL/kernel/generator/RuntimeHost smoke, Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    defaults:
+      run:
+        shell: bash
+
+    env:
+      CI: true
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: DSL contract check (includes ReleaseGateValidatorTest)
+        working-directory: NPDevContract/dsl
+        timeout-minutes: 15
+        run: |
+          ./gradlew check --no-daemon --console=plain
+
+      - name: Kernel inproc adapter tests
+        working-directory: NPDevKernel
+        timeout-minutes: 20
+        run: |
+          ./gradlew \
+            :kernel:test \
+            :adapters:audit-inproc:test \
+            :adapters:bulkhead-inproc:test \
+            :adapters:circuit-inproc:test \
+            :adapters:events-inproc:test \
+            :adapters:flowinstance-inproc:test \
+            :adapters:idempotency-inproc:test \
+            :adapters:notification-inproc:test \
+            :adapters:persistence-inproc:test \
+            :adapters:tracing-inproc:test \
+            :adapters:webhook-inproc:test \
+            :adapters:file-store-inproc:test \
+            --no-daemon --console=plain
+
+      - name: Generator unit tests
+        working-directory: NPDevGenerator
+        timeout-minutes: 20
+        run: |
+          ./gradlew :generator:test --no-daemon --console=plain
+
+      - name: Sync RuntimeHost libs for sample generation
+        timeout-minutes: 15
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass \
+            -File "$GITHUB_WORKSPACE/scripts/runtimehost/sync-runtimehost-libs.ps1" \
+            -BuildLocalJars \
+            -RuntimeHostLibsDir "$GITHUB_WORKSPACE/../NPDev_General__OutsideRepo/runtimehost-libs"
+
+      - name: Generate simple-contact-intake sample (InMemory, fast RuntimeHost smoke)
+        timeout-minutes: 15
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass \
+            -File "$GITHUB_WORKSPACE/NPDevSamples/scripts/generate-sample-app.ps1" \
+            -SampleId simple-contact-intake \
+            -NPDevRoot "$GITHUB_WORKSPACE"
+
+      - name: RuntimeHost generated-app test suite
+        working-directory: NPDevSamples/simple-contact-intake/Output/App
+        timeout-minutes: 20
+        run: |
+          chmod +x ./gradlew
+          ./gradlew test \
+            -PnpdevRuntimeHostLibsDir="$GITHUB_WORKSPACE/../NPDev_General__OutsideRepo/runtimehost-libs" \
+            --no-daemon --console=plain
+
+      - name: Upload PR gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npdev-pr-gate-evidence
+          path: |
+            NPDevContract/dsl/**/build/test-results/test
+            NPDevKernel/**/build/test-results/test
+            NPDevGenerator/**/build/test-results/test
+            NPDevSamples/simple-contact-intake/Output/App/build/test-results/test
+          if-no-files-found: warn
+          retention-days: 14

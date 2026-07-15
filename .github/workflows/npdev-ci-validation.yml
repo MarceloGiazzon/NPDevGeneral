@@ -1,11 +1,15 @@
 name: NPDev CI Validation
 
-# Manual-only: this heavy validation (full test matrix, Playwright, Postgres
-# Testcontainers, RuntimeHost integration) runs on demand via the "Run workflow"
-# button, not on every PR/push. Re-add the pull_request/push triggers below to
-# restore automatic runs.
+# Manual + nightly: this heavy validation (full test matrix, Playwright, Postgres
+# Testcontainers, RuntimeHost integration) is too slow/expensive for every PR (up to 120min) --
+# see npdev-pr-gate.yml for the fast per-PR subset (LNCH-19's "on PR" requirement). This workflow
+# covers LNCH-19's "nightly -- full gates + sample generate->build->boot on Linux/Postgres" half
+# via the schedule trigger below (the Linux job's RuntimeHost integrationTest step already runs
+# the generated canonical-demo app for real against a Testcontainers Postgres instance).
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *'  # 03:00 UTC daily
 
 concurrency:
   group: npdev-ci-validation-${{ github.ref }}
