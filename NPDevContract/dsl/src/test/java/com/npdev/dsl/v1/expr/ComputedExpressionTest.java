@@ -74,4 +74,92 @@ class ComputedExpressionTest {
         assertDoesNotThrow(() -> ComputedExpression.validate("(a + b) * c - d / 2"));
         assertDoesNotThrow(() -> ComputedExpression.validate("x > 0 && y != 'n'"));
     }
+
+    // ---- LNCH-15: function calls, receiver.method() sugar, and lambdas --------
+
+    @Test
+    void directFunctionCallInvokesRegisteredFunction() {
+        ComputedExpression.FunctionRegistry registry = ComputedExpression.FunctionRegistry.of(Map.of(
+                "double", (args, vars) -> {
+                    Object v = args.get(0).eval(vars);
+                    return ((Number) v).longValue() * 2;
+                }
+        ));
+        assertEquals(84L, ComputedExpression.evaluate("double(x)", Map.of("x", 42), registry));
+    }
+
+    @Test
+    void receiverMethodSugarDesugarsToFunctionCallWithReceiverPrepended() {
+        ComputedExpression.FunctionRegistry registry = ComputedExpression.FunctionRegistry.of(Map.of(
+                "upper", (args, vars) -> String.valueOf(args.get(0).eval(vars)).toUpperCase()
+        ));
+        assertEquals("HELLO", ComputedExpression.evaluate("name.upper()", Map.of("name", "hello"), registry));
+    }
+
+    @Test
+    void lambdaArgumentIsNotEagerlyEvaluated() {
+        // A quantifier-style function: invoke the lambda per item, short-circuit on first match.
+        ComputedExpression.FunctionRegistry registry = ComputedExpression.FunctionRegistry.of(Map.of(
+                "exists", (args, vars) -> {
+                    Object collection = args.get(0).eval(vars);
+                    for (Object item : (java.util.List<?>) collection) {
+                        if (Boolean.TRUE.equals(args.get(1).invokeLambda(item, vars))) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+        ));
+        Map<String, Object> vars = Map.of("items", java.util.List.of(
+                Map.of("severity", "Mild"), Map.of("severity", "Severe")));
+        assertEquals(Boolean.TRUE,
+                ComputedExpression.evaluate("items.exists(a => a.severity == 'Severe')", vars, registry));
+        assertEquals(Boolean.FALSE,
+                ComputedExpression.evaluate("items.exists(a => a.severity == 'Extreme')", vars, registry));
+    }
+
+    @Test
+    void lambdaEvaluatedOutsideAFunctionArgumentThrows() {
+        assertThrows(ComputedExpression.ExpressionException.class,
+                () -> ComputedExpression.evaluate("a => a > 0", Map.of()));
+    }
+
+    @Test
+    void unknownFunctionThrows() {
+        assertThrows(ComputedExpression.ExpressionException.class,
+                () -> ComputedExpression.evaluate("bogus(1)", Map.of()));
+    }
+
+    @Test
+    void callAndLambdaSyntaxParseWithoutRegistry() {
+        // Parsing (for compile-time field/shape checks) must not require a registry.
+        assertDoesNotThrow(() -> ComputedExpression.validate("field.matches('.+@.+')"));
+        assertDoesNotThrow(() -> ComputedExpression.validate("items.uniqueBy(key)"));
+        assertDoesNotThrow(() -> ComputedExpression.validate("items.all(x => x.field != null)"));
+        assertDoesNotThrow(() -> ComputedExpression.validate("!conflicts(a, b, c, d)"));
+        assertDoesNotThrow(() -> ComputedExpression.validate("scope.exists(\"Patient\", \"id\", patientId)"));
+    }
+
+    @Test
+    void callsAreBooleanShapedForKnownFunctionNames() {
+        assertTrue(ComputedExpression.isBooleanShaped("field.matches('x')"));
+        assertTrue(ComputedExpression.isBooleanShaped("items.uniqueBy(key)"));
+        assertTrue(ComputedExpression.isBooleanShaped("items.all(x => x > 0)"));
+        assertTrue(ComputedExpression.isBooleanShaped("!conflicts(a, b, c)"));
+        assertTrue(ComputedExpression.isBooleanShaped("scope.exists(\"C\", \"f\", v)"));
+    }
+
+    @Test
+    void referencedFieldsSkipsLambdaBodyAndUniqueByKeyArg() {
+        // The lambda alias and uniqueBy's per-item key are scoped to the item, not the outer
+        // concept -- collecting them as "referenced fields" would produce false unknown-field hits.
+        java.util.Set<String> allFields = ComputedExpression.referencedFields("items.all(x => x.field > 0)");
+        assertEquals(java.util.Set.of("items"), allFields);
+
+        java.util.Set<String> uniqueByFields = ComputedExpression.referencedFields("items.uniqueBy(key)");
+        assertEquals(java.util.Set.of("items"), uniqueByFields);
+
+        java.util.Set<String> conflictsFields = ComputedExpression.referencedFields("conflicts(a, b, c)");
+        assertEquals(java.util.Set.of("a", "b", "c"), conflictsFields);
+    }
 }

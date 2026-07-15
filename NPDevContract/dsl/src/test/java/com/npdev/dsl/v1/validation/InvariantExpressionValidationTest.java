@@ -66,10 +66,35 @@ class InvariantExpressionValidationTest {
 
     @Test
     void celSpecificSyntaxIsUnaffectedByStaticShapeCheck() throws Exception {
-        // scope.exists(...) doesn't parse via ComputedExpression; must remain accepted at
-        // compile time and left to CelInvariantEngine at runtime (unchanged legacy behavior).
+        // LNCH-15: scope.exists(...) now DOES parse via ComputedExpression (function-call
+        // syntax) and is boolean-shaped by construction (Call.looksBoolean() is permissive), so
+        // this must still pass -- runtime evaluation stays CelInvariantEngine's job either way.
         List<String> errors = validate(modelWithInvariant("scope.exists(\\\"Other\\\", \\\"id\\\", pos)"));
         assertTrue(errors.stream().noneMatch(e -> e.contains("invariant expression")),
                 "unexpected invariant expression error, got: " + errors);
+    }
+
+    @Test
+    void unknownFieldInsideUniqueByCollectionArgumentIsCaught() throws Exception {
+        // LNCH-15: uniqueBy's collection argument now gets the SAME compile-time unknown-field
+        // check as any other expression -- a genuinely new capability (this form used to be
+        // unparseable by ComputedExpression, so referencedFields() silently returned nothing for
+        // it). The per-item key argument ("allergen") is deliberately NOT checked -- it's scoped
+        // to each collection item, not this concept's own fields.
+        List<String> errors = validate(modelWithInvariant("bogusCollection.uniqueBy(allergen)"));
+        assertTrue(errors.stream().anyMatch(e -> e.contains("references unknown field bogusCollection")),
+                "expected an unknown-field error for the collection arg, got: " + errors);
+    }
+
+    @Test
+    void negatedConflictsExpressionIsBooleanShapedAndFieldChecked() throws Exception {
+        // A parenthesized, negated, function-call invariant -- the exact shape the doc's DoD
+        // calls out ("a parenthesized negated invariant works end-to-end") -- must be both
+        // accepted as boolean-shaped and have its field arguments compile-time checked.
+        List<String> errors = validate(modelWithInvariant("!(bogusField > 0)"));
+        assertTrue(errors.stream().anyMatch(e -> e.contains("references unknown field bogusField")),
+                "expected an unknown-field error, got: " + errors);
+        assertTrue(errors.stream().noneMatch(e -> e.contains("must evaluate to a boolean")),
+                "negated parenthesized comparison must be boolean-shaped, got: " + errors);
     }
 }

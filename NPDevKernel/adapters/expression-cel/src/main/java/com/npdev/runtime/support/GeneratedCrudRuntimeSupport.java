@@ -15,6 +15,7 @@ import com.npdev.dsl.v1.compiled.CompiledReferenceSemantics;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.compiled.CompiledStateTransition;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
+import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityRegistry;
 import com.npdev.kernel.CapabilityResult;
@@ -103,6 +104,22 @@ public final class GeneratedCrudRuntimeSupport {
     private static final int DEFAULT_SCHEDULE_PAGE_SIZE = 100;
     private static final Set<String> VALUE_BEHAVIOR_FUNCTIONS =
             Set.of("concat", "coalesce", "trim", "uppercase", "lowercase");
+
+    /**
+     * LNCH-15: {@code concat}/{@code coalesce}/{@code trim}/{@code uppercase}/{@code lowercase}
+     * as {@link ComputedExpression.ExprFunction}s, so schema default/derived expressions route
+     * through the same unified grammar as invariants instead of this class's own hand-rolled
+     * literal/identifier/call evaluator (see {@link #evaluateSchemaExpression}). Behavior is
+     * identical to {@link #applyValueBehaviorFunction} -- kept as the implementation both this
+     * registry and the legacy fallback path share, rather than duplicating the logic twice.
+     */
+    private static final ComputedExpression.FunctionRegistry SCHEMA_EXPRESSION_FUNCTIONS =
+            ComputedExpression.FunctionRegistry.of(VALUE_BEHAVIOR_FUNCTIONS.stream().collect(
+                    java.util.stream.Collectors.toMap(
+                            name -> name,
+                            name -> (ComputedExpression.ExprFunction) (args, vars) -> applyValueBehaviorFunction(
+                                    name, args.stream().map(arg -> arg.eval(vars)).toList())
+                    )));
 
     @FunctionalInterface
     public interface UniqueValueLookup {
@@ -3094,6 +3111,16 @@ public final class GeneratedCrudRuntimeSupport {
         String trimmed = expression == null ? "" : expression.trim();
         if (trimmed.isBlank()) {
             return null;
+        }
+        // LNCH-15: try the unified ComputedExpression grammar first (concat/coalesce/trim/
+        // uppercase/lowercase via SCHEMA_EXPRESSION_FUNCTIONS). Falls through to this method's
+        // own legacy evaluator -- kept as a defensive safety net, not deleted -- for anything it
+        // doesn't recognize, so a malformed expression still yields null at record-save time
+        // instead of throwing.
+        try {
+            return ComputedExpression.evaluate(trimmed, values, SCHEMA_EXPRESSION_FUNCTIONS);
+        } catch (ComputedExpression.ExpressionException ignored) {
+            // fall through to the legacy evaluator below
         }
         if (isQuotedLiteral(trimmed)) {
             return trimmed.substring(1, trimmed.length() - 1);

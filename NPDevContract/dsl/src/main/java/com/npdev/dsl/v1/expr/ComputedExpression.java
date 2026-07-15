@@ -51,6 +51,27 @@ public final class ComputedExpression {
         /** Collect all field/variable names referenced by this node (and its children). */
         default void collectFields(java.util.Set<String> out) {
         }
+
+        /**
+         * LNCH-15: invoke this node as a one-argument lambda (only {@code Lambda} overrides this
+         * -- see its javadoc), binding {@code item} to the lambda's parameter for one evaluation
+         * of its body. Lets a {@link FunctionRegistry} function (e.g. a quantifier) call a lambda
+         * argument without needing to know the concrete AST node type.
+         */
+        default Object invokeLambda(Object item, Map<String, Object> outerVars) {
+            throw new ExpressionException("not a lambda expression");
+        }
+
+        /**
+         * LNCH-15: the dotted field-path text this node reads, if it is (or trivially wraps) a
+         * single field reference -- only {@code Var} returns non-null. Lets a
+         * {@link FunctionRegistry} function report a human-readable field path for an argument
+         * without needing to know the concrete AST node type (e.g. {@code matches}'s receiver
+         * argument, for UI failure highlighting).
+         */
+        default String describeFieldPath() {
+            return null;
+        }
     }
 
     /** Parse an expression into an AST, or throw {@link ExpressionException}. */
@@ -65,7 +86,22 @@ public final class ComputedExpression {
 
     /** Parse and evaluate against the given variables. */
     public static Object evaluate(String expression, Map<String, Object> vars) {
-        return parse(expression).eval(vars);
+        return evaluate(expression, vars, FunctionRegistry.empty());
+    }
+
+    /**
+     * LNCH-15: parse and evaluate with a pluggable set of named functions (e.g. {@code uuid()},
+     * {@code field.matches(regex)}, {@code items.all(x => ...)}) available to {@code Call}/
+     * {@code Lambda} nodes. See {@link FunctionRegistry}.
+     */
+    public static Object evaluate(String expression, Map<String, Object> vars, FunctionRegistry functions) {
+        FunctionRegistry previous = CURRENT_FUNCTIONS.get();
+        CURRENT_FUNCTIONS.set(functions == null ? FunctionRegistry.empty() : functions);
+        try {
+            return parse(expression).eval(vars);
+        } finally {
+            CURRENT_FUNCTIONS.set(previous);
+        }
     }
 
     /**
@@ -74,7 +110,12 @@ public final class ComputedExpression {
      * top-level result isn't a {@link Boolean}.
      */
     public static boolean evaluateBoolean(String expression, Map<String, Object> vars) {
-        Object result = parse(expression).eval(vars);
+        return evaluateBoolean(expression, vars, FunctionRegistry.empty());
+    }
+
+    /** {@link #evaluateBoolean(String, Map)} with a {@link FunctionRegistry} — see {@link #evaluate(String, Map, FunctionRegistry)}. */
+    public static boolean evaluateBoolean(String expression, Map<String, Object> vars, FunctionRegistry functions) {
+        Object result = evaluate(expression, vars, functions);
         if (!(result instanceof Boolean b)) {
             throw new ExpressionException(
                     "expression did not evaluate to a boolean: " + expression
@@ -82,6 +123,39 @@ public final class ComputedExpression {
         }
         return b;
     }
+
+    /**
+     * LNCH-15: a named set of callable functions for {@code name(args...)} / {@code
+     * receiver.name(args...)} call syntax. Functions receive the raw (unevaluated) argument
+     * {@link Node}s rather than pre-evaluated values -- some functions (e.g. a quantifier's
+     * lambda argument, or {@code uniqueBy}'s per-item key-field-name argument) need to control
+     * how/when their arguments are evaluated rather than have them evaluated eagerly against the
+     * outer scope.
+     */
+    @FunctionalInterface
+    public interface FunctionRegistry {
+        ExprFunction lookup(String name);
+
+        static FunctionRegistry empty() {
+            return name -> null;
+        }
+
+        static FunctionRegistry of(Map<String, ExprFunction> functions) {
+            Map<String, ExprFunction> copy = Map.copyOf(functions);
+            return copy::get;
+        }
+    }
+
+    @FunctionalInterface
+    public interface ExprFunction {
+        Object call(List<Node> args, Map<String, Object> vars);
+    }
+
+    /** Function names parsed as a single direct call rather than {@code receiver.method(...)} sugar. */
+    private static final java.util.Set<String> DIRECT_FUNCTION_NAMES = java.util.Set.of("scope.exists");
+
+    private static final ThreadLocal<FunctionRegistry> CURRENT_FUNCTIONS =
+            ThreadLocal.withInitial(FunctionRegistry::empty);
 
     /**
      * The set of field/variable names (dotted paths kept whole) referenced anywhere in the
@@ -142,6 +216,10 @@ public final class ComputedExpression {
         public void collectFields(java.util.Set<String> out) {
             out.add(name);
         }
+
+        public String describeFieldPath() {
+            return name;
+        }
     }
 
     private record Unary(String op, Node operand) implements Node {
@@ -199,6 +277,108 @@ public final class ComputedExpression {
                 case ">=": return toNumber(l) >= toNumber(r);
                 default: throw new ExpressionException("unknown operator: " + op);
             }
+        }
+    }
+
+    /**
+     * LNCH-15: {@code name(args...)}, or {@code receiver.name(args...)} sugar desugared at parse
+     * time into {@code name(receiver, args...)} (see {@code Parser#parseCallSuffix}). Looks up
+     * {@code name} in the current thread's {@link FunctionRegistry} (set by {@link
+     * #evaluate(String, Map, FunctionRegistry)}) at eval time -- functions get the raw argument
+     * nodes, not pre-evaluated values, so e.g. a quantifier's lambda argument or {@code
+     * uniqueBy}'s per-item key-field-name argument can control their own evaluation.
+     */
+    private record Call(String name, List<Node> args) implements Node {
+        public Object eval(Map<String, Object> vars) {
+            ExprFunction fn = CURRENT_FUNCTIONS.get().lookup(name);
+            if (fn == null) {
+                throw new ExpressionException("unknown function: " + name);
+            }
+            return fn.call(args, vars);
+        }
+
+        public boolean looksBoolean() {
+            // Permissive by design, not just for the known BOOLEAN_FUNCTIONS: a function call at
+            // the top level of an invariant expression is always assumed intentional. Before this
+            // grammar accepted call syntax at all, ANY such expression failed to parse and the
+            // boolean-shape check was silently skipped for it (see SemanticValidator's
+            // validateInvariantExpressionShape) -- now that it parses, staying silent for
+            // unrecognized function names preserves that same "we don't know, don't flag it"
+            // behavior instead of turning it into a false "must evaluate to a boolean" error
+            // (confirmed live: broke on a legitimate capability-invocation expression,
+            // cap.persistence.unique(...), that isn't one of CelInvariantEngine's named forms).
+            return true;
+        }
+
+        public void collectFields(java.util.Set<String> out) {
+            // uniqueBy's 2nd arg is a per-item key field name, not a reference into the outer
+            // scope (mirrors Lambda's own skip, below, for the same reason).
+            int skipFrom = "uniqueBy".equals(name) ? 1 : args.size();
+            for (int i = 0; i < args.size(); i++) {
+                if (i < skipFrom || i > skipFrom) {
+                    args.get(i).collectFields(out);
+                }
+            }
+        }
+    }
+
+    /**
+     * LNCH-15: {@code param => body}, valid only as a function-call argument (e.g. {@code
+     * items.all(x => x.field > 0)}) -- {@link #eval} always throws; a consuming function invokes
+     * {@link #invoke} once per item instead, binding {@code param} to that item in a scope
+     * layered over the outer variables.
+     */
+    private record Lambda(String param, Node body) implements Node {
+        public Object eval(Map<String, Object> vars) {
+            throw new ExpressionException("lambda expression used outside a function-call argument");
+        }
+
+        public void collectFields(java.util.Set<String> out) {
+            // The body's field refs (e.g. "x.field") are scoped to the per-item binding, not the
+            // outer concept's fields -- collecting them would produce false "unknown field" hits.
+        }
+
+        public Object invokeLambda(Object item, Map<String, Object> outerVars) {
+            // A delegating view, not a copy: some outer scopes (e.g. CelInvariantEngine's
+            // FieldPathScope) resolve lookups lazily and report an empty entrySet(), so copy-
+            // constructing a plain Map from them (new LinkedHashMap<>(outerVars)) would silently
+            // produce an empty map instead of a real snapshot.
+            Map<String, Object> scope = new java.util.AbstractMap<>() {
+                @Override
+                public Object get(Object key) {
+                    if (!(key instanceof String name)) {
+                        return null;
+                    }
+                    if (name.equals(param)) {
+                        return item;
+                    }
+                    if (name.startsWith(param + ".")) {
+                        return resolveNested(item, name.substring(param.length() + 1));
+                    }
+                    return outerVars == null ? null : outerVars.get(name);
+                }
+
+                @Override
+                public boolean containsKey(Object key) {
+                    return true;
+                }
+
+                @Override
+                public java.util.Set<Entry<String, Object>> entrySet() {
+                    return java.util.Set.of();
+                }
+            };
+            return body.eval(scope);
+        }
+
+        private static Object resolveNested(Object current, String path) {
+            for (String segment : path.split("\\.")) {
+                if (!(current instanceof Map<?, ?> map)) {
+                    return null;
+                }
+                current = map.get(segment);
+            }
+            return current;
         }
     }
 
@@ -324,9 +504,14 @@ public final class ComputedExpression {
             // multi-char operators first
             String two = i + 1 < n ? s.substring(i, i + 2) : "";
             if (two.equals("==") || two.equals("!=") || two.equals("<=") || two.equals(">=")
-                    || two.equals("&&") || two.equals("||")) {
+                    || two.equals("&&") || two.equals("||") || two.equals("=>")) {
                 tokens.add(new Token("OP", two));
                 i += 2;
+                continue;
+            }
+            if (c == ',') {
+                tokens.add(new Token("COMMA", ","));
+                i++;
                 continue;
             }
             if ("+-*/%<>!()".indexOf(c) >= 0) {
@@ -457,6 +642,9 @@ public final class ComputedExpression {
                     return new Literal(t.text());
                 case "IDENT":
                     next();
+                    if (peek().type().equals("LP")) {
+                        return parseCallSuffix(t.text());
+                    }
                     switch (t.text()) {
                         case "true": return new Literal(Boolean.TRUE);
                         case "false": return new Literal(Boolean.FALSE);
@@ -471,6 +659,58 @@ public final class ComputedExpression {
                 default:
                     throw new ExpressionException("unexpected token '" + t.text() + "' in expression");
             }
+        }
+
+        /**
+         * LNCH-15: {@code identText} was followed by {@code (} -- a function call. A dotted
+         * ident (tokenized as one IDENT, e.g. {@code "allergies.uniqueBy"}) is receiver.method
+         * sugar desugared into {@code method(receiver, args...)}, UNLESS it's one of the fixed
+         * {@link #DIRECT_FUNCTION_NAMES} (namespace-style names like {@code scope.exists} that
+         * are a single function, not a call on a real {@code scope} field).
+         */
+        private Node parseCallSuffix(String identText) {
+            next(); // consume LP
+            List<Node> args = parseArgList();
+            expect("RP");
+            if (DIRECT_FUNCTION_NAMES.contains(identText)) {
+                return new Call(identText, args);
+            }
+            int lastDot = identText.lastIndexOf('.');
+            if (lastDot < 0) {
+                return new Call(identText, args);
+            }
+            String receiverPath = identText.substring(0, lastDot);
+            String methodName = identText.substring(lastDot + 1);
+            List<Node> combinedArgs = new ArrayList<>(args.size() + 1);
+            combinedArgs.add(new Var(receiverPath));
+            combinedArgs.addAll(args);
+            return new Call(methodName, combinedArgs);
+        }
+
+        private List<Node> parseArgList() {
+            List<Node> args = new ArrayList<>();
+            if (peek().type().equals("RP")) {
+                return args;
+            }
+            args.add(parseArg());
+            while (peek().type().equals("COMMA")) {
+                next();
+                args.add(parseArg());
+            }
+            return args;
+        }
+
+        /** A single function-call argument: either {@code param => body} (a lambda) or an ordinary expression. */
+        private Node parseArg() {
+            if (peek().type().equals("IDENT")
+                    && tokens.get(pos + 1).type().equals("OP")
+                    && tokens.get(pos + 1).text().equals("=>")) {
+                String param = next().text();
+                next(); // consume =>
+                Node body = parseOr();
+                return new Lambda(param, body);
+            }
+            return parseOr();
         }
     }
 }

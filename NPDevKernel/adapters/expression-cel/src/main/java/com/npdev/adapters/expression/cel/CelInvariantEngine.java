@@ -790,21 +790,195 @@ public final class CelInvariantEngine implements InvariantEngine {
         }
     }
 
+    /** LNCH-15: a function's own natural failure detail, recorded so it survives being wrapped
+     * by {@code !}/{@code &&}/{@code ||} on the way back up to {@link #evaluateExpression} --
+     * see {@link #buildFunctionRegistry}. */
+    private record FailureHint(String details, String fieldPath) {
+    }
+
+    /**
+     * LNCH-15: the {@code matches}/{@code uniqueBy}/{@code all}/{@code exists}/{@code conflicts}/
+     * {@code overlapsProvider}/{@code scope.exists} forms as {@link ComputedExpression.ExprFunction}s,
+     * reusing this class's existing field-resolution/collection helpers so evaluation semantics
+     * (dotted paths, case-insensitive/reflection field lookup, {@code [*]}-style fieldPath
+     * reporting) stay identical to the legacy regex matcher they replace. Each function returns
+     * its ordinary boolean result (so {@code !}/{@code &&}/{@code ||} compose correctly) and,
+     * only on the branch where IT would explain an overall {@code false}, records a
+     * {@link FailureHint} into {@code hintRef} -- {@link #evaluateExpression} consults it after
+     * a false top-level result instead of falling back to the generic message.
+     */
+    private ComputedExpression.FunctionRegistry buildFunctionRegistry(
+            Object payload,
+            Map<String, Object> state,
+            java.util.concurrent.atomic.AtomicReference<FailureHint> hintRef
+    ) {
+        Map<String, ComputedExpression.ExprFunction> functions = new LinkedHashMap<>();
+
+        functions.put("matches", (args, vars) -> {
+            String fieldPath = args.get(0).describeFieldPath();
+            Object value = args.get(0).eval(vars);
+            String regex = String.valueOf(args.get(1).eval(vars));
+            if (!(value instanceof String strVal)) {
+                hintRef.set(new FailureHint("field '" + fieldPath + "' is not a string", fieldPath));
+                return false;
+            }
+            if (regex == null || regex.isBlank()) {
+                hintRef.set(new FailureHint("regex is blank", fieldPath));
+                return false;
+            }
+            boolean ok = strVal.matches(regex);
+            if (!ok) {
+                hintRef.set(new FailureHint("regex mismatch on field '" + fieldPath + "'", fieldPath));
+            }
+            return ok;
+        });
+
+        functions.put("uniqueBy", (args, vars) -> {
+            String collectionFieldPath = args.get(0).describeFieldPath();
+            Object collectionValue = args.get(0).eval(vars);
+            if (collectionValue == null) {
+                return true;
+            }
+            String keyFieldName = args.get(1).describeFieldPath();
+            if (keyFieldName == null) {
+                keyFieldName = String.valueOf(args.get(1).eval(vars));
+            }
+            Iterable<?> iterable = toIterable(collectionValue);
+            if (iterable == null) {
+                hintRef.set(new FailureHint(
+                        "field '" + collectionFieldPath + "' is not an array/collection", collectionFieldPath));
+                return false;
+            }
+            Set<String> seen = new LinkedHashSet<>();
+            for (Object item : iterable) {
+                Object rawKey = readFieldValue(item, keyFieldName);
+                if (rawKey == null) {
+                    continue;
+                }
+                String normalizedKey = String.valueOf(rawKey).trim().toLowerCase(Locale.ROOT);
+                if (normalizedKey.isBlank()) {
+                    continue;
+                }
+                if (!seen.add(normalizedKey)) {
+                    hintRef.set(new FailureHint(
+                            "duplicate '" + keyFieldName + "' value '" + rawKey + "'",
+                            collectionItemPath(collectionFieldPath, keyFieldName)));
+                    return false;
+                }
+            }
+            return true;
+        });
+
+        functions.put("all", (args, vars) -> evaluateQuantifier(args, vars, hintRef, true));
+        functions.put("exists", (args, vars) -> evaluateQuantifier(args, vars, hintRef, false));
+
+        ComputedExpression.ExprFunction conflictsFn = (args, vars) -> {
+            String resourceFieldPath = args.get(0).describeFieldPath();
+            Object subjectId = args.get(0).eval(vars);
+            Object scheduledAt = args.get(1).eval(vars);
+            Object durationMinutes = args.get(2).eval(vars);
+            Object excludeId = args.size() > 3 ? args.get(3).eval(vars) : null;
+            boolean hasConflict = conflictChecker.conflicts(
+                    resourceFieldPath, subjectId,
+                    args.get(1).describeFieldPath(), scheduledAt,
+                    args.get(2).describeFieldPath(), durationMinutes,
+                    excludeId, payload
+            );
+            if (hasConflict) {
+                hintRef.set(new FailureHint("Resource is already reserved during this time", resourceFieldPath));
+            }
+            return hasConflict;
+        };
+        functions.put("conflicts", conflictsFn);
+        functions.put("overlapsProvider", conflictsFn);
+
+        functions.put("scope.exists", (args, vars) -> {
+            String conceptName = String.valueOf(args.get(0).eval(vars));
+            String fieldPath = String.valueOf(args.get(1).eval(vars));
+            String valuePath = args.get(2).describeFieldPath();
+            Object expectedValue = args.get(2).eval(vars);
+            boolean exists = scopeChecker.exists(
+                    conceptName, fieldPath, expectedValue, state == null ? Map.of() : state, payload);
+            if (!exists) {
+                String hintFieldPath = valuePath == null || valuePath.isBlank() ? fieldPath : valuePath;
+                hintRef.set(new FailureHint("scope.exists did not find a matching entity", hintFieldPath));
+            }
+            return exists;
+        });
+
+        return ComputedExpression.FunctionRegistry.of(functions);
+    }
+
+    /**
+     * {@code collection.all(alias => predicate)} / {@code collection.exists(alias => predicate)}.
+     * {@code all} over a null/missing collection is vacuously true (matches the legacy matcher);
+     * {@code exists} requires a non-empty collection to ever succeed.
+     */
+    private static Object evaluateQuantifier(
+            List<ComputedExpression.Node> args,
+            Map<String, Object> vars,
+            java.util.concurrent.atomic.AtomicReference<FailureHint> hintRef,
+            boolean isAll
+    ) {
+        String collectionFieldPath = args.get(0).describeFieldPath();
+        Object collectionValue = args.get(0).eval(vars);
+        ComputedExpression.Node lambda = args.get(1);
+        if (collectionValue == null) {
+            if (isAll) {
+                return true;
+            }
+            hintRef.set(new FailureHint(
+                    "exists predicate requires a non-empty collection", collectionItemPath(collectionFieldPath, null)));
+            return false;
+        }
+        Iterable<?> iterable = toIterable(collectionValue);
+        if (iterable == null) {
+            hintRef.set(new FailureHint(
+                    "field '" + collectionFieldPath + "' is not an array/collection", collectionFieldPath));
+            return false;
+        }
+        int count = 0;
+        for (Object item : iterable) {
+            count++;
+            boolean itemPasses = Boolean.TRUE.equals(lambda.invokeLambda(item, vars));
+            if (isAll && !itemPasses) {
+                hintRef.set(new FailureHint(
+                        "predicate failed for a collection item", collectionItemPath(collectionFieldPath, null)));
+                return false;
+            }
+            if (!isAll && itemPasses) {
+                return true;
+            }
+        }
+        if (isAll) {
+            return true;
+        }
+        String message = count == 0
+                ? "exists predicate requires a non-empty collection"
+                : "no collection item satisfied predicate";
+        hintRef.set(new FailureHint(message, collectionItemPath(collectionFieldPath, null)));
+        return false;
+    }
+
     private ExpressionResult evaluateExpression(Object payload, String expression, Map<String, Object> state) {
         if (expression == null || expression.isBlank()) {
             return ExpressionResult.failure("blank expression");
         }
 
-        // LIFT-EXPR-P2: try the unified ComputedExpression grammar first — it's a strict
-        // superset (parens, unary !, arithmetic-in-comparisons, dotted paths) of the legacy
-        // atom/DNF matcher below. It throws ExpressionException on any syntax it doesn't
-        // recognize (regex .matches(), .uniqueBy(), .all()/.exists() quantifiers, conflicts()/
-        // overlapsProvider(), scope.exists(), [*] wildcards), so those CEL-specific forms fall
-        // through unchanged to the legacy matcher, which is the only implementation for them.
+        // LIFT-EXPR-P2/LNCH-15: try the unified ComputedExpression grammar (now extended with
+        // function-call/lambda syntax, see buildFunctionRegistry) first. Only genuinely
+        // unrecognized syntax falls through to the legacy matcher below, which stays in place as
+        // a defensive safety net rather than being deleted outright.
+        java.util.concurrent.atomic.AtomicReference<FailureHint> hintRef = new java.util.concurrent.atomic.AtomicReference<>();
         try {
-            boolean ok = ComputedExpression.evaluateBoolean(expression, new FieldPathScope(payload));
+            boolean ok = ComputedExpression.evaluateBoolean(
+                    expression, new FieldPathScope(payload), buildFunctionRegistry(payload, state, hintRef));
             if (ok) {
                 return ExpressionResult.success();
+            }
+            FailureHint hint = hintRef.get();
+            if (hint != null) {
+                return ExpressionResult.failure(hint.details(), hint.fieldPath());
             }
             // Best-effort fieldPath so simple "field op value" failures still attribute to a
             // field for UI highlighting, matching the legacy matcher's behavior for that shape.
