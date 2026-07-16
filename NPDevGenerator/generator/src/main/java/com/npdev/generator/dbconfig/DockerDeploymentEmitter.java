@@ -109,7 +109,13 @@ public final class DockerDeploymentEmitter {
                 # (`docker compose --profile objectstore up`) adds a MinIO service for LNCH-14's
                 # S3-compatible file-store adapter -- set NPDEV_FILESTORE_PROVIDER=objectstore in
                 # .env to point the app at it instead of the default in-process file store (see
-                # docs/DEPLOYMENT.md for the one-time bucket-creation step).
+                # docs/DEPLOYMENT.md for the one-time bucket-creation step). The optional `smtp`
+                # profile (`docker compose --profile smtp up`) adds a MailHog SMTP catcher for
+                # LNCH-11's mail-smtp adapter -- which adapter a given app actually uses is decided
+                # by the model's own capability binding (adapter: mail-inproc vs mail-smtp,
+                # authored at generation time, same as persistence's repository/postgres/memory
+                # choice), not by an env var; this profile just gives an app built against
+                # mail-smtp a real SMTP endpoint to hit. View caught mail at http://localhost:8025.
                 #
                 # First run: copy .env.example to .env and set real secrets before `docker compose up`.
                 name: %s
@@ -147,6 +153,16 @@ public final class DockerDeploymentEmitter {
                       NPDEV_FILESTORE_OBJECTSTORE_REGION: ${NPDEV_FILESTORE_OBJECTSTORE_REGION:-us-east-1}
                       NPDEV_FILESTORE_OBJECTSTORE_ACCESSKEYID: ${MINIO_ROOT_USER:-}
                       NPDEV_FILESTORE_OBJECTSTORE_SECRETACCESSKEY: ${MINIO_ROOT_PASSWORD:-}
+                      # LNCH-11: only consumed if this app's model bound the "mail" capability to
+                      # adapter mail-smtp -- harmless if it's on mail-inproc (or unbound) instead.
+                      # NPDEV_MAIL_SMTP_HOST defaults to the MailHog service below; point it
+                      # elsewhere for a real mail provider.
+                      NPDEV_MAIL_SMTP_HOST: ${NPDEV_MAIL_SMTP_HOST:-mailhog}
+                      NPDEV_MAIL_SMTP_PORT: ${NPDEV_MAIL_SMTP_PORT:-1025}
+                      NPDEV_MAIL_SMTP_USERNAME: ${NPDEV_MAIL_SMTP_USERNAME:-}
+                      NPDEV_MAIL_SMTP_PASSWORD: ${NPDEV_MAIL_SMTP_PASSWORD:-}
+                      NPDEV_MAIL_SMTP_FROM: ${NPDEV_MAIL_SMTP_FROM:-no-reply@example.com}
+                      NPDEV_MAIL_SMTP_STARTTLS: ${NPDEV_MAIL_SMTP_STARTTLS:-false}
                     ports:
                       - "${APP_PORT:-%d}:%d"
                     volumes:
@@ -217,6 +233,19 @@ public final class DockerDeploymentEmitter {
                       retries: 10
                     restart: unless-stopped
 
+                  # LNCH-11: SMTP catcher for the mail-smtp adapter (proven against a real
+                  # GreenMail instance in the adapter's own test -- MailHog here is the same idea,
+                  # wired into the deployment story). Opt in with `docker compose --profile smtp
+                  # up`; only reachable by an app whose model bound "mail" to adapter mail-smtp
+                  # (see NPDEV_MAIL_SMTP_HOST above). Caught mail is never actually delivered --
+                  # view it at http://localhost:8025.
+                  mailhog:
+                    image: mailhog/mailhog:v1.0.1
+                    profiles: ["smtp"]
+                    ports:
+                      - "8025:8025"
+                    restart: unless-stopped
+
                 volumes:
                   pgdata:
                   npdev-files:
@@ -237,7 +266,11 @@ public final class DockerDeploymentEmitter {
                 # db.definition.json -- see docs/DEPLOYMENT.md.
                 #
                 # The optional `proxy` profile (`docker compose --profile proxy up`) adds a Caddy
-                # TLS-terminating reverse proxy in front (see deploy/Caddyfile).
+                # TLS-terminating reverse proxy in front (see deploy/Caddyfile). The optional
+                # `smtp` profile (`docker compose --profile smtp up`) adds a MailHog SMTP catcher
+                # for LNCH-11's mail-smtp adapter -- which adapter a given app actually uses is
+                # decided by the model's own capability binding, not an env var; view caught mail
+                # at http://localhost:8025.
                 #
                 # First run: copy .env.example to .env and set real secrets before `docker compose up`.
                 name: %s
@@ -253,6 +286,16 @@ public final class DockerDeploymentEmitter {
                       # them to underscores, so 'npdev.auth.api-keys' binds from NPDEV_AUTH_APIKEYS,
                       # not the more intuitive NPDEV_AUTH_API_KEYS (which would silently no-op).
                       NPDEV_AUTH_APIKEYS: ${NPDEV_AUTH_APIKEYS:?NPDEV_AUTH_APIKEYS must be set in .env}
+                      # LNCH-11: only consumed if this app's model bound the "mail" capability to
+                      # adapter mail-smtp -- harmless if it's on mail-inproc (or unbound) instead.
+                      # NPDEV_MAIL_SMTP_HOST defaults to the MailHog service below; point it
+                      # elsewhere for a real mail provider.
+                      NPDEV_MAIL_SMTP_HOST: ${NPDEV_MAIL_SMTP_HOST:-mailhog}
+                      NPDEV_MAIL_SMTP_PORT: ${NPDEV_MAIL_SMTP_PORT:-1025}
+                      NPDEV_MAIL_SMTP_USERNAME: ${NPDEV_MAIL_SMTP_USERNAME:-}
+                      NPDEV_MAIL_SMTP_PASSWORD: ${NPDEV_MAIL_SMTP_PASSWORD:-}
+                      NPDEV_MAIL_SMTP_FROM: ${NPDEV_MAIL_SMTP_FROM:-no-reply@example.com}
+                      NPDEV_MAIL_SMTP_STARTTLS: ${NPDEV_MAIL_SMTP_STARTTLS:-false}
                     ports:
                       - "${APP_PORT:-%d}:%d"
                     volumes:
@@ -285,6 +328,17 @@ public final class DockerDeploymentEmitter {
                       - caddy-data:/data
                     restart: unless-stopped
 
+                  # LNCH-11: SMTP catcher for the mail-smtp adapter -- opt in with `docker compose
+                  # --profile smtp up`; only reachable by an app whose model bound "mail" to
+                  # adapter mail-smtp (see NPDEV_MAIL_SMTP_HOST above). Caught mail is never
+                  # actually delivered -- view it at http://localhost:8025.
+                  mailhog:
+                    image: mailhog/mailhog:v1.0.1
+                    profiles: ["smtp"]
+                    ports:
+                      - "8025:8025"
+                    restart: unless-stopped
+
                 volumes:
                   npdev-files:
                   app-data:
@@ -313,6 +367,14 @@ public final class DockerDeploymentEmitter {
                 # yet) and writes it to SUPER_USER_KEY.txt in the app container's working directory.
                 # After first `docker compose up`, retrieve it with:
                 #   docker compose exec app cat SUPER_USER_KEY.txt
+
+                # LNCH-11: SMTP config for the mail-smtp adapter -- OPTIONAL, only consumed if this
+                # app's model bound the "mail" capability to adapter mail-smtp. Defaults point at
+                # the MailHog catcher (`docker compose --profile smtp up`); caught mail is never
+                # actually delivered -- view it at http://localhost:8025.
+                # NPDEV_MAIL_SMTP_HOST=mailhog
+                # NPDEV_MAIL_SMTP_PORT=1025
+                # NPDEV_MAIL_SMTP_FROM=no-reply@example.com
                 """;
     }
 
@@ -358,6 +420,14 @@ public final class DockerDeploymentEmitter {
                 # NPDEV_FILESTORE_PROVIDER=objectstore
                 MINIO_ROOT_USER=npdev
                 MINIO_ROOT_PASSWORD=change-me-to-a-real-secret
+
+                # LNCH-11: SMTP config for the mail-smtp adapter -- OPTIONAL, only consumed if this
+                # app's model bound the "mail" capability to adapter mail-smtp. Defaults point at
+                # the MailHog catcher (`docker compose --profile smtp up`); caught mail is never
+                # actually delivered -- view it at http://localhost:8025.
+                # NPDEV_MAIL_SMTP_HOST=mailhog
+                # NPDEV_MAIL_SMTP_PORT=1025
+                # NPDEV_MAIL_SMTP_FROM=no-reply@example.com
                 """.formatted(dbName);
     }
 

@@ -31,6 +31,8 @@ import com.finalexec.npdev.service.RuntimePluginRuntimeRefResolver;
 import com.finalexec.npdev.service.RuntimePluginStatusSummary;
 import com.finalexec.npdev.service.RuntimeRefArtifactRealizationProvider;
 import com.finalexec.npdev.service.SandboxedPluginExecutionEngine;
+import com.npdev.adapters.mail.inproc.InProcMailCapabilityAdapter;
+import com.npdev.adapters.mail.smtp.SmtpMailCapabilityAdapter;
 import com.npdev.adapters.notification.inproc.InProcNotificationCapabilityAdapter;
 import com.npdev.adapters.notification.inproc.InProcWarningNotificationCapabilityAdapter;
 import com.npdev.adapters.persistence.inproc.InMemoryPersistenceCapabilityAdapter;
@@ -255,6 +257,32 @@ public class NpdevPluginConfig {
         return namedRuntimePluginRealizationProvider(
                 "notificationWarningCapabilityAdapter",
                 InProcWarningNotificationCapabilityAdapter::new
+        );
+    }
+
+    @Bean
+    public RuntimePluginRealizationProvider mailInProcRuntimePluginRealizationProvider() {
+        return namedRuntimePluginRealizationProvider(
+                "mailInProcCapabilityAdapter",
+                InProcMailCapabilityAdapter::new
+        );
+    }
+
+    // LNCH-11: constructed lazily (realize() is only invoked if a model actually binds a
+    // capability to adapterId "mail-smtp") -- same reason persistencePostgresRuntimePluginRealizationProvider
+    // can require a DataSource unconditionally without breaking in-memory-only apps.
+    @Bean
+    public RuntimePluginRealizationProvider mailSmtpRuntimePluginRealizationProvider(
+            @Value("${npdev.mail.smtp.host:}") String host,
+            @Value("${npdev.mail.smtp.port:25}") int port,
+            @Value("${npdev.mail.smtp.username:}") String username,
+            @Value("${npdev.mail.smtp.password:}") String password,
+            @Value("${npdev.mail.smtp.from:no-reply@example.com}") String from,
+            @Value("${npdev.mail.smtp.starttls:true}") boolean startTls
+    ) {
+        return namedRuntimePluginRealizationProvider(
+                "mailSmtpCapabilityAdapter",
+                () -> new SmtpMailCapabilityAdapter(host, port, username, password, from, startTls)
         );
     }
 

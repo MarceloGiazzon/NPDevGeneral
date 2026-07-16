@@ -84,6 +84,42 @@
       ]
     },
     {
+      "pluginId": "mail-inproc-plugin",
+      "displayName": "In-process mail plugin",
+      "version": "1.0.0",
+      "enabled": true,
+      "adapters": [
+        {
+          "capability": "mail",
+          "operation": "send",
+          "adapterId": "mail-inproc",
+          "bindingKey": "mail.send.inproc",
+          "implementation": {
+            "kind": "runtimeRef",
+            "ref": "mailInProcCapabilityAdapter"
+          }
+        }
+      ]
+    },
+    {
+      "pluginId": "mail-smtp-plugin",
+      "displayName": "SMTP mail plugin",
+      "version": "1.0.0",
+      "enabled": true,
+      "adapters": [
+        {
+          "capability": "mail",
+          "operation": "send",
+          "adapterId": "mail-smtp",
+          "bindingKey": "mail.send.smtp",
+          "implementation": {
+            "kind": "runtimeRef",
+            "ref": "mailSmtpCapabilityAdapter"
+          }
+        }
+      ]
+    },
+    {
       "pluginId": "webhook-inproc-plugin",
       "displayName": "In-process webhook plugin",
       "version": "1.0.0",
