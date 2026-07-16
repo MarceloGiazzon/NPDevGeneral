@@ -565,6 +565,9 @@
             "$ref": "#/$defs/index"
           }
         },
+        "access": {
+          "$ref": "#/$defs/conceptAccess"
+        },
         "events": {
           "type": "array",
           "items": {
@@ -1386,6 +1389,21 @@
         },
         "unique": {
           "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "conceptAccess": {
+      "type": "object",
+      "description": "LNCH-13: declarative row-level (data-scoped) authorization. Each expression is evaluated per-record through the platform's unified expression language (ComputedExpression), with $user.id/$user.tenantId/$user.actorId/$user.roles available alongside the record's own fields. read scopes which rows a query/list may return; write scopes which rows a save/delete may affect. Absent = no additional row-level restriction beyond tenant isolation and role permissions.",
+      "properties": {
+        "read": {
+          "type": "string",
+          "minLength": 1
+        },
+        "write": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "additionalProperties": false

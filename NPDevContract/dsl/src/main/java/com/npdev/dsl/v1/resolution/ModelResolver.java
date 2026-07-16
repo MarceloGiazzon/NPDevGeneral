@@ -4,6 +4,7 @@ import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AutoPanelAst;
 import com.npdev.dsl.v1.ast.CapabilityAst;
 import com.npdev.dsl.v1.ast.CapabilityBindingAst;
+import com.npdev.dsl.v1.ast.ConceptAccessAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.ActionMetadataAst;
 import com.npdev.dsl.v1.ast.ConceptAst;
@@ -193,7 +194,8 @@ public final class ModelResolver {
                 copyPresentationMetadata(concept.getUi()),
                 concept.getTruthLevel(),
                 concept.getModule(),
-                concept.getIndexes()
+                concept.getIndexes(),
+                concept.getAccess()
         );
     }
 
@@ -243,6 +245,16 @@ public final class ModelResolver {
         List<IndexAst> mergedIndexes = new ArrayList<>(base.getIndexes());
         mergedIndexes.addAll(specialization.getIndexes());
 
+        // LNCH-13: specialization's own access rule wins if declared (same "specialization wins,
+        // else fall back to base" pattern as module, just above); a specialization narrowing or
+        // changing row-level scoping doesn't merge with the base rule -- it replaces it, since
+        // ANDing an unrelated base rule in by default could silently over-restrict, and ORing it
+        // in could silently under-restrict (a security-relevant default either way, so this picks
+        // the least-surprising one: explicit replacement).
+        ConceptAccessAst mergedAccess = specialization.getAccess() != null
+                ? specialization.getAccess()
+                : base.getAccess();
+
         return new ConceptAst(
                 specialization.getName(),
                 null,
@@ -254,7 +266,8 @@ public final class ModelResolver {
                 mergePresentationMetadata(base.getUi(), specialization.getUi()),
                 specialization.getTruthLevel(),
                 firstNonBlank(specialization.getModule(), base.getModule()),
-                mergedIndexes
+                mergedIndexes,
+                mergedAccess
         );
     }
 

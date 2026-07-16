@@ -216,6 +216,7 @@ public final class CompiledModelCanonicalJson {
             }
             node.set("invariants", invariantsNode);
             node.set("lifecycle", toLifecycle(concept.getLifecycle()));
+            node.set("access", toConceptAccess(concept.getAccess()));
             concepts.add(node);
         }
         return concepts;
@@ -745,6 +746,17 @@ public final class CompiledModelCanonicalJson {
             out.add(node);
         }
         return out;
+    }
+
+    /** LNCH-13: row-level authorization rule (access: {read, write}). */
+    private static ObjectNode toConceptAccess(CompiledConceptAccess access) {
+        if (access == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("read", safe(access.getRead()));
+        node.put("write", safe(access.getWrite()));
+        return node;
     }
 
     private static ObjectNode toLifecycle(CompiledLifecycle lifecycle) {

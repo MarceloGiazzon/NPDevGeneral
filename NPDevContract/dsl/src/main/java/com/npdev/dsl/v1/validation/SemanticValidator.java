@@ -1,6 +1,7 @@
 package com.npdev.dsl.v1.validation;
 
 import com.npdev.dsl.v1.ast.CapabilityAst;
+import com.npdev.dsl.v1.ast.ConceptAccessAst;
 import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.DomainTypeAst;
@@ -385,6 +386,7 @@ public final class SemanticValidator {
                 }
             }
 
+            validateAccessRules(e.getName(), e.getAccess(), fieldNames, errors);
             validateLifecycle(e, effective, errors);
         }
 
@@ -3451,6 +3453,59 @@ public final class SemanticValidator {
             }
         } catch (ComputedExpression.ExpressionException ignored) {
             // CEL-specific syntax; no static shape check available for it yet.
+        }
+    }
+
+    /**
+     * LNCH-13: compile-time checks for a concept's declarative row-level access rules
+     * (access: { read, write }) -- both must parse, both must be boolean-shaped, and every
+     * referenced field must either be a real field on this concept or a {@code $user.*}
+     * pseudo-variable (the current actor context, always considered valid here since its shape
+     * is fixed by the platform, not the model).
+     */
+    private static void validateAccessRules(
+            String entityName,
+            ConceptAccessAst access,
+            Set<String> fieldNames,
+            List<String> errors
+    ) {
+        if (access == null) {
+            return;
+        }
+        validateAccessExpression(entityName, "read", access.getRead(), fieldNames, errors);
+        validateAccessExpression(entityName, "write", access.getWrite(), fieldNames, errors);
+    }
+
+    private static void validateAccessExpression(
+            String entityName,
+            String label,
+            String expression,
+            Set<String> fieldNames,
+            List<String> errors
+    ) {
+        if (expression == null || expression.isBlank()) {
+            return;
+        }
+        try {
+            ComputedExpression.validate(expression);
+        } catch (ComputedExpression.ExpressionException syntaxError) {
+            errors.add("Entity " + entityName + " access." + label
+                    + ": syntax error in expression: " + expression + " (" + syntaxError.getMessage() + ")");
+            return;
+        }
+        if (!ComputedExpression.isBooleanShaped(expression)) {
+            errors.add("Entity " + entityName + " access." + label
+                    + ": expression must evaluate to a boolean: " + expression);
+        }
+        for (String referenced : ComputedExpression.referencedFields(expression)) {
+            if (referenced.startsWith("$")) {
+                continue;
+            }
+            String rootSegment = referenced.contains(".") ? referenced.substring(0, referenced.indexOf('.')) : referenced;
+            if (!fieldNames.contains(normalize(rootSegment))) {
+                errors.add("Entity " + entityName + " access." + label
+                        + ": references unknown field " + referenced);
+            }
         }
     }
 

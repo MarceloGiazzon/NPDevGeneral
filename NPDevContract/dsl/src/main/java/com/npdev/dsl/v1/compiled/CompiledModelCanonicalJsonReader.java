@@ -229,8 +229,18 @@ public final class CompiledModelCanonicalJsonReader {
                 toLifecycle(node.get("lifecycle")),
                 toPresentationMetadata(node.get("ui")),
                 optionalText(node, "truthLevel"),
-                optionalText(node, "module")
+                optionalText(node, "module"),
+                List.of(),
+                toConceptAccess(node.get("access"))
         );
+    }
+
+    /** LNCH-13: row-level authorization rule (access: {read, write}). */
+    private static CompiledConceptAccess toConceptAccess(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        return new CompiledConceptAccess(optionalText(node, "read"), optionalText(node, "write"));
     }
 
     private static CompiledField toField(JsonNode node) {

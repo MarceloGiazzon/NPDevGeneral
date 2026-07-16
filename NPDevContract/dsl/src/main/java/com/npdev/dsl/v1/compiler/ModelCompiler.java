@@ -59,6 +59,7 @@ import com.npdev.dsl.v1.compiled.CompiledCapabilityExecutionPolicy;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityOperation;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledIndex;
+import com.npdev.dsl.v1.compiled.CompiledConceptAccess;
 import com.npdev.dsl.v1.compiled.CompiledDomainType;
 import com.npdev.dsl.v1.compiled.CompiledDomainTypeUi;
 import com.npdev.dsl.v1.compiled.CompiledEnumOption;
@@ -262,6 +263,9 @@ public final class ModelCompiler {
             for (IndexAst index : concept.getIndexes()) {
                 compiledIndexes.add(new CompiledIndex(index.getName(), index.getFields(), index.isUnique()));
             }
+            CompiledConceptAccess compiledAccess = concept.getAccess() == null
+                    ? null
+                    : new CompiledConceptAccess(concept.getAccess().getRead(), concept.getAccess().getWrite());
 
             concepts.put(
                     concept.getName(),
@@ -276,7 +280,8 @@ public final class ModelCompiler {
                             toCompiledPresentationMetadata(concept.getUi()),
                             concept.getTruthLevel() == null ? null : concept.getTruthLevel().code(),
                             concept.getModule(),
-                            compiledIndexes
+                            compiledIndexes,
+                            compiledAccess
                     )
             );
             List<String> invariantRefs = new ArrayList<>(invariantsByCanonicalRef.keySet());

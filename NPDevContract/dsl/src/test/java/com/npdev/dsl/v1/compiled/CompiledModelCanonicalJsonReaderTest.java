@@ -221,7 +221,12 @@ class CompiledModelCanonicalJsonReaderTest {
                 ),
                 List.of("email != null"),
                 List.of(new CompiledInvariant("UserEmailRequired", "expression", null, "email != null")),
-                lifecycle
+                lifecycle,
+                null,
+                null,
+                null,
+                List.of(),
+                new CompiledConceptAccess("ownerId == $user.id", "ownerId == $user.id")
         );
 
         CompiledCapability capability = new CompiledCapability(
@@ -335,6 +340,13 @@ class CompiledModelCanonicalJsonReaderTest {
         assertEquals(2, restoredStatus.getEnumOptions().size());
         assertTrue(restoredStatus.getEnumOptions().get(0).isDefaultValue());
         assertEquals("Send welcome email", restored.getOrchestrationRules().get(0).getActions().get(0).getAction().getLabel());
+
+        // LNCH-13: access (row-level authorization) must survive the canonical JSON round trip --
+        // confirmed live that it didn't (the writer never emitted it, the reader never parsed it)
+        // before this test/fix, exactly the same class of gap LNCH-6's indexes had.
+        assertNotNull(restoredEntity.getAccess(), "access must round-trip through canonical JSON");
+        assertEquals("ownerId == $user.id", restoredEntity.getAccess().getRead());
+        assertEquals("ownerId == $user.id", restoredEntity.getAccess().getWrite());
     }
 
     @Test

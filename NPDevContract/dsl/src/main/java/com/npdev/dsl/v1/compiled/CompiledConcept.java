@@ -6,6 +6,7 @@ import java.util.List;
 public final class CompiledConcept extends CompiledEntity {
     private final String module;
     private final List<CompiledIndex> indexes;
+    private final CompiledConceptAccess access;
 
     public CompiledConcept(String name, String className, String tableName, List<CompiledField> fields) {
         this(name, className, tableName, fields, List.of(), List.of(), null, null, null, null, List.of());
@@ -99,9 +100,27 @@ public final class CompiledConcept extends CompiledEntity {
             String module,
             List<CompiledIndex> indexes
     ) {
+        this(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel, module, indexes, null);
+    }
+
+    public CompiledConcept(
+            String name,
+            String className,
+            String tableName,
+            List<CompiledField> fields,
+            List<String> expressionInvariants,
+            List<CompiledInvariant> invariants,
+            CompiledLifecycle lifecycle,
+            CompiledPresentationMetadata ui,
+            String truthLevel,
+            String module,
+            List<CompiledIndex> indexes,
+            CompiledConceptAccess access
+    ) {
         super(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel);
         this.module = (module == null || module.isBlank()) ? null : module;
         this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
+        this.access = access;
     }
 
     /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */
@@ -112,6 +131,11 @@ public final class CompiledConcept extends CompiledEntity {
     /** LNCH-6: author-declared secondary indexes (indexes:[]); empty if the concept declares none. */
     public List<CompiledIndex> getIndexes() {
         return indexes;
+    }
+
+    /** LNCH-13: compiled row-level authorization (access: {read, write}); null if the concept declares none. */
+    public CompiledConceptAccess getAccess() {
+        return access;
     }
 
     public static CompiledConcept fromLegacyEntity(CompiledEntity legacy) {

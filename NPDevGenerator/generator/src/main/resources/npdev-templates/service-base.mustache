@@ -11,6 +11,7 @@ import com.npdev.kernel.ExecutionStatus;
 import com.npdev.kernel.KernelRunner;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptGatewaySemanticException;
+import com.npdev.kernel.concepts.ConceptListRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptWriteRequest;
@@ -130,7 +131,12 @@ public class {{entityName}}ServiceBase {
 {{#kernelControlled}}
         runtimeSupport.checkCrudPermission("{{conceptName}}", "LIST", generatedCrudExecutionContext());
 {{/kernelControlled}}
-        return conceptStore.query(currentTenantId(), CONCEPT_NAME, query);
+        // LNCH-13: routed through conceptGateway (not conceptStore directly) so row-level access
+        // rules apply to paged reads the same as getById/list -- see findByIdFromConceptStore.
+        return conceptGateway.query(
+                new com.npdev.kernel.concepts.ConceptQueryRequest(CONCEPT_NAME, currentTenantId(), query),
+                generatedCrudExecutionContext()
+        );
     }
 
 {{#referenceFinders}}
@@ -629,16 +635,25 @@ public class {{entityName}}ServiceBase {
         return tenantId == null || tenantId.isBlank() ? DEFAULT_TENANT_ID : tenantId;
     }
 
+    // LNCH-13: reads go through conceptGateway (not conceptStore directly) so a concept's
+    // declared row-level access.read rule is enforced on this generated CRUD surface the same way
+    // it already was on writes (see enforceWithConceptGateway/enforceDeleteWithConceptGateway) --
+    // conceptStore itself has no notion of row-level scoping, only the gateway/semantic-policy layer does.
     private Optional<{{entityName}}> findByIdFromConceptStore(UUID id) {
         if (id == null) {
             return Optional.empty();
         }
-        return conceptStore.findById(currentTenantId(), CONCEPT_NAME, String.valueOf(id))
-                .map(this::entityFromRecord);
+        return conceptGateway.read(
+                new ConceptReadRequest(CONCEPT_NAME, String.valueOf(id), currentTenantId()),
+                generatedCrudExecutionContext()
+        ).map(this::entityFromRecord);
     }
 
     private List<{{entityName}}> findAllFromConceptStore() {
-        return conceptStore.findAll(currentTenantId(), CONCEPT_NAME).stream()
+        return conceptGateway.list(
+                new ConceptListRequest(CONCEPT_NAME, currentTenantId()),
+                generatedCrudExecutionContext()
+        ).stream()
                 .map(this::entityFromRecord)
                 .toList();
     }

@@ -1,5 +1,8 @@
 package com.npdev.kernel.concepts;
 
+import com.npdev.dsl.v1.expr.ComputedExpression;
+import com.npdev.kernel.ExecutionContext;
+
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -228,6 +231,48 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
             visible.remove(hiddenField);
         }
         return new ConceptRecord(record.conceptName(), record.id(), record.tenantId(), visible);
+    }
+
+    @Override
+    public boolean isRowReadable(ConceptRecord record, ConceptGatewayRequestContext request) {
+        ConceptDefinition concept = concept(request);
+        if (concept == null || concept.access() == null || !hasText(concept.access().read())) {
+            return true;
+        }
+        return evaluateAccessRule(concept.access().read(), record.data(), request.executionContext());
+    }
+
+    @Override
+    public boolean isRowWritable(ConceptGatewayRequestContext request) {
+        ConceptDefinition concept = concept(request);
+        if (concept == null || concept.access() == null || !hasText(concept.access().write())) {
+            return true;
+        }
+        // The previous record (update/delete) if present, else the incoming data (create) --
+        // see the interface javadoc for why: a caller must not be able to modify/delete a row
+        // outside their own scope, NOR create one claiming ownership outside their own scope.
+        Map<String, Object> subject = request.previousRecord()
+                .map(ConceptRecord::data)
+                .orElse(request.data());
+        return evaluateAccessRule(concept.access().write(), subject, request.executionContext());
+    }
+
+    private static boolean evaluateAccessRule(String expression, Map<String, Object> recordData, ExecutionContext context) {
+        Map<String, Object> scope = new LinkedHashMap<>(recordData == null ? Map.of() : recordData);
+        ExecutionContext effectiveContext = context == null ? ExecutionContext.anonymous() : context;
+        scope.put("$user.id", effectiveContext.actorId());
+        scope.put("$user.actorId", effectiveContext.actorId());
+        scope.put("$user.tenantId", effectiveContext.tenantId());
+        scope.put("$user.roles", effectiveContext.roles());
+        try {
+            return ComputedExpression.evaluateBoolean(expression, scope);
+        } catch (ComputedExpression.ExpressionException malformed) {
+            // Fail closed: a row-level access rule that doesn't evaluate cleanly must never
+            // silently grant access -- SemanticValidator already rejects this at model-compile
+            // time, so reaching this at runtime means something bypassed validation (e.g. a
+            // hand-edited compiled model); denying is the only safe default.
+            return false;
+        }
     }
 
     private static boolean canApplyDefault(ConceptDefinition concept, FieldDefinition field) {
@@ -459,13 +504,24 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
             Map<String, FieldDefinition> fields,
             List<InvariantDefinition> invariants,
             LifecycleDefinition lifecycle,
-            Set<String> hiddenFields
+            Set<String> hiddenFields,
+            AccessRules access
     ) {
         public ConceptDefinition {
             name = Objects.requireNonNull(name, "name");
             fields = fields == null ? Map.of() : Map.copyOf(fields);
             invariants = invariants == null ? List.of() : List.copyOf(invariants);
             hiddenFields = hiddenFields == null ? Set.of() : Set.copyOf(hiddenFields);
+        }
+
+        public ConceptDefinition(
+                String name,
+                Map<String, FieldDefinition> fields,
+                List<InvariantDefinition> invariants,
+                LifecycleDefinition lifecycle,
+                Set<String> hiddenFields
+        ) {
+            this(name, fields, invariants, lifecycle, hiddenFields, null);
         }
 
         public static ConceptDefinition of(
@@ -551,6 +607,14 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         public StateTransition {
             from = from == null ? "" : from.trim();
             to = to == null ? "" : to.trim();
+        }
+    }
+
+    /** LNCH-13: a concept's declarative row-level authorization rule (access: {read, write}). */
+    public record AccessRules(String read, String write) {
+        public AccessRules {
+            read = (read == null || read.isBlank()) ? null : read.trim();
+            write = (write == null || write.isBlank()) ? null : write.trim();
         }
     }
 }

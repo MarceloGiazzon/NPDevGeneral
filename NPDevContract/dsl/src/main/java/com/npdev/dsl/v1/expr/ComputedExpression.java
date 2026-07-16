@@ -484,8 +484,14 @@ public final class ComputedExpression {
                 i++;
                 continue;
             }
-            if (Character.isLetter(c) || c == '_') {
+            if (c == '$' || Character.isLetter(c) || c == '_') {
+                // LNCH-13: a leading '$' is a pseudo-variable sigil (e.g. $user.id, the current
+                // actor context in a row-level access rule) -- only valid as the very first
+                // character, not the rest of the identifier or a later dotted segment.
                 int start = i;
+                if (c == '$') {
+                    i++;
+                }
                 while (i < n && (Character.isLetterOrDigit(s.charAt(i)) || s.charAt(i) == '_')) {
                     i++;
                 }

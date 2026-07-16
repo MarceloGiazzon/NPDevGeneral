@@ -150,6 +150,16 @@ class ComputedExpressionTest {
     }
 
     @Test
+    void dollarSigilPseudoVariableParsesAndEvaluates() {
+        // LNCH-13: $user.id etc. -- the current-actor pseudo-variable used in row-level access
+        // rules (ownerId == $user.id). '$' is only valid as the leading character.
+        Map<String, Object> vars = Map.of("ownerId", "u-1", "$user.id", "u-1", "$user.tenantId", "t-1");
+        assertEquals(Boolean.TRUE, eval("ownerId == $user.id", vars));
+        assertEquals("u-1", eval("$user.id", vars));
+        assertDoesNotThrow(() -> ComputedExpression.validate("ownerId == $user.id && tenantId == $user.tenantId"));
+    }
+
+    @Test
     void referencedFieldsSkipsLambdaBodyAndUniqueByKeyArg() {
         // The lambda alias and uniqueBy's per-item key are scoped to the item, not the outer
         // concept -- collecting them as "referenced fields" would produce false unknown-field hits.

@@ -29,6 +29,29 @@ public interface ConceptGatewaySemanticPolicy {
         return record;
     }
 
+    /**
+     * LNCH-13: row-level (data-scoped) read authorization -- does the caller's declared
+     * {@code access.read} rule (if any) allow this specific record to be visible to them?
+     * Called per-record for read/list/query; a {@code false} result means the record is treated
+     * as though it doesn't exist (not found for {@code read}, silently omitted for
+     * {@code list}/{@code query}) -- worded like "not found" rather than "forbidden" so a denial
+     * never confirms a row exists in another user's scope.
+     */
+    default boolean isRowReadable(ConceptRecord record, ConceptGatewayRequestContext request) {
+        return true;
+    }
+
+    /**
+     * LNCH-13: row-level (data-scoped) write authorization -- does the caller's declared
+     * {@code access.write} rule (if any) allow this save/delete to proceed? Evaluated against
+     * the record being affected -- the previous record for an update/delete (so a caller can't
+     * modify/delete a row outside their own scope), or the incoming data for a create (so a
+     * caller can't create a row claiming ownership outside their own scope).
+     */
+    default boolean isRowWritable(ConceptGatewayRequestContext request) {
+        return true;
+    }
+
     static ConceptGatewaySemanticPolicy noop() {
         return NOOP;
     }

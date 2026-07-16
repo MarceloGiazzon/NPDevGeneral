@@ -328,6 +328,17 @@ public final class JsonModelParser {
                 }
             }
 
+            ConceptAccessAst access = null;
+            JsonNode accessNode = ent.get("access");
+            if (accessNode != null) {
+                if (!accessNode.isObject()) {
+                    throw new IOException("Concept " + name + " access must be an object");
+                }
+                String accessRead = readText(accessNode, "read");
+                String accessWrite = readText(accessNode, "write");
+                access = new ConceptAccessAst(accessRead, accessWrite);
+            }
+
             JsonNode conceptEventsNode = ent.get("events");
             if (conceptEventsNode != null) {
                 if (!conceptEventsNode.isArray()) {
@@ -352,7 +363,7 @@ public final class JsonModelParser {
 
             TruthLevel truthLevel = TruthLevel.fromStringOrDefault(readText(ent, "truthLevel"));
             String module = readText(ent, "module");
-            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel, module, indexes);
+            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel, module, indexes, access);
             concepts.add(concept);
             conceptsByLowerName.put(name.toLowerCase(Locale.ROOT), concept);
         }
