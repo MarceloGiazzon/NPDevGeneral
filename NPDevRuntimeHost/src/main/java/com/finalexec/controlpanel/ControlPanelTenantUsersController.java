@@ -2,7 +2,10 @@ package com.finalexec.controlpanel;
 
 import com.finalexec.auth.PasswordHasher;
 import com.npdev.generated.runtime.service.RuntimeContextService;
+import com.npdev.kernel.CapabilityCall;
+import com.npdev.kernel.CapabilityRegistry;
 import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.ports.CapabilityDispatcher;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
@@ -47,6 +50,8 @@ public class ControlPanelTenantUsersController {
 
     private final ObjectProvider<DataSource> dataSourceProvider;
     private final RuntimeContextService runtimeContextService;
+    private final CapabilityRegistry capabilityRegistry;
+    private final CapabilityDispatcher capabilityDispatcher;
     private final String userTable;
     private final String userIdColumn;
     private final String usernameColumn;
@@ -58,6 +63,8 @@ public class ControlPanelTenantUsersController {
     public ControlPanelTenantUsersController(
             ObjectProvider<DataSource> dataSourceProvider,
             RuntimeContextService runtimeContextService,
+            CapabilityRegistry capabilityRegistry,
+            CapabilityDispatcher capabilityDispatcher,
             @Value("${npdev.auth.login.user-table:identity_users}") String userTable,
             @Value("${npdev.auth.login.user-id-column:id}") String userIdColumn,
             @Value("${npdev.auth.login.username-column:username}") String usernameColumn,
@@ -68,6 +75,8 @@ public class ControlPanelTenantUsersController {
     ) {
         this.dataSourceProvider = dataSourceProvider;
         this.runtimeContextService = runtimeContextService;
+        this.capabilityRegistry = capabilityRegistry;
+        this.capabilityDispatcher = capabilityDispatcher;
         this.userTable = userTable;
         this.userIdColumn = userIdColumn;
         this.usernameColumn = usernameColumn;
@@ -146,6 +155,11 @@ public class ControlPanelTenantUsersController {
             // to lock them out. Best-effort: the reset itself already succeeded, so a revocation
             // failure here is logged, not surfaced as a reset failure.
             bumpTokenVersion(connection, tenantId, username);
+            // LNCH-4/LNCH-11: best-effort notification -- only sent if this app bound a "mail"
+            // capability and the account has an email on file; a missing capability/email is not
+            // an error, since admin-forced reset is explicitly the fallback for apps/accounts
+            // without one (see PasswordResetController's self-service flow for the primary path).
+            notifyPasswordChanged(connection, tenantId, username);
             return ResponseEntity.ok(Map.of("ok", true, "username", username, "tenantId", tenantId));
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "reset_password_failed");
@@ -173,6 +187,39 @@ public class ControlPanelTenantUsersController {
             return ResponseEntity.ok(Map.of("ok", true, "username", username, "tenantId", tenantId));
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "revoke_sessions_failed");
+        }
+    }
+
+    private void notifyPasswordChanged(Connection connection, String tenantId, String username) {
+        if (!capabilityRegistry.has("mail")) {
+            return;
+        }
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT email FROM " + userTable + " WHERE tenant_id = ? AND " + usernameColumn + " = ?")) {
+            ps.setString(1, tenantId);
+            ps.setString(2, username);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    return;
+                }
+                String email = rs.getString(1);
+                if (email == null || email.isBlank()) {
+                    return;
+                }
+                String adapterId = capabilityRegistry.debugDefaultAdapterId("mail");
+                CapabilityCall call = new CapabilityCall(
+                        "mail", "EmailCapability", adapterId, "send",
+                        List.of(
+                                email,
+                                "Your password was changed",
+                                "An administrator reset the password for account '" + username
+                                        + "'. If you did not expect this, contact your administrator."
+                        )
+                );
+                capabilityDispatcher.invoke(call, Map.of());
+            }
+        } catch (Exception ignored) {
+            // Best-effort -- the reset itself already succeeded.
         }
     }
 

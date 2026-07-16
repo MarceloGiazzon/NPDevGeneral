@@ -64,7 +64,7 @@ public class CreateUserController {
     }
 
     public record CreateUserRequest(
-            String username, String displayName, String password, String roleName,
+            String username, String displayName, String password, String email, String roleName,
             String primaryLinkId, String secondaryLinkId
     ) {
     }
@@ -97,7 +97,7 @@ public class CreateUserController {
                 }
 
                 UUID userId = UUID.randomUUID();
-                IdentityProvisioning.insertIdentityUser(connection, userId, username, displayName, tenantId);
+                IdentityProvisioning.insertIdentityUser(connection, userId, username, displayName, request.email(), tenantId);
 
                 UUID roleId = IdentityProvisioning.findOrCreateRole(
                         connection, tenantId, roleName, "Created via /api/auth/create-user");

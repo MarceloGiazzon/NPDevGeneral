@@ -54,7 +54,7 @@ public class ControlPanelAdminUserController {
         this.credentialPasswordColumn = credentialPasswordColumn;
     }
 
-    public record CreateTenantAdminRequest(String tenantId, String username, String displayName, String password) {
+    public record CreateTenantAdminRequest(String tenantId, String username, String displayName, String password, String email) {
     }
 
     @PostMapping
@@ -92,7 +92,7 @@ public class ControlPanelAdminUserController {
                 }
 
                 UUID userId = UUID.randomUUID();
-                IdentityProvisioning.insertIdentityUser(connection, userId, username, displayName, tenantId);
+                IdentityProvisioning.insertIdentityUser(connection, userId, username, displayName, request.email(), tenantId);
 
                 UUID roleId = IdentityProvisioning.findOrCreateRole(
                         connection, tenantId, ADMIN_ROLE_NAME, "Created via ControlPanel /api/admin/tenant-admins");

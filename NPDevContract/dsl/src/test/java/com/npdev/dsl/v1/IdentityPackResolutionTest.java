@@ -60,6 +60,8 @@ class IdentityPackResolutionTest {
         CompiledConcept user = compiled.findConcept("id::User").orElseThrow();
         CompiledConcept role = compiled.findConcept("id::Role").orElseThrow();
         CompiledConcept userRole = compiled.findConcept("id::UserRole").orElseThrow();
+        // LNCH-4: PasswordResetToken.userId must bond to User the same way UserRole.userId does.
+        CompiledConcept passwordResetToken = compiled.findConcept("id::PasswordResetToken").orElseThrow();
 
         assertTrue(user.getFields().stream().anyMatch(f -> "username".equals(f.getName()) && f.isUnique()),
                 "User.username should be unique");
@@ -73,6 +75,12 @@ class IdentityPackResolutionTest {
         CompiledField roleId = field(userRole, "roleId");
         assertEquals("id::Role", roleId.getReferenceSemantics().getTarget());
         assertEquals("restrict", roleId.getReferenceSemantics().getOnDelete());
+
+        assertTrue(passwordResetToken.getFields().stream().anyMatch(f -> "tokenHash".equals(f.getName()) && f.isUnique()),
+                "PasswordResetToken.tokenHash should be unique");
+        CompiledField tokenUserId = field(passwordResetToken, "userId");
+        assertEquals("id::User", tokenUserId.getReferenceSemantics().getTarget());
+        assertEquals("cascade", tokenUserId.getReferenceSemantics().getOnDelete());
     }
 
     private static CompiledField field(CompiledConcept concept, String name) {

@@ -46,7 +46,7 @@ public class BootstrapAdminController {
         this.credentialPasswordColumn = credentialPasswordColumn;
     }
 
-    public record BootstrapRequest(String username, String displayName, String password, String tenantId) {
+    public record BootstrapRequest(String username, String displayName, String password, String email, String tenantId) {
     }
 
     @PostMapping("/api/auth/bootstrap-admin")
@@ -70,7 +70,7 @@ public class BootstrapAdminController {
                 }
 
                 UUID userId = UUID.randomUUID();
-                IdentityProvisioning.insertIdentityUser(connection, userId, username, displayName, tenantId);
+                IdentityProvisioning.insertIdentityUser(connection, userId, username, displayName, request.email(), tenantId);
 
                 UUID roleId = IdentityProvisioning.findOrCreateRole(
                         connection, tenantId, ADMIN_ROLE_NAME, "Bootstrapped administrator role");

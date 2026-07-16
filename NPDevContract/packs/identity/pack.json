@@ -36,6 +36,17 @@
         { "name": "roleId", "type": "reference", "required": true,
           "reference": { "target": "Role", "onDelete": "restrict" } }
       ]
+    },
+    {
+      "name": "PasswordResetToken",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "userId", "type": "reference", "required": true,
+          "reference": { "target": "User", "onDelete": "cascade" } },
+        { "name": "tokenHash", "type": "string", "required": true, "unique": true, "maxLength": 64 },
+        { "name": "expiresAt", "type": "datetime", "required": true },
+        { "name": "usedAt", "type": "datetime", "required": false }
+      ]
     }
   ]
 }

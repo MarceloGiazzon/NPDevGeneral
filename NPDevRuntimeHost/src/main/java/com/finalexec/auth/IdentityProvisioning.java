@@ -44,13 +44,25 @@ public final class IdentityProvisioning {
 
     public static void insertIdentityUser(Connection connection, UUID userId, String username, String displayName,
                                            String tenantId) throws Exception {
+        insertIdentityUser(connection, userId, username, displayName, null, tenantId);
+    }
+
+    /**
+     * LNCH-4: {@code email} is optional (self-service password reset simply can't reach a user with
+     * none on file -- they fall back to an admin-forced reset in ControlPanel) but every caller
+     * should pass a real value when the registration flow collected one, since it's the only way
+     * {@link PasswordResetController} can find someone to email.
+     */
+    public static void insertIdentityUser(Connection connection, UUID userId, String username, String displayName,
+                                           String email, String tenantId) throws Exception {
         try (PreparedStatement ps = connection.prepareStatement(
                 "INSERT INTO identity_users (id, username, display_name, email, active, tenant_id) "
-                        + "VALUES (?, ?, ?, NULL, TRUE, ?)")) {
+                        + "VALUES (?, ?, ?, ?, TRUE, ?)")) {
             ps.setObject(1, userId);
             ps.setString(2, username);
             ps.setString(3, displayName);
-            ps.setString(4, tenantId);
+            ps.setString(4, email == null || email.isBlank() ? null : email.trim());
+            ps.setString(5, tenantId);
             ps.executeUpdate();
         }
         ensureTenantRegistered(connection, tenantId);

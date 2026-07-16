@@ -72,6 +72,14 @@ public class JwtBearerAuthFilter extends OncePerRequestFilter {
         if (uri.equals("/api/auth/bootstrap-admin") || uri.equals("/api/v1/auth/bootstrap-admin")) {
             return true;
         }
+        // LNCH-4: password-reset request/confirm are, by design, reachable by someone who is NOT
+        // yet authenticated (that's the whole point of self-service reset) -- same chicken-and-egg
+        // exemption as login/bootstrap-admin above. Neither leaks anything: request always returns
+        // the same generic response, confirm only succeeds against a valid single-use token.
+        if (uri.equals("/api/auth/password-reset/request") || uri.equals("/api/v1/auth/password-reset/request")
+                || uri.equals("/api/auth/password-reset/confirm") || uri.equals("/api/v1/auth/password-reset/confirm")) {
+            return true;
+        }
         // An earlier filter in the chain (SuperUserCredentialAuthFilter, order -110) may already
         // have authenticated this request via a completely independent credential (the ControlPanel's
         // X-Super-User-Key, unrelated to business auth.mode). This filter must not clobber that with
