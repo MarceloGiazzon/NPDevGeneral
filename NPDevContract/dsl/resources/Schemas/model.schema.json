@@ -548,6 +548,10 @@
           "type": "string",
           "minLength": 1
         },
+        "renamedFrom": {
+          "type": "string",
+          "description": "Declares this concept is a rename of a previously-existing concept with this name, so a regeneration's schema-lifecycle classifies its table as a rename instead of an unrelated drop+create."
+        },
         "fields": {
           "type": "array",
           "minItems": 1,
