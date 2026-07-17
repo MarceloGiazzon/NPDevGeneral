@@ -507,6 +507,13 @@ public final class GeneratorMain {
         if (normalized == null) {
             return null;
         }
+        // LNCH-20: config.json files in this repo are authored with Windows-style backslash
+        // paths (e.g. "..\\Output"). Path.of() only treats '\' as a separator on Windows --
+        // on Linux/macOS the whole string becomes one literal (wrong) path segment. '/' is a
+        // valid separator on every OS Java runs on, including Windows, so normalizing to it
+        // here makes the same config.json resolve correctly regardless of host OS (confirmed
+        // live: this was a real CI failure on a Linux runner, not a hypothetical).
+        normalized = normalized.replace('\\', '/');
 
         Path resolved = Path.of(normalized);
         if (!resolved.isAbsolute()) {

@@ -108,7 +108,7 @@ final class HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest {
         Path runtimeHostLibs = ensureRuntimeHostLibs(evidenceRoot);
 
         CommandResult bootJar = runCommand(
-                List.of(finalAppRoot.resolve("gradlew.bat").toString(), "--no-daemon", "bootJar"),
+                List.of(gradlewPath(finalAppRoot).toString(), "--no-daemon", "bootJar"),
                 finalAppRoot,
                 Map.of("NPDEV_RUNTIMEHOST_LIBS_DIR", runtimeHostLibs.toString()),
                 Duration.ofMinutes(6)
@@ -364,7 +364,7 @@ final class HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest {
         Path manifest = runtimeHostLibs.resolve("runtimehost-libs-manifest.json");
         CommandResult adapterJars = runCommand(
                 List.of(
-                        WORKSPACE_ROOT.resolve("NPDevKernel/gradlew.bat").toString(),
+                        gradlewPath(WORKSPACE_ROOT.resolve("NPDevKernel")).toString(),
                         ":adapters:auth-context-jwt:jar",
                         ":adapters:authz-default:jar",
                         ":adapters:bulkhead-inproc:jar",
@@ -488,6 +488,20 @@ final class HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest {
             Thread.sleep(1000L);
         }
         throw new IllegalStateException("Packaged app did not become healthy on port " + port, last);
+    }
+
+    /** LNCH-20: the platform ships one gradlew per OS (no `.bat` on Linux/macOS); this test
+     * hardcoded `gradlew.bat` unconditionally, which fails to exec at all on a Linux CI runner
+     * (confirmed live). Also defensively marks the resolved wrapper executable -- a fresh copy
+     * made by {@code FinalAppAssembler} (or any plain file copy) does not necessarily preserve
+     * the source file's POSIX execute bit. */
+    private static Path gradlewPath(Path root) {
+        boolean windows = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win");
+        Path gradlew = root.resolve(windows ? "gradlew.bat" : "gradlew");
+        if (!windows) {
+            gradlew.toFile().setExecutable(true);
+        }
+        return gradlew;
     }
 
     private static CommandResult runCommand(
