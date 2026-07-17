@@ -7,6 +7,7 @@ public final class ConceptAst extends EntityAst {
     private final String module;
     private final List<IndexAst> indexes;
     private final ConceptAccessAst access;
+    private final String renamedFrom;
 
     public ConceptAst(String name, List<FieldAst> fields, List<InvariantAst> invariants) {
         this(name, null, null, fields, invariants, List.of(), null, null, null, null, List.of());
@@ -121,10 +122,30 @@ public final class ConceptAst extends EntityAst {
             List<IndexAst> indexes,
             ConceptAccessAst access
     ) {
+        this(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel, module, indexes, access, null);
+    }
+
+    /** Declares this concept is a rename of a previously-existing concept, not a brand-new one (see getRenamedFrom). */
+    public ConceptAst(
+            String name,
+            String extendsName,
+            String specializesName,
+            List<FieldAst> fields,
+            List<InvariantAst> invariants,
+            List<EventAst> events,
+            LifecycleAst lifecycle,
+            PresentationMetadataAst ui,
+            TruthLevel truthLevel,
+            String module,
+            List<IndexAst> indexes,
+            ConceptAccessAst access,
+            String renamedFrom
+    ) {
         super(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel);
         this.module = (module == null || module.isBlank()) ? null : module;
         this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
         this.access = access;
+        this.renamedFrom = renamedFrom;
     }
 
     /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */
@@ -140,6 +161,11 @@ public final class ConceptAst extends EntityAst {
     /** LNCH-13: author-declared row-level authorization (access: {read, write}); null if the concept declares none. */
     public ConceptAccessAst getAccess() {
         return access;
+    }
+
+    /** The previous concept name this concept was renamed from, or null if this is not a declared rename. */
+    public String getRenamedFrom() {
+        return renamedFrom;
     }
 
     public static ConceptAst fromLegacyEntity(EntityAst legacy) {

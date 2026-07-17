@@ -283,7 +283,8 @@ public final class ModelCompiler {
                             concept.getTruthLevel() == null ? null : concept.getTruthLevel().code(),
                             concept.getModule(),
                             compiledIndexes,
-                            compiledAccess
+                            compiledAccess,
+                            concept.getRenamedFrom()
                     )
             );
             List<String> invariantRefs = new ArrayList<>(invariantsByCanonicalRef.keySet());

@@ -196,7 +196,8 @@ public final class ModelResolver {
                 concept.getTruthLevel(),
                 concept.getModule(),
                 concept.getIndexes(),
-                concept.getAccess()
+                concept.getAccess(),
+                concept.getRenamedFrom()
         );
     }
 
@@ -268,7 +269,8 @@ public final class ModelResolver {
                 specialization.getTruthLevel(),
                 firstNonBlank(specialization.getModule(), base.getModule()),
                 mergedIndexes,
-                mergedAccess
+                mergedAccess,
+                specialization.getRenamedFrom()
         );
     }
 

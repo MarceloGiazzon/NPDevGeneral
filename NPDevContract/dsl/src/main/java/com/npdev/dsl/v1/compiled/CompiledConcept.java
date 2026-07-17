@@ -7,6 +7,7 @@ public final class CompiledConcept extends CompiledEntity {
     private final String module;
     private final List<CompiledIndex> indexes;
     private final CompiledConceptAccess access;
+    private final String renamedFrom;
 
     public CompiledConcept(String name, String className, String tableName, List<CompiledField> fields) {
         this(name, className, tableName, fields, List.of(), List.of(), null, null, null, null, List.of());
@@ -117,10 +118,30 @@ public final class CompiledConcept extends CompiledEntity {
             List<CompiledIndex> indexes,
             CompiledConceptAccess access
     ) {
+        this(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel, module, indexes, access, null);
+    }
+
+    /** Declares this concept is a rename of a previously-existing concept, not a brand-new one (see getRenamedFrom). */
+    public CompiledConcept(
+            String name,
+            String className,
+            String tableName,
+            List<CompiledField> fields,
+            List<String> expressionInvariants,
+            List<CompiledInvariant> invariants,
+            CompiledLifecycle lifecycle,
+            CompiledPresentationMetadata ui,
+            String truthLevel,
+            String module,
+            List<CompiledIndex> indexes,
+            CompiledConceptAccess access,
+            String renamedFrom
+    ) {
         super(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel);
         this.module = (module == null || module.isBlank()) ? null : module;
         this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
         this.access = access;
+        this.renamedFrom = renamedFrom;
     }
 
     /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */
@@ -136,6 +157,11 @@ public final class CompiledConcept extends CompiledEntity {
     /** LNCH-13: compiled row-level authorization (access: {read, write}); null if the concept declares none. */
     public CompiledConceptAccess getAccess() {
         return access;
+    }
+
+    /** The previous concept name this concept was renamed from, or null if this is not a declared rename. */
+    public String getRenamedFrom() {
+        return renamedFrom;
     }
 
     public static CompiledConcept fromLegacyEntity(CompiledEntity legacy) {

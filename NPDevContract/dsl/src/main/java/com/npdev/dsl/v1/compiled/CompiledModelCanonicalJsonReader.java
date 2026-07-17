@@ -231,7 +231,8 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "truthLevel"),
                 optionalText(node, "module"),
                 toIndexes(node.get("indexes")),
-                toConceptAccess(node.get("access"))
+                toConceptAccess(node.get("access")),
+                optionalText(node, "renamedFrom")
         );
     }
 
