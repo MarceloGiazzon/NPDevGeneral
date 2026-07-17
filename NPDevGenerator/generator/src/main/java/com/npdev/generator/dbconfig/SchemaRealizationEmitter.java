@@ -609,6 +609,32 @@ public final class SchemaRealizationEmitter {
         return renames;
     }
 
+    /**
+     * LNCH-1 P2 (2.4): new table name -> previous table name, for a concept declaring
+     * {@code renamedFrom} -- but ONLY when the rename implies an actual physical table rename.
+     * An explicit {@code tableName} override is a property of the table's physical identity, not
+     * of the concept's authoring name (that's the whole point of declaring one), so a concept
+     * rename does not by itself change an overridden table's physical name; in that case the old
+     * and new physical names are identical and this returns {@code null} (a no-op, not a rename).
+     * Reuses {@link SqlIdentifierSupport#tableName(String, String)} for both the "is this an
+     * override" check and the old-name derivation -- never re-deriving the
+     * toSnakePlural/safeSqlIdentifier convention by hand (guardrail 11).
+     */
+    private static Map.Entry<String, String> conceptTableRename(CompiledConcept concept) {
+        String renamedFrom = concept.getRenamedFrom();
+        if (renamedFrom == null || renamedFrom.isBlank()) {
+            return null;
+        }
+        String currentTable = SqlIdentifierSupport.tableName(concept);
+        String conventionalCurrentTable = SqlIdentifierSupport.tableName(concept.getName(), null);
+        String explicitOverride = currentTable.equals(conventionalCurrentTable) ? null : concept.getTableName();
+        String oldTable = SqlIdentifierSupport.tableName(renamedFrom, explicitOverride);
+        if (oldTable.equals(currentTable)) {
+            return null;
+        }
+        return Map.entry(currentTable, oldTable);
+    }
+
     private static boolean isConnectableAnchor(CompiledField field) {
         return field != null && "anchor".equalsIgnoreCase(field.getConnectable());
     }
@@ -730,6 +756,7 @@ public final class SchemaRealizationEmitter {
         Map<String, List<String>> businessTableAdditiveColumns = new LinkedHashMap<>();
         Map<String, Map<String, String>> businessTableColumnTypes = new LinkedHashMap<>();
         Map<String, Map<String, String>> businessTableRenamedColumns = new LinkedHashMap<>();
+        Map<String, String> businessTableRenames = new LinkedHashMap<>();
         if (plan.createBusinessTables()) {
             Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
             for (CompiledConcept concept : model.getConcepts()) {
@@ -740,6 +767,10 @@ public final class SchemaRealizationEmitter {
                 Map<String, String> renames = columnRenames(concept, conceptsByName);
                 if (!renames.isEmpty()) {
                     businessTableRenamedColumns.put(table, renames);
+                }
+                Map.Entry<String, String> tableRename = conceptTableRename(concept);
+                if (tableRename != null) {
+                    businessTableRenames.put(tableRename.getKey(), tableRename.getValue());
                 }
             }
         }
@@ -763,6 +794,7 @@ public final class SchemaRealizationEmitter {
         manifest.put("businessTableAdditiveColumns", businessTableAdditiveColumns);
         manifest.put("businessTableColumnTypes", businessTableColumnTypes);
         manifest.put("businessTableRenamedColumns", businessTableRenamedColumns);
+        manifest.put("businessTableRenames", businessTableRenames);
         manifest.put("sourceOfTruth", Map.of(
                 "internal", resolveInternalSchemaSourcePath(plan.definitionPath()).toString(),
                 "business", modelSourcePath == null ? "" : modelSourcePath.toAbsolutePath().normalize().toString(),
