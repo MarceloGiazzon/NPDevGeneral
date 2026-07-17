@@ -146,6 +146,12 @@ public final class SchemaRealizationEmitter {
         // bug, mirroring how 'version BIGINT NOT NULL DEFAULT 0' is handled.
         sql.append("ALTER TABLE ").append(table).append(" ADD COLUMN IF NOT EXISTS tenant_id ")
                 .append(renderType("VARCHAR(120)", engine)).append(" DEFAULT 'default';\n");
+        // LNCH-16: same in-place-upgrade reasoning as tenant_id above -- DEFAULT 0 backfills
+        // pre-existing rows so JdbcBusinessConceptStore's row_version-aware save path (gated on
+        // TableColumns#has("row_version")) works the moment this column lands, no separate
+        // migration step needed.
+        sql.append("ALTER TABLE ").append(table).append(" ADD COLUMN IF NOT EXISTS row_version ")
+                .append(renderType("BIGINT", engine)).append(" DEFAULT 0;\n");
         for (CompiledField field : concept.getFields()) {
             if (!isAdditiveEligible(concept, field, conceptsByName)) {
                 continue;
@@ -206,7 +212,7 @@ public final class SchemaRealizationEmitter {
     // would otherwise silently produce a CREATE TABLE with the same column listed twice -- invalid
     // SQL that fails at the database, not at generation time where the error is actually
     // diagnosable. Fail fast here instead, with a message that tells the model author what to do.
-    private static final Set<String> RESERVED_BUSINESS_COLUMN_NAMES = Set.of("version", "tenant_id");
+    private static final Set<String> RESERVED_BUSINESS_COLUMN_NAMES = Set.of("version", "row_version", "tenant_id");
 
     private static void validateNoReservedColumnCollision(CompiledConcept concept) {
         for (CompiledField field : concept.getFields()) {
@@ -216,7 +222,8 @@ public final class SchemaRealizationEmitter {
                         "Concept " + concept.getName() + " has a field '" + field.getName()
                                 + "' whose column name '" + column + "' collides with a platform-reserved "
                                 + "business-table column (every generated table implicitly gets 'version' "
-                                + "for optimistic concurrency and 'tenant_id' for tenant isolation). "
+                                + "for optimistic concurrency, 'row_version' for LNCH-16 CAS updates through "
+                                + "ConceptGateway, and 'tenant_id' for tenant isolation). "
                                 + "Rename this field in the model to something else (e.g. '"
                                 + field.getName() + "Ref').");
             }
@@ -258,6 +265,12 @@ public final class SchemaRealizationEmitter {
             lines.add(0, "  id UUID NOT NULL");
         }
         lines.add("  version BIGINT NOT NULL DEFAULT 0");
+        // LNCH-16: distinct from "version" above -- that column backs the pre-existing generated-
+        // entity checkOptimisticVersion compare (JPA path); row_version backs the real
+        // compare-and-increment ConceptGateway/ConceptStore now perform. Kept as separate columns
+        // rather than unifying them so this change carries zero coupling/regression risk to the
+        // existing mechanism.
+        lines.add("  row_version BIGINT NOT NULL DEFAULT 0");
         lines.add("  tenant_id " + renderType("VARCHAR(120)", engine) + " NOT NULL DEFAULT 'default'");
         lines.add("  PRIMARY KEY (" + idColumn + ")");
         sql.append("CREATE TABLE IF NOT EXISTS ").append(table).append(" (\n");
@@ -525,6 +538,7 @@ public final class SchemaRealizationEmitter {
             columns.add(0, "id");
         }
         columns.add("version");
+        columns.add("row_version");
         columns.add("tenant_id");
         return List.copyOf(columns);
     }
@@ -536,6 +550,7 @@ public final class SchemaRealizationEmitter {
     private static List<String> additiveColumnNames(CompiledConcept concept, Map<String, CompiledConcept> conceptsByName) {
         List<String> columns = new ArrayList<>();
         columns.add("tenant_id");
+        columns.add("row_version");
         for (CompiledField field : concept.getFields()) {
             if (isAdditiveEligible(concept, field, conceptsByName)) {
                 columns.add(SqlIdentifierSupport.columnName(field));
@@ -568,6 +583,7 @@ public final class SchemaRealizationEmitter {
             types.put("id", "UUID");
         }
         types.put("version", "BIGINT");
+        types.put("row_version", "BIGINT");
         types.put("tenant_id", "VARCHAR(120)");
         return types;
     }

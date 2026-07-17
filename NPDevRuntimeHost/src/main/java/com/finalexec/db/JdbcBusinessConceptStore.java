@@ -7,6 +7,7 @@ import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.concepts.ConceptPage;
 import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptRecord;
+import com.npdev.kernel.concepts.ConceptStoreOptimisticLockException;
 import com.npdev.kernel.ports.ConceptStore;
 
 import javax.sql.DataSource;
@@ -188,6 +189,12 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         return index;
     }
 
+    /**
+     * LNCH-16: tables generated before optimistic locking existed have no {@code row_version}
+     * column ({@link TableColumns#has} backward-compat check) and keep today's unconditional-upsert
+     * behavior exactly as-is. Once the column is present, every write is tracked/incremented through
+     * {@link #saveVersioned}, whether or not the caller actually asked for a compare-and-swap.
+     */
     @Override
     public ConceptRecord save(ConceptRecord record) {
         ConceptShape shape = shape(record.conceptName());
@@ -196,20 +203,91 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             TableColumns columns = tableColumns(connection, shape.tableName());
             dbRecord.keySet().removeIf(column -> !columns.has(column));
             dbRecord.putIfAbsent(shape.idColumn(), coerceId(record.id()));
-            List<String> columnNames = new ArrayList<>(dbRecord.keySet());
-            columnNames.remove(shape.idColumn());
-            columnNames.add(0, shape.idColumn());
-            String sql = upsertSql(connection, shape.tableName(), shape.idColumn(), columnNames);
-            try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                int index = 1;
-                for (String column : columnNames) {
-                    statement.setObject(index++, coerceValue(column, dbRecord.get(column), shape.dslTypeByColumn().get(column)));
-                }
-                statement.executeUpdate();
+            if (!columns.has("row_version")) {
+                executeUpsert(connection, shape, dbRecord, columns);
+                return record;
             }
-            return record;
+            return saveVersioned(connection, shape, record, dbRecord);
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed saving concept " + record.conceptName() + " to JDBC store", exception);
+        }
+    }
+
+    private void executeUpsert(
+            Connection connection, ConceptShape shape, Map<String, Object> dbRecord, TableColumns columns
+    ) throws SQLException {
+        List<String> columnNames = new ArrayList<>(dbRecord.keySet());
+        columnNames.remove(shape.idColumn());
+        columnNames.add(0, shape.idColumn());
+        String sql = upsertSql(connection, shape.tableName(), shape.idColumn(), columnNames);
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            int index = 1;
+            for (String column : columnNames) {
+                statement.setObject(index++, coerceValue(column, dbRecord.get(column), shape.dslTypeByColumn().get(column)));
+            }
+            statement.executeUpdate();
+        }
+    }
+
+    /**
+     * {@code record.rowVersion() == null} is an unconditional write (create, or an explicit
+     * force-update) -- still tracked through {@code row_version} so a later compare-and-swap has
+     * something to compare against. A non-null rowVersion is a compare-and-swap request: the UPDATE
+     * only touches the row if its stored {@code row_version} still matches what the caller last
+     * read; zero rows affected means someone else won the race (or the row is gone), and the caller
+     * gets a {@link ConceptStoreOptimisticLockException} carrying whatever is currently stored.
+     */
+    private ConceptRecord saveVersioned(
+            Connection connection, ConceptShape shape, ConceptRecord record, Map<String, Object> dbRecord
+    ) throws SQLException {
+        if (record.rowVersion() == null) {
+            long newVersion = currentRowVersion(connection, shape, record).map(version -> version + 1).orElse(0L);
+            dbRecord.put("row_version", newVersion);
+            executeUpsert(connection, shape, dbRecord, tableColumns(connection, shape.tableName()));
+            return new ConceptRecord(record.conceptName(), record.id(), record.tenantId(), record.data(), newVersion);
+        }
+
+        long newVersion = record.rowVersion() + 1;
+        List<String> columnNames = new ArrayList<>(dbRecord.keySet());
+        columnNames.remove(shape.idColumn());
+        columnNames.remove("row_version");
+        List<String> setTerms = new ArrayList<>();
+        for (String column : columnNames) {
+            setTerms.add(column + " = ?");
+        }
+        setTerms.add("row_version = ?");
+        String sql = "UPDATE " + shape.tableName() + " SET " + String.join(", ", setTerms)
+                + " WHERE " + shape.idColumn() + " = ? AND tenant_id = ? AND row_version = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            int index = 1;
+            for (String column : columnNames) {
+                statement.setObject(index++, coerceValue(column, dbRecord.get(column), shape.dslTypeByColumn().get(column)));
+            }
+            statement.setObject(index++, newVersion);
+            statement.setObject(index++, coerceId(record.id()));
+            statement.setObject(index++, record.tenantId());
+            statement.setObject(index, record.rowVersion());
+            int affected = statement.executeUpdate();
+            if (affected == 0) {
+                Optional<ConceptRecord> current = findById(record.tenantId(), record.conceptName(), record.id());
+                throw new ConceptStoreOptimisticLockException(record.conceptName(), record.id(), record.tenantId(), current);
+            }
+        }
+        return new ConceptRecord(record.conceptName(), record.id(), record.tenantId(), record.data(), newVersion);
+    }
+
+    private Optional<Long> currentRowVersion(Connection connection, ConceptShape shape, ConceptRecord record) throws SQLException {
+        String sql = "SELECT row_version FROM " + shape.tableName() + " WHERE " + shape.idColumn() + " = ? AND tenant_id = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setObject(1, coerceId(record.id()));
+            statement.setObject(2, record.tenantId());
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) {
+                    return Optional.empty();
+                }
+                long value = resultSet.getLong(1);
+                return resultSet.wasNull() ? Optional.empty() : Optional.of(value);
+            }
         }
     }
 
@@ -231,9 +309,16 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         ResultSetMetaData metaData = resultSet.getMetaData();
         Map<String, Object> data = new LinkedHashMap<>();
         String id = "";
+        Long rowVersion = null;
         for (int index = 1; index <= metaData.getColumnCount(); index++) {
             String column = metaData.getColumnLabel(index);
             Object value = resultSet.getObject(index);
+            // LNCH-16: row_version is tracked as its own ConceptRecord component, not a DSL field --
+            // exclude it from data() so it never leaks into REST responses/generated entities.
+            if ("row_version".equalsIgnoreCase(column)) {
+                rowVersion = value == null ? null : ((Number) value).longValue();
+                continue;
+            }
             if (isJsonColumnType(metaData, index) || isJsonDslField(shape, column)) {
                 value = parseJsonColumnValue(column, value);
             }
@@ -243,7 +328,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
                 id = String.valueOf(value);
             }
         }
-        return new ConceptRecord(shape.conceptName(), id, tenantId, data);
+        return new ConceptRecord(shape.conceptName(), id, tenantId, data, rowVersion);
     }
 
     private static boolean isJsonColumnType(ResultSetMetaData metaData, int index) throws SQLException {

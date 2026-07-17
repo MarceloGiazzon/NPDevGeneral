@@ -5,6 +5,7 @@ import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledReferenceSemantics;
 import com.npdev.kernel.concepts.ConceptRecord;
+import com.npdev.kernel.concepts.ConceptStoreOptimisticLockException;
 import com.npdev.kernel.concepts.ReferentialIntegrityException;
 import com.npdev.kernel.ports.ConceptStore;
 
@@ -53,10 +54,32 @@ public final class InMemoryConceptStore implements ConceptStore {
         return List.copyOf(out);
     }
 
+    /**
+     * LNCH-16: {@code record.rowVersion() == null} is an unconditional write (today's behavior) --
+     * used for both creates and force-writes -- but the stored version is still tracked/incremented
+     * so a later caller can start doing real compare-and-swap against it. A non-null rowVersion is
+     * a compare-and-swap request: it must match the currently-stored version (0 rows / no row =
+     * conflict), and succeeds by storing {@code rowVersion + 1}. {@code synchronized} on this whole
+     * method (like every other method here) makes the read-compare-write atomic for free.
+     */
     @Override
     public synchronized ConceptRecord save(ConceptRecord record) {
-        records.put(key(record.tenantId(), record.conceptName(), record.id()), record);
-        return record;
+        String key = key(record.tenantId(), record.conceptName(), record.id());
+        ConceptRecord current = records.get(key);
+        long newVersion;
+        if (record.rowVersion() == null) {
+            newVersion = current == null ? 0L : current.rowVersion() + 1;
+        } else {
+            if (current == null || !record.rowVersion().equals(current.rowVersion())) {
+                throw new ConceptStoreOptimisticLockException(
+                        record.conceptName(), record.id(), record.tenantId(), Optional.ofNullable(current));
+            }
+            newVersion = record.rowVersion() + 1;
+        }
+        ConceptRecord toStore = new ConceptRecord(
+                record.conceptName(), record.id(), record.tenantId(), record.data(), newVersion);
+        records.put(key, toStore);
+        return toStore;
     }
 
     @Override

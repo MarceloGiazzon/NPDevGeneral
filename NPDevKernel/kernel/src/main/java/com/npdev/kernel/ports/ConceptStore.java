@@ -13,6 +13,14 @@ public interface ConceptStore {
 
     List<ConceptRecord> findAll(String tenantId, String conceptName);
 
+    /**
+     * LNCH-16: {@code record.rowVersion() == null} is an unconditional write (create, or an
+     * explicit force-update) -- implementations still track/increment a stored version so a later
+     * caller can compare-and-swap against it. A non-null {@code rowVersion} is a compare-and-swap
+     * request: it must match what is currently stored, or the implementation throws
+     * {@link com.npdev.kernel.concepts.ConceptStoreOptimisticLockException} with the current record
+     * attached. On success the returned record's {@code rowVersion} is the new (incremented) value.
+     */
     ConceptRecord save(ConceptRecord record);
 
     void deleteById(String tenantId, String conceptName, String id);

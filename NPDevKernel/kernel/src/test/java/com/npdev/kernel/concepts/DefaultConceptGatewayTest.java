@@ -47,6 +47,62 @@ class DefaultConceptGatewayTest {
         assertTrue(audit.records.stream().allMatch(record -> "tenant-a".equals(record.tenantId())));
     }
 
+    /**
+     * LNCH-16: two callers read the same row, both compute their edit against rowVersion 0. The
+     * first writer wins and moves the row to rowVersion 1; the second (the loser of the race) must
+     * be rejected with the winner's current state attached, not silently overwrite it.
+     */
+    @Test
+    void interleavedUpdatesRejectLoserWithWinnersCurrentState() {
+        DefaultConceptGateway gateway = new DefaultConceptGateway(new InMemoryConceptStore());
+        ExecutionContext context = ExecutionContext.of("tenant-a", "actor-a");
+        ConceptRecord created = gateway.save(
+                new ConceptWriteRequest("UserAccount", "user-1", "tenant-a", Map.of("email", "a@example.test")),
+                context
+        );
+        assertEquals(0L, created.rowVersion());
+
+        ConceptRecord winnerWrite = gateway.save(
+                new ConceptWriteRequest("UserAccount", "user-1", "tenant-a", Map.of("email", "winner@example.test"), 0L, false),
+                context
+        );
+        assertEquals(1L, winnerWrite.rowVersion());
+        assertEquals("winner@example.test", winnerWrite.data().get("email"));
+
+        ConceptGatewayOptimisticLockException conflict = assertThrows(
+                ConceptGatewayOptimisticLockException.class,
+                () -> gateway.save(
+                        new ConceptWriteRequest("UserAccount", "user-1", "tenant-a", Map.of("email", "loser@example.test"), 0L, false),
+                        context
+                )
+        );
+        assertTrue(conflict.currentRecord().isPresent());
+        assertEquals("winner@example.test", conflict.currentRecord().orElseThrow().data().get("email"));
+        assertEquals(1L, conflict.currentRecord().orElseThrow().rowVersion());
+
+        Optional<ConceptRecord> loaded = gateway.read(new ConceptReadRequest("UserAccount", "user-1", "tenant-a"), context);
+        assertEquals("winner@example.test", loaded.orElseThrow().data().get("email"));
+    }
+
+    @Test
+    void forceUpdateBypassesVersionCheckButStillIncrementsIt() {
+        DefaultConceptGateway gateway = new DefaultConceptGateway(new InMemoryConceptStore());
+        ExecutionContext context = ExecutionContext.of("tenant-a", "actor-a");
+        gateway.save(new ConceptWriteRequest("UserAccount", "user-1", "tenant-a", Map.of("email", "a@example.test")), context);
+        gateway.save(
+                new ConceptWriteRequest("UserAccount", "user-1", "tenant-a", Map.of("email", "b@example.test"), 0L, false),
+                context
+        );
+
+        ConceptRecord forced = gateway.save(
+                new ConceptWriteRequest("UserAccount", "user-1", "tenant-a", Map.of("email", "forced@example.test"), 99L, true),
+                context
+        );
+
+        assertEquals("forced@example.test", forced.data().get("email"));
+        assertEquals(2L, forced.rowVersion());
+    }
+
     @Test
     void rejectsCrossTenantReadsBeforeStoreLookup() {
         CapturingAuditLogStore audit = new CapturingAuditLogStore();

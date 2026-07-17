@@ -201,8 +201,20 @@ public final class DefaultConceptGateway implements ConceptGateway {
         enforcePermission(effectiveContext, "concept.write", request.conceptName(), "CONCEPT_WRITE", request.id());
         enforceRowWritable(requestContext, "CONCEPT_WRITE");
 
-        ConceptRecord record = new ConceptRecord(request.conceptName(), request.id(), tenantId, decision.data());
-        ConceptRecord saved = store.save(record);
+        // LNCH-16: expectedRowVersion is a compare-and-swap request; force explicitly opts out of
+        // it even when a version was supplied (a flow declaring last-write-wins intent). Anything
+        // else -- no expectedRowVersion, the common case for every caller that predates this
+        // feature -- is an unconditional write, unchanged from today.
+        Long rowVersion = request.force() ? null : request.expectedRowVersion();
+        ConceptRecord record = new ConceptRecord(request.conceptName(), request.id(), tenantId, decision.data(), rowVersion);
+        ConceptRecord saved;
+        try {
+            saved = store.save(record);
+        } catch (ConceptStoreOptimisticLockException exception) {
+            audit(effectiveContext, "CONCEPT_WRITE", request.conceptName(), request.id(), "CONFLICT", "optimistic_lock", tenantId);
+            throw new ConceptGatewayOptimisticLockException(
+                    exception.conceptName(), exception.id(), exception.tenantId(), exception.currentRecord());
+        }
         ConceptSemanticDecision afterCommit = evaluateRuleProfiles(
                 requestContext.withData(saved.data()).withPreviousRecord(Optional.of(saved)),
                 ruleProfilesForAfterCommit(effectiveContext)
