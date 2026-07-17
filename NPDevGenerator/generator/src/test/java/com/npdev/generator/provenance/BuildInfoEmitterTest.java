@@ -19,7 +19,7 @@ final class BuildInfoEmitterTest {
     Path tempDir;
 
     @Test
-    void emitsRealModelVersionAndGeneratorVersionEvenWithoutGitContext() throws Exception {
+    void emitsRealModelVersionAndGeneratorVersionFromGitDescribe() throws Exception {
         CompiledModel model = new CompiledModel("trial.widgets", "1.0.0", "2.3", Map.of());
 
         new BuildInfoEmitter().emit(model, tempDir);
@@ -32,7 +32,13 @@ final class BuildInfoEmitterTest {
         }
         assertEquals("2.3", properties.getProperty("npdev.version"));
         assertEquals("trial.widgets", properties.getProperty("npdev.namespace"));
-        assertEquals("0.1.0", properties.getProperty("npdev.generator.version"));
+        // LNCH-21: the generator version now tracks `git describe --tags --always` against the
+        // real platform release tags (docs/RELEASE_PROCESS.md) rather than a hardcoded literal --
+        // this test runs from inside the actual NPDev git checkout (which has real tags: beta0,
+        // beta1, ...), so it must resolve to something real, not the "no git context" fallback.
+        String generatorVersion = properties.getProperty("npdev.generator.version");
+        assertFalse(generatorVersion == null || generatorVersion.isBlank());
+        assertFalse("UNKNOWN".equals(generatorVersion), "expected a real git-describe value from within a real checkout, not the no-git fallback");
         assertFalse(properties.getProperty("npdev.builtAt").isBlank());
         assertEquals(properties.getProperty("npdev.builtAt"), properties.getProperty("npdev.generator.generatedAtUtc"));
     }

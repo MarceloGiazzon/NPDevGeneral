@@ -28,7 +28,9 @@ import java.util.concurrent.TimeUnit;
 public final class BuildInfoEmitter {
 
     public static final String RELATIVE_PATH = "src/main/resources/npdev-build-info.properties";
-    private static final String GENERATOR_VERSION = "0.1.0";
+    /** LNCH-21 follow-up: fallback only, used when the generator isn't running from inside a git
+     * checkout (or `git describe` finds no tags at all) -- see {@link #resolveGeneratorVersion}. */
+    private static final String FALLBACK_GENERATOR_VERSION = "0.1.0";
     private static final String UNKNOWN = "UNKNOWN";
 
     public void emit(CompiledModel model, Path finalAppRoot) throws IOException {
@@ -40,7 +42,7 @@ public final class BuildInfoEmitter {
         properties.put("npdev.namespace", valueOrUnknown(model == null ? null : model.getNamespace()));
         properties.put("npdev.commit", git.commit());
         properties.put("npdev.builtAt", nowUtc);
-        properties.put("npdev.generator.version", GENERATOR_VERSION);
+        properties.put("npdev.generator.version", resolveGeneratorVersion(git));
         properties.put("npdev.generator.tag", git.branch());
         // Back-compat key: GeneratedBuildInfoLogger reads generatedAtUtc, not builtAt.
         properties.put("npdev.generator.generatedAtUtc", nowUtc);
@@ -60,6 +62,21 @@ public final class BuildInfoEmitter {
         return value == null || value.isBlank() ? UNKNOWN : value.trim();
     }
 
+    /**
+     * LNCH-21 follow-up: the platform's own release tags (`docs/RELEASE_PROCESS.md`) are the real
+     * version identity, not a hardcoded literal that silently drifts from what actually shipped.
+     * {@code git describe --tags --always} reports "the nearest tag, plus how far past it HEAD is"
+     * (e.g. {@code beta1-90-gd66a0d1} when 90 commits past the {@code beta1} tag) -- exact-on-a-tag
+     * builds report just the tag name. Falls back to {@link #FALLBACK_GENERATOR_VERSION} when
+     * there's no git checkout, no tags at all, or git isn't on PATH -- provenance is informational,
+     * never a hard generation dependency (same posture as the commit/branch fields above).
+     */
+    private static String resolveGeneratorVersion(GitInfo git) {
+        return (git.describeVersion() == null || git.describeVersion().isBlank())
+                ? FALLBACK_GENERATOR_VERSION
+                : git.describeVersion();
+    }
+
     private static String toPropertiesText(Map<String, String> properties) {
         StringBuilder builder = new StringBuilder();
         for (Map.Entry<String, String> entry : properties.entrySet()) {
@@ -76,11 +93,12 @@ public final class BuildInfoEmitter {
     private static GitInfo resolveGitInfo() {
         Path workspaceRoot = locateWorkspaceRoot(Path.of("").toAbsolutePath().normalize());
         if (workspaceRoot == null) {
-            return new GitInfo(UNKNOWN, UNKNOWN);
+            return new GitInfo(UNKNOWN, UNKNOWN, null);
         }
         String commit = runGit(workspaceRoot, "rev-parse", "--short", "HEAD");
         String branch = runGit(workspaceRoot, "rev-parse", "--abbrev-ref", "HEAD");
-        return new GitInfo(commit == null ? UNKNOWN : commit, branch == null ? UNKNOWN : branch);
+        String describeVersion = runGit(workspaceRoot, "describe", "--tags", "--always");
+        return new GitInfo(commit == null ? UNKNOWN : commit, branch == null ? UNKNOWN : branch, describeVersion);
     }
 
     private static Path locateWorkspaceRoot(Path start) {
@@ -118,6 +136,6 @@ public final class BuildInfoEmitter {
         }
     }
 
-    private record GitInfo(String commit, String branch) {
+    private record GitInfo(String commit, String branch, String describeVersion) {
     }
 }

@@ -19,12 +19,26 @@ Format: see `docs/RELEASE_PROCESS.md`. Dates are release-tag dates, not commit d
 - LNCH-22: `docs/DSL_REFERENCE.md` (generated from the schema —
   `scripts/docs/generate_dsl_reference.py`), `docs/TUTORIAL_FIRST_APP.md` (golden-path tutorial,
   gate-tested by reusing the `simple-contact-intake` sample).
-- LNCH-23: `LICENSE` (Apache-2.0, draft), `docs/RELEASE_PROCESS.md`,
+- LNCH-23: `LICENSE` (Apache-2.0, copyright Marcelo Giazzon), `docs/RELEASE_PROCESS.md`,
   `docs/adr/ADR-0007-distribution-model.md`, `scripts/quality/run-release-checklist-gate.ps1`.
+  License, telemetry ("none at launch"), and distribution model ("self-hosted, source-first")
+  decisions ratified 2026-07-17; trademark clearance remains open (a preliminary search found a
+  real naming collision — see ADR-0007 §5 — a professional search is still required).
 - `docs/adr/ADR-0006-authoring-path.md`: the AI-first, editor-secondary authoring-path decision
-  (LNCH-18).
+  (LNCH-18); `docs/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` for recording the DoD's still-outstanding
+  non-author test run.
+- `docs/CONFIGURATION.md` (LNCH-22): full reference for every `npdev.*`/`NPDEV_*` startup-config
+  property, matching the exact anchor IDs `StartupValidator`'s error messages already link to.
+- `scripts/quality/run-app-upgrade-contract-gate.ps1` (LNCH-21): proves live that a `web/`
+  customization survives two full regenerations byte-identical — the gap
+  `docs/architecture/APP_UPGRADE_CONTRACT.md` had flagged as "true by construction but not yet
+  proven by a test."
 
 ### Behavior changes
+- `BuildInfoEmitter`'s `npdev.generator.version` (embedded in every generated app's
+  `npdev-build-info.properties`) now reads `git describe --tags --always` against the platform's
+  real release tags instead of a hardcoded `"0.1.0"` literal, falling back to that literal only
+  when there's no git checkout to read.
 - `JdbcBusinessConceptStore` now joins the ambient Spring transaction (via `DataSourceUtils`)
   instead of always opening an independent auto-committing connection. A generated concept's
   `create`/`update` service method (`@Transactional`) now genuinely rolls back its kernel-gateway

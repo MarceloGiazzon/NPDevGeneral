@@ -71,10 +71,12 @@ Adopted as platform policy, to be enforced by tooling in a future increment rath
   change to opt in) or an explicit entry in a future `RELEASE_NOTES.md`/changelog (LNCH-23) under
   a "behavior changes" heading, so an upgrader can audit what changed between the version their
   app was generated on and the version they're upgrading to.
-- **The generator major version** (currently hardcoded `"0.1.0"`, `BuildInfoEmitter.
-  GENERATOR_VERSION`) should track the platform's own release tags (LNCH-23's release process)
-  rather than staying a hardcoded literal — flagged as a follow-up, not fixed in this doc's own
-  commit, since it touches the release-tagging mechanism LNCH-23 is defining.
+- **The generator version now tracks the platform's own release tags** — `BuildInfoEmitter.
+  resolveGeneratorVersion` runs `git describe --tags --always` (falling back to a fixed literal
+  only when there's no git checkout to read at all), so `npdev.generator.version` in a generated
+  app's `npdev-build-info.properties` reflects real provenance (e.g. `beta1-90-gd66a0d1` — 90
+  commits past the `beta1` tag) instead of a hardcoded string that silently drifted from what
+  actually shipped. This closes the gap this section originally flagged as a follow-up.
 
 ## `RegenerationPolicy.CUSTOM_STUBS` — a dormant mechanism worth knowing about
 
@@ -91,12 +93,13 @@ re-mount model), this is the existing seam to wire up — not a new mechanism to
 > A FinalApp generated on version N upgrades to N+1 with local `web/` customizations intact,
 > proven in the release gate.
 
-**True today, by construction**, for the intended customization path (`apps/<App>/web/`,
-`apps/<App>/definition/*.json`) — since that source never lives inside the wiped-and-regenerated
-output tree, any regeneration (version N to N+1, or same-version to same-version) re-mounts it
-fresh. **Not yet proven by an automated test or wired into a release gate** — no existing test
-asserts this end to end (`RegenerationEvolutionSafetyTest` proves determinism of the generator's
-own compiled artifacts, not preservation of app-owned files across a full `Build-NpdevApp.ps1`
-run). Flagged as the concrete remaining increment: a gate test that runs `Build-NpdevApp.ps1`
-twice against the same app definition with a `web/` customization present, asserting the
-customization file is byte-identical in the output both times and the app still boots.
+**Proven** by `scripts/quality/run-app-upgrade-contract-gate.ps1`: runs `Build-NpdevApp.ps1` twice
+against a real AppGen sample (`simple-user-registry-inmemory`) with a `web/` customization marker
+file present, asserting the marker is byte-identical in the mounted output
+(`src/main/resources/static/`) after both runs. Confirmed live (2026-07-17) — the customization
+survived two full regenerations unchanged, for the intended customization path (`apps/<App>/web/`,
+`apps/<App>/definition/*.json`), exactly as this document's "re-mount, not in-place preservation"
+correction predicted. **Not yet wired into a CI/release gate run** (LNCH-19's Linux-CI wiring is
+the natural home for that) and does not yet assert the app boots afterward — the generator step
+alone (`-GenerateOnly`) is what's proven; a full build+boot pass is the next increment if deeper
+assurance is wanted.

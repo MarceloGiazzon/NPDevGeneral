@@ -202,11 +202,4 @@
 
 ---
 
-Copyright 2026 [DRAFT -- copyright holder name pending LNCH-23 ratification, see
-docs/adr/ADR-0007-distribution-model.md]
-
-DRAFT NOTICE: This LICENSE file was drafted as part of LNCH-23 (docs/LAUNCH_READINESS_GAPS.md)
-with Apache-2.0 as the recommended default for a platform aiming at broad adoption/contribution.
-It is not a final legal decision -- see docs/adr/ADR-0007-distribution-model.md for the reasoning
-and the explicit ratification step this still needs (copyright holder name, and confirmation that
-Apache-2.0, rather than a more restrictive or a dual-license model, is the intended choice).
+Copyright 2026 Marcelo Giazzon

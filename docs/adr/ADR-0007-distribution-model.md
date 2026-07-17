@@ -2,9 +2,10 @@
 
 ## Status
 
-Proposed — 2026-07-17. Drafted per `docs/LAUNCH_READINESS_GAPS.md` LNCH-23. **All decisions below
-are drafts pending explicit ratification** — this ADR exists to make the decisions concrete and
-reviewable, not to declare them final.
+**Partially ratified — 2026-07-17.** Drafted per `docs/LAUNCH_READINESS_GAPS.md` LNCH-23; decisions
+1-4 below were reviewed and confirmed by the project owner on 2026-07-17. Decision 5 (trademark)
+remains genuinely open — it requires a real professional search this session cannot perform, not
+just a sign-off. See each decision's own status line below.
 
 ## Context
 
@@ -15,18 +16,16 @@ evaluating the platform.
 
 ## Decisions
 
-### 1. License — Apache-2.0 (draft)
+### 1. License — Apache-2.0 (ratified 2026-07-17)
 
-A `LICENSE` file (Apache-2.0 full text) has been added at the repo root. Apache-2.0 is a common
-default for a platform aiming at broad adoption and outside contribution: permissive, includes an
-explicit patent grant (relevant for a code-generation platform, where "did the generator's output
-infringe something" is a real question worth a clear answer), and is well understood by
-enterprises evaluating whether they can adopt a dependency. **Not yet ratified**: the copyright
-holder line in `LICENSE` is a placeholder — needs the actual legal entity/individual name before
-this is real. A source-available or all-rights-reserved posture remains available if the
-distribution-model decision below lands on "not open source yet."
+A `LICENSE` file (Apache-2.0 full text) has been added at the repo root, copyright held by
+Marcelo Giazzon (individual). Apache-2.0 is a common default for a platform aiming at broad
+adoption and outside contribution: permissive, includes an explicit patent grant (relevant for a
+code-generation platform, where "did the generator's output infringe something" is a real
+question worth a clear answer), and is well understood by enterprises evaluating whether they can
+adopt a dependency.
 
-### 2. Distribution model — self-hosted, source-first (draft)
+### 2. Distribution model — self-hosted, source-first (ratified 2026-07-17)
 
 Given today's architecture — a generator that emits a Spring Boot FinalApp the operator then
 builds/deploys themselves (LNCH-7's Docker-Compose-first posture), no multi-tenant SaaS control
@@ -45,10 +44,10 @@ what actually exists. Concretely:
   Compose, no SaaS assumptions baked in) and the support surface (issue tracker / docs, not a
   hosted support desk).
 
-**Not yet ratified**: whether a future SaaS/managed offering is ever pursued is explicitly out of
-scope for this decision — it doesn't foreclose that, it just states the launch-day model.
+Whether a future SaaS/managed offering is ever pursued is explicitly out of scope for this
+decision — it doesn't foreclose that, it just states the launch-day model.
 
-### 3. Telemetry / crash reporting — none at launch (draft)
+### 3. Telemetry / crash reporting — none at launch (ratified 2026-07-17)
 
 **Decision: ship without telemetry or crash reporting for the initial release.** Reasoning:
 
@@ -74,23 +73,37 @@ written into the maturity ledger.
 
 ### 5. Naming/trademark check — "NPDev"
 
-**Not resolved by this ADR** — a real trademark clearance requires a professional search (USPTO/
-equivalent trademark databases, common-law usage search) that this session cannot perform. What
-this ADR does instead: records the check as an explicit, tracked open item rather than an implicit
-assumption that the name is clear. A cursory check (no more authoritative than a search-engine
-query) turns up no obviously-conflicting registered product in the same space (application
-development platforms) as of this writing, but that is not a substitute for real clearance and
-should not be treated as one. **Before any public launch announcement, this needs an actual
-trademark search — flagged here as a release-blocking checklist item in `docs/RELEASE_PROCESS.md`,
-not resolved.**
+**Not resolved by this ADR — and a preliminary search found a real, concrete naming collision
+worth your attention before this goes further.**
+
+A real trademark clearance requires a professional search (USPTO/equivalent trademark databases,
+common-law usage search) that this session cannot perform. What this ADR does instead: records
+the check as an explicit, tracked open item, plus reports what a preliminary web search (2026-07-17)
+actually turned up — not a substitute for real clearance, but more than "no obvious conflict":
+
+- **"NP DEV Soluções em T.I."** — a Brazilian IT services/software company, live at
+  `www.npdev.com.br`, offering IT maintenance/support, network consulting, infrastructure
+  development, and web systems. Same "NP DEV"/"NPDev" name, same broad industry (software/IT
+  services), different country/market. This is not a confirmed registered-trademark conflict —
+  it's a real, currently-operating business using a near-identical name in an adjacent space,
+  which is exactly the kind of thing a professional search would need to assess for actual legal
+  risk (registered mark? common-law rights in Brazil vs. elsewhere? likelihood-of-confusion
+  analysis for a different specific product category?).
+- No results surfaced any conflicting product specifically in the "low-code application
+  development platform" category (Mendix/Appian/OutSystems/etc. — none use this name), which is
+  the more specific market this platform would actually compete in.
+
+**Before any public launch announcement, this needs an actual trademark search, and the
+`npdev.com.br` finding specifically should be reviewed with that search** — flagged here as a
+release-blocking checklist item in `docs/RELEASE_PROCESS.md`, not resolved by this preliminary
+pass.
 
 ## Consequences
 
 - `docs/RELEASE_PROCESS.md` and a lightweight release-checklist gate
   (`scripts/quality/run-release-checklist-gate.ps1`) enforce the mechanical parts of this ADR
   (LICENSE present, CHANGELOG entry present, HEAD tagged) — they cannot enforce trademark
-  clearance or license ratification, which remain human decisions this ADR surfaces rather than
-  automates away.
-- Every decision above is marked draft/not-yet-ratified deliberately; treating them as final
-  without an explicit human ratification step would be presumptuous for decisions with real legal
-  weight (copyright holder identity, trademark exposure).
+  clearance, which remains a human step this ADR surfaces rather than automates away.
+- Decisions 1-4 are ratified as of 2026-07-17 and should be treated as the platform's actual
+  position going forward, not a draft. Decision 5 (trademark) is genuinely still open — not a
+  formality, a real search has not happened — and remains a release-blocking checklist item.

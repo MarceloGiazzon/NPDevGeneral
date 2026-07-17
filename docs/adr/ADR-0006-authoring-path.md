@@ -94,6 +94,9 @@ slice item 1 above, which the run likely depends on to be practical for someone 
 access — is the concrete next step once this ADR is ratified. Recorded here as an explicit open
 item rather than silently marked done.
 
+**When someone runs this test**: use `docs/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` to structure and
+record the session — it's the concrete "how" behind this DoD's "friction log" requirement.
+
 ## Consequences
 
 - Every future authoring-experience investment (docs, tooling, error messages — see LNCH-22)
