@@ -255,7 +255,9 @@ class CompiledModelCanonicalJsonReaderTest {
                 List.of(flowStep),
                 inputSchema,
                 null,
-                flowAction
+                flowAction,
+                false,
+                new CompiledFlowSchedule("0 0 2 * * *", List.of("acme", "beta"))
         );
 
         CompiledOrchestration orchestration = new CompiledOrchestration(
@@ -321,6 +323,11 @@ class CompiledModelCanonicalJsonReaderTest {
         assertEquals("payload", restoredFlow.getSteps().get(0).getMapToRef());
         assertNotNull(restoredFlow.getSteps().get(0).getCapabilityCall());
         assertEquals("notification", restoredFlow.getSteps().get(0).getCapabilityCall().getCapabilityName());
+        // LNCH-12: schedule must survive the canonical JSON round trip that every generated app's
+        // NPDevModelProvider actually reads at boot -- same class of gap LNCH-13's access field had.
+        assertNotNull(restoredFlow.getSchedule(), "schedule must round-trip through canonical JSON");
+        assertEquals("0 0 2 * * *", restoredFlow.getSchedule().getCron());
+        assertEquals(List.of("acme", "beta"), restoredFlow.getSchedule().getTenantScope());
         assertNotNull(restoredFlow.getSteps().get(0).getAction());
         assertEquals("Send welcome notification", restoredFlow.getSteps().get(0).getAction().getLabel());
         CompiledField restoredManagerId = findField(restoredEntity, "managerId");

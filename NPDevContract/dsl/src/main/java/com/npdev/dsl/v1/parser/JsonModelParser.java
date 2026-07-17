@@ -445,6 +445,7 @@ public final class JsonModelParser {
                 SchemaAst outputSchema = parseSchema(flowNode.get("outputSchema"), "flows[" + flowName + "].outputSchema");
                 ActionMetadataAst action = parseActionMetadata(flowNode.get("action"), "flows[" + flowName + "].action");
                 Boolean startEndpoint = readOptionalBoolean(flowNode, "startEndpoint");
+                FlowScheduleAst schedule = parseFlowSchedule(flowNode.get("schedule"), flowName);
                 flows.add(new FlowAst(
                         flowName,
                         concept,
@@ -455,7 +456,8 @@ public final class JsonModelParser {
                         inputSchema,
                         outputSchema,
                         action,
-                        Boolean.TRUE.equals(startEndpoint)
+                        Boolean.TRUE.equals(startEndpoint),
+                        schedule
                 ));
             }
         }
@@ -1186,6 +1188,35 @@ public final class JsonModelParser {
         Long maxSizeBytes = maxSizeNode != null && maxSizeNode.isNumber() ? maxSizeNode.asLong() : null;
         boolean multiple = node.has("multiple") && node.get("multiple").asBoolean(false);
         return new FileMetadataAst(contentTypes, maxSizeBytes, multiple);
+    }
+
+    /**
+     * LNCH-12: {@code schedule.tenantScope} accepts either a single tenant id string or an array
+     * of them, mirroring how many other fields in this DSL accept a "one or many" shorthand.
+     */
+    private static FlowScheduleAst parseFlowSchedule(JsonNode scheduleNode, String flowName) throws IOException {
+        if (scheduleNode == null || scheduleNode.isNull()) {
+            return null;
+        }
+        if (!scheduleNode.isObject()) {
+            throw new IOException("Flow " + flowName + " schedule must be an object");
+        }
+        String cron = readText(scheduleNode, "cron");
+        if (cron == null || cron.isBlank()) {
+            throw new IOException("Flow " + flowName + " schedule.cron is required");
+        }
+        JsonNode tenantScopeNode = scheduleNode.get("tenantScope");
+        List<String> tenantScope;
+        if (tenantScopeNode == null || tenantScopeNode.isNull()) {
+            tenantScope = List.of();
+        } else if (tenantScopeNode.isTextual()) {
+            tenantScope = List.of(tenantScopeNode.asText());
+        } else if (tenantScopeNode.isArray()) {
+            tenantScope = parseTextArray(tenantScopeNode);
+        } else {
+            throw new IOException("Flow " + flowName + " schedule.tenantScope must be a string or array of strings");
+        }
+        return new FlowScheduleAst(cron.trim(), tenantScope);
     }
 
     private static List<String> parseTextArray(JsonNode node) {

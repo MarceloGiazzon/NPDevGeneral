@@ -417,9 +417,20 @@ public final class CompiledModelCanonicalJson {
             node.set("outputSchema", toSchema(flow.getOutputSchema()));
             node.set("action", toActionMetadata(flow.getAction()));
             node.set("steps", toFlowSteps(flow.getSteps()));
+            node.set("schedule", toFlowSchedule(flow.getSchedule()));
             flows.add(node);
         }
         return flows;
+    }
+
+    private static ObjectNode toFlowSchedule(CompiledFlowSchedule schedule) {
+        if (schedule == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("cron", safe(schedule.getCron()));
+        node.set("tenantScope", toStringArray(schedule.getTenantScope()));
+        return node;
     }
 
     private static ArrayNode toQueries(CompiledModel model) {

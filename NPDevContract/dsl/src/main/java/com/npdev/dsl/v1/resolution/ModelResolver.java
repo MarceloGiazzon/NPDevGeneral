@@ -15,6 +15,7 @@ import com.npdev.dsl.v1.ast.EventPayloadAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.FlowHookAst;
+import com.npdev.dsl.v1.ast.FlowScheduleAst;
 import com.npdev.dsl.v1.ast.IndexAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
@@ -817,7 +818,8 @@ public final class ModelResolver {
                 flow.getInputSchema(),
                 flow.getOutputSchema(),
                 cloneActionMetadata(flow.getAction()),
-                flow.isStartEndpoint()
+                flow.isStartEndpoint(),
+                flow.getSchedule()
         );
     }
 
@@ -856,6 +858,11 @@ public final class ModelResolver {
         List<StepAst> mergedSteps = applyHooks(base.getSteps(), specialization.getHooks(), specialization.getName());
         validateStepNameUniqueness(mergedSteps, specialization.getName());
 
+        // LNCH-12: same "specialization wins, else base" rationale as LNCH-13's access field --
+        // a specialization narrowing/changing the schedule replaces it rather than merging, since
+        // there's no sensible way to combine two cron expressions.
+        FlowScheduleAst mergedSchedule = specialization.getSchedule() != null
+                ? specialization.getSchedule() : base.getSchedule();
         return new FlowAst(
                 specialization.getName(),
                 base.getConcept(),
@@ -866,7 +873,8 @@ public final class ModelResolver {
                 base.getInputSchema(),
                 base.getOutputSchema(),
                 firstNonNullAction(specialization.getAction(), base.getAction()),
-                specialization.isStartEndpoint() || base.isStartEndpoint()
+                specialization.isStartEndpoint() || base.isStartEndpoint(),
+                mergedSchedule
         );
     }
 

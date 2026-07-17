@@ -15,6 +15,7 @@ public final class FlowAst {
     private final SchemaAst outputSchema;
     private final ActionMetadataAst action;
     private final boolean startEndpoint;
+    private final FlowScheduleAst schedule;
 
     public FlowAst(String name, String concept, List<StepAst> steps) {
         this(name, concept, null, null, List.of(), steps, null, null, null);
@@ -74,6 +75,22 @@ public final class FlowAst {
             ActionMetadataAst action,
             boolean startEndpoint
     ) {
+        this(name, concept, mode, specializesName, hooks, steps, inputSchema, outputSchema, action, startEndpoint, null);
+    }
+
+    public FlowAst(
+            String name,
+            String concept,
+            String mode,
+            String specializesName,
+            List<FlowHookAst> hooks,
+            List<StepAst> steps,
+            SchemaAst inputSchema,
+            SchemaAst outputSchema,
+            ActionMetadataAst action,
+            boolean startEndpoint,
+            FlowScheduleAst schedule
+    ) {
         this.name = name;
         this.concept = concept;
         this.mode = mode;
@@ -84,6 +101,7 @@ public final class FlowAst {
         this.outputSchema = outputSchema;
         this.action = action;
         this.startEndpoint = startEndpoint;
+        this.schedule = schedule;
     }
 
     public String getName() { return name; }
@@ -118,5 +136,9 @@ public final class FlowAst {
 
     public boolean isStartEndpoint() {
         return startEndpoint;
+    }
+
+    public FlowScheduleAst getSchedule() {
+        return schedule;
     }
 }

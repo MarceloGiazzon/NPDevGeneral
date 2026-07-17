@@ -451,8 +451,16 @@ public final class CompiledModelCanonicalJsonReader {
                 toSchema(node.get("inputSchema")),
                 toSchema(node.get("outputSchema")),
                 toActionMetadata(node.get("action")),
-                booleanValue(node, "startEndpoint")
+                booleanValue(node, "startEndpoint"),
+                toFlowSchedule(node.get("schedule"))
         );
+    }
+
+    private static CompiledFlowSchedule toFlowSchedule(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return null;
+        }
+        return new CompiledFlowSchedule(text(node, "cron"), toStringList(node.get("tenantScope")));
     }
 
     private static CompiledFlowStep toFlowStep(JsonNode node) {

@@ -12,6 +12,7 @@ import com.npdev.dsl.v1.ast.EventPayloadAst;
 import com.npdev.dsl.v1.ast.EnumOptionAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.FlowAst;
+import com.npdev.dsl.v1.ast.FlowScheduleAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.ModelAst;
@@ -2088,6 +2089,37 @@ public final class SemanticValidator {
         }
     }
 
+    /**
+     * LNCH-12: structural-only cron check (field count, not full cron grammar -- this module has
+     * no Spring dependency to reuse {@code CronExpression.parse} for real validation, and the
+     * runtime scheduler will reject a malformed expression loudly at boot anyway). Accepts both
+     * the classic 5-field cron (minute hour day month weekday) and Spring's 6-field
+     * seconds-first form, since the DoD explicitly calls for shrinking a schedule to seconds in a
+     * gate test.
+     */
+    private static void validateFlowSchedule(FlowAst flow, List<String> errors) {
+        FlowScheduleAst schedule = flow.getSchedule();
+        if (schedule == null) {
+            return;
+        }
+        String cron = schedule.getCron();
+        if (cron == null || cron.isBlank()) {
+            errors.add("Flow " + flow.getName() + ": schedule.cron must not be blank");
+            return;
+        }
+        int fieldCount = cron.trim().split("\\s+").length;
+        if (fieldCount != 5 && fieldCount != 6) {
+            errors.add("Flow " + flow.getName() + ": schedule.cron must have 5 or 6 space-separated fields, got "
+                    + fieldCount + " (\"" + cron + "\")");
+        }
+        for (String tenantId : schedule.getTenantScope()) {
+            if (tenantId == null || tenantId.isBlank()) {
+                errors.add("Flow " + flow.getName() + ": schedule.tenantScope must not contain blank entries");
+                break;
+            }
+        }
+    }
+
     private static void validateFlows(
             ModelAst modelAst,
             Map<String, ConceptAst> entitiesByLower,
@@ -2113,6 +2145,8 @@ public final class SemanticValidator {
             if (flow.getSteps().isEmpty()) {
                 errors.add("Flow " + flow.getName() + ": steps must not be empty");
             }
+
+            validateFlowSchedule(flow, errors);
 
             ConceptAst concept = entitiesByLower.get(normalize(flow.getConcept()));
             if (concept == null) {

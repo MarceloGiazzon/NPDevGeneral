@@ -17,6 +17,7 @@ import com.npdev.dsl.v1.ast.EventAst;
 import com.npdev.dsl.v1.ast.EventPayloadAst;
 import com.npdev.dsl.v1.ast.EnumOptionAst;
 import com.npdev.dsl.v1.ast.FlowAst;
+import com.npdev.dsl.v1.ast.FlowScheduleAst;
 import com.npdev.dsl.v1.ast.GeneratedActionDescriptorAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
@@ -67,6 +68,7 @@ import com.npdev.dsl.v1.compiled.CompiledEvent;
 import com.npdev.dsl.v1.compiled.CompiledEventField;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
+import com.npdev.dsl.v1.compiled.CompiledFlowSchedule;
 import com.npdev.dsl.v1.compiled.CompiledFlowStep;
 import com.npdev.dsl.v1.compiled.CompiledGeneratedActionDescriptorSpec;
 import com.npdev.dsl.v1.compiled.CompiledGuidePage;
@@ -352,7 +354,8 @@ public final class ModelCompiler {
                     toCompiledSchema(flowAst.getInputSchema()),
                     toCompiledSchema(flowAst.getOutputSchema()),
                     toCompiledActionMetadata(flowAst.getAction()),
-                    flowAst.isStartEndpoint()
+                    flowAst.isStartEndpoint(),
+                    toCompiledFlowSchedule(flowAst.getSchedule())
             ));
         }
 
@@ -1204,6 +1207,13 @@ public final class ModelCompiler {
                 actionMetadata.getPermissionHint(),
                 actionMetadata.getInputFormHint()
         );
+    }
+
+    private static CompiledFlowSchedule toCompiledFlowSchedule(FlowScheduleAst schedule) {
+        if (schedule == null) {
+            return null;
+        }
+        return new CompiledFlowSchedule(schedule.getCron(), schedule.getTenantScope());
     }
 
     private static List<CompiledProcedureParameter> compileProcedureParameters(List<ProcedureParameterAst> parameters) {

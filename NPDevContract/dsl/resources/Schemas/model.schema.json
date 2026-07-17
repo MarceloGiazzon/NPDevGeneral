@@ -1395,6 +1395,26 @@
       },
       "additionalProperties": false
     },
+    "flowSchedule": {
+      "type": "object",
+      "description": "LNCH-12: recurring execution for a flow (cron expression + tenant scope). The runtime scheduler invokes the flow exactly like an HTTP-triggered run -- same authorization, same event emission -- under a system principal, not the superuser key.",
+      "required": [
+        "cron"
+      ],
+      "properties": {
+        "cron": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenantScope": {
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "conceptAccess": {
       "type": "object",
       "description": "LNCH-13: declarative row-level (data-scoped) authorization. Each expression is evaluated per-record through the platform's unified expression language (ComputedExpression), with $user.id/$user.tenantId/$user.actorId/$user.roles available alongside the record's own fields. read scopes which rows a query/list may return; write scopes which rows a save/delete may affect. Absent = no additional row-level restriction beyond tenant isolation and role permissions.",
@@ -1696,6 +1716,9 @@
         },
         "startEndpoint": {
           "type": "boolean"
+        },
+        "schedule": {
+          "$ref": "#/$defs/flowSchedule"
         },
         "hooks": {
           "type": "array",
