@@ -246,6 +246,18 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * "JSON" for a column the manifest declares as Postgres-style "JSONB" -- see
      * {@code SchemaRealizationEmitter.renderType}). Good enough to flag an unrelated/incompatible
      * type swap (e.g. VARCHAR -> BIGINT); not a guarantee against every engine-specific type alias.
+     *
+     * <p><b>"CHARACTER VARYING" -> "VARCHAR":</b> confirmed empirically against the real H2 2.2.224
+     * jar this project uses -- H2's live {@code DatabaseMetaData.getColumns} reports
+     * {@code TYPE_NAME="CHARACTER VARYING"} for a column declared {@code VARCHAR(n)}, while
+     * {@code SchemaRealizationEmitter}'s manifest always carries the canonical {@code "VARCHAR(n)"}
+     * form (see {@code SqlTypeSupport.sqlType}). Without this alias, EVERY unchanged VARCHAR/string
+     * column on H2 would be misclassified as a type change the moment any fingerprint mismatch
+     * triggered a diff -- a pre-existing bug, uncovered by LNCH-1 Phase 1's rename+type-change
+     * tests (which were the first to populate {@code businessTableColumnTypes} with realistic
+     * values against a real H2 database). Every other type this project emits (BIGINT, UUID,
+     * BOOLEAN, DATE, TIMESTAMP WITH TIME ZONE, NUMERIC, INTEGER, JSON) round-trips exactly and
+     * needs no alias.
      */
     private static String normalizeSqlType(String sqlType) {
         if (sqlType == null || sqlType.isBlank()) {
@@ -258,6 +270,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         }
         if ("JSONB".equals(normalized)) {
             return "JSON";
+        }
+        if ("CHARACTER VARYING".equals(normalized)) {
+            return "VARCHAR";
         }
         return normalized;
     }
