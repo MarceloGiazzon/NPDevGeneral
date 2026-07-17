@@ -477,11 +477,12 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     }
 
     /**
-     * Best-effort cross-engine type comparison, not exact: strips length/precision
-     * ("VARCHAR(255)" -> "VARCHAR"), uppercases, and treats JSON/JSONB as equivalent (H2 reports
-     * "JSON" for a column the manifest declares as Postgres-style "JSONB" -- see
-     * {@code SchemaRealizationEmitter.renderType}). Good enough to flag an unrelated/incompatible
-     * type swap (e.g. VARCHAR -> BIGINT); not a guarantee against every engine-specific type alias.
+     * Best-effort cross-engine type comparison: uppercases, treats JSON/JSONB as equivalent (H2
+     * reports "JSON" for a column the manifest declares as Postgres-style "JSONB" -- see
+     * {@code SchemaRealizationEmitter.renderType}), aliases H2's {@code "CHARACTER VARYING"} to
+     * {@code "VARCHAR"}, and -- LNCH-1 Phase 3 fix, see below -- preserves any {@code (n)} /
+     * {@code (p,s)} parenthetical instead of stripping it, so length/precision differences are no
+     * longer invisible to callers that compare two normalized type strings for equality.
      *
      * <p><b>"CHARACTER VARYING" -> "VARCHAR":</b> confirmed empirically against the real H2 2.2.224
      * jar this project uses -- H2's live {@code DatabaseMetaData.getColumns} reports
@@ -494,23 +495,33 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * values against a real H2 database). Every other type this project emits (BIGINT, UUID,
      * BOOLEAN, DATE, TIMESTAMP WITH TIME ZONE, NUMERIC, INTEGER, JSON) round-trips exactly and
      * needs no alias.
+     *
+     * <p><b>LNCH-1 Phase 3 fix -- length/precision was previously stripped unconditionally:</b>
+     * before this fix, everything from the first {@code '('} onward was discarded before
+     * comparing, so {@code "VARCHAR(255)"} and {@code "VARCHAR(20)"} both normalized to the
+     * identical string {@code "VARCHAR"} and {@link #hasTypeChange} treated a VARCHAR-length or
+     * NUMERIC-precision-only change (in EITHER direction, widening or narrowing) as no change at
+     * all -- a real, silent data-truncation-risk gap, pinned by
+     * {@code SchemaLifecycleExecutorTypeChangeLengthPrecisionGapTest}. {@link #readActualColumnTypes}
+     * now appends the JDBC-reported {@code COLUMN_SIZE}/{@code DECIMAL_DIGITS} onto character and
+     * exact-numeric type names before they ever reach this method, so the parenthetical this method
+     * now preserves is meaningful on both sides of the comparison.
      */
     private static String normalizeSqlType(String sqlType) {
         if (sqlType == null || sqlType.isBlank()) {
             return null;
         }
-        String normalized = sqlType.trim().toUpperCase(Locale.ROOT);
-        int parenIndex = normalized.indexOf('(');
-        if (parenIndex >= 0) {
-            normalized = normalized.substring(0, parenIndex).trim();
+        String trimmed = sqlType.trim().toUpperCase(Locale.ROOT);
+        int parenIndex = trimmed.indexOf('(');
+        String base = parenIndex >= 0 ? trimmed.substring(0, parenIndex).trim() : trimmed;
+        String parameters = parenIndex >= 0 ? trimmed.substring(parenIndex).replaceAll("\\s+", "") : "";
+        if ("JSONB".equals(base)) {
+            base = "JSON";
         }
-        if ("JSONB".equals(normalized)) {
-            return "JSON";
+        if ("CHARACTER VARYING".equals(base)) {
+            base = "VARCHAR";
         }
-        if ("CHARACTER VARYING".equals(normalized)) {
-            return "VARCHAR";
-        }
-        return normalized;
+        return base + parameters;
     }
 
     private static Map<String, String> readActualColumnTypes(DatabaseMetaData metadata, String table) {
@@ -522,7 +533,11 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     if (schema != null && SYSTEM_SCHEMAS.contains(schema.toLowerCase(Locale.ROOT))) {
                         continue;
                     }
-                    types.put(resultSet.getString("COLUMN_NAME").toLowerCase(Locale.ROOT), resultSet.getString("TYPE_NAME"));
+                    String typeName = resultSet.getString("TYPE_NAME");
+                    int columnSize = resultSet.getInt("COLUMN_SIZE");
+                    int decimalDigits = resultSet.getInt("DECIMAL_DIGITS");
+                    types.put(resultSet.getString("COLUMN_NAME").toLowerCase(Locale.ROOT),
+                            qualifyTypeWithSize(typeName, columnSize, decimalDigits));
                 }
             } catch (SQLException ignored) {
                 // Fall through to the other case-sensitivity candidate.
@@ -532,6 +547,30 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             }
         }
         return types;
+    }
+
+    /**
+     * LNCH-1 P3 prerequisite fix (see {@link #normalizeSqlType}): {@code TYPE_NAME} alone
+     * ("VARCHAR", "NUMERIC") loses the length/precision JDBC reports separately via
+     * {@code COLUMN_SIZE}/{@code DECIMAL_DIGITS}. Appends {@code "(n)"} for character types and
+     * {@code "(p,s)"} for exact-numeric types, matching the canonical form
+     * {@code SqlTypeSupport.sqlType(...)} emits into the manifest (e.g. {@code "VARCHAR(255)"},
+     * {@code "NUMERIC(19,2)"}). Left bare for every other type this project emits (BIGINT, UUID,
+     * BOOLEAN, DATE, TIMESTAMP, JSON) -- appending an incidental JDBC-reported size for those would
+     * create a mismatch against the manifest's un-parameterized declaration.
+     */
+    private static String qualifyTypeWithSize(String typeName, int columnSize, int decimalDigits) {
+        if (typeName == null || typeName.isBlank()) {
+            return typeName;
+        }
+        String upper = typeName.toUpperCase(Locale.ROOT);
+        if (upper.contains("CHAR")) {
+            return typeName + "(" + columnSize + ")";
+        }
+        if (upper.equals("NUMERIC") || upper.equals("DECIMAL")) {
+            return typeName + "(" + columnSize + "," + decimalDigits + ")";
+        }
+        return typeName;
     }
 
     enum SchemaChangeClassification {
