@@ -8,6 +8,7 @@ import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptQueryRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,6 +16,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -77,6 +80,113 @@ public class ConceptQueryController {
             // Unknown concept or a filter/sort on a field the concept does not declare.
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
         }
+    }
+
+    private static final int EXPORT_PAGE_SIZE = ConceptQuery.MAX_LIMIT;
+
+    /**
+     * LNCH-10 slice 1: exports the concept's current filtered/sorted view as CSV -- same
+     * {@code filter}/{@code sort}/{@code where}-shaped query params {@link #page} accepts (parsed
+     * through the identical {@link #parseConceptQuery}), so "what the grid shows" and "what
+     * exports" are provably the same query. Streams page-by-page through {@link ConceptGateway
+     * #query} (bounded at {@link ConceptQuery#MAX_LIMIT} rows in memory at any one time, flushed
+     * to the response after each page) rather than materializing the whole result set, so a
+     * 100k-row concept exports without holding more than one page in the JVM at once -- the same
+     * lesson LNCH-5's grid pagination already established for this store contract.
+     *
+     * <p>The first page is fetched (and any unknown-concept/field error surfaced as a normal 400)
+     * before any response header is written, so a bad request never produces a half-written CSV
+     * with a 200 status; every page after that is inherently trusted (same query, same concept).
+     */
+    @GetMapping("/{concept}/export.csv")
+    public void exportCsv(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            @PathVariable String concept
+    ) throws IOException {
+        if (conceptGateway == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "concept gateway not configured");
+        }
+        ConceptQuery baseQuery = parseConceptQuery(request.getParameterMap());
+        ExecutionContext context = runtimeContextService.currentContext(request);
+
+        ConceptQuery firstPageQuery = new ConceptQuery(baseQuery.filters(), baseQuery.sorts(), 0, EXPORT_PAGE_SIZE);
+        ConceptPage firstPage;
+        try {
+            firstPage = conceptGateway.query(new ConceptQueryRequest(concept, context.tenantId(), firstPageQuery), context);
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
+        }
+
+        response.setContentType("text/csv;charset=UTF-8");
+        response.setHeader("Content-Disposition", "attachment; filename=\"" + csvFilename(concept) + "\"");
+        PrintWriter writer = response.getWriter();
+
+        List<String> columns = resolveColumns(firstPage.items());
+        writer.write(toCsvRow(columns));
+
+        ConceptPage page = firstPage;
+        int offset = 0;
+        while (true) {
+            for (ConceptRecord record : page.items()) {
+                writer.write(toCsvRow(rowValues(record, columns)));
+            }
+            writer.flush();
+            offset += page.items().size();
+            if (!page.hasMore() || page.items().isEmpty()) {
+                break;
+            }
+            ConceptQuery nextPageQuery = new ConceptQuery(baseQuery.filters(), baseQuery.sorts(), offset, EXPORT_PAGE_SIZE);
+            page = conceptGateway.query(new ConceptQueryRequest(concept, context.tenantId(), nextPageQuery), context);
+        }
+    }
+
+    private static String csvFilename(String concept) {
+        String safe = concept == null ? "export" : concept.replaceAll("[^A-Za-z0-9_-]", "_");
+        return (safe.isBlank() ? "export" : safe) + ".csv";
+    }
+
+    /** {@code record.data()} already carries an "id" entry on at least the JDBC adapter (every
+     * SELECT * column, including the id column, becomes a data() entry) -- a
+     * {@link java.util.LinkedHashSet} dedupes that against the explicit leading "id" column
+     * (found live: without this, the CSV header repeated "id" twice). */
+    private static List<String> resolveColumns(List<ConceptRecord> sampleRecords) {
+        java.util.LinkedHashSet<String> columns = new java.util.LinkedHashSet<>();
+        columns.add("id");
+        if (!sampleRecords.isEmpty()) {
+            columns.addAll(sampleRecords.get(0).data().keySet());
+        }
+        return List.copyOf(columns);
+    }
+
+    private static List<Object> rowValues(ConceptRecord record, List<String> columns) {
+        List<Object> values = new ArrayList<>(columns.size());
+        for (String column : columns) {
+            values.add("id".equals(column) ? record.id() : record.data().get(column));
+        }
+        return values;
+    }
+
+    /** Minimal RFC4180 quoting: a value containing a comma, quote, or newline is wrapped in
+     * quotes with internal quotes doubled; everything else is written as-is. */
+    static String toCsvRow(List<?> values) {
+        StringBuilder row = new StringBuilder();
+        for (int index = 0; index < values.size(); index++) {
+            if (index > 0) {
+                row.append(',');
+            }
+            row.append(csvEscape(values.get(index)));
+        }
+        row.append("\r\n");
+        return row.toString();
+    }
+
+    private static String csvEscape(Object value) {
+        String text = value == null ? "" : String.valueOf(value);
+        if (text.indexOf(',') < 0 && text.indexOf('"') < 0 && text.indexOf('\n') < 0 && text.indexOf('\r') < 0) {
+            return text;
+        }
+        return "\"" + text.replace("\"", "\"\"") + "\"";
     }
 
     /**

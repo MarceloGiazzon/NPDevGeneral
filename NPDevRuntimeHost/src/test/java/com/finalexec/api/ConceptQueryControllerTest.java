@@ -60,4 +60,17 @@ class ConceptQueryControllerTest {
         assertEquals(ConceptQuery.DEFAULT_LIMIT,
                 ConceptQueryController.parseConceptQuery(Map.of()).limit());
     }
+
+    /** LNCH-10 slice 1: {@code exportCsv}'s row-formatting helper -- a value containing a
+     * comma, quote, or newline gets RFC4180-quoted (internal quotes doubled); plain values
+     * pass through unquoted, and {@code null} becomes an empty field. */
+    @Test
+    void csvRowQuotesOnlyValuesThatNeedIt() {
+        java.util.List<Object> values = java.util.Arrays.asList(
+                "plain", "has,comma", "has\"quote", "has\nnewline", null);
+        assertEquals(
+                "plain,\"has,comma\",\"has\"\"quote\",\"has\nnewline\",\r\n",
+                ConceptQueryController.toCsvRow(values)
+        );
+    }
 }

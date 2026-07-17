@@ -138,6 +138,31 @@ button:disabled {
   opacity: .55;
 }
 
+/* LNCH-10 slice 1: the Export CSV control is an <a> (a real navigable link, so the browser's
+   own download/new-tab handling applies), styled to match the button elements around it. */
+.panel-actions a {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #c8d0da;
+  background: #ffffff;
+  color: #18202a;
+  border-radius: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.panel-actions a:hover {
+  border-color: #7d8da1;
+}
+
+.export-filter-notice {
+  font-size: 0.85em;
+  color: #8a97a8;
+  margin: 4px 0 8px;
+}
+
 input,
 select,
 textarea {

@@ -299,6 +299,22 @@
     return concept.endpointBase + "?" + params.toString();
   }
 
+  // LNCH-10 slice 1: reuses the grid's current sort. Deliberately does NOT carry over page/size
+  // (an export always wants every matching row, not just the page on screen -- the export
+  // endpoint pages internally server-side) or the free-text search box's `filter` value: that
+  // box is an OR-across-every-filterable-field substring match with no SQL-pushdown equivalent
+  // (the same documented LNCH-5 boundary the grid's own structured push-down query already lives
+  // with) -- the generic export endpoint's query contract only supports structured filters, none
+  // of which this grid's UI currently exposes. See exportFilterNotice below for the on-screen
+  // disclosure of this gap rather than silently exporting something other than what's on screen.
+  function exportCsvUrl(concept) {
+    const panel = panelState(concept);
+    const params = new URLSearchParams();
+    params.set("sort", panel.sort);
+    params.set("direction", panel.direction);
+    return "/api/concepts/" + encodeURIComponent(concept.conceptName) + "/export.csv?" + params.toString();
+  }
+
   async function loadPanel(concept) {
     const panel = panelState(concept);
     panel.loading = true;
@@ -1802,8 +1818,22 @@
       panel.page = 0;
       loadPanel(concept);
     }));
+    const exportLink = document.createElement("a");
+    exportLink.href = exportCsvUrl(concept);
+    exportLink.textContent = "Export CSV";
+    exportLink.target = "_blank";
+    exportLink.rel = "noopener";
+    actions.appendChild(exportLink);
     header.appendChild(actions);
     section.appendChild(header);
+
+    if (panel.filter) {
+      const exportNotice = document.createElement("div");
+      exportNotice.className = "export-filter-notice";
+      exportNotice.textContent = "Export CSV exports every " + concept.displayName
+          + " row sorted as shown -- it does not apply the search box filter above.";
+      section.appendChild(exportNotice);
+    }
 
     const filters = document.createElement("div");
     filters.className = "filters";
