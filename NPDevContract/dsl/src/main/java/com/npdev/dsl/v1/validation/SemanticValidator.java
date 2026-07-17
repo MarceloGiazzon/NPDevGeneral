@@ -186,6 +186,7 @@ public final class SemanticValidator {
         ModelAst effectiveModel = resolvedModel.modelAst();
         validateDslVersion(effectiveModel, errors);
         Map<String, ConceptAst> entitiesByLower = indexEntities(effectiveModel.getConcepts(), errors);
+        validateConceptRenamedFrom(effectiveModel, entitiesByLower, errors, semanticWarnings);
 
         validateCapabilities(effectiveModel, errors);
         validateBindings(effectiveModel, errors);
@@ -1493,6 +1494,59 @@ public final class SemanticValidator {
                         "fields",
                         "Use target concept field names when overriding ui.searchFields on a reference field."
                 ));
+            }
+        }
+    }
+
+    /**
+     * LNCH-1 P2 §2.3: the same three {@code renamedFrom} hygiene rules as
+     * {@link #validateRenamedFrom}, at the CONCEPT level instead of the field level (checked once
+     * per model, across ALL concepts, since concept names -- unlike field names -- aren't scoped
+     * to a single containing entity):
+     * <ol>
+     *   <li>{@code renamedFrom} equal to the concept's own current name is almost certainly a
+     *       leftover/copy-paste marker, not a real rename declaration -- warning, not an error.</li>
+     *   <li>{@code renamedFrom} naming a concept that still currently exists is ambiguous: is it
+     *       declaring a rename, or accidentally referencing a real concept? -- error. Because
+     *       {@code entitiesByLower} indexes every concept in the model (not just the entity being
+     *       checked), this single check also covers "renamedFrom must not equal ANY OTHER
+     *       concept's current name" -- verified, not a separate rule to duplicate.</li>
+     *   <li>Two different concepts declaring the same {@code renamedFrom} value is ambiguous: which
+     *       one is the actual rename target for the live database's old table? -- error.</li>
+     * </ol>
+     * An unmatched {@code renamedFrom} (no current concept carries that name, and no other concept
+     * also claims it) is valid and unremarkable here -- it is a silent no-op at runtime (a fresh
+     * install, or a rename that already ran).
+     */
+    private static void validateConceptRenamedFrom(
+            ModelAst effectiveModel,
+            Map<String, ConceptAst> entitiesByLower,
+            List<String> errors,
+            List<String> semanticWarnings
+    ) {
+        Map<String, String> renamedFromSeen = new HashMap<>();
+        for (ConceptAst concept : effectiveModel.getConcepts()) {
+            String renamedFrom = concept.getRenamedFrom();
+            if (renamedFrom == null || renamedFrom.isBlank()) {
+                continue;
+            }
+            String normalizedRenamedFrom = normalize(renamedFrom);
+            String normalizedOwnName = normalize(concept.getName());
+
+            if (normalizedRenamedFrom.equals(normalizedOwnName)) {
+                semanticWarnings.add("Concept " + concept.getName()
+                        + ": renamedFrom equals the concept's own name; this has no effect and is likely a leftover marker");
+            } else if (entitiesByLower.containsKey(normalizedRenamedFrom)) {
+                errors.add("Concept " + concept.getName()
+                        + ": renamedFrom " + renamedFrom + " names a concept that still exists "
+                        + "(ambiguous: is this a rename or a reference to a real concept?)");
+            }
+
+            String firstConceptName = renamedFromSeen.putIfAbsent(normalizedRenamedFrom, concept.getName());
+            if (firstConceptName != null && !normalize(firstConceptName).equals(normalizedOwnName)) {
+                errors.add("Concepts " + firstConceptName + " and " + concept.getName()
+                        + ": both declare renamedFrom " + renamedFrom
+                        + " (ambiguous: which one is the actual rename target?)");
             }
         }
     }
