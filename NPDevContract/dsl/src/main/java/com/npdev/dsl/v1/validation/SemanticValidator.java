@@ -214,7 +214,9 @@ public final class SemanticValidator {
                 errors.add("Entity " + e.getName() + ": must have exactly 1 id field, found " + idCount);
             }
 
+            Map<String, String> renamedFromSeen = new HashMap<>();
             for (FieldAst f : effective.fields()) {
+                validateRenamedFrom(e, f, fieldNames, renamedFromSeen, errors, semanticWarnings);
                 String normalizedType = normalize(f.getType());
                 if (!KNOWN_TYPES.contains(normalizedType)) {
                     errors.add("Entity " + e.getName() + " field " + f.getName() + ": unknown type " + f.getType());
@@ -1492,6 +1494,55 @@ public final class SemanticValidator {
                         "Use target concept field names when overriding ui.searchFields on a reference field."
                 ));
             }
+        }
+    }
+
+    /**
+     * LNCH-1 §2.1 hygiene rules for the {@code renamedFrom} marker (checked once per field, for
+     * every field regardless of type validity):
+     * <ol>
+     *   <li>{@code renamedFrom} equal to the field's own current name is almost certainly a
+     *       leftover/copy-paste marker, not a real rename declaration -- warning, not an error.</li>
+     *   <li>{@code renamedFrom} naming a field that still exists (as a CURRENT field name) in the
+     *       same concept is ambiguous: is it declaring a rename, or accidentally referencing a real
+     *       field? -- error.</li>
+     *   <li>Two different fields in the same concept declaring the same {@code renamedFrom} value
+     *       is ambiguous: which one is the actual rename target for the live database's old
+     *       column? -- error.</li>
+     * </ol>
+     * An unmatched {@code renamedFrom} (no current field carries that name, and no other field
+     * also claims it) is valid and unremarkable here -- it is a silent no-op at runtime (a fresh
+     * install, or a rename that already ran).
+     */
+    private static void validateRenamedFrom(
+            ConceptAst entity,
+            FieldAst field,
+            Set<String> currentFieldNames,
+            Map<String, String> renamedFromSeen,
+            List<String> errors,
+            List<String> semanticWarnings
+    ) {
+        String renamedFrom = field.getRenamedFrom();
+        if (renamedFrom == null || renamedFrom.isBlank()) {
+            return;
+        }
+        String normalizedRenamedFrom = normalize(renamedFrom);
+        String normalizedOwnName = normalize(field.getName());
+
+        if (normalizedRenamedFrom.equals(normalizedOwnName)) {
+            semanticWarnings.add("Entity " + entity.getName() + " field " + field.getName()
+                    + ": renamedFrom equals the field's own name; this has no effect and is likely a leftover marker");
+        } else if (currentFieldNames.contains(normalizedRenamedFrom)) {
+            errors.add("Entity " + entity.getName() + " field " + field.getName()
+                    + ": renamedFrom " + renamedFrom + " names a field that still exists in this concept "
+                    + "(ambiguous: is this a rename or a reference to a real field?)");
+        }
+
+        String firstFieldName = renamedFromSeen.putIfAbsent(normalizedRenamedFrom, field.getName());
+        if (firstFieldName != null && !normalize(firstFieldName).equals(normalizedOwnName)) {
+            errors.add("Entity " + entity.getName() + " fields " + firstFieldName + " and " + field.getName()
+                    + ": both declare renamedFrom " + renamedFrom
+                    + " (ambiguous: which one is the actual rename target?)");
         }
     }
 
