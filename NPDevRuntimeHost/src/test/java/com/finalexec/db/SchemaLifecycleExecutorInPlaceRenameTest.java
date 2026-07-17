@@ -187,6 +187,7 @@ class SchemaLifecycleExecutorInPlaceRenameTest {
                 businessTableAdditiveColumns,
                 businessTableColumnTypes,
                 businessTableRenamedColumns,
+                Map.of(),
                 true,
                 "DropAndRecreateOnStructureChange",
                 "NpdevOwnedTablesOnly",

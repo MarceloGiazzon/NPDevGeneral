@@ -85,6 +85,7 @@ class SchemaLifecycleExecutorVarcharTypeNormalizationTest {
                 businessTableAdditiveColumns,
                 businessTableColumnTypes,
                 Map.of(),
+                Map.of(),
                 true,
                 "DropAndRecreateOnStructureChange",
                 "NpdevOwnedTablesOnly",

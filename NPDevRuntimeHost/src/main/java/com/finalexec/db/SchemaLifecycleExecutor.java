@@ -71,6 +71,15 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             System.out.println("NPDev schema lifecycle: stored schema fingerprint matches generated schema fingerprint; no destructive recreation required.");
             return DestructiveRecreation.none();
         }
+        // LNCH-1 P2 (2.4/2.5 ordering): concept (table) renames MUST be attempted before classify()
+        // is ever invoked against a mismatched fingerprint. classify() only enumerates tables that
+        // are declared under their manifest-CURRENT name (manifest.businessTableColumns().keySet());
+        // a table that was renamed live-DB-side is otherwise completely invisible to it (VERIFIED:
+        // see SchemaLifecycleExecutorTableRenameBlindSpotTest for the pre-fix behavior this closes).
+        // Idempotent-by-check and a no-op when manifest.businessTableRenames() is empty or nothing
+        // matches, so it is always safe to attempt eagerly here, ahead of every other step.
+        attemptInPlaceTableRenames(dataSource, manifest);
+
         SchemaChangeClassification classification = classify(dataSource, manifest);
         if (classification == SchemaChangeClassification.SAFE_ADDITIVE) {
             System.out.println("NPDev schema lifecycle: fingerprint changed from " + stored + " to "
@@ -140,6 +149,98 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     /** Backward-compatible convenience: true only for the SAFE_ADDITIVE classification. */
     boolean isSafeAdditiveChange(DataSource dataSource, SchemaManifest manifest) {
         return classify(dataSource, manifest) == SchemaChangeClassification.SAFE_ADDITIVE;
+    }
+
+    /**
+     * LNCH-1 P2 (2.5): executes in-place {@code ALTER TABLE ... RENAME TO} statements for every
+     * declared concept (table) rename ({@code SchemaManifest#businessTableRenames}, a flat
+     * {@code newTableName -> oldTableName} map) that is actually explained by the live database --
+     * i.e. the OLD table still exists live and the NEW table does not yet. Reuses
+     * {@link RenameResolution#resolve} (originally extracted for column-level renames in Phase 1,
+     * but its algorithm is generic over any name-vs-name diff, table names included) against the
+     * SAME kind of missing/extra set computation {@link #classify} uses, just at table granularity
+     * instead of column granularity: "missing" = manifest-expected table names
+     * ({@code businessTableColumns().keySet()}) absent from the live database; "extra" = live
+     * tables not declared under any current name in the manifest.
+     *
+     * <p>This step MUST run before {@link #classify} is invoked (see {@link #beforeMigrate}):
+     * {@code classify} only ever looks up a table by its manifest-current name, so a table that
+     * still exists live under its OLD name is invisible to it -- table renames have to already be
+     * applied by the time classification (and the field-rename step, which depends on current table
+     * names) runs.
+     *
+     * <p>Idempotent by construction: live table names are read fresh via
+     * {@link DatabaseMetaData#getTables} on every call, so re-invoking this against an
+     * already-renamed table finds the OLD name no longer "extra" (it's gone) and does nothing.
+     *
+     * <p>Package-private (not private) so it is directly unit-testable against a real H2
+     * {@link DataSource}, following {@link #attemptInPlaceRenames}'s precedent.
+     */
+    void attemptInPlaceTableRenames(DataSource dataSource, SchemaManifest manifest) {
+        Map<String, String> declaredTableRenames = manifest.businessTableRenames();
+        if (declaredTableRenames.isEmpty()) {
+            return;
+        }
+        List<String> renamed = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            Set<String> liveTables = readActualTableNames(metadata);
+            Set<String> expectedTables = new LinkedHashSet<>(manifest.businessTableColumns().keySet());
+            Set<String> missingTables = new LinkedHashSet<>(expectedTables);
+            missingTables.removeAll(liveTables);
+            Set<String> extraTables = new LinkedHashSet<>(liveTables);
+            extraTables.removeAll(expectedTables);
+
+            RenameResolution.Result resolution = RenameResolution.resolve(missingTables, extraTables, declaredTableRenames);
+            for (Map.Entry<String, String> pair : resolution.explainedRenames().entrySet()) {
+                String newTable = pair.getKey();
+                String oldTable = pair.getValue();
+                executeRenameTable(connection, oldTable, newTable);
+                renamed.add(oldTable + " -> " + newTable);
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed applying in-place table renames", exception);
+        }
+        if (!renamed.isEmpty()) {
+            System.out.println("NPDev schema lifecycle: applied in-place table renames: " + renamed);
+        }
+    }
+
+    /**
+     * Table-rename DDL (§6.1): {@code ALTER TABLE ... RENAME TO ...} is identical on both Postgres
+     * and H2 (unlike column rename, which differs per engine) -- confirmed via the real H2
+     * integration test {@code SchemaLifecycleExecutorTableRenameTest} before being trusted here.
+     */
+    private static void executeRenameTable(Connection connection, String oldTable, String newTable) throws SQLException {
+        String safeOld = safeIdentifier(oldTable);
+        String safeNew = safeIdentifier(newTable);
+        String sql = "ALTER TABLE " + safeOld + " RENAME TO " + safeNew;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.executeUpdate();
+        }
+    }
+
+    /**
+     * Every live table name (lower-cased), system-schema-filtered the same way
+     * {@link #readActualColumns} and {@link #readActualColumnTypes} already are. Used only by
+     * {@link #attemptInPlaceTableRenames} to find tables that exist live but are not declared under
+     * their current name in the manifest.
+     */
+    private static Set<String> readActualTableNames(DatabaseMetaData metadata) throws SQLException {
+        Set<String> tables = new LinkedHashSet<>();
+        try (ResultSet resultSet = metadata.getTables(null, null, null, new String[] {"TABLE"})) {
+            while (resultSet.next()) {
+                String schema = resultSet.getString("TABLE_SCHEM");
+                if (schema != null && SYSTEM_SCHEMAS.contains(schema.toLowerCase(Locale.ROOT))) {
+                    continue;
+                }
+                String name = resultSet.getString("TABLE_NAME");
+                if (name != null && !name.isBlank()) {
+                    tables.add(name.toLowerCase(Locale.ROOT));
+                }
+            }
+        }
+        return tables;
     }
 
     /**
@@ -589,6 +690,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     stringListMap(root.path("businessTableAdditiveColumns")),
                     stringMapMap(root.path("businessTableColumnTypes")),
                     stringMapMap(root.path("businessTableRenamedColumns")),
+                    stringMap(root.path("businessTableRenames")),
                     lifecycle.path("allowDestructiveRecreate").asBoolean(false),
                     lifecycle.path("strategy").asText(""),
                     lifecycle.path("scope").asText(""),
@@ -651,6 +753,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             Map<String, List<String>> businessTableAdditiveColumns,
             Map<String, Map<String, String>> businessTableColumnTypes,
             Map<String, Map<String, String>> businessTableRenamedColumns,
+            Map<String, String> businessTableRenames,
             boolean allowDestructiveRecreate,
             String strategy,
             String scope,
