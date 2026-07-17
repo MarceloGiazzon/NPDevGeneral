@@ -100,14 +100,43 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                         + "diff (residual classification SAFE_ADDITIVE); skipping destructive recreation.");
                 return DestructiveRecreation.safeAdditiveOutcome();
             }
-            System.out.println("NPDev schema lifecycle: in-place rename pass left a residual classification of "
-                    + residual + " (a table's diff was not fully explained by declared renames, or a rename was "
-                    + "combined with a type change on the same column -- Phase 3's problem until type widening "
-                    + "lands); falling through to destructive recreation as the safety net.");
+            if (residual == SchemaChangeClassification.TYPE_CHANGE_DETECTED) {
+                // LNCH-1 P3 (3.3): a rename may be combined with a type change on the same column
+                // (or an unrelated shared column on the same table). Renames already ran above, so
+                // this sees the NEW column name(s) -- resolving both operations in one boot.
+                System.out.println("NPDev schema lifecycle: residual classification after field renames is "
+                        + "TYPE_CHANGE_DETECTED -- attempting in-place safe-widening ALTER COLUMN statements "
+                        + "(LNCH-1 Phase 3), per-table all-or-nothing.");
+                attemptInPlaceTypeWidenings(dataSource, manifest);
+                residual = classify(dataSource, manifest);
+                if (residual == SchemaChangeClassification.SAFE_ADDITIVE) {
+                    System.out.println("NPDev schema lifecycle: in-place rename(s) and type widening(s) fully "
+                            + "resolved the fingerprint diff (residual classification SAFE_ADDITIVE); skipping "
+                            + "destructive recreation.");
+                    return DestructiveRecreation.safeAdditiveOutcome();
+                }
+            }
+            System.out.println("NPDev schema lifecycle: in-place rename/widening pass left a residual "
+                    + "classification of " + residual + " (the diff was not fully explained by declared renames "
+                    + "and safe type widenings -- e.g. a narrowing, an incomparable type change, or an unresolved "
+                    + "column); falling through to destructive recreation as the safety net.");
         } else if (classification == SchemaChangeClassification.TYPE_CHANGE_DETECTED) {
             System.out.println("NPDev schema lifecycle: fingerprint changed from " + stored + " to "
                     + manifest.schemaFingerprint() + " -- classified as TYPE_CHANGE_DETECTED (an existing column's "
-                    + "declared SQL type changed). Still goes through the destructive recreate path below.");
+                    + "declared SQL type changed). Attempting in-place ALTER COLUMN statements for every table "
+                    + "whose type diff is fully explained by safe widenings (LNCH-1 Phase 3), per-table "
+                    + "all-or-nothing.");
+            attemptInPlaceTypeWidenings(dataSource, manifest);
+            SchemaChangeClassification residual = classify(dataSource, manifest);
+            if (residual == SchemaChangeClassification.SAFE_ADDITIVE) {
+                System.out.println("NPDev schema lifecycle: in-place type widening(s) fully resolved the "
+                        + "fingerprint diff (residual classification SAFE_ADDITIVE); skipping destructive recreation.");
+                return DestructiveRecreation.safeAdditiveOutcome();
+            }
+            System.out.println("NPDev schema lifecycle: in-place widening pass left a residual classification of "
+                    + residual + " (at least one type-differing column on some table was a narrowing or "
+                    + "incomparable change -- per-table all-or-nothing means nothing on that table was applied); "
+                    + "falling through to destructive recreation as the safety net.");
         }
         if (!manifest.destructiveAllowed()) {
             throw new IllegalStateException("Schema fingerprint changed from " + stored + " to "
@@ -248,11 +277,15 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * every business table whose live-DB-vs-manifest diff is FULLY explained by declared
      * {@code renamedFrom} pairs, per {@link RenameResolution} -- reusing the exact same
      * per-table eligibility test {@link #classify} uses, so a table only gets its columns renamed
-     * here if {@code classify} would otherwise have called it a clean {@code RENAME_DETECTED}. A
-     * table whose diff is NOT fully explained (a genuine drop/add mixed in, or a rename combined
-     * with a type change on the same column) is left completely untouched -- no partial/best-effort
-     * renaming -- so the caller's re-classification correctly falls through to the destructive path
-     * for that table instead of leaving the database in a state no single classification describes.
+     * here if {@code classify} would otherwise have called it a clean {@code RENAME_DETECTED} or
+     * {@code TYPE_CHANGE_DETECTED}-via-a-renamed-column. A table whose diff is NOT fully explained
+     * by declared renames (plus, at most, additive-eligible new columns) -- a genuine drop/add mixed
+     * in that no rename or additive column accounts for -- is left completely untouched -- no
+     * partial/best-effort renaming -- so the caller's re-classification correctly falls through to
+     * the destructive path for that table instead of leaving the database in a state no single
+     * classification describes. A rename COMBINED with a type change on the same column, by
+     * contrast, is no longer a reason to skip the whole table here (see the inline LNCH-1 P3 note
+     * below) -- {@link #attemptInPlaceTypeWidenings} resolves the type side afterward.
      *
      * <p>Idempotent by construction: every table's diff is read fresh from live
      * {@link DatabaseMetaData} on each call (never a cached snapshot), so re-invoking this method
@@ -303,22 +336,18 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                             + resolution.remainingMissing() + ", remainingExtra=" + resolution.remainingExtra() + ")");
                     continue;
                 }
-                Map<String, String> expectedTypes = manifest.businessTableColumnTypes().getOrDefault(table, Map.of());
-                Map<String, String> actualTypes = readActualColumnTypes(metadata, table);
-                boolean typeChanged = false;
-                for (Map.Entry<String, String> pair : resolution.explainedRenames().entrySet()) {
-                    String expectedType = normalizeSqlType(expectedTypes.get(pair.getKey()));
-                    String actualType = normalizeSqlType(actualTypes.get(pair.getValue()));
-                    if (expectedType != null && actualType != null && !expectedType.equals(actualType)) {
-                        typeChanged = true;
-                        break;
-                    }
-                }
-                if (typeChanged) {
-                    skipped.add(table + " (a declared rename is combined with a type change on the same column -- "
-                            + "deferred to the destructive path pending Phase 3's type-widening support)");
-                    continue;
-                }
+                // LNCH-1 P3 (3.3 composability): a rename MAY be combined with a type change on the
+                // same column. Phase 1 deferred that whole table to the destructive path here
+                // (comment used to read "deferred to the destructive path pending Phase 3's
+                // type-widening support") -- Phase 3 closes that gap from the OTHER side instead:
+                // the rename is applied unconditionally whenever it is otherwise eligible, and
+                // beforeMigrate() runs attemptInPlaceTypeWidenings() immediately afterward, against
+                // the NEW column name, to resolve any residual type diff. If that residual turns out
+                // to be a narrowing/incomparable change (not safely widenable), the table still ends
+                // up on the destructive path via the final re-classification -- applying the rename
+                // first causes no incorrect persisted state, since a subsequent destructive recreate
+                // drops and recreates the table (and the pre-drop snapshot correctly captures data
+                // under the already-renamed column).
                 for (Map.Entry<String, String> pair : resolution.explainedRenames().entrySet()) {
                     String newName = pair.getKey();
                     String oldName = pair.getValue();
@@ -356,6 +385,132 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.executeUpdate();
         }
+    }
+
+    /**
+     * LNCH-1 P3 (3.2): executes in-place {@code ALTER COLUMN ... TYPE} statements for every
+     * business table whose live-DB-vs-manifest type diff is fully explained by {@link TypeChangeMatrix}
+     * {@code WIDENING} classifications -- reusing {@link #readActualColumnTypes} (post length/
+     * precision fix) and {@link #normalizeSqlType} to find the differing columns, exactly the way
+     * {@link #hasTypeChange} does for classification.
+     *
+     * <p><b>Per-table all-or-nothing (plan-mandated):</b> a table's type-differing columns are
+     * computed as a set FIRST; the widening ALTER statements are only executed if EVERY one of them
+     * classifies as {@code WIDENING}. If even one is {@code NARROWING} or {@code INCOMPARABLE},
+     * NOTHING is applied on that table (not even the other columns' safe widenings) -- partial
+     * application would leave a state neither the old nor the new fingerprint describes.
+     *
+     * <p><b>Composability with renames (3.3):</b> called by {@link #beforeMigrate} strictly AFTER
+     * {@link #attemptInPlaceTableRenames} and {@link #attemptInPlaceRenames} have already run, so a
+     * column that is both renamed and widened is looked up here under its NEW (already-renamed)
+     * name -- both operations land in one boot.
+     *
+     * <p>Idempotent by construction: live types are read fresh via {@link DatabaseMetaData} on every
+     * call, so re-invoking this against an already-widened column finds no diff (nothing to do).
+     *
+     * <p>Package-private (not private) so it is directly unit-testable against a real H2
+     * {@link DataSource}, following {@link #attemptInPlaceRenames}'s precedent.
+     */
+    void attemptInPlaceTypeWidenings(DataSource dataSource, SchemaManifest manifest) {
+        List<String> widened = new ArrayList<>();
+        List<String> skipped = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            for (Map.Entry<String, List<String>> entry : manifest.businessTableColumns().entrySet()) {
+                String table = entry.getKey();
+                List<String> expectedColumns = entry.getValue();
+                Set<String> actualColumns = readActualColumns(metadata, table);
+                if (actualColumns.isEmpty()) {
+                    // Table doesn't exist yet (brand new concept) -- nothing to widen; matches
+                    // classify()'s "actual.isEmpty() -> continue" guard for the same reason (§2.4).
+                    continue;
+                }
+                Map<String, String> expectedTypes = manifest.businessTableColumnTypes().getOrDefault(table, Map.of());
+                Map<String, String> actualTypes = readActualColumnTypes(metadata, table);
+
+                Map<String, String> differing = new LinkedHashMap<>();
+                for (String column : expectedColumns) {
+                    if (!actualColumns.contains(column)) {
+                        continue; // not a shared column at this point (new / not-yet-renamed / etc.) -- out of scope here
+                    }
+                    String expectedType = expectedTypes.get(column);
+                    String actualType = actualTypes.get(column);
+                    if (expectedType == null || actualType == null) {
+                        continue;
+                    }
+                    if (!normalizeSqlType(expectedType).equals(normalizeSqlType(actualType))) {
+                        differing.put(column, expectedType);
+                    }
+                }
+                if (differing.isEmpty()) {
+                    continue;
+                }
+
+                boolean allWidening = true;
+                for (Map.Entry<String, String> diff : differing.entrySet()) {
+                    String actualType = actualTypes.get(diff.getKey());
+                    if (TypeChangeMatrix.classify(actualType, diff.getValue()) != TypeChangeMatrix.Classification.WIDENING) {
+                        allWidening = false;
+                        break;
+                    }
+                }
+                if (!allWidening) {
+                    skipped.add(table + " (not every type-differing column on this table is a safe widening -- "
+                            + "per-table all-or-nothing rule, deferred to the destructive path)");
+                    continue;
+                }
+
+                for (Map.Entry<String, String> diff : differing.entrySet()) {
+                    executeWidenColumnType(connection, manifest.engine(), table, diff.getKey(), diff.getValue());
+                    widened.add(table + "." + diff.getKey() + " -> " + diff.getValue());
+                }
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed applying in-place type widenings", exception);
+        }
+        if (!widened.isEmpty()) {
+            System.out.println("NPDev schema lifecycle: applied in-place type widenings: " + widened);
+        }
+        if (!skipped.isEmpty()) {
+            System.out.println("NPDev schema lifecycle: tables left for the destructive path (type diff not "
+                    + "fully explained by safe widenings): " + skipped);
+        }
+    }
+
+    /**
+     * Dialect-specific widen-column-type DDL (§6.1, confirmed against a real H2 instance before
+     * being trusted here -- see {@code SchemaLifecycleExecutorTypeWideningIntegrationTest}):
+     * Postgres uses {@code ALTER COLUMN ... TYPE}, H2 uses {@code ALTER COLUMN ... SET DATA TYPE}.
+     * No {@code USING} clause is added for Postgres -- open question, not testable this session (no
+     * Postgres instance available; see the phase evidence note) -- add one only if a real Postgres
+     * run against one of the matrix's pairs proves it necessary.
+     */
+    private static void executeWidenColumnType(Connection connection, String engine, String table, String column, String newType)
+            throws SQLException {
+        String safeTable = safeIdentifier(table);
+        String safeColumn = safeIdentifier(column);
+        String safeType = safeSqlType(newType);
+        String sql = "Postgres".equals(engine)
+                ? "ALTER TABLE " + safeTable + " ALTER COLUMN " + safeColumn + " TYPE " + safeType
+                : "ALTER TABLE " + safeTable + " ALTER COLUMN " + safeColumn + " SET DATA TYPE " + safeType;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.executeUpdate();
+        }
+    }
+
+    /**
+     * Guardrail 11's identifier-safety discipline, applied to the SQL TYPE portion of a widening
+     * ALTER statement: a type string comes from the manifest, which is generator-controlled today
+     * (a fixed {@code SqlTypeSupport} mapping) but is still author-adjacent input, not a literal
+     * this class invented -- reject anything that isn't a bare word optionally followed by
+     * {@code (n)} or {@code (p,s)}.
+     */
+    private static String safeSqlType(String sqlType) {
+        String value = sqlType == null ? "" : sqlType.trim();
+        if (!value.matches("[A-Za-z_][A-Za-z0-9_ ]*(\\(\\d+(,\\s?\\d+)?\\))?")) {
+            throw new IllegalStateException("Unsafe SQL type in schema realization manifest: " + sqlType);
+        }
+        return value;
     }
 
     /**
