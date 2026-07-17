@@ -230,9 +230,30 @@ public final class CompiledModelCanonicalJsonReader {
                 toPresentationMetadata(node.get("ui")),
                 optionalText(node, "truthLevel"),
                 optionalText(node, "module"),
-                List.of(),
+                toIndexes(node.get("indexes")),
                 toConceptAccess(node.get("access"))
         );
+    }
+
+    /**
+     * LNCH-1 P0.2 (found by the reflective CanonicalJsonRoundTripCompletenessTest ratchet): this
+     * reader previously passed {@code List.of()} for every concept's indexes unconditionally (the
+     * writer never emitted the key either), so a concept's author-declared secondary indexes
+     * (LNCH-6) never survived the compiled-model.json round trip.
+     */
+    private static List<CompiledIndex> toIndexes(JsonNode node) {
+        List<CompiledIndex> out = new ArrayList<>();
+        if (node == null || !node.isArray()) {
+            return out;
+        }
+        for (JsonNode indexNode : node) {
+            out.add(new CompiledIndex(
+                    optionalText(indexNode, "name"),
+                    toStringList(indexNode.get("fields")),
+                    booleanValue(indexNode, "unique")
+            ));
+        }
+        return out;
     }
 
     /** LNCH-13: row-level authorization rule (access: {read, write}). */

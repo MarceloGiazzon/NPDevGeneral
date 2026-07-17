@@ -216,10 +216,36 @@ public final class CompiledModelCanonicalJson {
             }
             node.set("invariants", invariantsNode);
             node.set("lifecycle", toLifecycle(concept.getLifecycle()));
+            // LNCH-1 P0.2 (found by the reflective CanonicalJsonRoundTripCompletenessTest ratchet):
+            // indexes was neither written here nor read by CompiledModelCanonicalJsonReader, so a
+            // concept's author-declared secondary indexes (LNCH-6) silently vanished across the
+            // canonical-JSON round trip -- the exact bug class the comments elsewhere in this file
+            // reference "LNCH-6's indexes" as a prior instance of (that prior fix evidently did not
+            // cover this writer/reader pair). Needed by LNCH-1 Phase 6's model-vs-previous-canonical
+            // diffing, which must see index changes, not just DDL emitted at generation time.
+            node.set("indexes", toIndexes(concept.getIndexes()));
             node.set("access", toConceptAccess(concept.getAccess()));
             concepts.add(node);
         }
         return concepts;
+    }
+
+    private static ArrayNode toIndexes(List<CompiledIndex> indexes) {
+        ArrayNode array = JsonNodeFactory.instance.arrayNode();
+        if (indexes == null) {
+            return array;
+        }
+        for (CompiledIndex index : indexes) {
+            if (index == null) {
+                continue;
+            }
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(index.getName()));
+            node.set("fields", toStringArray(index.getFields()));
+            node.put("unique", index.isUnique());
+            array.add(node);
+        }
+        return array;
     }
 
     private static ArrayNode toDomainTypes(CompiledModel model) {
@@ -315,6 +341,15 @@ public final class CompiledModelCanonicalJson {
             node.putNull("listColumn");
         } else {
             node.put("listColumn", metadata.getListColumn());
+        }
+        // LNCH-1 P0.2 (found by the reflective CanonicalJsonRoundTripCompletenessTest ratchet):
+        // showInDefaultWebUi was read by CompiledModelCanonicalJsonReader#toPresentationMetadata
+        // but never written here, silently dropping a field/concept's default-web-UI visibility
+        // override across the canonical-JSON round trip -- same bug class as LNCH-6's indexes.
+        if (metadata.getShowInDefaultWebUi() == null) {
+            node.putNull("showInDefaultWebUi");
+        } else {
+            node.put("showInDefaultWebUi", metadata.getShowInDefaultWebUi());
         }
         if (metadata.getListColumnOrder() == null) {
             node.putNull("listColumnOrder");
@@ -565,6 +600,12 @@ public final class CompiledModelCanonicalJson {
             node.set("data", toObjectMap(step.data()));
             node.put("id", safe(step.id()));
             node.put("procedure", safe(step.procedure()));
+            // LNCH-1 P0.2 (found by the reflective CanonicalJsonRoundTripCompletenessTest ratchet):
+            // flow was read by CompiledModelCanonicalJsonReader#toProcedureSteps but never written
+            // here, silently dropping a procedure step's flow reference across the canonical-JSON
+            // round trip every generated app's NPDevModelProvider reads at boot -- same bug class
+            // as LNCH-6's indexes/LNCH-13's access/LNCH-12's schedule/LNCH-17's loopSteps.
+            node.put("flow", safe(step.flow()));
             node.put("capability", safe(step.capability()));
             node.put("operation", safe(step.operation()));
             node.put("event", safe(step.event()));
