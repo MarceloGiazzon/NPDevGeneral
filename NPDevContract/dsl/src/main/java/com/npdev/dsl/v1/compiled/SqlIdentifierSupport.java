@@ -65,9 +65,22 @@ public final class SqlIdentifierSupport {
         if (entity == null) {
             return "";
         }
-        String table = entity.getTableName();
+        return tableName(entity.getName(), entity.getTableName());
+    }
+
+    /**
+     * Resolve a concept's physical table name from its authoring name and an optional explicit
+     * table-name override -- the same convention {@link #tableName(CompiledConcept)} applies,
+     * factored out so LNCH-1 P2's concept-rename logic can derive the OLD table name (old concept
+     * name + the CURRENT concept's explicit override, if any) without re-deriving the
+     * toSnakePlural/safeSqlIdentifier convention by hand. When {@code explicitOverride} is
+     * null/blank, the table name is derived from {@code name} via {@link #toSnakePlural(String)};
+     * otherwise the override is used verbatim (through {@link #safeSqlIdentifier(String)}).
+     */
+    public static String tableName(String name, String explicitOverride) {
+        String table = explicitOverride;
         if (table == null || table.isBlank()) {
-            table = toSnakePlural(entity.getName());
+            table = toSnakePlural(name);
         }
         return safeSqlIdentifier(table);
     }

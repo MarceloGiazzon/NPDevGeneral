@@ -95,4 +95,56 @@ class SqlIdentifierSupportTest {
                 SqlIdentifierSupport.safeSqlIdentifier(right)
         );
     }
+
+    // LNCH-1 P2 (2.3): tableName(String, String) is the factored-out overload that
+    // tableName(CompiledConcept) now delegates to, and that the concept-rename manifest/executor
+    // logic reuses to derive the OLD table name -- never re-deriving toSnakePlural/safeSqlIdentifier
+    // by hand.
+
+    @Test
+    void noOverrideConceptRenameProducesDifferentOldAndNewTableNames() {
+        String oldTable = SqlIdentifierSupport.tableName("Widget", null);
+        String newTable = SqlIdentifierSupport.tableName("Gadget", null);
+
+        assertEquals("widgets", oldTable);
+        assertEquals("gadgets", newTable);
+        assertNotEquals(oldTable, newTable);
+    }
+
+    @Test
+    void explicitOverrideConceptRenameKeepsTheSamePhysicalTableName() {
+        // An explicit tableName override is a property of the table's physical identity, not the
+        // concept's authoring name -- a rename of the concept's name does not imply a rename of an
+        // explicitly-overridden table, so old == new (no ALTER TABLE RENAME TO needed).
+        String oldTable = SqlIdentifierSupport.tableName("Widget", "legacy_products");
+        String newTable = SqlIdentifierSupport.tableName("Gadget", "legacy_products");
+
+        assertEquals("legacy_products", oldTable);
+        assertEquals(oldTable, newTable);
+    }
+
+    @Test
+    void tableNameOverloadDelegationMatchesCompiledConceptOverload() {
+        CompiledConcept withoutOverride = new CompiledConcept(
+                "Widget",
+                "Widget",
+                "",
+                List.of(new CompiledField("id", "uuid", "java.util.UUID", true, true, false))
+        );
+        CompiledConcept withOverride = new CompiledConcept(
+                "Widget",
+                "Widget",
+                "legacy_products",
+                List.of(new CompiledField("id", "uuid", "java.util.UUID", true, true, false))
+        );
+
+        assertEquals(
+                SqlIdentifierSupport.tableName("Widget", null),
+                SqlIdentifierSupport.tableName(withoutOverride)
+        );
+        assertEquals(
+                SqlIdentifierSupport.tableName("Widget", "legacy_products"),
+                SqlIdentifierSupport.tableName(withOverride)
+        );
+    }
 }
