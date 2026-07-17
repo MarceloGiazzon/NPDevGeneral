@@ -1421,6 +1421,14 @@ public final class JsonModelParser {
         }
         Integer maxLoopIterations = readOptionalInt(stepNode, "maxLoopIterations");
 
+        // LNCH-17: declared compensation steps, run in reverse completion order when a later step
+        // in the same flow terminally fails.
+        List<StepAst> onFailureSteps = List.of();
+        JsonNode onFailureNode = stepNode.get("onFailure");
+        if (onFailureNode != null && onFailureNode.isArray()) {
+            onFailureSteps = parseStepList(flowName + "." + stepName + ".onFailure", onFailureNode);
+        }
+
         if ("invariant".equals(type)) {
             if ((checkpoint == null || checkpoint.isBlank()) && scope != null && !scope.isBlank()) {
                 checkpoint = "pre";
@@ -1473,7 +1481,8 @@ public final class JsonModelParser {
                 collectionRef,
                 itemKey,
                 loopSteps,
-                maxLoopIterations
+                maxLoopIterations,
+                onFailureSteps
         );
     }
 

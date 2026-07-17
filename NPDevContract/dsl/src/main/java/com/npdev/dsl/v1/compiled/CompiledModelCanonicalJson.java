@@ -911,6 +911,21 @@ public final class CompiledModelCanonicalJson {
             stepNode.put("returnValueRef", safe(flowStep.getReturnValueRef()));
             stepNode.put("generatedActionName", safe(flowStep.getGeneratedActionName()));
             stepNode.set("capabilityCall", toCapabilityCall(flowStep.getCapabilityCall()));
+            // LNCH-17 (found while adding onFailureSteps below): collectionRef/itemKey/loopSteps/
+            // maxLoopIterations (LIFT-LOOP-P1's forEach fields) were never written here, so a
+            // forEach step's loop body silently vanished across the canonical-JSON round trip every
+            // generated app's NPDevModelProvider actually reads at boot -- the same bug class as
+            // LNCH-6's indexes/LNCH-13's access/LNCH-12's schedule, pre-existing and unrelated to
+            // this feature, fixed alongside it since this method needed touching anyway.
+            stepNode.put("collectionRef", safe(flowStep.getCollectionRef()));
+            stepNode.put("itemKey", safe(flowStep.getItemKey()));
+            stepNode.set("loopSteps", toFlowSteps(flowStep.getLoopSteps()));
+            if (flowStep.getMaxLoopIterations() == null) {
+                stepNode.putNull("maxLoopIterations");
+            } else {
+                stepNode.put("maxLoopIterations", flowStep.getMaxLoopIterations());
+            }
+            stepNode.set("onFailureSteps", toFlowSteps(flowStep.getOnFailureSteps()));
             steps.add(stepNode);
         }
         return steps;

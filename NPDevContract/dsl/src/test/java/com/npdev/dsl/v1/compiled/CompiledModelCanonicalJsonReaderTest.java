@@ -109,6 +109,57 @@ class CompiledModelCanonicalJsonReaderTest {
                 "welcome-notification"
         );
 
+        // LNCH-17: a compensation step, to prove onFailureSteps survives the canonical JSON round
+        // trip (and, incidentally, loopSteps -- see the writer/reader fix comments -- since this
+        // fixture now also exercises a forEach loop body via the same round trip).
+        CompiledFlowStep compensationStep = new CompiledFlowStep(
+                "undo-send",
+                "callCapability",
+                null,
+                "User",
+                List.of(),
+                null,
+                null,
+                Map.of(),
+                null,
+                List.of(),
+                List.of(),
+                null,
+                null,
+                null,
+                Map.of(),
+                null,
+                "input",
+                null,
+                null,
+                null,
+                null
+        );
+
+        CompiledFlowStep loopBodyStep = new CompiledFlowStep(
+                "notify-recipient",
+                "callCapability",
+                null,
+                "User",
+                List.of(),
+                null,
+                null,
+                Map.of(),
+                null,
+                List.of(),
+                List.of(),
+                null,
+                null,
+                null,
+                Map.of(),
+                null,
+                "recipient",
+                null,
+                null,
+                null,
+                null
+        );
+
         CompiledFlowStep flowStep = new CompiledFlowStep(
                 "map-and-send",
                 "callCapability",
@@ -130,7 +181,13 @@ class CompiledModelCanonicalJsonReaderTest {
                 "payload",
                 "result",
                 capabilityCall,
-                flowStepAction
+                flowStepAction,
+                null,
+                "input.recipients",
+                "recipient",
+                List.of(loopBodyStep),
+                5,
+                List.of(compensationStep)
         );
 
         CompiledLifecycle lifecycle = new CompiledLifecycle(
@@ -330,6 +387,15 @@ class CompiledModelCanonicalJsonReaderTest {
         assertEquals(List.of("acme", "beta"), restoredFlow.getSchedule().getTenantScope());
         assertNotNull(restoredFlow.getSteps().get(0).getAction());
         assertEquals("Send welcome notification", restoredFlow.getSteps().get(0).getAction().getLabel());
+        // LNCH-17: loopSteps (a pre-existing round-trip gap, fixed alongside onFailureSteps) and
+        // onFailureSteps must both survive.
+        assertEquals("input.recipients", restoredFlow.getSteps().get(0).getCollectionRef());
+        assertEquals("recipient", restoredFlow.getSteps().get(0).getItemKey());
+        assertEquals(5, restoredFlow.getSteps().get(0).getMaxLoopIterations());
+        assertEquals(1, restoredFlow.getSteps().get(0).getLoopSteps().size());
+        assertEquals("notify-recipient", restoredFlow.getSteps().get(0).getLoopSteps().get(0).getName());
+        assertEquals(1, restoredFlow.getSteps().get(0).getOnFailureSteps().size());
+        assertEquals("undo-send", restoredFlow.getSteps().get(0).getOnFailureSteps().get(0).getName());
         CompiledField restoredManagerId = findField(restoredEntity, "managerId");
         CompiledField restoredChartLabel = findField(restoredEntity, "chartLabel");
         CompiledField restoredStatus = findField(restoredEntity, "status");

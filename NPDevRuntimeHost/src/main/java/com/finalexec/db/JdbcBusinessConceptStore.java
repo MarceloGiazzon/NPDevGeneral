@@ -9,6 +9,7 @@ import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptStoreOptimisticLockException;
 import com.npdev.kernel.ports.ConceptStore;
+import org.springframework.jdbc.datasource.DataSourceUtils;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -36,12 +37,36 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         this.shapesByConcept = shapes(compiledModel);
     }
 
+    /**
+     * LNCH-17: {@code dataSource.getConnection()} would hand back a brand-new physical
+     * connection, entirely independent of whatever Spring-managed transaction the calling
+     * generated-service method is running under (e.g. {@code @Transactional public ... create(...)}
+     * in service-base.mustache, which also does a separate JPA {@code persistence.save(entity)}
+     * in the same method) -- so a concept write through this store and that JPA write were two
+     * uncoordinated auto-commits, not one atomic unit: if the JPA write failed afterward, the
+     * kernel-gateway write already landed and stayed landed. {@link DataSourceUtils#getConnection}
+     * joins the ambient Spring transaction when one is active (same mechanism {@code JdbcTemplate}
+     * uses internally) and transparently falls back to a plain new connection when there isn't
+     * one, so every existing non-transactional caller (tests, non-Spring contexts) is unaffected.
+     */
+    private Connection openConnection() {
+        return DataSourceUtils.getConnection(dataSource);
+    }
+
+    /** Releases a connection opened via {@link #openConnection()} -- a no-op close if it's bound
+     * to the ambient transaction (the transaction manager closes it when the transaction ends),
+     * a real close otherwise. Must be called from a {@code finally}, not try-with-resources,
+     * since try-with-resources would call {@code Connection#close()} directly and defeat this. */
+    private void releaseConnection(Connection connection) {
+        DataSourceUtils.releaseConnection(connection, dataSource);
+    }
+
     @Override
     public Optional<ConceptRecord> findById(String tenantId, String conceptName, String id) {
         ConceptShape shape = shape(conceptName);
         String sql = "SELECT * FROM " + shape.tableName() + " WHERE " + shape.idColumn() + " = ? AND tenant_id = ?";
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+        Connection connection = openConnection();
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, coerceId(id));
             statement.setObject(2, tenantId);
             try (ResultSet resultSet = statement.executeQuery()) {
@@ -52,6 +77,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             }
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed reading concept " + conceptName + " from JDBC store", exception);
+        } finally {
+            releaseConnection(connection);
         }
     }
 
@@ -59,8 +86,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     public List<ConceptRecord> findAll(String tenantId, String conceptName) {
         ConceptShape shape = shape(conceptName);
         String sql = "SELECT * FROM " + shape.tableName() + " WHERE tenant_id = ? ORDER BY " + shape.idColumn();
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+        Connection connection = openConnection();
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, tenantId);
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<ConceptRecord> out = new ArrayList<>();
@@ -71,6 +98,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             }
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed listing concept " + conceptName + " from JDBC store", exception);
+        } finally {
+            releaseConnection(connection);
         }
     }
 
@@ -108,7 +137,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         String whereSql = String.join(" AND ", whereClauses);
         String orderSql = orderByClause(shape, effective.sorts());
 
-        try (Connection connection = dataSource.getConnection()) {
+        Connection connection = openConnection();
+        try {
             long total;
             try (PreparedStatement statement = connection.prepareStatement(
                     "SELECT COUNT(*) FROM " + shape.tableName() + " WHERE " + whereSql)) {
@@ -135,6 +165,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             return ConceptPage.of(items, total, effective.offset());
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed querying concept " + conceptName + " from JDBC store", exception);
+        } finally {
+            releaseConnection(connection);
         }
     }
 
@@ -199,7 +231,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     public ConceptRecord save(ConceptRecord record) {
         ConceptShape shape = shape(record.conceptName());
         Map<String, Object> dbRecord = dbRecord(shape, record);
-        try (Connection connection = dataSource.getConnection()) {
+        Connection connection = openConnection();
+        try {
             TableColumns columns = tableColumns(connection, shape.tableName());
             dbRecord.keySet().removeIf(column -> !columns.has(column));
             dbRecord.putIfAbsent(shape.idColumn(), coerceId(record.id()));
@@ -210,6 +243,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             return saveVersioned(connection, shape, record, dbRecord);
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed saving concept " + record.conceptName() + " to JDBC store", exception);
+        } finally {
+            releaseConnection(connection);
         }
     }
 
@@ -295,13 +330,15 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     public void deleteById(String tenantId, String conceptName, String id) {
         ConceptShape shape = shape(conceptName);
         String sql = "DELETE FROM " + shape.tableName() + " WHERE " + shape.idColumn() + " = ? AND tenant_id = ?";
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+        Connection connection = openConnection();
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, coerceId(id));
             statement.setObject(2, tenantId);
             statement.executeUpdate();
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed deleting concept " + conceptName + " from JDBC store", exception);
+        } finally {
+            releaseConnection(connection);
         }
     }
 

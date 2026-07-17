@@ -33,6 +33,7 @@ public final class CompiledFlowStep {
     private final String itemKey;
     private final List<CompiledFlowStep> loopSteps;
     private final Integer maxLoopIterations;
+    private final List<CompiledFlowStep> onFailureSteps;
 
     public CompiledFlowStep(
             String name,
@@ -131,11 +132,11 @@ public final class CompiledFlowStep {
         this(name, type, checkpoint, scope, invariants, eventName, payloadRef, eventDataRefs, condition, thenSteps,
                 elseSteps, awaitEventName, awaitRef, awaitMatchCorrelation, awaitPayloadMatch, delaySeconds,
                 mapFromRef, mapToRef, returnValueRef, capabilityCall, action, generatedActionName,
-                null, null, List.of(), null);
+                null, null, List.of(), null, List.of());
     }
 
-    /** LIFT-LOOP-P1: canonical constructor, adding {@code collectionRef}/{@code itemKey}/
-     * {@code loopSteps}/{@code maxLoopIterations} for a {@code forEach} flow step. */
+    /** LIFT-LOOP-P1: adds {@code collectionRef}/{@code itemKey}/{@code loopSteps}/
+     * {@code maxLoopIterations} for a {@code forEach} flow step. */
     public CompiledFlowStep(
             String name,
             String type,
@@ -164,6 +165,43 @@ public final class CompiledFlowStep {
             List<CompiledFlowStep> loopSteps,
             Integer maxLoopIterations
     ) {
+        this(name, type, checkpoint, scope, invariants, eventName, payloadRef, eventDataRefs, condition, thenSteps,
+                elseSteps, awaitEventName, awaitRef, awaitMatchCorrelation, awaitPayloadMatch, delaySeconds,
+                mapFromRef, mapToRef, returnValueRef, capabilityCall, action, generatedActionName,
+                collectionRef, itemKey, loopSteps, maxLoopIterations, List.of());
+    }
+
+    /** LNCH-17: canonical constructor, adding {@code onFailureSteps} -- declared compensation
+     * steps run in reverse completion order when a later step in the same flow terminally fails. */
+    public CompiledFlowStep(
+            String name,
+            String type,
+            String checkpoint,
+            String scope,
+            List<String> invariants,
+            String eventName,
+            String payloadRef,
+            Map<String, String> eventDataRefs,
+            String condition,
+            List<CompiledFlowStep> thenSteps,
+            List<CompiledFlowStep> elseSteps,
+            String awaitEventName,
+            String awaitRef,
+            Boolean awaitMatchCorrelation,
+            Map<String, String> awaitPayloadMatch,
+            Long delaySeconds,
+            String mapFromRef,
+            String mapToRef,
+            String returnValueRef,
+            CompiledCapabilityCall capabilityCall,
+            CompiledActionMetadata action,
+            String generatedActionName,
+            String collectionRef,
+            String itemKey,
+            List<CompiledFlowStep> loopSteps,
+            Integer maxLoopIterations,
+            List<CompiledFlowStep> onFailureSteps
+    ) {
         this.name = name;
         this.type = type;
         this.checkpoint = checkpoint;
@@ -190,6 +228,7 @@ public final class CompiledFlowStep {
         this.itemKey = itemKey;
         this.loopSteps = loopSteps == null ? List.of() : new ArrayList<>(loopSteps);
         this.maxLoopIterations = maxLoopIterations;
+        this.onFailureSteps = onFailureSteps == null ? List.of() : new ArrayList<>(onFailureSteps);
     }
 
     public String getName() { return name; }
@@ -255,4 +294,8 @@ public final class CompiledFlowStep {
     }
 
     public Integer getMaxLoopIterations() { return maxLoopIterations; }
+
+    public List<CompiledFlowStep> getOnFailureSteps() {
+        return Collections.unmodifiableList(onFailureSteps);
+    }
 }

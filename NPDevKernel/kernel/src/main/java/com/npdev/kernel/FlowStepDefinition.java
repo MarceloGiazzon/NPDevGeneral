@@ -63,6 +63,7 @@ public final class FlowStepDefinition {
     private final String itemKey;
     private final List<FlowStepDefinition> loopSteps;
     private final Integer maxLoopIterations;
+    private final List<FlowStepDefinition> onFailureSteps;
 
     private FlowStepDefinition(
             String name,
@@ -250,6 +251,60 @@ public final class FlowStepDefinition {
                 ? List.of()
                 : Collections.unmodifiableList(new ArrayList<>(loopSteps));
         this.maxLoopIterations = maxLoopIterations;
+        this.onFailureSteps = List.of();
+    }
+
+    /**
+     * LNCH-17: copy constructor used only by {@link #withOnFailure}, since {@code onFailureSteps}
+     * is attachable to any step type/factory method rather than threaded through every one of
+     * them individually.
+     */
+    private FlowStepDefinition(FlowStepDefinition source, List<FlowStepDefinition> onFailureSteps) {
+        this.name = source.name;
+        this.type = source.type;
+        this.checkpoint = source.checkpoint;
+        this.invariantScope = source.invariantScope;
+        this.invariants = source.invariants;
+        this.capability = source.capability;
+        this.capabilityType = source.capabilityType;
+        this.capabilityAdapterId = source.capabilityAdapterId;
+        this.capabilityExecutionPolicy = source.capabilityExecutionPolicy;
+        this.capabilityInputSchema = source.capabilityInputSchema;
+        this.capabilityOutputSchema = source.capabilityOutputSchema;
+        this.operation = source.operation;
+        this.inputRef = source.inputRef;
+        this.argsRefs = source.argsRefs;
+        this.outputRef = source.outputRef;
+        this.eventName = source.eventName;
+        this.payloadRef = source.payloadRef;
+        this.eventDataRefs = source.eventDataRefs;
+        this.condition = source.condition;
+        this.thenSteps = source.thenSteps;
+        this.elseSteps = source.elseSteps;
+        this.awaitEventName = source.awaitEventName;
+        this.awaitRef = source.awaitRef;
+        this.awaitMatchCorrelation = source.awaitMatchCorrelation;
+        this.awaitPayloadMatchRefs = source.awaitPayloadMatchRefs;
+        this.delaySeconds = source.delaySeconds;
+        this.mapFromRef = source.mapFromRef;
+        this.mapToRef = source.mapToRef;
+        this.returnRef = source.returnRef;
+        this.collectionRef = source.collectionRef;
+        this.itemKey = source.itemKey;
+        this.loopSteps = source.loopSteps;
+        this.maxLoopIterations = source.maxLoopIterations;
+        this.onFailureSteps = onFailureSteps == null
+                ? List.of()
+                : Collections.unmodifiableList(new ArrayList<>(onFailureSteps));
+    }
+
+    /** LNCH-17: attaches declared compensation steps to an already-built step. */
+    public FlowStepDefinition withOnFailure(List<FlowStepDefinition> onFailureSteps) {
+        return new FlowStepDefinition(this, onFailureSteps);
+    }
+
+    public List<FlowStepDefinition> getOnFailureSteps() {
+        return onFailureSteps;
     }
 
     public static FlowStepDefinition invariant(String name, InvariantCheckpoint checkpoint, List<String> invariants) {

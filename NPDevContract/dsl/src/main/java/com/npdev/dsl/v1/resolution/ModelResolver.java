@@ -987,7 +987,8 @@ public final class ModelResolver {
                 step.getCollectionRef(),
                 step.getItemKey(),
                 cloneSteps(step.getLoopSteps()),
-                step.getMaxLoopIterations()
+                step.getMaxLoopIterations(),
+                cloneSteps(step.getOnFailureSteps())
         );
     }
 

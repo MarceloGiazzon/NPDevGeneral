@@ -89,6 +89,7 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
             CompiledFlowStep step = steps.get(stepIndex);
             String type = normalize(step.getType());
             String name = nonBlank(step.getName(), defaultStepName(type, stepIndex));
+            int builtSizeBefore = out.size();
 
             switch (type) {
                 case "invariant" -> out.add(FlowStepDefinition.invariant(
@@ -189,6 +190,16 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
                 default -> throw new IllegalArgumentException(
                         "Unsupported flow step type '" + step.getType() + "' in flow concept " + flowConcept
                 );
+            }
+
+            // LNCH-17: every case above adds exactly one built step -- attach its declared
+            // compensation steps (if any) onto that just-built step rather than threading
+            // onFailureSteps through every FlowStepDefinition factory method individually.
+            if (!step.getOnFailureSteps().isEmpty()) {
+                List<FlowStepDefinition> onFailureSteps = toFlowSteps(
+                        step.getOnFailureSteps(), flowConcept, adapterIdByCapability, capabilityOperationsByCapability
+                );
+                out.set(builtSizeBefore, out.get(builtSizeBefore).withOnFailure(onFailureSteps));
             }
         }
         return out;

@@ -474,6 +474,18 @@ public final class CompiledModelCanonicalJsonReader {
             elseSteps.add(toFlowStep(stepNode));
         }
 
+        // LNCH-17 (found while adding onFailureSteps): loopSteps was never read here either,
+        // matching the writer-side gap fixed in CompiledModelCanonicalJson -- see that fix's
+        // comment for the bug-class context.
+        List<CompiledFlowStep> loopSteps = new ArrayList<>();
+        for (JsonNode stepNode : array(node, "loopSteps")) {
+            loopSteps.add(toFlowStep(stepNode));
+        }
+        List<CompiledFlowStep> onFailureSteps = new ArrayList<>();
+        for (JsonNode stepNode : array(node, "onFailureSteps")) {
+            onFailureSteps.add(toFlowStep(stepNode));
+        }
+
         return new CompiledFlowStep(
                 text(node, "name"),
                 text(node, "type"),
@@ -496,7 +508,12 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "returnValueRef"),
                 toCapabilityCall(node.get("capabilityCall")),
                 toActionMetadata(node.get("action")),
-                optionalText(node, "generatedActionName")
+                optionalText(node, "generatedActionName"),
+                optionalText(node, "collectionRef"),
+                optionalText(node, "itemKey"),
+                loopSteps,
+                optionalIntegerObject(node.get("maxLoopIterations")),
+                onFailureSteps
         );
     }
 

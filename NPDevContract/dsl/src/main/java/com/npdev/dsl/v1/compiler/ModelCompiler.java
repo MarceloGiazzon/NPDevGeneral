@@ -1160,6 +1160,14 @@ public final class ModelCompiler {
                     invariantRefsByConcept,
                     invariantRefAliasByConcept
             );
+            List<CompiledFlowStep> onFailureSteps = compileFlowSteps(
+                    stepAst.getOnFailureSteps(),
+                    capabilityTypesByName,
+                    operationsByCapability,
+                    flowConcept,
+                    invariantRefsByConcept,
+                    invariantRefAliasByConcept
+            );
 
             out.add(new CompiledFlowStep(
                     stepAst.getName(),
@@ -1187,7 +1195,8 @@ public final class ModelCompiler {
                     stepAst.getCollectionRef(),
                     stepAst.getItemKey(),
                     loopSteps,
-                    stepAst.getMaxLoopIterations()
+                    stepAst.getMaxLoopIterations(),
+                    onFailureSteps
             ));
         }
         return out;

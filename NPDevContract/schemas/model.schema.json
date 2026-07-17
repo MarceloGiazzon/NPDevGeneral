@@ -2309,6 +2309,13 @@
           "type": "integer",
           "minimum": 1,
           "description": "LIFT-LOOP: safety cap on forEach iterations, mirroring Procedures' forEach."
+        },
+        "onFailure": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/flowStep"
+          },
+          "description": "LNCH-17: compensation steps run in reverse completion order if a later step in the same flow terminally fails. Not a distributed transaction -- best-effort cleanup, per the saga pattern; see docs/architecture/FLOW_TRANSACTION_CONTRACT.md."
         }
       },
       "allOf": [
