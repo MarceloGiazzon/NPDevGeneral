@@ -50,7 +50,10 @@ jobs:
         working-directory: NPDevContract/dsl
         timeout-minutes: 15
         run: |
-          ./gradlew check --no-daemon --console=plain
+          # gradle.properties hardcodes org.gradle.projectcachedir to a D:\WorkSpace\NPDev\Build
+          # path (this repo's own Windows-local build-output policy, docs/BUILD_OUTPUT_LOCATION_POLICY.md)
+          # -- meaningless on a Linux runner. --project-cache-dir on the command line overrides it.
+          ./gradlew check --no-daemon --console=plain --project-cache-dir /tmp/npdev-gradle-caches/dsl
 
       - name: Kernel inproc adapter tests
         working-directory: NPDevKernel
@@ -69,13 +72,13 @@ jobs:
             :adapters:tracing-inproc:test \
             :adapters:webhook-inproc:test \
             :adapters:file-store-inproc:test \
-            --no-daemon --console=plain
+            --no-daemon --console=plain --project-cache-dir /tmp/npdev-gradle-caches/kernel
 
       - name: Generator unit tests
         working-directory: NPDevGenerator
         timeout-minutes: 20
         run: |
-          ./gradlew :generator:test --no-daemon --console=plain
+          ./gradlew :generator:test --no-daemon --console=plain --project-cache-dir /tmp/npdev-gradle-caches/generator
 
       - name: Sync RuntimeHost libs for sample generation
         timeout-minutes: 15
@@ -100,7 +103,7 @@ jobs:
           chmod +x ./gradlew
           ./gradlew test \
             -PnpdevRuntimeHostLibsDir="$GITHUB_WORKSPACE/../NPDev_General__OutsideRepo/runtimehost-libs" \
-            --no-daemon --console=plain
+            --no-daemon --console=plain --project-cache-dir /tmp/npdev-gradle-caches/generated-sample
 
       - name: Upload PR gate evidence
         if: always()
