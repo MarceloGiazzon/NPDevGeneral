@@ -81,9 +81,20 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         if (classification == SchemaChangeClassification.RENAME_DETECTED) {
             System.out.println("NPDev schema lifecycle: fingerprint changed from " + stored + " to "
                     + manifest.schemaFingerprint() + " -- classified as RENAME_DETECTED (a declared renamedFrom "
-                    + "matches a column the live database still has under its old name). This is NOT auto-applied "
-                    + "as an in-place rename; it still goes through the destructive recreate path below, but is "
-                    + "correctly labeled instead of looking like an unrelated remove+add.");
+                    + "matches a column the live database still has under its old name). Attempting in-place "
+                    + "ALTER TABLE ... RENAME COLUMN for every table whose diff is fully explained by declared "
+                    + "renames, preserving all data.");
+            attemptInPlaceRenames(dataSource, manifest);
+            SchemaChangeClassification residual = classify(dataSource, manifest);
+            if (residual == SchemaChangeClassification.SAFE_ADDITIVE) {
+                System.out.println("NPDev schema lifecycle: in-place field rename(s) fully resolved the fingerprint "
+                        + "diff (residual classification SAFE_ADDITIVE); skipping destructive recreation.");
+                return DestructiveRecreation.safeAdditiveOutcome();
+            }
+            System.out.println("NPDev schema lifecycle: in-place rename pass left a residual classification of "
+                    + residual + " (a table's diff was not fully explained by declared renames, or a rename was "
+                    + "combined with a type change on the same column -- Phase 3's problem until type widening "
+                    + "lands); falling through to destructive recreation as the safety net.");
         } else if (classification == SchemaChangeClassification.TYPE_CHANGE_DETECTED) {
             System.out.println("NPDev schema lifecycle: fingerprint changed from " + stored + " to "
                     + manifest.schemaFingerprint() + " -- classified as TYPE_CHANGE_DETECTED (an existing column's "
@@ -129,6 +140,121 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     /** Backward-compatible convenience: true only for the SAFE_ADDITIVE classification. */
     boolean isSafeAdditiveChange(DataSource dataSource, SchemaManifest manifest) {
         return classify(dataSource, manifest) == SchemaChangeClassification.SAFE_ADDITIVE;
+    }
+
+    /**
+     * Executes in-place {@code ALTER TABLE ... RENAME COLUMN} statements (LNCH-1 Phase 1) for
+     * every business table whose live-DB-vs-manifest diff is FULLY explained by declared
+     * {@code renamedFrom} pairs, per {@link RenameResolution} -- reusing the exact same
+     * per-table eligibility test {@link #classify} uses, so a table only gets its columns renamed
+     * here if {@code classify} would otherwise have called it a clean {@code RENAME_DETECTED}. A
+     * table whose diff is NOT fully explained (a genuine drop/add mixed in, or a rename combined
+     * with a type change on the same column) is left completely untouched -- no partial/best-effort
+     * renaming -- so the caller's re-classification correctly falls through to the destructive path
+     * for that table instead of leaving the database in a state no single classification describes.
+     *
+     * <p>Idempotent by construction: every table's diff is read fresh from live
+     * {@link DatabaseMetaData} on each call (never a cached snapshot), so re-invoking this method
+     * against an already-renamed table naturally finds nothing left to explain and does nothing.
+     *
+     * <p>Package-private (not private) so it is directly unit-testable against a real H2
+     * {@link DataSource}, following {@link #classify} and {@link #isSafeAdditiveChange}'s
+     * precedent.
+     */
+    void attemptInPlaceRenames(DataSource dataSource, SchemaManifest manifest) {
+        List<String> renamed = new ArrayList<>();
+        List<String> skipped = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            for (Map.Entry<String, Map<String, String>> tableRenames : manifest.businessTableRenamedColumns().entrySet()) {
+                String table = tableRenames.getKey();
+                Map<String, String> declaredRenames = tableRenames.getValue();
+                if (declaredRenames.isEmpty()) {
+                    continue;
+                }
+                List<String> expectedColumns = manifest.businessTableColumns().getOrDefault(table, List.of());
+                if (expectedColumns.isEmpty()) {
+                    continue;
+                }
+                Set<String> expected = new LinkedHashSet<>(expectedColumns);
+                Set<String> actual = readActualColumns(metadata, table);
+                if (actual.isEmpty()) {
+                    // Table doesn't exist yet (brand new concept) -- nothing to rename; matches
+                    // classify()'s "actual.isEmpty() -> continue" guard for the same reason (§2.4).
+                    continue;
+                }
+                Set<String> additiveEligible = new LinkedHashSet<>(
+                        manifest.businessTableAdditiveColumns().getOrDefault(table, List.of()));
+                Set<String> extraInDb = new LinkedHashSet<>(actual);
+                extraInDb.removeAll(expected);
+                Set<String> missingInDb = new LinkedHashSet<>(expected);
+                missingInDb.removeAll(actual);
+
+                RenameResolution.Result resolution = RenameResolution.resolve(missingInDb, extraInDb, declaredRenames);
+                if (resolution.explainedRenames().isEmpty()) {
+                    continue;
+                }
+                boolean eligible = resolution.remainingExtra().isEmpty()
+                        && (resolution.remainingMissing().isEmpty()
+                                || additiveEligible.containsAll(resolution.remainingMissing()));
+                if (!eligible) {
+                    skipped.add(table + " (diff not fully explained by declared renames -- remainingMissing="
+                            + resolution.remainingMissing() + ", remainingExtra=" + resolution.remainingExtra() + ")");
+                    continue;
+                }
+                Map<String, String> expectedTypes = manifest.businessTableColumnTypes().getOrDefault(table, Map.of());
+                Map<String, String> actualTypes = readActualColumnTypes(metadata, table);
+                boolean typeChanged = false;
+                for (Map.Entry<String, String> pair : resolution.explainedRenames().entrySet()) {
+                    String expectedType = normalizeSqlType(expectedTypes.get(pair.getKey()));
+                    String actualType = normalizeSqlType(actualTypes.get(pair.getValue()));
+                    if (expectedType != null && actualType != null && !expectedType.equals(actualType)) {
+                        typeChanged = true;
+                        break;
+                    }
+                }
+                if (typeChanged) {
+                    skipped.add(table + " (a declared rename is combined with a type change on the same column -- "
+                            + "deferred to the destructive path pending Phase 3's type-widening support)");
+                    continue;
+                }
+                for (Map.Entry<String, String> pair : resolution.explainedRenames().entrySet()) {
+                    String newName = pair.getKey();
+                    String oldName = pair.getValue();
+                    executeRenameColumn(connection, manifest.engine(), table, oldName, newName);
+                    renamed.add(table + "." + oldName + " -> " + newName);
+                }
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed applying in-place field renames", exception);
+        }
+        if (!renamed.isEmpty()) {
+            System.out.println("NPDev schema lifecycle: applied in-place field renames: " + renamed);
+        }
+        if (!skipped.isEmpty()) {
+            System.out.println("NPDev schema lifecycle: tables left for the destructive path (rename did not "
+                    + "fully explain the diff): " + skipped);
+        }
+    }
+
+    /**
+     * Dialect-specific rename-column DDL (§6.1): Postgres uses {@code RENAME COLUMN}, H2 uses
+     * {@code ALTER COLUMN ... RENAME TO}. {@code manifest.engine()} is one of exactly
+     * {@code "InMemory"}, {@code "H2Local"}, {@code "H2Server"}, {@code "Postgres"} -- and by the
+     * time this is called {@code migrate()} has already returned early for InMemory (no physical
+     * database), so only the two H2 variants and Postgres are ever seen here.
+     */
+    private static void executeRenameColumn(Connection connection, String engine, String table, String oldName, String newName)
+            throws SQLException {
+        String safeTable = safeIdentifier(table);
+        String safeOld = safeIdentifier(oldName);
+        String safeNew = safeIdentifier(newName);
+        String sql = "Postgres".equals(engine)
+                ? "ALTER TABLE " + safeTable + " RENAME COLUMN " + safeOld + " TO " + safeNew
+                : "ALTER TABLE " + safeTable + " ALTER COLUMN " + safeOld + " RENAME TO " + safeNew;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.executeUpdate();
+        }
     }
 
     /**
@@ -186,30 +312,39 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 }
 
                 Map<String, String> renames = manifest.businessTableRenamedColumns().getOrDefault(table, Map.of());
-                Set<String> explainedNew = new LinkedHashSet<>();
-                Set<String> explainedOld = new LinkedHashSet<>();
-                for (Map.Entry<String, String> rename : renames.entrySet()) {
-                    if (missingInDb.contains(rename.getKey()) && extraInDb.contains(rename.getValue())) {
-                        explainedNew.add(rename.getKey());
-                        explainedOld.add(rename.getValue());
-                    }
-                }
-                Set<String> remainingMissing = new LinkedHashSet<>(missingInDb);
-                remainingMissing.removeAll(explainedNew);
-                Set<String> remainingExtra = new LinkedHashSet<>(extraInDb);
-                remainingExtra.removeAll(explainedOld);
+                Map<String, String> expectedTypes = manifest.businessTableColumnTypes().getOrDefault(table, Map.of());
+                RenameResolution.Result resolution = RenameResolution.resolve(missingInDb, extraInDb, renames);
+                Set<String> remainingMissing = resolution.remainingMissing();
+                Set<String> remainingExtra = resolution.remainingExtra();
 
                 if (remainingExtra.isEmpty() && (remainingMissing.isEmpty() || additiveEligible.containsAll(remainingMissing))) {
-                    worst = worse(worst, SchemaChangeClassification.RENAME_DETECTED);
-                    continue;
-                }
-                if (remainingExtra.isEmpty() && remainingMissing.isEmpty()) {
-                    // Column sets match exactly once renames are accounted for; the only remaining
-                    // possible difference is an existing shared column's type.
-                    if (hasTypeChange(metadata, table, expected, manifest.businessTableColumnTypes().getOrDefault(table, Map.of()))) {
-                        worst = worse(worst, SchemaChangeClassification.TYPE_CHANGE_DETECTED);
-                        continue;
+                    // Renames (plus, at most, additive-eligible new columns) fully explain the
+                    // diff -- but a renamed column may ALSO have had its type changed (the live
+                    // column is still under the OLD name, so a plain expected-name lookup into
+                    // actualTypes can never see it), and an unrelated, non-renamed shared column
+                    // on this same table may independently have a type change. Both must be
+                    // checked before declaring this table a clean RENAME_DETECTED, otherwise a
+                    // type change silently rides along with the rename onto the in-place path.
+                    Map<String, String> actualTypes = readActualColumnTypes(metadata, table);
+                    boolean typeChanged = false;
+                    for (Map.Entry<String, String> explained : resolution.explainedRenames().entrySet()) {
+                        String expectedType = normalizeSqlType(expectedTypes.get(explained.getKey()));
+                        String actualType = normalizeSqlType(actualTypes.get(explained.getValue()));
+                        if (expectedType != null && actualType != null && !expectedType.equals(actualType)) {
+                            typeChanged = true;
+                            break;
+                        }
                     }
+                    if (!typeChanged) {
+                        Set<String> sharedColumns = new LinkedHashSet<>(expected);
+                        sharedColumns.removeAll(resolution.explainedRenames().keySet());
+                        sharedColumns.removeAll(remainingMissing);
+                        typeChanged = hasTypeChange(metadata, table, sharedColumns, expectedTypes);
+                    }
+                    worst = worse(worst, typeChanged
+                            ? SchemaChangeClassification.TYPE_CHANGE_DETECTED
+                            : SchemaChangeClassification.RENAME_DETECTED);
+                    continue;
                 }
                 return SchemaChangeClassification.DESTRUCTIVE;
             }
