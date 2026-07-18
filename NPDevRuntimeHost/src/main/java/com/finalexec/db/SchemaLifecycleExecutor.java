@@ -200,7 +200,8 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     + "itemized acknowledgment (LNCH-1 Phase 4). Itemized destructive report: "
                     + report.stableStrings() + ". Expected acknowledgment token: " + expectedToken
                     + ". Set the generated manifest's destructiveAcknowledgment to this token to proceed -- see "
-                    + "docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes.");
+                    + "docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes."
+                    + agreementCheckSuffix(manifest, report));
         }
 
         if (tokenMatches && !hasUnknown) {
@@ -223,6 +224,41 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         }
         return executeWholeSchemaWipe(dataSource, manifest, stored, classificationForFallthrough, report,
                 tokenMatches ? providedToken : null);
+    }
+
+    /**
+     * LNCH-1 Phase 6 (task 6.3): the "friendlier" agreement-check enrichment. The token-mismatch
+     * refusal above already correctly blocks regardless -- this method changes nothing about that
+     * decision, it only enriches the REFUSAL MESSAGE when there is something more specific to say.
+     * {@code manifest.planItemStableStrings()} is the destructive-item stable strings a migration
+     * plan computed at GENERATION time (see {@code MigrationPlanEmitter}, populated only when a
+     * future {@code Build-NpdevApp.ps1 -PlanOnly}/{@code -Upgrade} passed
+     * {@code --schemaMigrationPlanOut}; empty for every app generated without that flag). When it is
+     * non-empty AND differs from what THIS report independently found live at BOOT time, an operator
+     * is very likely looking at model/database drift since the plan was generated (the classic stale-
+     * artifact problem) -- printing both lists side by side turns an opaque "wrong token" refusal
+     * into "here is exactly what changed out from under your plan." When the two lists already agree
+     * (or no plan-derived list is available at all -- the common case today, since Phase 6's CLI
+     * wiring is opt-in), this returns {@code ""} and the refusal message is unchanged from Phase 4.
+     */
+    private static String agreementCheckSuffix(SchemaManifest manifest, SchemaDeltaReport report) {
+        List<String> planned = manifest.planItemStableStrings();
+        if (planned == null || planned.isEmpty()) {
+            return "";
+        }
+        List<String> plannedSorted = new ArrayList<>(planned);
+        Collections.sort(plannedSorted);
+        List<String> actualSorted = new ArrayList<>(report.stableStrings());
+        Collections.sort(actualSorted);
+        if (plannedSorted.equals(actualSorted)) {
+            return "";
+        }
+        return " NOTE (LNCH-1 Phase 6 agreement check): the migration plan reviewed/acknowledged at "
+                + "generation time expected these destructive item(s): " + plannedSorted
+                + " -- but the live database at boot actually needs: " + actualSorted
+                + ". This usually means the model was edited again after the plan was generated, or the "
+                + "target database has drifted from the state the plan assumed. Regenerate the plan "
+                + "against the current model and database before acknowledging.";
     }
 
     /**
@@ -1669,7 +1705,15 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     stringListMap(root.path("businessTableRequiredColumns")),
                     stringMapMap(root.path("businessTableColumnDefaultLiterals")),
                     stringListMap(root.path("businessTableExpressionDefaultColumns")),
-                    uniqueConstraintListMap(root.path("businessTableUniqueConstraints"))
+                    uniqueConstraintListMap(root.path("businessTableUniqueConstraints")),
+                    // LNCH-1 Phase 6 (task 6.3): the destructive-item stable strings from a migration
+                    // plan computed at generation time (see SchemaRealizationEmitter#emit's 5-arg
+                    // overload) -- empty when no plan was computed this generation pass (the ordinary
+                    // case for every app until a future Build-NpdevApp.ps1 -PlanOnly/-Upgrade wires
+                    // --schemaMigrationPlanOut through). Absent from every manifest emitted before
+                    // this phase -- strings() defaults to an empty list, so pre-Phase-6 apps are
+                    // unaffected (the agreement-check enrichment below simply has nothing to compare).
+                    strings(root.path("migrationPlanItemStableStrings"))
             );
         } catch (Exception exception) {
             throw new IllegalStateException("Failed loading schema realization manifest", exception);
@@ -1772,8 +1816,46 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             Map<String, List<String>> businessTableRequiredColumns,
             Map<String, Map<String, String>> businessTableColumnDefaultLiterals,
             Map<String, List<String>> businessTableExpressionDefaultColumns,
-            Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints
+            Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints,
+            // LNCH-1 Phase 6 (task 6.3).
+            List<String> planItemStableStrings
     ) {
+        /** Backward-compatible convenience constructor matching this record's PRE-Phase-6 20-arg
+         * shape (every field above {@code planItemStableStrings}) -- defaults the new field to an
+         * empty list so the ~20 existing hand-built {@code SchemaManifest} constructions across this
+         * package's test suite (predating task 6.3) keep compiling unchanged. Only
+         * {@link #loadManifest} needs to populate the new field for real, via the canonical
+         * (21-arg) constructor above. */
+        public SchemaManifest(
+                String engine,
+                String storageMode,
+                boolean physicalDatabase,
+                String schemaFingerprint,
+                List<String> internalTables,
+                List<String> businessTables,
+                Map<String, List<String>> businessTableColumns,
+                Map<String, List<String>> businessTableAdditiveColumns,
+                Map<String, Map<String, String>> businessTableColumnTypes,
+                Map<String, Map<String, String>> businessTableRenamedColumns,
+                Map<String, String> businessTableRenames,
+                boolean allowDestructiveRecreate,
+                String strategy,
+                String scope,
+                String destructiveRecreateConfirmation,
+                String destructiveAcknowledgment,
+                Map<String, List<String>> businessTableRequiredColumns,
+                Map<String, Map<String, String>> businessTableColumnDefaultLiterals,
+                Map<String, List<String>> businessTableExpressionDefaultColumns,
+                Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints
+        ) {
+            this(engine, storageMode, physicalDatabase, schemaFingerprint, internalTables, businessTables,
+                    businessTableColumns, businessTableAdditiveColumns, businessTableColumnTypes,
+                    businessTableRenamedColumns, businessTableRenames, allowDestructiveRecreate, strategy, scope,
+                    destructiveRecreateConfirmation, destructiveAcknowledgment, businessTableRequiredColumns,
+                    businessTableColumnDefaultLiterals, businessTableExpressionDefaultColumns,
+                    businessTableUniqueConstraints, List.of());
+        }
+
         boolean destructiveAllowed() {
             return "DropAndRecreateOnStructureChange".equals(strategy)
                     && allowDestructiveRecreate
