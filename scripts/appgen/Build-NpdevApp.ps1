@@ -263,13 +263,45 @@ if (-not $UsesDirectGeneratorFlags) {
   if (-not [string]::IsNullOrWhiteSpace($AcknowledgeDestructive)) { $DirectGeneratorArgs += @('--destructiveAcknowledgment', $AcknowledgeDestructive) }
   $DirectJavaArgs = @('-cp', $GenClasspath, 'com.npdev.generator.GeneratorMain') + $DirectGeneratorArgs
 
+  # Mirror invoke-npdev-generator.ps1's own report+log writing (report.status/exitCode consumed
+  # later at step 4a2/the build-app-report.json section; the failure message just below points here
+  # regardless of which branch ran) -- without this, a -PlanOnly/-Upgrade/-AcknowledgeDestructive
+  # failure would point at a log file the direct-invocation path never created.
+  $GenLogDir = Join-Path $OutRoot '_logs'
+  New-Item -ItemType Directory -Force -Path $GenLogDir | Out-Null
+  $GenLogPath = Join-Path $GenLogDir 'generator-direct-java.log'
+  $GenReportPath = Join-Path $OutRoot 'generator-direct-java-report.json'
+  $GenStartedAt = Get-Date
   Push-Location $RuntimeCurrent
   try {
-    & java @DirectJavaArgs
+    $GenOutput = & java @DirectJavaArgs 2>&1
     $GeneratorExit = $LASTEXITCODE
+    $GenOutput | ForEach-Object { Write-Host $_ }
   } finally {
     Pop-Location
   }
+  $GenFinishedAt = Get-Date
+  @(
+    'NPDevGenerator direct Java invocation (Build-NpdevApp.ps1 -PlanOnly/-Upgrade/-AcknowledgeDestructive path)',
+    "StartedAt: $($GenStartedAt.ToString('o'))",
+    "FinishedAt: $($GenFinishedAt.ToString('o'))",
+    "ExitCode: $GeneratorExit",
+    '',
+    'Command:',
+    'java ' + (($DirectJavaArgs | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }) -join ' '),
+    '',
+    'Output:',
+    ($GenOutput -join [Environment]::NewLine)
+  ) | Set-Content -LiteralPath $GenLogPath -Encoding UTF8
+  Write-JsonFile ([ordered]@{
+    schemaVersion = 'npdev-generator-direct-java-report.v1'
+    startedAt = $GenStartedAt.ToString('o'); finishedAt = $GenFinishedAt.ToString('o')
+    exitCode = $GeneratorExit; status = if ($GeneratorExit -eq 0) { 'passed' } else { 'failed' }
+    runtimeRoot = $RuntimeCurrent; mainClass = 'com.npdev.generator.GeneratorMain'
+    configPath = $ConfigPath; modelPath = $ModelPath; outRoot = $OutRoot
+    artifactOut = $ArtifactRoot; finalAppOut = $FinalAppRoot
+    runtimeHostTemplate = $RuntimeHostTemplate; dbDefinitionPath = $DbDefinitionPath; logPath = $GenLogPath
+  }) $GenReportPath
 }
 if ($GeneratorExit -ne 0) {
   Write-Host "Generator FAILED ($GeneratorExit). See $OutRoot\_logs\generator-direct-java.log" -ForegroundColor Red
