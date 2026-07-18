@@ -2,6 +2,7 @@ package com.finalexec.db;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.dsl.v1.schemaevolution.DestructiveAckToken;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.Configuration;
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
@@ -16,6 +17,7 @@ import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -24,6 +26,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 @Component
 public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
@@ -32,6 +35,16 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     private static final String SCHEMA_REALIZATION_LOCATION = "classpath:db/schema-realization";
     private static final Set<String> SYSTEM_SCHEMAS = Set.of("information_schema", "pg_catalog");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    /**
+     * LNCH-1 Phase 4 (task 4.4). Self-bootstrapped exactly like {@link #METADATA_TABLE} -- a plain
+     * {@code CREATE TABLE IF NOT EXISTS} this class issues itself, NOT routed through the
+     * generator's {@code internalTables} catalog (confirmed: {@code npdev_schema_metadata}, which
+     * this table sits alongside, is not part of that catalog either). Every fingerprint-mismatch
+     * pass through {@link #beforeMigrate} -- safe (additive/rename/widening) or destructive --
+     * leaves exactly one row here.
+     */
+    private static final String HISTORY_TABLE = "npdev_schema_history";
 
     @Override
     public void migrate(Flyway flyway) {
@@ -61,7 +74,10 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         afterMigrate(dataSource, manifest);
     }
 
-    private DestructiveRecreation beforeMigrate(DataSource dataSource, SchemaManifest manifest) {
+    /** Package-private (not private) so it is directly unit-testable against a real H2
+     * {@link DataSource}, following {@link #classify}/{@link #attemptInPlaceRenames}'s precedent
+     * (LNCH-1 Phase 4 -- the destructive-path integration tests drive this method directly). */
+    DestructiveRecreation beforeMigrate(DataSource dataSource, SchemaManifest manifest) {
         String stored = readFingerprint(dataSource);
         if (stored == null || stored.isBlank()) {
             System.out.println("NPDev schema lifecycle: no stored schema fingerprint found; initializing schema realization.");
@@ -81,10 +97,12 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         attemptInPlaceTableRenames(dataSource, manifest);
 
         SchemaChangeClassification classification = classify(dataSource, manifest);
+        SchemaChangeClassification classificationForFallthrough = classification;
         if (classification == SchemaChangeClassification.SAFE_ADDITIVE) {
             System.out.println("NPDev schema lifecycle: fingerprint changed from " + stored + " to "
                     + manifest.schemaFingerprint() + " but every difference is a new non-bond column on an "
                     + "already-existing table; skipping destructive recreation (handled by the additive repeatable migration).");
+            writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
             return DestructiveRecreation.safeAdditiveOutcome();
         }
         if (classification == SchemaChangeClassification.RENAME_DETECTED) {
@@ -95,9 +113,11 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     + "renames, preserving all data.");
             attemptInPlaceRenames(dataSource, manifest);
             SchemaChangeClassification residual = classify(dataSource, manifest);
+            classificationForFallthrough = residual;
             if (residual == SchemaChangeClassification.SAFE_ADDITIVE) {
                 System.out.println("NPDev schema lifecycle: in-place field rename(s) fully resolved the fingerprint "
                         + "diff (residual classification SAFE_ADDITIVE); skipping destructive recreation.");
+                writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
                 return DestructiveRecreation.safeAdditiveOutcome();
             }
             if (residual == SchemaChangeClassification.TYPE_CHANGE_DETECTED) {
@@ -109,10 +129,12 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                         + "(LNCH-1 Phase 3), per-table all-or-nothing.");
                 attemptInPlaceTypeWidenings(dataSource, manifest);
                 residual = classify(dataSource, manifest);
+                classificationForFallthrough = residual;
                 if (residual == SchemaChangeClassification.SAFE_ADDITIVE) {
                     System.out.println("NPDev schema lifecycle: in-place rename(s) and type widening(s) fully "
                             + "resolved the fingerprint diff (residual classification SAFE_ADDITIVE); skipping "
                             + "destructive recreation.");
+                    writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
                     return DestructiveRecreation.safeAdditiveOutcome();
                 }
             }
@@ -128,9 +150,11 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     + "all-or-nothing.");
             attemptInPlaceTypeWidenings(dataSource, manifest);
             SchemaChangeClassification residual = classify(dataSource, manifest);
+            classificationForFallthrough = residual;
             if (residual == SchemaChangeClassification.SAFE_ADDITIVE) {
                 System.out.println("NPDev schema lifecycle: in-place type widening(s) fully resolved the "
                         + "fingerprint diff (residual classification SAFE_ADDITIVE); skipping destructive recreation.");
+                writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
                 return DestructiveRecreation.safeAdditiveOutcome();
             }
             System.out.println("NPDev schema lifecycle: in-place widening pass left a residual classification of "
@@ -138,15 +162,170 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     + "incomparable change -- per-table all-or-nothing means nothing on that table was applied); "
                     + "falling through to destructive recreation as the safety net.");
         }
-        if (!manifest.destructiveAllowed()) {
+
+        // LNCH-1 Phase 4 (task 4.3): everything below replaces the old blanket whole-schema-wipe
+        // fallback with itemized, surgical destruction wherever the residual diff cleanly supports
+        // it. SchemaDeltaReport independently re-introspects the live database (it does not trust
+        // classify()'s classification value beyond what is used here for logging/history purposes).
+        SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, manifest);
+        String expectedToken = DestructiveAckToken.compute(manifest.schemaFingerprint(), report.stableStrings());
+        String providedToken = manifest.destructiveAcknowledgment() == null
+                ? "" : manifest.destructiveAcknowledgment().trim();
+        boolean tokenMatches = !providedToken.isBlank() && providedToken.equals(expectedToken);
+        boolean hasUnknown = !report.hasOnlyNamedDestructiveKinds();
+        boolean blanketAuthorized = manifest.destructiveAllowed();
+
+        if (!tokenMatches && !blanketAuthorized) {
+            writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classificationForFallthrough,
+                    report, providedToken.isBlank() ? null : providedToken, "REFUSED");
             throw new IllegalStateException("Schema fingerprint changed from " + stored + " to "
-                    + manifest.schemaFingerprint() + " but destructive recreation is not explicitly allowed.");
+                    + manifest.schemaFingerprint() + " and includes destructive change(s) requiring an explicit, "
+                    + "itemized acknowledgment (LNCH-1 Phase 4). Itemized destructive report: "
+                    + report.stableStrings() + ". Expected acknowledgment token: " + expectedToken
+                    + ". Set the generated manifest's destructiveAcknowledgment to this token to proceed -- see "
+                    + "docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes.");
         }
+
+        if (tokenMatches && !hasUnknown) {
+            System.out.println("NPDev schema lifecycle: destructive change acknowledged by itemized token; "
+                    + "executing surgically (only the affected table(s)/column(s), LNCH-1 Phase 4). Report: "
+                    + report.stableStrings());
+            return executeSurgicalDestruction(dataSource, manifest, stored, classificationForFallthrough, report, providedToken);
+        }
+
+        if (!tokenMatches) {
+            System.out.println("NPDev schema lifecycle: DEPRECATION WARNING -- this destructive schema change was "
+                    + "authorized by the blanket 'destructiveAllowed' flag alone (no itemized acknowledgment token "
+                    + "matched). The blanket flag is deprecated; switch to the itemized acknowledgment token "
+                    + "(expected: " + expectedToken + ") -- see docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes.");
+        } else {
+            System.out.println("NPDev schema lifecycle: itemized acknowledgment token matched, but the delta "
+                    + "report includes UNKNOWN item(s) the surgical path cannot safely explain -- falling back to "
+                    + "whole-schema recreation (LNCH-1 Phase 4, still gated behind the same authorization used for "
+                    + "this pass). Report: " + report.stableStrings());
+        }
+        return executeWholeSchemaWipe(dataSource, manifest, stored, classificationForFallthrough, report,
+                tokenMatches ? providedToken : null);
+    }
+
+    /**
+     * LNCH-1 Phase 4 (task 4.3): the NEW default destructive path -- executes ONLY the tables/
+     * columns the itemized {@link SchemaDeltaReport} actually names, gated on a matching
+     * {@link com.npdev.dsl.v1.schemaevolution.DestructiveAckToken}. Snapshots only the affected
+     * tables (§2.6 answer 1) via the existing {@link SchemaDropSnapshotWriter#snapshotBeforeDrop}
+     * -- no new "table-subset" overload needed, it already accepts an arbitrary table list.
+     *
+     * <p>Write-before-execute, update-after (§2.4 crash semantics): the history row is inserted
+     * with {@code outcome = 'PARTIAL-CRASH'} BEFORE any DDL runs, and only updated to
+     * {@code 'APPLIED'} after every item has executed successfully. If the JVM dies mid-loop, the
+     * row is left exactly as inserted -- an accurate record that this pass crashed partway
+     * through, not a false claim either way.
+     */
+    private DestructiveRecreation executeSurgicalDestruction(
+            DataSource dataSource,
+            SchemaManifest manifest,
+            String stored,
+            SchemaChangeClassification classification,
+            SchemaDeltaReport report,
+            String ackTokenUsed
+    ) {
+        List<String> affectedTables = new ArrayList<>(report.affectedTables());
+        Collections.sort(affectedTables);
+        SchemaDropSnapshotWriter.snapshotBeforeDrop(dataSource, affectedTables);
+
+        String historyId = insertPendingHistoryRow(dataSource, stored, manifest.schemaFingerprint(),
+                classification, report, ackTokenUsed);
+
+        List<String> applied = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection()) {
+            for (SchemaDeltaReport.Item item : report.items()) {
+                if (item instanceof SchemaDeltaReport.DropColumn dropColumn) {
+                    executeDropColumn(connection, dropColumn.table(), dropColumn.column());
+                    applied.add("DROP_COLUMN " + dropColumn.table() + "." + dropColumn.column());
+                } else if (item instanceof SchemaDeltaReport.DropTable dropTable) {
+                    executeDropTableCascade(connection, dropTable.table());
+                    applied.add("DROP_TABLE " + dropTable.table());
+                } else if (item instanceof SchemaDeltaReport.NarrowType narrowType) {
+                    // Drop-and-recreate, not a casting ALTER COLUMN TYPE: per the plan, data in a
+                    // narrowed column is acknowledged lost by the token, and a cast can fail
+                    // per-row (e.g. a too-long VARCHAR value) -- simpler and more honest to drop
+                    // and recreate empty than attempt a partially-successful cast.
+                    executeNarrowTypeDropAndRecreate(connection, narrowType.table(), narrowType.column(), narrowType.toType());
+                    applied.add("NARROW_TYPE " + narrowType.table() + "." + narrowType.column() + " -> " + narrowType.toType());
+                }
+                // UNKNOWN items never reach here -- the caller only takes this path when
+                // report.hasOnlyNamedDestructiveKinds() is true.
+            }
+        } catch (SQLException exception) {
+            // Deliberately NOT updating the history row here -- it stays at PARTIAL-CRASH, which is
+            // the correct, honest record of a half-applied surgical pass (§2.4).
+            throw new IllegalStateException("Failed applying surgical destructive schema changes ("
+                    + applied.size() + "/" + report.items().size() + " item(s) applied before failure: "
+                    + applied + ")", exception);
+        }
+        markHistoryRowApplied(dataSource, historyId);
+        System.out.println("NPDev schema lifecycle: surgical destructive changes applied: " + applied);
+        return new DestructiveRecreation(true, false, List.copyOf(affectedTables));
+    }
+
+    private static void executeDropColumn(Connection connection, String table, String column) throws SQLException {
+        String safeTable = safeIdentifier(table);
+        String safeColumn = safeIdentifier(column);
+        try (PreparedStatement statement = connection.prepareStatement(
+                "ALTER TABLE " + safeTable + " DROP COLUMN " + safeColumn)) {
+            statement.executeUpdate();
+        }
+    }
+
+    private static void executeDropTableCascade(Connection connection, String table) throws SQLException {
+        String safeTable = safeIdentifier(table);
+        // Same CASCADE rationale as the whole-schema path (see executeWholeSchemaWipe): drops any
+        // dependent FK constraint along with the table; it does not touch a referencing table's rows.
+        try (PreparedStatement statement = connection.prepareStatement(
+                "DROP TABLE IF EXISTS " + safeTable + " CASCADE")) {
+            statement.executeUpdate();
+        }
+    }
+
+    private static void executeNarrowTypeDropAndRecreate(Connection connection, String table, String column, String newType)
+            throws SQLException {
+        String safeTable = safeIdentifier(table);
+        String safeColumn = safeIdentifier(column);
+        String safeType = safeSqlType(newType);
+        try (PreparedStatement drop = connection.prepareStatement(
+                "ALTER TABLE " + safeTable + " DROP COLUMN " + safeColumn)) {
+            drop.executeUpdate();
+        }
+        try (PreparedStatement add = connection.prepareStatement(
+                "ALTER TABLE " + safeTable + " ADD COLUMN " + safeColumn + " " + safeType)) {
+            add.executeUpdate();
+        }
+    }
+
+    /**
+     * The OLD destructive path (pre-Phase-4 behavior, unchanged DDL), now reached only when the
+     * residual diff includes an {@code UNKNOWN} item the surgical path cannot explain, or when
+     * authorization comes solely from the deprecated blanket {@code destructiveAllowed} flag (no
+     * itemized token matched). Same write-before-execute/update-after history lifecycle as the
+     * surgical path.
+     */
+    private DestructiveRecreation executeWholeSchemaWipe(
+            DataSource dataSource,
+            SchemaManifest manifest,
+            String stored,
+            SchemaChangeClassification classification,
+            SchemaDeltaReport report,
+            String ackTokenUsed
+    ) {
         List<String> tables = new ArrayList<>();
         tables.addAll(manifest.businessTables());
         tables.addAll(manifest.internalTables());
         Collections.reverse(tables);
         SchemaDropSnapshotWriter.snapshotBeforeDrop(dataSource, tables);
+
+        String historyId = insertPendingHistoryRow(dataSource, stored, manifest.schemaFingerprint(),
+                classification, report, ackTokenUsed);
+
         List<String> dropped = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
             for (String table : tables) {
@@ -169,10 +348,12 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             System.out.println("NPDev destructive schema recreation dropped manifest-listed NPDev-owned tables: " + dropped);
             System.out.println("NPDev destructive schema recreation stored fingerprint: " + stored);
             System.out.println("NPDev destructive schema recreation generated fingerprint: " + manifest.schemaFingerprint());
-            return new DestructiveRecreation(true, false, List.copyOf(dropped));
         } catch (SQLException exception) {
+            // History row deliberately left at PARTIAL-CRASH -- see executeSurgicalDestruction's note.
             throw new IllegalStateException("Failed destructive schema recreation", exception);
         }
+        markHistoryRowApplied(dataSource, historyId);
+        return new DestructiveRecreation(true, false, List.copyOf(dropped));
     }
 
     /** Backward-compatible convenience: true only for the SAFE_ADDITIVE classification. */
@@ -255,7 +436,10 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * {@link #attemptInPlaceTableRenames} to find tables that exist live but are not declared under
      * their current name in the manifest.
      */
-    private static Set<String> readActualTableNames(DatabaseMetaData metadata) throws SQLException {
+    /** Package-private (not private): reused verbatim by {@link SchemaDeltaReport} (LNCH-1 Phase 4)
+     * so the delta report enumerates live tables via the exact same primitive the table-rename step
+     * uses, instead of a second hand-rolled copy. */
+    static Set<String> readActualTableNames(DatabaseMetaData metadata) throws SQLException {
         Set<String> tables = new LinkedHashSet<>();
         try (ResultSet resultSet = metadata.getTables(null, null, null, new String[] {"TABLE"})) {
             while (resultSet.next()) {
@@ -662,7 +846,10 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * exact-numeric type names before they ever reach this method, so the parenthetical this method
      * now preserves is meaningful on both sides of the comparison.
      */
-    private static String normalizeSqlType(String sqlType) {
+    /** Package-private (not private): reused verbatim by {@link SchemaDeltaReport} (LNCH-1 Phase 4)
+     * so type-equality comparisons in the delta report use the exact same normalization rules
+     * {@link #classify} does, rather than a second, potentially-drifting copy. */
+    static String normalizeSqlType(String sqlType) {
         if (sqlType == null || sqlType.isBlank()) {
             return null;
         }
@@ -679,7 +866,8 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         return base + parameters;
     }
 
-    private static Map<String, String> readActualColumnTypes(DatabaseMetaData metadata, String table) {
+    /** Package-private (not private): reused verbatim by {@link SchemaDeltaReport} (LNCH-1 Phase 4). */
+    static Map<String, String> readActualColumnTypes(DatabaseMetaData metadata, String table) {
         Map<String, String> types = new LinkedHashMap<>();
         for (String candidate : List.of(table.toLowerCase(Locale.ROOT), table.toUpperCase(Locale.ROOT))) {
             try (ResultSet resultSet = metadata.getColumns(null, null, candidate, null)) {
@@ -745,7 +933,8 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         }
     }
 
-    private static Set<String> readActualColumns(DatabaseMetaData metadata, String table) throws SQLException {
+    /** Package-private (not private): reused verbatim by {@link SchemaDeltaReport} (LNCH-1 Phase 4). */
+    static Set<String> readActualColumns(DatabaseMetaData metadata, String table) throws SQLException {
         Set<String> columns = readActualColumns(metadata, table, table.toLowerCase(Locale.ROOT));
         if (columns.isEmpty()) {
             columns = readActualColumns(metadata, table, table.toUpperCase(Locale.ROOT));
@@ -811,7 +1000,10 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         }
     }
 
-    private static String safeIdentifier(String identifier) {
+    /** Package-private (not private): reused verbatim by {@link SchemaDeltaReport} (LNCH-1 Phase 4)
+     * for its best-effort row-count queries -- guardrail 11's identifier-safety discipline applies
+     * there exactly as it does everywhere else in this class. */
+    static String safeIdentifier(String identifier) {
         String value = identifier == null ? "" : identifier.trim();
         if (!value.matches("[A-Za-z_][A-Za-z0-9_]*")) {
             throw new IllegalStateException("Unsafe table identifier in schema realization manifest: " + identifier);
@@ -848,6 +1040,145 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             }
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed storing schema fingerprint", exception);
+        }
+    }
+
+    /**
+     * LNCH-1 Phase 4 (task 4.4). Idempotent, self-bootstrapped exactly like {@link #METADATA_TABLE}
+     * -- called at the top of every history write so a fresh app (no prior destructive/rename/
+     * widening pass) still gets the table before its first row.
+     */
+    private static void ensureHistoryTable(Connection connection) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "CREATE TABLE IF NOT EXISTS " + HISTORY_TABLE
+                        + " (id TEXT PRIMARY KEY, applied_at_utc BIGINT NOT NULL, from_fingerprint TEXT, "
+                        + "to_fingerprint TEXT, classification TEXT, items_json TEXT, ack_token_used TEXT, "
+                        + "outcome TEXT NOT NULL)"
+        )) {
+            statement.executeUpdate();
+        }
+    }
+
+    /**
+     * Every destructive item's {@link SchemaDeltaReport.Item#stableString()}, JSON-serialized as a
+     * plain array of strings -- already in {@link SchemaDeltaReport}'s deterministic sorted order,
+     * so this column's content is itself stable/order-independent for the same underlying diff.
+     */
+    private static String itemsJson(SchemaDeltaReport report) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(report == null ? List.of() : report.stableStrings());
+        } catch (Exception exception) {
+            return "[]";
+        }
+    }
+
+    /**
+     * The single, shared INSERT used by every history-row writer below. A broken write is caught
+     * and logged here, never propagated -- a history-table failure (unreachable metadata table,
+     * disk full) must never mask or replace the actual migration outcome (a thrown refusal, or a
+     * successfully-applied change) -- "if the metadata table is reachable" per the plan.
+     *
+     * @return the row's generated id, or {@code null} if the write itself failed (callers must
+     *         treat a {@code null} id as "there is no row to later update").
+     */
+    private static String insertHistoryRow(
+            DataSource dataSource,
+            String fromFingerprint,
+            String toFingerprint,
+            SchemaChangeClassification classification,
+            SchemaDeltaReport report,
+            String ackTokenUsed,
+            String outcome
+    ) {
+        String id = UUID.randomUUID().toString();
+        try (Connection connection = dataSource.getConnection()) {
+            ensureHistoryTable(connection);
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "INSERT INTO " + HISTORY_TABLE + " (id, applied_at_utc, from_fingerprint, to_fingerprint, "
+                            + "classification, items_json, ack_token_used, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            )) {
+                statement.setString(1, id);
+                statement.setLong(2, System.currentTimeMillis());
+                statement.setString(3, fromFingerprint);
+                statement.setString(4, toFingerprint);
+                statement.setString(5, classification == null ? null : classification.name());
+                statement.setString(6, itemsJson(report));
+                if (ackTokenUsed == null || ackTokenUsed.isBlank()) {
+                    statement.setNull(7, Types.VARCHAR);
+                } else {
+                    statement.setString(7, ackTokenUsed);
+                }
+                statement.setString(8, outcome);
+                statement.executeUpdate();
+            }
+            return id;
+        } catch (Exception exception) {
+            System.out.println("NPDev schema lifecycle: failed writing npdev_schema_history row (continuing -- "
+                    + "a broken history write must never block or mask the actual migration outcome): "
+                    + exception.getMessage());
+            return null;
+        }
+    }
+
+    /** REFUSED / arbitrary-outcome one-shot write (no later update). Used by refusals ("nothing
+     * was attempted, so INSERT directly with outcome = REFUSED", per the plan) and by the safe
+     * (additive/rename/widening) paths, where write-then-immediately-mark-applied is fine since
+     * those steps are individually idempotent-by-check -- no crash-window concern. */
+    private static void writeHistoryRow(
+            DataSource dataSource,
+            String fromFingerprint,
+            String toFingerprint,
+            SchemaChangeClassification classification,
+            SchemaDeltaReport report,
+            String ackTokenUsed,
+            String outcome
+    ) {
+        insertHistoryRow(dataSource, fromFingerprint, toFingerprint, classification, report, ackTokenUsed, outcome);
+    }
+
+    /** Safe-path (SAFE_ADDITIVE / RENAME_DETECTED / TYPE_CHANGE_DETECTED-resolved-by-widening)
+     * history row: no destructive items to report (an empty items list), no acknowledgment token,
+     * outcome APPLIED directly -- see {@link #writeHistoryRow}'s javadoc for why a single INSERT is
+     * sufficient here. */
+    private static void writeAppliedHistoryRow(
+            DataSource dataSource,
+            String fromFingerprint,
+            String toFingerprint,
+            SchemaChangeClassification classification
+    ) {
+        insertHistoryRow(dataSource, fromFingerprint, toFingerprint, classification, null, null, "APPLIED");
+    }
+
+    /** Destructive-path PENDING write ("write-before-execute", §2.4): inserted with
+     * {@code outcome = 'PARTIAL-CRASH'} before any DDL runs. */
+    private static String insertPendingHistoryRow(
+            DataSource dataSource,
+            String fromFingerprint,
+            String toFingerprint,
+            SchemaChangeClassification classification,
+            SchemaDeltaReport report,
+            String ackTokenUsed
+    ) {
+        return insertHistoryRow(dataSource, fromFingerprint, toFingerprint, classification, report, ackTokenUsed, "PARTIAL-CRASH");
+    }
+
+    /** Destructive-path "update-after" (§2.4): flips a PARTIAL-CRASH row to APPLIED once every
+     * item in the pass has executed successfully. A {@code null} id (the pending insert itself
+     * failed) is a safe no-op -- there is no row to update. */
+    private static void markHistoryRowApplied(DataSource dataSource, String historyId) {
+        if (historyId == null) {
+            return;
+        }
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "UPDATE " + HISTORY_TABLE + " SET outcome = ? WHERE id = ?")) {
+            statement.setString(1, "APPLIED");
+            statement.setString(2, historyId);
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            System.out.println("NPDev schema lifecycle: failed updating npdev_schema_history outcome to APPLIED "
+                    + "for row " + historyId + " (the DDL itself already succeeded -- only the audit row write "
+                    + "failed): " + exception.getMessage());
         }
     }
 
@@ -888,7 +1219,13 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     lifecycle.path("allowDestructiveRecreate").asBoolean(false),
                     lifecycle.path("strategy").asText(""),
                     lifecycle.path("scope").asText(""),
-                    lifecycle.path("destructiveRecreateConfirmation").asText("")
+                    lifecycle.path("destructiveRecreateConfirmation").asText(""),
+                    // LNCH-1 Phase 4 (task 4.2/4.3): the itemized destructive-acknowledgment token.
+                    // Absent from every manifest emitted before this phase (and from every real
+                    // manifest until Phase 6 wires -AcknowledgeDestructive into the emitter) --
+                    // asText("") correctly defaults to "", which never equals a real computed
+                    // token, so pre-Phase-6 apps are unaffected until an author opts in.
+                    root.path("destructiveAcknowledgment").asText("")
             );
         } catch (Exception exception) {
             throw new IllegalStateException("Failed loading schema realization manifest", exception);
@@ -951,7 +1288,8 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             boolean allowDestructiveRecreate,
             String strategy,
             String scope,
-            String destructiveRecreateConfirmation
+            String destructiveRecreateConfirmation,
+            String destructiveAcknowledgment
     ) {
         boolean destructiveAllowed() {
             return "DropAndRecreateOnStructureChange".equals(strategy)
@@ -961,7 +1299,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         }
     }
 
-    private record DestructiveRecreation(boolean performed, boolean safeAdditive, List<String> droppedTables) {
+    /** Package-private (not private): its fields are asserted on directly by the LNCH-1 Phase 4
+     * destructive-path integration tests. */
+    record DestructiveRecreation(boolean performed, boolean safeAdditive, List<String> droppedTables) {
         static DestructiveRecreation none() {
             return new DestructiveRecreation(false, false, List.of());
         }

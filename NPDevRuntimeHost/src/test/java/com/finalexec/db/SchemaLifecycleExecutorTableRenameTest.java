@@ -201,7 +201,8 @@ class SchemaLifecycleExecutorTableRenameTest {
                 true,
                 "DropAndRecreateOnStructureChange",
                 "NpdevOwnedTablesOnly",
-                "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED"
+                "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED",
+                ""
         );
     }
 
