@@ -77,6 +77,7 @@ public final class UserDatabaseDefinitionLoader {
             case IN_MEMORY -> "";
         };
         List<String> fingerprintInputs = fingerprintInputs(definition, model);
+        String schemaFingerprint = "sha256:" + sha256(String.join("\n", fingerprintInputs));
         return new GeneratedDatabasePlan(
                 appId,
                 engine,
@@ -102,7 +103,7 @@ public final class UserDatabaseDefinitionLoader {
                 definition.createInternalTables(),
                 definition.createBusinessTables(),
                 policy,
-                "sha256:" + sha256(String.join("\n", fingerprintInputs)),
+                schemaFingerprint,
                 normalizedPath,
                 fingerprintInputs
         );
@@ -274,6 +275,20 @@ public final class UserDatabaseDefinitionLoader {
         RANDOM.nextBytes(bytes);
         return slug(appId).replace('-', '_') + "_" + INSTANCE_FORMAT.format(LocalDateTime.now()) + "_"
                 + HexFormat.of().formatHex(bytes);
+    }
+
+    /**
+     * LNCH-1 P6 (task 6.1): the exact production fingerprint computation, extracted so
+     * {@code com.npdev.generator.schemaevolution.MigrationPlanEmitter} can compute the "previous"
+     * model's fingerprint (needed for {@code fromFingerprint}) via the SAME algorithm {@link #load}
+     * uses for the "current" model's fingerprint -- never a hand-re-derived approximation. Callers
+     * needing the CURRENT model's fingerprint should prefer the value {@link #load} already
+     * computed ({@link GeneratedDatabasePlan#schemaFingerprint()}) over calling this a second time
+     * with equivalent inputs; this method exists for computing the fingerprint of a DIFFERENT
+     * (typically: previous) compiled model against the same database definition.
+     */
+    public static String computeSchemaFingerprint(UserDatabaseDefinition definition, CompiledModel model) {
+        return "sha256:" + sha256(String.join("\n", fingerprintInputs(definition, model)));
     }
 
     private static List<String> fingerprintInputs(UserDatabaseDefinition definition, CompiledModel model) {

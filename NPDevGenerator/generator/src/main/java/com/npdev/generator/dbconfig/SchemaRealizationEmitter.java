@@ -746,7 +746,7 @@ public final class SchemaRealizationEmitter {
      * anchor is globally unique (it is an FK target); every other unique kind is scoped to
      * {@code (tenant_id, ...)}.
      */
-    private record UniqueConstraintDecl(String name, List<String> columns, boolean tenantScoped) {
+    public record UniqueConstraintDecl(String name, List<String> columns, boolean tenantScoped) {
     }
 
     /**
@@ -951,13 +951,27 @@ public final class SchemaRealizationEmitter {
         return value == null ? "" : value.replace("'", "''");
     }
 
-    private static void emitManifest(CompiledModel model, Path resourcesRoot, GeneratedDatabasePlan plan, Path modelSourcePath) throws Exception {
-        List<String> internalTables = plan.createInternalTables()
-                ? NpdevInternalTables.all().stream().map(InternalTableDefinition::name).toList()
-                : List.of();
-        List<String> businessTables = plan.createBusinessTables()
-                ? model.getConcepts().stream().map(SqlIdentifierSupport::tableName).toList()
-                : List.of();
+    /**
+     * LNCH-1 P6 (task 6.1): the per-concept manifest-shaped metadata computation extracted
+     * verbatim from {@link #emitManifest}'s former inline loop (behavior-preserving refactor --
+     * {@code emitManifest} now calls this method instead of duplicating it, so the two callers can
+     * never independently drift). Public so
+     * {@code com.npdev.generator.schemaevolution.MigrationPlanEmitter} can call the SAME production
+     * computation for BOTH the new and the previous compiled model when building a migration-plan
+     * preview, instead of re-deriving additive-eligibility / unique-constraint / required-default
+     * determination by hand (guardrail 11's "reuse the production method" discipline, applied to
+     * this generator-only concern -- there is no RuntimeHost equivalent to share via the DSL module
+     * here, since RuntimeHost never computes this FROM a model; it only ever reads it back out of
+     * the manifest this method feeds).
+     *
+     * <p>Always computes for every concept in {@code model} regardless of
+     * {@code GeneratedDatabasePlan#createBusinessTables()} -- that flag is a caller concern
+     * ({@link #emitManifest} substitutes {@link BusinessTableMetadata#empty()} when it is false;
+     * {@code MigrationPlanEmitter} makes its own equivalent decision against whichever plan/db
+     * definition it was given).
+     */
+    public static BusinessTableMetadata computeBusinessTableMetadata(CompiledModel model) {
+        List<String> businessTables = model.getConcepts().stream().map(SqlIdentifierSupport::tableName).toList();
         Map<String, List<String>> businessTableColumns = new LinkedHashMap<>();
         Map<String, List<String>> businessTableAdditiveColumns = new LinkedHashMap<>();
         Map<String, Map<String, String>> businessTableColumnTypes = new LinkedHashMap<>();
@@ -966,47 +980,100 @@ public final class SchemaRealizationEmitter {
         Map<String, List<String>> businessTableRequiredColumns = new LinkedHashMap<>();
         Map<String, Map<String, String>> businessTableColumnDefaultLiterals = new LinkedHashMap<>();
         Map<String, List<String>> businessTableExpressionDefaultColumns = new LinkedHashMap<>();
-        Map<String, List<Map<String, Object>>> businessTableUniqueConstraints = new LinkedHashMap<>();
-        if (plan.createBusinessTables()) {
-            Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
-            for (CompiledConcept concept : model.getConcepts()) {
-                String table = SqlIdentifierSupport.tableName(concept);
-                businessTableColumns.put(table, fullColumnNames(concept, conceptsByName));
-                businessTableAdditiveColumns.put(table, additiveColumnNames(concept, conceptsByName));
-                businessTableColumnTypes.put(table, columnTypes(concept, conceptsByName));
-                Map<String, String> renames = columnRenames(concept, conceptsByName);
-                if (!renames.isEmpty()) {
-                    businessTableRenamedColumns.put(table, renames);
-                }
-                Map.Entry<String, String> tableRename = conceptTableRename(concept);
-                if (tableRename != null) {
-                    businessTableRenames.put(tableRename.getKey(), tableRename.getValue());
-                }
-                List<String> requiredColumns = requiredColumnNames(concept, conceptsByName);
-                if (!requiredColumns.isEmpty()) {
-                    businessTableRequiredColumns.put(table, requiredColumns);
-                }
-                Map<String, String> defaultLiterals = columnDefaultLiterals(concept, conceptsByName);
-                if (!defaultLiterals.isEmpty()) {
-                    businessTableColumnDefaultLiterals.put(table, defaultLiterals);
-                }
-                List<String> expressionDefaults = expressionDefaultColumnNames(concept, conceptsByName);
-                if (!expressionDefaults.isEmpty()) {
-                    businessTableExpressionDefaultColumns.put(table, expressionDefaults);
-                }
-                List<UniqueConstraintDecl> uniqueConstraints = collectUniqueConstraints(concept, table);
-                if (!uniqueConstraints.isEmpty()) {
-                    List<Map<String, Object>> encoded = new ArrayList<>();
-                    for (UniqueConstraintDecl decl : uniqueConstraints) {
-                        Map<String, Object> encodedDecl = new LinkedHashMap<>();
-                        encodedDecl.put("name", decl.name());
-                        encodedDecl.put("columns", decl.columns());
-                        encodedDecl.put("tenantScoped", decl.tenantScoped());
-                        encoded.add(encodedDecl);
-                    }
-                    businessTableUniqueConstraints.put(table, encoded);
-                }
+        Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints = new LinkedHashMap<>();
+
+        Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
+        for (CompiledConcept concept : model.getConcepts()) {
+            String table = SqlIdentifierSupport.tableName(concept);
+            businessTableColumns.put(table, fullColumnNames(concept, conceptsByName));
+            businessTableAdditiveColumns.put(table, additiveColumnNames(concept, conceptsByName));
+            businessTableColumnTypes.put(table, columnTypes(concept, conceptsByName));
+            Map<String, String> renames = columnRenames(concept, conceptsByName);
+            if (!renames.isEmpty()) {
+                businessTableRenamedColumns.put(table, renames);
             }
+            Map.Entry<String, String> tableRename = conceptTableRename(concept);
+            if (tableRename != null) {
+                businessTableRenames.put(tableRename.getKey(), tableRename.getValue());
+            }
+            List<String> requiredColumns = requiredColumnNames(concept, conceptsByName);
+            if (!requiredColumns.isEmpty()) {
+                businessTableRequiredColumns.put(table, requiredColumns);
+            }
+            Map<String, String> defaultLiterals = columnDefaultLiterals(concept, conceptsByName);
+            if (!defaultLiterals.isEmpty()) {
+                businessTableColumnDefaultLiterals.put(table, defaultLiterals);
+            }
+            List<String> expressionDefaults = expressionDefaultColumnNames(concept, conceptsByName);
+            if (!expressionDefaults.isEmpty()) {
+                businessTableExpressionDefaultColumns.put(table, expressionDefaults);
+            }
+            List<UniqueConstraintDecl> uniqueConstraints = collectUniqueConstraints(concept, table);
+            if (!uniqueConstraints.isEmpty()) {
+                businessTableUniqueConstraints.put(table, uniqueConstraints);
+            }
+        }
+
+        return new BusinessTableMetadata(
+                businessTables,
+                businessTableColumns,
+                businessTableAdditiveColumns,
+                businessTableColumnTypes,
+                businessTableRenamedColumns,
+                businessTableRenames,
+                businessTableRequiredColumns,
+                businessTableColumnDefaultLiterals,
+                businessTableExpressionDefaultColumns,
+                businessTableUniqueConstraints
+        );
+    }
+
+    /** See {@link #computeBusinessTableMetadata}. */
+    public record BusinessTableMetadata(
+            List<String> businessTables,
+            Map<String, List<String>> businessTableColumns,
+            Map<String, List<String>> businessTableAdditiveColumns,
+            Map<String, Map<String, String>> businessTableColumnTypes,
+            Map<String, Map<String, String>> businessTableRenamedColumns,
+            Map<String, String> businessTableRenames,
+            Map<String, List<String>> businessTableRequiredColumns,
+            Map<String, Map<String, String>> businessTableColumnDefaultLiterals,
+            Map<String, List<String>> businessTableExpressionDefaultColumns,
+            Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints
+    ) {
+        static BusinessTableMetadata empty() {
+            return new BusinessTableMetadata(List.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
+                    Map.of(), Map.of(), Map.of(), Map.of());
+        }
+    }
+
+    private static void emitManifest(CompiledModel model, Path resourcesRoot, GeneratedDatabasePlan plan, Path modelSourcePath) throws Exception {
+        List<String> internalTables = plan.createInternalTables()
+                ? NpdevInternalTables.all().stream().map(InternalTableDefinition::name).toList()
+                : List.of();
+        BusinessTableMetadata businessMetadata = plan.createBusinessTables()
+                ? computeBusinessTableMetadata(model)
+                : BusinessTableMetadata.empty();
+        List<String> businessTables = businessMetadata.businessTables();
+        Map<String, List<String>> businessTableColumns = businessMetadata.businessTableColumns();
+        Map<String, List<String>> businessTableAdditiveColumns = businessMetadata.businessTableAdditiveColumns();
+        Map<String, Map<String, String>> businessTableColumnTypes = businessMetadata.businessTableColumnTypes();
+        Map<String, Map<String, String>> businessTableRenamedColumns = businessMetadata.businessTableRenamedColumns();
+        Map<String, String> businessTableRenames = businessMetadata.businessTableRenames();
+        Map<String, List<String>> businessTableRequiredColumns = businessMetadata.businessTableRequiredColumns();
+        Map<String, Map<String, String>> businessTableColumnDefaultLiterals = businessMetadata.businessTableColumnDefaultLiterals();
+        Map<String, List<String>> businessTableExpressionDefaultColumns = businessMetadata.businessTableExpressionDefaultColumns();
+        Map<String, List<Map<String, Object>>> businessTableUniqueConstraints = new LinkedHashMap<>();
+        for (Map.Entry<String, List<UniqueConstraintDecl>> entry : businessMetadata.businessTableUniqueConstraints().entrySet()) {
+            List<Map<String, Object>> encoded = new ArrayList<>();
+            for (UniqueConstraintDecl decl : entry.getValue()) {
+                Map<String, Object> encodedDecl = new LinkedHashMap<>();
+                encodedDecl.put("name", decl.name());
+                encodedDecl.put("columns", decl.columns());
+                encodedDecl.put("tenantScoped", decl.tenantScoped());
+                encoded.add(encodedDecl);
+            }
+            businessTableUniqueConstraints.put(entry.getKey(), encoded);
         }
 
         Map<String, Object> manifest = new LinkedHashMap<>();
