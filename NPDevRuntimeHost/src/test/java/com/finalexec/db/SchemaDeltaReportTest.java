@@ -132,7 +132,7 @@ class SchemaDeltaReportTest {
                 Map.of("widgets", List.of()),
                 Map.of("widgets", Map.of("id", "BIGINT", "quantity", "INTEGER")),
                 Map.of(), Map.of(), true, "DropAndRecreateOnStructureChange", "NpdevOwnedTablesOnly",
-                "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED", "");
+                "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED", "", Map.of(), Map.of(), Map.of(), Map.of());
 
         SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, manifest);
 
@@ -152,7 +152,7 @@ class SchemaDeltaReportTest {
                 Map.of("widgets", List.of("nickname")),
                 Map.of("widgets", Map.of("id", "BIGINT", "nickname", "VARCHAR(255)")),
                 Map.of(), Map.of(), true, "DropAndRecreateOnStructureChange", "NpdevOwnedTablesOnly",
-                "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED", "");
+                "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED", "", Map.of(), Map.of(), Map.of(), Map.of());
 
         SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, manifest);
 
@@ -170,7 +170,8 @@ class SchemaDeltaReportTest {
                 Map.of("accounts", List.of()),
                 Map.of("accounts", Map.of("id", "BIGINT")),
                 Map.of(), Map.of("accounts", "users"), true, "DropAndRecreateOnStructureChange",
-                "NpdevOwnedTablesOnly", "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED", "");
+                "NpdevOwnedTablesOnly", "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED", "",
+                Map.of(), Map.of(), Map.of(), Map.of());
 
         SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, manifest);
 
@@ -248,7 +249,11 @@ class SchemaDeltaReportTest {
                 "DropAndRecreateOnStructureChange",
                 "NpdevOwnedTablesOnly",
                 "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED",
-                ""
+                "",
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of()
         );
     }
 

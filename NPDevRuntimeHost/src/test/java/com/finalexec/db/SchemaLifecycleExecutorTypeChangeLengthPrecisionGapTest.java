@@ -125,7 +125,11 @@ class SchemaLifecycleExecutorTypeChangeLengthPrecisionGapTest {
                 "DropAndRecreateOnStructureChange",
                 "NpdevOwnedTablesOnly",
                 "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED",
-                ""
+                "",
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of()
         );
     }
 

@@ -225,7 +225,11 @@ class SchemaLifecycleExecutorTypeWideningIntegrationTest {
                 "DropAndRecreateOnStructureChange",
                 "NpdevOwnedTablesOnly",
                 "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED",
-                ""
+                "",
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of()
         );
 
         assertEquals(SchemaLifecycleExecutor.SchemaChangeClassification.TYPE_CHANGE_DETECTED,
@@ -316,7 +320,11 @@ class SchemaLifecycleExecutorTypeWideningIntegrationTest {
                 "DropAndRecreateOnStructureChange",
                 "NpdevOwnedTablesOnly",
                 "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED",
-                ""
+                "",
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of()
         );
     }
 

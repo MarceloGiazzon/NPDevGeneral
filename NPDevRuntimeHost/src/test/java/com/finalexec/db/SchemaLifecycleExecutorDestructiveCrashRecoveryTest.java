@@ -203,7 +203,7 @@ class SchemaLifecycleExecutorDestructiveCrashRecoveryTest {
                 Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)")),
                 Map.of(), Map.of(),
                 false, "DropAndRecreateOnStructureChange", "NpdevOwnedTablesOnly",
-                "", ackToken);
+                "", ackToken, Map.of(), Map.of(), Map.of(), Map.of());
     }
 
     /** Minimal {@link DataSource} wrapping {@link DriverManager}; avoids pulling in an H2-specific compile-time dependency. */

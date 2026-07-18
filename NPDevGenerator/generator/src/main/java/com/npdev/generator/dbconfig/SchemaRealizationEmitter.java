@@ -10,6 +10,7 @@ import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelDataSource;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
+import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.dsl.v1.compiled.SqlTypeSupport;
 import com.npdev.generator.bonds.BondModelSupport;
@@ -131,10 +132,16 @@ public final class SchemaRealizationEmitter {
     }
 
     /**
-     * Adds new non-bond columns to an already-existing business table. Always nullable, even if the
-     * field is required by the model, so existing rows are not broken by the addition; tightening to
-     * NOT NULL after a backfill, and bond/FK columns, remain structural changes that go through the
-     * schema-fingerprint destructive-recreate path instead (see {@link #isAdditiveEligible}).
+     * Adds new columns to an already-existing business table (LNCH-1 P5 (5.3): now including
+     * nullable bond/FK columns, see {@link #isAdditiveEligible}). Always nullable at the SQL level,
+     * even if the field is required by the model -- so this migration itself never breaks on
+     * existing rows -- but {@code SchemaLifecycleExecutor} (LNCH-1 Phase 5) backfills a required
+     * column with its declared literal default and tightens it to NOT NULL BEFORE this repeatable
+     * migration ever runs (so, for that case, the {@code ADD COLUMN IF NOT EXISTS} below is
+     * observed as a no-op); a required field with no literal default refuses boot entirely,
+     * meaning this migration is never reached for it. Narrowing type changes and column/table
+     * removal remain structural changes that go through the schema-fingerprint destructive-recreate
+     * path instead.
      */
     private static void appendAdditiveColumns(StringBuilder sql, CompiledConcept concept, DatabaseEngine engine,
             Map<String, CompiledConcept> conceptsByName) {
@@ -157,20 +164,67 @@ public final class SchemaRealizationEmitter {
                 continue;
             }
             String column = SqlIdentifierSupport.columnName(field);
-            String sqlType = SqlTypeSupport.sqlType(field);
+            Optional<Bond> bond = BondModelSupport.resolveBond(concept, field, conceptsByName);
+            // A bond column takes the bound anchor's SQL type (matches appendBusinessTable's
+            // fresh-CREATE handling), not the reference default (UUID).
+            String sqlType = bond.isPresent() ? bond.get().effectiveSqlType() : SqlTypeSupport.sqlType(field);
             sql.append("ALTER TABLE ").append(table).append(" ADD COLUMN IF NOT EXISTS ")
                     .append(column).append(" ").append(renderType(sqlType, engine)).append(";\n");
             if (field.isRequired()) {
-                sql.append("-- NOTE: '").append(column).append("' is required by the model but added nullable here; ")
-                        .append("existing rows will have NULL until backfilled or a destructive recreate is run.\n");
+                CompiledSchema schema = field.getSchema();
+                Object literalDefault = schema == null ? null : schema.getDefaultValue();
+                if (literalDefault != null) {
+                    sql.append("-- NOTE: '").append(column).append("' is required by the model and declares a ")
+                            .append("literal default; NPDev's schema-lifecycle executor backfills existing NULL ")
+                            .append("rows to that default and enforces NOT NULL automatically before this migration ")
+                            .append("runs (LNCH-1 Phase 5) -- the ADD COLUMN above observes an already-added column.\n");
+                } else {
+                    sql.append("-- NOTE: '").append(column).append("' is required by the model but no literal ")
+                            .append("default is declared; boot refuses until one is added or the field is made ")
+                            .append("optional (LNCH-1 Phase 5) -- this migration is not reached in that case.\n");
+                }
+            }
+            if (bond.isPresent()) {
+                // LNCH-1 P5 (5.3): appendBonds() only emits FK constraints as part of the fresh
+                // CREATE TABLE path (V1__) -- a nullable bond column added here to an
+                // ALREADY-EXISTING table needs its own FK constraint, or it is just a plain column
+                // with no referential integrity.
+                Bond resolvedBond = bond.get();
+                String constraint = truncate("fk_" + table + "_" + column);
+                String constraintSql = "ALTER TABLE " + table
+                        + " ADD CONSTRAINT " + constraint
+                        + " FOREIGN KEY (" + column + ")"
+                        + " REFERENCES " + resolvedBond.targetTable() + " (" + resolvedBond.anchorColumn() + ")"
+                        + resolvedBond.onUpdateSqlClause()
+                        + " ON DELETE " + resolvedBond.onDeleteSql();
+                sql.append(addConstraintIfMissing(engine, table, constraint, constraintSql));
             }
         }
         sql.append("\n");
     }
 
+    /**
+     * LNCH-1 P5 (5.3): a non-bond field is always additive-eligible (unchanged). A bond/FK field is
+     * additive-eligible only when it is NOT required -- an FK column permits NULLs, so a nullable
+     * bond can be added to an existing table exactly like any other nullable field (with its own FK
+     * constraint, see {@link #appendAdditiveColumns}). A REQUIRED bond has no literal-default
+     * backfill possible in v1 (a bond's "default" would have to reference an existing row's actual
+     * key, out of scope), so it stays additive-INeligible; {@code SchemaLifecycleExecutor}
+     * (LNCH-1 Phase 5) intercepts that case with a dedicated, itemized refusal instead of letting it
+     * fall into the destructive path's generic UNKNOWN bucket. A many-to-many bond has no scalar
+     * column at all (its membership lives in a junction table) and is never additive-eligible,
+     * regardless of required-ness.
+     */
     private static boolean isAdditiveEligible(CompiledConcept concept, CompiledField field,
             Map<String, CompiledConcept> conceptsByName) {
-        return BondModelSupport.resolveBond(concept, field, conceptsByName).isEmpty();
+        Optional<Bond> bond = BondModelSupport.resolveBond(concept, field, conceptsByName);
+        if (bond.isEmpty()) {
+            return true;
+        }
+        if (bond.get().cardinality() == Cardinality.MANY_TO_MANY) {
+            return false;
+        }
+        return !field.isRequired();
     }
 
     private static void appendTable(StringBuilder sql, InternalTableDefinition table, DatabaseEngine engine) {
@@ -610,6 +664,158 @@ public final class SchemaRealizationEmitter {
     }
 
     /**
+     * LNCH-1 P5 (5.2): every column name (bond or not, id excluded implicitly since it is never
+     * "missing" from an existing table) whose field is {@code required} in the model. Threaded into
+     * the manifest so the runtime schema lifecycle can tell which newly-added additive column needs
+     * a backfill-and-NOT-NULL pass, and (for the additive-INeligible case -- a required bond, see
+     * {@link #isAdditiveEligible}) which missing column to name in its dedicated refusal instead of
+     * the generic destructive-report UNKNOWN bucket.
+     */
+    private static List<String> requiredColumnNames(CompiledConcept concept, Map<String, CompiledConcept> conceptsByName) {
+        List<String> columns = new ArrayList<>();
+        for (CompiledField field : concept.getFields()) {
+            Optional<Bond> bond = BondModelSupport.resolveBond(concept, field, conceptsByName);
+            if (bond.isPresent() && bond.get().cardinality() == Cardinality.MANY_TO_MANY) {
+                continue;
+            }
+            if (field.isRequired()) {
+                columns.add(SqlIdentifierSupport.columnName(field));
+            }
+        }
+        return List.copyOf(columns);
+    }
+
+    /**
+     * LNCH-1 P5 (5.2): column name -> the field's declared literal {@code default}, JSON-encoded
+     * (preserves whether the literal is a string/number/boolean, unlike a bare {@code String.valueOf}).
+     * Bond/FK fields are excluded -- a bond's "default" would need to reference an existing row's
+     * actual key, out of scope for v1 automatic backfill (see {@link #isAdditiveEligible}'s javadoc).
+     * The runtime schema-lifecycle executor decodes this back to a typed value (via the same JSON
+     * library) and binds it as a JDBC bound parameter for the backfill {@code UPDATE} -- never
+     * string-interpolated into SQL text.
+     */
+    private static Map<String, String> columnDefaultLiterals(CompiledConcept concept, Map<String, CompiledConcept> conceptsByName) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (CompiledField field : concept.getFields()) {
+            Optional<Bond> bond = BondModelSupport.resolveBond(concept, field, conceptsByName);
+            if (bond.isPresent()) {
+                continue;
+            }
+            CompiledSchema schema = field.getSchema();
+            if (schema == null || schema.getDefaultValue() == null) {
+                continue;
+            }
+            try {
+                out.put(SqlIdentifierSupport.columnName(field), OBJECT_MAPPER.writeValueAsString(schema.getDefaultValue()));
+            } catch (Exception ignored) {
+                // An unencodable literal should not happen for a JSON-sourced String/Number/Boolean
+                // value -- treated as "no literal default available" rather than failing generation.
+            }
+        }
+        return out;
+    }
+
+    /**
+     * LNCH-1 P5 (5.2): column names that declare a {@code defaultExpression} but no literal
+     * {@code default} -- lets the runtime executor's refusal message distinguish "an expression
+     * default is declared, but only literal defaults are backfilled automatically in v1" from the
+     * plainer "no default declared at all" case.
+     */
+    private static List<String> expressionDefaultColumnNames(CompiledConcept concept, Map<String, CompiledConcept> conceptsByName) {
+        List<String> out = new ArrayList<>();
+        for (CompiledField field : concept.getFields()) {
+            Optional<Bond> bond = BondModelSupport.resolveBond(concept, field, conceptsByName);
+            if (bond.isPresent()) {
+                continue;
+            }
+            CompiledSchema schema = field.getSchema();
+            if (schema == null) {
+                continue;
+            }
+            if (schema.getDefaultValue() == null && schema.getDefaultExpression() != null && !schema.getDefaultExpression().isBlank()) {
+                out.add(SqlIdentifierSupport.columnName(field));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * LNCH-1 P5 (5.1): a single declared unique constraint (single-field, compound-invariant, or
+     * explicit-index), independent of whether it targets an existing or brand-new table.
+     * {@code tenantScoped} mirrors {@link #appendBusinessTable}'s rule: a connectable natural-key
+     * anchor is globally unique (it is an FK target); every other unique kind is scoped to
+     * {@code (tenant_id, ...)}.
+     */
+    private record UniqueConstraintDecl(String name, List<String> columns, boolean tenantScoped) {
+    }
+
+    /**
+     * LNCH-1 P5 (5.1): the same single-field/compound-invariant/explicit-index unique determination
+     * {@link #appendBusinessTable} and {@link #appendExplicitIndexes} use for the fresh-CREATE DDL,
+     * recomputed here for the manifest so the runtime executor can pre-check existing data and apply
+     * a NEW unique constraint to an ALREADY-EXISTING table (something the fresh-CREATE DDL, which
+     * only ever runs via {@code CREATE TABLE IF NOT EXISTS}, never reaches). Deliberately a
+     * parallel implementation, not a shared extraction, to avoid touching the DDL-emission code
+     * paths those two methods' existing golden tests already cover -- kept honest by
+     * {@code SchemaRealizationEmitterUniqueConstraintManifestParityTest}, which cross-checks this
+     * method's output against the actual generated SQL for the same concepts.
+     */
+    private static List<UniqueConstraintDecl> collectUniqueConstraints(CompiledConcept concept, String table) {
+        List<UniqueConstraintDecl> specs = new ArrayList<>();
+        for (CompiledField field : concept.getFields()) {
+            if (!field.isUnique()) {
+                continue;
+            }
+            String column = SqlIdentifierSupport.columnName(field);
+            if (isConnectableAnchor(field) && !field.isId()) {
+                specs.add(new UniqueConstraintDecl(truncate("uq_" + table + "_" + column), List.of(column), false));
+            } else {
+                specs.add(new UniqueConstraintDecl(truncate("ux_" + table + "_" + column), List.of(column), true));
+            }
+        }
+        Map<String, CompiledField> fieldsByLowerName = new LinkedHashMap<>();
+        for (CompiledField field : concept.getFields()) {
+            fieldsByLowerName.put(field.getName().toLowerCase(Locale.ROOT), field);
+        }
+        for (CompiledInvariant invariant : concept.getInvariants()) {
+            if (!"unique".equalsIgnoreCase(invariant.getType()) || invariant.getFields().size() < 2) {
+                continue;
+            }
+            List<String> columns = new ArrayList<>();
+            for (String fieldName : invariant.getFields()) {
+                CompiledField field = fieldsByLowerName.get(fieldName.toLowerCase(Locale.ROOT));
+                if (field != null) {
+                    columns.add(SqlIdentifierSupport.columnName(field));
+                }
+            }
+            if (columns.size() < 2) {
+                continue;
+            }
+            specs.add(new UniqueConstraintDecl(truncate("uq_" + table + "_" + String.join("_", columns)), List.copyOf(columns), true));
+        }
+        for (CompiledIndex index : concept.getIndexes()) {
+            if (!index.isUnique()) {
+                continue;
+            }
+            List<String> columns = new ArrayList<>();
+            for (String fieldName : index.getFields()) {
+                CompiledField field = fieldsByLowerName.get(fieldName.toLowerCase(Locale.ROOT));
+                if (field != null) {
+                    columns.add(SqlIdentifierSupport.columnName(field));
+                }
+            }
+            if (columns.isEmpty()) {
+                continue;
+            }
+            String baseName = (index.getName() != null && !index.getName().isBlank())
+                    ? index.getName()
+                    : String.join("_", columns);
+            specs.add(new UniqueConstraintDecl(truncate("uqx_" + table + "_" + baseName), List.copyOf(columns), true));
+        }
+        return specs;
+    }
+
+    /**
      * LNCH-1 P2 (2.4): new table name -> previous table name, for a concept declaring
      * {@code renamedFrom} -- but ONLY when the rename implies an actual physical table rename.
      * An explicit {@code tableName} override is a property of the table's physical identity, not
@@ -757,6 +963,10 @@ public final class SchemaRealizationEmitter {
         Map<String, Map<String, String>> businessTableColumnTypes = new LinkedHashMap<>();
         Map<String, Map<String, String>> businessTableRenamedColumns = new LinkedHashMap<>();
         Map<String, String> businessTableRenames = new LinkedHashMap<>();
+        Map<String, List<String>> businessTableRequiredColumns = new LinkedHashMap<>();
+        Map<String, Map<String, String>> businessTableColumnDefaultLiterals = new LinkedHashMap<>();
+        Map<String, List<String>> businessTableExpressionDefaultColumns = new LinkedHashMap<>();
+        Map<String, List<Map<String, Object>>> businessTableUniqueConstraints = new LinkedHashMap<>();
         if (plan.createBusinessTables()) {
             Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
             for (CompiledConcept concept : model.getConcepts()) {
@@ -771,6 +981,30 @@ public final class SchemaRealizationEmitter {
                 Map.Entry<String, String> tableRename = conceptTableRename(concept);
                 if (tableRename != null) {
                     businessTableRenames.put(tableRename.getKey(), tableRename.getValue());
+                }
+                List<String> requiredColumns = requiredColumnNames(concept, conceptsByName);
+                if (!requiredColumns.isEmpty()) {
+                    businessTableRequiredColumns.put(table, requiredColumns);
+                }
+                Map<String, String> defaultLiterals = columnDefaultLiterals(concept, conceptsByName);
+                if (!defaultLiterals.isEmpty()) {
+                    businessTableColumnDefaultLiterals.put(table, defaultLiterals);
+                }
+                List<String> expressionDefaults = expressionDefaultColumnNames(concept, conceptsByName);
+                if (!expressionDefaults.isEmpty()) {
+                    businessTableExpressionDefaultColumns.put(table, expressionDefaults);
+                }
+                List<UniqueConstraintDecl> uniqueConstraints = collectUniqueConstraints(concept, table);
+                if (!uniqueConstraints.isEmpty()) {
+                    List<Map<String, Object>> encoded = new ArrayList<>();
+                    for (UniqueConstraintDecl decl : uniqueConstraints) {
+                        Map<String, Object> encodedDecl = new LinkedHashMap<>();
+                        encodedDecl.put("name", decl.name());
+                        encodedDecl.put("columns", decl.columns());
+                        encodedDecl.put("tenantScoped", decl.tenantScoped());
+                        encoded.add(encodedDecl);
+                    }
+                    businessTableUniqueConstraints.put(table, encoded);
                 }
             }
         }
@@ -795,6 +1029,11 @@ public final class SchemaRealizationEmitter {
         manifest.put("businessTableColumnTypes", businessTableColumnTypes);
         manifest.put("businessTableRenamedColumns", businessTableRenamedColumns);
         manifest.put("businessTableRenames", businessTableRenames);
+        // LNCH-1 Phase 5.
+        manifest.put("businessTableRequiredColumns", businessTableRequiredColumns);
+        manifest.put("businessTableColumnDefaultLiterals", businessTableColumnDefaultLiterals);
+        manifest.put("businessTableExpressionDefaultColumns", businessTableExpressionDefaultColumns);
+        manifest.put("businessTableUniqueConstraints", businessTableUniqueConstraints);
         manifest.put("sourceOfTruth", Map.of(
                 "internal", resolveInternalSchemaSourcePath(plan.definitionPath()).toString(),
                 "business", modelSourcePath == null ? "" : modelSourcePath.toAbsolutePath().normalize().toString(),

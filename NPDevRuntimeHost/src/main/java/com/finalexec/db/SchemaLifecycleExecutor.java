@@ -102,6 +102,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             System.out.println("NPDev schema lifecycle: fingerprint changed from " + stored + " to "
                     + manifest.schemaFingerprint() + " but every difference is a new non-bond column on an "
                     + "already-existing table; skipping destructive recreation (handled by the additive repeatable migration).");
+            applyRequiredFieldBackfills(dataSource, manifest, stored, classification);
             writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
             return DestructiveRecreation.safeAdditiveOutcome();
         }
@@ -117,6 +118,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             if (residual == SchemaChangeClassification.SAFE_ADDITIVE) {
                 System.out.println("NPDev schema lifecycle: in-place field rename(s) fully resolved the fingerprint "
                         + "diff (residual classification SAFE_ADDITIVE); skipping destructive recreation.");
+                applyRequiredFieldBackfills(dataSource, manifest, stored, classification);
                 writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
                 return DestructiveRecreation.safeAdditiveOutcome();
             }
@@ -134,6 +136,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     System.out.println("NPDev schema lifecycle: in-place rename(s) and type widening(s) fully "
                             + "resolved the fingerprint diff (residual classification SAFE_ADDITIVE); skipping "
                             + "destructive recreation.");
+                    applyRequiredFieldBackfills(dataSource, manifest, stored, classification);
                     writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
                     return DestructiveRecreation.safeAdditiveOutcome();
                 }
@@ -154,6 +157,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             if (residual == SchemaChangeClassification.SAFE_ADDITIVE) {
                 System.out.println("NPDev schema lifecycle: in-place type widening(s) fully resolved the "
                         + "fingerprint diff (residual classification SAFE_ADDITIVE); skipping destructive recreation.");
+                applyRequiredFieldBackfills(dataSource, manifest, stored, classification);
                 writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
                 return DestructiveRecreation.safeAdditiveOutcome();
             }
@@ -162,6 +166,13 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     + "incomparable change -- per-table all-or-nothing means nothing on that table was applied); "
                     + "falling through to destructive recreation as the safety net.");
         }
+
+        // LNCH-1 P5 (5.3): a required bond/FK field missing from an existing, populated table is
+        // intercepted HERE, before SchemaDeltaReport ever runs -- independently re-derived per
+        // table (not relying on classify()'s short-circuit-to-DESTRUCTIVE aggregate value), so it
+        // is caught with a dedicated, itemized refusal instead of falling into SchemaDeltaReport's
+        // generic UNKNOWN item kind.
+        refuseIfRequiredBondColumnMissing(dataSource, manifest, stored, classificationForFallthrough);
 
         // LNCH-1 Phase 4 (task 4.3): everything below replaces the old blanket whole-schema-wipe
         // fallback with itemized, surgical destruction wherever the residual diff cleanly supports
@@ -697,6 +708,414 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         return value;
     }
 
+    // ------------------------------------------------------------------------------------------
+    // LNCH-1 Phase 5: data pre-checks and literal backfills.
+    // ------------------------------------------------------------------------------------------
+
+    /**
+     * LNCH-1 P5 (5.2). Called by {@link #beforeMigrate} at every point classification (after
+     * Phases 1-3's rename/widening attempts) settles on {@code SAFE_ADDITIVE} as the residual --
+     * BEFORE that method returns {@link DestructiveRecreation#safeAdditiveOutcome()} and therefore
+     * BEFORE {@link #migrate}'s {@code flyway.migrate()} call ever runs the R__ repeatable additive
+     * migration.
+     *
+     * <p><b>Why this must run ahead of Flyway, not after (see the class-level design note this
+     * phase adds near {@link #beforeMigrate}):</b> {@code appendAdditiveColumns} (generator-side)
+     * unconditionally emits {@code ADD COLUMN IF NOT EXISTS} for every additive-eligible column,
+     * including required ones with no viable backfill -- if this method let that migration run
+     * first and only refused afterward, a refused required-field addition would still leave a
+     * nullable column sitting in the live database ("never add it in the first place" is the
+     * plan's explicit requirement). So this method:
+     * <ol>
+     *   <li><b>Pass 1 (read-only):</b> for every table, find required, additive-eligible columns
+     *       missing from the live database. A column with a declared literal default is queued for
+     *       backfill; one without (no default, or only an expression default -- v1 only backfills
+     *       literals) is queued as a refusal. Nothing is written to the database in this pass.</li>
+     *   <li>If ANY refusal was queued, throw before touching the database at all -- the refused
+     *       column, and every other pending backfill in this same boot, are left untouched (never
+     *       added), and {@code appendAdditiveColumns}'s own {@code ADD COLUMN IF NOT EXISTS} is
+     *       never reached either, since the caller never gets to {@code flyway.migrate()}.</li>
+     *   <li><b>Pass 2 (apply):</b> only reached when every required column has a literal default.
+     *       For each: {@code ADD COLUMN IF NOT EXISTS} (nullable) -&gt; {@code UPDATE ... SET c = ?
+     *       WHERE c IS NULL} (the literal, bound as a JDBC parameter -- never string-interpolated
+     *       into SQL text, see {@link #decodeLiteralDefault}) -&gt; {@code ALTER COLUMN SET NOT
+     *       NULL} (skipped if already NOT NULL, so crash-recovery re-runs converge instead of
+     *       erroring). When Flyway's R__ migration runs afterward, its {@code ADD COLUMN IF NOT
+     *       EXISTS} for this same column observes it already present -- a harmless no-op.</li>
+     * </ol>
+     *
+     * <p>Idempotent by construction: live columns/nullability are read fresh from
+     * {@link DatabaseMetaData} on every call, so a crash between two backfilled columns (or between
+     * the ADD/UPDATE/SET-NOT-NULL steps of one column) converges cleanly on the next boot -- see
+     * {@code SchemaLifecycleExecutorRequiredFieldBackfillCrashRecoveryTest}.
+     */
+    private void applyRequiredFieldBackfills(DataSource dataSource, SchemaManifest manifest, String stored,
+            SchemaChangeClassification classification) {
+        record PendingBackfill(String table, String column, String sqlType, String literalDefaultJson) {
+        }
+        List<PendingBackfill> pending = new ArrayList<>();
+        List<String> refusals = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            for (Map.Entry<String, List<String>> entry : manifest.businessTableColumns().entrySet()) {
+                String table = entry.getKey();
+                Set<String> actualColumns = readActualColumns(metadata, table);
+                if (actualColumns.isEmpty()) {
+                    continue; // brand-new table -- V1's CREATE TABLE IF NOT EXISTS handles it, nothing to backfill
+                }
+                List<String> requiredColumns = manifest.businessTableRequiredColumns().getOrDefault(table, List.of());
+                if (requiredColumns.isEmpty()) {
+                    continue;
+                }
+                Set<String> additiveEligible = new LinkedHashSet<>(
+                        manifest.businessTableAdditiveColumns().getOrDefault(table, List.of()));
+                for (String column : requiredColumns) {
+                    // Crash-recovery correctness (5.4): a column that ALREADY exists but is not yet
+                    // NOT NULL is a half-applied backfill from a previous crashed boot (ADD COLUMN
+                    // succeeded, UPDATE/SET NOT NULL did not) -- it still needs to go through
+                    // addBackfillAndTightenColumn (itself idempotent-by-check on each of its three
+                    // steps), not be skipped just because the column is no longer literally
+                    // "missing". Only a column that is BOTH present AND already NOT NULL is fully
+                    // converged and safe to skip outright.
+                    if (actualColumns.contains(column) && isColumnNotNull(metadata.getConnection(), table, column)) {
+                        continue;
+                    }
+                    if (!additiveEligible.contains(column)) {
+                        continue; // not this method's concern (a required bond -- see refuseIfRequiredBondColumnMissing)
+                    }
+                    String literalDefaultJson = manifest.businessTableColumnDefaultLiterals()
+                            .getOrDefault(table, Map.of()).get(column);
+                    if (literalDefaultJson == null) {
+                        boolean hasExpressionDefault = manifest.businessTableExpressionDefaultColumns()
+                                .getOrDefault(table, List.of()).contains(column);
+                        refusals.add(table + "." + column + (hasExpressionDefault
+                                ? " (an expression default is declared, but only literal defaults are backfilled "
+                                        + "automatically in v1 -- declare a literal default or make the field optional)"
+                                : " (no default declared -- declare a literal default or make the field optional)"));
+                        continue;
+                    }
+                    String sqlType = manifest.businessTableColumnTypes().getOrDefault(table, Map.of()).get(column);
+                    pending.add(new PendingBackfill(table, column, sqlType, literalDefaultJson));
+                }
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed inspecting live database for required-field backfills", exception);
+        }
+
+        if (!refusals.isEmpty()) {
+            writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification, null, null, "REFUSED");
+            throw new IllegalStateException("Schema change adds new required field(s) to table(s) with existing "
+                    + "data, but no literal default is available to backfill automatically (LNCH-1 Phase 5): "
+                    + refusals + ". Declare a literal 'default' on the field, or make it optional -- see "
+                    + "docs/SCHEMA_EVOLUTION.md#new-required-fields.");
+        }
+        if (pending.isEmpty()) {
+            return;
+        }
+        List<String> backfilled = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection()) {
+            for (PendingBackfill item : pending) {
+                addBackfillAndTightenColumn(connection, item.table(), item.column(),
+                        item.sqlType(), item.literalDefaultJson());
+                backfilled.add(item.table() + "." + item.column());
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed applying required-field backfill(s) (" + backfilled.size() + "/"
+                    + pending.size() + " applied before failure: " + backfilled + ")", exception);
+        }
+        System.out.println("NPDev schema lifecycle: added and backfilled new required column(s) to their declared "
+                + "literal default, then enforced NOT NULL (LNCH-1 Phase 5): " + backfilled);
+    }
+
+    /**
+     * {@code ADD COLUMN IF NOT EXISTS} (nullable) -&gt; bound-parameter {@code UPDATE ... WHERE c
+     * IS NULL} -&gt; {@code SET NOT NULL} (skipped if already so). Every step idempotent-by-check
+     * for crash recovery -- see {@link #applyRequiredFieldBackfills}'s class-level note.
+     *
+     * <p>No engine dialect branch is needed here (unlike rename/widen): {@code ADD COLUMN IF NOT
+     * EXISTS} and {@code ALTER COLUMN ... SET NOT NULL} are both identical syntax on H2 and
+     * Postgres, confirmed against a real H2 instance.
+     */
+    private static void addBackfillAndTightenColumn(Connection connection, String table, String column,
+            String sqlType, String literalDefaultJson) throws SQLException {
+        String safeTable = safeIdentifier(table);
+        String safeColumn = safeIdentifier(column);
+        String safeType = safeSqlType(sqlType);
+        try (PreparedStatement add = connection.prepareStatement(
+                "ALTER TABLE " + safeTable + " ADD COLUMN IF NOT EXISTS " + safeColumn + " " + safeType)) {
+            add.executeUpdate();
+        }
+        Object literalValue = decodeLiteralDefault(literalDefaultJson);
+        try (PreparedStatement update = connection.prepareStatement(
+                "UPDATE " + safeTable + " SET " + safeColumn + " = ? WHERE " + safeColumn + " IS NULL")) {
+            update.setObject(1, literalValue);
+            update.executeUpdate();
+        }
+        if (!isColumnNotNull(connection, table, column)) {
+            try (PreparedStatement notNull = connection.prepareStatement(
+                    "ALTER TABLE " + safeTable + " ALTER COLUMN " + safeColumn + " SET NOT NULL")) {
+                notNull.executeUpdate();
+            }
+        }
+    }
+
+    /**
+     * Decodes a manifest-carried literal default (JSON-encoded by the generator, see
+     * {@code SchemaRealizationEmitter#columnDefaultLiterals}) back to a typed Java value
+     * (String/Integer/Double/Boolean/null) for use as a JDBC bound parameter -- deliberately never
+     * string-interpolated into SQL text (guardrail 11's identifier-safety discipline extended to
+     * VALUE safety, per the plan).
+     */
+    private static Object decodeLiteralDefault(String literalDefaultJson) {
+        try {
+            return OBJECT_MAPPER.readValue(literalDefaultJson, Object.class);
+        } catch (Exception exception) {
+            throw new IllegalStateException(
+                    "Failed decoding literal default from schema realization manifest: " + literalDefaultJson, exception);
+        }
+    }
+
+    private static boolean isColumnNotNull(Connection connection, String table, String column) throws SQLException {
+        DatabaseMetaData metadata = connection.getMetaData();
+        for (String candidate : List.of(table.toLowerCase(Locale.ROOT), table.toUpperCase(Locale.ROOT))) {
+            try (ResultSet resultSet = metadata.getColumns(null, null, candidate, null)) {
+                while (resultSet.next()) {
+                    String columnName = resultSet.getString("COLUMN_NAME");
+                    if (columnName != null && columnName.equalsIgnoreCase(column)) {
+                        String nullable = resultSet.getString("IS_NULLABLE");
+                        return "NO".equalsIgnoreCase(nullable);
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * LNCH-1 P5 (5.3). Called by {@link #beforeMigrate} unconditionally, once Phases 1-3's rename/
+     * widening attempts have run their course but BEFORE {@link SchemaDeltaReport} (Phase 4's
+     * destructive-report machinery) is ever invoked. Independently re-derives, per table, the
+     * residual missing-column set (live columns vs. manifest-expected, minus anything explained by
+     * a declared rename) -- the SAME computation {@link SchemaDeltaReport} makes, deliberately not
+     * trusting {@link #classify}'s aggregate return value (which short-circuits to
+     * {@code DESTRUCTIVE} the moment ANY table looks bad, without evaluating the rest) so this check
+     * is correct regardless of what else is happening on other tables in the same boot.
+     *
+     * <p>A required column that is missing AND not additive-eligible is -- after the LNCH-1 P5
+     * (5.3) change to {@code isAdditiveEligible} -- necessarily a REQUIRED bond/FK field (the only
+     * remaining reason a required column can fail additive-eligibility; a plain required field is
+     * always additive-eligible and is {@link #applyRequiredFieldBackfills}'s concern instead). A
+     * bond has no literal-default backfill possible in v1 (its "default" would need to reference an
+     * existing row's actual key), so this always refuses -- intercepting the case with a dedicated,
+     * itemized message BEFORE {@link SchemaDeltaReport} would otherwise have to fall back to its
+     * generic {@code Unknown} item kind for it (moving it out of that bucket, per the plan).
+     */
+    private void refuseIfRequiredBondColumnMissing(DataSource dataSource, SchemaManifest manifest, String stored,
+            SchemaChangeClassification classification) {
+        List<String> violations = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            for (Map.Entry<String, List<String>> entry : manifest.businessTableColumns().entrySet()) {
+                String table = entry.getKey();
+                List<String> requiredColumns = manifest.businessTableRequiredColumns().getOrDefault(table, List.of());
+                if (requiredColumns.isEmpty()) {
+                    continue;
+                }
+                Set<String> actualColumns = readActualColumns(metadata, table);
+                if (actualColumns.isEmpty()) {
+                    continue; // brand-new table -- nothing missing, nothing to refuse
+                }
+                Set<String> expected = new LinkedHashSet<>(entry.getValue());
+                Set<String> additiveEligible = new LinkedHashSet<>(
+                        manifest.businessTableAdditiveColumns().getOrDefault(table, List.of()));
+                Set<String> extraInDb = new LinkedHashSet<>(actualColumns);
+                extraInDb.removeAll(expected);
+                Set<String> missingInDb = new LinkedHashSet<>(expected);
+                missingInDb.removeAll(actualColumns);
+                if (missingInDb.isEmpty()) {
+                    continue;
+                }
+                Map<String, String> renames = manifest.businessTableRenamedColumns().getOrDefault(table, Map.of());
+                RenameResolution.Result resolution = RenameResolution.resolve(missingInDb, extraInDb, renames);
+                for (String column : resolution.remainingMissing()) {
+                    if (requiredColumns.contains(column) && !additiveEligible.contains(column)) {
+                        violations.add(table + "." + column);
+                    }
+                }
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed inspecting live database for required bond field additions", exception);
+        }
+        if (violations.isEmpty()) {
+            return;
+        }
+        writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification, null, null, "REFUSED");
+        throw new IllegalStateException("Schema change adds new required bond/reference field(s) to table(s) with "
+                + "existing data: " + violations + ". A required bond has no automatic literal-default backfill in "
+                + "v1 (its value would need to reference an existing row's actual key) -- make the field optional, "
+                + "or use the itemized destructive-acknowledgment path (LNCH-1 Phase 4) to recreate the table -- see "
+                + "docs/SCHEMA_EVOLUTION.md#new-required-fields.");
+    }
+
+    /**
+     * LNCH-1 P5 (5.1). Called by {@link #afterMigrate} on every boot (cheap, idempotent -- an
+     * empty {@code businessTableUniqueConstraints} manifest, the common case pre-Phase-5, returns
+     * immediately). Runs strictly AFTER {@code flyway.migrate()} has already applied the R__
+     * additive-columns migration, so a unique constraint declared alongside a brand-new nullable
+     * column always finds that column already present (new rows' NULLs never collide under
+     * standard SQL unique-constraint semantics, so no dirty-data pre-check is even needed for that
+     * case). For a constraint newly declared on an ALREADY-EXISTING column, pre-checks live data
+     * for duplicate tuples (tenant-scoped or global, per {@link UniqueConstraintDecl#tenantScoped}
+     * -- matching {@code SchemaRealizationEmitter#appendBusinessTable}'s fresh-CREATE rule) before
+     * applying the constraint.
+     *
+     * <p><b>All-or-nothing per boot, same shape as {@link #applyRequiredFieldBackfills}:</b> pass 1
+     * checks every declared constraint (read-only); if ANY table has violating data, throws before
+     * applying ANY constraint this boot (so a clean table's constraint is not partially applied
+     * while a dirty table's still needs attention -- consistent, easy-to-reason-about all-or-
+     * nothing semantics). Pass 2 applies every clean, not-yet-applied constraint.
+     *
+     * <p>Idempotent by construction: {@link #constraintExists} re-checks
+     * {@code INFORMATION_SCHEMA.TABLE_CONSTRAINTS} fresh on every call (not the same-boot pending
+     * list only), so a crash between two constraint applications converges on the next boot without
+     * re-attempting an already-applied constraint or erroring on a duplicate-name ADD CONSTRAINT.
+     */
+    private static void applyUniqueConstraints(DataSource dataSource, SchemaManifest manifest) {
+        if (manifest.businessTableUniqueConstraints().isEmpty()) {
+            return;
+        }
+        record PendingUniqueConstraint(String table, UniqueConstraintDecl decl) {
+        }
+        List<String> violationMessages = new ArrayList<>();
+        List<PendingUniqueConstraint> toApply = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            for (Map.Entry<String, List<UniqueConstraintDecl>> entry : manifest.businessTableUniqueConstraints().entrySet()) {
+                String table = entry.getKey();
+                Set<String> liveColumns = readActualColumns(metadata, table);
+                if (liveColumns.isEmpty()) {
+                    continue; // table not created yet this boot -- nothing to check/apply
+                }
+                for (UniqueConstraintDecl decl : entry.getValue()) {
+                    if (!liveColumns.containsAll(decl.columns())) {
+                        continue; // a declared column doesn't exist live yet -- nothing to apply this boot
+                    }
+                    if (constraintExists(connection, table, decl.name())) {
+                        continue; // already applied -- idempotent no-op
+                    }
+                    List<String> duplicateKeys = findDuplicateKeys(connection, table, decl);
+                    if (!duplicateKeys.isEmpty()) {
+                        List<String> sample = duplicateKeys.size() > 20 ? duplicateKeys.subList(0, 20) : duplicateKeys;
+                        violationMessages.add("table '" + table + "' unique constraint on ("
+                                + String.join(", ", decl.columns()) + ")"
+                                + (decl.tenantScoped() ? " [tenant-scoped]" : " [global]") + " has "
+                                + duplicateKeys.size() + " violating tuple(s), e.g.: " + sample);
+                        continue;
+                    }
+                    toApply.add(new PendingUniqueConstraint(table, decl));
+                }
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed checking existing data against new unique constraint(s)", exception);
+        }
+        if (!violationMessages.isEmpty()) {
+            // Fingerprint not yet written this boot (afterMigrate's own write happens after this
+            // call returns) -- readFingerprint still reports the pre-this-attempt value, matching
+            // every other refusal's "from_fingerprint" history-row convention.
+            writeHistoryRow(dataSource, readFingerprint(dataSource), manifest.schemaFingerprint(), null, null, null, "REFUSED");
+            throw new IllegalStateException("Schema change adds new unique constraint(s), but existing data "
+                    + "violates them (LNCH-1 Phase 5). Resolve the duplicate row(s) first, or relax the constraint: "
+                    + violationMessages + " -- see docs/SCHEMA_EVOLUTION.md#tightened-uniqueness.");
+        }
+        if (toApply.isEmpty()) {
+            return;
+        }
+        List<String> applied = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection()) {
+            for (PendingUniqueConstraint pending : toApply) {
+                executeAddUniqueConstraint(connection, pending.table(), pending.decl());
+                applied.add(pending.table() + "." + pending.decl().name());
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed applying new unique constraint(s) (" + applied.size() + "/"
+                    + toApply.size() + " applied before failure: " + applied + ")", exception);
+        }
+        System.out.println("NPDev schema lifecycle: applied new unique constraint(s): " + applied);
+    }
+
+    private static boolean constraintExists(Connection connection, String table, String constraintName) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
+                        + "WHERE UPPER(CONSTRAINT_NAME) = UPPER(?) AND UPPER(TABLE_NAME) = UPPER(?)")) {
+            statement.setString(1, constraintName);
+            statement.setString(2, table);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next();
+            }
+        }
+    }
+
+    /**
+     * {@code GROUP BY ... HAVING COUNT(*) > 1}, tenant-scoped or global per {@link
+     * UniqueConstraintDecl#tenantScoped}. Rows where any declared unique column is {@code NULL} are
+     * excluded -- standard SQL unique-constraint semantics never treat NULL-vs-NULL as a collision,
+     * so a naive {@code GROUP BY} (which DOES treat NULLs as equal) would otherwise over-report.
+     */
+    private static List<String> findDuplicateKeys(Connection connection, String table, UniqueConstraintDecl decl) throws SQLException {
+        String safeTable = safeIdentifier(table);
+        List<String> groupColumns = new ArrayList<>();
+        if (decl.tenantScoped()) {
+            groupColumns.add("tenant_id");
+        }
+        List<String> notNullColumns = new ArrayList<>();
+        for (String column : decl.columns()) {
+            String safeColumn = safeIdentifier(column);
+            groupColumns.add(safeColumn);
+            notNullColumns.add(safeColumn);
+        }
+        String columnList = String.join(", ", groupColumns);
+        StringBuilder sql = new StringBuilder("SELECT ").append(columnList).append(", COUNT(*) FROM ").append(safeTable);
+        if (!notNullColumns.isEmpty()) {
+            sql.append(" WHERE ");
+            for (int i = 0; i < notNullColumns.size(); i++) {
+                if (i > 0) {
+                    sql.append(" AND ");
+                }
+                sql.append(notNullColumns.get(i)).append(" IS NOT NULL");
+            }
+        }
+        sql.append(" GROUP BY ").append(columnList).append(" HAVING COUNT(*) > 1");
+        List<String> duplicates = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement(sql.toString());
+             ResultSet resultSet = statement.executeQuery()) {
+            while (resultSet.next()) {
+                List<String> values = new ArrayList<>();
+                for (int i = 1; i <= groupColumns.size(); i++) {
+                    values.add(String.valueOf(resultSet.getObject(i)));
+                }
+                duplicates.add("(" + String.join(", ", values) + ")");
+            }
+        }
+        return duplicates;
+    }
+
+    private static void executeAddUniqueConstraint(Connection connection, String table, UniqueConstraintDecl decl) throws SQLException {
+        String safeTable = safeIdentifier(table);
+        String safeConstraint = safeIdentifier(decl.name());
+        List<String> columns = new ArrayList<>();
+        if (decl.tenantScoped()) {
+            columns.add("tenant_id");
+        }
+        for (String column : decl.columns()) {
+            columns.add(safeIdentifier(column));
+        }
+        String sql = "ALTER TABLE " + safeTable + " ADD CONSTRAINT " + safeConstraint
+                + " UNIQUE (" + String.join(", ", columns) + ")";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.executeUpdate();
+        }
+    }
+
     /**
      * Classifies a fingerprint mismatch by inspecting every already-existing business table against
      * the manifest's expected columns:
@@ -1011,7 +1430,18 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         return value.toLowerCase(Locale.ROOT);
     }
 
-    private void afterMigrate(DataSource dataSource, SchemaManifest manifest) {
+    /** Package-private (not private) so it is directly unit-testable against a real H2
+     * {@link DataSource}, following {@link #beforeMigrate}/{@link #classify}'s precedent (LNCH-1
+     * Phase 5 -- the unique-constraint integration tests drive this method directly, since a full
+     * {@code migrate(Flyway)} call needs a real Flyway configuration this test package does not
+     * set up). */
+    void afterMigrate(DataSource dataSource, SchemaManifest manifest) {
+        // LNCH-1 P5 (5.1): runs on every boot, after flyway.migrate() has already applied the R__
+        // additive-columns migration, so a unique constraint declared alongside a brand-new column
+        // always finds that column already present. Deliberately BEFORE the fingerprint write below
+        // -- a refusal here (dirty data violating a newly-declared constraint) must leave the stored
+        // fingerprint stale, so the next boot re-attempts instead of silently accepting the drift.
+        applyUniqueConstraints(dataSource, manifest);
         try (Connection connection = dataSource.getConnection()) {
             try (PreparedStatement statement = connection.prepareStatement(
                     "CREATE TABLE IF NOT EXISTS " + METADATA_TABLE
@@ -1225,7 +1655,15 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     // manifest until Phase 6 wires -AcknowledgeDestructive into the emitter) --
                     // asText("") correctly defaults to "", which never equals a real computed
                     // token, so pre-Phase-6 apps are unaffected until an author opts in.
-                    root.path("destructiveAcknowledgment").asText("")
+                    root.path("destructiveAcknowledgment").asText(""),
+                    // LNCH-1 Phase 5. Absent from every manifest emitted before this phase --
+                    // each parser defaults to an empty map/list, so pre-Phase-5 apps are unaffected
+                    // (no required-column/default/unique-constraint data means the new executor
+                    // steps below all find nothing to do and no-op cleanly).
+                    stringListMap(root.path("businessTableRequiredColumns")),
+                    stringMapMap(root.path("businessTableColumnDefaultLiterals")),
+                    stringListMap(root.path("businessTableExpressionDefaultColumns")),
+                    uniqueConstraintListMap(root.path("businessTableUniqueConstraints"))
             );
         } catch (Exception exception) {
             throw new IllegalStateException("Failed loading schema realization manifest", exception);
@@ -1273,6 +1711,40 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         return Map.copyOf(out);
     }
 
+    /**
+     * LNCH-1 P5 (5.1): table -> its declared unique constraints (name/columns/tenant-scoping), as
+     * emitted by {@code SchemaRealizationEmitter#collectUniqueConstraints}.
+     */
+    private static Map<String, List<UniqueConstraintDecl>> uniqueConstraintListMap(JsonNode object) {
+        if (object == null || !object.isObject()) {
+            return Map.of();
+        }
+        Map<String, List<UniqueConstraintDecl>> out = new LinkedHashMap<>();
+        object.fields().forEachRemaining(entry -> {
+            List<UniqueConstraintDecl> declarations = new ArrayList<>();
+            for (JsonNode item : entry.getValue()) {
+                String name = item.path("name").asText("");
+                boolean tenantScoped = item.path("tenantScoped").asBoolean(true);
+                List<String> columns = strings(item.path("columns"));
+                if (!name.isBlank() && !columns.isEmpty()) {
+                    declarations.add(new UniqueConstraintDecl(name, columns, tenantScoped));
+                }
+            }
+            out.put(entry.getKey(), List.copyOf(declarations));
+        });
+        return Map.copyOf(out);
+    }
+
+    /**
+     * LNCH-1 P5 (5.1): a single declared unique constraint on a business table -- mirrors
+     * {@code SchemaRealizationEmitter}'s generation-time record of the same name/shape.
+     * {@code tenantScoped} decides whether the runtime-applied constraint (and its dirty-data
+     * pre-check) is scoped to {@code (tenant_id, ...columns)} or just {@code (...columns)}
+     * (the connectable-anchor case, which must stay globally unique -- it is an FK target).
+     */
+    record UniqueConstraintDecl(String name, List<String> columns, boolean tenantScoped) {
+    }
+
     public record SchemaManifest(
             String engine,
             String storageMode,
@@ -1289,7 +1761,12 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             String strategy,
             String scope,
             String destructiveRecreateConfirmation,
-            String destructiveAcknowledgment
+            String destructiveAcknowledgment,
+            // LNCH-1 Phase 5.
+            Map<String, List<String>> businessTableRequiredColumns,
+            Map<String, Map<String, String>> businessTableColumnDefaultLiterals,
+            Map<String, List<String>> businessTableExpressionDefaultColumns,
+            Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints
     ) {
         boolean destructiveAllowed() {
             return "DropAndRecreateOnStructureChange".equals(strategy)

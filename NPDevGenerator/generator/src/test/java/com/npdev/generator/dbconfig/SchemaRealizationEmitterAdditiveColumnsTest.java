@@ -20,10 +20,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Pins the Phase 6 "safe-additive fast path" emitter output: a Flyway repeatable migration that
- * adds non-bond columns only, plus the manifest fields {@code SchemaLifecycleExecutor} uses to
- * classify a fingerprint mismatch as safe. Bond/FK columns must stay out of both, since R__ cannot
- * add a foreign key safely and the runtime relies on that exclusion to fall back to the destructive
- * path for structural changes.
+ * adds new columns to an already-existing table, plus the manifest fields
+ * {@code SchemaLifecycleExecutor} uses to classify a fingerprint mismatch as safe.
+ *
+ * <p>LNCH-1 P5 (5.3): a NULLABLE bond/FK column is now additive-eligible (an FK permits NULLs, so
+ * it can be added -- with its own FK constraint -- to an already-existing table exactly like any
+ * other nullable field); a REQUIRED bond is not (no automatic literal-default backfill is possible
+ * for a foreign key target in v1). This test now pins BOTH halves of that split, replacing its
+ * pre-Phase-5 assumption that every bond column was unconditionally excluded.
  */
 final class SchemaRealizationEmitterAdditiveColumnsTest {
 
@@ -31,9 +35,11 @@ final class SchemaRealizationEmitterAdditiveColumnsTest {
     Path tempDir;
 
     @Test
-    void additiveScriptAndManifestExcludeBondColumnsButIncludeNonBondColumns() throws Exception {
+    void additiveScriptAndManifestIncludeNullableBondsButExcludeRequiredBonds() throws Exception {
         CompiledField customerId = new CompiledField(
                 "customerId", "string", "String", false, false, false, List.of(), "Customer");
+        CompiledField ownerId = new CompiledField(
+                "ownerId", "string", "String", false, true, false, List.of(), "Customer");
         CompiledConcept customer = new CompiledConcept(
                 "Customer", "Customer", "customers",
                 List.of(new CompiledField("id", "uuid", "java.util.UUID", true, true, false))
@@ -43,7 +49,8 @@ final class SchemaRealizationEmitterAdditiveColumnsTest {
                 List.of(
                         new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
                         new CompiledField("name", "string", "String", false, true, false),
-                        customerId
+                        customerId,
+                        ownerId
                 )
         );
         CompiledModel model = new CompiledModel("test", "1.0.0", "1.0.0", Map.of(
@@ -58,10 +65,16 @@ final class SchemaRealizationEmitterAdditiveColumnsTest {
         String additiveSql = Files.readString(schemaDir.resolve("R__npdev_schema_additive_columns.sql"));
         String nameColumn = SqlIdentifierSupport.columnName(order.getFields().get(1));
         String customerIdColumn = SqlIdentifierSupport.columnName(customerId);
+        String ownerIdColumn = SqlIdentifierSupport.columnName(ownerId);
 
         assertTrue(additiveSql.contains("ALTER TABLE orders ADD COLUMN IF NOT EXISTS " + nameColumn),
                 additiveSql);
-        assertFalse(additiveSql.contains(customerIdColumn), "bond column must not appear in the additive script: " + additiveSql);
+        assertTrue(additiveSql.contains("ALTER TABLE orders ADD COLUMN IF NOT EXISTS " + customerIdColumn),
+                "a NULLABLE bond column must now be additive-eligible (LNCH-1 P5 5.3): " + additiveSql);
+        assertTrue(additiveSql.contains("ADD CONSTRAINT") && additiveSql.contains("FOREIGN KEY (" + customerIdColumn + ")"),
+                "a nullable bond added via the additive path must get its own FK constraint: " + additiveSql);
+        assertFalse(additiveSql.contains("ADD COLUMN IF NOT EXISTS " + ownerIdColumn),
+                "a REQUIRED bond column must still be excluded from the additive script: " + additiveSql);
 
         Path resourcesRoot = outRoot.resolve("src/main/resources");
         JsonNode manifest = new ObjectMapper().readTree(
@@ -70,9 +83,18 @@ final class SchemaRealizationEmitterAdditiveColumnsTest {
         JsonNode orderAdditive = manifest.path("businessTableAdditiveColumns").path("orders");
 
         assertTrue(containsText(orderColumns, customerIdColumn), "full column set must still list the bond column: " + orderColumns);
+        assertTrue(containsText(orderColumns, ownerIdColumn));
         assertTrue(containsText(orderColumns, nameColumn));
-        assertFalse(containsText(orderAdditive, customerIdColumn), "additive-eligible set must exclude the bond column: " + orderAdditive);
+        assertTrue(containsText(orderAdditive, customerIdColumn),
+                "additive-eligible set must now include the NULLABLE bond column: " + orderAdditive);
+        assertFalse(containsText(orderAdditive, ownerIdColumn),
+                "additive-eligible set must still exclude the REQUIRED bond column: " + orderAdditive);
         assertTrue(containsText(orderAdditive, nameColumn));
+
+        JsonNode orderRequired = manifest.path("businessTableRequiredColumns").path("orders");
+        assertTrue(containsText(orderRequired, ownerIdColumn), "required-columns manifest key must list the required bond: " + orderRequired);
+        assertTrue(containsText(orderRequired, nameColumn));
+        assertFalse(containsText(orderRequired, customerIdColumn));
     }
 
     private static boolean containsText(JsonNode array, String value) {

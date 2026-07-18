@@ -180,7 +180,7 @@ class SchemaLifecycleExecutorDestructiveItemizationTest {
                 Map.of("widgets", Map.of("id", "BIGINT"), "untouched_table", Map.of("id", "BIGINT")),
                 Map.of(), Map.of(),
                 true, "DropAndRecreateOnStructureChange", "NpdevOwnedTablesOnly",
-                "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED", "");
+                "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED", "", Map.of(), Map.of(), Map.of(), Map.of());
 
         ByteArrayOutputStream capturedOut = new ByteArrayOutputStream();
         PrintStream originalOut = System.out;
@@ -278,7 +278,7 @@ class SchemaLifecycleExecutorDestructiveItemizationTest {
                 Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)")),
                 Map.of(), Map.of(),
                 false, "DropAndRecreateOnStructureChange", "NpdevOwnedTablesOnly",
-                "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED", ackToken);
+                "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED", ackToken, Map.of(), Map.of(), Map.of(), Map.of());
     }
 
     private static SchemaLifecycleExecutor.SchemaManifest manifestNoBlanket(String toFingerprint, String ackToken) {
@@ -289,7 +289,7 @@ class SchemaLifecycleExecutorDestructiveItemizationTest {
                 Map.of("widgets", Map.of("id", "BIGINT")),
                 Map.of(), Map.of(),
                 false, "DropAndRecreateOnStructureChange", "NpdevOwnedTablesOnly",
-                "", ackToken);
+                "", ackToken, Map.of(), Map.of(), Map.of(), Map.of());
     }
 
     /** Minimal {@link DataSource} wrapping {@link DriverManager}; avoids pulling in an H2-specific compile-time dependency. */
