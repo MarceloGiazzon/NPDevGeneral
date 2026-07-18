@@ -60,6 +60,29 @@ public final class SchemaRealizationEmitter {
             Path modelSourcePath,
             List<String> migrationPlanItemStableStrings
     ) throws Exception {
+        emit(model, outRoot, plan, modelSourcePath, migrationPlanItemStableStrings, null);
+    }
+
+    /**
+     * LNCH-1 P6 (task 6.2b): {@code destructiveAcknowledgmentToken} is {@code GeneratorMain}'s new,
+     * optional {@code --destructiveAcknowledgment} CLI flag value, written verbatim into the
+     * manifest's {@code destructiveAcknowledgment} key -- the value {@code SchemaLifecycleExecutor}'s
+     * Phase 4 destructive-path token check reads at boot (that field existed on {@code SchemaManifest}
+     * since Phase 4, and {@code SchemaLifecycleExecutor#loadManifest} already parses this exact key,
+     * but nothing generator-side ever WROTE a real value into it until this flag -- confirmed by
+     * grepping this class for {@code destructiveAcknowledgment} before this change: no match). {@code null}
+     * or blank is written as {@code ""}, matching the manifest shape every prior phase already
+     * produced (the 5-arg overload above delegates here with {@code null} -- zero behavior change
+     * for every existing caller).
+     */
+    public void emit(
+            CompiledModel model,
+            Path outRoot,
+            GeneratedDatabasePlan plan,
+            Path modelSourcePath,
+            List<String> migrationPlanItemStableStrings,
+            String destructiveAcknowledgmentToken
+    ) throws Exception {
         if (outRoot == null || plan == null) {
             return;
         }
@@ -67,7 +90,8 @@ public final class SchemaRealizationEmitter {
         Files.createDirectories(resourcesRoot);
         emitSchemaArtifacts(model, resourcesRoot, plan);
         emitManifest(model, resourcesRoot, plan, modelSourcePath,
-                migrationPlanItemStableStrings == null ? List.of() : migrationPlanItemStableStrings);
+                migrationPlanItemStableStrings == null ? List.of() : migrationPlanItemStableStrings,
+                destructiveAcknowledgmentToken == null ? "" : destructiveAcknowledgmentToken.trim());
         emitApplicationProperties(resourcesRoot, plan);
     }
 
@@ -1074,7 +1098,8 @@ public final class SchemaRealizationEmitter {
             Path resourcesRoot,
             GeneratedDatabasePlan plan,
             Path modelSourcePath,
-            List<String> migrationPlanItemStableStrings
+            List<String> migrationPlanItemStableStrings,
+            String destructiveAcknowledgmentToken
     ) throws Exception {
         List<String> internalTables = plan.createInternalTables()
                 ? NpdevInternalTables.all().stream().map(InternalTableDefinition::name).toList()
@@ -1135,6 +1160,13 @@ public final class SchemaRealizationEmitter {
         // check print both "what the plan expected" and "what it found live at boot" when they
         // disagree (model drift between plan-generation time and boot time).
         manifest.put("migrationPlanItemStableStrings", migrationPlanItemStableStrings);
+        // LNCH-1 Phase 6 (task 6.2b): the itemized destructive-acknowledgment token, threaded
+        // verbatim from GeneratorMain's optional --destructiveAcknowledgment CLI flag. "" (the
+        // default) never equals a real computed token, so an app generated without this flag is
+        // unaffected -- SchemaLifecycleExecutor's Phase 4 token check still refuses exactly as
+        // before, or an operator can now supply this at generation time instead of hand-editing the
+        // manifest.
+        manifest.put("destructiveAcknowledgment", destructiveAcknowledgmentToken == null ? "" : destructiveAcknowledgmentToken);
         manifest.put("sourceOfTruth", Map.of(
                 "internal", resolveInternalSchemaSourcePath(plan.definitionPath()).toString(),
                 "business", modelSourcePath == null ? "" : modelSourcePath.toAbsolutePath().normalize().toString(),

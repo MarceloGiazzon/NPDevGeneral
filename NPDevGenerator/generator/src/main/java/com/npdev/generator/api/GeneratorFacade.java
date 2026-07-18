@@ -114,6 +114,27 @@ public final class GeneratorFacade {
             GeneratedDatabasePlan databasePlan,
             List<String> migrationPlanDestructiveItemStableStrings
     ) throws Exception {
+        generate(model, outRoot, schemaRealizationDir, resolvedModelSource, databasePlan,
+                migrationPlanDestructiveItemStableStrings, null);
+    }
+
+    /**
+     * LNCH-1 P6 (task 6.2b): {@code destructiveAcknowledgmentToken} is
+     * {@code GeneratorMain}'s new, optional {@code --destructiveAcknowledgment} CLI flag, threaded
+     * down to {@link SchemaRealizationEmitter}'s manifest verbatim as the {@code destructiveAcknowledgment}
+     * key -- the value {@code SchemaLifecycleExecutor}'s Phase 4 token check reads at boot. {@code null}
+     * for every existing caller -- zero behavior change (the manifest key is emitted as {@code ""},
+     * matching the shape every prior phase already produced).
+     */
+    public void generate(
+            CompiledModel model,
+            Path outRoot,
+            Path schemaRealizationDir,
+            ResolvedModelSource resolvedModelSource,
+            GeneratedDatabasePlan databasePlan,
+            List<String> migrationPlanDestructiveItemStableStrings,
+            String destructiveAcknowledgmentToken
+    ) throws Exception {
         generate(
                 model,
                 outRoot,
@@ -121,7 +142,8 @@ public final class GeneratorFacade {
                 resolvedModelSource,
                 resolvedModelSource == null ? null : resolvedModelSource.rootModelPath(),
                 databasePlan,
-                migrationPlanDestructiveItemStableStrings
+                migrationPlanDestructiveItemStableStrings,
+                destructiveAcknowledgmentToken
         );
     }
 
@@ -133,7 +155,7 @@ public final class GeneratorFacade {
             Path modelSourcePath,
             GeneratedDatabasePlan databasePlan
     ) throws Exception {
-        generate(model, outRoot, schemaRealizationDir, resolvedModelSource, modelSourcePath, databasePlan, List.of());
+        generate(model, outRoot, schemaRealizationDir, resolvedModelSource, modelSourcePath, databasePlan, List.of(), null);
     }
 
     private void generate(
@@ -143,7 +165,8 @@ public final class GeneratorFacade {
             ResolvedModelSource resolvedModelSource,
             Path modelSourcePath,
             GeneratedDatabasePlan databasePlan,
-            List<String> migrationPlanDestructiveItemStableStrings
+            List<String> migrationPlanDestructiveItemStableStrings,
+            String destructiveAcknowledgmentToken
     ) throws Exception {
         boolean kernelControlled = settingResolver.value(NpdevSettings.CRUD_KERNEL_CONTROLLED, SettingTarget.app());
         String superUserRole = settingResolver.value(NpdevSettings.SECURITY_SUPER_USER_ROLE, SettingTarget.app());
@@ -188,7 +211,7 @@ public final class GeneratorFacade {
         new SettingsManifestEmitter(writer).emit(settingResolver);
 
         new SchemaRealizationEmitter().emit(model, outRoot, databasePlan, modelSourcePath,
-                migrationPlanDestructiveItemStableStrings);
+                migrationPlanDestructiveItemStableStrings, destructiveAcknowledgmentToken);
         new GeneratedFolderSignatureEmitter().emit(outRoot);
     }
 

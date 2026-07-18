@@ -145,7 +145,8 @@ public final class GeneratorMain {
                 schemaRealizationDir,
                 resolvedModelSource,
                 databasePlan,
-                migrationPlanDestructiveItemStableStrings
+                migrationPlanDestructiveItemStableStrings,
+                normalize(a.destructiveAcknowledgmentToken)
         );
 
         writer.flushSummary();
@@ -619,6 +620,17 @@ public final class GeneratorMain {
          * Absent means "skip plan computation entirely" -- zero behavior change for every existing
          * caller that doesn't pass this flag. */
         final String migrationPlanOutPath;
+        /** LNCH-1 P6 (task 6.2b). Optional: an itemized destructive-acknowledgment token (see
+         * {@code com.npdev.dsl.v1.schemaevolution.DestructiveAckToken}), written verbatim into the
+         * generated manifest's {@code destructiveAcknowledgment} key -- the ONE thing that lets
+         * {@code SchemaLifecycleExecutor}'s Phase 4 destructive-path token check actually pass for a
+         * real generated app (Session A's {@code planItemStableStrings}/{@code destructiveAcknowledgment}
+         * manifest field existed since Phase 4/6.3 but nothing generator-side populated it with a real
+         * value until this flag). Absent means "" (unchanged manifest shape from every prior phase).
+         * Deliberately named without a "--migration" prefix for the same reason as the two flags
+         * above -- {@link #rejectUnsupportedMigrationManagement}'s {@code cur.startsWith("--migration")}
+         * quarantine only matches that literal prefix; verified by reading it before picking this name. */
+        final String destructiveAcknowledgmentToken;
 
         private Args(
                 String configPath,
@@ -637,7 +649,8 @@ public final class GeneratorMain {
                 String generatedFolderName,
                 String metaFolderName,
                 String previousCompiledModelPath,
-                String migrationPlanOutPath
+                String migrationPlanOutPath,
+                String destructiveAcknowledgmentToken
         ) {
             this.configPath = configPath;
             this.modelPath = modelPath;
@@ -650,6 +663,7 @@ public final class GeneratorMain {
             this.finalAppRoot = finalAppRoot;
             this.previousCompiledModelPath = previousCompiledModelPath;
             this.migrationPlanOutPath = migrationPlanOutPath;
+            this.destructiveAcknowledgmentToken = destructiveAcknowledgmentToken;
             this.assembleFinalApp = assembleFinalApp;
             this.assembleFinalAppExplicit = assembleFinalAppExplicit;
             this.cleanFinalApp = cleanFinalApp;
@@ -679,6 +693,7 @@ public final class GeneratorMain {
             String metaFolder = null;
             String previousCompiledModelPath = null;
             String migrationPlanOutPath = null;
+            String destructiveAcknowledgmentToken = null;
 
             for (int i = 0; i < args.length; i++) {
                 String cur = args[i];
@@ -707,6 +722,8 @@ public final class GeneratorMain {
                     previousCompiledModelPath = args[++i];
                 } else if ("--schemaMigrationPlanOut".equals(cur) && i + 1 < args.length) {
                     migrationPlanOutPath = args[++i];
+                } else if ("--destructiveAcknowledgment".equals(cur) && i + 1 < args.length) {
+                    destructiveAcknowledgmentToken = args[++i];
                 } else if ("--assembleFinalApp".equals(cur)) {
                     assemble = true;
                     assembleExplicit = true;
@@ -749,7 +766,8 @@ public final class GeneratorMain {
                     generatedFolder,
                     metaFolder,
                     previousCompiledModelPath,
-                    migrationPlanOutPath
+                    migrationPlanOutPath,
+                    destructiveAcknowledgmentToken
             );
         }
     }
