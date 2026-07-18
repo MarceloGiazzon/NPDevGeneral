@@ -54,13 +54,25 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
 
     @Override
     public void migrate(Flyway flyway) {
+        migrate(flyway, loadManifest());
+    }
+
+    /**
+     * LNCH-1 Phase 7 (row 16 of the proof matrix: an InMemory-storage app's model change must
+     * no-op the executor entirely). Package-private overload taking the manifest as a parameter
+     * so the {@code manifest == null || !manifest.physicalDatabase()} guard above is directly
+     * unit-testable against a real (zero-migration) {@link Flyway} instance without needing to
+     * fake {@link #loadManifest}'s fixed classpath resource lookup -- see
+     * {@code SchemaLifecycleExecutorProofMatrixTest}. Behavior is unchanged: {@link #migrate(Flyway)}
+     * is just {@code migrate(flyway, loadManifest())}.
+     */
+    void migrate(Flyway flyway, SchemaManifest manifest) {
         Configuration configuration = flyway.getConfiguration();
         DataSource dataSource = configuration.getDataSource();
         if (dataSource == null) {
             flyway.migrate();
             return;
         }
-        SchemaManifest manifest = loadManifest();
         if (manifest == null || !manifest.physicalDatabase()) {
             flyway.migrate();
             return;
@@ -157,17 +169,44 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     + "declared SQL type changed). Attempting in-place ALTER COLUMN statements for every table "
                     + "whose type diff is fully explained by safe widenings (LNCH-1 Phase 3), per-table "
                     + "all-or-nothing.");
-            attemptInPlaceTypeWidenings(dataSource, manifest);
+            // LNCH-1 Phase 7 fix (found by the row-6 proof-matrix test, guardrail 10): a rename
+            // combined with a type change on the SAME column makes classify()'s TOP-LEVEL verdict
+            // TYPE_CHANGE_DETECTED directly (see the Phase 1 fix: classify() escalates an explained
+            // rename pair to TYPE_CHANGE_DETECTED when the old column's actual type differs from the
+            // new column's expected type) -- classification never reports RENAME_DETECTED for that
+            // table in this case, so the RENAME_DETECTED branch above (which attempts renames first)
+            // is never entered. Without this call, attemptInPlaceTypeWidenings looks for the column
+            // under its NEW name, which does not exist yet (still under the old name), finds nothing
+            // to widen, and the whole pass incorrectly falls through to destructive recreation even
+            // though both the rename and the widening are individually safe and fully explained.
+            // attemptInPlaceRenames is self-guarding per table (a no-op wherever no rename is
+            // declared or a table's diff isn't fully explained by declared renames), so calling it
+            // unconditionally here is exactly as safe as the existing unconditional
+            // attemptInPlaceTableRenames call above.
+            attemptInPlaceRenames(dataSource, manifest);
             SchemaChangeClassification residual = classify(dataSource, manifest);
             classificationForFallthrough = residual;
             if (residual == SchemaChangeClassification.SAFE_ADDITIVE) {
-                System.out.println("NPDev schema lifecycle: in-place type widening(s) fully resolved the "
+                System.out.println("NPDev schema lifecycle: in-place field rename(s) fully resolved the "
                         + "fingerprint diff (residual classification SAFE_ADDITIVE); skipping destructive recreation.");
                 applyRequiredFieldBackfills(dataSource, manifest, stored, classification);
                 writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
                 return DestructiveRecreation.safeAdditiveOutcome();
             }
-            System.out.println("NPDev schema lifecycle: in-place widening pass left a residual classification of "
+            if (residual == SchemaChangeClassification.TYPE_CHANGE_DETECTED) {
+                attemptInPlaceTypeWidenings(dataSource, manifest);
+                residual = classify(dataSource, manifest);
+                classificationForFallthrough = residual;
+                if (residual == SchemaChangeClassification.SAFE_ADDITIVE) {
+                    System.out.println("NPDev schema lifecycle: in-place rename(s) and type widening(s) fully "
+                            + "resolved the fingerprint diff (residual classification SAFE_ADDITIVE); skipping "
+                            + "destructive recreation.");
+                    applyRequiredFieldBackfills(dataSource, manifest, stored, classification);
+                    writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
+                    return DestructiveRecreation.safeAdditiveOutcome();
+                }
+            }
+            System.out.println("NPDev schema lifecycle: in-place rename/widening pass left a residual classification of "
                     + residual + " (at least one type-differing column on some table was a narrowing or "
                     + "incomparable change -- per-table all-or-nothing means nothing on that table was applied); "
                     + "falling through to destructive recreation as the safety net.");
