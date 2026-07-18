@@ -188,7 +188,23 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         String expectedToken = DestructiveAckToken.compute(manifest.schemaFingerprint(), report.stableStrings());
         String providedToken = manifest.destructiveAcknowledgment() == null
                 ? "" : manifest.destructiveAcknowledgment().trim();
-        boolean tokenMatches = !providedToken.isBlank() && providedToken.equals(expectedToken);
+        boolean staticTokenMatches = !providedToken.isBlank() && providedToken.equals(expectedToken);
+        // LNCH-1 P6 (task 6.2a): the ControlPanel pre-authorization flow -- an operator reviews the
+        // plan and submits {toFingerprint, ackToken} on the CURRENTLY RUNNING (old) app before this
+        // (new) app's jar is even deployed, since a refused boot has no server left to serve a
+        // ControlPanel page on (see plan.md §2.6 answer 2's RATIFIED amendment). Either source
+        // authorizing the SAME expected token is sufficient -- neither alone is more trusted than
+        // the other, they are just two different submission channels for the identical proof.
+        PendingSchemaAcknowledgmentStore.PendingAcknowledgment pendingAcknowledgment =
+                PendingSchemaAcknowledgmentStore.findMatching(dataSource, manifest.schemaFingerprint(), expectedToken)
+                        .orElse(null);
+        boolean pendingAckMatches = pendingAcknowledgment != null;
+        boolean tokenMatches = staticTokenMatches || pendingAckMatches;
+        // The token actually used to authorize this pass, for audit/history purposes: prefer the
+        // static manifest field when it matched (existing Phase 4 behavior, unchanged); otherwise,
+        // when only the pending-ack table authorized it, that row's ack_token IS expectedToken by
+        // construction (the query matched on it) -- record that.
+        String effectiveToken = staticTokenMatches ? providedToken : (pendingAckMatches ? expectedToken : providedToken);
         boolean hasUnknown = !report.hasOnlyNamedDestructiveKinds();
         boolean blanketAuthorized = manifest.destructiveAllowed();
 
@@ -199,16 +215,21 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     + manifest.schemaFingerprint() + " and includes destructive change(s) requiring an explicit, "
                     + "itemized acknowledgment (LNCH-1 Phase 4). Itemized destructive report: "
                     + report.stableStrings() + ". Expected acknowledgment token: " + expectedToken
-                    + ". Set the generated manifest's destructiveAcknowledgment to this token to proceed -- see "
-                    + "docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes."
+                    + ". Set the generated manifest's destructiveAcknowledgment to this token, or submit it via "
+                    + "the ControlPanel schema-migration screen on the currently running app (LNCH-1 Phase 6), to "
+                    + "proceed -- see docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes."
                     + agreementCheckSuffix(manifest, report));
         }
 
         if (tokenMatches && !hasUnknown) {
-            System.out.println("NPDev schema lifecycle: destructive change acknowledged by itemized token; "
-                    + "executing surgically (only the affected table(s)/column(s), LNCH-1 Phase 4). Report: "
+            System.out.println("NPDev schema lifecycle: destructive change acknowledged by itemized token"
+                    + (pendingAckMatches && !staticTokenMatches ? " (via a ControlPanel pending acknowledgment)" : "")
+                    + "; executing surgically (only the affected table(s)/column(s), LNCH-1 Phase 4). Report: "
                     + report.stableStrings());
-            return executeSurgicalDestruction(dataSource, manifest, stored, classificationForFallthrough, report, providedToken);
+            DestructiveRecreation result =
+                    executeSurgicalDestruction(dataSource, manifest, stored, classificationForFallthrough, report, effectiveToken);
+            consumePendingAcknowledgmentIfAny(dataSource, pendingAcknowledgment);
+            return result;
         }
 
         if (!tokenMatches) {
@@ -222,8 +243,25 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     + "whole-schema recreation (LNCH-1 Phase 4, still gated behind the same authorization used for "
                     + "this pass). Report: " + report.stableStrings());
         }
-        return executeWholeSchemaWipe(dataSource, manifest, stored, classificationForFallthrough, report,
-                tokenMatches ? providedToken : null);
+        DestructiveRecreation result = executeWholeSchemaWipe(dataSource, manifest, stored, classificationForFallthrough, report,
+                tokenMatches ? effectiveToken : null);
+        if (tokenMatches) {
+            consumePendingAcknowledgmentIfAny(dataSource, pendingAcknowledgment);
+        }
+        return result;
+    }
+
+    /** Consume-on-use (see {@link PendingSchemaAcknowledgmentStore}'s class javadoc): only called
+     * AFTER a destructive pass has fully applied, never before -- so a crash mid-destructive still
+     * finds the same pending row available to authorize a retry on the next boot. A {@code null}
+     * acknowledgment (the static manifest field alone authorized this pass, or the deprecated
+     * blanket flag did) is a no-op. */
+    private static void consumePendingAcknowledgmentIfAny(
+            DataSource dataSource, PendingSchemaAcknowledgmentStore.PendingAcknowledgment pendingAcknowledgment
+    ) {
+        if (pendingAcknowledgment != null) {
+            PendingSchemaAcknowledgmentStore.consume(dataSource, pendingAcknowledgment.id());
+        }
     }
 
     /**

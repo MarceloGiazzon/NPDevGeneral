@@ -84,10 +84,17 @@ final class SchemaDeltaReport {
      * is never part of that catalog at all (by design -- see the class-level note on
      * {@code SchemaLifecycleExecutor}'s {@code HISTORY_TABLE} constant), so it needs the same
      * hardcoded protection unconditionally. {@code flyway_schema_history} is Flyway's own
-     * bookkeeping table, never NPDev-model-owned.
+     * bookkeeping table, never NPDev-model-owned. {@link PendingSchemaAcknowledgmentStore#TABLE}
+     * (LNCH-1 Phase 6, task 6.2a) is the same kind of self-bootstrapped npdev bookkeeping table as
+     * {@code npdev_schema_history} -- never part of {@code internalTables} either -- so it needs
+     * the identical unconditional protection (confirmed live: without this, the executor's own
+     * {@code CREATE TABLE IF NOT EXISTS} for it made every destructive-path test in this package
+     * spuriously classify it as a DROP_TABLE candidate, since it is a real live table with no
+     * matching manifest entry).
      */
     private static final Set<String> ALWAYS_EXCLUDED_TABLES =
-            Set.of("flyway_schema_history", "npdev_schema_history", "npdev_schema_metadata");
+            Set.of("flyway_schema_history", "npdev_schema_history", "npdev_schema_metadata",
+                    PendingSchemaAcknowledgmentStore.TABLE);
 
     private final List<SchemaDeltaItem> items;
 
