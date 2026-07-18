@@ -107,6 +107,33 @@ public final class GeneratorMain {
         System.out.println("Storage mode: " + databasePlan.storageMode());
         System.out.println("Schema fingerprint: " + databasePlan.schemaFingerprint());
 
+        // LNCH-1 P6 (task 6.1): optional migration-plan computation, a thin adapter over
+        // MigrationPlanEmitter's own pure logic -- this block does no diffing itself. Both flags
+        // are optional and independent of each other: --previousCompiledModel alone (no
+        // --schemaMigrationPlanOut) computes nothing; --schemaMigrationPlanOut alone (no previous
+        // model) computes a "fresh install" plan. Absent both flags -- the ordinary case for every
+        // existing caller -- this block is a no-op and behavior is unchanged.
+        List<String> migrationPlanDestructiveItemStableStrings = List.of();
+        if (normalize(a.migrationPlanOutPath) != null) {
+            com.npdev.dsl.v1.compiled.CompiledModel previousModel = null;
+            if (normalize(a.previousCompiledModelPath) != null) {
+                Path previousModelPath = Path.of(a.previousCompiledModelPath).toAbsolutePath().normalize();
+                previousModel = com.npdev.dsl.v1.compiled.CompiledModelCanonicalJsonReader.read(previousModelPath);
+                System.out.println("Migration plan: previous compiled model read from " + previousModelPath);
+            } else {
+                System.out.println("Migration plan: no --previousCompiledModel given -- computing a fresh-install plan.");
+            }
+            com.npdev.generator.schemaevolution.MigrationPlan migrationPlan =
+                    com.npdev.generator.schemaevolution.MigrationPlanEmitter.compute(compiled, previousModel, databasePlan);
+            Path migrationPlanOutPath = Path.of(a.migrationPlanOutPath).toAbsolutePath().normalize();
+            com.npdev.generator.schemaevolution.MigrationPlan.write(migrationPlanOutPath, migrationPlan);
+            System.out.println("Migration plan written: " + migrationPlanOutPath
+                    + " (freshInstall=" + migrationPlan.freshInstall()
+                    + ", items=" + migrationPlan.items().size()
+                    + ", destructiveAckToken=" + (migrationPlan.destructiveAckToken() == null ? "none" : "present") + ")");
+            migrationPlanDestructiveItemStableStrings = migrationPlan.destructiveItemStableStrings();
+        }
+
         TemplateEngine templates = new TemplateEngine("npdev-templates/");
 
         GeneratedSourceWriter writer =
@@ -117,7 +144,8 @@ public final class GeneratorMain {
                 outRoot,
                 schemaRealizationDir,
                 resolvedModelSource,
-                databasePlan
+                databasePlan,
+                migrationPlanDestructiveItemStableStrings
         );
 
         writer.flushSummary();
@@ -580,6 +608,17 @@ public final class GeneratorMain {
         final boolean cleanFinalAppExplicit;
         final String generatedFolderName;
         final String metaFolderName;
+        /** LNCH-1 P6 (task 6.1). Optional: the previous FinalApp output's canonical compiled-model
+         * JSON (see {@code MigrationPlanEmitter}'s javadoc for exactly where that lives). Absent
+         * means "fresh install" -- no migration plan is computed. Deliberately named without a
+         * "--migration" prefix so it is never caught by {@link #rejectUnsupportedMigrationManagement}
+         * /{@code cur.startsWith("--migration")}'s quarantine of the OLD, unsupported migration-
+         * management CLI contract (§2.2 of the plan) -- this is a NEW, sanctioned mechanism. */
+        final String previousCompiledModelPath;
+        /** LNCH-1 P6 (task 6.1). Optional: where to write the computed {@code migration-plan.json}.
+         * Absent means "skip plan computation entirely" -- zero behavior change for every existing
+         * caller that doesn't pass this flag. */
+        final String migrationPlanOutPath;
 
         private Args(
                 String configPath,
@@ -596,7 +635,9 @@ public final class GeneratorMain {
                 boolean cleanFinalApp,
                 boolean cleanFinalAppExplicit,
                 String generatedFolderName,
-                String metaFolderName
+                String metaFolderName,
+                String previousCompiledModelPath,
+                String migrationPlanOutPath
         ) {
             this.configPath = configPath;
             this.modelPath = modelPath;
@@ -607,6 +648,8 @@ public final class GeneratorMain {
             this.schemaRealizationDir = schemaRealizationDir;
             this.runtimeHostRoot = runtimeHostRoot;
             this.finalAppRoot = finalAppRoot;
+            this.previousCompiledModelPath = previousCompiledModelPath;
+            this.migrationPlanOutPath = migrationPlanOutPath;
             this.assembleFinalApp = assembleFinalApp;
             this.assembleFinalAppExplicit = assembleFinalAppExplicit;
             this.cleanFinalApp = cleanFinalApp;
@@ -634,6 +677,8 @@ public final class GeneratorMain {
             boolean cleanFinalExplicit = false;
             String generatedFolder = null;
             String metaFolder = null;
+            String previousCompiledModelPath = null;
+            String migrationPlanOutPath = null;
 
             for (int i = 0; i < args.length; i++) {
                 String cur = args[i];
@@ -658,6 +703,10 @@ public final class GeneratorMain {
                     generatedFolder = args[++i];
                 } else if ("--metaFolderName".equals(cur) && i + 1 < args.length) {
                     metaFolder = args[++i];
+                } else if ("--previousCompiledModel".equals(cur) && i + 1 < args.length) {
+                    previousCompiledModelPath = args[++i];
+                } else if ("--schemaMigrationPlanOut".equals(cur) && i + 1 < args.length) {
+                    migrationPlanOutPath = args[++i];
                 } else if ("--assembleFinalApp".equals(cur)) {
                     assemble = true;
                     assembleExplicit = true;
@@ -698,7 +747,9 @@ public final class GeneratorMain {
                     cleanFinal,
                     cleanFinalExplicit,
                     generatedFolder,
-                    metaFolder
+                    metaFolder,
+                    previousCompiledModelPath,
+                    migrationPlanOutPath
             );
         }
     }

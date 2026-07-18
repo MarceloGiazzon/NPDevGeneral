@@ -95,13 +95,33 @@ public final class GeneratorFacade {
             ResolvedModelSource resolvedModelSource,
             GeneratedDatabasePlan databasePlan
     ) throws Exception {
+        generate(model, outRoot, schemaRealizationDir, resolvedModelSource, databasePlan, List.of());
+    }
+
+    /**
+     * LNCH-1 P6 (task 6.1/6.3): {@code migrationPlanDestructiveItemStableStrings} is
+     * {@code com.npdev.generator.schemaevolution.MigrationPlan#destructiveItemStableStrings()},
+     * threaded down to {@link SchemaRealizationEmitter}'s manifest (task 6.3's agreement-check
+     * enrichment) when {@code GeneratorMain} computed a migration plan this generation pass (its
+     * new, optional {@code --previous-compiled-model}/{@code --migration-plan-out} flags). Empty
+     * for every existing caller -- zero behavior change when no plan was computed.
+     */
+    public void generate(
+            CompiledModel model,
+            Path outRoot,
+            Path schemaRealizationDir,
+            ResolvedModelSource resolvedModelSource,
+            GeneratedDatabasePlan databasePlan,
+            List<String> migrationPlanDestructiveItemStableStrings
+    ) throws Exception {
         generate(
                 model,
                 outRoot,
                 schemaRealizationDir,
                 resolvedModelSource,
                 resolvedModelSource == null ? null : resolvedModelSource.rootModelPath(),
-                databasePlan
+                databasePlan,
+                migrationPlanDestructiveItemStableStrings
         );
     }
 
@@ -112,6 +132,18 @@ public final class GeneratorFacade {
             ResolvedModelSource resolvedModelSource,
             Path modelSourcePath,
             GeneratedDatabasePlan databasePlan
+    ) throws Exception {
+        generate(model, outRoot, schemaRealizationDir, resolvedModelSource, modelSourcePath, databasePlan, List.of());
+    }
+
+    private void generate(
+            CompiledModel model,
+            Path outRoot,
+            Path schemaRealizationDir,
+            ResolvedModelSource resolvedModelSource,
+            Path modelSourcePath,
+            GeneratedDatabasePlan databasePlan,
+            List<String> migrationPlanDestructiveItemStableStrings
     ) throws Exception {
         boolean kernelControlled = settingResolver.value(NpdevSettings.CRUD_KERNEL_CONTROLLED, SettingTarget.app());
         String superUserRole = settingResolver.value(NpdevSettings.SECURITY_SUPER_USER_ROLE, SettingTarget.app());
@@ -155,7 +187,8 @@ public final class GeneratorFacade {
         // Provenance: record the resolved settings cascade so it is inspectable in the generated app.
         new SettingsManifestEmitter(writer).emit(settingResolver);
 
-        new SchemaRealizationEmitter().emit(model, outRoot, databasePlan, modelSourcePath);
+        new SchemaRealizationEmitter().emit(model, outRoot, databasePlan, modelSourcePath,
+                migrationPlanDestructiveItemStableStrings);
         new GeneratedFolderSignatureEmitter().emit(outRoot);
     }
 

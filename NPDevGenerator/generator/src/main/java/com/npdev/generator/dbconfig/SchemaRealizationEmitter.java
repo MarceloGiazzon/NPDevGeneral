@@ -39,13 +39,35 @@ public final class SchemaRealizationEmitter {
             .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
 
     public void emit(CompiledModel model, Path outRoot, GeneratedDatabasePlan plan, Path modelSourcePath) throws Exception {
+        emit(model, outRoot, plan, modelSourcePath, List.of());
+    }
+
+    /**
+     * LNCH-1 P6 (task 6.3): {@code migrationPlanItemStableStrings} is the destructive-item stable
+     * strings from a {@code com.npdev.generator.schemaevolution.MigrationPlan} computed THIS
+     * generation pass (via {@code GeneratorMain}'s optional {@code --previous-compiled-model} /
+     * {@code --migration-plan-out} flags), or an empty list when no plan was computed this pass
+     * (the ordinary case -- existing callers using the 4-arg {@link #emit} overload above see zero
+     * behavior change: an empty list serializes identically to "absent" as far as
+     * {@code SchemaLifecycleExecutor}'s manifest reader is concerned). Threaded into the manifest so
+     * the runtime executor can print BOTH "what the plan expected" and "what it found live at boot"
+     * when they disagree (see {@code SchemaLifecycleExecutor}'s agreement-check enrichment).
+     */
+    public void emit(
+            CompiledModel model,
+            Path outRoot,
+            GeneratedDatabasePlan plan,
+            Path modelSourcePath,
+            List<String> migrationPlanItemStableStrings
+    ) throws Exception {
         if (outRoot == null || plan == null) {
             return;
         }
         Path resourcesRoot = outRoot.resolve("src").resolve("main").resolve("resources");
         Files.createDirectories(resourcesRoot);
         emitSchemaArtifacts(model, resourcesRoot, plan);
-        emitManifest(model, resourcesRoot, plan, modelSourcePath);
+        emitManifest(model, resourcesRoot, plan, modelSourcePath,
+                migrationPlanItemStableStrings == null ? List.of() : migrationPlanItemStableStrings);
         emitApplicationProperties(resourcesRoot, plan);
     }
 
@@ -1047,7 +1069,13 @@ public final class SchemaRealizationEmitter {
         }
     }
 
-    private static void emitManifest(CompiledModel model, Path resourcesRoot, GeneratedDatabasePlan plan, Path modelSourcePath) throws Exception {
+    private static void emitManifest(
+            CompiledModel model,
+            Path resourcesRoot,
+            GeneratedDatabasePlan plan,
+            Path modelSourcePath,
+            List<String> migrationPlanItemStableStrings
+    ) throws Exception {
         List<String> internalTables = plan.createInternalTables()
                 ? NpdevInternalTables.all().stream().map(InternalTableDefinition::name).toList()
                 : List.of();
@@ -1101,6 +1129,12 @@ public final class SchemaRealizationEmitter {
         manifest.put("businessTableColumnDefaultLiterals", businessTableColumnDefaultLiterals);
         manifest.put("businessTableExpressionDefaultColumns", businessTableExpressionDefaultColumns);
         manifest.put("businessTableUniqueConstraints", businessTableUniqueConstraints);
+        // LNCH-1 Phase 6 (task 6.3): the destructive-item stable strings from a migration plan
+        // computed THIS generation pass (empty when none was computed -- see this method's caller,
+        // SchemaRealizationEmitter#emit's 5-arg overload). Lets the runtime executor's agreement
+        // check print both "what the plan expected" and "what it found live at boot" when they
+        // disagree (model drift between plan-generation time and boot time).
+        manifest.put("migrationPlanItemStableStrings", migrationPlanItemStableStrings);
         manifest.put("sourceOfTruth", Map.of(
                 "internal", resolveInternalSchemaSourcePath(plan.definitionPath()).toString(),
                 "business", modelSourcePath == null ? "" : modelSourcePath.toAbsolutePath().normalize().toString(),
