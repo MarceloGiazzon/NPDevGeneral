@@ -1,5 +1,13 @@
 package com.finalexec.db;
 
+import com.npdev.dsl.v1.schemaevolution.RenameResolution;
+import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem;
+import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.DropColumn;
+import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.DropTable;
+import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.NarrowType;
+import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.Unknown;
+import com.npdev.dsl.v1.schemaevolution.TypeChangeMatrix;
+
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -25,7 +33,17 @@ import java.util.Set;
  * {@link SchemaLifecycleExecutor#normalizeSqlType}) -- no second, independently-drifting copy of
  * that logic.
  *
- * <h2>Item vocabulary (exactly four kinds, per the plan)</h2>
+ * <h2>Item vocabulary (exactly four kinds, per the plan) -- shared with the generator (Phase 6)</h2>
+ * The item kinds themselves ({@link DropColumn}, {@link DropTable}, {@link NarrowType},
+ * {@link Unknown}) and their {@code stableString()} format now live in
+ * {@link com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem} (DSL module), NOT in this class -- moved
+ * there in Phase 6 (task 6.1's (A) share decision) so that
+ * {@code com.npdev.generator.schemaevolution.MigrationPlanEmitter}'s model-vs-model preview
+ * constructs the IDENTICAL record types this class's live-DB introspection constructs, guaranteeing
+ * {@link com.npdev.dsl.v1.schemaevolution.DestructiveAckToken} produces byte-identical tokens for
+ * the same underlying change BY CONSTRUCTION. This class keeps only the JDBC-introspection-specific
+ * itemization logic (below), which has no generator-side equivalent to share with (the generator
+ * never introspects a live database).
  * <ul>
  *   <li>{@link DropColumn} -- a column present live but not in the manifest's expected set for
  *       that table, and not explained by any declared column rename (per {@link RenameResolution}).</li>
@@ -35,7 +53,7 @@ import java.util.Set;
  *       live SQL type does not match the manifest's declared type, and
  *       {@link TypeChangeMatrix#classify(String, String)} returns {@code NARROWING} or
  *       {@code INCOMPARABLE} for the (actual -&gt; expected) pair. Named {@code NARROW_TYPE} even
- *       for the {@code INCOMPARABLE} case -- see the class-level note on {@link NarrowType}.</li>
+ *       for the {@code INCOMPARABLE} case -- see {@link SchemaDeltaItem.NarrowType}'s javadoc.</li>
  *   <li>{@link Unknown} -- anything this class cannot cleanly attribute to one of the three named
  *       kinds above (today: a manifest-expected column that is neither live nor additive-eligible
  *       nor explained by a rename -- a "new required field with no backfill support yet" case that
@@ -43,7 +61,7 @@ import java.util.Set;
  * </ul>
  *
  * <h2>Stable, order-independent string form</h2>
- * Every item's {@link Item#stableString()} is a plain, colon-joined {@code KIND:field:field:...}
+ * Every item's {@code stableString()} is a plain, colon-joined {@code KIND:field:field:...}
  * string built ONLY from that item's own fields -- never from iteration order. {@link #generate}
  * additionally sorts the full item LIST by a deterministic key (table, then column/secondary key,
  * then kind, then the stable string itself as a final tiebreaker) before returning, so two calls
@@ -71,13 +89,13 @@ final class SchemaDeltaReport {
     private static final Set<String> ALWAYS_EXCLUDED_TABLES =
             Set.of("flyway_schema_history", "npdev_schema_history", "npdev_schema_metadata");
 
-    private final List<Item> items;
+    private final List<SchemaDeltaItem> items;
 
-    private SchemaDeltaReport(List<Item> items) {
+    private SchemaDeltaReport(List<SchemaDeltaItem> items) {
         this.items = items;
     }
 
-    List<Item> items() {
+    List<SchemaDeltaItem> items() {
         return items;
     }
 
@@ -89,7 +107,7 @@ final class SchemaDeltaReport {
      * {@link Unknown} item is present. This is exactly the gate {@code SchemaLifecycleExecutor}
      * uses to decide surgical-vs-whole-schema execution (task 4.3). */
     boolean hasOnlyNamedDestructiveKinds() {
-        for (Item item : items) {
+        for (SchemaDeltaItem item : items) {
             if (item instanceof Unknown) {
                 return false;
             }
@@ -101,7 +119,7 @@ final class SchemaDeltaReport {
      * pre-drop snapshot and DDL to only the tables actually implicated by this report. */
     Set<String> affectedTables() {
         Set<String> tables = new LinkedHashSet<>();
-        for (Item item : items) {
+        for (SchemaDeltaItem item : items) {
             String table = item.table();
             if (table != null && !table.isBlank()) {
                 tables.add(table);
@@ -110,18 +128,19 @@ final class SchemaDeltaReport {
         return tables;
     }
 
-    /** Every item's {@link Item#stableString()}, in this report's already-deterministic order --
-     * the exact input {@link com.npdev.dsl.v1.schemaevolution.DestructiveAckToken#compute} hashes. */
+    /** Every item's {@link SchemaDeltaItem#stableString()}, in this report's already-deterministic
+     * order -- the exact input {@link com.npdev.dsl.v1.schemaevolution.DestructiveAckToken#compute}
+     * hashes. */
     List<String> stableStrings() {
         List<String> strings = new ArrayList<>();
-        for (Item item : items) {
+        for (SchemaDeltaItem item : items) {
             strings.add(item.stableString());
         }
         return strings;
     }
 
     static SchemaDeltaReport generate(DataSource dataSource, SchemaLifecycleExecutor.SchemaManifest manifest) {
-        List<Item> items = new ArrayList<>();
+        List<SchemaDeltaItem> items = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
 
@@ -140,7 +159,7 @@ final class SchemaDeltaReport {
             Connection connection,
             DatabaseMetaData metadata,
             SchemaLifecycleExecutor.SchemaManifest manifest,
-            List<Item> items
+            List<SchemaDeltaItem> items
     ) throws SQLException {
         Set<String> expectedTables = new LinkedHashSet<>(manifest.businessTableColumns().keySet());
         expectedTables.addAll(manifest.internalTables());
@@ -167,7 +186,7 @@ final class SchemaDeltaReport {
     private static void itemizeColumnLevelDiff(
             DatabaseMetaData metadata,
             SchemaLifecycleExecutor.SchemaManifest manifest,
-            List<Item> items
+            List<SchemaDeltaItem> items
     ) throws SQLException {
         for (Map.Entry<String, List<String>> entry : manifest.businessTableColumns().entrySet()) {
             String table = entry.getKey();
@@ -262,7 +281,7 @@ final class SchemaDeltaReport {
      * exists), then the kind name, then the full stable string as a final tiebreaker -- so the
      * overall item order (and therefore {@link #stableStrings()}) never depends on live-DB or
      * manifest iteration order. */
-    private static String sortKey(Item item) {
+    private static String sortKey(SchemaDeltaItem item) {
         String table = item.table() == null ? "" : item.table();
         String secondary = "";
         if (item instanceof DropColumn dropColumn) {
@@ -271,65 +290,6 @@ final class SchemaDeltaReport {
             secondary = narrowType.column();
         }
         String kind = item.getClass().getSimpleName();
-        return table + ' ' + secondary + ' ' + kind + ' ' + item.stableString();
-    }
-
-    /** Common surface every item kind implements. Deliberately a plain (non-sealed) interface --
-     * this project targets Java 17 without preview features, and sealed-type switch pattern
-     * matching is a Java 21 feature; {@code instanceof} pattern matching (used throughout this
-     * class and its caller) is fully available on 17. */
-    interface Item {
-        /** The table this item concerns, or {@code ""} if not applicable (only {@link Unknown}). */
-        String table();
-
-        /** A stable string form built only from this item's own fields -- never from iteration
-         * order -- suitable for hashing (via {@link com.npdev.dsl.v1.schemaevolution.DestructiveAckToken})
-         * and for JSON/log/history-row serialization. */
-        String stableString();
-    }
-
-    record DropColumn(String table, String column, String sqlType) implements Item {
-        @Override
-        public String stableString() {
-            return "DROP_COLUMN:" + table + ":" + column + ":" + (sqlType == null ? "" : sqlType);
-        }
-    }
-
-    record DropTable(String table, long rowCountAtClassification) implements Item {
-        @Override
-        public String stableString() {
-            return "DROP_TABLE:" + table + ":" + rowCountAtClassification;
-        }
-    }
-
-    /**
-     * A shared column whose live type doesn't match the declared type, where
-     * {@link TypeChangeMatrix#classify(String, String)} returned {@code NARROWING} OR
-     * {@code INCOMPARABLE} for the (actual -&gt; expected) pair. Named {@code NARROW_TYPE} for
-     * BOTH cases, per the plan's exact item vocabulary (it lists only four kinds, not five) --
-     * {@code INCOMPARABLE} (e.g. a wholesale type-family mismatch such as VARCHAR -&gt; INTEGER)
-     * is still, in practice, "a type on this column narrowed/changed in a way that isn't a safe
-     * widening", which is exactly what {@code NARROW_TYPE} communicates to an operator deciding
-     * whether to acknowledge it; a separate {@code INCOMPARABLE_TYPE} item kind would be a
-     * distinction without a difference for this phase's surgical-execution purposes (drop-and-
-     * recreate-column is the correct DDL response to both cases identically).
-     */
-    record NarrowType(String table, String column, String fromType, String toType) implements Item {
-        @Override
-        public String stableString() {
-            return "NARROW_TYPE:" + table + ":" + column + ":" + fromType + ":" + toType;
-        }
-    }
-
-    record Unknown(String description) implements Item {
-        @Override
-        public String table() {
-            return "";
-        }
-
-        @Override
-        public String stableString() {
-            return "UNKNOWN:" + description;
-        }
+        return table + ' ' + secondary + ' ' + kind + ' ' + item.stableString();
     }
 }

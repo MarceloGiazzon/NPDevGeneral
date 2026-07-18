@@ -1,4 +1,4 @@
-package com.finalexec.db;
+package com.npdev.dsl.v1.schemaevolution;
 
 import org.junit.jupiter.api.Test;
 
@@ -9,7 +9,11 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Pure unit coverage for {@link RenameResolution}, extracted verbatim from {@code classify()}. */
+/**
+ * Pure unit coverage for {@link RenameResolution}, extracted verbatim from
+ * {@code SchemaLifecycleExecutor#classify} in Phase 1, moved to the DSL module in Phase 6 (task
+ * 6.1's (A) share decision -- see {@code MigrationPlanEmitter}'s class javadoc).
+ */
 class RenameResolutionTest {
 
     @Test
@@ -80,7 +84,7 @@ class RenameResolutionTest {
         // Degenerate input SemanticValidator's rule 3 (Task 1.1) refuses at the model level: two
         // different new names both declaring renamedFrom = old_name. RenameResolution does not
         // itself disambiguate -- membership-based matching explains BOTH against the single live
-        // extra column. Documented behavior, not a silent-wrong trap: callers rely on the
+        // extra column. Documented behavior, not a silently-wrong trap: callers rely on the
         // validator to make this input impossible in practice.
         Set<String> missing = setOf("new_a", "new_b");
         Set<String> extra = setOf("old_shared");

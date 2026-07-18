@@ -1,5 +1,6 @@
 package com.finalexec.db;
 
+import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,9 +55,9 @@ class SchemaDeltaReportTest {
         SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, manifest);
 
         assertEquals(1, report.items().size());
-        SchemaDeltaReport.Item item = report.items().get(0);
-        assertTrue(item instanceof SchemaDeltaReport.DropColumn);
-        SchemaDeltaReport.DropColumn dropColumn = (SchemaDeltaReport.DropColumn) item;
+        SchemaDeltaItem item = report.items().get(0);
+        assertTrue(item instanceof SchemaDeltaItem.DropColumn);
+        SchemaDeltaItem.DropColumn dropColumn = (SchemaDeltaItem.DropColumn) item;
         assertEquals("users", dropColumn.table());
         assertEquals("legacy_flag", dropColumn.column());
         assertEquals("DROP_COLUMN:users:legacy_flag:BOOLEAN", dropColumn.stableString());
@@ -78,7 +79,7 @@ class SchemaDeltaReportTest {
         SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, manifest);
 
         assertEquals(1, report.items().size());
-        SchemaDeltaReport.DropTable dropTable = (SchemaDeltaReport.DropTable) report.items().get(0);
+        SchemaDeltaItem.DropTable dropTable = (SchemaDeltaItem.DropTable) report.items().get(0);
         assertEquals("legacy_widgets", dropTable.table());
         assertEquals(3L, dropTable.rowCountAtClassification());
         assertEquals("DROP_TABLE:legacy_widgets:3", dropTable.stableString());
@@ -96,7 +97,7 @@ class SchemaDeltaReportTest {
         SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, manifest);
 
         assertEquals(1, report.items().size());
-        SchemaDeltaReport.NarrowType narrowType = (SchemaDeltaReport.NarrowType) report.items().get(0);
+        SchemaDeltaItem.NarrowType narrowType = (SchemaDeltaItem.NarrowType) report.items().get(0);
         assertEquals("widgets", narrowType.table());
         assertEquals("code", narrowType.column());
         assertEquals("VARCHAR(50)", narrowType.fromType());
@@ -116,7 +117,7 @@ class SchemaDeltaReportTest {
         SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, manifest);
 
         assertEquals(1, report.items().size());
-        assertTrue(report.items().get(0) instanceof SchemaDeltaReport.NarrowType,
+        assertTrue(report.items().get(0) instanceof SchemaDeltaItem.NarrowType,
                 "INCOMPARABLE type pairs must still be itemized as NARROW_TYPE per the plan's exact vocabulary");
     }
 
@@ -137,7 +138,7 @@ class SchemaDeltaReportTest {
         SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, manifest);
 
         assertEquals(1, report.items().size());
-        assertTrue(report.items().get(0) instanceof SchemaDeltaReport.Unknown);
+        assertTrue(report.items().get(0) instanceof SchemaDeltaItem.Unknown);
         assertTrue(!report.hasOnlyNamedDestructiveKinds());
     }
 

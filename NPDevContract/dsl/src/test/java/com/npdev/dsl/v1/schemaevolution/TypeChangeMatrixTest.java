@@ -1,20 +1,22 @@
-package com.finalexec.db;
+package com.npdev.dsl.v1.schemaevolution;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
-import static com.finalexec.db.TypeChangeMatrix.Classification.INCOMPARABLE;
-import static com.finalexec.db.TypeChangeMatrix.Classification.NARROWING;
-import static com.finalexec.db.TypeChangeMatrix.Classification.WIDENING;
+import static com.npdev.dsl.v1.schemaevolution.TypeChangeMatrix.Classification.INCOMPARABLE;
+import static com.npdev.dsl.v1.schemaevolution.TypeChangeMatrix.Classification.NARROWING;
+import static com.npdev.dsl.v1.schemaevolution.TypeChangeMatrix.Classification.WIDENING;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * LNCH-1 Phase 3 (task 3.1/3.4). Exhaustive unit coverage of {@link TypeChangeMatrix}'s v1 rule
- * set (plan §3.1) against synthetic type strings -- deliberately not gated on what the current
- * generator can actually emit (see the plan's "Realistic reachability" note: today's
- * {@code SqlTypeSupport} only ever produces INTEGER->BIGINT as a real-world type change; the other
- * pairs here exercise the matrix as a generic, future-proof, and legacy-DB-tolerant classifier).
+ * LNCH-1 Phase 3 (task 3.1/3.4), moved to the DSL module in Phase 6 (task 6.1's (A) share
+ * decision -- see {@code MigrationPlanEmitter}'s class javadoc). Exhaustive unit coverage of
+ * {@link TypeChangeMatrix}'s v1 rule set (plan §3.1) against synthetic type strings -- deliberately
+ * not gated on what the current generator can actually emit (see the plan's "Realistic
+ * reachability" note: today's {@code SqlTypeSupport} only ever produces INTEGER->BIGINT as a
+ * real-world type change; the other pairs here exercise the matrix as a generic, future-proof, and
+ * legacy-DB-tolerant classifier).
  */
 class TypeChangeMatrixTest {
 

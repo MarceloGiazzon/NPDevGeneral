@@ -1,18 +1,26 @@
-package com.finalexec.db;
+package com.npdev.dsl.v1.schemaevolution;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 /**
- * LNCH-1 Phase 3. Pure classification of a declared (old SQL type -&gt; new SQL type) change into
- * {@link Classification#WIDENING} (safe, data-preserving, auto-appliable in place),
- * {@link Classification#NARROWING} (may truncate/lose data), or {@link Classification#INCOMPARABLE}
- * (unrelated type families, or an unrecognized type string). Both NARROWING and INCOMPARABLE
- * currently route to the same "refuse, fall through to the existing destructive path" behavior in
- * the executor -- Phase 4 is where itemized acknowledgment tokens get built -- but this class still
- * returns the more semantically accurate bucket per pair, since that distinction is useful for the
- * boot log and will matter once Phase 4 itemizes.
+ * LNCH-1 Phase 3, moved to the DSL module in Phase 6 (task 6.1's (A) share decision -- see
+ * {@code MigrationPlanEmitter}'s class javadoc for the full reasoning). Pure classification of a
+ * declared (old SQL type -&gt; new SQL type) change into {@link Classification#WIDENING} (safe,
+ * data-preserving, auto-appliable in place), {@link Classification#NARROWING} (may
+ * truncate/lose data), or {@link Classification#INCOMPARABLE} (unrelated type families, or an
+ * unrecognized type string).
+ *
+ * <p>Lives in {@code com.npdev.dsl.v1.schemaevolution} -- not RuntimeHost, not the generator --
+ * so BOTH {@code com.finalexec.db.SchemaDeltaReport} (the runtime executor's residual-diff
+ * itemization, re-derived from live-DB introspection at boot) and
+ * {@code com.npdev.generator.schemaevolution.MigrationPlanEmitter} (the generator's model-vs-model
+ * preview) classify a type change with the IDENTICAL bytecode -- one derivation, not two
+ * independently-maintained copies that could silently drift apart. Both sides already depend on
+ * the {@code :dsl} module (the generator directly; RuntimeHost via the {@code runtimehost-libs}
+ * jar-staging mechanism that already ships {@code com.npdev.dsl.v1.compiled.CompiledModelCanonicalJson*}
+ * into every generated app).
  *
  * <p>Exactly the v1 rule set from {@code docs/LNCH1_SCHEMA_EVOLUTION_PLAN.md} §3.1, nothing more:
  * <ul>
@@ -37,18 +45,16 @@ import java.util.Locale;
  * closer look at the same family" than a bucket shared with a wholesale type-family mismatch.
  *
  * <p><b>NOT NULL -&gt; nullable scope decision:</b> the plan lists relaxing nullability as a
- * widening item, but {@code SchemaLifecycleExecutor.SchemaManifest#businessTableColumnTypes} --
- * the only per-column type information the executor carries today -- has no NULL/NOT NULL
- * annotation at all (confirmed by reading {@code SchemaRealizationEmitter.columnTypes()} and a real
- * emitted manifest: the values are bare SQL type strings like {@code "VARCHAR(255)"}, nothing
- * more). Nullability relaxation is therefore out of reach for this matrix as currently wired --
- * this class does not attempt it, and it is not part of the (fromSqlType, toSqlType) contract.
- * Flagged here as a follow-up gap: closing it needs new manifest plumbing (a per-column nullable
- * flag), which is disproportionate to add speculatively in this phase.
+ * widening item, but neither side's per-column type information carries a NULL/NOT NULL
+ * annotation today (bare SQL type strings only, e.g. {@code "VARCHAR(255)"}). Nullability
+ * relaxation is therefore out of reach for this matrix as currently wired -- this class does not
+ * attempt it, and it is not part of the (fromSqlType, toSqlType) contract. Flagged here as a
+ * follow-up gap: closing it needs new manifest/model plumbing (a per-column nullable flag), which
+ * is disproportionate to add speculatively.
  */
-final class TypeChangeMatrix {
+public final class TypeChangeMatrix {
 
-    enum Classification {
+    public enum Classification {
         WIDENING,
         NARROWING,
         INCOMPARABLE
@@ -61,7 +67,7 @@ final class TypeChangeMatrix {
     private TypeChangeMatrix() {
     }
 
-    static Classification classify(String fromSqlType, String toSqlType) {
+    public static Classification classify(String fromSqlType, String toSqlType) {
         ParsedType from = parse(fromSqlType);
         ParsedType to = parse(toSqlType);
         if (from == null || to == null) {
@@ -115,10 +121,10 @@ final class TypeChangeMatrix {
             return p2 >= p ? Classification.WIDENING : Classification.NARROWING;
         }
         // Identical base and (if any) identical/unparameterized params -- either a genuinely
-        // unchanged type (unreachable in practice: the executor only calls this class once
-        // hasTypeChange() has already found a diff) or a same-family type this matrix doesn't
-        // otherwise parameterize (e.g. BIGINT -> BIGINT). Treat as WIDENING: a no-op is safe to
-        // "apply" (idempotent by construction once the ALTER runs).
+        // unchanged type (unreachable in practice: callers only invoke this class once a diff has
+        // already been found) or a same-family type this matrix doesn't otherwise parameterize
+        // (e.g. BIGINT -> BIGINT). Treat as WIDENING: a no-op is safe to "apply" (idempotent by
+        // construction once the ALTER runs).
         return Classification.WIDENING;
     }
 

@@ -3,6 +3,12 @@ package com.finalexec.db;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.schemaevolution.DestructiveAckToken;
+import com.npdev.dsl.v1.schemaevolution.RenameResolution;
+import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem;
+import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.DropColumn;
+import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.DropTable;
+import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.NarrowType;
+import com.npdev.dsl.v1.schemaevolution.TypeChangeMatrix;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.Configuration;
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
@@ -249,14 +255,14 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
 
         List<String> applied = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
-            for (SchemaDeltaReport.Item item : report.items()) {
-                if (item instanceof SchemaDeltaReport.DropColumn dropColumn) {
+            for (SchemaDeltaItem item : report.items()) {
+                if (item instanceof DropColumn dropColumn) {
                     executeDropColumn(connection, dropColumn.table(), dropColumn.column());
                     applied.add("DROP_COLUMN " + dropColumn.table() + "." + dropColumn.column());
-                } else if (item instanceof SchemaDeltaReport.DropTable dropTable) {
+                } else if (item instanceof DropTable dropTable) {
                     executeDropTableCascade(connection, dropTable.table());
                     applied.add("DROP_TABLE " + dropTable.table());
-                } else if (item instanceof SchemaDeltaReport.NarrowType narrowType) {
+                } else if (item instanceof NarrowType narrowType) {
                     // Drop-and-recreate, not a casting ALTER COLUMN TYPE: per the plan, data in a
                     // narrowed column is acknowledged lost by the token, and a cast can fail
                     // per-row (e.g. a too-long VARCHAR value) -- simpler and more honest to drop
@@ -1490,7 +1496,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     }
 
     /**
-     * Every destructive item's {@link SchemaDeltaReport.Item#stableString()}, JSON-serialized as a
+     * Every destructive item's {@link SchemaDeltaItem#stableString()}, JSON-serialized as a
      * plain array of strings -- already in {@link SchemaDeltaReport}'s deterministic sorted order,
      * so this column's content is itself stable/order-independent for the same underlying diff.
      */
