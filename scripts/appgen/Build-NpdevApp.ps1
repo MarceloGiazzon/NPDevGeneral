@@ -34,7 +34,27 @@ param(
   [string]$BuildRoot = 'D:\WorkSpace\NPDev\Build\generated-finalapps',
   [string]$RuntimeHostLibsDir = 'D:\WorkSpace\NPDev\Build\runtimehost-libs',
   [switch]$GenerateOnly,
-  [switch]$SkipRuntimeHostLibs
+  [switch]$SkipRuntimeHostLibs,
+  # LNCH-1 P6 (task 6.2c). -PlanOnly: compute + print the migration plan (SAFE items plainly,
+  # DESTRUCTIVE items with a red banner and the copyable ack token), then exit -- before the
+  # web-asset/ops-toolbox/info-page steps -- with a script-friendly exit code (1 if any destructive
+  # item is present, 0 otherwise). A full generation pass still happens (cheap, local, touches
+  # nothing live) -- see this switch's usage below for why an honest plan needs one anyway.
+  [switch]$PlanOnly,
+  # -Upgrade: same plan computation/printing as -PlanOnly, but does NOT exit early -- the script
+  # continues through its normal steps (this IS the real upgrade). Additionally captures the
+  # PREVIOUS FinalApp output's canonical compiled-model.json before the wipe below destroys it,
+  # threads it into the generator as --previousCompiledModel so the plan is a real diff (not a
+  # fresh-install plan), and echoes migration-plan.json outside the wiped tree so it survives the
+  # NEXT wipe too.
+  [switch]$Upgrade,
+  # -AcknowledgeDestructive <token>: threads the token into the generator's new
+  # --destructiveAcknowledgment flag (LNCH-1 P6 task 6.2b), landing it verbatim in the generated
+  # manifest's destructiveAcknowledgment key -- the value SchemaLifecycleExecutor's Phase 4
+  # destructive-path token check reads at boot. Independent of -PlanOnly/-Upgrade (a plain build
+  # with just this parameter also threads the token; no plan is computed unless -PlanOnly/-Upgrade
+  # is also passed).
+  [string]$AcknowledgeDestructive
 )
 
 $ErrorActionPreference = 'Stop'
@@ -54,6 +74,60 @@ function Write-JsonFile {
 function Set-JsonProp {
   param([object]$Object, [string]$Name, [object]$Value)
   if ($null -ne $Object) { $Object | Add-Member -NotePropertyName $Name -NotePropertyValue $Value -Force }
+}
+
+# LNCH-1 P6 (task 6.2c). Renders a migration-plan.json object (MigrationPlanEmitter's schema --
+# see NPDevContract\schemas\migration-plan.schema.json) as a readable console table: SAFE items
+# plainly, DESTRUCTIVE items behind a visible red banner with the copyable ack token clearly
+# labeled, per the plan's explicit ask ("the person running the upgrade must be able to see the
+# full plan ... before anything touches the database").
+function Write-MigrationPlanTable {
+  param([Parameter(Mandatory = $true)][object]$PlanObj)
+
+  Write-Host ''
+  Write-Host '================ NPDev Migration Plan =================' -ForegroundColor Cyan
+  if ($PlanObj.freshInstall) {
+    Write-Host 'Fresh install -- no previous compiled model to diff against.'
+  } else {
+    Write-Host "From fingerprint : $($PlanObj.fromFingerprint)"
+  }
+  Write-Host "To fingerprint   : $($PlanObj.toFingerprint)"
+
+  $items = @($PlanObj.items)
+  if ($items.Count -eq 0) {
+    Write-Host ''
+    Write-Host 'No changes.' -ForegroundColor Green
+    Write-Host '========================================================' -ForegroundColor Cyan
+    return
+  }
+
+  $safeItems = @($items | Where-Object { -not $_.destructive })
+  $destructiveItems = @($items | Where-Object { $_.destructive })
+
+  if ($safeItems.Count -gt 0) {
+    Write-Host ''
+    Write-Host "SAFE changes ($($safeItems.Count)):" -ForegroundColor Green
+    foreach ($item in $safeItems) {
+      Write-Host "  [$($item.kind)] $($item.description)"
+    }
+  }
+
+  if ($destructiveItems.Count -gt 0) {
+    Write-Host ''
+    Write-Host '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!' -ForegroundColor Red
+    Write-Host "DESTRUCTIVE changes ($($destructiveItems.Count)) -- DATA WILL BE LOST for these items:" -ForegroundColor Red
+    foreach ($item in $destructiveItems) {
+      Write-Host "  [$($item.kind)] $($item.description)" -ForegroundColor Red
+      if ($item.sqlPreview) { Write-Host "      SQL: $($item.sqlPreview)" -ForegroundColor Yellow }
+    }
+    Write-Host ''
+    Write-Host 'Acknowledgment token (copy exactly; pass to -AcknowledgeDestructive, or submit via' -ForegroundColor Yellow
+    Write-Host 'the ControlPanel schema-migration screen on the CURRENTLY RUNNING app):' -ForegroundColor Yellow
+    Write-Host "  $($PlanObj.destructiveAckToken)" -ForegroundColor Yellow
+    Write-Host '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!' -ForegroundColor Red
+  }
+  Write-Host ''
+  Write-Host '========================================================' -ForegroundColor Cyan
 }
 
 # ---- 1. resolve identity ---------------------------------------------------
@@ -82,6 +156,29 @@ foreach ($p in @($RuntimeHostTemplate, $ContractSchemas)) {
 Write-Step "App id   : $AppId"
 Write-Step "Out root : $OutRoot"
 Write-Step "Port     : $ServerPort  Profiles: $SpringProfiles"
+
+# ---- 1a. LNCH-1 P6 (task 6.2c): capture the previous compiled model BEFORE the wipe ----------
+# -Upgrade (and -PlanOnly, so its preview reflects a real diff rather than always reading as a
+# fresh install) need the PREVIOUS FinalApp output's canonical compiled-model.json to compute a
+# real migration plan against -- but step 2 immediately below deletes the entire $OutRoot
+# (including this file, at $OutRoot\App\npdev-generated\src\main\resources\npdev\compiled-model.json)
+# before the generator ever runs again. This is the one narrow window where both the OLD file and
+# the about-to-be-regenerated NEW one can coexist (the wipe happens BEFORE the generator call, not
+# after) -- read/copy it out to a location OUTSIDE $OutRoot right now, before it is destroyed.
+$PreviousCompiledModelPath = $null
+if ($PlanOnly -or $Upgrade) {
+  $PriorCompiledModelPath = Join-Path $OutRoot 'App\npdev-generated\src\main\resources\npdev\compiled-model.json'
+  if (Test-Path -LiteralPath $PriorCompiledModelPath) {
+    $PlanScratchDir = Join-Path ([System.IO.Path]::GetTempPath()) 'npdev-build-npdevapp-scratch'
+    New-Item -ItemType Directory -Force -Path $PlanScratchDir | Out-Null
+    $PreviousCompiledModelPath = Join-Path $PlanScratchDir "$AppId-previous-compiled-model-$([Guid]::NewGuid().ToString('N')).json"
+    Copy-Item -LiteralPath $PriorCompiledModelPath -Destination $PreviousCompiledModelPath -Force
+    Write-Step "Captured previous compiled model before wipe: $PreviousCompiledModelPath"
+  } else {
+    Write-Step "No previous compiled model found at $PriorCompiledModelPath -- plan will be a fresh-install plan."
+  }
+}
+$PlanJsonPath = Join-Path $OutRoot 'migration-plan.json'
 
 # ---- 2. stage definition ---------------------------------------------------
 if (Test-Path -LiteralPath $OutRoot) { Write-Step "Removing existing output root: $OutRoot"; Remove-Item -LiteralPath $OutRoot -Recurse -Force }
@@ -128,14 +225,89 @@ Write-JsonFile $Config $ConfigPath
 Write-JsonFile $Model  $ModelPath
 
 # ---- 4. call generator -----------------------------------------------------
-Write-Step 'Calling prepared NPDev generator runtime (direct Java; no Gradle).'
-& $RuntimeInvoker -ConfigPath $ConfigPath -ModelPath $ModelPath -OutRoot $OutRoot -DbDefinitionPath $DbDefinitionPath -RuntimeHostTemplate $RuntimeHostTemplate -Clean
-$GeneratorExit = $LASTEXITCODE
+# LNCH-1 P6 (task 6.2c): -PlanOnly/-Upgrade/-AcknowledgeDestructive need generator CLI flags
+# (--previousCompiledModel/--schemaMigrationPlanOut/--destructiveAcknowledgment, LNCH-1 P6 tasks
+# 6.1/6.2b) that invoke-npdev-generator.ps1 -- an AppGen-runtime wrapper script staged OUTSIDE
+# this repo at $RuntimeCurrent, with no pass-through mechanism for extra generator arguments --
+# does not support (verified by reading its source before writing this). Every PLAIN call (none of
+# these three switches/parameter used) keeps calling that wrapper completely unchanged -- zero
+# behavior change. Only this opt-in path calls the SAME generator runtime jars directly instead,
+# mirroring the wrapper's own classpath resolution and argument shape exactly (config/model/out/
+# dbDefinitionPath/runtimeHostTemplate/finalAppOut, --clean, --assembleFinalApp, --cleanFinalApp --
+# the wrapper always adds the latter two since Build-NpdevApp.ps1 never passes -NoAssembleFinalApp/
+# -NoCleanFinalApp), plus the new flags.
+$UsesDirectGeneratorFlags = [bool]$PlanOnly -or [bool]$Upgrade -or (-not [string]::IsNullOrWhiteSpace($AcknowledgeDestructive))
+if (-not $UsesDirectGeneratorFlags) {
+  Write-Step 'Calling prepared NPDev generator runtime (direct Java; no Gradle).'
+  & $RuntimeInvoker -ConfigPath $ConfigPath -ModelPath $ModelPath -OutRoot $OutRoot -DbDefinitionPath $DbDefinitionPath -RuntimeHostTemplate $RuntimeHostTemplate -Clean
+  $GeneratorExit = $LASTEXITCODE
+} else {
+  Write-Step 'Calling NPDevGenerator directly (Java) -- migration-plan/acknowledgment flags need pass-through invoke-npdev-generator.ps1 does not provide.'
+  $GenRuntimeLibDir = Join-Path $RuntimeCurrent 'lib'
+  $GenJars = @(Get-ChildItem -LiteralPath $GenRuntimeLibDir -File -Filter '*.jar' -Force | Sort-Object Name)
+  if ($GenJars.Count -eq 0) { throw "No jars found in generator runtime lib folder: $GenRuntimeLibDir" }
+  $GenClasspath = ($GenJars | ForEach-Object { $_.FullName }) -join [System.IO.Path]::PathSeparator
+  $DirectGeneratorArgs = @(
+    '--config', $ConfigPath,
+    '--model', $ModelPath,
+    '--out', $ArtifactRoot,
+    '--dbDefinitionPath', $DbDefinitionPath,
+    '--runtimeHostTemplate', $RuntimeHostTemplate,
+    '--finalAppOut', $FinalAppRoot,
+    '--clean',
+    '--assembleFinalApp',
+    '--cleanFinalApp'
+  )
+  if ($PreviousCompiledModelPath) { $DirectGeneratorArgs += @('--previousCompiledModel', $PreviousCompiledModelPath) }
+  if ($PlanOnly -or $Upgrade) { $DirectGeneratorArgs += @('--schemaMigrationPlanOut', $PlanJsonPath) }
+  if (-not [string]::IsNullOrWhiteSpace($AcknowledgeDestructive)) { $DirectGeneratorArgs += @('--destructiveAcknowledgment', $AcknowledgeDestructive) }
+  $DirectJavaArgs = @('-cp', $GenClasspath, 'com.npdev.generator.GeneratorMain') + $DirectGeneratorArgs
+
+  Push-Location $RuntimeCurrent
+  try {
+    & java @DirectJavaArgs
+    $GeneratorExit = $LASTEXITCODE
+  } finally {
+    Pop-Location
+  }
+}
 if ($GeneratorExit -ne 0) {
   Write-Host "Generator FAILED ($GeneratorExit). See $OutRoot\_logs\generator-direct-java.log" -ForegroundColor Red
   exit $GeneratorExit
 }
 Write-Step 'Generator succeeded.'
+
+# ---- 4a2. LNCH-1 P6 (task 6.2c): print + (for -Upgrade) durably echo the migration plan --------
+if ($PlanOnly -or $Upgrade) {
+  if (-not (Test-Path -LiteralPath $PlanJsonPath)) {
+    throw "Expected a migration plan at $PlanJsonPath but it was not written by the generator."
+  }
+  $PlanObj = Read-JsonFile $PlanJsonPath
+  $HasDestructive = @($PlanObj.items | Where-Object { $_.destructive }).Count -gt 0
+
+  if ($Upgrade) {
+    # Echoed OUTSIDE the wiped tree, sibling to $BuildRoot (not nested inside it), per the plan's
+    # explicit ask -- so this plan survives the NEXT build's wipe too, as an operator-facing trail.
+    $PlanEchoDir = Join-Path (Split-Path -Parent $BuildRoot) "$AppId\migration-plans"
+    New-Item -ItemType Directory -Force -Path $PlanEchoDir | Out-Null
+    $SafeFingerprint = ("$($PlanObj.toFingerprint)" -replace '[^A-Za-z0-9_.-]', '_')
+    $PlanEchoPath = Join-Path $PlanEchoDir "plan-$SafeFingerprint.json"
+    Copy-Item -LiteralPath $PlanJsonPath -Destination $PlanEchoPath -Force
+    Write-Step "Migration plan echoed outside the wiped tree: $PlanEchoPath"
+  }
+
+  Write-MigrationPlanTable -PlanObj $PlanObj
+
+  if ($PlanOnly) {
+    Write-Host ''
+    if ($HasDestructive) {
+      Write-Host '-PlanOnly: destructive item(s) present -- exiting 1 (script-friendly gate signal).' -ForegroundColor Yellow
+      exit 1
+    }
+    Write-Host '-PlanOnly: no destructive items -- exiting 0.' -ForegroundColor Green
+    exit 0
+  }
+}
 
 # ---- 4b. mount companion web/ assets into the app static folder ------------
 # Anything under apps/<App>/web is copied into the generated app's classpath static
