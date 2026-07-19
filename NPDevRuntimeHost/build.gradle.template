@@ -184,7 +184,12 @@ def generatedRuntimeIntegrationTestSources = [
         'com/finalexec/AbstractScenarioIntegrationTest.java',
         'com/finalexec/JwtAuthExternalBetaIT.java',
         'com/finalexec/PublicationRollbackE2EIT.java',
-        'com/finalexec/TenantIsolationE2EIT.java'
+        'com/finalexec/TenantIsolationE2EIT.java',
+        // LNCH-1 Phase 7 (task 7.2): the Postgres Testcontainers twin of the H2 schema-evolution
+        // proof matrix -- Docker-dependent (a real postgres:15-alpine container), so it belongs in
+        // integrationTest (nightly, `-Dspring.profiles.active=test,postgres`), not the plain `test`
+        // task the fast PR gate runs. Excluded from `test`'s sourceSet below for the same reason.
+        'com/finalexec/db/SchemaLifecycleExecutorPostgresProofMatrixTest.java'
 ]
 
 def runtimeSurfaceManifest = new JsonSlurper().parse(file('src/main/resources/npdev/runtime-supported-controllers.json'))
@@ -260,6 +265,11 @@ sourceSets {
         java {
             modelSpecificGeneratedAppTests.each { exclude it }
             generatedRuntimeDependentTestSources.each { exclude it }
+            // LNCH-1 Phase 7 (task 7.2): Docker-dependent (Testcontainers Postgres) -- must not run,
+            // or even compile, as part of the plain `test` task (no com.npdev.generated. reference,
+            // so generatedRuntimeDependentTestSources' auto-exclusion would not otherwise catch it;
+            // see generatedRuntimeIntegrationTestSources above for the integrationTest inclusion).
+            exclude 'com/finalexec/db/SchemaLifecycleExecutorPostgresProofMatrixTest.java'
         }
     }
     integrationTest {
