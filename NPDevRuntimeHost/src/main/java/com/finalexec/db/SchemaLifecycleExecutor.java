@@ -579,12 +579,18 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             extraTables.removeAll(expectedTables);
 
             RenameResolution.Result resolution = RenameResolution.resolve(missingTables, extraTables, declaredTableRenames);
-            for (Map.Entry<String, String> pair : resolution.explainedRenames().entrySet()) {
-                String newTable = pair.getKey();
-                String oldTable = pair.getValue();
-                executeRenameTable(connection, oldTable, newTable);
-                renamed.add(oldTable + " -> " + newTable);
+            List<Map.Entry<String, String>> work = new ArrayList<>(resolution.explainedRenames().entrySet());
+            // R4 (F5): write-before-execute the whole pass as one audit row with per-item detail.
+            List<String> itemDetails = new ArrayList<>();
+            for (Map.Entry<String, String> pair : work) {
+                itemDetails.add("RENAME_TABLE " + pair.getValue() + " -> " + pair.getKey());
             }
+            recordStepPass(dataSource, manifest, "TABLE_RENAME", itemDetails, () -> {
+                for (Map.Entry<String, String> pair : work) {
+                    executeRenameTable(connection, pair.getValue(), pair.getKey());
+                    renamed.add(pair.getValue() + " -> " + pair.getKey());
+                }
+            });
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed applying in-place table renames", exception);
         }
@@ -668,6 +674,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * precedent.
      */
     void attemptInPlaceRenames(DataSource dataSource, SchemaManifest manifest) {
+        record ColumnRename(String table, String oldName, String newName) {
+        }
+        List<ColumnRename> plan = new ArrayList<>();
         List<String> renamed = new ArrayList<>();
         List<String> skipped = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
@@ -720,12 +729,20 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 // drops and recreates the table (and the pre-drop snapshot correctly captures data
                 // under the already-renamed column).
                 for (Map.Entry<String, String> pair : resolution.explainedRenames().entrySet()) {
-                    String newName = pair.getKey();
-                    String oldName = pair.getValue();
-                    executeRenameColumn(connection, manifest.engine(), table, oldName, newName);
-                    renamed.add(table + "." + oldName + " -> " + newName);
+                    plan.add(new ColumnRename(table, pair.getValue(), pair.getKey()));
                 }
             }
+            // R4 (F5): one write-before-execute audit row for the whole column-rename pass.
+            List<String> itemDetails = new ArrayList<>();
+            for (ColumnRename r : plan) {
+                itemDetails.add("RENAME_COLUMN " + r.table() + "." + r.oldName() + " -> " + r.newName());
+            }
+            recordStepPass(dataSource, manifest, "COLUMN_RENAME", itemDetails, () -> {
+                for (ColumnRename r : plan) {
+                    executeRenameColumn(connection, manifest.engine(), r.table(), r.oldName(), r.newName());
+                    renamed.add(r.table() + "." + r.oldName() + " -> " + r.newName());
+                }
+            });
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed applying in-place field renames", exception);
         }
@@ -783,6 +800,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * {@link DataSource}, following {@link #attemptInPlaceRenames}'s precedent.
      */
     void attemptInPlaceTypeWidenings(DataSource dataSource, SchemaManifest manifest) {
+        record Widening(String table, String column, String fromType, String toType) {
+        }
+        List<Widening> plan = new ArrayList<>();
         List<String> widened = new ArrayList<>();
         List<String> skipped = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
@@ -832,10 +852,20 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 }
 
                 for (Map.Entry<String, String> diff : differing.entrySet()) {
-                    executeWidenColumnType(connection, manifest.engine(), table, diff.getKey(), diff.getValue());
-                    widened.add(table + "." + diff.getKey() + " -> " + diff.getValue());
+                    plan.add(new Widening(table, diff.getKey(), actualTypes.get(diff.getKey()), diff.getValue()));
                 }
             }
+            // R4 (F5): one write-before-execute audit row for the whole type-widening pass.
+            List<String> itemDetails = new ArrayList<>();
+            for (Widening w : plan) {
+                itemDetails.add("WIDEN " + w.table() + "." + w.column() + " " + w.fromType() + " -> " + w.toType());
+            }
+            recordStepPass(dataSource, manifest, "TYPE_WIDENING", itemDetails, () -> {
+                for (Widening w : plan) {
+                    executeWidenColumnType(connection, manifest.engine(), w.table(), w.column(), w.toType());
+                    widened.add(w.table() + "." + w.column() + " -> " + w.toType());
+                }
+            });
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed applying in-place type widenings", exception);
         }
@@ -989,12 +1019,21 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             return;
         }
         List<String> backfilled = new ArrayList<>();
-        try (Connection connection = dataSource.getConnection()) {
-            for (PendingBackfill item : pending) {
-                addBackfillAndTightenColumn(connection, item.table(), item.column(),
-                        item.sqlType(), item.literalDefaultJson());
-                backfilled.add(item.table() + "." + item.column());
-            }
+        // R4 (F5): one write-before-execute audit row for the whole required-field backfill pass.
+        List<String> itemDetails = new ArrayList<>();
+        for (PendingBackfill item : pending) {
+            itemDetails.add("BACKFILL " + item.table() + "." + item.column() + " DEFAULT " + item.literalDefaultJson());
+        }
+        try {
+            recordStepPass(dataSource, manifest, "REQUIRED_BACKFILL", itemDetails, () -> {
+                try (Connection connection = dataSource.getConnection()) {
+                    for (PendingBackfill item : pending) {
+                        addBackfillAndTightenColumn(connection, item.table(), item.column(),
+                                item.sqlType(), item.literalDefaultJson());
+                        backfilled.add(item.table() + "." + item.column());
+                    }
+                }
+            });
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed applying required-field backfill(s) (" + backfilled.size() + "/"
                     + pending.size() + " applied before failure: " + backfilled + ")", exception);
@@ -1053,6 +1092,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * {@link DataSource}, following {@link #attemptInPlaceRenames}'s precedent.
      */
     void relaxNoLongerRequiredColumns(DataSource dataSource, SchemaManifest manifest) {
+        record Relaxation(String table, String column) {
+        }
+        List<Relaxation> plan = new ArrayList<>();
         List<String> relaxed = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
@@ -1080,10 +1122,20 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     if (!isColumnNotNull(connection, table, column)) {
                         continue; // already nullable -- idempotent no-op
                     }
-                    executeDropNotNull(connection, table, column);
-                    relaxed.add(table + "." + column);
+                    plan.add(new Relaxation(table, column));
                 }
             }
+            // R4 (F5): one write-before-execute audit row for the whole relax pass.
+            List<String> itemDetails = new ArrayList<>();
+            for (Relaxation r : plan) {
+                itemDetails.add("RELAX_NOT_NULL " + r.table() + "." + r.column());
+            }
+            recordStepPass(dataSource, manifest, "RELAX_NOT_NULL", itemDetails, () -> {
+                for (Relaxation r : plan) {
+                    executeDropNotNull(connection, r.table(), r.column());
+                    relaxed.add(r.table() + "." + r.column());
+                }
+            });
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed relaxing no-longer-required column(s)", exception);
         }
@@ -1298,7 +1350,10 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             // Fingerprint not yet written this boot (afterMigrate's own write happens after this
             // call returns) -- readFingerprint still reports the pre-this-attempt value, matching
             // every other refusal's "from_fingerprint" history-row convention.
-            writeHistoryRow(dataSource, readFingerprint(dataSource), manifest.schemaFingerprint(), null, null, null, "REFUSED");
+            // R4 (F5): record the violation messages as items_json with a UNIQUE_PRECHECK label,
+            // instead of an empty, classification-less REFUSED row.
+            insertRawHistoryRow(dataSource, readFingerprint(dataSource), manifest.schemaFingerprint(),
+                    "UNIQUE_PRECHECK", violationMessages, "REFUSED");
             throw new IllegalStateException("Schema change adds new unique constraint(s), but existing data "
                     + "violates them (LNCH-1 Phase 5). Resolve the duplicate row(s) first, or relax the constraint: "
                     + violationMessages + " -- see docs/SCHEMA_EVOLUTION.md#tightened-uniqueness.");
@@ -1990,6 +2045,83 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             System.out.println("NPDev schema lifecycle: failed updating npdev_schema_history outcome to APPLIED "
                     + "for row " + historyId + " (the DDL itself already succeeded -- only the audit row write "
                     + "failed): " + exception.getMessage());
+        }
+    }
+
+    /** A DDL action that may throw {@link SQLException}, for {@link #recordStepPass}. */
+    @FunctionalInterface
+    private interface SqlRunnable {
+        void run() throws SQLException;
+    }
+
+    /** {@code items_json} for a plain list of human-readable step-item strings (the per-pass
+     * write-before-execute rows, LNCH-1 remediation R4 / F5), rather than a {@link SchemaDeltaReport}. */
+    private static String itemsJson(List<String> itemDetails) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(itemDetails == null ? List.of() : itemDetails);
+        } catch (Exception exception) {
+            return "[]";
+        }
+    }
+
+    /**
+     * LNCH-1 remediation R4 (F5): write-before-execute history for a single mutating PASS (a batch of
+     * renames/relaxations/widenings/backfills). Semantics per plan §2.4: if {@code itemDetails} is
+     * empty, run and write NOTHING (no noise rows on no-op boots); otherwise insert one
+     * {@code PARTIAL-CRASH} row (classification = {@code stepName}, {@code items_json} = the item
+     * detail list) BEFORE running the DDL, then flip it to {@code APPLIED} after every item executes.
+     * A crash mid-pass leaves the row at {@code PARTIAL-CRASH} -- an accurate record that this pass
+     * did not finish. The from-fingerprint is read live (still the pre-boot value at this point, since
+     * {@code afterMigrate} writes the new one only at the very end).
+     */
+    private void recordStepPass(DataSource dataSource, SchemaManifest manifest, String stepName,
+            List<String> itemDetails, SqlRunnable ddl) throws SQLException {
+        if (itemDetails == null || itemDetails.isEmpty()) {
+            return;
+        }
+        String from = readFingerprint(dataSource);
+        String historyId = insertStepPendingRow(dataSource, from, manifest.schemaFingerprint(), stepName, itemDetails);
+        ddl.run();
+        markHistoryRowApplied(dataSource, historyId);
+    }
+
+    /** Inserts a {@code PARTIAL-CRASH} history row carrying a raw step name (classification) and a
+     * raw item-detail list (items_json), for {@link #recordStepPass}. Follows {@link #insertHistoryRow}'s
+     * broken-write-never-propagates discipline: a failed audit write returns {@code null} (a safe
+     * no-op for the later {@link #markHistoryRowApplied}) and never blocks the DDL it records. */
+    private static String insertStepPendingRow(DataSource dataSource, String fromFingerprint,
+            String toFingerprint, String stepName, List<String> itemDetails) {
+        return insertRawHistoryRow(dataSource, fromFingerprint, toFingerprint, stepName, itemDetails, "PARTIAL-CRASH");
+    }
+
+    /** Like {@link #insertHistoryRow} but writes a RAW classification string (a step name or a
+     * pre-check label, not a {@link SchemaChangeClassification} enum) and a raw item-detail list --
+     * used by {@link #recordStepPass} (PARTIAL-CRASH) and by the unique-precheck refusal (REFUSED),
+     * both LNCH-1 remediation R4 / F5. Same broken-write-never-propagates discipline. */
+    private static String insertRawHistoryRow(DataSource dataSource, String fromFingerprint,
+            String toFingerprint, String classificationText, List<String> itemDetails, String outcome) {
+        String id = UUID.randomUUID().toString();
+        try (Connection connection = dataSource.getConnection()) {
+            ensureHistoryTable(connection);
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "INSERT INTO " + HISTORY_TABLE + " (id, applied_at_utc, from_fingerprint, to_fingerprint, "
+                            + "classification, items_json, ack_token_used, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            )) {
+                statement.setString(1, id);
+                statement.setLong(2, System.currentTimeMillis());
+                statement.setString(3, fromFingerprint);
+                statement.setString(4, toFingerprint);
+                statement.setString(5, classificationText);
+                statement.setString(6, itemsJson(itemDetails));
+                statement.setNull(7, Types.VARCHAR);
+                statement.setString(8, outcome);
+                statement.executeUpdate();
+            }
+            return id;
+        } catch (Exception exception) {
+            System.out.println("NPDev schema lifecycle: failed writing npdev_schema_history detail row (continuing -- "
+                    + "a broken history write must never block the actual migration): " + exception.getMessage());
+            return null;
         }
     }
 

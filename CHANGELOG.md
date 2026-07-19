@@ -56,6 +56,10 @@ Format: see `docs/RELEASE_PROCESS.md`. Dates are release-tag dates, not commit d
   refuses the boot with the new expected token printed; no data is at risk).
 
 ### Fixed
+- LNCH-1 remediation R4: every mutating migration pass (table rename, column rename, NOT NULL
+  relaxation, type widening, required-field backfill) now writes a write-before-execute
+  `npdev_schema_history` row carrying the step name and per-item detail; the unique-precheck refusal
+  row now records the violating tuples with a `UNIQUE_PRECHECK` label instead of an empty row.
 - LNCH-1 remediation R3: a schema-ahead-of-build detector now refuses a fingerprint-MATCH boot whose
   live database is missing a core (non-additive) column this build requires — the "redeployed the
   old jar against a database a newer build already migrated" case, which previously booted deceptively

@@ -996,6 +996,74 @@ class SchemaLifecycleExecutorProofMatrixTest {
         assertSecondBootIsNoOp(newManifest);
     }
 
+    @Test
+    @DisplayName("Scenario 22 (R4/F5): a combined upgrade writes one detailed, APPLIED history row per "
+            + "mutating pass (table rename, column rename, relax, backfill) plus the surgical drop row")
+    void scenario22_everyMutatingPassWritesADetailedHistoryRow() throws SQLException {
+        // One boot that exercises: table rename (old_widgets -> widgets), column rename
+        // (old_name -> full_name), NOT NULL relaxation (nickname), an acknowledged column drop
+        // (legacy_flag), and a new required-with-default field backfill (status). Type widening is
+        // deliberately absent: the control flow only runs it on a NON-destructive boot, so it cannot
+        // co-occur with an acknowledged drop in the same boot.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE old_widgets (id BIGINT PRIMARY KEY, old_name VARCHAR(50), "
+                    + "nickname VARCHAR(50) NOT NULL, legacy_flag BOOLEAN)");
+            statement.execute("INSERT INTO old_widgets (id, old_name, nickname, legacy_flag) VALUES (1, 'Alpha', 'al', TRUE)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        String token = DestructiveAckToken.compute("sha256:new", List.of("DROP_COLUMN:widgets:legacy_flag:BOOLEAN"));
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifest(
+                "sha256:new", List.of("widgets"),
+                Map.of("widgets", List.of("id", "full_name", "nickname", "status")),
+                Map.of("widgets", List.of("status")),
+                Map.of("widgets", Map.of("id", "BIGINT", "full_name", "VARCHAR(50)", "nickname", "VARCHAR(50)", "status", "VARCHAR(50)")),
+                Map.of("widgets", Map.of("full_name", "old_name")),
+                Map.of("widgets", "old_widgets"), false, token,
+                Map.of("widgets", List.of("status")),
+                Map.of("widgets", Map.of("status", "\"PENDING\"")), Map.of(), Map.of(), true);
+
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, manifest);
+        assertTrue(result.performed(), "the acknowledged drop must go through the surgical destructive path");
+        executor.afterMigrate(dataSource, manifest);
+
+        // Final schema is fully converged.
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(hasTable(metadata, "widgets"));
+            assertFalse(hasTable(metadata, "old_widgets"), "the table rename applied");
+            assertTrue(hasColumn(metadata, "widgets", "full_name"), "the column rename applied");
+            assertEquals("Alpha", readColumn(connection, "widgets", "full_name", 1L), "renamed column data preserved");
+            assertFalse(hasColumn(metadata, "widgets", "legacy_flag"), "the acknowledged drop applied");
+            assertTrue(isNotNull(metadata, "widgets", "status"), "the required-field backfill applied");
+            assertEquals("PENDING", readColumn(connection, "widgets", "status", 1L), "legacy row backfilled");
+        }
+
+        List<HistoryDetail> rows = allHistoryRows(dataSource);
+        // One detailed row per non-empty mutating pass, all APPLIED, with the right item strings.
+        assertHistoryStep(rows, "TABLE_RENAME", "APPLIED", "RENAME_TABLE old_widgets -> widgets");
+        assertHistoryStep(rows, "COLUMN_RENAME", "APPLIED", "RENAME_COLUMN widgets.old_name -> full_name");
+        assertHistoryStep(rows, "RELAX_NOT_NULL", "APPLIED", "RELAX_NOT_NULL widgets.nickname");
+        assertHistoryStep(rows, "REQUIRED_BACKFILL", "APPLIED", "BACKFILL widgets.status DEFAULT");
+        // The surgical destruction row (its classification is the SchemaChangeClassification enum name,
+        // not one of the step names) records the acknowledged drop.
+        boolean surgicalRow = rows.stream().anyMatch(r ->
+                "APPLIED".equals(r.outcome()) && r.itemsJson() != null
+                        && r.itemsJson().contains("DROP_COLUMN:widgets:legacy_flag:BOOLEAN"));
+        assertTrue(surgicalRow, "the surgical drop must have its own APPLIED history row with item detail: " + rows);
+    }
+
+    private static void assertHistoryStep(List<HistoryDetail> rows, String stepName, String outcome, String itemSubstring) {
+        HistoryDetail match = rows.stream()
+                .filter(r -> stepName.equals(r.classification()))
+                .findFirst()
+                .orElse(null);
+        assertTrue(match != null, "expected a history row for step " + stepName + " in: " + rows);
+        assertEquals(outcome, match.outcome(), "step " + stepName + " outcome");
+        assertTrue(match.itemsJson() != null && match.itemsJson().contains(itemSubstring),
+                "step " + stepName + " items_json must contain '" + itemSubstring + "' but was " + match.itemsJson());
+    }
+
     /** Scenario 17's two-concept manifest (widgets gains required 'status' with a "PENDING" literal
      * default; gadgets drops 'legacy_flag'), parameterized only by the acknowledgment token. */
     private static SchemaLifecycleExecutor.SchemaManifest scenarioManifest(String token) {
@@ -1140,6 +1208,25 @@ class SchemaLifecycleExecutorProofMatrixTest {
     }
 
     private record HistoryRow(String outcome, String ackTokenUsed) {
+    }
+
+    private record HistoryDetail(String classification, String itemsJson, String outcome) {
+    }
+
+    /** Every history row's (classification, items_json, outcome), newest first. Ordering across rows
+     * with the same millisecond timestamp is not relied upon -- scenario 22 asserts per-step presence
+     * and outcome, not a strict total order. */
+    private static List<HistoryDetail> allHistoryRows(DataSource dataSource) throws SQLException {
+        List<HistoryDetail> rows = new java.util.ArrayList<>();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT classification, items_json, outcome FROM npdev_schema_history ORDER BY applied_at_utc DESC");
+             ResultSet resultSet = statement.executeQuery()) {
+            while (resultSet.next()) {
+                rows.add(new HistoryDetail(resultSet.getString(1), resultSet.getString(2), resultSet.getString(3)));
+            }
+        }
+        return rows;
     }
 
     private static HistoryRow latestHistoryRow(DataSource dataSource) throws SQLException {
