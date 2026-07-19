@@ -39,8 +39,10 @@ import java.util.Set;
  *       this class and {@code com.finalexec.db.SchemaDeltaReport} (RuntimeHost) construct the
  *       IDENTICAL record types and call the IDENTICAL {@code stableString()} implementations. This
      * guarantees {@link DestructiveAckToken#compute} produces byte-identical tokens for the same
-     * underlying change BY CONSTRUCTION -- the exact "two independent derivations that must agree"
-     * property §2.3 of {@code docs/LNCH1_SCHEMA_EVOLUTION_PLAN.md} requires. No circular-dependency
+     * underlying change -- both producers call the identical {@code stableString()} over fields with
+     * no live-only inputs (row count out of the hash since R1) and route every type string through the
+     * one shared {@code SqlTypeNormalization} -- the exact "two independent derivations that must
+     * agree" property §2.3 of {@code docs/LNCH1_SCHEMA_EVOLUTION_PLAN.md} requires. No circular-dependency
      * blocker existed: the DSL module has zero dependency on the generator or RuntimeHost.</li>
  *   <li>The per-concept manifest-shaped metadata computation (columns, additive-eligibility,
  *       renames, required/default-literal backfill shape, unique constraints) --
@@ -182,8 +184,9 @@ public final class MigrationPlanEmitter {
             items.add(PlanItem.addTable(table));
         }
         for (String table : tableResolution.remainingExtra()) {
-            // Row count is unknowable without a live database -- see class javadoc's documented
-            // fidelity limitation. -1 mirrors SchemaDeltaReport#bestEffortRowCount's own sentinel.
+            // Row count is unknowable without a live database -- display-only ("row count unknown
+            // until boot"), and OUT of the ack-token hash since R1, so the -1 never affects the token
+            // (see class javadoc). -1 mirrors SchemaDeltaReport#bestEffortRowCount's own sentinel.
             items.add(PlanItem.dropTable(new SchemaDeltaItem.DropTable(table, -1L)));
         }
 

@@ -937,10 +937,14 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      *       missing from the live database. A column with a declared literal default is queued for
      *       backfill; one without (no default, or only an expression default -- v1 only backfills
      *       literals) is queued as a refusal. Nothing is written to the database in this pass.</li>
-     *   <li>If ANY refusal was queued, throw before touching the database at all -- the refused
-     *       column, and every other pending backfill in this same boot, are left untouched (never
-     *       added), and {@code appendAdditiveColumns}'s own {@code ADD COLUMN IF NOT EXISTS} is
-     *       never reached either, since the caller never gets to {@code flyway.migrate()}.</li>
+     *   <li>If ANY refusal was queued, throw before this method applies any backfill of its own --
+     *       every pending backfill in this same boot is left un-backfilled, and the stored fingerprint
+     *       is left stale so a fixed retry re-attempts cleanly. (Post-remediation-R2 this method runs
+     *       from {@code afterMigrate}, i.e. AFTER {@code flyway.migrate()}, so on a real boot
+     *       {@code appendAdditiveColumns}'s {@code ADD COLUMN IF NOT EXISTS} may already have added the
+     *       column NULLABLE before this refusal -- harmless: it stays nullable and untightened until a
+     *       fixed model backfills it. The direct-call unit tests bypass {@code flyway.migrate()}, so
+     *       there the column is genuinely never added.)</li>
      *   <li><b>Pass 2 (apply):</b> only reached when every required column has a literal default.
      *       For each: {@code ADD COLUMN IF NOT EXISTS} (nullable) -&gt; {@code UPDATE ... SET c = ?
      *       WHERE c IS NULL} (the literal, bound as a JDBC parameter -- never string-interpolated
