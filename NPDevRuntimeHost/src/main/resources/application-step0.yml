@@ -5,9 +5,23 @@
 # InMemory. Only the physical connection target is swapped to this fixed sandbox database; how
 # its schema gets created is unchanged from the app's real target -- both run H2 in
 # MODE=PostgreSQL compatibility, so the same schema-realization migrations apply either way.
+#
+# DATABASE_TO_LOWER=TRUE must match UserDatabaseDefinitionLoader's real H2_LOCAL/H2_SERVER URLs
+# (jdbcUrl(), NPDevGenerator/.../dbconfig/UserDatabaseDefinitionLoader.java) exactly -- without it,
+# MODE=PostgreSQL alone does NOT change H2's identifier folding, so unquoted DDL identifiers still
+# fold to UPPERCASE (H2's own default), not lowercase (Postgres's default, which every other engine
+# target gets via this flag). This was a real, live bug: the platform-managed `version` column
+# (JPA optimistic-lock, distinct from `row_version`/LNCH-16) came back as ResultSetMetaData column
+# label "VERSION" instead of "version" under step0 specifically, and JdbcBusinessConceptStore's
+# row-mapper only lowercases the lookup key for DSL-declared fields, not this platform column --
+# so it landed in the record's data map as "VERSION" and Jackson 500'd deserializing it into the
+# generated entity's lowercase `version` property (UnrecognizedPropertyException). Confirmed this
+# fix (matching the real engines' URL exactly) closes the gap; reproduced only under step0, since
+# step0 was the one profile whose URL had silently drifted from the real per-engine URLs it's
+# supposed to sandbox.
 spring:
   datasource:
-    url: jdbc:h2:mem:finalexec_step0;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    url: jdbc:h2:mem:finalexec_step0;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     username: sa
     password:
     driver-class-name: org.h2.Driver

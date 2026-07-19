@@ -225,6 +225,73 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
         }
     }
 
+    // ---- VARCHAR length widening (found-live gap: only the integer family had been proven on a real
+    // Postgres server; TypeChangeMatrix.classifySameFamily's VARCHAR branch is a structurally
+    // different comparison -- parameter-only, same base type -- from the integer-chain rank compare
+    // intToBigintWideningAppliesOnPostgresWithoutAUsingClause exercises, so it needed its own proof,
+    // not an inference from that one. executeWidenColumnType's DDL is a single, type-pair-agnostic
+    // code path (no per-pair branching, only per-engine), so one representative pair per distinct
+    // TypeChangeMatrix comparison branch is the right granularity, not exhaustive pair coverage. ----
+
+    @Test
+    @DisplayName("Postgres: VARCHAR(n) length widening applies via ALTER COLUMN ... TYPE with no USING clause needed")
+    void varcharLengthWideningAppliesOnPostgresWithoutAUsingClause() throws SQLException {
+        String widgets = table("widgets");
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE " + widgets + " (id BIGINT PRIMARY KEY, name VARCHAR(20))");
+            statement.execute("INSERT INTO " + widgets + " (id, name) VALUES (1, '12345678901234567890')"); // exactly 20 chars, the boundary
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifest(
+                "sha256:new", List.of(widgets),
+                Map.of(widgets, List.of("id", "name")),
+                Map.of(widgets, List.of()),
+                Map.of(widgets, Map.of("id", "BIGINT", "name", "VARCHAR(80)")),
+                Map.of(), Map.of(), true, "",
+                Map.of(), Map.of(), Map.of(), Map.of());
+
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, manifest);
+        assertTrue(result.safeAdditive(), "VARCHAR(20)->VARCHAR(80) must widen cleanly on Postgres with the current (no-USING-clause) DDL");
+        assertFalse(result.performed());
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertEquals("12345678901234567890", readColumn(connection, widgets, "name", 1L),
+                    "the boundary-length value must survive the widening exactly");
+        }
+    }
+
+    // ---- NUMERIC precision widening (same rationale as the VARCHAR case above: classifySameFamily's
+    // NUMERIC branch is its own distinct comparison, unproven on a real Postgres server before this). --
+
+    @Test
+    @DisplayName("Postgres: NUMERIC(p,s) precision widening applies via ALTER COLUMN ... TYPE with no USING clause needed")
+    void numericPrecisionWideningAppliesOnPostgresWithoutAUsingClause() throws SQLException {
+        String widgets = table("widgets");
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE " + widgets + " (id BIGINT PRIMARY KEY, price NUMERIC(6,2))");
+            statement.execute("INSERT INTO " + widgets + " (id, price) VALUES (1, 1234.56)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifest(
+                "sha256:new", List.of(widgets),
+                Map.of(widgets, List.of("id", "price")),
+                Map.of(widgets, List.of()),
+                Map.of(widgets, Map.of("id", "BIGINT", "price", "NUMERIC(12,2)")),
+                Map.of(), Map.of(), true, "",
+                Map.of(), Map.of(), Map.of(), Map.of());
+
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, manifest);
+        assertTrue(result.safeAdditive(), "NUMERIC(6,2)->NUMERIC(12,2) must widen cleanly on Postgres with the current (no-USING-clause) DDL");
+        assertFalse(result.performed());
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertEquals(0, new java.math.BigDecimal("1234.56").compareTo(new java.math.BigDecimal(readColumn(connection, widgets, "price", 1L))),
+                    "the precise decimal value must survive the widening exactly");
+        }
+    }
+
     // ---- Surgical destructive drop with matching ack (twins H2 matrix row 9) ----------------------
 
     @Test

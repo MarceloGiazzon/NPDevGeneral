@@ -359,7 +359,15 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             if (isJsonColumnType(metaData, index) || isJsonDslField(shape, column)) {
                 value = parseJsonColumnValue(column, value);
             }
-            String field = shape.fieldByColumn().getOrDefault(column.toLowerCase(Locale.ROOT), toRuntimeField(column));
+            // Defense-in-depth beyond application-step0.yml's DATABASE_TO_LOWER=TRUE fix: the lookup
+            // key above is already lowercased, but the fallback for a column with no DSL mapping (a
+            // platform-managed column like `version`, the legacy JPA optimistic-lock field, distinct
+            // from `row_version` above) must be too -- an engine/config combination that folds
+            // unquoted identifiers to uppercase (H2's own default without DATABASE_TO_LOWER) would
+            // otherwise hand toRuntimeField the raw uppercase label, which it returns verbatim (no
+            // underscore to rewrite), landing an uppercase key in data() that the generated entity's
+            // lowercase Jackson property can't deserialize.
+            String field = shape.fieldByColumn().getOrDefault(column.toLowerCase(Locale.ROOT), toRuntimeField(column.toLowerCase(Locale.ROOT)));
             data.put(field, value);
             if (shape.idColumn().equalsIgnoreCase(column) && value != null) {
                 id = String.valueOf(value);
