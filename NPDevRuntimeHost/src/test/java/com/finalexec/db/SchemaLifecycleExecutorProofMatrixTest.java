@@ -519,6 +519,37 @@ class SchemaLifecycleExecutorProofMatrixTest {
         executor.afterMigrate(dataSource, manifest);
     }
 
+    // ---- Row 12 follow-up (found live on Postgres during Phase 7 rehearsal) -------------------
+
+    @Test
+    @DisplayName("Row 12 follow-up: unique already present as V1's bootstrap INDEX (not a constraint) -> "
+            + "recognized as already-applied, no duplicate ADD CONSTRAINT attempt")
+    void row12Followup_uniqueAlreadyPresentAsBootstrapIndexIsRecognizedAsApplied() throws SQLException {
+        // Mirrors SchemaRealizationEmitter's V1 bootstrap DDL for an ordinary (non-anchor) unique
+        // field: CREATE UNIQUE INDEX IF NOT EXISTS ux_<table>_<column> -- an INDEX, never an
+        // ADD CONSTRAINT -- under the exact same name applyUniqueConstraints later tries to apply.
+        // INFORMATION_SCHEMA.TABLE_CONSTRAINTS (constraintExists' original, only check) does not
+        // list plain indexes, so this same-named index was invisible to the "already applied"
+        // check; on a real Postgres boot the follow-on ADD CONSTRAINT then collided with the
+        // index's relation and threw "relation \"ux_users_email\" already exists", crash-looping
+        // the container on first start (H2 tolerates the duplicate name, which is why this was
+        // missed until Phase 7's real compose-stack rehearsal).
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE users (id BIGINT PRIMARY KEY, email VARCHAR(100), tenant_id VARCHAR(120), version BIGINT)");
+            statement.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email ON users (tenant_id, email)");
+            statement.execute("INSERT INTO users (id, email, tenant_id, version) VALUES (1, 'alice@x.com', 'acme', 1)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+        SchemaLifecycleExecutor.SchemaManifest manifest = uniqueManifest(
+                Map.of("users", List.of("id", "email", "tenant_id", "version")),
+                List.of(new SchemaLifecycleExecutor.UniqueConstraintDecl("ux_users_email", List.of("email"), true)));
+
+        executor.afterMigrate(dataSource, manifest);
+        // Re-run for the same reason Row 12 does: converges without ever attempting a duplicate
+        // ADD CONSTRAINT against the bootstrap index.
+        executor.afterMigrate(dataSource, manifest);
+    }
+
     // ---- Row 13 -------------------------------------------------------------------------------
 
     @Test

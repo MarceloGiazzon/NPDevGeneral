@@ -1169,9 +1169,40 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             statement.setString(1, constraintName);
             statement.setString(2, table);
             try (ResultSet resultSet = statement.executeQuery()) {
-                return resultSet.next();
+                if (resultSet.next()) {
+                    return true;
+                }
             }
         }
+        return indexExists(connection, table, constraintName);
+    }
+
+    /**
+     * Ordinary (non-anchor) unique fields are bootstrapped by {@code SchemaRealizationEmitter} as a
+     * plain {@code CREATE UNIQUE INDEX IF NOT EXISTS ux_<table>_<column>} -- not an
+     * {@code ADD CONSTRAINT} -- under the exact same {@code ux_...} name this class later tries to
+     * {@code ADD CONSTRAINT} with (see {@link #executeAddUniqueConstraint}). {@code
+     * INFORMATION_SCHEMA.TABLE_CONSTRAINTS} only lists true constraints, not plain indexes, so on
+     * Postgres a same-named index from V1's bootstrap is invisible to the check above and {@code ADD
+     * CONSTRAINT} then collides with the index's underlying relation --
+     * {@code ERROR: relation "ux_..." already exists}, fatal on Postgres (H2 tolerates the duplicate
+     * name and silently no-ops, which is why this was missed until the first real Postgres boot).
+     * {@link DatabaseMetaData#getIndexInfo} is standard JDBC metadata and portable across engines, so
+     * it closes the gap without engine-specific SQL.
+     */
+    private static boolean indexExists(Connection connection, String table, String indexName) throws SQLException {
+        DatabaseMetaData metadata = connection.getMetaData();
+        for (String candidate : List.of(table.toLowerCase(Locale.ROOT), table.toUpperCase(Locale.ROOT))) {
+            try (ResultSet resultSet = metadata.getIndexInfo(null, null, candidate, false, false)) {
+                while (resultSet.next()) {
+                    String existingIndexName = resultSet.getString("INDEX_NAME");
+                    if (existingIndexName != null && existingIndexName.equalsIgnoreCase(indexName)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /**

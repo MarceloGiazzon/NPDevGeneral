@@ -297,6 +297,47 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
         executor.afterMigrate(dataSource, manifest);
     }
 
+    // ---- Unique constraint already present as V1's bootstrap INDEX (LNCH-1 Phase 7 rehearsal find) --
+
+    @Test
+    @DisplayName("Postgres: unique already present as V1's bootstrap INDEX (not a constraint) -- "
+            + "recognized as already-applied, no \"relation already exists\" crash")
+    void uniqueAlreadyPresentAsBootstrapIndexIsRecognizedAsAppliedOnPostgres() throws SQLException {
+        // Reproduces, against a REAL Postgres server, the exact crash found live during the Phase 7
+        // compose-stack rehearsal: SchemaRealizationEmitter's V1 bootstrap DDL for an ordinary
+        // (non-anchor) unique field is CREATE UNIQUE INDEX IF NOT EXISTS ux_<table>_<column> -- an
+        // INDEX, never an ADD CONSTRAINT -- under the exact same name applyUniqueConstraints later
+        // tries to ADD CONSTRAINT with. On Postgres, INFORMATION_SCHEMA.TABLE_CONSTRAINTS does not
+        // list plain indexes, so without the indexExists() fallback this scenario throws
+        // "ERROR: relation \"ux_...\" already exists" and crash-loops the app on first boot -- H2
+        // silently tolerates the duplicate name, which is why the H2-only matrix never caught it.
+        String users = table("users");
+        String constraintName = "ux_" + users + "_email";
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE " + users + " (id BIGINT PRIMARY KEY, email VARCHAR(100), tenant_id VARCHAR(120), version BIGINT)");
+            statement.execute("CREATE UNIQUE INDEX IF NOT EXISTS " + constraintName + " ON " + users + " (tenant_id, email)");
+            statement.execute("INSERT INTO " + users + " (id, email, tenant_id, version) VALUES (1, 'alice@x.com', 'acme', 1)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+        SchemaLifecycleExecutor.SchemaManifest manifest = uniqueManifest(users,
+                Map.of(users, List.of("id", "email", "tenant_id", "version")),
+                List.of(new SchemaLifecycleExecutor.UniqueConstraintDecl(constraintName, List.of("email"), true)));
+
+        executor.afterMigrate(dataSource, manifest);
+        // Re-run for the same reason the clean-data scenario above does: converges without ever
+        // attempting a duplicate ADD CONSTRAINT against the bootstrap index.
+        executor.afterMigrate(dataSource, manifest);
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertThrows(SQLException.class, () -> {
+                try (PreparedStatement insert = connection.prepareStatement(
+                        "INSERT INTO " + users + " (id, email, tenant_id, version) VALUES (2, 'alice@x.com', 'acme', 1)")) {
+                    insert.executeUpdate();
+                }
+            }, "the pre-existing bootstrap index must still actually enforce uniqueness");
+        }
+    }
+
     // ---- Required-field literal-default backfill (twins H2 matrix row 2) --------------------------
 
     @Test
