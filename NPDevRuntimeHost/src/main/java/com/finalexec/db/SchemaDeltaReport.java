@@ -6,6 +6,7 @@ import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.DropColumn;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.DropTable;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.NarrowType;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.Unknown;
+import com.npdev.dsl.v1.schemaevolution.SqlTypeNormalization;
 import com.npdev.dsl.v1.schemaevolution.TypeChangeMatrix;
 
 import javax.sql.DataSource;
@@ -146,6 +147,18 @@ final class SchemaDeltaReport {
         return strings;
     }
 
+    /** Every item's {@link SchemaDeltaItem#displayString()}, in this report's deterministic order --
+     * the human-facing form used for {@code items_json} and operator log lines. Differs from
+     * {@link #stableStrings()} only for {@code DROP_TABLE} (which appends its display-only row
+     * count here, but never in the hashed stable string -- LNCH-1 remediation F2). */
+    List<String> displayStrings() {
+        List<String> strings = new ArrayList<>();
+        for (SchemaDeltaItem item : items) {
+            strings.add(item.displayString());
+        }
+        return strings;
+    }
+
     static SchemaDeltaReport generate(DataSource dataSource, SchemaLifecycleExecutor.SchemaManifest manifest) {
         List<SchemaDeltaItem> items = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
@@ -238,8 +251,8 @@ final class SchemaDeltaReport {
                 if (expectedType == null || actualType == null) {
                     continue;
                 }
-                String normalizedExpected = SchemaLifecycleExecutor.normalizeSqlType(expectedType);
-                String normalizedActual = SchemaLifecycleExecutor.normalizeSqlType(actualType);
+                String normalizedExpected = SqlTypeNormalization.normalize(expectedType);
+                String normalizedActual = SqlTypeNormalization.normalize(actualType);
                 if (normalizedExpected == null || normalizedActual == null || normalizedExpected.equals(normalizedActual)) {
                     continue;
                 }
@@ -268,7 +281,7 @@ final class SchemaDeltaReport {
      * (unreachable-in-practice) case that normalization itself returns {@code null}.
      */
     private static String normalizedOrRaw(String sqlType) {
-        String normalized = SchemaLifecycleExecutor.normalizeSqlType(sqlType);
+        String normalized = SqlTypeNormalization.normalize(sqlType);
         return normalized != null ? normalized : (sqlType == null ? "" : sqlType);
     }
 

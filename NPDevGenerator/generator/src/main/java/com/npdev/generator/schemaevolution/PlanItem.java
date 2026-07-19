@@ -106,10 +106,9 @@ public record PlanItem(
         return new PlanItem(Kind.DROP_TABLE, item.table(), null, null, null, null, null, true,
                 "DROP TABLE " + item.table() + " CASCADE",
                 "Concept removed: table '" + item.table() + "' will be dropped, deleting all its data. Requires "
-                        + "acknowledgment (LNCH-1 Phase 4). Row count is not previewable at generation time (no live "
-                        + "database access here) -- the executor's own acknowledgment token at boot uses the ACTUAL "
-                        + "live row count, so this preview's token may not byte-match a later boot if row count "
-                        + "differs from this preview's placeholder; the executor remains the final authority.",
+                        + "acknowledgment (LNCH-1 Phase 4). Row count unknown until boot (no live database access at "
+                        + "generation time) -- shown as metadata only; the acknowledgment token does NOT depend on it, "
+                        + "so this preview's token byte-matches the executor's own at boot (LNCH-1 remediation R1).",
                 item.stableString());
     }
 

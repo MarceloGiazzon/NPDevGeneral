@@ -8,6 +8,7 @@ import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.DropColumn;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.DropTable;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.NarrowType;
+import com.npdev.dsl.v1.schemaevolution.SqlTypeNormalization;
 import com.npdev.dsl.v1.schemaevolution.TypeChangeMatrix;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.Configuration;
@@ -77,6 +78,15 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             flyway.migrate();
             return;
         }
+        // LNCH-1 remediation R2 (F1): capture the stored fingerprint BEFORE beforeMigrate runs, so we
+        // know whether this boot is an upgrade (fingerprint mismatch) independently of whichever
+        // beforeMigrate branch ran -- including the surgical-destruction and whole-wipe paths, which
+        // previously bypassed required-field enforcement entirely. beforeMigrate never writes the
+        // fingerprint (only afterMigrate does, at its very end) and no path drops npdev_schema_metadata,
+        // so this read is the true pre-boot value even after a destructive beforeMigrate.
+        String storedAtBootStart = readFingerprint(dataSource);
+        boolean fingerprintChanged = storedAtBootStart != null && !storedAtBootStart.isBlank()
+                && !storedAtBootStart.equals(manifest.schemaFingerprint());
         DestructiveRecreation recreation = beforeMigrate(dataSource, manifest);
         if (recreation.performed()) {
             clearSchemaRealizationHistory(dataSource);
@@ -89,7 +99,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             System.out.println("NPDev schema lifecycle: flyway.repair() reconciled schema-realization checksums for the additive change.");
         }
         flyway.migrate();
-        afterMigrate(dataSource, manifest);
+        afterMigrate(dataSource, manifest, storedAtBootStart, fingerprintChanged);
     }
 
     /** Package-private (not private) so it is directly unit-testable against a real H2
@@ -141,7 +151,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             System.out.println("NPDev schema lifecycle: fingerprint changed from " + stored + " to "
                     + manifest.schemaFingerprint() + " but every difference is a new non-bond column on an "
                     + "already-existing table; skipping destructive recreation (handled by the additive repeatable migration).");
-            applyRequiredFieldBackfills(dataSource, manifest, stored, classification);
+            // R2 (F1): required-field backfill/refusal moved to the single afterMigrate call site.
             writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
             return DestructiveRecreation.safeAdditiveOutcome();
         }
@@ -157,7 +167,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             if (residual == SchemaChangeClassification.SAFE_ADDITIVE) {
                 System.out.println("NPDev schema lifecycle: in-place field rename(s) fully resolved the fingerprint "
                         + "diff (residual classification SAFE_ADDITIVE); skipping destructive recreation.");
-                applyRequiredFieldBackfills(dataSource, manifest, stored, classification);
+                // R2 (F1): required-field backfill/refusal moved to the single afterMigrate call site.
                 writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
                 return DestructiveRecreation.safeAdditiveOutcome();
             }
@@ -175,7 +185,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     System.out.println("NPDev schema lifecycle: in-place rename(s) and type widening(s) fully "
                             + "resolved the fingerprint diff (residual classification SAFE_ADDITIVE); skipping "
                             + "destructive recreation.");
-                    applyRequiredFieldBackfills(dataSource, manifest, stored, classification);
+                    // R2 (F1): required-field backfill/refusal moved to the single afterMigrate call site.
                     writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
                     return DestructiveRecreation.safeAdditiveOutcome();
                 }
@@ -210,7 +220,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             if (residual == SchemaChangeClassification.SAFE_ADDITIVE) {
                 System.out.println("NPDev schema lifecycle: in-place field rename(s) fully resolved the "
                         + "fingerprint diff (residual classification SAFE_ADDITIVE); skipping destructive recreation.");
-                applyRequiredFieldBackfills(dataSource, manifest, stored, classification);
+                // R2 (F1): required-field backfill/refusal moved to the single afterMigrate call site.
                 writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
                 return DestructiveRecreation.safeAdditiveOutcome();
             }
@@ -222,7 +232,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     System.out.println("NPDev schema lifecycle: in-place rename(s) and type widening(s) fully "
                             + "resolved the fingerprint diff (residual classification SAFE_ADDITIVE); skipping "
                             + "destructive recreation.");
-                    applyRequiredFieldBackfills(dataSource, manifest, stored, classification);
+                    // R2 (F1): required-field backfill/refusal moved to the single afterMigrate call site.
                     writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
                     return DestructiveRecreation.safeAdditiveOutcome();
                 }
@@ -1550,46 +1560,14 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * so type-equality comparisons in the delta report use the exact same normalization rules
      * {@link #classify} does, rather than a second, potentially-drifting copy. */
     static String normalizeSqlType(String sqlType) {
-        if (sqlType == null || sqlType.isBlank()) {
-            return null;
-        }
-        String trimmed = sqlType.trim().toUpperCase(Locale.ROOT);
-        int parenIndex = trimmed.indexOf('(');
-        String base = parenIndex >= 0 ? trimmed.substring(0, parenIndex).trim() : trimmed;
-        String parameters = parenIndex >= 0 ? trimmed.substring(parenIndex).replaceAll("\\s+", "") : "";
-        if ("JSONB".equals(base)) {
-            base = "JSON";
-        }
-        if ("CHARACTER VARYING".equals(base)) {
-            base = "VARCHAR";
-        }
-        // LNCH-1 Phase 7 (task 7.2) fix: confirmed against a REAL Postgres 15 instance (Testcontainers,
-        // no Postgres instance had ever exercised this method before this phase) that Postgres's JDBC
-        // driver reports its own internal pg_type short names via TYPE_NAME, not the SQL-standard
-        // names SqlTypeSupport.sqlType() puts in the manifest -- e.g. a column declared BIGINT reports
-        // TYPE_NAME="int8". Without these aliases, EVERY unchanged INTEGER/BIGINT/BOOLEAN/TIMESTAMP
-        // WITH TIME ZONE column on Postgres was misclassified as a type change (INT8 != BIGINT) the
-        // moment any fingerprint mismatch triggered a diff -- exactly the H2 "CHARACTER VARYING" gap
-        // above, but for the numeric/boolean/timestamp family, and specific to Postgres. Left latent
-        // until this phase because no prior phase had a Postgres instance to catch it against; this
-        // matches the plan's own repeated "H2-required, Postgres-nightly" framing -- Postgres coverage
-        // was always going to be where a gap like this surfaced.
-        switch (base) {
-            case "INT4" -> base = "INTEGER";
-            case "INT8" -> base = "BIGINT";
-            case "INT2" -> base = "SMALLINT";
-            case "BOOL" -> base = "BOOLEAN";
-            case "TIMESTAMPTZ" -> base = "TIMESTAMP WITH TIME ZONE";
-            case "FLOAT4" -> base = "REAL";
-            case "FLOAT8" -> base = "DOUBLE";
-            default -> {
-                // no alias needed -- VARCHAR, TEXT, NUMERIC, UUID, DATE, JSON/JSONB, BIGINT, INTEGER,
-                // BOOLEAN, SMALLINT, REAL, DOUBLE, TIMESTAMP WITH TIME ZONE all already round-trip
-                // exactly once the aliases above (and the JSONB/CHARACTER VARYING ones before them)
-                // are applied.
-            }
-        }
-        return base + parameters;
+        // LNCH-1 remediation R1 (F3): the normalization rules moved verbatim to the DSL module's
+        // com.npdev.dsl.v1.schemaevolution.SqlTypeNormalization so the generator's MigrationPlanEmitter
+        // normalizes model-declared type strings through the IDENTICAL bytecode this executor uses on
+        // live JDBC types -- guaranteeing the DROP_COLUMN/NARROW_TYPE stable strings (and therefore the
+        // acknowledgment token) are byte-identical on both producers. This method stays package-private
+        // (and delegates) so its existing direct unit tests keep passing, now transitively testing the
+        // shared class. See TokenAgreementConformanceTest for the permanent cross-producer ratchet.
+        return SqlTypeNormalization.normalize(sqlType);
     }
 
     /** Package-private (not private): reused verbatim by {@link SchemaDeltaReport} (LNCH-1 Phase 4). */
@@ -1742,7 +1720,38 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * Phase 5 -- the unique-constraint integration tests drive this method directly, since a full
      * {@code migrate(Flyway)} call needs a real Flyway configuration this test package does not
      * set up). */
+    /**
+     * Backward-compatible 2-arg overload for the many direct unit tests that drive
+     * {@code afterMigrate} without going through {@link #migrate(Flyway, SchemaManifest)}. Reads the
+     * pre-boot stored fingerprint itself (safe: no path writes the fingerprint before this point) and
+     * derives {@code fingerprintChanged}, then delegates. Production always calls the 4-arg form with
+     * the fingerprint read BEFORE {@code beforeMigrate} (LNCH-1 remediation R2).
+     */
     void afterMigrate(DataSource dataSource, SchemaManifest manifest) {
+        String storedAtBootStart = readFingerprint(dataSource);
+        boolean fingerprintChanged = storedAtBootStart != null && !storedAtBootStart.isBlank()
+                && !storedAtBootStart.equals(manifest.schemaFingerprint());
+        afterMigrate(dataSource, manifest, storedAtBootStart, fingerprintChanged);
+    }
+
+    void afterMigrate(DataSource dataSource, SchemaManifest manifest, String storedAtBootStart, boolean fingerprintChanged) {
+        // LNCH-1 remediation R2 (F1): required-field backfill/refusal enforcement lives HERE, at the
+        // single call site every boot path crosses, gated on a fingerprint mismatch. Before R2 it was
+        // scattered across five beforeMigrate branches (safe-additive/rename-resolved only) and was
+        // therefore SILENTLY SKIPPED whenever the same upgrade also carried an acknowledged destructive
+        // item (surgical-destruction / whole-wipe paths) -- a new required field then landed permanently
+        // nullable with NULL legacy rows. Running it here fixes that for every path.
+        //
+        // Placement rationale (do not "improve"): addBackfillAndTightenColumn begins with
+        // ADD COLUMN IF NOT EXISTS, so it is indifferent to whether the R__ additive migration (which
+        // flyway.migrate() just ran) already added the column. It MUST run BEFORE applyUniqueConstraints
+        // (a new unique may include the new required column) and BEFORE the fingerprint write below (a
+        // refusal must leave the fingerprint stale so the next boot re-attempts). It must NOT run on a
+        // fingerprint-MATCH boot: a legacy app that converged with an old-bug nullable-but-required
+        // column must not suddenly refuse on a routine restart (healing legacy drift is out of scope).
+        if (fingerprintChanged) {
+            applyRequiredFieldBackfills(dataSource, manifest, storedAtBootStart, null);
+        }
         // LNCH-1 P5 (5.1): runs on every boot, after flyway.migrate() has already applied the R__
         // additive-columns migration, so a unique constraint declared alongside a brand-new column
         // always finds that column already present. Deliberately BEFORE the fingerprint write below
@@ -1797,13 +1806,16 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     }
 
     /**
-     * Every destructive item's {@link SchemaDeltaItem#stableString()}, JSON-serialized as a
+     * Every destructive item's {@link SchemaDeltaItem#displayString()}, JSON-serialized as a
      * plain array of strings -- already in {@link SchemaDeltaReport}'s deterministic sorted order,
-     * so this column's content is itself stable/order-independent for the same underlying diff.
+     * so this column's content is itself order-independent for the same underlying diff. Uses the
+     * DISPLAY form (not the hashed stable string) so a {@code DROP_TABLE} row keeps its human-facing
+     * row-count metadata in {@code items_json}, even though that count is out of the ack-token hash
+     * (LNCH-1 remediation F2).
      */
     private static String itemsJson(SchemaDeltaReport report) {
         try {
-            return OBJECT_MAPPER.writeValueAsString(report == null ? List.of() : report.stableStrings());
+            return OBJECT_MAPPER.writeValueAsString(report == null ? List.of() : report.displayStrings());
         } catch (Exception exception) {
             return "[]";
         }

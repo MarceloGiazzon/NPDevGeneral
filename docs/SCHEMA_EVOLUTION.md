@@ -97,6 +97,12 @@ status IS NULL` → `ALTER COLUMN ... SET NOT NULL`, each step idempotent-by-che
 any two steps converges correctly on the next boot, it never re-runs a step that already succeeded
 or skips one that didn't).
 
+This required-field enforcement runs on **every upgrade boot regardless of what else the upgrade
+contains** — including an upgrade that also carries an acknowledged destructive item (a dropped
+field or concept). It lives at a single call site every boot path crosses, so a required field
+added in the same upgrade as an acknowledged drop is still backfilled-and-tightened (or refused if
+it has no literal default), never silently left permanently nullable.
+
 **Refused, not silently guessed, when:**
 - No `default` is declared (an optional field, or a `defaultExpression`-only field — **expression
   backfills are not supported in v1**; only literal defaults are backfilled automatically).
@@ -137,6 +143,13 @@ accident.
 (`DestructiveAckToken.compute`, `NPDevContract/dsl/.../schemaevolution/DestructiveAckToken.java`).
 It changes if the target fingerprint changes OR if the set of destructive items changes — it is
 bound to both.
+
+The token is computed **identically at plan time (`-PlanOnly`) and at boot time, for every item
+kind** — including a dropped concept (`DROP_TABLE`). Each item's hashed form uses only inputs that
+are derivable the same way from a live database and from a model diff; in particular a `DROP_TABLE`
+item's live row count is **display metadata only** (shown as "row count unknown until boot" in the
+plan preview) and is deliberately kept out of the hash, so a concept-drop token copied from
+`-PlanOnly` matches the executor's boot-time token on the first attempt.
 
 ### Worked example
 
@@ -215,7 +228,8 @@ seeded data (`D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\lnch1-evidence\phase
 renamed column's data survives intact, the dropped column is genuinely gone.
 
 **Without a matching token**, the boot refuses outright — the app never starts with a half-applied
-or silently-guessed destructive change:
+or silently-guessed **destructive** change (the safe convergent steps — renames, relaxations — may
+already have applied; see [Refusals and rollback](#refusals-and-rollback)):
 
 ```
 Schema fingerprint changed from <old> to <new> and includes destructive change(s) requiring an
@@ -228,6 +242,35 @@ via the ControlPanel schema-migration screen on the currently running app, to pr
 authorizes a destructive change with no itemized token — it prints a loud deprecation warning
 (`NPDev schema lifecycle: DEPRECATION WARNING`) every time it's used and should not be relied on
 for new work; it exists only for backward compatibility with apps generated before this feature.
+
+## Refusals and rollback
+
+A refused upgrade is **not** side-effect-free. By design, the safe, convergent steps run
+**before** the acknowledgment decision is even reached:
+
+- **Table renames, field renames, and NOT NULL relaxations** are applied unconditionally at the
+  top of every fingerprint-mismatch boot (they are convergent toward the new model and lose no
+  data). A boot that then refuses an unacknowledged destructive item has **already** applied those
+  renames/relaxations.
+- On the **combined path** — an acknowledged destructive item plus a new required field with no
+  literal default — the destructive item executes (it was acknowledged), and the required-field
+  refusal fires **afterward**, at the post-migration enforcement step. So the destructive change
+  MAY already be applied when that refusal is thrown. A subsequent boot with a fixed model (declare
+  the literal default, or make the field optional) converges cleanly.
+
+Because a refused or partially-applied upgrade has already moved the live schema toward the new
+model, the supported recovery directions are exactly two:
+
+1. **Roll forward** — fix the model (supply the token, declare the missing default, resolve the
+   duplicate data) and redeploy the newer build. This is the normal path.
+2. **Restore** — recover the database from a backup/snapshot taken before the upgrade.
+
+**Never redeploy the OLD jar against a database a newer build already migrated.** Its stored
+fingerprint would match the old build, so the executor would otherwise boot "clean" against a
+schema whose columns have been renamed away or dropped, and then fail at runtime with no
+diagnostics. The executor guards this explicitly: on a fingerprint-MATCH boot it verifies the live
+database still contains every column this build's manifest requires, and refuses with a
+schema-ahead-of-build message if a newer build has moved ahead of this jar (pointing back here).
 
 ## Snapshots (manual recovery only)
 

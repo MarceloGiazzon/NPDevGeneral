@@ -1,6 +1,8 @@
 package com.finalexec.db;
 
 import com.npdev.dsl.v1.schemaevolution.DestructiveAckToken;
+import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem;
+import com.npdev.dsl.v1.schemaevolution.SqlTypeNormalization;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -179,6 +181,10 @@ class SchemaLifecycleExecutorProofMatrixTest {
         assertTrue(result.safeAdditive());
         assertFalse(result.performed());
 
+        // R2 (F1): required-field backfill/refusal now runs in afterMigrate (the single call site),
+        // not beforeMigrate -- so the column is added/backfilled/tightened here, not above.
+        executor.afterMigrate(dataSource, manifest);
+
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
             assertTrue(hasColumn(metadata, "widgets", "status"), "the required column must have been added");
@@ -187,7 +193,6 @@ class SchemaLifecycleExecutorProofMatrixTest {
             assertEquals("PENDING", readColumn(connection, "widgets", "status", 2L));
         }
 
-        executor.afterMigrate(dataSource, manifest);
         assertSecondBootIsNoOp(manifest);
     }
 
@@ -210,8 +215,13 @@ class SchemaLifecycleExecutorProofMatrixTest {
                 Map.of(), Map.of(), true, "",
                 Map.of("widgets", List.of("status")), Map.of(), Map.of(), Map.of(), true);
 
+        // R2 (F1): beforeMigrate classifies this as safe-additive (the column is additive-eligible);
+        // the no-default refusal now fires from the single afterMigrate enforcement call site.
+        SchemaLifecycleExecutor.DestructiveRecreation classified = executor.beforeMigrate(dataSource, manifest);
+        assertTrue(classified.safeAdditive());
+
         IllegalStateException refusal = assertThrows(IllegalStateException.class,
-                () -> executor.beforeMigrate(dataSource, manifest));
+                () -> executor.afterMigrate(dataSource, manifest));
         assertTrue(refusal.getMessage().contains("status"), refusal.getMessage());
         assertTrue(refusal.getMessage().contains("no default declared"), refusal.getMessage());
 
@@ -221,7 +231,7 @@ class SchemaLifecycleExecutorProofMatrixTest {
 
         // A retry with the same (still-unfixed) manifest must refuse again, identically -- not
         // half-apply or crash differently on a second attempt.
-        assertThrows(IllegalStateException.class, () -> executor.beforeMigrate(dataSource, manifest));
+        assertThrows(IllegalStateException.class, () -> executor.afterMigrate(dataSource, manifest));
     }
 
     // ---- Row 4 --------------------------------------------------------------------------------
@@ -743,6 +753,219 @@ class SchemaLifecycleExecutorProofMatrixTest {
             assertFalse(hasTable(metadata, "npdev_schema_history"),
                     "physicalDatabase=false must never let beforeMigrate/afterMigrate run (" + when + ")");
         }
+    }
+
+    // ---- LNCH-1 remediation scenarios (R1/R2) ---------------------------------------------------
+
+    @Test
+    @DisplayName("Scenario 17 (F1): acknowledged DROP_COLUMN on B + new required-with-default field on A "
+            + "-> drop applied AND field backfilled + NOT NULL, in one destructive boot")
+    void scenario17_requiredFieldBackfillRunsEvenOnTheDestructivePath() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+            statement.execute("INSERT INTO widgets (id, name) VALUES (1, 'Alpha')");
+            statement.execute("INSERT INTO widgets (id, name) VALUES (2, 'Beta')");
+            statement.execute("CREATE TABLE gadgets (id BIGINT PRIMARY KEY, legacy_flag BOOLEAN)");
+            statement.execute("INSERT INTO gadgets (id, legacy_flag) VALUES (1, TRUE)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        SchemaLifecycleExecutor.SchemaManifest manifestNoToken = scenarioManifest("");
+        SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, manifestNoToken);
+        assertEquals(List.of("DROP_COLUMN:gadgets:legacy_flag:BOOLEAN"), report.stableStrings(),
+                "only the genuine drop is itemized; the required-with-default field is additive, not a drop");
+        String token = DestructiveAckToken.compute("sha256:new", report.stableStrings());
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = scenarioManifest(token);
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, manifest);
+        assertTrue(result.performed(), "the acknowledged drop must go through the surgical destructive path");
+
+        // F1's fix: required-field enforcement now runs at the single afterMigrate call site, so it is
+        // reached even though this boot took the destructive path (before R2 it was silently skipped).
+        executor.afterMigrate(dataSource, manifest);
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertFalse(hasColumn(metadata, "gadgets", "legacy_flag"), "the acknowledged drop must have applied");
+            assertTrue(hasColumn(metadata, "widgets", "status"),
+                    "the new required column must exist even though this boot was destructive");
+            assertTrue(isNotNull(metadata, "widgets", "status"), "the new required column must be enforced NOT NULL");
+            assertEquals("PENDING", readColumn(connection, "widgets", "status", 1L), "legacy row backfilled to the default");
+            assertEquals("PENDING", readColumn(connection, "widgets", "status", 2L), "legacy row backfilled to the default");
+        }
+
+        assertSecondBootIsNoOp(manifest);
+    }
+
+    @Test
+    @DisplayName("Scenario 18 (F1): acknowledged drop + new required field with NO default -> boot refuses "
+            + "(#new-required-fields) with the token still valid; fingerprint stays stale; a fixed-model boot converges")
+    void scenario18_requiredFieldNoDefaultRefusesEvenWithAValidDestructiveToken() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+            statement.execute("INSERT INTO widgets (id, name) VALUES (1, 'Alpha')");
+            statement.execute("CREATE TABLE gadgets (id BIGINT PRIMARY KEY, legacy_flag BOOLEAN)");
+            statement.execute("INSERT INTO gadgets (id, legacy_flag) VALUES (1, TRUE)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        // Same shape as scenario 17 but status has NO literal default declared.
+        String token = DestructiveAckToken.compute("sha256:new", List.of("DROP_COLUMN:gadgets:legacy_flag:BOOLEAN"));
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifest(
+                "sha256:new", List.of("widgets", "gadgets"),
+                Map.of("widgets", List.of("id", "name", "status"), "gadgets", List.of("id")),
+                Map.of("widgets", List.of("status"), "gadgets", List.of()),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "status", "VARCHAR(50)"),
+                        "gadgets", Map.of("id", "BIGINT")),
+                Map.of(), Map.of(), false, token,
+                Map.of("widgets", List.of("status")), Map.of(), Map.of(), Map.of(), true);
+
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, manifest);
+        assertTrue(result.performed(), "the acknowledged drop still applies -- it executes before the afterMigrate refusal");
+
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.afterMigrate(dataSource, manifest));
+        assertTrue(refusal.getMessage().contains("status"), refusal.getMessage());
+        assertTrue(refusal.getMessage().contains("#new-required-fields"), refusal.getMessage());
+
+        // The refusal left the fingerprint stale (so the next boot re-attempts). The destructive item,
+        // however, DID already apply on this path -- a documented ordering consequence (the refusal
+        // arrives after flyway.migrate/the surgical drop). See docs/SCHEMA_EVOLUTION.md refusal section.
+        assertEquals("sha256:old", readStoredFingerprint(dataSource), "a refusal must leave the fingerprint stale");
+        try (Connection connection = dataSource.getConnection()) {
+            assertFalse(hasColumn(connection.getMetaData(), "gadgets", "legacy_flag"),
+                    "documented ordering consequence: the acknowledged drop already applied before the refusal");
+        }
+
+        // A subsequent fixed-model boot (status now carries a literal default) converges cleanly.
+        SchemaLifecycleExecutor.SchemaManifest fixed = manifest(
+                "sha256:new", List.of("widgets", "gadgets"),
+                Map.of("widgets", List.of("id", "name", "status"), "gadgets", List.of("id")),
+                Map.of("widgets", List.of("status"), "gadgets", List.of()),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "status", "VARCHAR(50)"),
+                        "gadgets", Map.of("id", "BIGINT")),
+                Map.of(), Map.of(), false, "",
+                Map.of("widgets", List.of("status")),
+                Map.of("widgets", Map.of("status", "\"PENDING\"")), Map.of(), Map.of(), true);
+        SchemaLifecycleExecutor.DestructiveRecreation converge = executor.beforeMigrate(dataSource, fixed);
+        assertTrue(converge.safeAdditive(), "with the drop already applied, the remaining diff is a safe-additive field");
+        executor.afterMigrate(dataSource, fixed);
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(isNotNull(metadata, "widgets", "status"), "the fixed-model boot finishes the required-field enforcement");
+            assertEquals("PENDING", readColumn(connection, "widgets", "status", 1L), "the legacy row is backfilled on convergence");
+        }
+        assertEquals("sha256:new", readStoredFingerprint(dataSource), "the converged boot finally stores the new fingerprint");
+    }
+
+    @Test
+    @DisplayName("Scenario 18b (F1 guard): required BOND column + acknowledged unrelated drop -> the dedicated "
+            + "bond refusal still fires (from beforeMigrate, before the drop applies)")
+    void scenario18b_requiredBondRefusalStillFiresAlongsideAnAcknowledgedDrop() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+            statement.execute("INSERT INTO widgets (id, name) VALUES (1, 'Alpha')");
+            statement.execute("CREATE TABLE gadgets (id BIGINT PRIMARY KEY, legacy_flag BOOLEAN)");
+            statement.execute("INSERT INTO gadgets (id, legacy_flag) VALUES (1, TRUE)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        // widgets gains a required, NON-additive-eligible bond column 'owner_id'; gadgets drops legacy_flag.
+        String token = DestructiveAckToken.compute("sha256:new", List.of("DROP_COLUMN:gadgets:legacy_flag:BOOLEAN"));
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifest(
+                "sha256:new", List.of("widgets", "gadgets"),
+                Map.of("widgets", List.of("id", "name", "owner_id"), "gadgets", List.of("id")),
+                Map.of("widgets", List.of(), "gadgets", List.of()),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "owner_id", "UUID"),
+                        "gadgets", Map.of("id", "BIGINT")),
+                Map.of(), Map.of(), false, token,
+                Map.of("widgets", List.of("owner_id")), Map.of(), Map.of(), Map.of(), true);
+
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.beforeMigrate(dataSource, manifest));
+        assertTrue(refusal.getMessage().contains("owner_id"), refusal.getMessage());
+        assertTrue(refusal.getMessage().contains("bond"), refusal.getMessage());
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertTrue(hasColumn(connection.getMetaData(), "gadgets", "legacy_flag"),
+                    "the bond refusal fires before the destructive section -- the acknowledged drop must NOT have applied");
+        }
+    }
+
+    @Test
+    @DisplayName("Scenario 19 (R1/F2): a concept-drop token computed WITHOUT the live row count (exactly as "
+            + "-PlanOnly does) is byte-identical to the executor's boot-time token and authorizes the boot")
+    void scenario19_conceptDropTokenIsPlanComputableAndBootsFirstTry() throws SQLException {
+        // A concept drop is only routed destructively when the boot's diff already reaches the
+        // destructive path (classify() enumerates only manifest-declared tables, so an orphan table
+        // alone is invisible to it -- a known platform boundary). We force the path with a companion
+        // acknowledged DROP_COLUMN on the surviving concept, and prove that the DROP_TABLE component of
+        // the token is plan-computable: the generator's -PlanOnly path has no live DB and constructs
+        // DropTable(gadgets, -1), yet gadgets holds 3 live rows. Before R1 the row count was in the hash,
+        // so the plan-time and boot-time tokens could NEVER match for a concept drop.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, legacy_flag BOOLEAN)");
+            statement.execute("INSERT INTO widgets (id, legacy_flag) VALUES (1, TRUE)");
+            statement.execute("CREATE TABLE gadgets (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+            statement.execute("INSERT INTO gadgets (id, name) VALUES (1, 'a')");
+            statement.execute("INSERT INTO gadgets (id, name) VALUES (2, 'b')");
+            statement.execute("INSERT INTO gadgets (id, name) VALUES (3, 'c')");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        SchemaLifecycleExecutor.SchemaManifest manifestNoToken = manifest(
+                "sha256:new", List.of("widgets"),
+                Map.of("widgets", List.of("id")), Map.of("widgets", List.of()),
+                Map.of("widgets", Map.of("id", "BIGINT")),
+                Map.of(), Map.of(), false, "", Map.of(), Map.of(), Map.of(), Map.of(), true);
+        SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, manifestNoToken);
+        String executorExpectedToken = DestructiveAckToken.compute("sha256:new", report.stableStrings());
+
+        // Independently reconstruct the token the -PlanOnly generator would print (no live DB):
+        // DropColumn with the normalized model type + DropTable with the unknown (-1) row count.
+        String planTimeToken = DestructiveAckToken.compute("sha256:new", List.of(
+                new SchemaDeltaItem.DropColumn("widgets", "legacy_flag", SqlTypeNormalization.normalize("BOOLEAN")).stableString(),
+                new SchemaDeltaItem.DropTable("gadgets", -1L).stableString()));
+        assertEquals(executorExpectedToken, planTimeToken,
+                "R1/F2: the plan-time token (DROP_TABLE row count OUT of the hash) must byte-match the "
+                        + "executor's boot-time token despite gadgets holding 3 live rows");
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifest(
+                "sha256:new", List.of("widgets"),
+                Map.of("widgets", List.of("id")), Map.of("widgets", List.of()),
+                Map.of("widgets", Map.of("id", "BIGINT")),
+                Map.of(), Map.of(), false, planTimeToken, Map.of(), Map.of(), Map.of(), Map.of(), true);
+
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, manifest);
+        assertTrue(result.performed(),
+                "the plan-time token must authorize the destructive boot (concept drop + column drop) on the first attempt");
+        assertTrue(result.droppedTables().contains("gadgets"), "the dropped concept's table must be among the affected tables");
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertFalse(hasTable(metadata, "gadgets"), "the dropped concept's table must be gone");
+            assertTrue(hasTable(metadata, "widgets"), "the surviving concept's table must remain");
+            assertFalse(hasColumn(metadata, "widgets", "legacy_flag"), "the companion acknowledged column drop must have applied");
+        }
+        HistoryRow row = latestHistoryRow(dataSource);
+        assertEquals("APPLIED", row.outcome());
+
+        executor.afterMigrate(dataSource, manifest);
+        assertSecondBootIsNoOp(manifest);
+    }
+
+    /** Scenario 17's two-concept manifest (widgets gains required 'status' with a "PENDING" literal
+     * default; gadgets drops 'legacy_flag'), parameterized only by the acknowledgment token. */
+    private static SchemaLifecycleExecutor.SchemaManifest scenarioManifest(String token) {
+        return manifest(
+                "sha256:new", List.of("widgets", "gadgets"),
+                Map.of("widgets", List.of("id", "name", "status"), "gadgets", List.of("id")),
+                Map.of("widgets", List.of("status"), "gadgets", List.of()),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "status", "VARCHAR(50)"),
+                        "gadgets", Map.of("id", "BIGINT")),
+                Map.of(), Map.of(), false, token,
+                Map.of("widgets", List.of("status")),
+                Map.of("widgets", Map.of("status", "\"PENDING\"")), Map.of(), Map.of(), true);
     }
 
     // ---- Shared helpers -------------------------------------------------------------------------

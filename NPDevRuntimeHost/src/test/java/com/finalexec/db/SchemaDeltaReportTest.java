@@ -82,7 +82,10 @@ class SchemaDeltaReportTest {
         SchemaDeltaItem.DropTable dropTable = (SchemaDeltaItem.DropTable) report.items().get(0);
         assertEquals("legacy_widgets", dropTable.table());
         assertEquals(3L, dropTable.rowCountAtClassification());
-        assertEquals("DROP_TABLE:legacy_widgets:3", dropTable.stableString());
+        // R1 (F2): the row count is display metadata only -- present in displayString(), NEVER in
+        // the hashed stableString() (so a concept-drop token is plan-computable).
+        assertEquals("DROP_TABLE:legacy_widgets", dropTable.stableString());
+        assertEquals("DROP_TABLE:legacy_widgets:3", dropTable.displayString());
     }
 
     @Test
@@ -225,7 +228,7 @@ class SchemaDeltaReportTest {
         // -- assert the combined list is deterministically sorted (table, then column, then kind).
         assertEquals(
                 List.of(
-                        "DROP_TABLE:legacy_widgets:0",
+                        "DROP_TABLE:legacy_widgets",
                         "DROP_COLUMN:users:legacy_flag:BOOLEAN",
                         "DROP_COLUMN:users:old_phone:VARCHAR(20)"),
                 reportA.stableStrings());

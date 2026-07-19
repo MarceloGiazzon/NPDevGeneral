@@ -181,13 +181,16 @@ public final class SchemaRealizationEmitter {
      * Adds new columns to an already-existing business table (LNCH-1 P5 (5.3): now including
      * nullable bond/FK columns, see {@link #isAdditiveEligible}). Always nullable at the SQL level,
      * even if the field is required by the model -- so this migration itself never breaks on
-     * existing rows -- but {@code SchemaLifecycleExecutor} (LNCH-1 Phase 5) backfills a required
-     * column with its declared literal default and tightens it to NOT NULL BEFORE this repeatable
-     * migration ever runs (so, for that case, the {@code ADD COLUMN IF NOT EXISTS} below is
-     * observed as a no-op); a required field with no literal default refuses boot entirely,
-     * meaning this migration is never reached for it. Narrowing type changes and column/table
-     * removal remain structural changes that go through the schema-fingerprint destructive-recreate
-     * path instead.
+     * existing rows. On the SAME boot, AFTER this repeatable migration has added the column
+     * (nullable), {@code SchemaLifecycleExecutor}'s {@code afterMigrate} step (LNCH-1 Phase 5;
+     * enforcement consolidated to that single call site by remediation R2) backfills a required
+     * column with its declared literal default and tightens it to NOT NULL (its own
+     * {@code ADD COLUMN IF NOT EXISTS} is then a no-op, since this migration already added the
+     * column); a required field with no literal default refuses the boot at that same
+     * post-migration enforcement step. This holds on every upgrade boot regardless of what else the
+     * upgrade contains, including one that also carries an acknowledged destructive item. Narrowing
+     * type changes and column/table removal remain structural changes that go through the
+     * schema-fingerprint destructive-recreate path instead.
      */
     private static void appendAdditiveColumns(StringBuilder sql, CompiledConcept concept, DatabaseEngine engine,
             Map<String, CompiledConcept> conceptsByName) {
@@ -222,12 +225,12 @@ public final class SchemaRealizationEmitter {
                 if (literalDefault != null) {
                     sql.append("-- NOTE: '").append(column).append("' is required by the model and declares a ")
                             .append("literal default; NPDev's schema-lifecycle executor backfills existing NULL ")
-                            .append("rows to that default and enforces NOT NULL automatically before this migration ")
-                            .append("runs (LNCH-1 Phase 5) -- the ADD COLUMN above observes an already-added column.\n");
+                            .append("rows to that default and enforces NOT NULL after this migration runs, on the ")
+                            .append("same boot (LNCH-1 Phase 5; single afterMigrate call site per remediation R2).\n");
                 } else {
                     sql.append("-- NOTE: '").append(column).append("' is required by the model but no literal ")
-                            .append("default is declared; boot refuses until one is added or the field is made ")
-                            .append("optional (LNCH-1 Phase 5) -- this migration is not reached in that case.\n");
+                            .append("default is declared; boot refuses (after this migration runs) until one is ")
+                            .append("added or the field is made optional (LNCH-1 Phase 5; remediation R2).\n");
                 }
             }
             if (bond.isPresent()) {

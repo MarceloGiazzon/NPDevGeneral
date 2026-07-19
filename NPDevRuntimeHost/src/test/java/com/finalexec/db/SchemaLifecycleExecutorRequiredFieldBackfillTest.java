@@ -72,6 +72,10 @@ class SchemaLifecycleExecutorRequiredFieldBackfillTest {
         assertTrue(result.safeAdditive(), "a required field with a literal default must still resolve via the safe-additive path");
         assertFalse(result.performed(), "no destructive recreation must be performed");
 
+        // R2 (F1): the backfill/tighten now runs in afterMigrate (the single enforcement call site),
+        // not beforeMigrate.
+        executor.afterMigrate(dataSource, manifest);
+
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
             assertTrue(hasColumn(metadata, "widgets", "status"), "the required column must have been added");
@@ -113,8 +117,11 @@ class SchemaLifecycleExecutorRequiredFieldBackfillTest {
                 Map.of(),
                 Map.of());
 
+        // R2 (F1): the refusal now fires from the single afterMigrate enforcement call site. Driving
+        // afterMigrate directly (its 2-arg overload reads the seeded stale fingerprint and derives a
+        // mismatch) isolates the refusal to a single REFUSED history row.
         IllegalStateException refusal = assertThrows(IllegalStateException.class,
-                () -> executor.beforeMigrate(dataSource, manifest));
+                () -> executor.afterMigrate(dataSource, manifest));
         assertTrue(refusal.getMessage().contains("status"), refusal.getMessage());
         assertTrue(refusal.getMessage().contains("no default declared"), refusal.getMessage());
 
@@ -144,8 +151,9 @@ class SchemaLifecycleExecutorRequiredFieldBackfillTest {
                 Map.of(),
                 Map.of("widgets", List.of("approvedAt")));
 
+        // R2 (F1): expression-default-only refusal now fires from the afterMigrate enforcement site.
         IllegalStateException refusal = assertThrows(IllegalStateException.class,
-                () -> executor.beforeMigrate(dataSource, manifest));
+                () -> executor.afterMigrate(dataSource, manifest));
         assertTrue(refusal.getMessage().contains("approvedAt"), refusal.getMessage());
         assertTrue(refusal.getMessage().contains("expression default is declared"), refusal.getMessage());
 
@@ -173,16 +181,21 @@ class SchemaLifecycleExecutorRequiredFieldBackfillTest {
                 Map.of());
 
         executor.beforeMigrate(dataSource, manifest);
+        // R2 (F1): afterMigrate performs the backfill/tighten AND stores the new fingerprint (the real
+        // migrate() path does exactly this after flyway.migrate() succeeds).
+        executor.afterMigrate(dataSource, manifest);
 
-        // Simulate afterMigrate() having stored the new fingerprint (the real migrate() path does
-        // this after flyway.migrate() succeeds -- beforeMigrate alone does not).
-        markFingerprintApplied(dataSource, manifest.schemaFingerprint());
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(isNotNull(metadata, "widgets", "status"), "the first boot must have backfilled + tightened the column");
+        }
 
-        // Re-running applyRequiredFieldBackfills directly (idempotent-by-check: the column already
-        // exists and is already NOT NULL) must not throw and must not re-touch the data.
+        // Re-running the boot (idempotent-by-check: the column already exists and is already NOT NULL,
+        // and the stored fingerprint now matches) must be a pure no-op that does not re-touch the data.
         SchemaLifecycleExecutor.DestructiveRecreation second = executor.beforeMigrate(dataSource, manifest);
         assertFalse(second.performed());
         assertFalse(second.safeAdditive(), "with a matching stored fingerprint, beforeMigrate must short-circuit to a pure no-op");
+        executor.afterMigrate(dataSource, manifest);
 
         try (Connection connection = dataSource.getConnection()) {
             assertEquals("PENDING", readStatus(connection, 1), "the converged re-run must not have altered existing data");
@@ -196,15 +209,6 @@ class SchemaLifecycleExecutorRequiredFieldBackfillTest {
                 assertTrue(resultSet.next());
                 return resultSet.getString(1);
             }
-        }
-    }
-
-    private static void markFingerprintApplied(DataSource dataSource, String fingerprint) throws SQLException {
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(
-                     "UPDATE npdev_schema_metadata SET metadata_value = ? WHERE metadata_key = 'schemaFingerprint'")) {
-            statement.setString(1, fingerprint);
-            statement.executeUpdate();
         }
     }
 

@@ -15,11 +15,15 @@ package com.npdev.dsl.v1.schemaevolution;
  *       boot's classification would find.</li>
  * </ul>
  * Because both sides construct the IDENTICAL record types and call the IDENTICAL
- * {@link Item#stableString()} implementations, {@link DestructiveAckToken#compute} produces
- * byte-identical tokens for the same underlying change BY CONSTRUCTION -- not because two
- * independently-maintained string-formatting methods happen to agree today. This is exactly the
- * property §2.3 of the plan requires ("two independent derivations that must agree is the safety
- * mechanism").
+ * {@link Item#stableString()} implementations, and every {@code stableString()} uses ONLY
+ * fields that are derivable identically from a live database at boot and from a model diff at
+ * generation time (no live-only inputs such as row counts participate in the hash --
+ * {@link DropTable}'s row count is display metadata, deliberately kept OUT of its stable string),
+ * {@link DestructiveAckToken#compute} produces byte-identical tokens for the same underlying
+ * change -- not because two independently-maintained string-formatting methods happen to agree
+ * today, but because both producers call this exact method and the method uses no live-only
+ * inputs. This is exactly the property §2.3 of the plan requires ("two independent derivations
+ * that must agree is the safety mechanism").
  *
  * <p>Every {@link Item#stableString()} is a plain, colon-joined {@code KIND:field:field:...}
  * string built ONLY from that item's own fields -- never from iteration order -- so two callers
@@ -34,10 +38,21 @@ public interface SchemaDeltaItem {
     /** The table this item concerns, or {@code ""} if not applicable (only {@link Unknown}). */
     String table();
 
-    /** A stable string form built only from this item's own fields -- never from iteration order --
-     * suitable for hashing (via {@link DestructiveAckToken}) and for JSON/log/history-row
-     * serialization. */
+    /** A stable string form built only from this item's own fields -- never from iteration order,
+     * and never from a live-only input such as a row count -- suitable for hashing (via
+     * {@link DestructiveAckToken}). Two producers computing the same logical item MUST produce the
+     * identical stable string; this is the token's safety property. */
     String stableString();
+
+    /** A human-facing form for {@code items_json}, operator log lines, and the plan/report
+     * rendering -- MAY include display-only metadata a live boot knows but a generation-time
+     * preview does not (e.g. {@link DropTable}'s row count). Defaults to {@link #stableString()};
+     * only {@link DropTable} overrides it. Never fed to {@link DestructiveAckToken} -- keeping
+     * display metadata here, out of {@link #stableString()}, is what lets the plan-time token match
+     * the boot-time token for a concept drop (LNCH-1 remediation F2). */
+    default String displayString() {
+        return stableString();
+    }
 
     record DropColumn(String table, String column, String sqlType) implements SchemaDeltaItem {
         @Override
@@ -46,9 +61,26 @@ public interface SchemaDeltaItem {
         }
     }
 
+    /**
+     * A concept whose entire table is being dropped. {@code rowCountAtClassification} is
+     * <b>display metadata only</b> -- the operator seeing "~1,240 rows will be lost" in the plan,
+     * the report, {@code items_json}, and log lines -- and MUST NOT participate in the hash: the
+     * generator has no live database and always constructs this with {@code -1L} ("row count
+     * unknown until boot"), so including it would make the plan-time token unable to ever match
+     * the executor's boot-time token for a concept drop (LNCH-1 remediation F2). Hence
+     * {@link #stableString()} is {@code "DROP_TABLE:" + table} and nothing else.
+     */
     record DropTable(String table, long rowCountAtClassification) implements SchemaDeltaItem {
         @Override
         public String stableString() {
+            return "DROP_TABLE:" + table;
+        }
+
+        /** Includes the row count (display metadata) so operators still see "~N rows will be lost"
+         * in {@code items_json} and log lines, even though the count is out of the hash. A
+         * generation-time preview carries {@code -1L} here ("row count unknown until boot"). */
+        @Override
+        public String displayString() {
             return "DROP_TABLE:" + table + ":" + rowCountAtClassification;
         }
     }

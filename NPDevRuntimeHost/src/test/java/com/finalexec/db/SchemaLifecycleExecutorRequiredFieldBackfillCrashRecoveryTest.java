@@ -75,7 +75,12 @@ class SchemaLifecycleExecutorRequiredFieldBackfillCrashRecoveryTest {
         FaultInjectingDataSource faultyDataSource = new FaultInjectingDataSource(realDataSource, 1);
         SchemaLifecycleExecutor firstAttemptExecutor = new SchemaLifecycleExecutor();
 
-        assertThrows(IllegalStateException.class, () -> firstAttemptExecutor.beforeMigrate(faultyDataSource, manifest));
+        // R2 (F1): the required-field backfill now runs in afterMigrate (the single enforcement call
+        // site), so the crash is injected there. The 4-arg form is used with an explicit mismatch so
+        // the fault-count sequence (ALTER TABLE ADD COLUMN = index 0, backfill UPDATE = index 1 -> fault)
+        // is exactly as before, with no readFingerprint SELECT in between.
+        assertThrows(IllegalStateException.class,
+                () -> firstAttemptExecutor.afterMigrate(faultyDataSource, manifest, "sha256:old", true));
 
         // Half-applied state: the column exists (ADD COLUMN committed) but is still nullable and
         // still NULL for both existing rows (the backfill UPDATE never ran).
@@ -92,6 +97,8 @@ class SchemaLifecycleExecutorRequiredFieldBackfillCrashRecoveryTest {
         SchemaLifecycleExecutor freshExecutor = new SchemaLifecycleExecutor();
         SchemaLifecycleExecutor.DestructiveRecreation result = freshExecutor.beforeMigrate(realDataSource, manifest);
         assertTrue(result.safeAdditive(), "the fresh boot must converge via the safe-additive path, not error or go destructive");
+        // R2 (F1): the interrupted backfill is finished by afterMigrate on the fresh boot.
+        freshExecutor.afterMigrate(realDataSource, manifest, "sha256:old", true);
 
         try (Connection connection = realDataSource.getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
@@ -101,12 +108,16 @@ class SchemaLifecycleExecutorRequiredFieldBackfillCrashRecoveryTest {
             assertEquals("PENDING", readStatus(connection, 2), "the fresh boot must backfill the still-NULL row");
         }
 
-        // A THIRD boot against the now-fully-converged column must be a clean idempotent no-op too
-        // (proves addBackfillAndTightenColumn's own idempotency, not just applyRequiredFieldBackfills'
-        // outer gate).
+        // A THIRD backfill pass against the now-fully-converged column must be a clean idempotent
+        // no-op too (proves addBackfillAndTightenColumn's own idempotency-by-check, not just the outer
+        // gate). Forced with an explicit mismatch so applyRequiredFieldBackfills actually re-runs.
         SchemaLifecycleExecutor thirdExecutor = new SchemaLifecycleExecutor();
-        SchemaLifecycleExecutor.DestructiveRecreation thirdResult = thirdExecutor.beforeMigrate(realDataSource, manifest);
-        assertTrue(thirdResult.safeAdditive());
+        thirdExecutor.afterMigrate(realDataSource, manifest, "sha256:old", true);
+        try (Connection connection = realDataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(isColumnNotNull(metadata, "widgets", "status"), "the idempotent re-run must keep NOT NULL");
+            assertEquals("PENDING", readStatus(connection, 1), "the idempotent re-run must not alter converged data");
+        }
     }
 
     private static String readStatus(Connection connection, long id) throws SQLException {

@@ -128,13 +128,14 @@ class MigrationPlanEmitterTest {
         assertEquals(PlanItem.Kind.DROP_TABLE, item.kind());
         assertEquals("gadgets", item.table());
         assertTrue(item.destructive());
-        assertEquals("DROP_TABLE:gadgets:-1", item.stableString(),
-                "row count is unknowable at generation time (no live DB) -- documented -1 sentinel, "
-                        + "see MigrationPlanEmitter's class javadoc");
+        assertEquals("DROP_TABLE:gadgets", item.stableString(),
+                "R1 (F2): the row count is display metadata only and is OUT of the hashed stable "
+                        + "string, so a concept-drop token computed here byte-matches the executor's "
+                        + "at boot regardless of the live row count");
 
-        // Independent parity check, same row-count sentinel (the documented fidelity limitation:
-        // this is where the plan's token can diverge from a REAL boot with actual rows -- see class
-        // javadoc -- but the construction/hashing mechanism itself is still proven identical here).
+        // Independent parity check: the row count no longer participates in the stable string, so
+        // this token is now byte-identical to what a REAL boot with any actual row count computes
+        // (the whole point of R1 / F2 -- concept-drop acknowledgment is finally plan-computable).
         SchemaDeltaItem.DropTable independentlyConstructed = new SchemaDeltaItem.DropTable("gadgets", -1L);
         String expectedToken = DestructiveAckToken.compute(dbPlan.schemaFingerprint(), List.of(independentlyConstructed.stableString()));
         assertEquals(expectedToken, plan.destructiveAckToken());

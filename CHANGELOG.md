@@ -46,7 +46,20 @@ Format: see `docs/RELEASE_PROCESS.md`. Dates are release-tag dates, not commit d
   two independent writes. No model-schema change; a pure correctness fix, but noted here since it
   changes observable rollback behavior under failure.
 
+### Changed
+- LNCH-1 remediation R1: a destructive-acknowledgment token for a dropped concept (`DROP_TABLE`) no
+  longer includes the live row count in its hash, so a token copied from `-PlanOnly` now matches the
+  executor's boot-time token on the first attempt (previously impossible for a concept drop). Both
+  token producers also route every SQL-type string through one shared normalizer
+  (`SqlTypeNormalization`). **Any acknowledgment token computed before this change no longer
+  matches** — re-run `Build-NpdevApp.ps1 -PlanOnly` to obtain the new token (a stale token simply
+  refuses the boot with the new expected token printed; no data is at risk).
+
 ### Fixed
+- LNCH-1 remediation R2: a new required field added in the SAME upgrade as an acknowledged
+  destructive item is now backfilled-and-tightened (or refused if it has no literal default) on that
+  boot, instead of being silently skipped and left permanently nullable. Enforcement moved to a
+  single `afterMigrate` call site every boot path crosses.
 - A pre-existing gap where a `forEach` flow step's loop body (`collectionRef`/`itemKey`/
   `loopSteps`/`maxLoopIterations`) was silently dropped by the canonical-JSON round trip every
   generated app's `NPDevModelProvider` reads at boot — found while wiring LNCH-17's

@@ -4,6 +4,7 @@ import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.schemaevolution.DestructiveAckToken;
 import com.npdev.dsl.v1.schemaevolution.RenameResolution;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem;
+import com.npdev.dsl.v1.schemaevolution.SqlTypeNormalization;
 import com.npdev.dsl.v1.schemaevolution.TypeChangeMatrix;
 import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
 import com.npdev.generator.dbconfig.SchemaRealizationEmitter;
@@ -58,19 +59,16 @@ import java.util.Set;
  *       the ALREADY-computed production value for the new model -- never re-derived).</li>
  * </ol>
  *
- * <h2>Known, documented fidelity limitation: DROP_TABLE row counts</h2>
- * A {@code DROP_TABLE} item's stable string includes a row count
- * ({@code "DROP_TABLE:" + table + ":" + rowCount}, see {@link SchemaDeltaItem.DropTable}). The
- * runtime executor reads this from the LIVE database at boot; this class has no live database to
- * introspect, so it always uses {@code -1} (the same "unreadable/unknown" sentinel
- * {@code SchemaDeltaReport#bestEffortRowCount} already falls back to on a read failure). This means
- * a plan's {@code destructiveAckToken} for a change that includes a DROP_TABLE will generally NOT
- * byte-match what the executor computes at boot (which uses the real row count) -- this is expected
- * and consistent with the plan being a preview, not an authority (§2.3): the executor's own
- * re-derivation is always the actual gate, and task 6.3's "friendlier" agreement-check message
- * exists precisely to surface this kind of plan-vs-boot drift clearly instead of an opaque refusal.
- * Every other destructive kind (DROP_COLUMN, NARROW_TYPE, and the UNKNOWN cases this class emits)
- * is fully derivable from the model diff alone, so their stable strings DO match exactly.
+ * <h2>DROP_TABLE row counts are display-only (LNCH-1 remediation R1 / F2)</h2>
+ * A {@code DROP_TABLE} item's stable string is {@code "DROP_TABLE:" + table} and nothing else --
+ * the row count is NOT in the hash (see {@link SchemaDeltaItem.DropTable}). This class has no live
+ * database, so it always constructs {@code DropTable(table, -1L)}; the {@code -1} now affects ONLY
+ * the plan's human-readable rendering ("row count unknown until boot"), never the token. Every
+ * destructive kind this class emits (DROP_TABLE, DROP_COLUMN, NARROW_TYPE, and the UNKNOWN cases)
+ * is therefore fully derivable from the model diff alone, so its stable string -- and the
+ * {@code destructiveAckToken} -- byte-matches what the executor re-derives at boot exactly. Before
+ * R1 the row count was in the hash, which made a concept-drop token impossible to acknowledge in
+ * advance; {@code TokenAgreementConformanceTest} now pins the agreement permanently.
  *
  * <h2>Known, documented limitation: some UNKNOWN items cannot be unblocked by any token</h2>
  * A required field with no literal default, or a required (non-many-to-many) bond field added to
@@ -259,7 +257,11 @@ public final class MigrationPlanEmitter {
         }
 
         for (String column : resolution.remainingExtra()) {
-            items.add(PlanItem.dropColumn(new SchemaDeltaItem.DropColumn(newTable, column, oldTypes.get(column))));
+            // R1 (F3): normalize the model-declared type through the SAME shared normalizer the
+            // executor applies to the live JDBC type, so this DROP_COLUMN's stable string (and thus
+            // the acknowledgment token) is byte-identical to what SchemaDeltaReport computes at boot.
+            items.add(PlanItem.dropColumn(new SchemaDeltaItem.DropColumn(
+                    newTable, column, normalizedOrRaw(oldTypes.get(column)))));
         }
 
         Set<String> sharedColumns = new LinkedHashSet<>(newColumns);
@@ -277,12 +279,30 @@ public final class MigrationPlanEmitter {
         if (fromType == null || toType == null || fromType.equalsIgnoreCase(toType)) {
             return;
         }
+        // Classify on the RAW strings: TypeChangeMatrix.parse() already normalizes internally
+        // (uppercase + its own alias table), and it needs the parsed integer params, so pre-
+        // normalizing here would be redundant double work with no behavior change.
         TypeChangeMatrix.Classification classification = TypeChangeMatrix.classify(fromType, toType);
         if (classification == TypeChangeMatrix.Classification.WIDENING) {
+            // Safe, non-destructive, null stable string -> never contributes to the token; keep the
+            // raw declared spellings for display fidelity in the plan preview.
             items.add(PlanItem.widenType(table, column, fromType, toType));
         } else {
-            items.add(PlanItem.narrowType(new SchemaDeltaItem.NarrowType(table, column, fromType, toType)));
+            // Destructive: its stable string feeds the acknowledgment token, so normalize both
+            // spellings through the shared normalizer to match the executor's live-side NarrowType
+            // (R1 / F3) exactly.
+            items.add(PlanItem.narrowType(new SchemaDeltaItem.NarrowType(
+                    table, column, normalizedOrRaw(fromType), normalizedOrRaw(toType))));
         }
+    }
+
+    /** Mirrors {@code com.finalexec.db.SchemaDeltaReport#normalizedOrRaw}: run the type string
+     * through the shared normalizer, falling back to the raw string (or {@code ""}) only in the
+     * unreachable case that normalization returns {@code null}. Keeps the generator's destructive
+     * stable strings byte-identical to the executor's for the same logical type (R1 / F3). */
+    private static String normalizedOrRaw(String sqlType) {
+        String normalized = SqlTypeNormalization.normalize(sqlType);
+        return normalized != null ? normalized : (sqlType == null ? "" : sqlType);
     }
 
     private static List<PlanItem> diffUniqueConstraints(
