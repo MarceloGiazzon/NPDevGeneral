@@ -113,6 +113,15 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // Idempotent-by-check and a no-op when manifest.businessTableRenames() is empty or nothing
         // matches, so it is always safe to attempt eagerly here, ahead of every other step.
         attemptInPlaceTableRenames(dataSource, manifest);
+        // LNCH-1 Phase 7 rehearsal fix: field-level renames MUST also be attempted before classify()
+        // for the same reason table renames are (above) -- see attemptInPlaceRenames' own javadoc for
+        // the live, real-data-loss bug this closes. A table with a declared rename AND an unrelated,
+        // separately-acknowledged destructive drop used to classify straight to DESTRUCTIVE, skipping
+        // the (perfectly safe) rename entirely and silently orphaning the old column's data. Calling
+        // this here, before classify() ever runs, means the rename is already applied by the time
+        // classify() looks at the table, regardless of what else on that table still needs the
+        // destructive path.
+        attemptInPlaceRenames(dataSource, manifest);
 
         SchemaChangeClassification classification = classify(dataSource, manifest);
         SchemaChangeClassification classificationForFallthrough = classification;
@@ -588,18 +597,29 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
 
     /**
      * Executes in-place {@code ALTER TABLE ... RENAME COLUMN} statements (LNCH-1 Phase 1) for
-     * every business table whose live-DB-vs-manifest diff is FULLY explained by declared
-     * {@code renamedFrom} pairs, per {@link RenameResolution} -- reusing the exact same
-     * per-table eligibility test {@link #classify} uses, so a table only gets its columns renamed
-     * here if {@code classify} would otherwise have called it a clean {@code RENAME_DETECTED} or
-     * {@code TYPE_CHANGE_DETECTED}-via-a-renamed-column. A table whose diff is NOT fully explained
-     * by declared renames (plus, at most, additive-eligible new columns) -- a genuine drop/add mixed
-     * in that no rename or additive column accounts for -- is left completely untouched -- no
-     * partial/best-effort renaming -- so the caller's re-classification correctly falls through to
-     * the destructive path for that table instead of leaving the database in a state no single
-     * classification describes. A rename COMBINED with a type change on the same column, by
-     * contrast, is no longer a reason to skip the whole table here (see the inline LNCH-1 P3 note
-     * below) -- {@link #attemptInPlaceTypeWidenings} resolves the type side afterward.
+     * every business table whose declared {@code renamedFrom} pairs are cleanly resolvable against
+     * the live database, per {@link RenameResolution}. Only {@code remainingMissing} (columns the
+     * manifest still expects after rename-pairing, e.g. a genuinely new field) gates eligibility --
+     * and only when not additive-eligible. {@code remainingExtra} (a live column the manifest no
+     * longer wants at all, unexplained by any rename) does NOT block the rename: that column is an
+     * independent concern the destructive path (itemized surgical drop, with its own acknowledgment)
+     * or the whole-schema fallback handles separately.
+     *
+     * <p><b>LNCH-1 Phase 7 rehearsal fix (found live, real data loss on a real Postgres compose
+     * boot):</b> this used to also require {@code remainingExtra.isEmpty()}, on the theory that any
+     * unexplained extra column meant the whole table was headed to the (then-only) whole-schema-wipe
+     * destructive path anyway, making a skipped rename harmless. That stopped being true once Phase 4
+     * added the surgical, itemized destructive path: a table can legitimately combine a safe rename
+     * with an UNRELATED, separately-acknowledged column drop (e.g. rename 'name'->'full_name' AND
+     * drop 'active' in the same upgrade) -- skipping the rename left the OLD column's data silently
+     * orphaned (invisible to the app) while the additive-columns migration added the NEW column
+     * empty, with no error and no refusal. {@link #beforeMigrate} now calls this method
+     * UNCONDITIONALLY before {@link #classify} ever runs (mirroring {@link #attemptInPlaceTableRenames}'s
+     * existing unconditional-before-classify precedent for whole-table renames), so the rename is
+     * applied -- and the old column's data preserved -- before the (still-correct) DESTRUCTIVE
+     * classification for the unrelated drop is even computed. A rename COMBINED with a type change on
+     * the same column is, similarly, no longer a reason to skip that column's rename (see the inline
+     * LNCH-1 P3 note below) -- {@link #attemptInPlaceTypeWidenings} resolves the type side afterward.
      *
      * <p>Idempotent by construction: every table's diff is read fresh from live
      * {@link DatabaseMetaData} on each call (never a cached snapshot), so re-invoking this method
@@ -642,12 +662,11 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 if (resolution.explainedRenames().isEmpty()) {
                     continue;
                 }
-                boolean eligible = resolution.remainingExtra().isEmpty()
-                        && (resolution.remainingMissing().isEmpty()
-                                || additiveEligible.containsAll(resolution.remainingMissing()));
+                boolean eligible = resolution.remainingMissing().isEmpty()
+                        || additiveEligible.containsAll(resolution.remainingMissing());
                 if (!eligible) {
-                    skipped.add(table + " (diff not fully explained by declared renames -- remainingMissing="
-                            + resolution.remainingMissing() + ", remainingExtra=" + resolution.remainingExtra() + ")");
+                    skipped.add(table + " (a remaining expected column is neither renamed-in nor "
+                            + "additive-eligible -- remainingMissing=" + resolution.remainingMissing() + ")");
                     continue;
                 }
                 // LNCH-1 P3 (3.3 composability): a rename MAY be combined with a type change on the

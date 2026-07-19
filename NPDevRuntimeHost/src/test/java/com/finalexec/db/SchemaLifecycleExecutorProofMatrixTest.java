@@ -442,6 +442,63 @@ class SchemaLifecycleExecutorProofMatrixTest {
         assertSecondBootIsNoOp(manifest);
     }
 
+    // ---- Row 9 follow-up (found live on Postgres during Phase 7 rehearsal) --------------------
+
+    @Test
+    @DisplayName("Row 9 follow-up: rename + unrelated acknowledged drop on the SAME table -> "
+            + "rename applies in place (data preserved), drop applies surgically")
+    void row09Followup_renamePlusUnrelatedAcknowledgedDropOnSameTableBothApply() throws SQLException {
+        // Reproduces, against a real boot sequence, the exact silent data-loss bug found live during
+        // the Phase 7 compose-stack rehearsal: classify() escalated straight to DESTRUCTIVE (skipping
+        // RENAME_DETECTED entirely) whenever a table had BOTH a declared rename AND an unrelated,
+        // separately-acknowledged column drop -- because attemptInPlaceRenames was only ever called
+        // from inside classify()'s RENAME_DETECTED/TYPE_CHANGE_DETECTED branches, which this table
+        // never reached. The rename was silently skipped: the OLD column's data was left orphaned
+        // under its old name while the additive-columns migration added the NEW column empty -- no
+        // error, no refusal, a "successful" boot with quietly lost data.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), legacy_flag BOOLEAN)");
+            statement.execute("INSERT INTO widgets (id, name, legacy_flag) VALUES (1, 'Alpha', TRUE)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        SchemaLifecycleExecutor.SchemaManifest manifestWithoutToken = manifest(
+                "sha256:new", List.of("widgets"),
+                Map.of("widgets", List.of("id", "title")), Map.of("widgets", List.of()),
+                Map.of("widgets", Map.of("id", "BIGINT", "title", "VARCHAR(50)")),
+                Map.of("widgets", Map.of("title", "name")), Map.of(), false, "",
+                Map.of(), Map.of(), Map.of(), Map.of(), true);
+        SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, manifestWithoutToken);
+        assertEquals(List.of("DROP_COLUMN:widgets:legacy_flag:BOOLEAN"), report.stableStrings(),
+                "the rename pair must NOT show up as a drop -- only the genuinely unrelated column");
+        String expectedToken = DestructiveAckToken.compute("sha256:new", report.stableStrings());
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifest(
+                "sha256:new", List.of("widgets"),
+                Map.of("widgets", List.of("id", "title")), Map.of("widgets", List.of()),
+                Map.of("widgets", Map.of("id", "BIGINT", "title", "VARCHAR(50)")),
+                Map.of("widgets", Map.of("title", "name")), Map.of(), false, expectedToken,
+                Map.of(), Map.of(), Map.of(), Map.of(), true);
+
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, manifest);
+        assertTrue(result.performed());
+        assertFalse(result.safeAdditive());
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertFalse(hasColumn(metadata, "widgets", "name"), "the old column name must be gone (renamed away)");
+            assertTrue(hasColumn(metadata, "widgets", "title"), "the new column name must be present");
+            assertFalse(hasColumn(metadata, "widgets", "legacy_flag"), "the unrelated acknowledged drop must still apply");
+            assertEquals("Alpha", readColumn(connection, "widgets", "title", 1L),
+                    "the renamed column's data must be PRESERVED, not left orphaned under the old name or empty under the new one");
+        }
+        HistoryRow row = latestHistoryRow(dataSource);
+        assertEquals("APPLIED", row.outcome());
+
+        executor.afterMigrate(dataSource, manifest);
+        assertSecondBootIsNoOp(manifest);
+    }
+
     // ---- Row 10 -------------------------------------------------------------------------------
 
     @Test

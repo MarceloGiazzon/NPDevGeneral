@@ -266,6 +266,57 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
         assertEquals("APPLIED", row.outcome());
     }
 
+    // ---- Rename + unrelated acknowledged drop on the SAME table (LNCH-1 Phase 7 rehearsal find) ---
+
+    @Test
+    @DisplayName("Postgres: rename + unrelated acknowledged drop on the SAME table -- rename applies "
+            + "in place (data preserved), drop applies surgically")
+    void renamePlusUnrelatedAcknowledgedDropOnSameTableBothApplyOnPostgres() throws SQLException {
+        // Reproduces, against a real Postgres server, the exact silent data-loss bug found live
+        // during the Phase 7 compose-stack rehearsal: a table with BOTH a declared rename AND an
+        // unrelated, separately-acknowledged column drop used to classify straight to DESTRUCTIVE,
+        // skipping the (perfectly safe) rename entirely -- the old column's data was left orphaned
+        // while the new column was added empty by the additive migration. No error, no refusal, a
+        // "successful" boot with quietly lost data.
+        String widgets = table("widgets");
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE " + widgets + " (id BIGINT PRIMARY KEY, name VARCHAR(50), legacy_flag BOOLEAN)");
+            statement.execute("INSERT INTO " + widgets + " (id, name, legacy_flag) VALUES (1, 'Alpha', TRUE)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        SchemaLifecycleExecutor.SchemaManifest manifestWithoutToken = manifest(
+                "sha256:new", List.of(widgets),
+                Map.of(widgets, List.of("id", "title")), Map.of(widgets, List.of()),
+                Map.of(widgets, Map.of("id", "BIGINT", "title", "VARCHAR(50)")),
+                Map.of(widgets, Map.of("title", "name")), Map.of(), false, "",
+                Map.of(), Map.of(), Map.of(), Map.of());
+        String expectedToken = DestructiveAckToken.compute("sha256:new",
+                SchemaDeltaReport.generate(dataSource, manifestWithoutToken).stableStrings());
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifest(
+                "sha256:new", List.of(widgets),
+                Map.of(widgets, List.of("id", "title")), Map.of(widgets, List.of()),
+                Map.of(widgets, Map.of("id", "BIGINT", "title", "VARCHAR(50)")),
+                Map.of(widgets, Map.of("title", "name")), Map.of(), false, expectedToken,
+                Map.of(), Map.of(), Map.of(), Map.of());
+
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, manifest);
+        assertTrue(result.performed());
+        assertFalse(result.safeAdditive());
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertFalse(hasColumn(metadata, widgets, "name"), "the old column name must be gone (renamed away)");
+            assertTrue(hasColumn(metadata, widgets, "title"), "the new column name must be present");
+            assertFalse(hasColumn(metadata, widgets, "legacy_flag"), "the unrelated acknowledged drop must still apply");
+            assertEquals("Alpha", readColumn(connection, widgets, "title", 1L),
+                    "the renamed column's data must be PRESERVED, not orphaned under the old name or empty under the new one");
+        }
+        HistoryRow row = latestHistoryRow(dataSource, widgets);
+        assertEquals("APPLIED", row.outcome());
+    }
+
     // ---- Unique constraint, clean data (twins H2 matrix row 12) -----------------------------------
 
     @Test

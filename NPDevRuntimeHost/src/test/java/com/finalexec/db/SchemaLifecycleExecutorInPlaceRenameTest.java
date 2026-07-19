@@ -126,16 +126,27 @@ class SchemaLifecycleExecutorInPlaceRenameTest {
                 "once the rename resolves, the only remaining diff (extra_col) is additive-eligible, so residual must be SAFE_ADDITIVE");
     }
 
+    /**
+     * LNCH-1 Phase 7 rehearsal fix: this test used to assert the OPPOSITE -- that a table with an
+     * unrelated, unexplained extra column left the rename completely unapplied ("no partial
+     * rename"). That was found live to be a real data-loss bug (see {@code attemptInPlaceRenames}'
+     * javadoc): a declared rename combined with a SEPARATE, legitimately destructive drop on the
+     * same table (e.g. the drop is itemized and acknowledged via the surgical path) used to silently
+     * orphan the renamed column's data instead of renaming it. The rename and the unrelated extra
+     * column are now independent concerns -- the rename applies regardless of what else on the table
+     * still needs the destructive path, and classify() still correctly reports DESTRUCTIVE for the
+     * remaining unresolved column.
+     */
     @Test
-    void tableWhoseDiffIsNotFullyExplainedByDeclaredRenamesIsLeftUntouched() throws SQLException {
+    void renameAppliesEvenWhenAnUnrelatedExtraColumnStillNeedsTheDestructivePath() throws SQLException {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, old_name VARCHAR(50), other_old VARCHAR(50), version BIGINT)");
             statement.execute("INSERT INTO widgets (id, old_name, other_old, version) VALUES (1, 'alpha', 'gamma', 1)");
         }
 
         // other_old has no declared rename and is not additive-eligible -- an ordinary drop mixed
-        // in with the rename. The whole table must be refused for the in-place path, not just
-        // partially renamed.
+        // in with the rename. That drop is a separate concern for the destructive path; it must not
+        // block the (independently safe) rename from applying in place.
         SchemaLifecycleExecutor.SchemaManifest manifest = manifest(
                 Map.of("widgets", List.of("id", "new_name", "version")),
                 Map.of("widgets", List.of()),
@@ -147,15 +158,14 @@ class SchemaLifecycleExecutorInPlaceRenameTest {
 
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
-            assertTrue(hasColumn(metadata, "widgets", "old_name"),
-                    "a table whose diff is not fully explained must be left completely untouched -- no partial rename");
-            assertFalse(hasColumn(metadata, "widgets", "new_name"),
-                    "the rename must not have been applied when the table as a whole is not eligible");
+            assertFalse(hasColumn(metadata, "widgets", "old_name"), "the rename must apply even though an unrelated column remains unresolved");
+            assertTrue(hasColumn(metadata, "widgets", "new_name"), "the renamed column must be present");
+            assertTrue(hasColumn(metadata, "widgets", "other_old"), "the unrelated, unexplained column is untouched by this step -- not this method's job");
         }
 
         assertEquals(SchemaLifecycleExecutor.SchemaChangeClassification.DESTRUCTIVE,
                 executor.classify(dataSource, manifest),
-                "an unresolved column (other_old) must route the table to the destructive path as the safety net");
+                "the still-unresolved other_old column must route the table to the destructive path as the safety net");
     }
 
     private static boolean hasColumn(DatabaseMetaData metadata, String table, String column) throws SQLException {
