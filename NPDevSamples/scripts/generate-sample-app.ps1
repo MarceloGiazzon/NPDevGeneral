@@ -36,7 +36,7 @@ else {
 
 $generatorRoot = Join-Path $NPDevRoot "NPDevGenerator"
 $runtimeHostRoot = Join-Path $NPDevRoot "NPDevRuntimeHost"
-$gradlew = Join-Path $generatorRoot "gradlew.bat"
+$gradlew = Get-NPDevGradleWrapperExecutable $generatorRoot
 $artifactRoot = Join-Path $OutputRoot "ArtifactNP"
 $finalAppRoot = Join-Path $OutputRoot "App"
 $reportsRoot = Join-Path $OutputRoot "Reports"

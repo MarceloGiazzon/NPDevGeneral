@@ -29,6 +29,37 @@ function Normalize-AbsolutePath([string]$PathValue) {
     return [System.IO.Path]::GetFullPath($PathValue)
 }
 
+# LNCH-20 (2026-07-19, scoping + Phase 1 fix): every caller of this file used to hardcode
+# "gradlew.bat" directly, which does not exist as an executable form on Linux/macOS (no shebang, no
+# execute bit) -- the exact mismatch that made LNCH-19's Linux CI (npdev-pr-gate.yml, which calls
+# generate-sample-app.ps1) likely to fail on ubuntu-latest despite PowerShell 7 itself being
+# cross-platform. Same resolution order already proven correct in scripts/npdev-common.ps1's
+# Get-NPDevGradleWrapperExecutable (used there by several quality-gate scripts) -- duplicated here
+# rather than dot-sourcing that file, since NPDevSamples/scripts/ is a deliberately self-contained
+# script family (it already has its own Get-NPDevLocalCacheRoot etc. rather than sharing npdev-common.ps1's).
+function Get-NPDevGradleWrapperExecutable([string]$ProjectRoot) {
+    $windowsWrapper = Join-Path $ProjectRoot "gradlew.bat"
+    $posixWrapper = Join-Path $ProjectRoot "gradlew"
+    if ($IsWindows) {
+        if (Test-Path -LiteralPath $windowsWrapper -PathType Leaf) {
+            return $windowsWrapper
+        }
+        if (Test-Path -LiteralPath $posixWrapper -PathType Leaf) {
+            return $posixWrapper
+        }
+    }
+    else {
+        if (Test-Path -LiteralPath $posixWrapper -PathType Leaf) {
+            return $posixWrapper
+        }
+        if (Test-Path -LiteralPath $windowsWrapper -PathType Leaf) {
+            return $windowsWrapper
+        }
+    }
+
+    throw ("Gradle wrapper not found in " + $ProjectRoot)
+}
+
 function Get-NPDevLocalCacheRoot([string]$WorkspaceRoot) {
     if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_LOCAL_CACHE_ROOT)) {
         return Normalize-AbsolutePath $env:NPDEV_LOCAL_CACHE_ROOT
