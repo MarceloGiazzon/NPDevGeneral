@@ -143,6 +143,15 @@ bound to both.
 Model change: rename `User.name` → `User.fullName` (safe, in-place), add optional `User.notes`
 (safe, additive), drop `User.active` (destructive).
 
+> **Stop the running app before regenerating.** `Build-NpdevApp.ps1` wipes the entire FinalApp
+> output directory on every run (`deleteBeforeMount`, per `docs/architecture/APP_UPGRADE_CONTRACT.md`)
+> — a real, load-bearing operational constraint, not just a style preference. If the app is actively
+> serving from that directory, the wipe can fail outright or leave it in an inconsistent state.
+> `-PlanOnly` and `-Upgrade` are no exception: stop the app first, run the command, then rebuild and
+> restart. `-PlanOnly`'s own diff is computed against the app's own prior `compiled-model.json`
+> captured just before the wipe, so this is safe to do even while planning an upgrade to that same
+> running app.
+
 **1. Preview the plan** before touching the live app, against the currently-deployed app's own
 prior state:
 
