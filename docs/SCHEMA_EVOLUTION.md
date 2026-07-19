@@ -77,6 +77,21 @@ Table renames are attempted before field renames, before anything else, on every
 fingerprint mismatch — so a table you renamed is never mistaken for "a table that no longer exists
 plus a brand-new one."
 
+### Marker lifecycle
+
+`renamedFrom` names the **immediately-previous** column/table name, not the original:
+
+- **On a SECOND rename** of the same field (`A → B`, then later `B → C`), set `renamedFrom` to
+  `"B"` — the name the currently-deployed database actually has — never back to `"A"`.
+- A marker whose old name no longer exists anywhere (every deployed database is already past it) is
+  harmless and may be kept or removed at will.
+- **The hazard, spelled out:** renaming `B → C` while the marker still says `A` makes the platform
+  see "drop `B` + add `C`" — a **destructive** item that will be offered for acknowledgment.
+  Acknowledging it drops `B`'s column and loses its data. **If a plan (`-PlanOnly`) shows a `DROP` of
+  a column you meant to rename, STOP and fix the marker** before proceeding. The plan preview emits a
+  `WARNINGS` block when a `renamedFrom` names a column the previous model has no record of — the
+  earliest signal that a marker has gone stale.
+
 ## New required fields
 
 Adding a `required` field to a concept whose table already has rows needs a value for every

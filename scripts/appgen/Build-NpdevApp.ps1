@@ -101,6 +101,16 @@ function Write-MigrationPlanTable {
     return
   }
 
+  # LNCH-1 remediation R6 (F7): non-fatal stale-marker warnings (exit code unchanged).
+  $warnings = @($PlanObj.warnings)
+  if ($warnings.Count -gt 0) {
+    Write-Host ''
+    Write-Host "WARNINGS ($($warnings.Count)):" -ForegroundColor Yellow
+    foreach ($w in $warnings) {
+      Write-Host "  ! $w" -ForegroundColor Yellow
+    }
+  }
+
   $safeItems = @($items | Where-Object { -not $_.destructive })
   $destructiveItems = @($items | Where-Object { $_.destructive })
 

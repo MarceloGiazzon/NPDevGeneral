@@ -159,6 +159,25 @@ class MigrationPlanEmitterTest {
         assertEquals("name", item.renamedFrom());
         assertFalse(item.destructive(), "a resolved rename is safe, not destructive");
         assertNull(plan.destructiveAckToken());
+        assertTrue(plan.warnings().isEmpty(), "an ordinary first rename (marker names a real previous column) must not warn: " + plan.warnings());
+    }
+
+    @Test
+    void staleRenamedFromMarkerEmitsAWarning() {
+        // The previous model has column 'surname'; the new field declares renamedFrom 'name' -- a
+        // column the previous model never had (the classic "renamed twice, marker never updated"
+        // stale marker). R6/F7: this must surface a warning (and, indeed, degrades to a drop+add).
+        CompiledModel oldModel = model(concept("Widget", "", id(), field("surname", "string", false, false)));
+        CompiledField fullName = new CompiledField(
+                "fullName", "string", "java.lang.String", false, false, false,
+                List.of(), null, null, null, null, List.of(), null, null, "name");
+        CompiledModel newModel = model(concept("Widget", "", id(), fullName));
+
+        MigrationPlan plan = MigrationPlanEmitter.compute(newModel, oldModel, plan("t-stale"));
+
+        assertEquals(1, plan.warnings().size(), "a renamedFrom naming a column absent from the previous model must warn: " + plan.warnings());
+        assertTrue(plan.warnings().get(0).contains("renamedFrom 'name'"), plan.warnings().get(0));
+        assertTrue(plan.warnings().get(0).contains("stale marker"), plan.warnings().get(0));
     }
 
     @Test

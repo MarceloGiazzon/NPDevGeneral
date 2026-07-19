@@ -119,10 +119,11 @@ public final class MigrationPlanEmitter {
                 definitionForFingerprint(databasePlan), previousModelOrNull);
 
         List<PlanItem> items = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
         if (databasePlan.createBusinessTables()) {
             BusinessTableMetadata oldMeta = SchemaRealizationEmitter.computeBusinessTableMetadata(previousModelOrNull);
             BusinessTableMetadata newMeta = SchemaRealizationEmitter.computeBusinessTableMetadata(newModel);
-            items.addAll(diffBusinessTables(oldMeta, newMeta));
+            items.addAll(diffBusinessTables(oldMeta, newMeta, warnings));
         }
         items.sort(Comparator.comparing(MigrationPlanEmitter::sortKey));
 
@@ -136,7 +137,7 @@ public final class MigrationPlanEmitter {
                 ? null
                 : DestructiveAckToken.compute(toFingerprint, destructiveStableStrings);
 
-        return new MigrationPlan(false, fromFingerprint, toFingerprint, items, ackToken);
+        return new MigrationPlan(false, fromFingerprint, toFingerprint, items, ackToken, warnings);
     }
 
     /**
@@ -154,7 +155,8 @@ public final class MigrationPlanEmitter {
                 databasePlan.schemaLifecycle());
     }
 
-    private static List<PlanItem> diffBusinessTables(BusinessTableMetadata oldMeta, BusinessTableMetadata newMeta) {
+    private static List<PlanItem> diffBusinessTables(BusinessTableMetadata oldMeta, BusinessTableMetadata newMeta,
+            List<String> warnings) {
         List<PlanItem> items = new ArrayList<>();
 
         Set<String> oldTables = new LinkedHashSet<>(oldMeta.businessTables());
@@ -191,7 +193,7 @@ public final class MigrationPlanEmitter {
         }
 
         for (Map.Entry<String, String> pair : columnDiffPairs.entrySet()) {
-            items.addAll(diffColumns(pair.getKey(), pair.getValue(), oldMeta, newMeta));
+            items.addAll(diffColumns(pair.getKey(), pair.getValue(), oldMeta, newMeta, warnings));
             items.addAll(diffUniqueConstraints(pair.getKey(), pair.getValue(), oldMeta, newMeta));
         }
 
@@ -199,7 +201,8 @@ public final class MigrationPlanEmitter {
     }
 
     private static List<PlanItem> diffColumns(
-            String newTable, String oldTable, BusinessTableMetadata oldMeta, BusinessTableMetadata newMeta
+            String newTable, String oldTable, BusinessTableMetadata oldMeta, BusinessTableMetadata newMeta,
+            List<String> warnings
     ) {
         List<PlanItem> items = new ArrayList<>();
 
@@ -211,6 +214,19 @@ public final class MigrationPlanEmitter {
         extraColumns.removeAll(newColumns);
 
         Map<String, String> declaredRenames = newMeta.businessTableRenamedColumns().getOrDefault(newTable, Map.of());
+        // R6 (F7): a stale renamedFrom marker -- one naming a column the PREVIOUS model has no record
+        // of (e.g. a second rename B->C that never updated the marker off the original A) -- silently
+        // degrades a safe rename into a destructive drop-and-add. Warn on it in the plan preview: the
+        // earliest signal, before an operator acknowledges a DROP they meant as a rename.
+        for (Map.Entry<String, String> rename : declaredRenames.entrySet()) {
+            String renamedFrom = rename.getValue();
+            if (renamedFrom != null && !renamedFrom.isBlank() && !oldColumns.contains(renamedFrom)) {
+                warnings.add("field '" + rename.getKey() + "' declares renamedFrom '" + renamedFrom
+                        + "' but the previous model has no such column on table '" + oldTable + "'"
+                        + " -- if you renamed twice, update renamedFrom to the immediately-previous name;"
+                        + " a stale marker can turn a rename into a destructive drop.");
+            }
+        }
         RenameResolution.Result resolution = RenameResolution.resolve(missingColumns, extraColumns, declaredRenames);
 
         Map<String, String> oldTypes = oldMeta.businessTableColumnTypes().getOrDefault(oldTable, Map.of());

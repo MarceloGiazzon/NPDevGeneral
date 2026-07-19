@@ -56,6 +56,10 @@ Format: see `docs/RELEASE_PROCESS.md`. Dates are release-tag dates, not commit d
   refuses the boot with the new expected token printed; no data is at risk).
 
 ### Fixed
+- LNCH-1 remediation R6: a stale `renamedFrom` marker (one naming a column the previous model no
+  longer has — the "renamed twice, marker never updated" case, which silently degrades a rename into
+  a destructive drop) now surfaces a `WARNINGS` block in the `-PlanOnly` preview and a WARN log line
+  at boot. Documented the marker lifecycle in docs/SCHEMA_EVOLUTION.md.
 - LNCH-1 remediation R4: every mutating migration pass (table rename, column rename, NOT NULL
   relaxation, type widening, required-field backfill) now writes a write-before-execute
   `npdev_schema_history` row carrying the step name and per-item detail; the unique-precheck refusal

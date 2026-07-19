@@ -34,7 +34,8 @@ public record MigrationPlan(
         String fromFingerprint,
         String toFingerprint,
         List<PlanItem> items,
-        String destructiveAckToken
+        String destructiveAckToken,
+        List<String> warnings
 ) {
 
     private static final String MIGRATION_PLAN_VERSION = "1";
@@ -42,6 +43,14 @@ public record MigrationPlan(
 
     public MigrationPlan {
         items = items == null ? List.of() : List.copyOf(items);
+        warnings = warnings == null ? List.of() : List.copyOf(warnings);
+    }
+
+    /** Back-compat 5-arg constructor (no warnings) for the many existing call sites/tests that
+     * predate LNCH-1 remediation R6's stale-marker warnings. */
+    public MigrationPlan(boolean freshInstall, String fromFingerprint, String toFingerprint,
+            List<PlanItem> items, String destructiveAckToken) {
+        this(freshInstall, fromFingerprint, toFingerprint, items, destructiveAckToken, List.of());
     }
 
     /** Every destructive item's stable string, in list order -- the exact input
@@ -63,6 +72,11 @@ public record MigrationPlan(
         root.put("fromFingerprint", fromFingerprint);
         root.put("toFingerprint", toFingerprint);
         root.put("destructiveAckToken", destructiveAckToken);
+
+        ArrayNode warningsNode = root.putArray("warnings");
+        for (String warning : warnings) {
+            warningsNode.add(warning);
+        }
 
         ArrayNode itemsNode = root.putArray("items");
         for (PlanItem item : items) {

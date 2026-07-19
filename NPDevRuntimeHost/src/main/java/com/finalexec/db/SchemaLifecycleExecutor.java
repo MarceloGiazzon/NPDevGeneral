@@ -705,6 +705,25 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 Set<String> missingInDb = new LinkedHashSet<>(expected);
                 missingInDb.removeAll(actual);
 
+                // R6 (F7): cheap boot-side symmetry with the plan's stale-marker warning. When a
+                // declared rename's OLD column is absent live AND its NEW column is also absent, the
+                // marker explained nothing and the column is still missing -- this table is heading to
+                // the destructive path, quite possibly because a stale marker turned a rename into a
+                // drop. Log one WARN naming the suspect marker; no behavior change.
+                for (Map.Entry<String, String> declared : declaredRenames.entrySet()) {
+                    String newName = declared.getKey();
+                    String oldName = declared.getValue();
+                    if (oldName != null && !oldName.isBlank()
+                            && !actual.contains(oldName.toLowerCase(Locale.ROOT))
+                            && !actual.contains(newName.toLowerCase(Locale.ROOT))) {
+                        System.out.println("NPDev schema lifecycle: WARNING -- declared rename '" + oldName
+                                + "' -> '" + newName + "' on table '" + table + "' explains nothing: neither the "
+                                + "old nor the new column exists live. A stale renamedFrom marker (e.g. a second "
+                                + "rename that never updated the marker to the immediately-previous name) can turn "
+                                + "a rename into a destructive drop -- see docs/SCHEMA_EVOLUTION.md#marker-lifecycle.");
+                    }
+                }
+
                 RenameResolution.Result resolution = RenameResolution.resolve(missingInDb, extraInDb, declaredRenames);
                 if (resolution.explainedRenames().isEmpty()) {
                     continue;

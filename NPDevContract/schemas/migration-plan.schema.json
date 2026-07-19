@@ -37,6 +37,11 @@
       "type": "array",
       "description": "Every detected change between the previous and new compiled model, safe and destructive alike, in a deterministic order. Empty for a fresh install or a no-change build.",
       "items": { "$ref": "#/$defs/migrationPlanItem" }
+    },
+    "warnings": {
+      "type": "array",
+      "description": "LNCH-1 remediation R6 (F7). Non-fatal advisory warnings surfaced during the diff -- currently a stale renamedFrom marker (a rename whose declared previous name does not exist in the previous model, which would silently degrade a rename into a destructive drop). Empty when there is nothing to warn about. Does not affect the exit code.",
+      "items": { "type": "string" }
     }
   },
   "$defs": {
