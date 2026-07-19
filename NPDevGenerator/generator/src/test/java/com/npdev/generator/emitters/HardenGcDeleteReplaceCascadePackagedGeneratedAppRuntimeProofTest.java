@@ -495,11 +495,18 @@ final class HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest {
      * (confirmed live). Also defensively marks the resolved wrapper executable -- a fresh copy
      * made by {@code FinalAppAssembler} (or any plain file copy) does not necessarily preserve
      * the source file's POSIX execute bit. */
-    private static Path gradlewPath(Path root) {
+    private static Path gradlewPath(Path root) throws java.io.IOException {
         boolean windows = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win");
         Path gradlew = root.resolve(windows ? "gradlew.bat" : "gradlew");
         if (!windows) {
-            gradlew.toFile().setExecutable(true);
+            // File.setExecutable() alone was confirmed live NOT to unblock this -- use the
+            // POSIX permission API explicitly instead, and fail loudly with a diagnosable
+            // message (does the file even exist at this point?) rather than let a bare
+            // IOException from ProcessBuilder.start() obscure the real cause a second time.
+            if (!Files.exists(gradlew)) {
+                throw new java.io.IOException("gradlewPath: " + gradlew + " does not exist -- final app assembly may not have completed yet");
+            }
+            Files.setPosixFilePermissions(gradlew, java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x"));
         }
         return gradlew;
     }
