@@ -825,7 +825,7 @@ gate's PR auto-run trigger (commit `b3b1253`) is prior art for the wiring style.
 
 ### LNCH-20 — Cross-platform build scripts
 
-**Status:** OPEN · **Priority:** P2 · **Effort:** M
+**Status:** OPEN (scoped, not started) · **Priority:** P2 · **Effort:** M
 
 **Why.** Windows-only scripts and `D:\`-rooted path assumptions mean a contributor or
 evaluator on macOS/Linux cannot even build the platform, and LNCH-19's Linux CI will trip on
@@ -834,6 +834,45 @@ defaults), keep PowerShell 7 as the script language (it is cross-platform) but p
 drive-letter literals and Windows-only assumptions (H2 TCP launcher, file-lock workarounds);
 CI (LNCH-19) becomes the enforcement mechanism. **DoD.** Clean clone → generate → build →
 boot a sample app on a Linux runner using the same scripts.
+
+**Scoping pass (2026-07-19, research only, no code changed — user explicitly asked to scope, not
+implement).** Smaller than the original framing suggests: the Java/Gradle/Spring runtime is
+already proven on Linux (LNCH-19's CI runs DSL/kernel/generator/RuntimeHost tests on
+`ubuntu-latest` today). The real, unfixed gap is narrowly the PowerShell orchestration layer's
+`gradlew.bat`/path literals -- and a reusable, already-proven fix pattern exists
+(`scripts/npdev-common.ps1:282-308`'s `Get-NPDevGradleWrapperExecutable`, `$IsWindows`-branched,
+already consumed by several gate scripts) -- most of the work is applying an existing pattern
+consistently, not inventing new cross-platform logic. `NPDevCli/npdev_cli.py` is already correctly
+`os.name`-branched. The "H2 TCP launcher"/"file-lock workarounds" the original description worried
+about turned out to be non-issues: the H2Server launcher's PowerShell cmdlets are cross-platform
+already (only its hardcoded `D:\` jar-search path needs fixing, same bucket as everything else),
+and the file-lock workaround is documentation-only guidance, not scripted anywhere.
+
+**Important DoD-feasibility flag, directly relevant to LNCH-19's verification PR (see LNCH-19's own
+entry above):** `.github/workflows/npdev-pr-gate.yml` invokes
+`NPDevSamples/scripts/generate-sample-app.ps1`, which hardcodes `gradlew.bat` (line 39) and executes
+it via `pwsh` -- a Windows batch file with no shebang/execute bit, which should fail outright on the
+`ubuntu-latest` runner LNCH-19's workflow targets. Not independently confirmed against a real
+Actions run (no `gh` CLI); if the `lnch19-ci-verify` PR comes back red, this is the most likely
+reason, and it's a small, well-understood fix (port `generate-sample-app.ps1`/`run-sample-app.ps1`/
+`sample-common.ps1` onto the same `Get-NPDevGradleWrapperExecutable` pattern already proven
+elsewhere) -- not a sign LNCH-19 itself is broken.
+
+**Proposed phasing (not started):**
+- Phase 1 (~0.5-1 day, on the DoD critical path): fix `generate-sample-app.ps1`/`run-sample-app.ps1`/
+  `sample-common.ps1` -- exactly the scripts LNCH-19's CI already tries to run. Likely sufficient to
+  satisfy the DoD alone.
+- Phase 2 (~1-2 days): same fix for `scripts/appgen/Build-NpdevApp.ps1`/`Build-ClaudeApp.ps1` (the
+  real-app builder path used outside CI) -- needed for "a contributor can build the platform" to be
+  true for real apps, not just the CI sample.
+- Phase 3 (~1 day, deferrable): same mechanical fix across ~14 remaining quality-gate scripts with
+  the identical `gradlew.bat` literal.
+- Phase 4 (separate ticket, not part of this DoD): `run-item20-postgres-proof.ps1`'s Docker Desktop
+  launcher needs a real Linux-Docker-daemon branch -- already isolated to a `windows-latest`-gated
+  CI job, not on the critical path.
+
+Total estimated effort for DoD closure (Phases 1-2): ~2-3 days. Full script-tree parity (+Phase 3):
++1 day.
 
 ### LNCH-21 — Generated-app upgrade contract
 
