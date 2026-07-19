@@ -56,6 +56,10 @@ Format: see `docs/RELEASE_PROCESS.md`. Dates are release-tag dates, not commit d
   refuses the boot with the new expected token printed; no data is at risk).
 
 ### Fixed
+- LNCH-1 remediation R3: a schema-ahead-of-build detector now refuses a fingerprint-MATCH boot whose
+  live database is missing a core (non-additive) column this build requires — the "redeployed the
+  old jar against a database a newer build already migrated" case, which previously booted deceptively
+  clean and then failed at runtime. Recovery is roll-forward or restore (see docs/SCHEMA_EVOLUTION.md).
 - LNCH-1 remediation R2: a new required field added in the SAME upgrade as an acknowledged
   destructive item is now backfilled-and-tightened (or refused if it has no literal default) on that
   boot, instead of being silently skipped and left permanently nullable. Enforcement moved to a

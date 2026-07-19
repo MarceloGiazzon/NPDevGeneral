@@ -954,6 +954,48 @@ class SchemaLifecycleExecutorProofMatrixTest {
         assertSecondBootIsNoOp(manifest);
     }
 
+    @Test
+    @DisplayName("Scenario 21 (R3/F4): redeploying an OLD jar against a schema a NEWER build already "
+            + "migrated -> schema-ahead-of-build refusal, not a deceptively clean boot")
+    void scenario21_schemaAheadOfBuildIsRefusedNotBootedClean() throws SQLException {
+        // Live state after a newer build renamed widgets.name -> full_name and then refused its
+        // destructive item (so the fingerprint was never advanced past the old build's value).
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, full_name VARCHAR(50))");
+            statement.execute("INSERT INTO widgets (id, full_name) VALUES (1, 'Alpha')");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        // The OLD jar still expects the pre-rename column 'name' and carries the OLD fingerprint --
+        // which MATCHES the stored one, so without the R3 detector it would boot "clean" and then
+        // fail at runtime referencing a column that no longer exists.
+        SchemaLifecycleExecutor.SchemaManifest oldManifest = manifest(
+                "sha256:old", List.of("widgets"),
+                Map.of("widgets", List.of("id", "name")), Map.of("widgets", List.of()),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)")),
+                Map.of(), Map.of(), false, "", Map.of(), Map.of(), Map.of(), Map.of(), true);
+
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.beforeMigrate(dataSource, oldManifest));
+        assertTrue(refusal.getMessage().contains("missing column(s) this build requires"), refusal.getMessage());
+        assertTrue(refusal.getMessage().contains("widgets.name"), refusal.getMessage());
+        assertTrue(refusal.getMessage().contains("#refusals-and-rollback"), refusal.getMessage());
+        HistoryRow row = latestHistoryRow(dataSource);
+        assertEquals("REFUSED", row.outcome());
+
+        // The legitimate roll-forward -- the NEWER build whose manifest matches the live (renamed)
+        // schema -- must NOT be blocked (its fingerprint mismatches, so the detector never runs).
+        SchemaLifecycleExecutor.SchemaManifest newManifest = manifest(
+                "sha256:new", List.of("widgets"),
+                Map.of("widgets", List.of("id", "full_name")), Map.of("widgets", List.of()),
+                Map.of("widgets", Map.of("id", "BIGINT", "full_name", "VARCHAR(50)")),
+                Map.of(), Map.of(), false, "", Map.of(), Map.of(), Map.of(), Map.of(), true);
+        SchemaLifecycleExecutor.DestructiveRecreation rollForward = executor.beforeMigrate(dataSource, newManifest);
+        assertFalse(rollForward.performed(), "the roll-forward build must boot without destructive recreation");
+        executor.afterMigrate(dataSource, newManifest);
+        assertSecondBootIsNoOp(newManifest);
+    }
+
     /** Scenario 17's two-concept manifest (widgets gains required 'status' with a "PENDING" literal
      * default; gadgets drops 'legacy_flag'), parameterized only by the acknowledgment token. */
     private static SchemaLifecycleExecutor.SchemaManifest scenarioManifest(String token) {

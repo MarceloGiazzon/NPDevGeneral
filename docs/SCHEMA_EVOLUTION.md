@@ -302,6 +302,10 @@ missing):
   a different, unrelated feature — not something an app upgrade does.
 - **InMemory-storage apps have no DDL.** This entire mechanism no-ops cleanly for them (checked via
   `manifest.physicalDatabase()`) — there is nothing to migrate.
+- **Refusals are not side-effect-free.** The safe convergent steps (table/field renames, NOT NULL
+  relaxations) apply before the acknowledgment decision, so a refused upgrade has already applied
+  them; recovery is roll-forward or restore, never redeploying the old jar (which the schema-ahead
+  detector now refuses explicitly). See [Refusals and rollback](#refusals-and-rollback).
 
 ## See also
 

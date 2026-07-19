@@ -112,6 +112,22 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             return DestructiveRecreation.none();
         }
         if (stored.equals(manifest.schemaFingerprint())) {
+            // LNCH-1 remediation R3 (F4): schema-ahead-of-build detector. A matching fingerprint is
+            // the fast-path "nothing changed" signal, but it is ALSO what an OLDER jar sees after a
+            // NEWER build migrated this database and was then rolled back to this jar -- the stored
+            // fingerprint still matches this (old) build, so without this guard the app would boot
+            // "clean" against a schema whose columns have been renamed away or dropped, then fail at
+            // runtime with no diagnostics. Verify the live schema actually still contains what THIS
+            // build requires before trusting the match.
+            List<String> missing = findSchemaAheadMissingColumns(dataSource, manifest);
+            if (!missing.isEmpty()) {
+                writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), null, null, null, "REFUSED");
+                throw new IllegalStateException("Stored schema fingerprint matches this build, but the live "
+                        + "database is missing column(s) this build requires: " + missing + ". This usually means "
+                        + "a NEWER build already migrated this database (e.g. an upgrade was attempted and then "
+                        + "rolled back to this older jar). Roll forward to the newer build, or restore from "
+                        + "backup/snapshot -- see docs/SCHEMA_EVOLUTION.md#refusals-and-rollback.");
+            }
             System.out.println("NPDev schema lifecycle: stored schema fingerprint matches generated schema fingerprint; no destructive recreation required.");
             return DestructiveRecreation.none();
         }
@@ -1644,6 +1660,52 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             columns = readActualColumns(metadata, table, table.toUpperCase(Locale.ROOT));
         }
         return columns;
+    }
+
+    /**
+     * LNCH-1 remediation R3 (F4): the schema-ahead-of-build check run on a fingerprint-MATCH boot.
+     * For every table this build's manifest declares, confirms the live database still contains every
+     * declared column (an entirely-missing table counts as all its columns missing -- the classic
+     * "a newer build renamed this table away" case). Returns the {@code table.column} identifiers that
+     * are missing, empty when the live schema fully satisfies this build.
+     *
+     * <p>Comparison is case-normalized to lower case exactly as {@link #readActualColumns} already
+     * normalizes live column names, so an engine that folds identifier case (H2 upper, Postgres
+     * lower) never produces a spurious "missing column". A metadata read failure is treated as
+     * "cannot prove anything missing" (returns empty) -- this guard must never itself turn a healthy
+     * matched-fingerprint boot into a refusal on a transient introspection hiccup.
+     *
+     * <p><b>Additive-eligible columns are deliberately excluded.</b> An additive-eligible column is
+     * one the ordinary R__ repeatable migration re-adds idempotently ({@code ADD COLUMN IF NOT
+     * EXISTS}) on every boot -- so a missing one is self-healing (the very next {@code flyway.migrate()}
+     * restores it) and never a schema-ahead symptom. Only a missing NON-additive column -- a core
+     * column nothing re-adds -- signals that a newer build renamed or dropped it out from under this
+     * jar. (This exclusion is also what keeps the detector from false-positiving in the direct-call
+     * unit tests, where SAFE_ADDITIVE columns are declared in the manifest but never physically added
+     * because those tests bypass {@code flyway.migrate()}.)
+     */
+    private static List<String> findSchemaAheadMissingColumns(DataSource dataSource, SchemaManifest manifest) {
+        List<String> missing = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            for (Map.Entry<String, List<String>> entry : manifest.businessTableColumns().entrySet()) {
+                String table = entry.getKey();
+                Set<String> live = readActualColumns(metadata, table);
+                Set<String> additiveEligible = new LinkedHashSet<>(
+                        manifest.businessTableAdditiveColumns().getOrDefault(table, List.of()));
+                for (String column : entry.getValue()) {
+                    if (additiveEligible.contains(column)) {
+                        continue; // self-healing on the next flyway.migrate() -- not a schema-ahead symptom
+                    }
+                    if (!live.contains(column.toLowerCase(Locale.ROOT))) {
+                        missing.add(table + "." + column);
+                    }
+                }
+            }
+        } catch (SQLException exception) {
+            return List.of();
+        }
+        return missing;
     }
 
     /**
