@@ -8,6 +8,9 @@ $ErrorActionPreference = "Stop"
 
 function Convert-ToRepoPath {
     param([string]$Root, [string]$PathValue)
+    if ([string]::IsNullOrWhiteSpace($PathValue)) {
+        return ""
+    }
     $resolvedRoot = [System.IO.Path]::GetFullPath($Root)
     $resolvedPath = [System.IO.Path]::GetFullPath($PathValue)
     if ($resolvedPath.StartsWith($resolvedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -118,46 +121,41 @@ Add-Check $checks "flyway-postgres-migrate-validate-proof" $flywayValidateOrMigr
         testXmlPath = Convert-ToRepoPath $root $flywayXmlProof
     })
 
-$planResult = Invoke-CommandCapture "npdev-generate-plan-only" {
-    & .\npdev.bat generate app `
-        --model $modelPath `
-        --config $configPath `
-        --output $planOutput `
-        --migrationMode additive-only `
-        --migrationPlanOnly `
-        --migrationRiskThreshold SAFE_ADDITIVE `
-        --migrationDecisionReport $planDecision
-}
-$planDecisionJson = if (Test-Path -LiteralPath $planDecision -PathType Leaf) { Get-Content -Raw -LiteralPath $planDecision | ConvertFrom-Json } else { $null }
-$planDryRunPath = if ($null -ne $planDecisionJson) { [string]$planDecisionJson.dryRunSqlPath } else { "" }
-$migrationPlanOnlySupported = $planResult.passed -and $null -ne $planDecisionJson -and [bool]$planDecisionJson.migrationPlanOnly
-$dryRunSqlAttached = $migrationPlanOnlySupported -and (Test-Path -LiteralPath $planDryRunPath -PathType Leaf)
-Add-Check $checks "migration-plan-only-dry-run-sql" ($migrationPlanOnlySupported -and $dryRunSqlAttached) ([pscustomobject]@{
+# SKIPPED, not attempted: `npdev generate app` never had --migrationMode/--migrationPlanOnly/
+# --migrationDecisionReport (confirmed via NPDevCli/npdev_cli.py -- that subcommand only ever
+# accepted --model/--config/--output/--require-db-definition). Those flags belong to a DIFFERENT
+# subcommand, `npdev migration diff` (npdev_cli.py:run_migration_diff), which itself needs a
+# --baseline snapshot file this script never produces -- so porting to the correct CLI shape is a
+# real, separate redesign, not a one-line rename. Confirmed live (LNCH-1, 2026-07-19) that the
+# underlying generator-level logic these two steps were meant to exercise is NOT dead: the JUnit
+# suite above (StatefulMigrationPlannerTest et al.) passes on its own, proving the capability works
+# at the unit level -- it's specifically this script's npdev.bat shell-out shape that went stale.
+# Previously this crashed obscurely on `[System.IO.Path]::GetFullPath($PathValue)` with an empty
+# path (Convert-ToRepoPath called on the never-written decision report's dryRunSqlPath) instead of
+# reporting a clear reason. LNCH-1's `Build-NpdevApp.ps1 -PlanOnly`/`-Upgrade` is the modern,
+# live-verified equivalent of "preview a migration plan before it touches anything" this script was
+# trying to prove -- see docs/SCHEMA_EVOLUTION.md.
+$planResult = [pscustomobject]@{ name = "npdev-generate-plan-only"; exitCode = -1; expectedExitCode = 0; passed = $false; durationSeconds = 0; outputTail = @("SKIPPED: see comment above this block in the script -- npdev generate app never supported --migrationMode/--migrationPlanOnly/--migrationDecisionReport.") }
+Add-Check $checks "migration-plan-only-dry-run-sql" $false ([pscustomobject]@{
         command = "npdev generate app --migrationMode additive-only --migrationPlanOnly"
         result = $planResult
-        decisionPath = Convert-ToRepoPath $root $planDecision
-        dryRunSqlPath = Convert-ToRepoPath $root $planDryRunPath
+        skippedReason = "Stale CLI contract -- see script comment. Use 'Build-NpdevApp.ps1 -Upgrade -PlanOnly' instead (docs/SCHEMA_EVOLUTION.md)."
     })
+$planDecisionJson = $null
+$planDryRunPath = ""
+$migrationPlanOnlySupported = $false
+$dryRunSqlAttached = $false
 
-$generateResult = Invoke-CommandCapture "npdev-generate-additive-only" {
-    & .\npdev.bat generate app `
-        --model $modelPath `
-        --config $configPath `
-        --output $generateOutput `
-        --migrationMode additive-only `
-        --migrationRiskThreshold SAFE_ADDITIVE `
-        --migrationDecisionReport $generateDecision
-}
-$generateDecisionJson = if (Test-Path -LiteralPath $generateDecision -PathType Leaf) { Get-Content -Raw -LiteralPath $generateDecision | ConvertFrom-Json } else { $null }
-$versionedMigrations = @(Get-ChildItem -LiteralPath (Join-Path $generateOutput "db/migration") -Filter "V*.sql" -File -ErrorAction SilentlyContinue)
-$versionedFlywayMigrationGenerated = $generateResult.passed -and $versionedMigrations.Count -gt 0 -and $null -ne $generateDecisionJson -and [string]$generateDecisionJson.versionedFlywayMigrationPath
-$safeAdditiveChangesAllowed = $generateResult.passed -and $null -ne $generateDecisionJson -and [string]$generateDecisionJson.overallRisk -eq "SAFE_ADDITIVE"
-Add-Check $checks "additive-only-generation-versioned-flyway" ($versionedFlywayMigrationGenerated -and $safeAdditiveChangesAllowed) ([pscustomobject]@{
+$generateResult = [pscustomobject]@{ name = "npdev-generate-additive-only"; exitCode = -1; expectedExitCode = 0; passed = $false; durationSeconds = 0; outputTail = @("SKIPPED: see comment above the npdev-generate-plan-only block in the script -- same stale CLI contract.") }
+Add-Check $checks "additive-only-generation-versioned-flyway" $false ([pscustomobject]@{
         command = "npdev generate app --migrationMode additive-only"
         result = $generateResult
-        decisionPath = Convert-ToRepoPath $root $generateDecision
-        versionedMigrations = @($versionedMigrations | ForEach-Object { Convert-ToRepoPath $root $_.FullName })
+        skippedReason = "Stale CLI contract -- see script comment. Use 'Build-NpdevApp.ps1 -Upgrade -PlanOnly' instead (docs/SCHEMA_EVOLUTION.md)."
     })
+$generateDecisionJson = $null
+$versionedMigrations = @()
+$versionedFlywayMigrationGenerated = $false
+$safeAdditiveChangesAllowed = $false
 
 $runtimePreflightResult = Invoke-CommandCapture "runtime-migration-static-preflight" {
     & .\gradlew.bat -p NPDevRuntimeHost runtimeMigrationPreflight
@@ -211,7 +209,33 @@ $report = [pscustomobject]@{
     flywayPostgresProofPath = Convert-ToRepoPath $root $flywayProofJson
     versionedFlywayMigrationPaths = @($versionedMigrations | ForEach-Object { Convert-ToRepoPath $root $_.FullName })
     checks = @($checks)
-    findings = @()
+    findings = @(
+        "npdev-generate-plan-only and npdev-generate-additive-only are SKIPPED, not run: they " +
+        "shell out to 'npdev generate app' with --migrationMode/--migrationPlanOnly/" +
+        "--migrationDecisionReport, flags that subcommand never supported (confirmed via " +
+        "NPDevCli/npdev_cli.py). The correct flags belong to 'npdev migration diff', which needs a " +
+        "--baseline snapshot this script doesn't produce -- porting is a real redesign, not done " +
+        "here. The underlying generator logic is confirmed alive (StatefulMigrationPlannerTest et " +
+        "al. pass independently); LNCH-1's Build-NpdevApp.ps1 -PlanOnly/-Upgrade is the modern, " +
+        "live-verified equivalent of what these two checks were trying to prove -- see " +
+        "docs/SCHEMA_EVOLUTION.md.",
+        "Fixing the crash above (2026-07-19) surfaced two FURTHER pre-existing, previously-invisible " +
+        "failures this script never reached before (the crash always fired first): (1) " +
+        "'flyway-postgres-migrate-validate-proof' -- the :generator:test --tests " +
+        "'*StatefulFlywayPostgresMigrationProofTest' invocation reports BUILD SUCCESSFUL but " +
+        "produces zero test-results output (confirmed: no XML under " +
+        "NPDevGenerator/generator/build/test-results/test after a clean --rerun-tasks run), meaning " +
+        "the test filter matches nothing -- root cause not investigated further (a separate, " +
+        "unbounded audit). (2) 'runtime-migration-static-preflight-passed' -- " +
+        "'gradlew.bat -p NPDevRuntimeHost runtimeMigrationPreflight' fails with " +
+        "\"Task 'runtimeMigrationPreflight' not found in root project 'FinalExec'\" -- " +
+        "NPDevRuntimeHost is a template, not a standalone buildable project (see its own " +
+        "build.gradle.template header comment: \"build from the generated final app root\"), so " +
+        "this step was never going to resolve a project at that path; whether the task still exists " +
+        "in a REAL generated app's build.gradle was not checked. Neither issue was introduced or " +
+        "fixed this session -- both are now documented instead of silently masked by the earlier " +
+        "crash, which is the actionable improvement this pass made."
+    )
     doesNotSolve = @(
         "Does not run destructive migrations against a live production database.",
         "Does not promote generated CP8 smoke artifacts into committed migration history.",
