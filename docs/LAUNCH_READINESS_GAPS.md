@@ -800,6 +800,16 @@ Actions run this session (no `gh` CLI access) — every Gradle task path was con
 local `--dry-run` and all workflow YAML confirmed syntactically valid, but that is a weaker bar than
 a real runner. A future session should confirm an actual Actions run before considering this DONE.
 
+**Update (2026-07-19).** User explicitly asked to verify this. Pushed the branch's accumulated
+commits to `origin/beta1-vision-spine` and prepared a small, deliberately-scoped verification PR:
+branch `lnch19-ci-verify` (a single empty commit, no file changes) pushed to origin, targeting
+`beta1-vision-spine` as base (NOT `main` -- opening against `main` would propose merging 204
+commits, a much bigger action than "verify CI runs"). Could not open the PR object itself (no `gh`
+CLI in this environment); GitHub returned the direct creation link
+(`https://github.com/MarceloGiazzon/NPDevGeneral/pull/new/lnch19-ci-verify`) for the user to open
+with one click, which will trigger `npdev-pr-gate.yml` for the first time ever. Still PARTIAL until
+that Actions run is actually observed green.
+
 **Why.** All four quality gates (`scripts/quality/run-*.ps1`) run only when someone runs them
 on one Windows machine; `ReleaseGateValidator` CI-wiring is the one PARTIAL item left in the
 old roadmap (BOND-B4, "needs your CI-trigger call" — this document is that call: wire it).
