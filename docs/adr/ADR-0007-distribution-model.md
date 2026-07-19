@@ -73,30 +73,45 @@ written into the maturity ledger.
 
 ### 5. Naming/trademark check — "NPDev"
 
-**Not resolved by this ADR — and a preliminary search found a real, concrete naming collision
-worth your attention before this goes further.**
+**Not resolved by this ADR — a preliminary search found several real naming collisions worth
+attention before this goes further.**
 
 A real trademark clearance requires a professional search (USPTO/equivalent trademark databases,
 common-law usage search) that this session cannot perform. What this ADR does instead: records
-the check as an explicit, tracked open item, plus reports what a preliminary web search (2026-07-17)
-actually turned up — not a substitute for real clearance, but more than "no obvious conflict":
+the check as an explicit, tracked open item, plus reports what preliminary web searches
+(2026-07-17, deepened 2026-07-19 at the project owner's explicit request for more searches — still
+not a substitute for real clearance) actually turned up:
 
 - **"NP DEV Soluções em T.I."** — a Brazilian IT services/software company, live at
-  `www.npdev.com.br`, offering IT maintenance/support, network consulting, infrastructure
-  development, and web systems. Same "NP DEV"/"NPDev" name, same broad industry (software/IT
-  services), different country/market. This is not a confirmed registered-trademark conflict —
-  it's a real, currently-operating business using a near-identical name in an adjacent space,
-  which is exactly the kind of thing a professional search would need to assess for actual legal
-  risk (registered mark? common-law rights in Brazil vs. elsewhere? likelihood-of-confusion
-  analysis for a different specific product category?).
-- No results surfaced any conflicting product specifically in the "low-code application
-  development platform" category (Mendix/Appian/OutSystems/etc. — none use this name), which is
-  the more specific market this platform would actually compete in.
+  `www.npdev.com.br` (GitHub org `New-Project-Devs`), offering IT maintenance/support, network
+  consulting, infrastructure development, and web systems. Same "NP DEV"/"NPDev" name, same broad
+  industry (software/IT services), different country/market. Not a confirmed registered-trademark
+  conflict — a real, currently-operating business using a near-identical name in an adjacent space.
+- **"NPDEV LIMITED"** (2026-07-19 finding) — a UK-registered private limited company, Companies
+  House #14176093, incorporated 16 June 2022, status Active, registered office in Halifax, West
+  Yorkshire. Classified under SIC 74909 ("Other professional, scientific and technical activities
+  not elsewhere classified") — a broad catch-all code; this does not confirm the company is
+  software-competing, but doesn't rule it out either. This is the closest exact-string match found
+  (no qualifier like "Soluções" or "Limited" needed to distinguish it) and, unlike the Brazilian
+  company, is a formal legal registration in an English-speaking jurisdiction — arguably the single
+  most relevant data point for a professional search to start from.
+- **`npdev.co`** ("North Peak Creative Development Server") — the domain uses "npdev" but the
+  actual operating brand appears to be "North Peak Creative," offering unrelated services ("Elora
+  3D," "Advanced Legal Planning"). Likely an abbreviation coincidence, not a matching brand — lower
+  relevance than the two above.
+- An informal `#npdev` hashtag appears in social-media posts referencing Aspiration's annual
+  "Nonprofit Software Development Summit" (`aspirationtech.org/events/devsummit`) — the event's own
+  branding does not actually use "NPDev" anywhere in its official name or URLs; this reads as
+  community shorthand, not an official product/brand name. Lowest relevance of the four findings,
+  included for completeness.
+- Still no results surfaced any conflicting product specifically in the "low-code application
+  development platform" category (Mendix/Appian/OutSystems/NocoBase/etc. — none use this name),
+  which is the more specific market this platform would actually compete in.
 
-**Before any public launch announcement, this needs an actual trademark search, and the
-`npdev.com.br` finding specifically should be reviewed with that search** — flagged here as a
-release-blocking checklist item in `docs/RELEASE_PROCESS.md`, not resolved by this preliminary
-pass.
+**Before any public launch announcement, this needs an actual professional trademark search**,
+starting from the UK Companies House registration and the Brazilian company specifically — flagged
+here as a release-blocking checklist item in `docs/RELEASE_PROCESS.md`, not resolved by this
+preliminary pass.
 
 ## Consequences
 
