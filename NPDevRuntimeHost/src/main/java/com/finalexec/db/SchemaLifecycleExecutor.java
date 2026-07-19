@@ -122,6 +122,18 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // classify() looks at the table, regardless of what else on that table still needs the
         // destructive path.
         attemptInPlaceRenames(dataSource, manifest);
+        // Found live while auditing LNCH-1's own remaining gaps (2026-07-19), not part of any
+        // phase's original plan: a field going from required to optional (same name, same type)
+        // changes the schema fingerprint (UserDatabaseDefinitionLoader#fingerprintInputs includes
+        // "required=" per field) but classify() only compares column NAME sets and TYPES -- it has
+        // no nullability awareness at all. The live NOT NULL constraint was therefore NEVER relaxed:
+        // classify() saw identical columns/types, returned SAFE_ADDITIVE, and the boot "succeeded"
+        // while silently leaving the column impossible to actually write null into, contradicting
+        // the model's own declared optionality. Symmetric to applyRequiredFieldBackfills (Phase 5)
+        // but the other direction, and -- like renames -- always unconditionally safe (relaxing a
+        // constraint never loses data), so it runs here, unconditionally, before classify() ever
+        // sees the table, the same way renames do.
+        relaxNoLongerRequiredColumns(dataSource, manifest);
 
         SchemaChangeClassification classification = classify(dataSource, manifest);
         SchemaChangeClassification classificationForFallthrough = classification;
@@ -995,6 +1007,106 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 notNull.executeUpdate();
             }
         }
+    }
+
+    /**
+     * Relaxes {@code NOT NULL} for every shared, live column whose field is no longer declared
+     * {@code required} in the current model -- the mirror image of {@link #applyRequiredFieldBackfills}
+     * (which tightens a column TO {@code NOT NULL}), closing a real gap found live while auditing
+     * LNCH-1's remaining items (2026-07-19): a field relaxed from required to optional changes the
+     * schema fingerprint (nullability is part of it), but {@link #classify} has no nullability
+     * awareness at all -- only column names and SQL types -- so the live constraint was silently
+     * never touched, leaving the database permanently unable to accept the null values the model now
+     * allows. Always safe (relaxing a constraint can never lose data), so -- like renames -- this
+     * runs unconditionally in {@link #beforeMigrate}, before {@link #classify} ever sees the table.
+     *
+     * <p>Idempotent by construction: live nullability is read fresh via {@link #isColumnNotNull} on
+     * every call, so re-invoking against an already-relaxed column finds nothing to do.
+     *
+     * <p>Package-private (not private) so it is directly unit-testable against a real H2
+     * {@link DataSource}, following {@link #attemptInPlaceRenames}'s precedent.
+     */
+    void relaxNoLongerRequiredColumns(DataSource dataSource, SchemaManifest manifest) {
+        List<String> relaxed = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            for (Map.Entry<String, List<String>> entry : manifest.businessTableColumns().entrySet()) {
+                String table = entry.getKey();
+                List<String> expectedColumns = entry.getValue();
+                Set<String> actualColumns = readActualColumns(metadata, table);
+                if (actualColumns.isEmpty()) {
+                    continue; // brand-new table -- V1's CREATE TABLE IF NOT EXISTS handles it, nothing to relax
+                }
+                Set<String> requiredColumns = new LinkedHashSet<>(
+                        manifest.businessTableRequiredColumns().getOrDefault(table, List.of()));
+                // The manifest's businessTableRequiredColumns is not guaranteed to list the primary
+                // key explicitly (SchemaManifest has no per-table idColumn concept at all, and a
+                // hand-built test manifest -- or conceivably a future generator gap -- may simply omit
+                // it) -- read the LIVE primary key directly instead of trusting the manifest for this
+                // one exclusion, since attempting to relax it is not just wrong but a hard SQL error
+                // ("Column ... must not be nullable") on both H2 and Postgres, not a safe no-op.
+                Set<String> primaryKeyColumns = readPrimaryKeyColumns(metadata, table);
+                for (String column : expectedColumns) {
+                    if (!actualColumns.contains(column) || requiredColumns.contains(column)
+                            || primaryKeyColumns.contains(column)) {
+                        continue; // not shared yet, still required, or the primary key -- not this method's concern
+                    }
+                    if (!isColumnNotNull(connection, table, column)) {
+                        continue; // already nullable -- idempotent no-op
+                    }
+                    executeDropNotNull(connection, table, column);
+                    relaxed.add(table + "." + column);
+                }
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed relaxing no-longer-required column(s)", exception);
+        }
+        if (!relaxed.isEmpty()) {
+            System.out.println("NPDev schema lifecycle: relaxed NOT NULL on no-longer-required column(s): " + relaxed);
+        }
+    }
+
+    /**
+     * {@code ALTER COLUMN ... DROP NOT NULL} -- confirmed identical syntax on H2 and Postgres (both
+     * accept the SQL-standard/Postgres-compatible form; H2 also accepts {@code SET NULL}, not used
+     * here since {@code DROP NOT NULL} already works on both, matching
+     * {@link #addBackfillAndTightenColumn}'s sibling {@code SET NOT NULL} call needing no engine
+     * branch either). Verified against a real H2 instance
+     * ({@code SchemaLifecycleExecutorNullabilityRelaxationTest}) and a real Postgres instance
+     * ({@code SchemaLifecycleExecutorPostgresProofMatrixTest}).
+     */
+    private static void executeDropNotNull(Connection connection, String table, String column) throws SQLException {
+        String safeTable = safeIdentifier(table);
+        String safeColumn = safeIdentifier(column);
+        try (PreparedStatement statement = connection.prepareStatement(
+                "ALTER TABLE " + safeTable + " ALTER COLUMN " + safeColumn + " DROP NOT NULL")) {
+            statement.executeUpdate();
+        }
+    }
+
+    /** Package-private (not private) so it is directly unit-testable, following this class's own
+     * precedent ({@link #readActualColumns} etc.). Tries both case candidates for the same reason
+     * every other live-introspection helper here does -- H2/Postgres report table names back with
+     * different default case folding depending on configuration. */
+    static Set<String> readPrimaryKeyColumns(DatabaseMetaData metadata, String table) throws SQLException {
+        Set<String> columns = readPrimaryKeyColumns(metadata, table, table.toLowerCase(Locale.ROOT));
+        if (columns.isEmpty()) {
+            columns = readPrimaryKeyColumns(metadata, table, table.toUpperCase(Locale.ROOT));
+        }
+        return columns;
+    }
+
+    private static Set<String> readPrimaryKeyColumns(DatabaseMetaData metadata, String table, String candidate) throws SQLException {
+        Set<String> columns = new LinkedHashSet<>();
+        try (ResultSet resultSet = metadata.getPrimaryKeys(null, null, candidate)) {
+            while (resultSet.next()) {
+                String columnName = resultSet.getString("COLUMN_NAME");
+                if (columnName != null) {
+                    columns.add(columnName.toLowerCase(Locale.ROOT));
+                }
+            }
+        }
+        return columns;
     }
 
     /**

@@ -292,6 +292,45 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
         }
     }
 
+    // ---- NOT NULL relaxation (LNCH-1 open-items audit find, 2026-07-19: a field going from required
+    // to optional changes the schema fingerprint, but classify() has no nullability awareness at all,
+    // so the live constraint was silently NEVER relaxed -- see relaxNoLongerRequiredColumns' javadoc). --
+
+    @Test
+    @DisplayName("Postgres: field no longer required has its NOT NULL constraint relaxed, data intact")
+    void columnNoLongerRequiredIsRelaxedOnPostgres() throws SQLException {
+        String widgets = table("widgets");
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE " + widgets + " (id BIGINT PRIMARY KEY, nickname VARCHAR(50) NOT NULL)");
+            statement.execute("INSERT INTO " + widgets + " (id, nickname) VALUES (1, 'Alpha')");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        // nickname was required in the old model; the new one no longer lists it as required --
+        // same name, same type, only nullability differs.
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifest(
+                "sha256:new", List.of(widgets),
+                Map.of(widgets, List.of("id", "nickname")),
+                Map.of(widgets, List.of()),
+                Map.of(widgets, Map.of("id", "BIGINT", "nickname", "VARCHAR(50)")),
+                Map.of(), Map.of(), true, "",
+                Map.of(widgets, List.of("id")), Map.of(), Map.of(), Map.of());
+
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, manifest);
+        assertTrue(result.safeAdditive(), "a pure nullability relaxation must resolve via the safe-additive path");
+        assertFalse(result.performed());
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertFalse(isNotNull(metadata, widgets, "nickname"), "the column must no longer be NOT NULL on Postgres");
+            assertEquals("Alpha", readColumn(connection, widgets, "nickname", 1L), "existing data must survive untouched");
+            try (PreparedStatement update = connection.prepareStatement("UPDATE " + widgets + " SET nickname = NULL WHERE id = 1")) {
+                update.executeUpdate();
+            }
+            assertEquals(null, readColumn(connection, widgets, "nickname", 1L), "the relaxed column must genuinely accept NULL on Postgres");
+        }
+    }
+
     // ---- Surgical destructive drop with matching ack (twins H2 matrix row 9) ----------------------
 
     @Test
