@@ -134,8 +134,26 @@ should get a `400` carrying the `NameRequired` invariant's code and message, not
 the same invariant declared in the model above, enforced exactly where the flow said to enforce
 it.
 
+## 5. Change your model later
+
+You just booted this app with real data in it. What happens when the model changes and you
+regenerate — does the `ContactMessage` table above get wiped?
+
+No. As long as you're only *adding* a new optional field, it's automatic: regenerate, restart, the
+new column is there, existing rows untouched. Renaming a field or a concept needs one line
+(`renamedFrom`) so the platform applies it in place instead of treating it as an unrelated
+drop+add. Anything genuinely destructive — dropping a field, tightening a type — is never applied
+silently: you get an itemized plan and a token to acknowledge before it touches anything.
+
+This is a real, load-bearing part of the platform, not a toy: `docs/SCHEMA_EVOLUTION.md` covers the
+full mental model, the exact `renamedFrom` syntax, and a worked example of a 3-change upgrade
+(rename + add-field + acknowledged drop) run against a real deployed app with real data.
+
 ## Where to go from here
 
+- `docs/SCHEMA_EVOLUTION.md` — what happens when you change the model of an app that's already
+  deployed and has data: safe in-place changes, destructive-change acknowledgment, how to declare
+  a rename.
 - `docs/DSL_REFERENCE.md` — every field/step/capability shape this model used, and the rest the
   schema supports (bonds, lifecycle, panels, schedules, compensation...), generated from the
   schema itself.

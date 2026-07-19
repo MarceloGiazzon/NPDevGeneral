@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "knowledge-card.v1",
+  "id": "fix-schema-evolution-missing-default-refusal",
+  "type": "error-fix",
+  "title": "Boot refused: new required field has no literal default to backfill",
+  "body": "A model added a `required` field to a concept whose table already has rows, but the field declares no literal `default` -- so SchemaLifecycleExecutor has no value to backfill existing rows with (LNCH-1 Phase 5) and refuses the boot rather than leaving NOT NULL half-enforced. Two distinct causes produce this same refusal: (1) no default at all -- add a literal `default` to the field (e.g. `\"default\": \"pending\"`); a `defaultExpression`-only field is NOT backfilled automatically in v1 (expression backfills are unsupported), so replace it with a literal default or make the field optional. (2) the new required field is a bond/FK reference -- a bond has no automatic backfill possible (its value would need to reference an existing row's real key); make the field optional, or use the itemized destructive-acknowledgment path (`Build-NpdevApp.ps1 -Upgrade -AcknowledgeDestructive`) to recreate the table instead. The refusal message names every offending `table.column`; the stored fingerprint stays stale so a fixed retry converges cleanly. See docs/SCHEMA_EVOLUTION.md#new-required-fields.",
+  "keywords": ["required", "field", "default", "backfill", "literal", "bond", "schema", "migration", "refused", "boot", "defaultExpression"],
+  "appliesTo": ["schema-evolution", "field", "bond", "build-ops"],
+  "signature": "schema change adds new required field(s) to table(s) with existing data, but no literal default is available to backfill automatically (lnch-1 phase 5): [users.phone (no default declared -- declare a literal default or make it optional)]. declare a literal <id> on the field, or make it optional -- see docs/schema_evolution.md#new-required-fields",
+  "fix": "Add a literal `default` to the field (not a defaultExpression, which is not auto-backfilled in v1), or make it optional. If the field is a required bond/FK, make it optional or use the acknowledged destructive path instead -- there is no automatic backfill for a bond's value.",
+  "sourceRefs": ["docs/SCHEMA_EVOLUTION.md", "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java"],
+  "status": "active"
+}

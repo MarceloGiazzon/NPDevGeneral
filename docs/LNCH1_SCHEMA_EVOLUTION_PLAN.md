@@ -1,8 +1,10 @@
 # LNCH-1 — Schema Evolution for Live Apps: Dedicated Implementation Plan
 
-> **Status:** APPROVED PLAN — not started · **Priority:** P0 (the last existential launch blocker)
+> **Status:** DONE (2026-07-19) — all 9 phases (0-8) complete · **Priority:** P0 (the last existential launch blocker)
 > **Effort:** XL, phased into 9 independently-committable phases
 > **Written:** 2026-07-17, verified against the working tree at commit `996b939`
+> **Evidence:** `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\lnch1-evidence\phase-0.md` through
+> `phase-8.md` — full implementation history, live-verification record, and real bugs found.
 > **Audience:** an AI implementation session (or human) that has NOT read the project's history.
 > Follow this document literally. Where it says VERIFY, do the verification before writing code —
 > the codebase has changed before and will change again; this plan describes the state at

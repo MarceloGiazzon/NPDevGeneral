@@ -44,6 +44,7 @@ Schema version: `1.0.0`. DSL version: `1.0.0`.
 | `specializes` | `string` |  |  |
 | `truthLevel` | `"T0" | "T1" | "T2" | "T3" | "T4" | "T5" | "T6"` |  |  |
 | `module` | `string` |  |  |
+| `renamedFrom` | `string` |  | Declares this concept is a rename of a previously-existing concept with this name, so a regeneration's schema-lifecycle classifies its table as a rename instead of an unrelated drop+create. |
 | `fields` | `array<field>` | yes |  |
 | `invariants` | `array<invariant>` |  |  |
 | `indexes` | `array<index>` |  |  |

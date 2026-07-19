@@ -2,7 +2,8 @@
 
 > **Purpose.** NPDev's stated goal is to be a low-code platform for building a range of
 > *complete web apps*. This document is a critical, realistic inventory of what is missing or
-> blocking between the platform's current state (2026-07-14, branch `beta1-vision-spine`) and a
+> blocking between the platform's current state (originally written 2026-07-14, branch
+> `beta1-vision-spine`; status table last verified against real commits 2026-07-19) and a
 > state where formalization / launch is honest. It is written so that converting it into an
 > executable roadmap is a mechanical step: every gap states **why** it blocks launch, **where**
 > the problem lives (files/modules), **how** to fix it, a **Definition of Done**, an effort
@@ -32,6 +33,12 @@
 
 ## 1. Executive verdict
 
+> **2026-07-19 update:** the five-verb gap list immediately below describes the state this document
+> was written against (2026-07-14). As of this update, every verb has at least a DONE core slice —
+> see §2's status table for the accurate, current per-item picture. The narrative below is kept
+> as-written for historical framing (why the roadmap is organized the way it is), not as a live
+> status claim.
+
 The generation pipeline and runtime kernel are genuinely solid: durable flows with crash-proven
 resume, invariant/lifecycle enforcement, bonds, the widget/input-type system, theming tokens,
 ControlPanel + SUPERUSER, seed data, file upload, and an AI authoring loop (MCP + RAG +
@@ -39,24 +46,32 @@ schema-constrained validate→fix→generate) that has been proven blind. The
 "schema-legal-but-doesn't-work" credibility gap that plagued early app builds has been closed
 almost completely by the boundary-lift program.
 
-**What is missing is not more generator features.** It is the lifecycle around the generated
+**What was missing was not more generator features.** It was the lifecycle around the generated
 apps:
 
-1. **Evolve** — no story for changing the model of a live app that already holds data.
+1. **Evolve** — no story for changing the model of a live app that already holds data. **Closed**
+   by LNCH-1 (2026-07-19): in-place renames, safe widening, itemized acknowledged destruction, data
+   pre-checks/backfills, a migration-plan preview, a permanent proof matrix. `docs/SCHEMA_EVOLUTION.md`.
 2. **Secure** — tenant isolation has been fixed reactively bug-by-bug, never audited
    adversarially; one known auth-filter flaw remains deferred; the boring auth table stakes
-   (reset, revocation, rate limiting) don't exist.
+   (reset, revocation, rate limiting) don't exist. **Mostly closed**: LNCH-2/3 done, LNCH-4's P0
+   slice + password reset done; secrets-via-env-vars remains open.
 3. **Scale** — panel/query filtering is in-memory post-filtering; fine at demo size, fatal at
    100k rows; there is no pagination pushed to SQL and no index emission for query fields.
+   **Closed**: LNCH-5 (SQL push-down, 100k-row volume-gated) and LNCH-6 (index emission) both done.
 4. **Operate** — everything green so far ran on one Windows machine with H2-over-TCP and
    PowerShell scripts; there is no Docker/Postgres-first deploy, no HTTPS guidance, no
    health/metrics/backup story, and the *less-exercised* database path (Postgres) is the
-   production one.
+   production one. **Closed**: LNCH-7/8/9 all done, live-verified via real `docker compose` runs.
 5. **Distribute** — no CI, Windows-only build scripts, internal-facing docs only, no license,
-   no packaging decision, no upgrade contract for generated apps.
+   no packaging decision, no upgrade contract for generated apps. **Partially closed**: license,
+   ADRs, upgrade contract, and CI workflows exist (LNCH-21/23 done, LNCH-19 committed+pushed but not
+   independently confirmed green on a real runner); Windows-only build scripts (LNCH-20) remain
+   genuinely untouched.
 
-Every real low-code platform failure mode lives in one of those five verbs. The roadmap that
-falls out of this document is therefore organized around them.
+Every real low-code platform failure mode lived in one of those five verbs. The roadmap that
+falls out of this document is organized around them; §2's table is the source of truth for what
+is actually done today.
 
 ---
 
@@ -64,30 +79,30 @@ falls out of this document is therefore organized around them.
 
 | ID | Title | Verb | Status | Priority | Effort |
 |---|---|---|---|---|---|
-| LNCH-1 | Model-diff schema evolution for live apps (migrations) | Evolve | OPEN | P0 | XL |
-| LNCH-2 | Adversarial tenant-isolation audit + test suite | Secure | OPEN | P0 | M |
-| LNCH-3 | Fix `RuntimeApiKeyAuthFilter` clobbering flaw | Secure | OPEN | P0 | S |
-| LNCH-4 | Auth table stakes: reset, revocation, lockout, rate limit, CSRF posture | Secure | OPEN | P0 | L |
-| LNCH-5 | SQL push-down for panel/query filtering + server-side pagination | Scale | OPEN | P0 | L |
-| LNCH-6 | Index emission from the model | Scale | OPEN | P1 | M |
-| LNCH-7 | Postgres-first Dockerized deployment story | Operate | OPEN | P0 | L |
-| LNCH-8 | Observability: health, metrics, structured logs | Operate | OPEN | P1 | M |
-| LNCH-9 | Backup / restore / data export procedure | Operate | OPEN | P1 | M |
-| LNCH-10 | Reporting & export primitives (CSV/Excel/PDF/print) | Complete | OPEN | P1 | L |
-| LNCH-11 | Email / notification primitive | Complete | OPEN | P1 | M |
-| LNCH-12 | Scheduled / background job trigger for flows & procedures | Complete | OPEN | P1 | M |
-| LNCH-13 | Row-level (data-scoped) authorization | Complete | OPEN | P1 | L |
-| LNCH-14 | Production file storage (finish `file-store-objectstore` S3 adapter) | Complete | PARTIAL | P1 | M |
-| LNCH-15 | One unified expression language | Complete | OPEN | P1 | L |
-| LNCH-16 | Optimistic locking / concurrent-edit protection | Complete | OPEN | P1 | M |
-| LNCH-17 | Transaction-boundary contract for multi-step flows | Complete | OPEN | P1 | M |
-| LNCH-18 | Authoring-path decision: editor-complete vs AI-first productization | Distribute | OPEN | P1 | L/XL |
-| LNCH-19 | Linux CI running the quality gates + sample harness | Distribute | OPEN | P1 | M |
+| LNCH-1 | Model-diff schema evolution for live apps (migrations) | Evolve | DONE | P0 | XL |
+| LNCH-2 | Adversarial tenant-isolation audit + test suite | Secure | DONE | P0 | M |
+| LNCH-3 | Fix `RuntimeApiKeyAuthFilter` clobbering flaw | Secure | DONE | P0 | S |
+| LNCH-4 | Auth table stakes: reset, revocation, lockout, rate limit, CSRF posture | Secure | PARTIAL | P0 | L |
+| LNCH-5 | SQL push-down for panel/query filtering + server-side pagination | Scale | DONE | P0 | L |
+| LNCH-6 | Index emission from the model | Scale | DONE | P1 | M |
+| LNCH-7 | Postgres-first Dockerized deployment story | Operate | DONE | P0 | L |
+| LNCH-8 | Observability: health, metrics, structured logs | Operate | DONE | P1 | M |
+| LNCH-9 | Backup / restore / data export procedure | Operate | DONE | P1 | M |
+| LNCH-10 | Reporting & export primitives (CSV/Excel/PDF/print) | Complete | PARTIAL | P1 | L |
+| LNCH-11 | Email / notification primitive | Complete | DONE | P1 | M |
+| LNCH-12 | Scheduled / background job trigger for flows & procedures | Complete | DONE | P1 | M |
+| LNCH-13 | Row-level (data-scoped) authorization | Complete | DONE | P1 | L |
+| LNCH-14 | Production file storage (finish `file-store-objectstore` S3 adapter) | Complete | DONE | P1 | M |
+| LNCH-15 | One unified expression language | Complete | DONE | P1 | L |
+| LNCH-16 | Optimistic locking / concurrent-edit protection | Complete | DONE | P1 | M |
+| LNCH-17 | Transaction-boundary contract for multi-step flows | Complete | DONE | P1 | M |
+| LNCH-18 | Authoring-path decision: editor-complete vs AI-first productization | Distribute | PARTIAL | P1 | L/XL |
+| LNCH-19 | Linux CI running the quality gates + sample harness | Distribute | PARTIAL | P1 | M |
 | LNCH-20 | Cross-platform build scripts (drop the Windows-only assumption) | Distribute | OPEN | P2 | M |
-| LNCH-21 | Generated-app upgrade contract & compatibility policy | Distribute | OPEN | P2 | M |
-| LNCH-22 | User-facing documentation & error-message quality | Distribute | OPEN | P2 | L |
-| LNCH-23 | Launch checklist: license, packaging, telemetry, release process | Distribute | OPEN | P2 | M |
-| LNCH-24 | Commit hygiene: land the current uncommitted working tree | Distribute | OPEN | P1 | S |
+| LNCH-21 | Generated-app upgrade contract & compatibility policy | Distribute | DONE | P2 | M |
+| LNCH-22 | User-facing documentation & error-message quality | Distribute | PARTIAL | P2 | L |
+| LNCH-23 | Launch checklist: license, packaging, telemetry, release process | Distribute | PARTIAL | P2 | M |
+| LNCH-24 | Commit hygiene: land the current uncommitted working tree | Distribute | DONE | P1 | S |
 
 ---
 
@@ -95,8 +110,21 @@ falls out of this document is therefore organized around them.
 
 ### LNCH-1 — Model-diff schema evolution for live apps with data
 
-**Status:** OPEN · **Priority:** P0 · **Effort:** XL (needs its own phased plan, like the
+**Status:** DONE (2026-07-19) · **Priority:** P0 · **Effort:** XL (needs its own phased plan, like the
 Aggregate Workbench got)
+
+**Update (2026-07-19).** Delivered via `docs/LNCH1_SCHEMA_EVOLUTION_PLAN.md`'s 9-phase plan,
+Phases 0-8 all complete: in-place field/concept renames, safe type widening, itemized surgical
+destruction with hash-bound acknowledgment (CLI + ControlPanel pre-authorization), data
+pre-checks/backfills for new required fields and tightened uniqueness, pre-drop JSONL snapshots,
+a migration-plan preview (`-PlanOnly`/`-Upgrade` CLI), a permanent 16-scenario H2 + 9-scenario
+Postgres proof matrix, and `docs/SCHEMA_EVOLUTION.md`. Verified against a real Postgres
+compose-stack deployment with real seeded data end to end (REST + direct DB introspection + a
+real-browser screenshot) — see `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\lnch1-evidence\phase-0.md`
+through `phase-7.md` for the full implementation and live-verification record, including two real
+bugs found only by that live rehearsal (a Postgres-only unique-constraint crash, and a silent
+data-loss composability gap between renames and unrelated destructive drops), both fixed with
+regression coverage.
 
 **The gap (why).** The entire value proposition of low-code is *iterating on a live app*.
 Today NPDev's lifecycle is: author model → generate → **fresh schema**. There is no answer to
@@ -160,7 +188,11 @@ proven on the production engine from day one.
 
 ### LNCH-2 — Adversarial tenant-isolation audit + permanent cross-tenant test suite
 
-**Status:** OPEN · **Priority:** P0 · **Effort:** M
+**Status:** DONE (2026-07-14) · **Priority:** P0 · **Effort:** M
+
+**Update (2026-07-14).** Hermetic `TenantIsolationAttackTest` (cross-tenant read/list/forged-write/
+delete over both InMemory and JDBC/H2 adapters, 8/8 green, gate-wired). Found+fixed a real bug:
+`PanelRuntime.deleteRow` silently no-op'd cross-tenant deletes while still returning `deleted:true`.
 
 **The gap (why).** Multi-tenancy is a headline feature, but its isolation record is
 reactive: orchestration `create` wrote rows under the wrong tenant (fixed bug #5);
@@ -206,8 +238,11 @@ risk-accepted in writing.
 
 ### LNCH-3 — Fix the known `RuntimeApiKeyAuthFilter` clobbering flaw
 
-**Status:** OPEN (known, deferred twice — reconfirmed 2026-07-12) · **Priority:** P0 ·
+**Status:** DONE (2026-07-14) · **Priority:** P0 ·
 **Effort:** S
+
+**Update (2026-07-14).** Clobber guard added on the generated `RuntimeApiKeyAuthFilter` (mirrors
+`JwtBearerAuthFilter`'s existing fix), plus a generator-gate assertion.
 
 **The gap (why/where).** When the `JwtBearerAuthFilter` bug (overwriting an
 already-authenticated request's security context) was fixed, `RuntimeApiKeyAuthFilter` in
@@ -227,7 +262,12 @@ knowledge card updated to close the deferral note.
 
 ### LNCH-4 — Authentication table stakes
 
-**Status:** OPEN · **Priority:** P0 (subset can be staged) · **Effort:** L
+**Status:** PARTIAL (2026-07-14/16) · **Priority:** P0 (subset can be staged) · **Effort:** L
+
+**Update (2026-07-16).** DONE: P0 slice (token revocation via `tokenVersion`, login throttling,
+CSRF-posture doc + structural guard script) and the P1 self-service password-reset flow (built on
+LNCH-11's mail primitive). Still OPEN: the other named P1 sub-item, secrets-via-env-vars (pairs
+with LNCH-7).
 
 **The gap (why).** Current auth is a working but skeletal patchwork: JWT via the identity
 pack, `X-Super-User-Key` from a key file, runtime API keys. What every deployed business app
@@ -265,7 +305,11 @@ roadmap rows.
 
 ### LNCH-5 — SQL push-down for filtering/sorting + server-side pagination
 
-**Status:** OPEN · **Priority:** P0 · **Effort:** L
+**Status:** DONE (2026-07-14) · **Priority:** P0 · **Effort:** L
+
+**Update (2026-07-14).** `ConceptQuery`/`ConceptQueryEngine` SQL push-down at the `ConceptStore`
+port (both InMemory and JDBC adapters), a paged REST endpoint, and the generated CRUD `list()`
+itself migrated onto push-down. 100k-row volume gate proves a bounded page + `COUNT(*)` in <3s.
 
 **The gap (why).** This is a silent time bomb that no verification so far could see, because
 every sample dataset is tiny. The fix for bug #10 made panel `where` work by **post-filtering
@@ -312,7 +356,12 @@ honest.
 
 ### LNCH-7 — Postgres-first, Dockerized deployment story
 
-**Status:** OPEN · **Priority:** P0 · **Effort:** L
+**Status:** DONE (2026-07-14) · **Priority:** P0 · **Effort:** L
+
+**Update (2026-07-14).** `DockerDeploymentEmitter` emits `Dockerfile`/`docker-compose.yml`/
+`.env.example`/`deploy/Caddyfile` into every generated FinalApp. Verified via real
+`docker compose up` runs, which surfaced and fixed 4 real live bugs (Windows-path defaults,
+volume-ownership, missing `npdev-generated` copy, `NPDEV_RUNTIME_MODE` wiring). `docs/DEPLOYMENT.md`.
 
 **The gap (why).** Every green verification to date ran on one Windows machine: H2 over TCP
 started by `Start-Environment.ps1`, apps launched by per-app `_ops` PowerShell scripts,
@@ -357,7 +406,12 @@ in CI.
 
 ### LNCH-6 — Index emission from the model
 
-**Status:** OPEN · **Priority:** P1 · **Effort:** M
+**Status:** DONE (2026-07-14) · **Priority:** P1 · **Effort:** M
+
+**Update (2026-07-14).** Implicit `(tenant_id,col)` secondary indexes for every panel/query
+predicate field, plus explicit author-declared `indexes:[]` on a concept (plain or unique).
+Found+fixed a real bug: `ModelResolver.sanitizeConcept`/`mergeConcept` silently dropped declared
+indexes before `ModelCompiler` ever saw them.
 
 **Why/where.** `SchemaRealizationEmitter` emits tables, tenant-scoped uniques (incl. the new
 compound uniques), and FK constraints from bonds — but no secondary indexes. Fields used in
@@ -377,7 +431,11 @@ generated panel queries.
 
 ### LNCH-8 — Observability: health, metrics, structured logs
 
-**Status:** OPEN · **Priority:** P1 · **Effort:** M
+**Status:** DONE (2026-07-14) · **Priority:** P1 · **Effort:** M
+
+**Update (2026-07-14).** Correlation-ID filter, `KernelRunner`-level flow-outcome metrics/logs
+(Micrometer + Prometheus registry), and `ActuatorAdminGuardFilter` gating `/metrics`/`/prometheus`
+to SUPERUSER while `/health` stays open (needed for the LNCH-7 Docker healthcheck).
 
 **Why.** An operator of a deployed FinalApp currently has: stdout. No `/actuator/health` for
 the compose/orchestrator health check (LNCH-7 needs it), no metrics (request rates, flow
@@ -398,7 +456,12 @@ end-to-end from one correlation ID; a Prometheus scrape returns kernel metrics.
 
 ### LNCH-9 — Backup / restore / data export
 
-**Status:** OPEN · **Priority:** P1 · **Effort:** M
+**Status:** DONE (2026-07-14) · **Priority:** P1 · **Effort:** M
+
+**Update (2026-07-14).** `deploy/backup.sh`/`restore.sh` for Postgres-engine apps + `TenantExportService`
+(`GET /api/admin/export`, round-trips through the same seeder shape `SeedDataService` consumes).
+Found+fixed a real bug via a live drill: `backup.sh` lacked `--clean --if-exists`, breaking restore
+into a non-empty database. `docs/BACKUP_RESTORE.md`.
 
 **Why.** "Complete web app" implies the owner can not lose their data. There is no documented
 backup for either engine (the H2 file's location gotcha is only recorded in memory/verification
@@ -419,7 +482,11 @@ JSON round-trips through the seeder.
 
 ### LNCH-10 — Reporting & export primitives
 
-**Status:** OPEN · **Priority:** P1 · **Effort:** L
+**Status:** PARTIAL (2026-07-17) · **Priority:** P1 · **Effort:** L
+
+**Update (2026-07-17).** Slice 1 (CSV) DONE: `GET /api/concepts/{concept}/export.csv`, streamed
+page-by-page through the LNCH-5 push-down contract (never holds more than one page in the JVM),
+plus a grid "Export CSV" button. Excel/PDF/print slices remain OPEN. `docs/CSV_EXPORT.md`.
 
 **Why.** Business apps end in paper or spreadsheets: pick lists, packing slips, invoices,
 monthly CSVs. NPDev has no CSV/Excel export on any grid, no PDF/print layout primitive, no
@@ -447,7 +514,11 @@ view as CSV for a 100k-row concept without OOM; gate-tested.
 
 ### LNCH-11 — Email / notification primitive
 
-**Status:** OPEN · **Priority:** P1 · **Effort:** M
+**Status:** DONE (2026-07-16) · **Priority:** P1 · **Effort:** M
+
+**Update (2026-07-16).** New `mail` capability, `mail-inproc`/`mail-smtp` adapters (the latter real
+Jakarta Mail SMTP), full plugin-manifest wiring, `mailhog` compose profile. Live end-to-end proven
+through a real `docker compose --profile smtp up` stack. `docs/EMAIL_NOTIFICATIONS.md`.
 
 **Why.** No send-email capability exists, which blocks: password reset (LNCH-4), "order
 shipped" notifications, admin alerts — the connective tissue of every business app.
@@ -467,7 +538,11 @@ adapter lets the runtimehost gate assert on sent mail without a network.
 
 ### LNCH-12 — Scheduled / background execution
 
-**Status:** OPEN · **Priority:** P1 · **Effort:** M
+**Status:** DONE (2026-07-16) · **Priority:** P1 · **Effort:** M
+
+**Update (2026-07-16).** New `flow.schedule: {cron, tenantScope}`, `NpdevCronSchedulerService`,
+`ControlPanelSchedulesController`. Found+fixed a real bug: a route collision with a pre-existing,
+unrelated controller only surfaced on an actual HTTP request, not at boot. `docs/SCHEDULED_FLOWS.md`.
 
 **Why.** Everything in a FinalApp is request-driven. "Every night at 2am, close stale orders"
 — a completely ordinary requirement — has no home. Users will solve it with external cron +
@@ -491,7 +566,12 @@ outcome.
 
 ### LNCH-13 — Row-level (data-scoped) authorization
 
-**Status:** OPEN · **Priority:** P1 · **Effort:** L
+**Status:** DONE (2026-07-15) · **Priority:** P1 · **Effort:** L
+
+**Update (2026-07-15).** Declarative `access: {read, write}` boolean expressions with `$user.*`
+pseudo-variables, enforced solely at `DefaultConceptGateway`. Found+fixed two real bugs via live
+verification: a canonical-JSON round-trip drop, and `{Concept}ServiceBase` reads bypassing the
+gateway entirely (writes were protected, reads were not). `docs/ROW_LEVEL_AUTHORIZATION.md`.
 
 **Why.** Roles gate *endpoints and flows*; nothing gates *rows*. "Salespeople see only their
 own orders", "warehouse operators see only their site" — the most common authorization
@@ -516,7 +596,13 @@ B's rows within the same tenant) and passes on both adapter families.
 
 ### LNCH-14 — Production file storage (S3/object-store adapter)
 
-**Status:** PARTIAL · **Priority:** P1 · **Effort:** M
+**Status:** DONE (2026-07-14) · **Priority:** P1 · **Effort:** M
+
+**Update (2026-07-14).** Discovery: `S3ObjectStoreFileStoreAdapter` was already fully implemented
+in a prior session under a different task code (its own live Testcontainers MinIO test already
+passed) — this doc's PARTIAL status was stale relative to the codebase. The actual remaining gap,
+wiring it into the LNCH-7 deployment story (`minio` service + `objectstore` compose profile), is
+now done too.
 
 **Why/where.** The ARCH-upload lift delivered the full vertical (kernel `FileStoreContract`,
 `file-store-inproc` filesystem adapter, `file` field type, `FileUploadController`, upload
@@ -537,7 +623,11 @@ pass; switching adapters is a config change, no regeneration.
 
 ### LNCH-15 — One unified expression language
 
-**Status:** OPEN · **Priority:** P1 · **Effort:** L
+**Status:** DONE (2026-07-15) · **Priority:** P1 · **Effort:** L
+
+**Update (2026-07-15).** `ComputedExpression` extended with function calls, receiver sugar, and
+lambdas; `CelInvariantEngine`'s quantifiers/`uniqueBy`/etc. now run through the SAME grammar as
+parens/arithmetic instead of a separate ~400-line regex matcher. `docs/EXPRESSIONS.md`.
 
 **Why.** There are currently **three half-languages** an author must distinguish:
 1. `CelInvariantEngine` (kernel, adapters/expression-cel) — hand-rolled matcher: top-level
@@ -572,7 +662,12 @@ the sample harness).
 
 ### LNCH-16 — Optimistic locking / concurrent-edit protection
 
-**Status:** OPEN · **Priority:** P1 · **Effort:** M
+**Status:** DONE (2026-07-16) · **Priority:** P1 · **Effort:** M
+
+**Update (2026-07-16).** Platform-managed `row_version` on every generated table; both `ConceptStore`
+adapters implement real compare-and-increment, `409` with the current record on conflict. Kernel-level
+mechanism delivered per the DoD; wiring `expectedRowVersion` through the generic REST/UI surface is a
+documented follow-on, not required for the DoD itself. `docs/OPTIMISTIC_LOCKING.md`.
 
 **Why.** Two users editing the same row silently last-write-wins today — no version column,
 no conflict detection. In single-demo verification this is invisible; in the first real
@@ -595,7 +690,12 @@ winner's state; both adapter families; generated form UX verified in browser on 
 
 ### LNCH-17 — Transaction-boundary contract for multi-step flows
 
-**Status:** OPEN · **Priority:** P1 · **Effort:** M (mostly specification + tests, some code)
+**Status:** DONE (2026-07-16/17) · **Priority:** P1 · **Effort:** M (mostly specification + tests, some code)
+
+**Update (2026-07-17).** `docs/architecture/FLOW_TRANSACTION_CONTRACT.md`, `onFailure` compensation
+blocks (reverse-order, crash-recoverable), and a real bug found+fixed: `JdbcBusinessConceptStore`
+acquired connections uncoordinated with the ambient Spring transaction, allowing a silent
+partial-write between a kernel-gateway write and a JPA write in the same `@Transactional` method.
 
 **Why.** What is atomic when step 4 of a flow fails after steps 1–3 wrote rows? Today the
 honest answer is "it depends and isn't written down." The forEach durability work proved the
@@ -625,8 +725,13 @@ forEach freeze-thread technique); CRUD write+event atomicity proven under JDBC.
 
 ### LNCH-18 — The authoring-path decision: editor-complete vs AI-first
 
-**Status:** OPEN (this is a *decision* gap first, a feature gap second) · **Priority:** P1 ·
+**Status:** PARTIAL (2026-07-17) · **Priority:** P1 ·
 **Effort:** decision S; consequence L–XL
+
+**Update (2026-07-17).** `docs/adr/ADR-0006-authoring-path.md` ratified: AI-first/editor-secondary.
+The DoD's human-run step — a real non-author completing a build from a plain-English description —
+is explicitly left OPEN, not claimed done (bucket-4, real-person-only; see
+`docs/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` for the prep work done toward it).
 
 **Why.** Be honest about how every real app has been built: JSON authored by an AI through
 the MCP/validate→fix→generate loop, with the React editor used for slices and inspection.
@@ -663,7 +768,10 @@ path, and the friction log from that run becomes the next roadmap increment.
 
 ### LNCH-24 — Commit the current working tree
 
-**Status:** OPEN · **Priority:** P1 · **Effort:** S
+**Status:** DONE (2026-07-14) · **Priority:** P1 · **Effort:** S
+
+**Update (2026-07-14).** Landed the in-flight working tree (ControlPanel tenant-user provisioning);
+`git status` clean.
 
 **Why/where.** Right now `IdentityProvisioning.java` (modified), `New-ControlPanelPage.ps1`
 (modified), and two new untracked controllers (`ControlPanelTenantUsersController.java`,
@@ -683,7 +791,14 @@ commit in small bounded steps per the established discipline (no `git add .`).
 
 ### LNCH-19 — Linux CI running the quality gates + sample harness
 
-**Status:** OPEN · **Priority:** P1 · **Effort:** M
+**Status:** PARTIAL (2026-07-14) · **Priority:** P1 · **Effort:** M
+
+**Update (2026-07-14).** `npdev-pr-gate.yml` (fast, `pull_request`-triggered) and a `schedule` trigger
+added to the existing heavy `npdev-ci-validation.yml`, both committed and pushed to
+`origin/beta1-vision-spine`. NOT independently confirmed to actually go green on a real GitHub
+Actions run this session (no `gh` CLI access) — every Gradle task path was confirmed to resolve via
+local `--dry-run` and all workflow YAML confirmed syntactically valid, but that is a weaker bar than
+a real runner. A future session should confirm an actual Actions run before considering this DONE.
 
 **Why.** All four quality gates (`scripts/quality/run-*.ps1`) run only when someone runs them
 on one Windows machine; `ReleaseGateValidator` CI-wiring is the one PARTIAL item left in the
@@ -712,7 +827,13 @@ boot a sample app on a Linux runner using the same scripts.
 
 ### LNCH-21 — Generated-app upgrade contract
 
-**Status:** OPEN · **Priority:** P2 · **Effort:** M
+**Status:** DONE (2026-07-17) · **Priority:** P2 · **Effort:** M
+
+**Update (2026-07-17).** `docs/architecture/APP_UPGRADE_CONTRACT.md`, corrected against actual
+pipeline behavior (customizations survive regeneration via `apps/<App>/web/` re-mounting from
+outside the wiped tree, not in-place preservation as originally assumed). DoD proven live:
+`run-app-upgrade-contract-gate.ps1` asserts a marker file survives byte-identical across two
+regenerations of a real AppGen sample.
 
 **Why.** When the platform ships vNext, how does an existing FinalApp adopt it? The
 hash-guarded `npdev-generated/` protects platform-owned files, and app-owned `web/` is the
@@ -729,7 +850,14 @@ version N upgrades to N+1 with local `web/` customizations intact, proven in the
 
 ### LNCH-22 — User-facing documentation & error-message quality
 
-**Status:** OPEN · **Priority:** P2 · **Effort:** L (incremental)
+**Status:** PARTIAL (2026-07-17/19) · **Priority:** P2 · **Effort:** L (incremental)
+
+**Update (2026-07-19).** `docs/DSL_REFERENCE.md` (generated, `--check`-mode drift detection),
+`docs/CONFIGURATION.md` (startup-validator refusal anchors), `docs/TUTORIAL_FIRST_APP.md`, and now
+`docs/SCHEMA_EVOLUTION.md` (LNCH-1) all follow the same "refusal message links a stable doc anchor"
+pattern. `ValidationDiagnostic`/`ValidationDiagnosticNormalizer` (code/suggestedFix/helpKey) already
+existed; the LNCH-1 knowledge cards extend `npdev_search_fix` coverage to schema-evolution refusals.
+Still OPEN: the DoD's human newcomer test (same person as LNCH-18's DoD) has not been run.
 
 **Why.** The existing docs are excellent *internal* docs — written for the platform's
 builders. A stranger has: no "first app in 30 minutes" tutorial, no DSL reference manual
@@ -746,7 +874,14 @@ builds the tutorial app from docs alone; validator errors carry codes + hints.
 
 ### LNCH-23 — Launch checklist: license, packaging, telemetry, release process
 
-**Status:** OPEN · **Priority:** P2 · **Effort:** M (mostly decisions)
+**Status:** PARTIAL (2026-07-17) · **Priority:** P2 · **Effort:** M (mostly decisions)
+
+**Update (2026-07-17).** `LICENSE` (Apache-2.0, ratified copyright holder Marcelo Giazzon),
+`docs/adr/ADR-0007-distribution-model.md` (self-hosted, no telemetry — both ratified),
+`docs/RELEASE_PROCESS.md`, `CHANGELOG.md`, `run-release-checklist-gate.ps1`. A real trademark-name
+collision was found via `WebSearch` ("NP DEV Soluções em T.I.", `npdev.com.br`) and documented as an
+open finding for a professional search to assess — explicitly NOT resolved. No release tag has been
+cut (stayed on `[Unreleased]`, by explicit choice, not yet).
 
 **Why.** The unglamorous items that block formalization regardless of code quality:
 - **License** — none declared; nobody can legally evaluate the repo.

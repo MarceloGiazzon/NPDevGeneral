@@ -487,14 +487,21 @@
 
 ## 6. Accepted design boundaries (reference — not scheduled)
 
-**Empty as of 2026-07-13.** All six of this section's original entries (`ARCH-6`, `ARCH-7`,
-`ARCH-loop`, `ARCH-upload`, `ARCH-compound-unique`, `ARCH-13`) have been lifted into supported
-platform features via [BOUNDARY_LIFT_ROADMAP.md](BOUNDARY_LIFT_ROADMAP.md); see §7 for what each one
-became. `ARCH-loop` (Flows had no loop step; Procedures already did) was the last of the six, lifted
-by LIFT-LOOP-P1–P5.
+All six of this section's original entries (`ARCH-6`, `ARCH-7`, `ARCH-loop`, `ARCH-upload`,
+`ARCH-compound-unique`, `ARCH-13`) have been lifted into supported platform features via
+[BOUNDARY_LIFT_ROADMAP.md](BOUNDARY_LIFT_ROADMAP.md); see §7 for what each one became. `ARCH-loop`
+(Flows had no loop step; Procedures already did) was the last of the six, lifted by LIFT-LOOP-P1–P5.
+
+**LNCH-1 (schema evolution, done 2026-07-19) recorded five deliberate v1 scope boundaries** — see
+`docs/LNCH1_SCHEMA_EVOLUTION_PLAN.md` §0 and `docs/SCHEMA_EVOLUTION.md#current-limitations`:
 
 | ID | Boundary | Workaround |
 |---|---|---|
+| LNCH1-B1 | No automatic rename *inference* (uid-based identity) — renames are declared, not detected | Declare `renamedFrom` on the field/concept; the AI authoring loop can be instructed to always set it when renaming |
+| LNCH1-B2 | No expression-valued backfills — only a literal `default` is backfilled automatically for a new required field on a populated table | Declare a literal `default`, or make the field optional; an `defaultExpression`-only field is refused with a named message, not silently skipped |
+| LNCH1-B3 | No automated restore from the JSONL pre-drop snapshots — they are a manual recovery artifact | Read `runtime-data/schema-snapshot-before-drop/<timestamp>/<table>.jsonl` and re-insert via SQL, `SeedDataService`, or the REST API |
+| LNCH1-B4 | No cross-database data migration (e.g. H2 → Postgres) — a different, unrelated feature | Export via `TenantExportController` (LNCH-9) and re-import via the seed-data mechanism on the target database |
+| LNCH1-B5 | InMemory-storage apps have no DDL — the entire schema-lifecycle mechanism no-ops for them | Regenerate with a physical `db.engine` (H2Local/H2Server/Postgres) if live schema evolution is needed |
 
 ---
 
@@ -571,3 +578,6 @@ All in the working tree at capture; confirm committed. Full root-cause narrative
   P1, a real latent bug in `ModelResolver.cloneStep()` (used by every flow's specialization/hook-merge
   resolution) that was silently dropping the new loop fields via a stale constructor call — caught by
   a genuine round-trip test, not a code-review guess. §6 is now empty.
+- **2026-07-19** — LNCH-1 (schema evolution, `docs/LNCH1_SCHEMA_EVOLUTION_PLAN.md`) done. §6 gains
+  five new entries (`LNCH1-B1`..`LNCH1-B5`) — deliberate v1 scope boundaries recorded in the plan's
+  own §0, not bugs; see `docs/SCHEMA_EVOLUTION.md#current-limitations` for the live-doc version.
