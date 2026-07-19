@@ -173,6 +173,25 @@ public final class TypeChangeMatrix {
             case "INT" -> "INTEGER";
             case "DECIMAL" -> "NUMERIC";
             case "CLOB", "TEXT" -> "TEXT";
+            // LNCH-1 Phase 7 (task 7.2) fix: confirmed against a real Postgres 15 instance that its
+            // JDBC driver reports these internal pg_type short names via TYPE_NAME (e.g. a BIGINT
+            // column -> "int8"), not the SQL-standard names this project's manifests declare.
+            // attemptInPlaceTypeWidenings passes the RAW (unnormalized) live JDBC type straight into
+            // classify(fromSqlType, toSqlType) -- without this alias, e.g. an unchanged INTEGER
+            // column ("int4" live vs "INTEGER" expected) parsed to different bases and fell through
+            // to the same-family/no-op path never being reached, instead comparing as two DIFFERENT,
+            // unrelated bases -- INCOMPARABLE -- which made the per-table all-or-nothing rule (LNCH-1
+            // Phase 3) block an otherwise-safe widening on any table that also happened to have an
+            // untouched INTEGER/BIGINT/BOOLEAN column, on Postgres only (H2's native type names
+            // already matched the canonical form, so this was invisible without a real Postgres run --
+            // see SchemaLifecycleExecutor.normalizeSqlType's sibling fix for the same root cause in
+            // the classify()/hasTypeChange() path).
+            case "INT4" -> "INTEGER";
+            case "INT8" -> "BIGINT";
+            case "INT2" -> "SMALLINT";
+            case "BOOL" -> "BOOLEAN";
+            case "FLOAT4" -> "REAL";
+            case "FLOAT8" -> "DOUBLE";
             default -> base;
         };
     }

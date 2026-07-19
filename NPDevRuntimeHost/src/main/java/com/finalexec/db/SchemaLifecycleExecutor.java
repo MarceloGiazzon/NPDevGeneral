@@ -1401,6 +1401,32 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         if ("CHARACTER VARYING".equals(base)) {
             base = "VARCHAR";
         }
+        // LNCH-1 Phase 7 (task 7.2) fix: confirmed against a REAL Postgres 15 instance (Testcontainers,
+        // no Postgres instance had ever exercised this method before this phase) that Postgres's JDBC
+        // driver reports its own internal pg_type short names via TYPE_NAME, not the SQL-standard
+        // names SqlTypeSupport.sqlType() puts in the manifest -- e.g. a column declared BIGINT reports
+        // TYPE_NAME="int8". Without these aliases, EVERY unchanged INTEGER/BIGINT/BOOLEAN/TIMESTAMP
+        // WITH TIME ZONE column on Postgres was misclassified as a type change (INT8 != BIGINT) the
+        // moment any fingerprint mismatch triggered a diff -- exactly the H2 "CHARACTER VARYING" gap
+        // above, but for the numeric/boolean/timestamp family, and specific to Postgres. Left latent
+        // until this phase because no prior phase had a Postgres instance to catch it against; this
+        // matches the plan's own repeated "H2-required, Postgres-nightly" framing -- Postgres coverage
+        // was always going to be where a gap like this surfaced.
+        switch (base) {
+            case "INT4" -> base = "INTEGER";
+            case "INT8" -> base = "BIGINT";
+            case "INT2" -> base = "SMALLINT";
+            case "BOOL" -> base = "BOOLEAN";
+            case "TIMESTAMPTZ" -> base = "TIMESTAMP WITH TIME ZONE";
+            case "FLOAT4" -> base = "REAL";
+            case "FLOAT8" -> base = "DOUBLE";
+            default -> {
+                // no alias needed -- VARCHAR, TEXT, NUMERIC, UUID, DATE, JSON/JSONB, BIGINT, INTEGER,
+                // BOOLEAN, SMALLINT, REAL, DOUBLE, TIMESTAMP WITH TIME ZONE all already round-trip
+                // exactly once the aliases above (and the JSONB/CHARACTER VARYING ones before them)
+                // are applied.
+            }
+        }
         return base + parameters;
     }
 

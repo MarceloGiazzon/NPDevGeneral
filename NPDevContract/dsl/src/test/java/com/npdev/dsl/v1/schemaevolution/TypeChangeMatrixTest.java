@@ -104,6 +104,29 @@ class TypeChangeMatrixTest {
     }
 
     @Test
+    void postgresJdbcShortTypeNamesAliasToTheCanonicalManifestFormForComparison() {
+        // LNCH-1 Phase 7 (task 7.2) fix, confirmed against a real Postgres 15 Testcontainers
+        // instance (SchemaLifecycleExecutorPostgresProofMatrixTest): Postgres's JDBC driver reports
+        // its own internal pg_type short names via TYPE_NAME -- e.g. a BIGINT column live-reports
+        // "int8" -- not the SQL-standard names SqlTypeSupport.sqlType() puts in the manifest.
+        // attemptInPlaceTypeWidenings passes this RAW live type straight into classify(); without
+        // this alias, an unchanged INTEGER/BIGINT/BOOLEAN column on Postgres classified as
+        // INCOMPARABLE against its own canonical name, which (per the per-table all-or-nothing
+        // rule) blocked an otherwise-safe widening on any table that also had one of these columns.
+        // Same idempotent-no-op shape as the "bigint, BigInt" case above, just via the Postgres
+        // short name instead of a case variant.
+        assertEquals(WIDENING, TypeChangeMatrix.classify("int4", "INTEGER"));
+        assertEquals(WIDENING, TypeChangeMatrix.classify("int8", "BIGINT"));
+        assertEquals(WIDENING, TypeChangeMatrix.classify("int2", "SMALLINT"));
+        assertEquals(WIDENING, TypeChangeMatrix.classify("bool", "BOOLEAN"));
+        assertEquals(WIDENING, TypeChangeMatrix.classify("float4", "REAL"));
+        assertEquals(WIDENING, TypeChangeMatrix.classify("float8", "DOUBLE"));
+        // And the actual reachable-today widening pair, both sides expressed the way a real
+        // Postgres boot would see them (live "int4" -> manifest-declared "BIGINT").
+        assertEquals(WIDENING, TypeChangeMatrix.classify("int4", "BIGINT"));
+    }
+
+    @Test
     void intAliasesToIntegerInTheWideningOrder() {
         assertEquals(WIDENING, TypeChangeMatrix.classify("INT", "BIGINT"));
         assertEquals(NARROWING, TypeChangeMatrix.classify("BIGINT", "INT"));
