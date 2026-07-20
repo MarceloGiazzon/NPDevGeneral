@@ -2,8 +2,16 @@
   "schemaVersion": "platform-status.v1",
   "generatedFrom": "docs/OPEN_GAPS_AND_ROADMAP.md",
   "note": "DERIVED -- do not hand-edit. Regenerate via scripts/ai/extract_platform_status.py.",
-  "count": 34,
+  "count": 35,
   "items": [
+    {
+      "id": "LNCH-1-B7",
+      "title": "Concept drop is previewed and acknowledged but never executed: classify() enumerates only manifest-declared tables, so an orphan (dropped-concept) table is invisible, the boot classifies SAFE_ADDITIVE, and the destructive path (SchemaDeltaReport/DROP_TABLE/token check) is never entered. -PlanOnly says \"DATA WILL BE LOST\" and demands a token; the table then survives untouched. Found live on Postgres 2026-07-20",
+      "category": "Runtime/plan incoherence",
+      "status": "OPEN",
+      "priority": "P2",
+      "notes": ""
+    },
     {
       "id": "LNCH-1-B6",
       "title": "Migration advisory lock (pg_advisory_lock / H2 equivalent) for multi-instance deployments; lock scope = the migrate(Flyway) entry",

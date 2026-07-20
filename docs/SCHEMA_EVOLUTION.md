@@ -321,6 +321,14 @@ missing):
   relaxations) apply before the acknowledgment decision, so a refused upgrade has already applied
   them; recovery is roll-forward or restore, never redeploying the old jar (which the schema-ahead
   detector now refuses explicitly). See [Refusals and rollback](#refusals-and-rollback).
+- **A dropped concept's table is NOT actually dropped (`LNCH-1-B7`).** Removing a concept from the
+  model makes `-PlanOnly` preview a `DROP_TABLE` and demand an acknowledgment token — but at boot
+  `classify()` only enumerates tables the manifest still declares, so the orphaned table is invisible
+  to it, the boot classifies as safe-additive, and the destructive path (where the drop and the token
+  check live) is never entered. **The table and its rows survive untouched**; the acknowledgment is
+  requested but never consumed. Confirmed live against Postgres on 2026-07-20. This errs in the
+  safe direction (no data is lost), but the plan preview currently overstates what will happen, and
+  orphan tables accumulate. Dropping the table by hand is the workaround.
 - **Single-instance migrations.** The schema-lifecycle executor assumes exactly one app instance
   boots against a given database at a time (the platform's deployment posture — see
   `docs/DEPLOYMENT.md`). Concurrent boots of two instances are **not** guarded by a database lock; do
