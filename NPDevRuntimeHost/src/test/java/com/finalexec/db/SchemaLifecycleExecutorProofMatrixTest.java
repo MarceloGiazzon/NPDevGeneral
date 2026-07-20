@@ -1192,8 +1192,14 @@ class SchemaLifecycleExecutorProofMatrixTest {
     @DisplayName("Scenario 23e (B7): afterMigrate records the owned business tables, so the NEXT "
             + "build's concept drop has the ownership evidence it needs")
     void scenario23e_afterMigrateRecordsOwnedBusinessTables() throws SQLException {
+        // Both declared tables must exist physically: since LNCH-1 hardening X2, ownership is the
+        // union of (previous, current manifest) INTERSECTED WITH THE LIVE TABLES, so a manifest entry
+        // with no corresponding table is deliberately not recorded as owned. In production
+        // afterMigrate always runs after flyway.migrate() has created them; this fixture now mirrors
+        // that instead of declaring a table it never creates.
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+            statement.execute("CREATE TABLE gadgets (id BIGINT PRIMARY KEY)");
         }
         SchemaLifecycleExecutor.SchemaManifest manifest = manifest(
                 "sha256:new", List.of("widgets", "gadgets"),
@@ -1290,6 +1296,108 @@ class SchemaLifecycleExecutorProofMatrixTest {
                 "blanket-flag authorization is not an itemized token -- the history row must record no token");
     }
 
+    @Test
+    @DisplayName("Scenario 25 (X-B3): an orphan that SURVIVES a pass stays NPDev-owned, so a later "
+            + "token-authorized boot can still clean it up -- ownership is not silently forgotten")
+    void scenario25_orphanSurvivingAPassStaysOwnedAndIsDroppableLater() throws SQLException {
+        // ---- boot v1: both concepts exist and are recorded as owned -------------------------------
+        // 'widgets' deliberately lacks the platform column 'version', which is the one column a real
+        // manifest declares but never marks additive -- that is what makes v2's report UNKNOWN and
+        // sends it down the whole-schema path (see scenario 24b).
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), "
+                    + "row_version BIGINT, tenant_id VARCHAR(64))");
+            statement.execute("INSERT INTO widgets (id, name) VALUES (1, 'Alpha')");
+            statement.execute("CREATE TABLE gadgets (id BIGINT PRIMARY KEY, label VARCHAR(50), "
+                    + "version BIGINT, row_version BIGINT, tenant_id VARCHAR(64))");
+            statement.execute("INSERT INTO gadgets (id, label, version) VALUES (1, 'G1', 0)");
+        }
+        executor.afterMigrate(dataSource, realisticTwoConceptManifest("sha256:v1"));
+        assertEquals(Set.of("widgets", "gadgets"), SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource));
+
+        // ---- boot v2: drops the 'gadgets' concept, but takes the UNKNOWN whole-schema path --------
+        SchemaLifecycleExecutor.SchemaManifest v2 = realisticConceptDropManifest("sha256:v2", "", true);
+        executor.beforeMigrate(dataSource, v2);
+        try (Connection connection = dataSource.getConnection()) {
+            // The whole-schema path drops the manifest-listed 'widgets'; the orphan 'gadgets' is NOT
+            // manifest-listed, so it survives the very pass that was supposed to remove it.
+            assertTrue(hasTable(connection.getMetaData(), "gadgets"),
+                    "precondition: the orphan must survive this pass for the scenario to mean anything");
+            // Production sequencing: flyway.migrate() recreates the declared tables between
+            // beforeMigrate and afterMigrate. Imitate that here (this test drives the executor
+            // directly and has no Flyway).
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), "
+                        + "version BIGINT, row_version BIGINT, tenant_id VARCHAR(64))");
+            }
+        }
+        executor.afterMigrate(dataSource, v2);
+
+        // THE X-B3 assertion. Pre-X2, afterMigrate rewrote ownership from the new manifest alone, so
+        // 'gadgets' dropped out of the set permanently and no later boot could ever prove NPDev owned
+        // it -- the orphan became un-droppable forever.
+        assertEquals(Set.of("widgets", "gadgets"), SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource),
+                "a surviving orphan must REMAIN owned so a later pass can still recognise it as a dropped concept");
+
+        // ---- boot v3: with a valid token, the orphan is finally cleaned up ------------------------
+        SchemaLifecycleExecutor.SchemaManifest v3NoToken = realisticConceptDropManifest("sha256:v3", "", false);
+        SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, v3NoToken);
+        assertEquals(List.of("DROP_TABLE:gadgets"), report.stableStrings(),
+                "the still-owned orphan must now be itemized as a dropped concept");
+        String token = DestructiveAckToken.compute("sha256:v3", report.stableStrings());
+
+        executor.beforeMigrate(dataSource, realisticConceptDropManifest("sha256:v3", token, false));
+        try (Connection connection = dataSource.getConnection()) {
+            assertFalse(hasTable(connection.getMetaData(), "gadgets"),
+                    "the orphan must finally be dropped by the token-authorized pass");
+            // The table survives the cleanup pass. Its ROWS were already lost back at v2 -- that is
+            // what the UNKNOWN whole-schema path costs, and is exactly why X1 narrowed the set of
+            // situations that reach it.
+            assertTrue(hasTable(connection.getMetaData(), "widgets"),
+                    "the surviving concept's table is untouched by the cleanup pass");
+        }
+    }
+
+    @Test
+    @DisplayName("Scenario 25b (X-B3 safety): a hand-created table never enters the ownership set "
+            + "across repeated boots, and is never itemized as a dropped concept")
+    void scenario25b_handCreatedTableNeverBecomesOwned() throws SQLException {
+        seedTwoRealisticConceptsWithData();
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE scratch_notes (id BIGINT PRIMARY KEY, note VARCHAR(50))");
+            statement.execute("INSERT INTO scratch_notes (id, note) VALUES (1, 'operator owned')");
+        }
+
+        // Boot 1 and boot 2 both declare both concepts; boot 3 drops one. The union-with-previous
+        // rule added in X2 only ever admits names that came from a manifest, so no number of boots
+        // can drift a hand-created table into the owned set.
+        executor.afterMigrate(dataSource, realisticTwoConceptManifest("sha256:v1"));
+        assertEquals(Set.of("widgets", "gadgets"), SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource),
+                "boot 1: only manifest-declared tables are owned");
+
+        executor.afterMigrate(dataSource, realisticTwoConceptManifest("sha256:v2"));
+        assertEquals(Set.of("widgets", "gadgets"), SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource),
+                "boot 2: the union must not have absorbed the hand-created table");
+
+        SchemaLifecycleExecutor.SchemaManifest dropsGadgets = realisticConceptDropManifest("sha256:v3", "", false);
+        SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, dropsGadgets);
+        assertEquals(List.of("DROP_TABLE:gadgets"), report.stableStrings(),
+                "only the owned orphan may ever be itemized -- never the hand-created table");
+
+        String token = DestructiveAckToken.compute("sha256:v3", report.stableStrings());
+        executor.beforeMigrate(dataSource, realisticConceptDropManifest("sha256:v3", token, false));
+        executor.afterMigrate(dataSource, realisticConceptDropManifest("sha256:v3", token, false));
+
+        assertEquals(Set.of("widgets"), SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource),
+                "boot 3: the dropped concept leaves the set (it is gone from the database), and the "
+                        + "hand-created table still never entered it");
+        try (Connection connection = dataSource.getConnection()) {
+            assertTrue(hasTable(connection.getMetaData(), "scratch_notes"), "the hand-created table survives");
+            assertEquals("operator owned", readColumn(connection, "scratch_notes", "note", 1L),
+                    "the hand-created table's data is untouched");
+        }
+    }
+
     /** Two concepts shaped the way the generator really emits them -- the business columns PLUS the
      * platform columns {@code SchemaRealizationEmitter#fullColumnNames} always appends (id/version/
      * row_version/tenant_id) -- so the manifests built on top of them can carry a realistic
@@ -1329,10 +1437,15 @@ class SchemaLifecycleExecutorProofMatrixTest {
     /** The v2 manifest: the 'gadgets' concept has been dropped from the model. */
     private static SchemaLifecycleExecutor.SchemaManifest realisticConceptDropManifest(
             String token, boolean blanketAllowed) {
+        return realisticConceptDropManifest("sha256:new", token, blanketAllowed);
+    }
+
+    private static SchemaLifecycleExecutor.SchemaManifest realisticConceptDropManifest(
+            String fingerprint, String token, boolean blanketAllowed) {
         Map<String, List<String>> columns = Map.of(
                 "widgets", List.of("id", "name", "version", "row_version", "tenant_id"));
         return manifest(
-                "sha256:new", List.of("widgets"), columns,
+                fingerprint, List.of("widgets"), columns,
                 realisticAdditiveColumns(columns, Map.of()),
                 Map.of("widgets", WIDGETS_TYPES),
                 Map.of(), Map.of(), blanketAllowed, token, Map.of(), Map.of(), Map.of(), Map.of(), true);

@@ -1999,7 +1999,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             // fingerprint. A later build that no longer declares one of them can then prove the
             // orphaned table is a dropped CONCEPT (NPDev created it) rather than a table someone
             // created by hand in the same schema -- which is what makes acting on it safe.
-            upsertMetadata(connection, OWNED_TABLES_KEY, ownedTablesJson(manifest));
+            upsertMetadata(connection, OWNED_TABLES_KEY, ownedTablesJson(connection, dataSource, manifest));
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed storing schema fingerprint", exception);
         }
@@ -2029,18 +2029,69 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         }
     }
 
-    private static String ownedTablesJson(SchemaManifest manifest) {
-        List<String> owned = new ArrayList<>();
+    /**
+     * The NPDev-owned business tables to record for the NEXT boot:
+     *
+     * <pre>owned = ( previouslyOwned  UNION  manifest.businessTableColumns().keySet() )  INTERSECT  liveTables</pre>
+     *
+     * <p><b>LNCH-1 hardening X2 (finding X-B3).</b> This used to be just the current manifest's
+     * tables. That silently discarded ownership of an orphan that outlived a pass: if a table was
+     * dropped from the model but still physically existed (it survived a whole-schema wipe, a crash,
+     * or a refusal-then-partial state), the very next {@code afterMigrate} rewrote the ownership set
+     * without it -- and since {@link #droppedConceptTables} can only act on tables it can PROVE
+     * NPDev owns, that orphan became permanently un-droppable. The cleanup path was lost exactly in
+     * the situation it exists for.
+     *
+     * <p>Why each half matters:
+     * <ul>
+     *   <li><b>Union with previous</b> keeps a surviving orphan recognisable as a dropped concept on
+     *       a later boot, so a token-authorized upgrade can still clean it up.</li>
+     *   <li><b>Intersect with live</b> keeps the set honest and bounded: anything actually gone drops
+     *       out naturally, so the set never grows without limit and never claims ownership of
+     *       something that no longer exists.</li>
+     * </ul>
+     *
+     * <p>A hand-created table still can never enter the set -- entries only ever originate from a
+     * manifest, and the intersection only ever removes. When {@code previouslyOwned} is {@code null}
+     * ("never recorded"), the union degenerates to the current manifest, i.e. identical to the
+     * pre-X2 behaviour for legacy apps.
+     *
+     * <p>On any failure this falls back to the pre-X2 behaviour (current manifest only) rather than
+     * writing {@code "[]"} as it used to: losing ownership wholesale is the precise failure mode this
+     * method exists to prevent, and an empty set would ALSO silently disable {@link #droppedConceptTables}.
+     * Reuses the caller's already-open {@link Connection} for the metadata read.
+     */
+    private static String ownedTablesJson(Connection connection, DataSource dataSource, SchemaManifest manifest) {
+        List<String> fromManifest = new ArrayList<>();
         for (String table : manifest.businessTableColumns().keySet()) {
             if (table != null && !table.isBlank()) {
-                owned.add(table.toLowerCase(Locale.ROOT));
+                fromManifest.add(table.toLowerCase(Locale.ROOT));
             }
         }
-        Collections.sort(owned);
         try {
+            Set<String> candidate = new LinkedHashSet<>();
+            Set<String> previouslyOwned = readOwnedBusinessTables(dataSource);
+            if (previouslyOwned != null) {
+                candidate.addAll(previouslyOwned);
+            }
+            candidate.addAll(fromManifest);
+
+            Set<String> liveTables = readActualTableNames(connection.getMetaData());
+            List<String> owned = new ArrayList<>();
+            for (String table : candidate) {
+                if (liveTables.contains(table)) {
+                    owned.add(table);
+                }
+            }
+            Collections.sort(owned);
             return OBJECT_MAPPER.writeValueAsString(owned);
         } catch (Exception exception) {
-            return "[]";
+            Collections.sort(fromManifest);
+            try {
+                return OBJECT_MAPPER.writeValueAsString(fromManifest);
+            } catch (Exception fallbackFailure) {
+                return "[]";
+            }
         }
     }
 
