@@ -114,6 +114,17 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
                 }
             }
         }
+        // LNCH-1 hardening X5: npdev_schema_metadata is SHARED across the tests in this class (only
+        // business tables carry the per-test suffix), so the ownedBusinessTables row must not leak
+        // into the next test. Clearing it is what keeps the ownership scenarios below independent.
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement delete = connection.prepareStatement(
+                     "DELETE FROM npdev_schema_metadata WHERE metadata_key = ?")) {
+            delete.setString(1, "ownedBusinessTables");
+            delete.executeUpdate();
+        } catch (SQLException ignored) {
+            // The metadata table may not exist yet for tests that never reached afterMigrate.
+        }
     }
 
     private String table(String base) {
@@ -581,6 +592,442 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
     }
 
     // ---- Shared helpers -------------------------------------------------------------------------
+
+    // ---- LNCH-1 hardening X5: the remediation + hardening scenarios, twinned -----------------------
+    // Every scenario below has a twin in SchemaLifecycleExecutorProofMatrixTest (H2) under the same
+    // scenario number -- edit both together. They are copied rather than shared because this class's
+    // per-test table-name suffixing (see the class javadoc) means every fixture differs from the H2
+    // one in table naming, and hoisting a shared body would mean threading the suffix through a
+    // parameter object for no real gain.
+
+    @Test
+    @DisplayName("Postgres scenario 24 (X-B1): an acknowledged concept drop removes ONLY that concept's "
+            + "table -- a still-declared concept keeps its rows (DROP TABLE ... CASCADE on Postgres)")
+    void postgresScenario24_conceptDropDoesNotWipeUnrelatedTables() throws SQLException {
+        String widgets = table("widgets");
+        String gadgets = table("gadgets");
+        seedTwoRealisticConcepts(widgets, gadgets, true);
+        executor.afterMigrate(dataSource, twoConceptManifest("sha256:old", widgets, gadgets));
+        assertEquals(java.util.Set.of(widgets, gadgets),
+                SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource),
+                "Postgres folds identifiers to lower case -- ownership must still round-trip exactly");
+
+        SchemaDeltaReport report =
+                SchemaDeltaReport.generate(dataSource, conceptDropManifest("sha256:new", widgets, "", true));
+        assertEquals(List.of("DROP_TABLE:" + gadgets), report.stableStrings());
+        String token = DestructiveAckToken.compute("sha256:new", report.stableStrings());
+
+        SchemaLifecycleExecutor.DestructiveRecreation result =
+                executor.beforeMigrate(dataSource, conceptDropManifest("sha256:new", widgets, token, true));
+        assertTrue(result.performed());
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(hasTable(metadata, widgets),
+                    "X-B1: a still-declared concept must NOT be dropped by a concept-drop upgrade");
+            assertEquals(2, rowCount(connection, widgets), "the surviving concept keeps ALL of its rows");
+            assertFalse(hasTable(metadata, gadgets), "the dropped concept's table must be removed");
+        }
+        assertEquals("APPLIED", latestHistoryRow(dataSource, gadgets).outcome());
+    }
+
+    @Test
+    @DisplayName("Postgres scenario 24b (X-B1 guard): an UNKNOWN item still forces the whole-schema "
+            + "recreation")
+    void postgresScenario24b_unknownItemStillWipes() throws SQLException {
+        String widgets = table("widgets");
+        String gadgets = table("gadgets");
+        // 'version' is declared by every real manifest but never additive-eligible, so omitting it
+        // physically produces an UNKNOWN item (see the H2 twin).
+        seedTwoRealisticConcepts(widgets, gadgets, false);
+        executor.afterMigrate(dataSource, twoConceptManifest("sha256:old", widgets, gadgets));
+
+        SchemaDeltaReport report =
+                SchemaDeltaReport.generate(dataSource, conceptDropManifest("sha256:new", widgets, "", true));
+        assertFalse(report.hasOnlyNamedDestructiveKinds(),
+                "precondition: the report must contain an UNKNOWN item");
+        String token = DestructiveAckToken.compute("sha256:new", report.stableStrings());
+
+        executor.beforeMigrate(dataSource, conceptDropManifest("sha256:new", widgets, token, true));
+        try (Connection connection = dataSource.getConnection()) {
+            assertFalse(hasTable(connection.getMetaData(), widgets),
+                    "an UNKNOWN item must still force the whole-schema recreation");
+        }
+    }
+
+    @Test
+    @DisplayName("Postgres scenario 25 (X-B3): an orphan surviving a pass stays owned and is droppable "
+            + "on a later boot")
+    void postgresScenario25_survivingOrphanStaysOwned() throws SQLException {
+        String widgets = table("widgets");
+        String gadgets = table("gadgets");
+        seedTwoRealisticConcepts(widgets, gadgets, false);
+        executor.afterMigrate(dataSource, twoConceptManifest("sha256:v1", widgets, gadgets));
+
+        SchemaDeltaReport v2Report =
+                SchemaDeltaReport.generate(dataSource, conceptDropManifest("sha256:v2", widgets, "", true));
+        String v2Token = DestructiveAckToken.compute("sha256:v2", v2Report.stableStrings());
+        executor.beforeMigrate(dataSource, conceptDropManifest("sha256:v2", widgets, v2Token, true));
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertTrue(hasTable(connection.getMetaData(), gadgets),
+                    "precondition: the orphan survives the whole-schema pass");
+            // Imitate flyway.migrate() recreating the declared table between before/afterMigrate.
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE " + widgets + " (id BIGINT PRIMARY KEY, name VARCHAR(50), "
+                        + "version BIGINT, row_version BIGINT, tenant_id VARCHAR(64))");
+            }
+        }
+        executor.afterMigrate(dataSource, conceptDropManifest("sha256:v2", widgets, v2Token, true));
+
+        assertEquals(java.util.Set.of(widgets, gadgets),
+                SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource),
+                "a surviving orphan must REMAIN owned so a later pass can still recognise it");
+
+        SchemaDeltaReport v3Report =
+                SchemaDeltaReport.generate(dataSource, conceptDropManifest("sha256:v3", widgets, "", false));
+        assertEquals(List.of("DROP_TABLE:" + gadgets), v3Report.stableStrings());
+        String v3Token = DestructiveAckToken.compute("sha256:v3", v3Report.stableStrings());
+        executor.beforeMigrate(dataSource, conceptDropManifest("sha256:v3", widgets, v3Token, false));
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertFalse(hasTable(connection.getMetaData(), gadgets), "the orphan is finally dropped");
+        }
+    }
+
+    @Test
+    @DisplayName("Postgres scenario 25b (X-B3 safety): a hand-created table never enters the ownership "
+            + "set and is never itemized")
+    void postgresScenario25b_handCreatedTableNeverBecomesOwned() throws SQLException {
+        String widgets = table("widgets");
+        String gadgets = table("gadgets");
+        String scratch = table("scratch_notes");
+        seedTwoRealisticConcepts(widgets, gadgets, true);
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE " + scratch + " (id BIGINT PRIMARY KEY, note VARCHAR(50))");
+            statement.execute("INSERT INTO " + scratch + " (id, note) VALUES (1, 'operator owned')");
+        }
+
+        executor.afterMigrate(dataSource, twoConceptManifest("sha256:v1", widgets, gadgets));
+        executor.afterMigrate(dataSource, twoConceptManifest("sha256:v2", widgets, gadgets));
+        assertEquals(java.util.Set.of(widgets, gadgets),
+                SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource),
+                "repeated boots must not drift the hand-created table into the owned set");
+
+        SchemaDeltaReport report =
+                SchemaDeltaReport.generate(dataSource, conceptDropManifest("sha256:v3", widgets, "", false));
+        assertEquals(List.of("DROP_TABLE:" + gadgets), report.stableStrings(),
+                "only the owned orphan may be itemized -- never the hand-created table");
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertTrue(hasTable(connection.getMetaData(), scratch), "the hand-created table survives");
+        }
+    }
+
+    @Test
+    @DisplayName("Postgres scenario 26 (X4.4): the blanket flag does NOT authorize a concept drop")
+    void postgresScenario26_blanketFlagCannotAuthorizeAConceptDrop() throws SQLException {
+        String widgets = table("widgets");
+        String gadgets = table("gadgets");
+        seedTwoRealisticConcepts(widgets, gadgets, true);
+        executor.afterMigrate(dataSource, twoConceptManifest("sha256:old", widgets, gadgets));
+
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.beforeMigrate(dataSource, conceptDropManifest("sha256:new", widgets, "", true)));
+        assertTrue(refusal.getMessage().contains("DROP of one or more whole concept table(s): [" + gadgets + "]"),
+                refusal.getMessage());
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertTrue(hasTable(connection.getMetaData(), gadgets),
+                    "a refused concept drop must leave the table untouched");
+            assertEquals(2, rowCount(connection, gadgets), "and all of its data");
+        }
+    }
+
+    @Test
+    @DisplayName("Postgres scenario X-B1 core: blanket-only authorization of a DROP_COLUMN executes "
+            + "surgically -- a table with no diff is not touched")
+    void postgresBlanketFlagAloneExecutesColumnDropSurgically() throws SQLException {
+        String widgets = table("widgets");
+        String untouched = table("untouched");
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE " + widgets + " (id BIGINT PRIMARY KEY, legacy_flag BOOLEAN)");
+            statement.execute("INSERT INTO " + widgets + " (id, legacy_flag) VALUES (1, TRUE)");
+            statement.execute("CREATE TABLE " + untouched + " (id BIGINT PRIMARY KEY)");
+            statement.execute("INSERT INTO " + untouched + " (id) VALUES (99)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        SchemaLifecycleExecutor.SchemaManifest blanketOnly = manifest(
+                "sha256:new", List.of(widgets, untouched),
+                Map.of(widgets, List.of("id"), untouched, List.of("id")),
+                Map.of(widgets, List.of(), untouched, List.of()),
+                Map.of(widgets, Map.of("id", "BIGINT"), untouched, Map.of("id", "BIGINT")),
+                Map.of(), Map.of(), true, "", Map.of(), Map.of(), Map.of(), Map.of());
+
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, blanketOnly);
+        assertTrue(result.performed());
+        assertFalse(result.droppedTables().contains(untouched),
+                "X-B1: a table with no diff must not be touched merely because the blanket flag authorized the pass");
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(hasTable(metadata, untouched), "the no-diff table must survive");
+            assertEquals(1, rowCount(connection, untouched), "with its rows");
+            assertTrue(hasTable(metadata, widgets), "the diffed table is altered in place, not dropped");
+            assertFalse(hasColumn(metadata, widgets, "legacy_flag"), "the acknowledged column drop still executes");
+            assertEquals(1, rowCount(connection, widgets), "the diffed table keeps its rows");
+        }
+    }
+
+    @Test
+    @DisplayName("Postgres scenario 21 (X-B2): schema-ahead-of-build refuses via Trigger B when a newer "
+            + "build renamed an ordinary column (Postgres lower-case identifier folding)")
+    void postgresScenario21_schemaAheadRefusesViaTriggerB() throws SQLException {
+        String widgets = table("widgets");
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE " + widgets + " (id BIGINT PRIMARY KEY, full_name VARCHAR(50))");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        Map<String, List<String>> columns = Map.of(widgets, List.of("id", "name"));
+        SchemaLifecycleExecutor.SchemaManifest oldJar = manifest(
+                "sha256:old", List.of(widgets), columns, realisticAdditiveColumns(columns, Map.of()),
+                Map.of(widgets, Map.of("id", "BIGINT", "name", "VARCHAR(50)")),
+                Map.of(), Map.of(), false, "", Map.of(), Map.of(), Map.of(), Map.of());
+
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.beforeMigrate(dataSource, oldJar));
+        assertTrue(refusal.getMessage().contains(widgets + ".name"), refusal.getMessage());
+        assertTrue(refusal.getMessage().contains("full_name"),
+                "Trigger B must name the unexplained extra column: " + refusal.getMessage());
+    }
+
+    @Test
+    @DisplayName("Postgres scenario 21b (X-B2 guard): an additive column never physically added, with no "
+            + "extras, must NOT refuse")
+    void postgresScenario21b_additiveColumnNeverAddedDoesNotRefuse() throws SQLException {
+        String widgets = table("widgets");
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE " + widgets + " (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+        }
+        seedStoredFingerprint(dataSource, "sha256:same");
+
+        Map<String, List<String>> columns = Map.of(widgets, List.of("id", "name", "notes"));
+        SchemaLifecycleExecutor.SchemaManifest sameFingerprint = manifest(
+                "sha256:same", List.of(widgets), columns, realisticAdditiveColumns(columns, Map.of()),
+                Map.of(widgets, Map.of("id", "BIGINT", "name", "VARCHAR(50)", "notes", "VARCHAR(50)")),
+                Map.of(), Map.of(), false, "", Map.of(), Map.of(), Map.of(), Map.of());
+
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, sameFingerprint);
+        assertFalse(result.performed(), "a self-healing additive column must never provoke a refusal");
+    }
+
+    @Test
+    @DisplayName("Postgres scenario 21c (X-B2): a missing required bond column still refuses via Trigger A")
+    void postgresScenario21c_missingRequiredBondRefusesViaTriggerA() throws SQLException {
+        String widgets = table("widgets");
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE " + widgets + " (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+        }
+        seedStoredFingerprint(dataSource, "sha256:same");
+
+        Map<String, List<String>> columns = Map.of(widgets, List.of("id", "name", "owner_ref"));
+        SchemaLifecycleExecutor.SchemaManifest sameFingerprint = manifest(
+                "sha256:same", List.of(widgets), columns,
+                realisticAdditiveColumns(columns, Map.of(widgets, List.of("owner_ref"))),
+                Map.of(widgets, Map.of("id", "BIGINT", "name", "VARCHAR(50)", "owner_ref", "BIGINT")),
+                Map.of(), Map.of(), false, "", Map.of(), Map.of(), Map.of(), Map.of());
+
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.beforeMigrate(dataSource, sameFingerprint));
+        assertTrue(refusal.getMessage().contains(widgets + ".owner_ref"), refusal.getMessage());
+    }
+
+    @Test
+    @DisplayName("Postgres scenario 21d (X3.4): an entirely missing table refuses with the whole-table "
+            + "message, not a column-by-column flood")
+    void postgresScenario21d_entirelyMissingTableRefusesClearly() throws SQLException {
+        String widgets = table("widgets");
+        String gadgets = table("gadgets");
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE " + widgets + " (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+        }
+        seedStoredFingerprint(dataSource, "sha256:same");
+
+        Map<String, List<String>> columns = Map.of(
+                widgets, List.of("id", "name"),
+                gadgets, List.of("id", "label"));
+        SchemaLifecycleExecutor.SchemaManifest sameFingerprint = manifest(
+                "sha256:same", List.of(widgets, gadgets), columns, realisticAdditiveColumns(columns, Map.of()),
+                Map.of(widgets, Map.of("id", "BIGINT", "name", "VARCHAR(50)"),
+                        gadgets, Map.of("id", "BIGINT", "label", "VARCHAR(50)")),
+                Map.of(), Map.of(), false, "", Map.of(), Map.of(), Map.of(), Map.of());
+
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.beforeMigrate(dataSource, sameFingerprint));
+        assertTrue(refusal.getMessage().contains(gadgets + " (entire table missing)"), refusal.getMessage());
+        assertFalse(refusal.getMessage().contains(gadgets + ".label"),
+                "the whole-table message must REPLACE the per-column noise: " + refusal.getMessage());
+    }
+
+    @Test
+    @DisplayName("Postgres scenario 17 (F1): a required field with a literal default is backfilled even "
+            + "when the SAME upgrade carries an acknowledged destructive item")
+    void postgresScenario17_requiredFieldBackfillRunsOnTheDestructivePath() throws SQLException {
+        String widgets = table("widgets");
+        String gadgets = table("gadgets");
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE " + widgets + " (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+            statement.execute("INSERT INTO " + widgets + " (id, name) VALUES (1, 'Alpha')");
+            statement.execute("CREATE TABLE " + gadgets + " (id BIGINT PRIMARY KEY, legacy_flag BOOLEAN)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        SchemaLifecycleExecutor.SchemaManifest target = manifest(
+                "sha256:new", List.of(widgets, gadgets),
+                Map.of(widgets, List.of("id", "name", "status"), gadgets, List.of("id")),
+                Map.of(widgets, List.of("status"), gadgets, List.of()),
+                Map.of(widgets, Map.of("id", "BIGINT", "name", "VARCHAR(50)", "status", "VARCHAR(50)"),
+                        gadgets, Map.of("id", "BIGINT")),
+                Map.of(), Map.of(), false, "",
+                Map.of(widgets, List.of("status")),
+                Map.of(widgets, Map.of("status", "\"PENDING\"")), Map.of(), Map.of());
+
+        SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, target);
+        // DropColumn's stable string carries the column's live type as its last segment.
+        assertEquals(List.of("DROP_COLUMN:" + gadgets + ":legacy_flag:BOOLEAN"), report.stableStrings());
+        String token = DestructiveAckToken.compute("sha256:new", report.stableStrings());
+
+        SchemaLifecycleExecutor.SchemaManifest acknowledged = manifest(
+                "sha256:new", List.of(widgets, gadgets),
+                Map.of(widgets, List.of("id", "name", "status"), gadgets, List.of("id")),
+                Map.of(widgets, List.of("status"), gadgets, List.of()),
+                Map.of(widgets, Map.of("id", "BIGINT", "name", "VARCHAR(50)", "status", "VARCHAR(50)"),
+                        gadgets, Map.of("id", "BIGINT")),
+                Map.of(), Map.of(), false, token,
+                Map.of(widgets, List.of("status")),
+                Map.of(widgets, Map.of("status", "\"PENDING\"")), Map.of(), Map.of());
+
+        executor.beforeMigrate(dataSource, acknowledged);
+        executor.afterMigrate(dataSource, acknowledged);
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertFalse(hasColumn(metadata, gadgets, "legacy_flag"), "the acknowledged drop executed");
+            assertEquals("PENDING", readColumn(connection, widgets, "status", 1L),
+                    "the legacy row must be backfilled with the literal default");
+            assertTrue(isNotNull(metadata, widgets, "status"),
+                    "and the column must end NOT NULL -- the F1 bug left it permanently nullable");
+        }
+    }
+
+    @Test
+    @DisplayName("Postgres scenario 18 (F1): a required field with NO default refuses even when a valid "
+            + "destructive token authorized the rest of the upgrade")
+    void postgresScenario18_requiredFieldNoDefaultRefusesDespiteAValidToken() throws SQLException {
+        String widgets = table("widgets");
+        String gadgets = table("gadgets");
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE " + widgets + " (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+            statement.execute("INSERT INTO " + widgets + " (id, name) VALUES (1, 'Alpha')");
+            statement.execute("CREATE TABLE " + gadgets + " (id BIGINT PRIMARY KEY, legacy_flag BOOLEAN)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        Map<String, List<String>> columns =
+                Map.of(widgets, List.of("id", "name", "status"), gadgets, List.of("id"));
+        Map<String, Map<String, String>> types =
+                Map.of(widgets, Map.of("id", "BIGINT", "name", "VARCHAR(50)", "status", "VARCHAR(50)"),
+                        gadgets, Map.of("id", "BIGINT"));
+
+        SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, manifest(
+                "sha256:new", List.of(widgets, gadgets), columns,
+                Map.of(widgets, List.of("status"), gadgets, List.of()), types,
+                Map.of(), Map.of(), false, "", Map.of(widgets, List.of("status")), Map.of(), Map.of(), Map.of()));
+        String token = DestructiveAckToken.compute("sha256:new", report.stableStrings());
+
+        SchemaLifecycleExecutor.SchemaManifest noDefault = manifest(
+                "sha256:new", List.of(widgets, gadgets), columns,
+                Map.of(widgets, List.of("status"), gadgets, List.of()), types,
+                Map.of(), Map.of(), false, token,
+                Map.of(widgets, List.of("status")), Map.of(), Map.of(), Map.of());
+
+        executor.beforeMigrate(dataSource, noDefault);
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.afterMigrate(dataSource, noDefault));
+        assertTrue(refusal.getMessage().toLowerCase(Locale.ROOT).contains("status"), refusal.getMessage());
+    }
+
+    // ---- Shared fixtures for the scenarios above --------------------------------------------------
+
+    /** Twin of the H2 matrix's {@code realisticAdditiveColumns} -- keep the two in sync. VERIFIED
+     * against {@code SchemaRealizationEmitter#additiveColumnNames}: everything except {@code id},
+     * {@code version} and required/many-to-many bond columns is additive-eligible. */
+    private static Map<String, List<String>> realisticAdditiveColumns(
+            Map<String, List<String>> columnsByTable,
+            Map<String, List<String>> nonAdditiveBondColumnsByTable) {
+        Map<String, List<String>> additive = new java.util.LinkedHashMap<>();
+        for (Map.Entry<String, List<String>> entry : columnsByTable.entrySet()) {
+            List<String> bonds = nonAdditiveBondColumnsByTable.getOrDefault(entry.getKey(), List.of());
+            additive.put(entry.getKey(), entry.getValue().stream()
+                    .filter(column -> !"id".equalsIgnoreCase(column))
+                    .filter(column -> !"version".equalsIgnoreCase(column))
+                    .filter(column -> !bonds.contains(column))
+                    .toList());
+        }
+        return additive;
+    }
+
+    /** @param withVersionColumn when false, 'widgets' physically lacks the non-additive 'version'
+     *                           column, which is what makes a later report contain an UNKNOWN item. */
+    private void seedTwoRealisticConcepts(String widgets, String gadgets, boolean withVersionColumn)
+            throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE " + widgets + " (id BIGINT PRIMARY KEY, name VARCHAR(50), "
+                    + (withVersionColumn ? "version BIGINT, " : "") + "row_version BIGINT, tenant_id VARCHAR(64))");
+            statement.execute("INSERT INTO " + widgets + " (id, name) VALUES (1, 'Alpha')");
+            statement.execute("INSERT INTO " + widgets + " (id, name) VALUES (2, 'Beta')");
+            statement.execute("CREATE TABLE " + gadgets + " (id BIGINT PRIMARY KEY, label VARCHAR(50), "
+                    + "version BIGINT, row_version BIGINT, tenant_id VARCHAR(64))");
+            statement.execute("INSERT INTO " + gadgets + " (id, label) VALUES (1, 'G1')");
+            statement.execute("INSERT INTO " + gadgets + " (id, label) VALUES (2, 'G2')");
+        }
+    }
+
+    private static Map<String, String> realisticTypes(String businessColumn) {
+        return Map.of("id", "BIGINT", businessColumn, "VARCHAR(50)", "version", "BIGINT",
+                "row_version", "BIGINT", "tenant_id", "VARCHAR(64)");
+    }
+
+    private static SchemaLifecycleExecutor.SchemaManifest twoConceptManifest(
+            String fingerprint, String widgets, String gadgets) {
+        Map<String, List<String>> columns = Map.of(
+                widgets, List.of("id", "name", "version", "row_version", "tenant_id"),
+                gadgets, List.of("id", "label", "version", "row_version", "tenant_id"));
+        return manifest(fingerprint, List.of(widgets, gadgets), columns,
+                realisticAdditiveColumns(columns, Map.of()),
+                Map.of(widgets, realisticTypes("name"), gadgets, realisticTypes("label")),
+                Map.of(), Map.of(), true, "", Map.of(), Map.of(), Map.of(), Map.of());
+    }
+
+    private static SchemaLifecycleExecutor.SchemaManifest conceptDropManifest(
+            String fingerprint, String widgets, String token, boolean blanketAllowed) {
+        Map<String, List<String>> columns = Map.of(
+                widgets, List.of("id", "name", "version", "row_version", "tenant_id"));
+        return manifest(fingerprint, List.of(widgets), columns,
+                realisticAdditiveColumns(columns, Map.of()),
+                Map.of(widgets, realisticTypes("name")),
+                Map.of(), Map.of(), blanketAllowed, token, Map.of(), Map.of(), Map.of(), Map.of());
+    }
+
+    private static int rowCount(Connection connection, String table) throws SQLException {
+        try (Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("SELECT COUNT(*) FROM " + table)) {
+            assertTrue(resultSet.next(), "expected a count row");
+            return resultSet.getInt(1);
+        }
+    }
 
     private static String readColumn(Connection connection, String table, String column, long id) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
