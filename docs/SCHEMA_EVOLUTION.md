@@ -304,9 +304,34 @@ model, the supported recovery directions are exactly two:
 **Never redeploy the OLD jar against a database a newer build already migrated.** Its stored
 fingerprint would match the old build, so the executor would otherwise boot "clean" against a
 schema whose columns have been renamed away or dropped, and then fail at runtime with no
-diagnostics. The executor guards this explicitly: on a fingerprint-MATCH boot it verifies the live
-database still contains every column this build's manifest requires, and refuses with a
-schema-ahead-of-build message if a newer build has moved ahead of this jar (pointing back here).
+diagnostics.
+
+The executor guards this on every fingerprint-MATCH boot with a **schema-ahead-of-build detector**.
+It is a best-effort safety net, not a complete guarantee — here is exactly what it does and does not
+catch:
+
+| Situation | Detected? | How |
+|---|---|---|
+| A newer build **renamed an ordinary field** (`name` → `full_name`) | **Yes** | Trigger B |
+| A newer build **renamed or dropped a whole concept's table** | **Yes** | whole-table rule |
+| A **required bond/FK column** is missing | **Yes** | Trigger A |
+| A newer build **purely dropped a column** (nothing left behind) | **No** | see below |
+
+- **Trigger A — a missing column that is not additive-eligible.** Catches `id`, `version`, and
+  required/many-to-many bond columns: things nothing re-adds automatically.
+- **Trigger B — a missing column on a table that also carries an *unexplained extra* live column.**
+  An unexplained extra is a live column this build's manifest does not declare, that is not a
+  platform column (`id`, `version`, `row_version`, `tenant_id`), and is not the old side of a
+  declared rename. `name` missing while `full_name` is present is the signature of a rename by a
+  newer build.
+- **Whole-table rule.** If a declared table has no live columns at all, the refusal says
+  `<table> (entire table missing)` rather than listing every column separately.
+
+**Known limitation — a pure column drop is invisible.** If a newer build simply *removed* a field,
+it leaves no extra column behind, so neither trigger has anything to see. The old jar will boot, and
+its repeatable additive migration may re-add that column **empty**. Rolling an old jar back onto a
+migrated database is unsupported regardless; this detector reduces the damage, it does not make the
+operation safe. Recover by rolling forward, or by restoring from a snapshot/backup.
 
 ## Snapshots (manual recovery only)
 
@@ -341,7 +366,11 @@ missing):
 - **Refusals are not side-effect-free.** The safe convergent steps (table/field renames, NOT NULL
   relaxations) apply before the acknowledgment decision, so a refused upgrade has already applied
   them; recovery is roll-forward or restore, never redeploying the old jar (which the schema-ahead
-  detector now refuses explicitly). See [Refusals and rollback](#refusals-and-rollback).
+  detector refuses in the cases it can see). See [Refusals and rollback](#refusals-and-rollback).
+- **The schema-ahead detector cannot see a pure column drop.** If a newer build removed a field and
+  was rolled back, nothing is left in the live schema to detect, so the old jar boots and may re-add
+  the column empty. The detector's exact coverage is tabulated under
+  [Refusals and rollback](#refusals-and-rollback).
 - **Dropping a concept needs one boot of ownership history first (`LNCH-1-B7`).** The executor only
   drops an orphaned table it can *prove* NPDev created — see
   [Dropping a concept](#dropping-a-concept). An app upgraded from a build older than this mechanism

@@ -26,6 +26,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -44,6 +45,17 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     private static final String OWNED_TABLES_KEY = "ownedBusinessTables";
     private static final String SCHEMA_REALIZATION_LOCATION = "classpath:db/schema-realization";
     private static final Set<String> SYSTEM_SCHEMAS = Set.of("information_schema", "pg_catalog");
+    /**
+     * Columns the platform itself puts on every business table, never a user-modelled field.
+     * VERIFIED against {@code SchemaRealizationEmitter#fullColumnNames} (which appends {@code id}
+     * when the concept declares no id field, then {@code version}, {@code row_version},
+     * {@code tenant_id}). Deliberately a second copy rather than a shared constant: the emitter lives
+     * in the generator module, which the RuntimeHost template does not depend on. Used by
+     * {@link #findSchemaAheadMissingColumns}'s Trigger B so a platform column can never be mistaken
+     * for the leftover of a rename by a newer build.
+     */
+    private static final Set<String> PLATFORM_MANAGED_COLUMNS =
+            Set.of("id", "version", "row_version", "tenant_id");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     /**
@@ -1842,14 +1854,38 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * "cannot prove anything missing" (returns empty) -- this guard must never itself turn a healthy
      * matched-fingerprint boot into a refusal on a transient introspection hiccup.
      *
-     * <p><b>Additive-eligible columns are deliberately excluded.</b> An additive-eligible column is
+     * <h2>Two independent triggers (LNCH-1 hardening X3, finding X-B2)</h2>
+     * A missing column is reported when EITHER fires:
+     *
+     * <p><b>Trigger A -- a missing NON-additive-eligible column.</b> An additive-eligible column is
      * one the ordinary R__ repeatable migration re-adds idempotently ({@code ADD COLUMN IF NOT
-     * EXISTS}) on every boot -- so a missing one is self-healing (the very next {@code flyway.migrate()}
-     * restores it) and never a schema-ahead symptom. Only a missing NON-additive column -- a core
-     * column nothing re-adds -- signals that a newer build renamed or dropped it out from under this
-     * jar. (This exclusion is also what keeps the detector from false-positiving in the direct-call
-     * unit tests, where SAFE_ADDITIVE columns are declared in the manifest but never physically added
-     * because those tests bypass {@code flyway.migrate()}.)
+     * EXISTS}) on every boot, so a missing one is self-healing and not a schema-ahead symptom. This
+     * was the original (and only) rule.
+     *
+     * <p><b>Why Trigger A alone was not enough:</b> it is very nearly dead in production. VERIFIED
+     * against {@code SchemaRealizationEmitter#additiveColumnNames}/{@code #isAdditiveEligible}: a
+     * real manifest marks EVERY ordinary non-bond field additive-eligible, plus {@code tenant_id} and
+     * {@code row_version}. The only non-additive columns a real manifest has are {@code id},
+     * {@code version}, and required/many-to-many bond columns. So for the case F4 was actually
+     * written for -- a newer build renamed an ordinary field and was rolled back -- Trigger A could
+     * never fire. The proof-matrix scenario it was tested by passed only because its fixture declared
+     * NO additive columns, a shape no real manifest has.
+     *
+     * <p><b>Trigger B -- a missing additive-eligible column on a table that also has an UNEXPLAINED
+     * EXTRA live column.</b> An unexplained extra is a live column that is (a) not declared by this
+     * manifest for that table, (b) not a platform-managed column, and (c) not the old side of a
+     * declared rename. {@code name} missing while {@code full_name} is present is exactly the
+     * signature of "a newer build renamed this column and was then rolled back to this jar".
+     *
+     * <p>Trigger B is deliberately silent for the direct-call unit tests that motivated Trigger A's
+     * exclusion in the first place: those declare SAFE_ADDITIVE columns that were never physically
+     * added (they bypass {@code flyway.migrate()}), but they add no EXTRA live columns either, so
+     * there is nothing to make the absence look like a rename.
+     *
+     * <p><b>Known residual limitation (documented, deliberately not fixed):</b> a newer build that
+     * purely DROPPED a column leaves no extra column behind, so neither trigger fires. The old jar
+     * boots and the R__ migration may re-add the column empty. See
+     * {@code docs/SCHEMA_EVOLUTION.md#refusals-and-rollback}.
      */
     private static List<String> findSchemaAheadMissingColumns(DataSource dataSource, SchemaManifest manifest) {
         List<String> missing = new ArrayList<>();
@@ -1858,14 +1894,38 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             for (Map.Entry<String, List<String>> entry : manifest.businessTableColumns().entrySet()) {
                 String table = entry.getKey();
                 Set<String> live = readActualColumns(metadata, table);
-                Set<String> additiveEligible = new LinkedHashSet<>(
-                        manifest.businessTableAdditiveColumns().getOrDefault(table, List.of()));
+                if (live.isEmpty()) {
+                    // The whole table is gone (e.g. a newer build renamed the CONCEPT away). Reporting
+                    // every column individually here would bury the actual problem in noise. Safe on
+                    // this code path specifically: the detector only runs when the stored fingerprint
+                    // MATCHES this build, which means a previous boot already converged with this
+                    // table present -- a genuine first boot returns earlier, on the blank-fingerprint
+                    // branch, and never reaches this method.
+                    missing.add(table + " (entire table missing)");
+                    continue;
+                }
+                Set<String> declared = lowerCased(entry.getValue());
+                Set<String> additiveEligible =
+                        lowerCased(manifest.businessTableAdditiveColumns().getOrDefault(table, List.of()));
+                Set<String> renameOldNames =
+                        lowerCased(manifest.businessTableRenamedColumns().getOrDefault(table, Map.of()).values());
+
+                Set<String> unexplainedExtra = new LinkedHashSet<>(live);
+                unexplainedExtra.removeAll(declared);
+                unexplainedExtra.removeAll(PLATFORM_MANAGED_COLUMNS);
+                unexplainedExtra.removeAll(renameOldNames);
+
                 for (String column : entry.getValue()) {
-                    if (additiveEligible.contains(column)) {
-                        continue; // self-healing on the next flyway.migrate() -- not a schema-ahead symptom
+                    String normalized = column.toLowerCase(Locale.ROOT);
+                    if (live.contains(normalized)) {
+                        continue;
                     }
-                    if (!live.contains(column.toLowerCase(Locale.ROOT))) {
-                        missing.add(table + "." + column);
+                    if (!additiveEligible.contains(normalized)) {
+                        missing.add(table + "." + column); // Trigger A
+                    } else if (!unexplainedExtra.isEmpty()) {
+                        missing.add(table + "." + column + " (additive-eligible, but this table also has "
+                                + "unexplained live column(s) " + unexplainedExtra + " -- the signature of a "
+                                + "rename by a newer build)"); // Trigger B
                     }
                 }
             }
@@ -1873,6 +1933,16 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             return List.of();
         }
         return missing;
+    }
+
+    private static Set<String> lowerCased(Collection<String> values) {
+        Set<String> normalized = new LinkedHashSet<>();
+        for (String value : values) {
+            if (value != null) {
+                normalized.add(value.toLowerCase(Locale.ROOT));
+            }
+        }
+        return normalized;
     }
 
     /**

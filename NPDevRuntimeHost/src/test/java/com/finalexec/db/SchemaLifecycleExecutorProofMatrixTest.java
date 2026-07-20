@@ -971,9 +971,15 @@ class SchemaLifecycleExecutorProofMatrixTest {
         // The OLD jar still expects the pre-rename column 'name' and carries the OLD fingerprint --
         // which MATCHES the stored one, so without the R3 detector it would boot "clean" and then
         // fail at runtime referencing a column that no longer exists.
+        // LNCH-1 hardening X3 (finding X-B2): this fixture used to pass Map.of("widgets", List.of())
+        // for businessTableAdditiveColumns -- "nothing on this table is additive-eligible", a shape
+        // NO real manifest has. That is the only reason the original single-trigger detector fired
+        // here. With realistic additive columns ('name' IS additive-eligible, as it is in every real
+        // manifest), the original detector skipped 'name' entirely and this scenario booted clean.
+        Map<String, List<String>> oldColumns = Map.of("widgets", List.of("id", "name"));
         SchemaLifecycleExecutor.SchemaManifest oldManifest = manifest(
                 "sha256:old", List.of("widgets"),
-                Map.of("widgets", List.of("id", "name")), Map.of("widgets", List.of()),
+                oldColumns, realisticAdditiveColumns(oldColumns, Map.of()),
                 Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)")),
                 Map.of(), Map.of(), false, "", Map.of(), Map.of(), Map.of(), Map.of(), true);
 
@@ -996,6 +1002,84 @@ class SchemaLifecycleExecutorProofMatrixTest {
         assertFalse(rollForward.performed(), "the roll-forward build must boot without destructive recreation");
         executor.afterMigrate(dataSource, newManifest);
         assertSecondBootIsNoOp(newManifest);
+    }
+
+    @Test
+    @DisplayName("Scenario 21b (X-B2 guard): a manifest column that is additive-eligible and simply "
+            + "not physically added yet, with NO unexplained extra column, must NOT refuse")
+    void scenario21b_additiveColumnNeverAddedDoesNotTriggerARefusal() throws SQLException {
+        // The direct-call unit-test shape that Trigger A's additive exclusion was originally written
+        // to protect: the manifest declares 'notes', flyway.migrate() never ran, so the column is
+        // absent. There is no EXTRA live column, so nothing looks like a rename -- Trigger B must
+        // stay silent and this boot must proceed normally.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+        }
+        seedStoredFingerprint(dataSource, "sha256:same");
+
+        Map<String, List<String>> columns = Map.of("widgets", List.of("id", "name", "notes"));
+        SchemaLifecycleExecutor.SchemaManifest sameFingerprint = manifest(
+                "sha256:same", List.of("widgets"),
+                columns, realisticAdditiveColumns(columns, Map.of()),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "notes", "VARCHAR(50)")),
+                Map.of(), Map.of(), false, "", Map.of(), Map.of(), Map.of(), Map.of(), true);
+
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, sameFingerprint);
+        assertFalse(result.performed(), "a self-healing additive column must never provoke a refusal");
+        assertFalse(result.safeAdditive(), "a matching fingerprint is the pure no-op branch");
+    }
+
+    @Test
+    @DisplayName("Scenario 21c (X-B2): a missing NON-additive-eligible column (a required bond) still "
+            + "refuses via the original Trigger A")
+    void scenario21c_missingRequiredBondColumnStillRefusesViaTriggerA() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+        }
+        seedStoredFingerprint(dataSource, "sha256:same");
+
+        // 'owner_ref' is a REQUIRED bond column: additive-INeligible in a real manifest
+        // (SchemaRealizationEmitter#isAdditiveEligible), so Trigger A must still catch it.
+        Map<String, List<String>> columns = Map.of("widgets", List.of("id", "name", "owner_ref"));
+        SchemaLifecycleExecutor.SchemaManifest sameFingerprint = manifest(
+                "sha256:same", List.of("widgets"),
+                columns, realisticAdditiveColumns(columns, Map.of("widgets", List.of("owner_ref"))),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "owner_ref", "BIGINT")),
+                Map.of(), Map.of(), false, "", Map.of(), Map.of(), Map.of(), Map.of(), true);
+
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.beforeMigrate(dataSource, sameFingerprint));
+        assertTrue(refusal.getMessage().contains("widgets.owner_ref"), refusal.getMessage());
+        assertEquals("REFUSED", latestHistoryRow(dataSource).outcome());
+    }
+
+    @Test
+    @DisplayName("Scenario 21d (X3.4): a manifest-declared table that is entirely absent refuses with "
+            + "one clear 'entire table missing' message, not a column-by-column flood")
+    void scenario21d_entirelyMissingTableRefusesWithAClearMessage() throws SQLException {
+        // A newer build renamed the CONCEPT (table) away and was rolled back to this jar.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+        }
+        seedStoredFingerprint(dataSource, "sha256:same");
+
+        Map<String, List<String>> columns = Map.of(
+                "widgets", List.of("id", "name"),
+                "gadgets", List.of("id", "label"));
+        SchemaLifecycleExecutor.SchemaManifest sameFingerprint = manifest(
+                "sha256:same", List.of("widgets", "gadgets"),
+                columns, realisticAdditiveColumns(columns, Map.of()),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)"),
+                        "gadgets", Map.of("id", "BIGINT", "label", "VARCHAR(50)")),
+                Map.of(), Map.of(), false, "", Map.of(), Map.of(), Map.of(), Map.of(), true);
+
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.beforeMigrate(dataSource, sameFingerprint));
+        assertTrue(refusal.getMessage().contains("gadgets (entire table missing)"), refusal.getMessage());
+        assertFalse(refusal.getMessage().contains("gadgets.label"),
+                "the whole-table message must REPLACE the per-column noise, not accompany it: "
+                        + refusal.getMessage());
+        assertEquals("REFUSED", latestHistoryRow(dataSource).outcome());
     }
 
     @Test
