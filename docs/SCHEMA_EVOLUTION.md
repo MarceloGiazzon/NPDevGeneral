@@ -260,20 +260,32 @@ the ControlPanel schema-migration screen on the CURRENTLY RUNNING app):
   field — either source authorizing the same expected token is sufficient. Check what's pending
   with `GET /api/admin/schema-migration/pending`.
 
-**3. Boot the upgrade.** With a matching token, the executor logs (in order):
+**3. Boot the upgrade.** With a matching token, the executor logs (in order). The block below is a
+**verbatim capture from a real run** — a concept drop authorized purely through the ControlPanel
+channel above, against real Postgres 15, with real seeded data
+(`..\NPDev_General__OutsideRepo\lnch1-evidence\hardening-X6.md`, 2026-07-20). Note that the new
+build was deployed with **no** `-AcknowledgeDestructive` flag at all: the pending row is what
+authorized it, which is why the second line says *via a ControlPanel pending acknowledgment*.
 
 ```
-NPDev schema lifecycle: applied in-place field renames: [users.name -> full_name]
-NPDev schema lifecycle: destructive change acknowledged by itemized token; executing surgically
-  (only the affected table(s)/column(s), LNCH-1 Phase 4). Report: [DROP_COLUMN:users:active:BOOLEAN]
-NPDev schema lifecycle: pre-drop snapshot written to runtime-data/schema-snapshot-before-drop/...
-NPDev schema lifecycle: surgical destructive changes applied: [DROP_COLUMN users.active]
+NPDev schema lifecycle: relaxed NOT NULL on no-longer-required column(s): [users.version, users.row_version, users.tenant_id]
+NPDev schema lifecycle: destructive change acknowledged by itemized token (via a ControlPanel pending
+  acknowledgment); executing surgically (only the affected table(s)/column(s), LNCH-1 Phase 4).
+  Report: [DROP_TABLE:projects]
+NPDev schema lifecycle: pre-drop snapshot written to ...\runtime-data\schema-snapshot-before-drop\20260720-232647-895
+NPDev schema lifecycle: surgical destructive changes applied: [DROP_TABLE projects]
+NPDev destructive schema recreation cleared Flyway history for schema-realization scripts: [R__npdev_schema_additive_columns.sql, V1__npdev_schema_realization.sql]
+NPDev schema lifecycle: added and backfilled new required column(s) to their declared literal default,
+  then enforced NOT NULL (LNCH-1 Phase 5): [users.department]
 ```
 
-The rename and the drop each apply through their own mechanism, on the same boot, without either
-one waiting on or blocking the other. Verified live against a real Postgres compose stack with real
-seeded data (`D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\lnch1-evidence\phase-7.md`) — the
-renamed column's data survives intact, the dropped column is genuinely gone.
+The concept drop and the new required field each apply through their own mechanism, on the same
+boot, without either one waiting on or blocking the other. Observed in that run: the `projects`
+table was gone (its REST endpoint 404s) with all 3 of its rows preserved in the pre-drop snapshot's
+`projects.jsonl`; all 3 `users` rows survived, each carrying `department = "unassigned"`, and the
+column ended genuinely `NOT NULL` (a direct SQL `INSERT ... department NULL` was rejected by
+Postgres); the pending acknowledgment row was consumed; and a second boot was a clean no-op
+(`stored schema fingerprint matches generated schema fingerprint`).
 
 **Without a matching token**, the boot refuses outright — the app never starts with a half-applied
 or silently-guessed **destructive** change (the safe convergent steps — renames, relaxations — may
