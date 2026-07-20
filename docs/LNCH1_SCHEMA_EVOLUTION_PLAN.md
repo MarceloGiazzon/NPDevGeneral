@@ -6,9 +6,18 @@
 > acknowledgment tokens uncomputable at plan time), 1 systemic fragility (divergent SQL-type
 > normalization between the two token producers), and 7 lower-severity gaps. All are fixed or
 > recorded — see **`docs/LNCH1_REMEDIATION_PLAN.md`** for the plan and
-> `..\NPDev_General__OutsideRepo\lnch1-evidence\remediation-R0-R8.md` for what was verified,
-> what changed behaviourally, and what remains pending CI (the Postgres Testcontainers legs and the
-> live Docker-Compose rehearsal were NOT run in that session).
+> `..\NPDev_General__OutsideRepo\lnch1-evidence\remediation-R0-R8.md` for what was verified and
+> what changed behaviourally.
+> **Hardening round (X0–X9), 2026-07-20:** a review of the remediation round found 1 **critical**
+> regression (a concept drop on a blanket-authorized app wiped every other table's data), 2 real
+> bugs, 4 incoherences and 5 gaps. See **`docs/LNCH1_HARDENING_PLAN.md`** and
+> `..\NPDev_General__OutsideRepo\lnch1-evidence\hardening-*.md`.
+> **Postgres status (corrected 2026-07-20 — this header previously said the Testcontainers legs
+> "were NOT run"):** they *were* run later in the remediation session and passed (12 tests). The
+> hardening round's X5 then mirrored the remediation + hardening scenarios into that twin and re-ran
+> it green at **24 tests, 0 failures** against real Postgres 15. The single authoritative
+> claim-by-claim record of what is verified live, verified by suite, or not verified is
+> `..\NPDev_General__OutsideRepo\lnch1-evidence\hardening-verification-ledger.md`.
 > **Effort:** XL, phased into 9 independently-committable phases
 > **Written:** 2026-07-17, verified against the working tree at commit `996b939`
 > **Evidence:** `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\lnch1-evidence\phase-0.md` through

@@ -126,6 +126,27 @@ bugs found only by that live rehearsal (a Postgres-only unique-constraint crash,
 data-loss composability gap between renames and unrelated destructive drops), both fixed with
 regression coverage.
 
+**Update (2026-07-20) — remediation and hardening rounds followed.** LNCH-1's *core* is DONE, but it
+took two review rounds after the initial "DONE" to get there, and the second one found something
+serious:
+
+- **Remediation (R0–R9, `docs/LNCH1_REMEDIATION_PLAN.md`)** — 2 high-severity bugs (required-field
+  backfill silently skipped on destructive paths; `DROP_TABLE` tokens uncomputable at plan time),
+  1 systemic fragility, 7 smaller gaps. All fixed or recorded.
+- **Hardening (X0–X9, `docs/LNCH1_HARDENING_PLAN.md`)** — a review of the remediation round found a
+  **CRITICAL regression it had introduced**: on any app with `allowDestructiveRecreate: true` (i.e.
+  every shipped app definition), dropping a concept routed to the whole-schema wipe and destroyed
+  **every other table's data**, while the orphaned table it was meant to drop survived. Fixed in X1,
+  with the reproduction observed red first. Also: ownership is now a union intersected with live
+  tables so surviving orphans stay cleanable (X2); the schema-ahead-of-build detector was inert in
+  production and now actually fires (X3); the deprecated blanket flag no longer authorizes concept
+  drops and is no longer the recommended default (X4); the Postgres twin covers all of it (X5).
+
+**Verification status is tracked claim-by-claim** in
+`D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\lnch1-evidence\hardening-verification-ledger.md` —
+consult that rather than any single summary, because an earlier session's summary and its own
+evidence file disagreed about what had actually been run.
+
 **The gap (why).** The entire value proposition of low-code is *iterating on a live app*.
 Today NPDev's lifecycle is: author model → generate → **fresh schema**. There is no answer to
 the question every real user asks in week two: *"I added a field / renamed a concept / changed

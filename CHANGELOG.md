@@ -56,6 +56,28 @@ Format: see `docs/RELEASE_PROCESS.md`. Dates are release-tag dates, not commit d
   refuses the boot with the new expected token printed; no data is at risk).
 
 ### Fixed
+- **LNCH-1 X1 (critical, operator-visible): a destructive upgrade authorized only by the blanket
+  `destructiveAllowed` flag no longer wipes the whole schema.** On any app with
+  `allowDestructiveRecreate: true` — the shape of every shipped app definition — a destructive change
+  fell through to the whole-schema recreation even when every item in the delta report was
+  surgically executable. Because that path drops the tables the *new* manifest lists, dropping a
+  concept destroyed the data of every concept still in the model, while the orphaned table the
+  upgrade was meant to remove survived. Authorization and execution strategy are now separate:
+  authorization decides *whether* destruction may happen, and the report's content decides *how* —
+  the whole-schema recreation is reached only when the report contains an `UNKNOWN` item. This is
+  strictly less destructive in every case it changes. The blanket-flag deprecation warning now also
+  itemizes exactly what is about to be executed.
+- LNCH-1 X2: a table dropped from the model but still physically present (it survived a wipe, a
+  crash, or a refusal) no longer loses its NPDev-ownership record on the next boot, which had made
+  it permanently un-droppable. `ownedBusinessTables` is now `(previous ∪ current manifest) ∩ live
+  tables`.
+- LNCH-1 X3: the schema-ahead-of-build detector (which refuses an old jar redeployed against a
+  database a newer build already migrated) was effectively inert — it skipped every
+  additive-eligible column, which in a real manifest is nearly every column. It now also fires when
+  a missing column coincides with an *unexplained extra* live column on the same table (the
+  signature of a rename by a newer build), and reports an entirely-absent table once instead of
+  column by column. A pure column *drop* by a newer build remains undetectable — documented in
+  `docs/SCHEMA_EVOLUTION.md#refusals-and-rollback`.
 - LNCH-1-B7: dropping a concept now actually drops its table. Previously `-PlanOnly` previewed a
   `DROP_TABLE` and demanded an acknowledgment token, but at boot `classify()` only enumerated
   manifest-declared tables, so the orphaned table was invisible, the boot classified as
