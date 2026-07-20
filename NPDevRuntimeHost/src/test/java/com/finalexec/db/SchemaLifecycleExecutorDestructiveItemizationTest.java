@@ -161,18 +161,31 @@ class SchemaLifecycleExecutorDestructiveItemizationTest {
         assertEquals(staleToken, row.ackTokenUsed(), "the (wrong) attempted token is still recorded for audit purposes");
     }
 
+    /**
+     * LNCH-1 hardening X1 (finding X-B1). This test previously asserted the OPPOSITE -- it was named
+     * {@code blanketFlagAloneStillDoesTheOldWholeSchemaWipeNotSurgicalWithADeprecationWarning} and
+     * pinned "even a table with no diff at all is dropped by the whole-schema path" as intended
+     * behaviour. That pinned a critical data-loss regression: because the whole-schema path drops the
+     * tables the NEW manifest lists, a blanket-authorized upgrade destroyed every still-modelled
+     * concept's data (and, for a concept drop, left the actual orphan behind -- see the proof
+     * matrix's scenario 24). Authorization no longer selects the execution path; only the presence of
+     * an UNKNOWN item does. The deprecation warning for blanket-only authorization is unchanged, and
+     * is asserted here as before.
+     */
     @Test
-    void blanketFlagAloneStillDoesTheOldWholeSchemaWipeNotSurgicalWithADeprecationWarning() throws SQLException {
+    void blanketFlagAloneNowExecutesSurgicallyWithADeprecationWarning() throws SQLException {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, legacy_flag BOOLEAN)");
             statement.execute("CREATE TABLE untouched_table (id BIGINT PRIMARY KEY)");
             statement.execute("INSERT INTO widgets (id, legacy_flag) VALUES (1, TRUE)");
+            statement.execute("INSERT INTO untouched_table (id) VALUES (99)");
         }
         seedStoredFingerprint(dataSource, "sha256:old");
 
-        // businessTables intentionally include BOTH tables -- the whole-schema path drops every
-        // manifest-listed table regardless of whether that specific table had a diff, which is
-        // exactly the "not surgical" behavior this test is pinning.
+        // businessTables intentionally include BOTH tables: the OLD whole-schema path dropped every
+        // manifest-listed table regardless of whether it had a diff. Only 'widgets' actually has a
+        // diff (legacy_flag is being dropped), so post-X1 'untouched_table' must survive -- that
+        // contrast is what this test now pins.
         SchemaLifecycleExecutor.SchemaManifest manifest = new SchemaLifecycleExecutor.SchemaManifest(
                 "H2Local", "jdbc", true, "sha256:new", List.of(), List.of("widgets", "untouched_table"),
                 Map.of("widgets", List.of("id"), "untouched_table", List.of("id")),
@@ -193,15 +206,35 @@ class SchemaLifecycleExecutorDestructiveItemizationTest {
         }
         String logged = capturedOut.toString(StandardCharsets.UTF_8);
         assertTrue(logged.contains("DEPRECATION WARNING"), "a blanket-flag-only authorization must log a deprecation warning: " + logged);
+        assertTrue(logged.contains("Executing surgically"),
+                "the deprecation warning must name what it is about to execute (X1.2): " + logged);
+        assertTrue(logged.contains("DROP_COLUMN:widgets:legacy_flag"),
+                "the warning must itemize the change so an operator can see the blast radius: " + logged);
 
         assertTrue(result.performed());
-        assertTrue(result.droppedTables().contains("widgets"));
-        assertTrue(result.droppedTables().contains("untouched_table"),
-                "the OLD whole-schema path drops EVERY manifest-listed table, not just the diff -- this is what distinguishes it from the surgical path");
+        assertTrue(result.droppedTables().contains("widgets"),
+                "the table that actually had a diff is the one the surgical path touches");
+        assertFalse(result.droppedTables().contains("untouched_table"),
+                "X-B1: a table with no diff must NOT be touched merely because the blanket flag authorized the pass");
 
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
-            assertFalse(tableExists(metadata, "untouched_table"), "even a table with no diff at all is dropped by the whole-schema path");
+            assertTrue(tableExists(metadata, "untouched_table"),
+                    "X-B1: a table with no diff at all must survive a blanket-authorized destructive pass");
+            try (PreparedStatement statement = connection.prepareStatement("SELECT id FROM untouched_table");
+                 ResultSet resultSet = statement.executeQuery()) {
+                assertTrue(resultSet.next(), "the untouched table must keep its rows");
+                assertEquals(99L, resultSet.getLong("id"));
+            }
+            // The acknowledged item itself still executes -- X1 narrowed the blast radius, it did
+            // not weaken the change.
+            assertTrue(tableExists(metadata, "widgets"), "the diffed table is altered in place, not dropped");
+            assertFalse(hasColumn(metadata, "widgets", "legacy_flag"), "the dropped column must still be gone");
+            try (PreparedStatement statement = connection.prepareStatement("SELECT id FROM widgets");
+                 ResultSet resultSet = statement.executeQuery()) {
+                assertTrue(resultSet.next(), "the diffed table's ROWS survive -- only the dropped column's data is lost");
+                assertEquals(1L, resultSet.getLong("id"));
+            }
         }
 
         HistoryRow row = latestHistoryRow(dataSource);

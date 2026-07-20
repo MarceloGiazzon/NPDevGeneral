@@ -26,6 +26,7 @@ import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -1208,6 +1209,143 @@ class SchemaLifecycleExecutorProofMatrixTest {
                 "every business table this build declares must be recorded as NPDev-owned");
     }
 
+    @Test
+    @DisplayName("Scenario 24 (X-B1): a concept drop authorized by the blanket 'destructiveAllowed' "
+            + "flag alone must drop ONLY the dropped concept's table -- never wipe the data of the "
+            + "concepts this build still declares")
+    void scenario24_blanketAuthorizedConceptDropDoesNotWipeUnrelatedTables() throws SQLException {
+        seedTwoRealisticConceptsWithData();
+        // Ownership + fingerprint are seeded through the PRODUCTION writer (afterMigrate with the
+        // v1 manifest), not by hand-inserting JSON, so this fixture can never drift from the format
+        // readOwnedBusinessTables actually expects (LNCH-1 hardening X0.4).
+        executor.afterMigrate(dataSource, realisticTwoConceptManifest("sha256:old"));
+        assertEquals(Set.of("widgets", "gadgets"), SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource),
+                "precondition: the previous boot must have recorded BOTH tables as NPDev-owned");
+
+        // v2 drops the 'gadgets' concept. Authorization comes from the blanket flag ALONE (no token)
+        // -- which is the shape of every shipped app definition today.
+        SchemaLifecycleExecutor.SchemaManifest blanketAuthorized = realisticConceptDropManifest("", true);
+        SchemaLifecycleExecutor.DestructiveRecreation result =
+                executor.beforeMigrate(dataSource, blanketAuthorized);
+
+        assertTrue(result.performed(), "the blanket-authorized concept drop must execute");
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            // THE assertion X-B1 is about, checked FIRST because it is the finding's headline: before
+            // the fix the blanket flag routed this pass to the WHOLE-SCHEMA wipe, which drops every
+            // manifest-listed table -- destroying 'widgets' (real, still-modelled data) while the
+            // actual orphan 'gadgets' survived untouched precisely because it is no longer
+            // manifest-listed. The upgrade destroyed everything EXCEPT the thing it was meant to drop.
+            assertTrue(hasTable(metadata, "widgets"),
+                    "an unrelated, still-declared concept must NOT be dropped by a concept-drop upgrade");
+            assertEquals(2, rowCount(connection, "widgets"),
+                    "the surviving concept must keep ALL of its rows");
+            assertEquals("Alpha", readColumn(connection, "widgets", "name", 1L), "surviving data intact");
+            assertFalse(hasTable(metadata, "gadgets"), "the dropped concept's table must be removed");
+        }
+        assertEquals("APPLIED", latestHistoryRow(dataSource).outcome());
+
+        executor.afterMigrate(dataSource, blanketAuthorized);
+        assertSecondBootIsNoOp(blanketAuthorized);
+    }
+
+    @Test
+    @DisplayName("Scenario 24b (X-B1 guard): a report containing an UNKNOWN item STILL falls back to "
+            + "the whole-schema recreation -- X1 narrowed that path, it did not delete it")
+    void scenario24b_unknownItemStillTakesTheWholeSchemaWipePath() throws SQLException {
+        // Identical to scenario 24 EXCEPT that 'widgets' is physically missing the platform column
+        // 'version'. 'version' is the one column a real manifest declares but never marks additive
+        // (VERIFIED against SchemaRealizationEmitter#additiveColumnNames -- see
+        // realisticAdditiveColumns), so SchemaDeltaReport itemizes it as UNKNOWN: a column that is
+        // neither live, nor additive-eligible, nor explained by a declared rename.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), "
+                    + "row_version BIGINT, tenant_id VARCHAR(64))");
+            statement.execute("INSERT INTO widgets (id, name) VALUES (1, 'Alpha')");
+            statement.execute("INSERT INTO widgets (id, name) VALUES (2, 'Beta')");
+            statement.execute("CREATE TABLE gadgets (id BIGINT PRIMARY KEY, label VARCHAR(50), "
+                    + "version BIGINT, row_version BIGINT, tenant_id VARCHAR(64))");
+            statement.execute("INSERT INTO gadgets (id, label, version) VALUES (1, 'G1', 0)");
+        }
+        executor.afterMigrate(dataSource, realisticTwoConceptManifest("sha256:old"));
+
+        SchemaLifecycleExecutor.SchemaManifest blanketAuthorized = realisticConceptDropManifest("", true);
+        SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, blanketAuthorized);
+        assertFalse(report.hasOnlyNamedDestructiveKinds(),
+                "precondition: the report must contain an UNKNOWN item for this scenario to mean anything");
+
+        SchemaLifecycleExecutor.DestructiveRecreation result =
+                executor.beforeMigrate(dataSource, blanketAuthorized);
+
+        assertTrue(result.performed());
+        try (Connection connection = dataSource.getConnection()) {
+            // The whole-schema path drops every manifest-listed table. This is the (unchanged,
+            // deliberate) last-resort behaviour when the diff genuinely cannot be explained item by
+            // item -- proving X1 narrowed the wipe to the UNKNOWN case rather than removing it.
+            assertFalse(hasTable(connection.getMetaData(), "widgets"),
+                    "an UNKNOWN item must still force the whole-schema recreation");
+        }
+        assertEquals("APPLIED", latestHistoryRow(dataSource).outcome());
+        assertNull(latestHistoryRow(dataSource).ackTokenUsed(),
+                "blanket-flag authorization is not an itemized token -- the history row must record no token");
+    }
+
+    /** Two concepts shaped the way the generator really emits them -- the business columns PLUS the
+     * platform columns {@code SchemaRealizationEmitter#fullColumnNames} always appends (id/version/
+     * row_version/tenant_id) -- so the manifests built on top of them can carry a realistic
+     * {@code businessTableAdditiveColumns} (LNCH-1 hardening X-B2b). */
+    private void seedTwoRealisticConceptsWithData() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), "
+                    + "version BIGINT, row_version BIGINT, tenant_id VARCHAR(64))");
+            statement.execute("INSERT INTO widgets (id, name, version) VALUES (1, 'Alpha', 0)");
+            statement.execute("INSERT INTO widgets (id, name, version) VALUES (2, 'Beta', 0)");
+            statement.execute("CREATE TABLE gadgets (id BIGINT PRIMARY KEY, label VARCHAR(50), "
+                    + "version BIGINT, row_version BIGINT, tenant_id VARCHAR(64))");
+            statement.execute("INSERT INTO gadgets (id, label, version) VALUES (1, 'G1', 0)");
+            statement.execute("INSERT INTO gadgets (id, label, version) VALUES (2, 'G2', 0)");
+        }
+    }
+
+    private static final Map<String, String> WIDGETS_TYPES = Map.of(
+            "id", "BIGINT", "name", "VARCHAR(50)", "version", "BIGINT",
+            "row_version", "BIGINT", "tenant_id", "VARCHAR(64)");
+    private static final Map<String, String> GADGETS_TYPES = Map.of(
+            "id", "BIGINT", "label", "VARCHAR(50)", "version", "BIGINT",
+            "row_version", "BIGINT", "tenant_id", "VARCHAR(64)");
+
+    /** The v1 manifest matching {@link #seedTwoRealisticConceptsWithData}: both concepts declared. */
+    private static SchemaLifecycleExecutor.SchemaManifest realisticTwoConceptManifest(String fingerprint) {
+        Map<String, List<String>> columns = Map.of(
+                "widgets", List.of("id", "name", "version", "row_version", "tenant_id"),
+                "gadgets", List.of("id", "label", "version", "row_version", "tenant_id"));
+        return manifest(
+                fingerprint, List.of("widgets", "gadgets"), columns,
+                realisticAdditiveColumns(columns, Map.of()),
+                Map.of("widgets", WIDGETS_TYPES, "gadgets", GADGETS_TYPES),
+                Map.of(), Map.of(), true, "", Map.of(), Map.of(), Map.of(), Map.of(), true);
+    }
+
+    /** The v2 manifest: the 'gadgets' concept has been dropped from the model. */
+    private static SchemaLifecycleExecutor.SchemaManifest realisticConceptDropManifest(
+            String token, boolean blanketAllowed) {
+        Map<String, List<String>> columns = Map.of(
+                "widgets", List.of("id", "name", "version", "row_version", "tenant_id"));
+        return manifest(
+                "sha256:new", List.of("widgets"), columns,
+                realisticAdditiveColumns(columns, Map.of()),
+                Map.of("widgets", WIDGETS_TYPES),
+                Map.of(), Map.of(), blanketAllowed, token, Map.of(), Map.of(), Map.of(), Map.of(), true);
+    }
+
+    private static int rowCount(Connection connection, String table) throws SQLException {
+        try (Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("SELECT COUNT(*) FROM " + table)) {
+            assertTrue(resultSet.next(), "expected a count row");
+            return resultSet.getInt(1);
+        }
+    }
+
     /** Scenario 17's two-concept manifest (widgets gains required 'status' with a "PENDING" literal
      * default; gadgets drops 'legacy_flag'), parameterized only by the acknowledgment token. */
     private static SchemaLifecycleExecutor.SchemaManifest scenarioManifest(String token) {
@@ -1426,6 +1564,42 @@ class SchemaLifecycleExecutorProofMatrixTest {
                 "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED", destructiveAcknowledgment,
                 businessTableRequiredColumns, businessTableColumnDefaultLiterals,
                 businessTableExpressionDefaultColumns, businessTableUniqueConstraints);
+    }
+
+    /**
+     * Computes {@code businessTableAdditiveColumns} the way a REAL manifest does, so a fixture can
+     * never silently disagree with production about what is additive-eligible -- the divergence that
+     * hid LNCH-1 hardening finding X-B2 (fixtures passed {@code Map.of()}, i.e. "nothing is
+     * additive", while every real manifest marks nearly everything additive).
+     *
+     * <p>VERIFIED against {@code SchemaRealizationEmitter#additiveColumnNames} /
+     * {@code #isAdditiveEligible} at commit {@code 98e8410} -- note this differs from the first draft
+     * of the hardening plan's §3.2 helper in two ways that matter:
+     * <ul>
+     *   <li>production seeds the additive list with {@code tenant_id} and {@code row_version}
+     *       unconditionally, so those ARE additive-eligible (the draft excluded only {@code id});</li>
+     *   <li>{@code version} is a platform column appended by {@code fullColumnNames} but never added
+     *       to the additive list, so it is NOT additive-eligible (the draft missed it entirely).</li>
+     * </ul>
+     * A bond/FK column is additive-eligible unless it is required or many-to-many
+     * ({@code isAdditiveEligible}); pass those in {@code nonAdditiveBondColumnsByTable}.
+     *
+     * @param columnsByTable the same map passed as {@code businessTableColumns}
+     * @param nonAdditiveBondColumnsByTable required/many-to-many bond columns per table (usually empty)
+     */
+    private static Map<String, List<String>> realisticAdditiveColumns(
+            Map<String, List<String>> columnsByTable,
+            Map<String, List<String>> nonAdditiveBondColumnsByTable) {
+        Map<String, List<String>> additive = new java.util.LinkedHashMap<>();
+        for (Map.Entry<String, List<String>> entry : columnsByTable.entrySet()) {
+            List<String> bonds = nonAdditiveBondColumnsByTable.getOrDefault(entry.getKey(), List.of());
+            additive.put(entry.getKey(), entry.getValue().stream()
+                    .filter(column -> !"id".equalsIgnoreCase(column))
+                    .filter(column -> !"version".equalsIgnoreCase(column))
+                    .filter(column -> !bonds.contains(column))
+                    .toList());
+        }
+        return additive;
     }
 
     private static SchemaLifecycleExecutor.SchemaManifest uniqueManifest(

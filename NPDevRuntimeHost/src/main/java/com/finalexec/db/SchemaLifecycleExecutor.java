@@ -310,28 +310,60 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     + agreementCheckSuffix(manifest, report));
         }
 
-        if (tokenMatches && !hasUnknown) {
-            System.out.println("NPDev schema lifecycle: destructive change acknowledged by itemized token"
-                    + (pendingAckMatches && !staticTokenMatches ? " (via a ControlPanel pending acknowledgment)" : "")
-                    + "; executing surgically (only the affected table(s)/column(s), LNCH-1 Phase 4). Report: "
-                    + report.stableStrings());
-            DestructiveRecreation result =
-                    executeSurgicalDestruction(dataSource, manifest, stored, classificationForFallthrough, report, effectiveToken);
-            consumePendingAcknowledgmentIfAny(dataSource, pendingAcknowledgment);
+        // LNCH-1 hardening X1 (finding X-B1, a CRITICAL regression): AUTHORIZATION and EXECUTION
+        // STRATEGY are two separate concerns, and tangling them is what caused real data loss.
+        //   - Authorization (the refusal branch above) decides WHETHER destruction may happen at all:
+        //     an itemized token, or the deprecated blanket flag.
+        //   - The report's CONTENT decides HOW it is executed: if every item is one of the three
+        //     named, surgically-executable kinds, the surgical path can do exactly what the report
+        //     says and nothing more. Only a genuinely unexplainable (UNKNOWN) item forces the
+        //     whole-schema recreation.
+        // Before this fix the surgical branch was additionally gated on `tokenMatches`, so a pass
+        // authorized by the blanket flag ALONE fell through to executeWholeSchemaWipe even when the
+        // report contained only named items. Because that wipe drops exactly the tables the NEW
+        // manifest lists (see executeWholeSchemaWipe), a dropped concept's orphaned table -- the one
+        // thing the upgrade was meant to remove -- is NOT in that list and SURVIVED, while every
+        // still-modelled concept's table and data was destroyed. With `allowDestructiveRecreate:
+        // true` being the shape of every shipped app definition, that was the default path.
+        // Narrowing the wipe to the UNKNOWN case is strictly less destructive in every case it now
+        // handles, so no app can be harmed by it. See scenario 24 / 24b in the proof matrix.
+        if (!hasUnknown) {
+            if (tokenMatches) {
+                System.out.println("NPDev schema lifecycle: destructive change acknowledged by itemized token"
+                        + (pendingAckMatches && !staticTokenMatches ? " (via a ControlPanel pending acknowledgment)" : "")
+                        + "; executing surgically (only the affected table(s)/column(s), LNCH-1 Phase 4). Report: "
+                        + report.stableStrings());
+            } else {
+                System.out.println("NPDev schema lifecycle: DEPRECATION WARNING -- this destructive schema change was "
+                        + "authorized by the blanket 'destructiveAllowed' flag alone (no itemized acknowledgment token "
+                        + "matched). Executing surgically: " + report.stableStrings()
+                        + ". Only these item(s) will be applied; no other table is touched. The blanket flag is "
+                        + "deprecated; switch to the itemized acknowledgment token (expected: " + expectedToken
+                        + ") -- see docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes.");
+            }
+            DestructiveRecreation result = executeSurgicalDestruction(dataSource, manifest, stored,
+                    classificationForFallthrough, report, tokenMatches ? effectiveToken : null);
+            // Only a token-authorized pass may consume somebody's pending acknowledgment row -- a
+            // blanket-authorized pass did not use it and must leave it available.
+            if (tokenMatches) {
+                consumePendingAcknowledgmentIfAny(dataSource, pendingAcknowledgment);
+            }
             return result;
         }
 
-        if (!tokenMatches) {
-            System.out.println("NPDev schema lifecycle: DEPRECATION WARNING -- this destructive schema change was "
-                    + "authorized by the blanket 'destructiveAllowed' flag alone (no itemized acknowledgment token "
-                    + "matched). The blanket flag is deprecated; switch to the itemized acknowledgment token "
-                    + "(expected: " + expectedToken + ") -- see docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes.");
-        } else {
-            System.out.println("NPDev schema lifecycle: itemized acknowledgment token matched, but the delta "
-                    + "report includes UNKNOWN item(s) the surgical path cannot safely explain -- falling back to "
-                    + "whole-schema recreation (LNCH-1 Phase 4, still gated behind the same authorization used for "
-                    + "this pass). Report: " + report.stableStrings());
+        List<String> unknownItems = new ArrayList<>();
+        for (SchemaDeltaItem item : report.items()) {
+            if (item instanceof SchemaDeltaItem.Unknown) {
+                unknownItems.add(item.stableString());
+            }
         }
+        System.out.println("NPDev schema lifecycle: WARNING -- WHOLE-SCHEMA RECREATION STARTING. The delta report "
+                + "includes UNKNOWN item(s) the surgical path cannot safely explain: " + unknownItems
+                + ". Because the change cannot be executed item by item, EVERY manifest-listed table is about to be "
+                + "dropped and recreated: ALL DATA IN THIS APP'S TABLES WILL BE LOST (a pre-drop snapshot is written "
+                + "first -- see runtime-data/schema-snapshot-before-drop/). Authorized by "
+                + (tokenMatches ? "an itemized acknowledgment token" : "the deprecated blanket 'destructiveAllowed' flag")
+                + ". Full report: " + report.stableStrings());
         DestructiveRecreation result = executeWholeSchemaWipe(dataSource, manifest, stored, classificationForFallthrough, report,
                 tokenMatches ? effectiveToken : null);
         if (tokenMatches) {
@@ -483,11 +515,16 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     }
 
     /**
-     * The OLD destructive path (pre-Phase-4 behavior, unchanged DDL), now reached only when the
-     * residual diff includes an {@code UNKNOWN} item the surgical path cannot explain, or when
-     * authorization comes solely from the deprecated blanket {@code destructiveAllowed} flag (no
-     * itemized token matched). Same write-before-execute/update-after history lifecycle as the
-     * surgical path.
+     * The OLD destructive path (pre-Phase-4 behavior, unchanged DDL), now reached ONLY when the
+     * residual diff includes an {@code UNKNOWN} item the surgical path cannot explain. Same
+     * write-before-execute/update-after history lifecycle as the surgical path.
+     *
+     * <p><b>LNCH-1 hardening X1 (finding X-B1):</b> this path used to ALSO be reached whenever
+     * authorization came solely from the deprecated blanket {@code destructiveAllowed} flag, even
+     * when every item in the report was surgically executable. That was a critical regression: this
+     * method drops the tables the NEW manifest lists, so a dropped concept's orphaned table survived
+     * while every still-modelled concept's data was destroyed. The authorization source no longer
+     * influences which execution path runs -- only the presence of an {@code UNKNOWN} item does.
      */
     private DestructiveRecreation executeWholeSchemaWipe(
             DataSource dataSource,
