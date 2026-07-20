@@ -56,6 +56,14 @@ Format: see `docs/RELEASE_PROCESS.md`. Dates are release-tag dates, not commit d
   refuses the boot with the new expected token printed; no data is at risk).
 
 ### Fixed
+- LNCH-1-B7: dropping a concept now actually drops its table. Previously `-PlanOnly` previewed a
+  `DROP_TABLE` and demanded an acknowledgment token, but at boot `classify()` only enumerated
+  manifest-declared tables, so the orphaned table was invisible, the boot classified as
+  safe-additive, and the destructive path (and the token check) was never entered -- the table and
+  its rows survived and the acknowledgment was never consumed. The executor now records the business
+  tables it owns (`npdev_schema_metadata.ownedBusinessTables`) on every successful boot and acts only
+  on orphans it can prove it created, so a table an operator added by hand in the same schema is
+  never dropped. Apps with no ownership recorded yet keep the previous behaviour for one boot.
 - LNCH-1 remediation R8: `scripts/quality/run-stateful-additive-migrations-check.ps1` could not parse
   at all (its `findings` strings used `\"`, which PowerShell does not treat as an escape) — so the gate
   had been dead, not merely reporting oddities. Fixed, and its permanently-red steps were either

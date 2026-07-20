@@ -39,6 +39,9 @@ import java.util.UUID;
 public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     private static final String METADATA_TABLE = "npdev_schema_metadata";
     private static final String FINGERPRINT_KEY = "schemaFingerprint";
+    /** LNCH-1-B7: metadata key holding the JSON array of business tables the last successful boot
+     * owned -- the ownership evidence that makes acting on an orphaned table safe. */
+    private static final String OWNED_TABLES_KEY = "ownedBusinessTables";
     private static final String SCHEMA_REALIZATION_LOCATION = "classpath:db/schema-realization";
     private static final Set<String> SYSTEM_SCHEMAS = Set.of("information_schema", "pg_catalog");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -1592,10 +1595,59 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 }
                 return SchemaChangeClassification.DESTRUCTIVE;
             }
+            // LNCH-1-B7: the loop above iterates ONLY manifest-declared tables, so a table the new
+            // model no longer declares (a dropped CONCEPT) is invisible to it -- the boot classified
+            // SAFE_ADDITIVE and the table survived forever, even though -PlanOnly had told the
+            // operator it would be dropped and had demanded an acknowledgment token for it. Escalate
+            // so the destructive path (SchemaDeltaReport + the token check) is actually entered.
+            //
+            // Scoped deliberately: only orphans we can PROVE NPDev owns -- i.e. tables a previous
+            // successful boot recorded in ownedBusinessTables. A table someone created by hand in the
+            // same schema is never in that set, so it can never be swept into the destructive path.
+            // When no ownership has ever been recorded (legacy app on its first boot with this build)
+            // readOwnedBusinessTables returns null and we keep the pre-B7 behaviour exactly.
+            if (!droppedConceptTables(metadata, dataSource, manifest).isEmpty()) {
+                return SchemaChangeClassification.DESTRUCTIVE;
+            }
             return worst;
         } catch (SQLException exception) {
             return SchemaChangeClassification.DESTRUCTIVE;
         }
+    }
+
+    /**
+     * LNCH-1-B7. Live tables that a previous successful boot recorded as NPDev-owned business tables
+     * but which the CURRENT manifest no longer declares -- i.e. genuinely dropped concepts. Empty
+     * when ownership was never recorded (see {@link #readOwnedBusinessTables}), which preserves the
+     * pre-B7 behaviour for legacy apps and for unit tests that seed only a fingerprint.
+     *
+     * <p>The old side of a declared table rename is excluded for the same reason
+     * {@code SchemaDeltaReport#itemizeTableLevelDiff} excludes it: a rename is not a drop.
+     */
+    static Set<String> droppedConceptTables(
+            DatabaseMetaData metadata, DataSource dataSource, SchemaManifest manifest) throws SQLException {
+        Set<String> owned = readOwnedBusinessTables(dataSource);
+        if (owned == null || owned.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> stillDeclared = new LinkedHashSet<>();
+        for (String table : manifest.businessTableColumns().keySet()) {
+            stillDeclared.add(table.toLowerCase(Locale.ROOT));
+        }
+        Set<String> renameOldNames = new LinkedHashSet<>();
+        for (String oldName : manifest.businessTableRenames().values()) {
+            if (oldName != null) {
+                renameOldNames.add(oldName.toLowerCase(Locale.ROOT));
+            }
+        }
+        Set<String> liveTables = readActualTableNames(metadata);
+        Set<String> dropped = new LinkedHashSet<>();
+        for (String table : owned) {
+            if (liveTables.contains(table) && !stillDeclared.contains(table) && !renameOldNames.contains(table)) {
+                dropped.add(table);
+            }
+        }
+        return dropped;
     }
 
     private static SchemaChangeClassification worse(SchemaChangeClassification a, SchemaChangeClassification b) {
@@ -1905,27 +1957,91 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             )) {
                 statement.executeUpdate();
             }
-            int updated;
-            try (PreparedStatement statement = connection.prepareStatement(
-                    "UPDATE " + METADATA_TABLE + " SET metadata_value = ?, updated_at_ms = ? WHERE metadata_key = ?"
-            )) {
-                statement.setString(1, manifest.schemaFingerprint());
-                statement.setLong(2, System.currentTimeMillis());
-                statement.setString(3, FINGERPRINT_KEY);
-                updated = statement.executeUpdate();
-            }
-            if (updated == 0) {
-                try (PreparedStatement statement = connection.prepareStatement(
-                        "INSERT INTO " + METADATA_TABLE + " (metadata_key, metadata_value, updated_at_ms) VALUES (?, ?, ?)"
-                )) {
-                    statement.setString(1, FINGERPRINT_KEY);
-                    statement.setString(2, manifest.schemaFingerprint());
-                    statement.setLong(3, System.currentTimeMillis());
-                    statement.executeUpdate();
-                }
-            }
+            upsertMetadata(connection, FINGERPRINT_KEY, manifest.schemaFingerprint());
+            // LNCH-1-B7: record which business tables THIS build owns, on the same lifecycle as the
+            // fingerprint. A later build that no longer declares one of them can then prove the
+            // orphaned table is a dropped CONCEPT (NPDev created it) rather than a table someone
+            // created by hand in the same schema -- which is what makes acting on it safe.
+            upsertMetadata(connection, OWNED_TABLES_KEY, ownedTablesJson(manifest));
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed storing schema fingerprint", exception);
+        }
+    }
+
+    /** UPDATE-then-INSERT upsert against {@link #METADATA_TABLE} (no engine-specific UPSERT syntax --
+     * identical on H2 and Postgres). The caller must have ensured the table exists. */
+    private static void upsertMetadata(Connection connection, String key, String value) throws SQLException {
+        int updated;
+        try (PreparedStatement statement = connection.prepareStatement(
+                "UPDATE " + METADATA_TABLE + " SET metadata_value = ?, updated_at_ms = ? WHERE metadata_key = ?"
+        )) {
+            statement.setString(1, value);
+            statement.setLong(2, System.currentTimeMillis());
+            statement.setString(3, key);
+            updated = statement.executeUpdate();
+        }
+        if (updated == 0) {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "INSERT INTO " + METADATA_TABLE + " (metadata_key, metadata_value, updated_at_ms) VALUES (?, ?, ?)"
+            )) {
+                statement.setString(1, key);
+                statement.setString(2, value);
+                statement.setLong(3, System.currentTimeMillis());
+                statement.executeUpdate();
+            }
+        }
+    }
+
+    private static String ownedTablesJson(SchemaManifest manifest) {
+        List<String> owned = new ArrayList<>();
+        for (String table : manifest.businessTableColumns().keySet()) {
+            if (table != null && !table.isBlank()) {
+                owned.add(table.toLowerCase(Locale.ROOT));
+            }
+        }
+        Collections.sort(owned);
+        try {
+            return OBJECT_MAPPER.writeValueAsString(owned);
+        } catch (Exception exception) {
+            return "[]";
+        }
+    }
+
+    /**
+     * LNCH-1-B7. The business tables the PREVIOUS successful boot recorded as NPDev-owned, or
+     * {@code null} when nothing has ever been recorded (a legacy app that has not yet booted on a
+     * build carrying this mechanism, or a unit test that seeds only a fingerprint).
+     *
+     * <p>{@code null} is deliberately distinct from "empty": absent means "ownership unknown", and
+     * every caller must then fall back to its pre-B7 behaviour rather than assume a table is
+     * droppable. This is the guard that keeps a hand-created table in the same schema from ever
+     * being classified as a dropped concept.
+     */
+    static Set<String> readOwnedBusinessTables(DataSource dataSource) {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT metadata_value FROM " + METADATA_TABLE + " WHERE metadata_key = ?"
+             )) {
+            statement.setString(1, OWNED_TABLES_KEY);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) {
+                    return null;
+                }
+                String raw = resultSet.getString(1);
+                if (raw == null || raw.isBlank()) {
+                    return null;
+                }
+                Set<String> owned = new LinkedHashSet<>();
+                for (JsonNode node : OBJECT_MAPPER.readTree(raw)) {
+                    String name = node.asText("");
+                    if (!name.isBlank()) {
+                        owned.add(name.toLowerCase(Locale.ROOT));
+                    }
+                }
+                return owned;
+            }
+        } catch (Exception exception) {
+            return null;
         }
     }
 

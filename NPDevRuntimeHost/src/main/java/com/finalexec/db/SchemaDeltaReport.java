@@ -20,6 +20,7 @@ import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -164,7 +165,8 @@ final class SchemaDeltaReport {
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
 
-            itemizeTableLevelDiff(connection, metadata, manifest, items);
+            itemizeTableLevelDiff(connection, metadata, manifest, items,
+                    SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource));
             itemizeColumnLevelDiff(metadata, manifest, items);
         } catch (SQLException exception) {
             items.add(new Unknown("Failed introspecting the live database while building the schema delta report: "
@@ -175,11 +177,20 @@ final class SchemaDeltaReport {
         return new SchemaDeltaReport(List.copyOf(items));
     }
 
+    /**
+     * @param ownedBusinessTables LNCH-1-B7: the business tables a previous successful boot recorded
+     *        as NPDev-owned, or {@code null} when ownership has never been recorded. When non-null,
+     *        DROP_TABLE itemization is restricted to that set, so a table someone created by hand in
+     *        the same schema can never be itemized (and therefore never surgically dropped) just
+     *        because the manifest does not mention it. When null, the pre-B7 behaviour is preserved
+     *        so legacy apps and the existing unit tests are unaffected.
+     */
     private static void itemizeTableLevelDiff(
             Connection connection,
             DatabaseMetaData metadata,
             SchemaLifecycleExecutor.SchemaManifest manifest,
-            List<SchemaDeltaItem> items
+            List<SchemaDeltaItem> items,
+            Set<String> ownedBusinessTables
     ) throws SQLException {
         Set<String> expectedTables = new LinkedHashSet<>(manifest.businessTableColumns().keySet());
         expectedTables.addAll(manifest.internalTables());
@@ -197,6 +208,11 @@ final class SchemaDeltaReport {
 
         for (String table : liveTables) {
             if (expectedTables.contains(table) || renameOldTableNames.contains(table)) {
+                continue;
+            }
+            // LNCH-1-B7: when ownership is known, only a table NPDev itself created is a drop
+            // candidate -- never a table someone added by hand to the same schema.
+            if (ownedBusinessTables != null && !ownedBusinessTables.contains(table.toLowerCase(Locale.ROOT))) {
                 continue;
             }
             items.add(new DropTable(table, bestEffortRowCount(connection, table)));

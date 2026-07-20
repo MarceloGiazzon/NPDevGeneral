@@ -92,6 +92,27 @@ plus a brand-new one."
   `WARNINGS` block when a `renamedFrom` names a column the previous model has no record of — the
   earliest signal that a marker has gone stale.
 
+## Dropping a concept
+
+Removing a concept from the model drops its table — but only once the platform can **prove it owns
+that table**, and only behind the same acknowledgment token any other destructive change needs.
+
+Every successful boot records the business tables that build owned, in `npdev_schema_metadata`
+under `ownedBusinessTables`. On a later boot, a live table that (a) the current model no longer
+declares, (b) is not the old side of a declared rename, and (c) **appears in that recorded owned
+set** is a genuine dropped concept: the boot classifies as destructive, `SchemaDeltaReport` itemizes
+it as `DROP_TABLE`, and it is dropped surgically once acknowledged.
+
+A table that is **not** in the recorded owned set is never touched — that is what keeps a table an
+operator created by hand in the same schema from being swept away just because the model does not
+mention it. If no ownership has ever been recorded (an app upgrading from a build older than this
+mechanism), nothing is dropped and the app behaves exactly as it did before; the record is written
+on that boot, so the next upgrade can act on it.
+
+> Before this was fixed (`LNCH-1-B7`), `-PlanOnly` previewed the `DROP_TABLE` and demanded a token,
+> but the boot classified the change as safe-additive and never entered the destructive path — the
+> table survived and the acknowledgment was never consumed.
+
 ## New required fields
 
 Adding a `required` field to a concept whose table already has rows needs a value for every
@@ -321,14 +342,12 @@ missing):
   relaxations) apply before the acknowledgment decision, so a refused upgrade has already applied
   them; recovery is roll-forward or restore, never redeploying the old jar (which the schema-ahead
   detector now refuses explicitly). See [Refusals and rollback](#refusals-and-rollback).
-- **A dropped concept's table is NOT actually dropped (`LNCH-1-B7`).** Removing a concept from the
-  model makes `-PlanOnly` preview a `DROP_TABLE` and demand an acknowledgment token — but at boot
-  `classify()` only enumerates tables the manifest still declares, so the orphaned table is invisible
-  to it, the boot classifies as safe-additive, and the destructive path (where the drop and the token
-  check live) is never entered. **The table and its rows survive untouched**; the acknowledgment is
-  requested but never consumed. Confirmed live against Postgres on 2026-07-20. This errs in the
-  safe direction (no data is lost), but the plan preview currently overstates what will happen, and
-  orphan tables accumulate. Dropping the table by hand is the workaround.
+- **Dropping a concept needs one boot of ownership history first (`LNCH-1-B7`).** The executor only
+  drops an orphaned table it can *prove* NPDev created — see
+  [Dropping a concept](#dropping-a-concept). An app upgraded from a build older than this mechanism
+  has no ownership record yet, so its first upgrade will not drop a concept's table; the boot after
+  that will. This is deliberate: without ownership evidence, a table someone created by hand in the
+  same schema is indistinguishable from a dropped concept, and the executor refuses to guess.
 - **Single-instance migrations.** The schema-lifecycle executor assumes exactly one app instance
   boots against a given database at a time (the platform's deployment posture — see
   `docs/DEPLOYMENT.md`). Concurrent boots of two instances are **not** guarded by a database lock; do

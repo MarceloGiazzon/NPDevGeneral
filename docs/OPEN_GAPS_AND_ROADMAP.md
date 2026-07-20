@@ -46,7 +46,7 @@
 
 | ID | Title | Category | Status | Priority | Est. size |
 |---|---|---|---|---|---|
-| LNCH-1-B7 | Concept drop is previewed and acknowledged but never executed: classify() enumerates only manifest-declared tables, so an orphan (dropped-concept) table is invisible, the boot classifies SAFE_ADDITIVE, and the destructive path (SchemaDeltaReport/DROP_TABLE/token check) is never entered. -PlanOnly says "DATA WILL BE LOST" and demands a token; the table then survives untouched. Found live on Postgres 2026-07-20 | Runtime/plan incoherence | OPEN | P2 | M |
+| LNCH-1-B7 | Concept drop previewed and acknowledged but never executed (classify() ignored orphan tables) | Runtime/plan incoherence | DONE (fixed 2026-07-20; ownership-gated drop + 5 proof-matrix scenarios) | P2 | M |
 | LNCH-1-B6 | Migration advisory lock (pg_advisory_lock / H2 equivalent) for multi-instance deployments; lock scope = the migrate(Flyway) entry | Runtime robustness | OPEN | P4 | M |
 | BUG-16 | InMemory apps cannot boot ControlPanel | Runtime bug | DONE | P1 | S |
 | BOND-0 | Verify bond foundation is committed | Structural | DONE | P1 | S (verify) / L (if uncommitted) |

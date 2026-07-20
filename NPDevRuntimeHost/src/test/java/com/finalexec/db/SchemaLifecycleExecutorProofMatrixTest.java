@@ -21,6 +21,7 @@ import java.sql.Statement;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -1064,6 +1065,149 @@ class SchemaLifecycleExecutorProofMatrixTest {
                 "step " + stepName + " items_json must contain '" + itemSubstring + "' but was " + match.itemsJson());
     }
 
+    // ---- LNCH-1-B7: a dropped concept's table is actually dropped ------------------------------
+
+    /** The v2 manifest for the B7 scenarios: the 'gadgets' concept is gone from the model entirely
+     * (not renamed), leaving only 'widgets'. */
+    private static SchemaLifecycleExecutor.SchemaManifest conceptDropManifest(String token, boolean blanketAllowed) {
+        return manifest(
+                "sha256:new", List.of("widgets"),
+                Map.of("widgets", List.of("id", "name")), Map.of("widgets", List.of()),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)")),
+                Map.of(), Map.of(), blanketAllowed, token, Map.of(), Map.of(), Map.of(), Map.of(), true);
+    }
+
+    private void seedTwoConceptsWithData() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+            statement.execute("INSERT INTO widgets (id, name) VALUES (1, 'Alpha')");
+            statement.execute("CREATE TABLE gadgets (id BIGINT PRIMARY KEY, label VARCHAR(50))");
+            statement.execute("INSERT INTO gadgets (id, label) VALUES (1, 'G1')");
+            statement.execute("INSERT INTO gadgets (id, label) VALUES (2, 'G2')");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+    }
+
+    @Test
+    @DisplayName("Scenario 23 (B7): a dropped CONCEPT whose table NPDev owns is itemized, gated on the "
+            + "token, and actually dropped -- the plan no longer promises a drop that never happens")
+    void scenario23_droppedConceptIsActuallyDroppedWhenAcknowledged() throws SQLException {
+        seedTwoConceptsWithData();
+        // What the previous successful boot recorded: NPDev owns BOTH tables.
+        seedOwnedBusinessTables(dataSource, List.of("widgets", "gadgets"));
+
+        SchemaLifecycleExecutor.SchemaManifest noToken = conceptDropManifest("", false);
+        // Before B7 this classified SAFE_ADDITIVE and the destructive path was never entered.
+        assertEquals(SchemaLifecycleExecutor.SchemaChangeClassification.DESTRUCTIVE,
+                executor.classify(dataSource, noToken),
+                "a dropped concept whose table NPDev owns must escalate to the destructive path");
+
+        SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, noToken);
+        assertEquals(List.of("DROP_TABLE:gadgets"), report.stableStrings());
+        String token = DestructiveAckToken.compute("sha256:new", report.stableStrings());
+
+        SchemaLifecycleExecutor.DestructiveRecreation result =
+                executor.beforeMigrate(dataSource, conceptDropManifest(token, false));
+        assertTrue(result.performed(), "the acknowledged concept drop must execute");
+        assertTrue(result.droppedTables().contains("gadgets"));
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertFalse(hasTable(metadata, "gadgets"), "the dropped concept's table must be GONE");
+            assertTrue(hasTable(metadata, "widgets"), "the surviving concept's table must remain");
+            assertEquals("Alpha", readColumn(connection, "widgets", "name", 1L), "surviving data intact");
+        }
+        assertEquals("APPLIED", latestHistoryRow(dataSource).outcome());
+    }
+
+    @Test
+    @DisplayName("Scenario 23b (B7): the same concept drop WITHOUT a token is refused -- proving the "
+            + "acknowledgment is now genuinely consulted, not requested-then-ignored")
+    void scenario23b_droppedConceptWithoutTokenIsRefused() throws SQLException {
+        seedTwoConceptsWithData();
+        seedOwnedBusinessTables(dataSource, List.of("widgets", "gadgets"));
+
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.beforeMigrate(dataSource, conceptDropManifest("", false)));
+        assertTrue(refusal.getMessage().contains("DROP_TABLE:gadgets"), refusal.getMessage());
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertTrue(hasTable(connection.getMetaData(), "gadgets"),
+                    "a refused concept drop must leave the table untouched");
+        }
+        assertEquals("REFUSED", latestHistoryRow(dataSource).outcome());
+    }
+
+    @Test
+    @DisplayName("Scenario 23c (B7 safety): a table NPDev does NOT own (created by hand in the same "
+            + "schema) is never treated as a dropped concept, even though the manifest omits it")
+    void scenario23c_unownedTableIsNeverDropped() throws SQLException {
+        seedTwoConceptsWithData();
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE operator_scratch (id BIGINT PRIMARY KEY, note VARCHAR(50))");
+            statement.execute("INSERT INTO operator_scratch (id, note) VALUES (1, 'do not drop me')");
+        }
+        // Ownership records ONLY the NPDev tables -- operator_scratch is deliberately absent.
+        seedOwnedBusinessTables(dataSource, List.of("widgets", "gadgets"));
+
+        // The manifest declares only widgets: gadgets IS an owned orphan, operator_scratch is NOT.
+        SchemaLifecycleExecutor.SchemaManifest noToken = conceptDropManifest("", false);
+        SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, noToken);
+        assertEquals(List.of("DROP_TABLE:gadgets"), report.stableStrings(),
+                "only the owned orphan may be itemized -- never the hand-created table");
+
+        String token = DestructiveAckToken.compute("sha256:new", report.stableStrings());
+        executor.beforeMigrate(dataSource, conceptDropManifest(token, false));
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertFalse(hasTable(metadata, "gadgets"), "the owned orphan is dropped");
+            assertTrue(hasTable(metadata, "operator_scratch"), "the UNOWNED table must survive untouched");
+            assertEquals("do not drop me", readColumn(connection, "operator_scratch", "note", 1L),
+                    "the unowned table's data must be untouched");
+        }
+    }
+
+    @Test
+    @DisplayName("Scenario 23d (B7 back-compat): with NO ownership ever recorded, an orphan table is "
+            + "left alone -- a legacy app's first boot on this build never destroys anything new")
+    void scenario23d_withoutOwnershipRecordOrphanIsLeftAlone() throws SQLException {
+        seedTwoConceptsWithData();
+        // Deliberately NO seedOwnedBusinessTables: ownership unknown.
+
+        SchemaLifecycleExecutor.SchemaManifest noToken = conceptDropManifest("", false);
+        assertEquals(SchemaLifecycleExecutor.SchemaChangeClassification.SAFE_ADDITIVE,
+                executor.classify(dataSource, noToken),
+                "without ownership evidence the executor must keep its pre-B7 behaviour");
+
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, noToken);
+        assertFalse(result.performed(), "nothing destructive may happen without ownership evidence");
+        try (Connection connection = dataSource.getConnection()) {
+            assertTrue(hasTable(connection.getMetaData(), "gadgets"), "the orphan survives, as before B7");
+        }
+    }
+
+    @Test
+    @DisplayName("Scenario 23e (B7): afterMigrate records the owned business tables, so the NEXT "
+            + "build's concept drop has the ownership evidence it needs")
+    void scenario23e_afterMigrateRecordsOwnedBusinessTables() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+        }
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifest(
+                "sha256:new", List.of("widgets", "gadgets"),
+                Map.of("widgets", List.of("id", "name"), "gadgets", List.of("id")),
+                Map.of("widgets", List.of(), "gadgets", List.of()),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)"), "gadgets", Map.of("id", "BIGINT")),
+                Map.of(), Map.of(), false, "", Map.of(), Map.of(), Map.of(), Map.of(), true);
+
+        executor.afterMigrate(dataSource, manifest);
+
+        Set<String> owned = SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource);
+        assertEquals(Set.of("widgets", "gadgets"), owned,
+                "every business table this build declares must be recorded as NPDev-owned");
+    }
+
     /** Scenario 17's two-concept manifest (widgets gains required 'status' with a "PENDING" literal
      * default; gadgets drops 'legacy_flag'), parameterized only by the acknowledgment token. */
     private static SchemaLifecycleExecutor.SchemaManifest scenarioManifest(String token) {
@@ -1191,6 +1335,26 @@ class SchemaLifecycleExecutorProofMatrixTest {
                     "INSERT INTO npdev_schema_metadata (metadata_key, metadata_value, updated_at_ms) VALUES (?, ?, ?)")) {
                 statement.setString(1, "schemaFingerprint");
                 statement.setString(2, fingerprint);
+                statement.setLong(3, System.currentTimeMillis());
+                statement.executeUpdate();
+            }
+        }
+    }
+
+    /** LNCH-1-B7: simulates what a previous successful boot records -- the set of business tables
+     * NPDev owned at that point. Without this, an orphaned table's ownership is unknown and the
+     * executor deliberately leaves it alone. */
+    private static void seedOwnedBusinessTables(DataSource dataSource, List<String> tables) throws SQLException {
+        String json = "[" + String.join(",", tables.stream().map(t -> "\"" + t + "\"").toList()) + "]";
+        try (Connection connection = dataSource.getConnection()) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE IF NOT EXISTS npdev_schema_metadata "
+                        + "(metadata_key TEXT PRIMARY KEY, metadata_value TEXT NOT NULL, updated_at_ms BIGINT NOT NULL)");
+            }
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "INSERT INTO npdev_schema_metadata (metadata_key, metadata_value, updated_at_ms) VALUES (?, ?, ?)")) {
+                statement.setString(1, "ownedBusinessTables");
+                statement.setString(2, json);
                 statement.setLong(3, System.currentTimeMillis());
                 statement.executeUpdate();
             }
