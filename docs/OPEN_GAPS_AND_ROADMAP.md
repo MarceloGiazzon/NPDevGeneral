@@ -46,6 +46,7 @@
 
 | ID | Title | Category | Status | Priority | Est. size |
 |---|---|---|---|---|---|
+| LNCH-1-B6 | Migration advisory lock (pg_advisory_lock / H2 equivalent) for multi-instance deployments; lock scope = the migrate(Flyway) entry | Runtime robustness | OPEN | P4 | M |
 | BUG-16 | InMemory apps cannot boot ControlPanel | Runtime bug | DONE | P1 | S |
 | BOND-0 | Verify bond foundation is committed | Structural | DONE | P1 | S (verify) / L (if uncommitted) |
 | AW-RECONCILE | Reconcile AW phase-status markers against code | Planning | DONE | P2 | S |

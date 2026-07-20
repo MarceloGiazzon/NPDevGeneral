@@ -321,6 +321,11 @@ missing):
   relaxations) apply before the acknowledgment decision, so a refused upgrade has already applied
   them; recovery is roll-forward or restore, never redeploying the old jar (which the schema-ahead
   detector now refuses explicitly). See [Refusals and rollback](#refusals-and-rollback).
+- **Single-instance migrations.** The schema-lifecycle executor assumes exactly one app instance
+  boots against a given database at a time (the platform's deployment posture — see
+  `docs/DEPLOYMENT.md`). Concurrent boots of two instances are **not** guarded by a database lock; do
+  not roll out multi-instance deployments of the same app+database until a migration lock exists
+  (tracked as `LNCH-1-B6` in `docs/OPEN_GAPS_AND_ROADMAP.md`).
 
 ## See also
 

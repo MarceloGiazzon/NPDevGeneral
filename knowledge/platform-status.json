@@ -2,8 +2,16 @@
   "schemaVersion": "platform-status.v1",
   "generatedFrom": "docs/OPEN_GAPS_AND_ROADMAP.md",
   "note": "DERIVED -- do not hand-edit. Regenerate via scripts/ai/extract_platform_status.py.",
-  "count": 33,
+  "count": 34,
   "items": [
+    {
+      "id": "LNCH-1-B6",
+      "title": "Migration advisory lock (pg_advisory_lock / H2 equivalent) for multi-instance deployments; lock scope = the migrate(Flyway) entry",
+      "category": "Runtime robustness",
+      "status": "OPEN",
+      "priority": "P4",
+      "notes": ""
+    },
     {
       "id": "BUG-16",
       "title": "InMemory apps cannot boot ControlPanel",
