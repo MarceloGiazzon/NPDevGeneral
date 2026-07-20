@@ -95,13 +95,25 @@ plus a brand-new one."
 ## Dropping a concept
 
 Removing a concept from the model drops its table — but only once the platform can **prove it owns
-that table**, and only behind the same acknowledgment token any other destructive change needs.
+that table**, and only behind an explicit acknowledgment token.
 
-Every successful boot records the business tables that build owned, in `npdev_schema_metadata`
-under `ownedBusinessTables`. On a later boot, a live table that (a) the current model no longer
-declares, (b) is not the old side of a declared rename, and (c) **appears in that recorded owned
-set** is a genuine dropped concept: the boot classifies as destructive, `SchemaDeltaReport` itemizes
-it as `DROP_TABLE`, and it is dropped surgically once acknowledged.
+> **A concept drop always requires the itemized token.** Unlike a column drop, it is *not*
+> authorized by the deprecated blanket `destructiveAllowed` flag: that flag is set once at authoring
+> time and would otherwise silently authorize every future concept drop for the life of the app.
+> Supply the token via the manifest's `destructiveAcknowledgment` or the ControlPanel channel.
+
+Every successful boot records the NPDev-owned business tables in `npdev_schema_metadata` under
+`ownedBusinessTables`. The recorded set is the tables this build declares **unioned with what was
+already recorded**, then **intersected with the tables that actually exist**. The union matters: a
+table that was dropped from the model but still physically exists — because a previous pass was
+refused, crashed, or took the whole-schema path — stays owned, and so remains cleanable by a later
+upgrade instead of becoming permanently orphaned. The intersection keeps the set honest: anything
+genuinely gone falls out, so it never grows without bound.
+
+On a later boot, a live table that (a) the current model no longer declares, (b) is not the old side
+of a declared rename, and (c) **appears in that recorded owned set** is a genuine dropped concept:
+the boot classifies as destructive, `SchemaDeltaReport` itemizes it as `DROP_TABLE`, and it is
+dropped surgically once acknowledged.
 
 A table that is **not** in the recorded owned set is never touched — that is what keeps a table an
 operator created by hand in the same schema from being swept away just because the model does not
@@ -274,10 +286,43 @@ token: <token>. Set the generated manifest's destructiveAcknowledgment to this t
 via the ControlPanel schema-migration screen on the currently running app, to proceed.
 ```
 
-**The deprecated escape hatch.** A blanket `destructiveAllowed: true` on the manifest still
-authorizes a destructive change with no itemized token — it prints a loud deprecation warning
-(`NPDev schema lifecycle: DEPRECATION WARNING`) every time it's used and should not be relied on
-for new work; it exists only for backward compatibility with apps generated before this feature.
+### The deprecated blanket flag
+
+A blanket "destruction is pre-authorized" posture is ON only when **all four** `schemaLifecycle`
+fields line up (`SchemaManifest#destructiveAllowed`):
+
+```
+strategy == "DropAndRecreateOnStructureChange"  &&  allowDestructiveRecreate == true
+  &&  scope == "NpdevOwnedTablesOnly"
+  &&  destructiveRecreateConfirmation == "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED"
+```
+
+**What it does when ON:**
+
+| Change | Blanket flag alone | Needs an itemized token |
+|---|---|---|
+| Drop a column | authorizes it | no |
+| Narrow a column's type | authorizes it | no |
+| **Drop a whole concept (table)** | **does NOT authorize it** | **yes** |
+
+- Authorized changes are **executed surgically** — only the itemized tables/columns are touched.
+  The whole-schema recreation is reached only when the delta report contains an `UNKNOWN` item that
+  cannot be explained item by item, and then it applies regardless of how the pass was authorized.
+- Every use prints a loud deprecation warning (`NPDev schema lifecycle: DEPRECATION WARNING`) naming
+  exactly what is about to be executed, plus a one-line `NOTICE` on **every** boot of an app
+  configured this way — so the posture is visible before the day it matters.
+
+**Default for new apps: OFF.** New app definitions should use `strategy: KeepExistingIfCompatible`
+with `allowDestructiveRecreate: false`, which makes the itemized token the only route to destruction.
+The flag exists for backward compatibility with apps generated before this feature; existing apps
+keep working unchanged.
+
+**Migrating an existing app off it:** set `strategy` to `KeepExistingIfCompatible` and
+`allowDestructiveRecreate` to `false` in `db.definition.json`, then use
+`Build-NpdevApp.ps1 -Upgrade -PlanOnly` to review the plan and
+`-AcknowledgeDestructive <token>` (or the ControlPanel channel) to authorize each destructive change
+deliberately. Nothing non-destructive changes: new columns, renames, safe widenings, and NOT NULL
+relaxations still apply automatically.
 
 ## Refusals and rollback
 

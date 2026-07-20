@@ -93,6 +93,19 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             flyway.migrate();
             return;
         }
+        // LNCH-1 hardening X4.3: make the deprecated posture visible on EVERY boot, not only on the
+        // day it finally destroys something. Deliberately placed here rather than in beforeMigrate:
+        // this method runs once per real boot, while beforeMigrate is driven directly by dozens of
+        // unit tests that would otherwise flood their captured output.
+        if (manifest.destructiveAllowed()) {
+            System.out.println("NPDev schema lifecycle: NOTICE -- this app is configured with the deprecated "
+                    + "blanket 'destructiveAllowed' posture (schemaLifecycle.strategy="
+                    + "DropAndRecreateOnStructureChange + allowDestructiveRecreate=true). Destructive column "
+                    + "drops and type narrowings will proceed WITHOUT an itemized acknowledgment token. Concept "
+                    + "(whole-table) drops still require a token. Recommended: switch to "
+                    + "strategy=KeepExistingIfCompatible with allowDestructiveRecreate=false and use "
+                    + "Build-NpdevApp.ps1 -PlanOnly / -AcknowledgeDestructive -- see docs/SCHEMA_EVOLUTION.md.");
+        }
         // LNCH-1 remediation R2 (F1): capture the stored fingerprint BEFORE beforeMigrate runs, so we
         // know whether this boot is an upgrade (fingerprint mismatch) independently of whichever
         // beforeMigrate branch ran -- including the surgical-destruction and whole-wipe paths, which
@@ -320,6 +333,37 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     + "the ControlPanel schema-migration screen on the currently running app (LNCH-1 Phase 6), to "
                     + "proceed -- see docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes."
                     + agreementCheckSuffix(manifest, report));
+        }
+
+        // LNCH-1 hardening X4.4 (ratified 2026-07-20). Dropping a CONCEPT destroys an entire table's
+        // worth of data, and unlike a column drop it cannot be partially reasoned about after the
+        // fact. The deprecated blanket flag is too coarse an instrument to authorize that: it is set
+        // once, at authoring time, and then silently authorizes every future concept drop for the
+        // life of the app. A DROP_TABLE therefore always requires the itemized token (either channel
+        // -- static manifest field or ControlPanel pending acknowledgment), while blanket-authorized
+        // column drops and type narrowings continue to work as before.
+        if (!tokenMatches) {
+            List<String> droppedTables = new ArrayList<>();
+            for (SchemaDeltaItem item : report.items()) {
+                if (item instanceof DropTable dropTable) {
+                    droppedTables.add(dropTable.table());
+                }
+            }
+            if (!droppedTables.isEmpty()) {
+                writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classificationForFallthrough,
+                        report, providedToken.isBlank() ? null : providedToken, "REFUSED");
+                throw new IllegalStateException("Schema fingerprint changed from " + stored + " to "
+                        + manifest.schemaFingerprint() + " and includes the DROP of one or more whole concept "
+                        + "table(s): " + droppedTables + ". Dropping a concept requires an explicit, itemized "
+                        + "acknowledgment token -- the deprecated blanket 'destructiveAllowed' flag does NOT "
+                        + "authorize it (LNCH-1 hardening X4.4), because that flag is set once at authoring time "
+                        + "and would then silently authorize every future concept drop. Itemized destructive "
+                        + "report: " + report.stableStrings() + ". Expected acknowledgment token: " + expectedToken
+                        + ". Set the generated manifest's destructiveAcknowledgment to this token, or submit it via "
+                        + "the ControlPanel schema-migration screen on the currently running app, to proceed -- see "
+                        + "docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes."
+                        + agreementCheckSuffix(manifest, report));
+            }
         }
 
         // LNCH-1 hardening X1 (finding X-B1, a CRITICAL regression): AUTHORIZATION and EXECUTION

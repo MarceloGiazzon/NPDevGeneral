@@ -1312,13 +1312,22 @@ class SchemaLifecycleExecutorProofMatrixTest {
         assertEquals(Set.of("widgets", "gadgets"), SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource),
                 "precondition: the previous boot must have recorded BOTH tables as NPDev-owned");
 
-        // v2 drops the 'gadgets' concept. Authorization comes from the blanket flag ALONE (no token)
-        // -- which is the shape of every shipped app definition today.
-        SchemaLifecycleExecutor.SchemaManifest blanketAuthorized = realisticConceptDropManifest("", true);
+        // v2 drops the 'gadgets' concept. The blanket flag is left ON (the shape of every shipped app
+        // definition), but since X4.4 a concept drop additionally requires an itemized token -- so
+        // this pass carries both, which is exactly the posture a real blanket-flag app now upgrades
+        // under. The X-B1 routing this scenario exists for is unchanged by that: the blanket-only
+        // route into the surgical path is still proven, for a DROP_COLUMN, by
+        // SchemaLifecycleExecutorDestructiveItemizationTest#blanketFlagAloneNowExecutesSurgicallyWithADeprecationWarning,
+        // and the blanket-only concept-drop refusal is scenario 26.
+        SchemaDeltaReport plan = SchemaDeltaReport.generate(dataSource, realisticConceptDropManifest("", true));
+        assertEquals(List.of("DROP_TABLE:gadgets"), plan.stableStrings());
+        String token = DestructiveAckToken.compute("sha256:new", plan.stableStrings());
+
+        SchemaLifecycleExecutor.SchemaManifest blanketAuthorized = realisticConceptDropManifest(token, true);
         SchemaLifecycleExecutor.DestructiveRecreation result =
                 executor.beforeMigrate(dataSource, blanketAuthorized);
 
-        assertTrue(result.performed(), "the blanket-authorized concept drop must execute");
+        assertTrue(result.performed(), "the acknowledged concept drop must execute");
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
             // THE assertion X-B1 is about, checked FIRST because it is the finding's headline: before
@@ -1359,13 +1368,17 @@ class SchemaLifecycleExecutorProofMatrixTest {
         }
         executor.afterMigrate(dataSource, realisticTwoConceptManifest("sha256:old"));
 
-        SchemaLifecycleExecutor.SchemaManifest blanketAuthorized = realisticConceptDropManifest("", true);
-        SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, blanketAuthorized);
+        SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, realisticConceptDropManifest("", true));
         assertFalse(report.hasOnlyNamedDestructiveKinds(),
                 "precondition: the report must contain an UNKNOWN item for this scenario to mean anything");
+        // The report also contains a DROP_TABLE, which since X4.4 requires an itemized token
+        // regardless of the blanket flag (scenario 26) -- so this pass supplies one. The token is not
+        // what selects the execution path; the UNKNOWN item is.
+        String token = DestructiveAckToken.compute("sha256:new", report.stableStrings());
+        SchemaLifecycleExecutor.SchemaManifest authorized = realisticConceptDropManifest(token, true);
 
         SchemaLifecycleExecutor.DestructiveRecreation result =
-                executor.beforeMigrate(dataSource, blanketAuthorized);
+                executor.beforeMigrate(dataSource, authorized);
 
         assertTrue(result.performed());
         try (Connection connection = dataSource.getConnection()) {
@@ -1376,8 +1389,8 @@ class SchemaLifecycleExecutorProofMatrixTest {
                     "an UNKNOWN item must still force the whole-schema recreation");
         }
         assertEquals("APPLIED", latestHistoryRow(dataSource).outcome());
-        assertNull(latestHistoryRow(dataSource).ackTokenUsed(),
-                "blanket-flag authorization is not an itemized token -- the history row must record no token");
+        assertEquals(token, latestHistoryRow(dataSource).ackTokenUsed(),
+                "the token that authorized this pass must be recorded for audit");
     }
 
     @Test
@@ -1400,7 +1413,12 @@ class SchemaLifecycleExecutorProofMatrixTest {
         assertEquals(Set.of("widgets", "gadgets"), SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource));
 
         // ---- boot v2: drops the 'gadgets' concept, but takes the UNKNOWN whole-schema path --------
-        SchemaLifecycleExecutor.SchemaManifest v2 = realisticConceptDropManifest("sha256:v2", "", true);
+        // The DROP_TABLE needs an itemized token since X4.4 (see scenario 26); the UNKNOWN item is
+        // what routes this pass to the whole-schema path, not the authorization source.
+        SchemaDeltaReport v2Report =
+                SchemaDeltaReport.generate(dataSource, realisticConceptDropManifest("sha256:v2", "", true));
+        SchemaLifecycleExecutor.SchemaManifest v2 = realisticConceptDropManifest(
+                "sha256:v2", DestructiveAckToken.compute("sha256:v2", v2Report.stableStrings()), true);
         executor.beforeMigrate(dataSource, v2);
         try (Connection connection = dataSource.getConnection()) {
             // The whole-schema path drops the manifest-listed 'widgets'; the orphan 'gadgets' is NOT
@@ -1479,6 +1497,41 @@ class SchemaLifecycleExecutorProofMatrixTest {
             assertTrue(hasTable(connection.getMetaData(), "scratch_notes"), "the hand-created table survives");
             assertEquals("operator owned", readColumn(connection, "scratch_notes", "note", 1L),
                     "the hand-created table's data is untouched");
+        }
+    }
+
+    @Test
+    @DisplayName("Scenario 26 (X4.4): the blanket 'destructiveAllowed' flag does NOT authorize a "
+            + "CONCEPT drop -- dropping a whole table always requires an itemized token")
+    void scenario26_blanketFlagAloneCannotAuthorizeAConceptDrop() throws SQLException {
+        seedTwoRealisticConceptsWithData();
+        executor.afterMigrate(dataSource, realisticTwoConceptManifest("sha256:old"));
+
+        SchemaLifecycleExecutor.SchemaManifest blanketOnly = realisticConceptDropManifest("", true);
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.beforeMigrate(dataSource, blanketOnly));
+
+        assertTrue(refusal.getMessage().contains("DROP of one or more whole concept table(s): [gadgets]"),
+                refusal.getMessage());
+        assertTrue(refusal.getMessage().contains("does NOT"), refusal.getMessage());
+        assertTrue(refusal.getMessage().contains("#acknowledging-destructive-changes"), refusal.getMessage());
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(hasTable(metadata, "gadgets"), "a refused concept drop must leave the table untouched");
+            assertEquals(2, rowCount(connection, "gadgets"), "and all of its data");
+            assertEquals(2, rowCount(connection, "widgets"), "and must not touch anything else either");
+        }
+        assertEquals("REFUSED", latestHistoryRow(dataSource).outcome());
+
+        // The SAME change, with the itemized token, proceeds -- proving X4.4 gates on the token and
+        // not on the item kind being unsupported.
+        SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, blanketOnly);
+        String token = DestructiveAckToken.compute("sha256:new", report.stableStrings());
+        executor.beforeMigrate(dataSource, realisticConceptDropManifest(token, true));
+        try (Connection connection = dataSource.getConnection()) {
+            assertFalse(hasTable(connection.getMetaData(), "gadgets"),
+                    "with the token supplied, the same concept drop executes");
         }
     }
 

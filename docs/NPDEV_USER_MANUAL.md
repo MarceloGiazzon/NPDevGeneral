@@ -271,13 +271,20 @@ H2Server (persistent) example — pick a unique TCP port and a unique data folde
     "createBusinessTables": true
   },
   "schemaLifecycle": {
-    "strategy": "DropAndRecreateOnStructureChange",
-    "allowDestructiveRecreate": true,
+    "strategy": "KeepExistingIfCompatible",
+    "allowDestructiveRecreate": false,
     "destructiveRecreateConfirmation": "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED",
     "scope": "NpdevOwnedTablesOnly"
   }
 }
 ```
+
+The `schemaLifecycle` block above is the **recommended default for new apps**: additive changes,
+renames, safe type widenings and NOT NULL relaxations still apply automatically on boot, while
+anything that destroys data requires an explicit, itemized acknowledgment token. The older
+`"strategy": "DropAndRecreateOnStructureChange"` + `"allowDestructiveRecreate": true` pairing
+pre-authorizes column drops and type narrowings once, at authoring time, and is deprecated — see
+`docs/SCHEMA_EVOLUTION.md`. Existing apps keep working unchanged.
 
 ### 5.3 `model.json` — the actual app
 
