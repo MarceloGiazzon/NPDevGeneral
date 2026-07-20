@@ -56,6 +56,11 @@ Format: see `docs/RELEASE_PROCESS.md`. Dates are release-tag dates, not commit d
   refuses the boot with the new expected token printed; no data is at risk).
 
 ### Fixed
+- LNCH-1 remediation R8: `scripts/quality/run-stateful-additive-migrations-check.ps1` could not parse
+  at all (its `findings` strings used `\"`, which PowerShell does not treat as an escape) — so the gate
+  had been dead, not merely reporting oddities. Fixed, and its permanently-red steps were either
+  replaced with a real assertion (`old-migration-authority-quarantined`, a direct filesystem invariant)
+  or removed with recorded rationale (a task that does not exist; CLI flags that subcommand never had).
 - LNCH-1 remediation R6: a stale `renamedFrom` marker (one naming a column the previous model no
   longer has — the "renamed twice, marker never updated" case, which silently degrades a rename into
   a destructive drop) now surfaces a `WARNINGS` block in the `-PlanOnly` preview and a WARN log line
