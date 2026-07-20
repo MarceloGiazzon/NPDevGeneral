@@ -521,6 +521,10 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
         assertTrue(result.safeAdditive());
         assertFalse(result.performed());
 
+        // R2 (F1): required-field backfill/refusal now runs at the single afterMigrate call site
+        // (reached on EVERY boot path), not inside beforeMigrate's safe-additive branch.
+        executor.afterMigrate(dataSource, manifest);
+
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
             assertTrue(hasColumn(metadata, widgets, "status"));

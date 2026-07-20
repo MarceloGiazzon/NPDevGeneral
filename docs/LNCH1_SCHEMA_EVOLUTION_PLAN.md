@@ -1,6 +1,14 @@
 # LNCH-1 — Schema Evolution for Live Apps: Dedicated Implementation Plan
 
 > **Status:** DONE (2026-07-19) — all 9 phases (0-8) complete · **Priority:** P0 (the last existential launch blocker)
+> **Remediation round (R0–R9), 2026-07-20:** an independent post-implementation review found 2
+> high-severity bugs (required-field backfill silently skipped on destructive paths; `DROP_TABLE`
+> acknowledgment tokens uncomputable at plan time), 1 systemic fragility (divergent SQL-type
+> normalization between the two token producers), and 7 lower-severity gaps. All are fixed or
+> recorded — see **`docs/LNCH1_REMEDIATION_PLAN.md`** for the plan and
+> `..\NPDev_General__OutsideRepo\lnch1-evidence\remediation-R0-R8.md` for what was verified,
+> what changed behaviourally, and what remains pending CI (the Postgres Testcontainers legs and the
+> live Docker-Compose rehearsal were NOT run in that session).
 > **Effort:** XL, phased into 9 independently-committable phases
 > **Written:** 2026-07-17, verified against the working tree at commit `996b939`
 > **Evidence:** `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\lnch1-evidence\phase-0.md` through
