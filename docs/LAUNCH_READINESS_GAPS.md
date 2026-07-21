@@ -895,6 +895,44 @@ elsewhere) -- not a sign LNCH-19 itself is broken.
 Total estimated effort for DoD closure (Phases 1-2): ~2-3 days. Full script-tree parity (+Phase 3):
 +1 day.
 
+**Phases 2-3 done (2026-07-21, REG-11/P4) — code side now cross-platform-ready.** A fresh repo-wide
+sweep (`gradlew.bat` invocations + `D:\`/`D:/` literals, not just the two originally-named dirs)
+produced this disposition:
+- **Migrated to the shared `Get-NPDevGradleWrapperExecutable` helper:** `run-editor-gate.ps1`,
+  `run-generator-gate.ps1` (both already dot-sourced `npdev-common.ps1`).
+- **Fixed OS-awareness in place** (genuine Windows-only breakage on a Linux runner):
+  `Build-NpdevApp.ps1`, `Build-ClaudeApp.ps1` (inline `$IsWindows` pick rather than dot-sourcing
+  `npdev-common.ps1`, which sets `Set-StrictMode -Version Latest` at file scope and would impose
+  strict mode on these legacy builders); `run-incremental-migration-testing-check.ps1` and
+  `run-trusted-source-security-check.ps1` (their `Get-GradleWrapper` gated on *file existence*, but
+  `gradlew.bat` is committed so it exists on Linux too — now gated on `$IsWindows`);
+  `run-stateful-additive-migrations-check.ps1` (two `& .\gradlew.bat` calls + removed a redundant
+  hardcoded `D:/WorkSpace/NPDev/Build/...` test-XML fallback that candidate 2 already derives
+  portably); `npdev-gradlew.ps1` (the root wrapper found either gradlew via `Find-Up` then hardcoded
+  `.bat`).
+- **Already cross-platform, verified, left as-is:** `sample-common.ps1` + `generate-sample-app.ps1`
+  (Phase 1, above — the ledger's "line 39 hardcodes gradlew.bat" note is now stale), `run-frontend-gate.ps1`,
+  `invoke-ai-beta-app-smoke.ps1`, `run-ai-beta-gate.ps1`, `run-trusted-source-beta0-proof.ps1`,
+  `scripts/security/Invoke-StructuredCommandRequest.ps1` (each carries its own `$IsWindows`-branched
+  resolver).
+- **Intentional non-call-sites, unchanged:** `run-frontend-gate-tests.ps1` (writes a stub `.bat`
+  *fixture*), `run-post-beta0-maturity-closure-check.ps1` (its `gradlew.bat` string is the *check
+  that fails a Linux CI job for using it* — the REG-11 enforcement itself), the `RUN_COMMANDS.md`
+  here-string in `Build-ClaudeApp.ps1`.
+- **Named, justified Windows-only exceptions (step 5):** `run-item20-postgres-proof.ps1` is portable
+  except its **opt-in** `-StartDockerDesktop` switch (starts the Windows Docker Desktop GUI; on Linux
+  CI the daemon is already up, so the switch is never passed) — the proof body uses the portable
+  `docker` CLI. The three `superuser-admin-console/demonstrate-*.ps1` demo scripts invoke via
+  `Start-Process` with cmd.exe-specific `--args` quoting (documented in their own comments) and are
+  demo-only, off the CI path; a wrapper-only swap would leave the arg quoting broken, so they stay
+  Windows-only by design rather than half-ported.
+- **`D:\` param-default literals across the appgen/proof scripts** are the sanctioned, overridable
+  local-workspace convention (CLAUDE.md mandates `D:\WorkSpace\NPDev\Build`), not execution-blocking
+  hardcodes — left as documented convention.
+
+**Still OPEN at the item level:** proof (a green Linux Actions run) still needs REG-10/LNCH-19, which
+is owner-gated (no `gh` CLI in any session). The code is ready; it is not yet *proven* cross-platform.
+
 ### LNCH-21 — Generated-app upgrade contract
 
 **Status:** DONE (2026-07-17) · **Priority:** P2 · **Effort:** M

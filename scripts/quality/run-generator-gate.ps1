@@ -24,7 +24,8 @@ else {
 }
 
 $projectRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevGenerator"
-$gradleWrapperPath = Join-Path $projectRoot "gradlew.bat"
+# REG-11: resolve the OS-appropriate wrapper via the shared helper so this gate runs on Linux CI.
+$gradleWrapperPath = Get-NPDevGradleWrapperExecutable $projectRoot
 $deterministicGenerationScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\hygiene\check-deterministic-generation.ps1"
 $deterministicGenerationReportPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\deterministic-generation-report.json"
 $generatorGovernanceScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\quality\run-generator-governance.ps1"

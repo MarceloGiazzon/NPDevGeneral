@@ -57,8 +57,11 @@ function Add-Check {
 }
 
 function Get-GradleWrapper {
-    if (Test-Path -LiteralPath ".\gradlew.bat" -PathType Leaf) {
-        return ".\gradlew.bat"
+    # REG-11: gate on the OS, NOT on whether gradlew.bat exists. Both wrappers are committed at the
+    # repo root, so the file always exists on Linux too -- the old existence check returned the .bat
+    # and then failed to execute it on a Linux CI runner.
+    if ($IsWindows) {
+        if (Test-Path -LiteralPath ".\gradlew.bat" -PathType Leaf) { return ".\gradlew.bat" }
     }
     return "./gradlew"
 }

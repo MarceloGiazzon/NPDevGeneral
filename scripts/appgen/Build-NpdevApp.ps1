@@ -690,7 +690,12 @@ if ($running.Count -gt 0) {
 Set-Location $plan.appRoot
 Write-Host "Building $($plan.appName) at $($plan.appRoot)"
 $env:NPDEV_RUNTIMEHOST_LIBS_DIR = $plan.runtimeHostLibsDir
-& (Join-Path $plan.appRoot 'gradlew.bat') --no-daemon --console=plain "-PnpdevRuntimeHostLibsDir=$($plan.runtimeHostLibsDir)" clean build -x test
+# REG-11: pick the OS-appropriate wrapper so this builder runs on Linux/macOS CI too. Mirrors
+# scripts/npdev-common.ps1's Get-NPDevGradleWrapperExecutable inline rather than dot-sourcing that
+# file, which sets `Set-StrictMode -Version Latest` at file scope and would impose strict mode on
+# this legacy builder that was never written for it. Generated apps always ship both wrappers.
+$gradleWrapper = if ($IsWindows) { Join-Path $plan.appRoot 'gradlew.bat' } else { Join-Path $plan.appRoot 'gradlew' }
+& $gradleWrapper --no-daemon --console=plain "-PnpdevRuntimeHostLibsDir=$($plan.runtimeHostLibsDir)" clean build -x test
 if ($LASTEXITCODE -ne 0) { Write-Host 'Build FAILED.' -ForegroundColor Red; exit $LASTEXITCODE }
 $jar = Get-ChildItem -LiteralPath $plan.appRoot -Recurse -Filter 'FinalExec-*.jar' -ErrorAction SilentlyContinue |
        Where-Object { $_.FullName -like '*\build\libs\*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1

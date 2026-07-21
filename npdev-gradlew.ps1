@@ -38,7 +38,9 @@ if ($env:NPDEV_BUILD_ROOT) {
 }
 
 $cacheDir = Join-Path $externalRoot ('gradle-cache/' + (Split-Path $buildRoot -Leaf))
-$gradlew = Join-Path $buildRoot 'gradlew.bat'
+# REG-11: Find-Up above already accepts either wrapper, so pick the OS-appropriate one here rather
+# than hardcoding gradlew.bat (which would be found-then-fail on a Linux/macOS build root).
+$gradlew = if ($IsWindows) { Join-Path $buildRoot 'gradlew.bat' } else { Join-Path $buildRoot 'gradlew' }
 
 & $gradlew --project-cache-dir $cacheDir @args
 exit $LASTEXITCODE

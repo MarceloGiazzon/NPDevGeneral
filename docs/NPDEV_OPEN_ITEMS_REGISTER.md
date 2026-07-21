@@ -557,7 +557,7 @@ surfaces. Budget for the execute-bit issue and for path assumptions the Windows 
 
 ### 2.3 REG-11 — LNCH-20: cross-platform build scripts, Phases 2–4 (**corrected 2026-07-21**)
 
-**Type:** GAP · **Priority:** P2 · **Effort:** S (was M — see correction) · **Status:** OPEN (Phase 1 shipped)
+**Type:** GAP · **Priority:** P2 · **Effort:** S (was M — see correction) · **Status:** **CODE-COMPLETE (2026-07-21, REG-11/P4); item stays OPEN pending REG-10.** All genuine `gradlew.bat` call sites now resolve the wrapper per-OS (migrated to the shared helper where a script already imported it; fixed in place otherwise, including two resolvers that gated on file-existence instead of the OS, and the root `npdev-gradlew.ps1`). A repo-wide `D:\` sweep removed the one in-logic drive-letter literal (`run-stateful-additive-migrations-check.ps1`'s redundant test-XML fallback); the remaining `D:\` literals are overridable param defaults (sanctioned local convention). The Docker-Desktop Postgres proof launcher and 3 superuser demo scripts are documented as named Windows-only exceptions. **The register text names CI as "the enforcement mechanism," so true closure needs a green Linux Actions run (REG-10, owner-gated) — the code is ready, not yet proven.** Full disposition in `docs/LAUNCH_READINESS_GAPS.md` §LNCH-20.
 
 **What.** Phase 1 (the `gradlew.bat` literals on the CI critical path) landed as a side effect of
 LNCH-19's fix. Phases 2–4 — the AppGen builder scripts, ~14 remaining quality-gate scripts with the

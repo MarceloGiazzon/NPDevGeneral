@@ -57,6 +57,9 @@ function Add-Check {
 }
 
 $root = (Resolve-Path $WorkspaceRoot).Path
+# REG-11: OS-appropriate wrapper (relative, preserving the cwd-relative `-p NPDevGenerator`
+# resolution the two invocations below rely on) so this gate runs on Linux CI.
+$gradleWrapper = if ($IsWindows) { ".\gradlew.bat" } else { "./gradlew" }
 if ([string]::IsNullOrWhiteSpace($RunId)) {
     $RunId = "stateful-additive-migrations-" + (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmssfff")
 }
@@ -87,10 +90,12 @@ New-Item -ItemType Directory -Force -Path $proofRoot | Out-Null
 # Surfaced when C4's new step made XML presence load-bearing. Resolved by looking in both places.
 function Resolve-GeneratorTestResultXml {
     param([Parameter(Mandatory)][string]$ClassName)
+    # REG-11: candidate 2 already derives <workspace-parent>/Build/gradle/... portably from $root,
+    # so the former hardcoded "D:/WorkSpace/NPDev/Build/..." third candidate was a redundant,
+    # non-portable duplicate of it (removed).
     $candidates = @(
         (Join-Path $root "NPDevGenerator/generator/build/test-results/test/TEST-$ClassName.xml"),
-        (Join-Path (Split-Path -Parent (Split-Path -Parent $root)) "Build/gradle/npdev-generator/generator/test-results/test/TEST-$ClassName.xml"),
-        "D:/WorkSpace/NPDev/Build/gradle/npdev-generator/generator/test-results/test/TEST-$ClassName.xml"
+        (Join-Path (Split-Path -Parent (Split-Path -Parent $root)) "Build/gradle/npdev-generator/generator/test-results/test/TEST-$ClassName.xml")
     )
     foreach ($candidate in $candidates) {
         if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
@@ -99,7 +104,7 @@ function Resolve-GeneratorTestResultXml {
 }
 
 $testResult = Invoke-CommandCapture "stateful-migration-planner-tests" {
-    & .\gradlew.bat -p NPDevGenerator :generator:test --tests "*StatefulMigrationPlannerTest" --rerun-tasks --no-daemon --console=plain
+    & $gradleWrapper -p NPDevGenerator :generator:test --tests "*StatefulMigrationPlannerTest" --rerun-tasks --no-daemon --console=plain
 }
 $plannerXmlSource = Resolve-GeneratorTestResultXml -ClassName "com.npdev.generator.migration.StatefulMigrationPlannerTest"
 $plannerXmlProof = Join-Path $proofRoot "TEST-com.npdev.generator.migration.StatefulMigrationPlannerTest.xml"
@@ -121,7 +126,7 @@ Add-Check $checks "stateful-migration-unit-tests-pass" $testResult.passed $testR
 # verified live in the evidence note (they need a full generator runtime + app definition, which is
 # heavier than this gate should carry).
 $planIntegrityResult = Invoke-CommandCapture "migration-plan-integrity-tests" {
-    & .\gradlew.bat -p NPDevGenerator :generator:test --tests "*GeneratorMainMigrationPlanCliTest" --rerun-tasks --no-daemon --console=plain
+    & $gradleWrapper -p NPDevGenerator :generator:test --tests "*GeneratorMainMigrationPlanCliTest" --rerun-tasks --no-daemon --console=plain
 }
 $planIntegrityXmlSource = Resolve-GeneratorTestResultXml -ClassName "com.npdev.generator.GeneratorMainMigrationPlanCliTest"
 $planIntegrityXmlProof = Join-Path $proofRoot "TEST-com.npdev.generator.GeneratorMainMigrationPlanCliTest.xml"
