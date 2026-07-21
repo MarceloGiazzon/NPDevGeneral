@@ -1300,10 +1300,9 @@ class SchemaLifecycleExecutorProofMatrixTest {
     }
 
     @Test
-    @DisplayName("Scenario 24 (X-B1): a concept drop authorized by the blanket 'destructiveAllowed' "
-            + "flag alone must drop ONLY the dropped concept's table -- never wipe the data of the "
-            + "concepts this build still declares")
-    void scenario24_blanketAuthorizedConceptDropDoesNotWipeUnrelatedTables() throws SQLException {
+    @DisplayName("Scenario 24 (X-B1): an acknowledged concept drop on a blanket-posture app drops "
+            + "ONLY that concept's table -- never the data of concepts this build still declares")
+    void scenario24_acknowledgedConceptDropDoesNotWipeUnrelatedTables() throws SQLException {
         seedTwoRealisticConceptsWithData();
         // Ownership + fingerprint are seeded through the PRODUCTION writer (afterMigrate with the
         // v1 manifest), not by hand-inserting JSON, so this fixture can never drift from the format
@@ -1323,9 +1322,9 @@ class SchemaLifecycleExecutorProofMatrixTest {
         assertEquals(List.of("DROP_TABLE:gadgets"), plan.stableStrings());
         String token = DestructiveAckToken.compute("sha256:new", plan.stableStrings());
 
-        SchemaLifecycleExecutor.SchemaManifest blanketAuthorized = realisticConceptDropManifest(token, true);
+        SchemaLifecycleExecutor.SchemaManifest acknowledgedOnBlanketApp = realisticConceptDropManifest(token, true);
         SchemaLifecycleExecutor.DestructiveRecreation result =
-                executor.beforeMigrate(dataSource, blanketAuthorized);
+                executor.beforeMigrate(dataSource, acknowledgedOnBlanketApp);
 
         assertTrue(result.performed(), "the acknowledged concept drop must execute");
         try (Connection connection = dataSource.getConnection()) {
@@ -1344,8 +1343,8 @@ class SchemaLifecycleExecutorProofMatrixTest {
         }
         assertEquals("APPLIED", latestHistoryRow(dataSource).outcome());
 
-        executor.afterMigrate(dataSource, blanketAuthorized);
-        assertSecondBootIsNoOp(blanketAuthorized);
+        executor.afterMigrate(dataSource, acknowledgedOnBlanketApp);
+        assertSecondBootIsNoOp(acknowledgedOnBlanketApp);
     }
 
     @Test
