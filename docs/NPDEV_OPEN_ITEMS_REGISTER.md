@@ -172,7 +172,7 @@ it at authoring time.
 
 ### 1.2 REG-2 — `IT-EXTPG-1`: 10 integration tests unrunnable; root cause re-opened
 
-**Type:** BUG · **Severity:** MEDIUM · **Effort:** S/M · **Status:** OPEN (two attributions made so far, **neither independently confirmed against a captured stack trace**)
+**Type:** BUG · **Severity:** MEDIUM · **Effort:** S/M · **Status:** **CLOSED (2026-07-21, REG-2/P2).** Real cause was a THIRD thing — `DatabaseIdentityStartupValidator` aborting because Testcontainers' `jdbc:tc:` DB always reports name `test` ≠ the app's resolved identity (captured stack trace, neither prior theory nor the plan's Hikari candidate). Fixed at the profile level (`application-postgres.yml` → `npdev.trial.database-override: true`). Running the tests surfaced two real findings, both fixed: a `text = uuid` cast in `PublicationRollbackE2EIT`, and `LoginController` crashing verify-only JWT (fixed under REG-9). **10/10 IT-EXTPG-1 green on real Postgres.** See `docs/OPEN_GAPS_AND_ROADMAP.md#IT-EXTPG-1` for the run recipe.
 
 **What.** Ten `integrationTest` classes fail with `ApplicationContext` load errors
 (`JwtAuthExternalBetaIT` ×8, `PublicationRollbackE2EIT`, `TenantIsolationE2EIT`) — test inventory,
@@ -236,7 +236,7 @@ inject.
 
 ### 1.3 REG-3 — `GATE-REL-1`: **corrected** — the node_modules/slimness conflict was already fixed; the real gap is stale evidence reports
 
-**Type:** GAP · **Severity:** LOW (was MEDIUM) · **Effort:** S · **Status:** OPEN — orchestration gap, no decision needed
+**Type:** GAP · **Severity:** LOW (was MEDIUM) · **Effort:** S · **Status:** **CLOSED (2026-07-21, REG-3/P1).** Added `scripts/quality/run-beta-release-evidence-orchestration.ps1` (runs all ~18 producers in dependency-ordered stages sharing one runId) + opt-in `-GenerateReports` on the gate; the gate now distinguishes **precondition-unmet (exit 2)** from **check-failed (exit 1)** with a leading status line and an `evidencePreconditions` report block. Found-and-fixed a producer that could only ever emit passing evidence (`run-json-schema-validator-tests.ps1`) plus its stale fixture that had silently disabled the model-root `additionalProperties` guard. `GATE-REL-1` in `docs/OPEN_GAPS_AND_ROADMAP.md` corrected to match.
 
 **What — corrected 2026-07-21.** The original claim was that `run-beta-release-gate.ps1` requires
 `json-schema-validator`'s `node_modules` to be present in-repo, which the workspace slimness policy
@@ -476,7 +476,7 @@ Source of truth: `docs/LAUNCH_READINESS_GAPS.md` §2. Verified at `c7e3519`: **1
 
 ### 2.1 REG-9 — LNCH-4: auth table stakes, secrets management still open (**rescoped 2026-07-21**)
 
-**Type:** GAP · **Priority:** **P0** · **Effort:** S/M (was M — scope roughly halved) · **Status:** PARTIAL
+**Type:** GAP · **Priority:** **P0** · **Effort:** S/M (was M — scope roughly halved) · **Status:** **CLOSED (2026-07-21, REG-9/P3).** Both genuinely-open halves done. JWT keys: env-var path (`NPDEV_AUTH_JWT_PUBLICKEYPATH`/`PRIVATEKEYPATH` — hyphen-stripped relaxed binding) emitted into compose + `.env.example`; `StartupValidator` now fail-fasts (docs-linked) when `jwt` mode has an unreadable public key or a set-but-unreadable private key; `LoginController` supports **verify-only** deployments (blank private key → boots, login returns 503) instead of crashing the context. Super-user key (Q1): **defaulted to WONTFIX** (issued-not-supplied preserved; reversible). Verified: 12/12 StartupValidator unit tests + 8/8 verify-only `JwtAuthExternalBetaIT` live on real Postgres. `docs/CONFIGURATION.md` + `docs/DEPLOYMENT.md` updated.
 
 **What.** The P0 slice (JWT revocation via token-version, brute-force login throttling, a documented
 and tested CSRF posture) and the P1 password-reset slice are DONE. What remains: **secrets via
