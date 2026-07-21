@@ -8,8 +8,11 @@
 > **Origin.** `docs/NPDEV_OPEN_ITEMS_REGISTER.md` lists 17 open items (`REG-1`…`REG-17`) left after
 > the five-round LNCH-1 schema-evolution programme (`docs/LNCH1_PROGRAMME_RETROSPECTIVE.md`). This
 > plan sequences and details the work to close all 17: 2 are deliberate boundaries needing no action,
-> 3 are blocked on a human action from you (Marcelo), and 12 are independently actionable by an
-> implementation session.
+> 5 cannot close without an action only you can take (plus one item, REG-12, that's split — one slice
+> actionable, one gated on your call), and 9 are independently, fully closable by an implementation
+> session. **§0 has the exact per-item breakdown** — the original draft of this line undercounted the
+> owner-gated group at "3"; it is really larger, and this plan says so plainly rather than rounding up
+> its own success rate.
 > **Audience.** An AI implementation session (or human) that has **not** read this project's history.
 > Follow it phase by phase, in the order given — the order encodes real dependencies (e.g. REG-2 must
 > be fixed before REG-16 reviews the surface those tests cover), not just priority. Where this
@@ -17,6 +20,55 @@
 > names were captured 2026-07-21 and may have drifted by the time you act.
 > **This plan does not re-litigate what LNCH-1 already closed.** It picks up exactly where
 > `docs/NPDEV_OPEN_ITEMS_REGISTER.md` and `docs/LNCH1_PROGRAMME_RETROSPECTIVE.md` left off.
+> **Reviewed and adjusted 2026-07-21 (same day)** against the question *"if this plan is completed,
+> can we be certain these items are closed, or at least substantially advanced?"* The review found
+> one section had already gone stale (§11.3's REG-1 sub-phase still cited pre-cleanup numbers after
+> the sample-app removal in commits `6e5d7a9`/`e32f9bc`) and several phases were silently gated on an
+> owner decision with no default if that decision never comes. Both classes of problem are fixed
+> below. **New §0** answers the certainty question directly, per item, before any phase detail.
+
+---
+
+## 0. Closure certainty assessment — the question this review exists to answer
+
+**The question:** if this plan is executed in full, which of the 17 register items are *certainly*
+closed, which are *certainly substantially advanced but may need a follow-up round*, and which
+**cannot** close no matter how much implementation work is done, because they need an action only
+you can take? This section answers that honestly, per item, before any phase detail — read it first.
+
+**No item was moved to the boundary list (§14) to make this table look better.** §14 still holds
+exactly the same 2 items (`REG-7`, `REG-8`) it always did, for the same documented reasons. Every
+other item below keeps its originally-scoped feature/fix work in full — the categories describe
+*what limits closure*, not a shrinking of what will be attempted. Nothing was cut to make a checkbox
+easier to tick.
+
+| Item | Phase | Closure certainty | Why |
+|---|---|---|---|
+| REG-3 | P1 | **Certain full close** | Bounded, no owner dependency, DoD is mechanically checkable. |
+| REG-2 | P2 | **Certain substantial advance; full close likely** | Root-cause diagnosis is guaranteed (reproducing an existing failure and reading a stack trace is bounded work). The *fix's* size depends on what's found — §7.5 (new) states an explicit fallback so "diagnosis complete, fix scoped" counts as real, recorded progress even if the fix itself turns out bigger than S/M. |
+| REG-9 | P3 | **Certain full close** | The JWT-key half has no owner dependency. The super-user-key half now defaults to WONTFIX-with-rationale if Q1 goes unanswered (§8.4), so the item closes either way instead of stalling indefinitely. |
+| REG-11 | P4 | **Code-complete certain; item-level close needs REG-10** | The `gradlew.bat` migration, the Docker-Desktop Postgres launcher, and the repo-wide `D:\` sweep are now all mandatory parts of this phase (not optional), so the *code* reaches full readiness. But REG-11's own register text names CI as "the enforcement mechanism" — true closure (proof it works cross-platform) needs REG-10 to actually run, which is owner-gated. Honest state after P4 alone: ready, not proven. |
+| REG-10 | P5 | **Cannot close without you** | Needs `gh` CLI or GitHub web access (Q3) that no session has ever had. §10 now gives the exact one-click compare URL to shrink the ask to its floor, but the click itself cannot be performed by an implementation session. |
+| REG-16 | P6 | **Certain substantial advance (Tier A); full close likely, may need more than one round** | Tier A (R0–R2: review run, findings documented, remediation planned) is bounded and guaranteed achievable. Tier B (R3–R4: implement + re-review) now explicitly guarantees every CRITICAL/HIGH finding gets fixed within this plan; MEDIUM/LOW findings are fixed if time allows or logged as new dated ledger entries otherwise — never silently dropped. LNCH-1 itself took five rounds on a comparable subsystem; promising one pass fully closes REG-16 would be this plan overpromising, not a real certainty. |
+| REG-6 | P7 | **Certain full close** | Bounded refactor, no owner dependency, DoD is mechanically checkable (test count/assertions unchanged). |
+| REG-1 | P8 | **Certain full close** (broadened from a 4-app batch) | §11.3 now targets all 7 remaining non-deliberate blanket-posture apps (the 4 `_official` apps plus `invoice-bonds-demo`, `restaurant-saas-multitenant`, `superuser-admin-console`), leaving only the 2 apps that are blanket *by design*. That is REG-1's actual "done" state, not a partial batch. |
+| REG-5 | P8 | **Certain full close** | Now defaults to option (a) — rewrite against the exact-list model — if Q2 goes unanswered, with a note the owner can override any time. No longer indefinitely blocked on a response. |
+| REG-4 | P8 | **Best-effort; cannot be guaranteed** | A flake by definition may not reproduce on demand. §11.3 now makes *forcing* reproduction (repeated parallel-load runs) the primary step, not a fallback, to maximize odds within this plan's window — but if it genuinely does not recur, the honest outcome is "instrumentation strengthened, still open," not closure. |
+| REG-13 | P9 | **Cannot close without you** | Needs a real external human (Q4). No implementation-session substitute is legitimate — the friction *is* the measurement. |
+| REG-14 | P9 | **Cannot close without you** | Same blocker as REG-13, same combined session. |
+| REG-17 | P9 | **Cannot close without you, and without REG-10/REG-11 first** | Needs Q4 *and* a working cross-platform build to reproduce anything on. |
+| REG-12 | P10 | **Slice 2 certain full close; item-level stays PARTIAL by design** | Slice 3 (server-side PDF) is `XL`-shaped and explicitly deferred to its own future plan regardless of this plan's execution — cramming it in here would make this plan's own estimates as dishonest as the original register's were before the 2026-07-21 correction. This is a scoping decision, not a missed closure. |
+| REG-15 | P10 | **Cannot close without you** | Trademark clearance needs counsel; the release tag is a business decision. Neither is implementation work. |
+| REG-7, REG-8 | §14 | **N/A — deliberate boundary, unchanged** | Not touched by this review; still 2 items, still documented rationale. |
+
+**Bottom line.** Of the 15 actionable items: **5 reach certain full closure** through implementation
+work alone after the adjustments in this review (REG-3, REG-9, REG-6, REG-1, REG-5); **2 reach a
+certain, real, substantial advance with full closure likely but not guaranteed in one pass**
+(REG-2, REG-16); **1 reaches full code-readiness but needs your action to prove closed**
+(REG-11, via REG-10); **1 is best-effort and cannot be forced to reproduce on schedule** (REG-4); and
+**6 cannot close without an action only you can take** (REG-10, REG-13, REG-14, REG-17, REG-15, and
+REG-12's Slice 3 half). That last group was already true before this review — no amount of
+implementation-session work changes it, and this plan will not pretend otherwise.
 
 ---
 
@@ -109,8 +161,8 @@ These are decisions only Marcelo can make. Batch them now rather than surfacing 
 
 | # | Question | Blocks | Where it's discussed |
 |---|---|---|---|
-| Q1 | Do you want a **super-user-key seeding** feature (`NPDEV_SUPERUSER_KEY` env var to set a known key at boot), or should the key stay strictly issued-not-supplied? This is a security-posture change, not a bug fix. | REG-9, second half | §8.3 |
-| Q2 | Who owns **`GATE-OBS-1a`**'s decision — restore the old package-convention checks, formally retire them, or rewrite against the exact-list model? | REG-5 | §11.2 |
+| Q1 | Do you want a **super-user-key seeding** feature (`NPDEV_SUPERUSER_KEY` env var to set a known key at boot), or should the key stay strictly issued-not-supplied? This is a security-posture change, not a bug fix. **Defaults to "no" (WONTFIX, reversible any time) if unanswered** — see §8.4. | REG-9, second half | §8.4 |
+| Q2 | Who owns **`GATE-OBS-1a`**'s decision — restore the old package-convention checks, formally retire them, or rewrite against the exact-list model? **Defaults to "rewrite against the exact-list model" if unanswered** — see §11.3. | REG-5 | §11.3 |
 | Q3 | Can you open the **`lnch19-ci-verify`** PR yourself (needs `gh` CLI or GitHub web access — no session so far has had either)? | REG-10, and transitively REG-17 | §10 |
 | Q4 | Do you have (or can you recruit) **one person who is not you and has not seen this project**, for the combined REG-13/REG-14/REG-17 session? | REG-13, REG-14, REG-17 | §12 |
 | Q5 | Is a real **trademark clearance search** (via counsel, not more web searching) something you want commissioned now, and is a release tag still deliberately deferred? | REG-15 | §13 |
@@ -127,11 +179,11 @@ Do not block phases that don't depend on these — most of this plan proceeds wi
 | P1 | REG-3 | GAP | LOW (was MED) | S | none | 6 |
 | P2 | REG-2 | BUG | MED | S/M | Docker available | 7 |
 | P3 | REG-9 | GAP | **P0** | S/M | Q1 (partial) | 8 |
-| P4 | REG-11 (partial) | GAP | P2 | S | none | 9 |
+| P4 | REG-11 (code-complete; item-close needs P5) | GAP | P2 | S/M | none | 9 |
 | P5 | REG-10 | GAP | P1 | S/M | Q3, P4 (recommended) | 10 |
 | P6 | REG-16 | PROCESS | **HIGH** | L | P2 (recommended) | 11.1 |
 | P7 | REG-6 | GAP | MED | M | none (recommended before any new SchemaLifecycleExecutor pass) | 11.3 |
-| P8 | REG-1, REG-5, REG-4 | GAP/PROCESS/BUG | MED/LOW/LOW | M/S/S-M | Q2 (REG-5 only) | 11.2, 11.4 |
+| P8 | REG-1 (7-app full batch), REG-5, REG-4 | GAP/PROCESS/BUG | MED/LOW/LOW | M/S/S-M | Q2 (REG-5, has a default) | 11.3 |
 | P9 | REG-13, REG-14, REG-17 | GAP/PROCESS | P1/P2/MED | S+S+M | Q4, P5+P4 (REG-17 only) | 12 |
 | P10 | REG-12, REG-15 | GAP/PROCESS | P1/P2 | L, S | Q6 (REG-12), Q5 (REG-15) | 13 |
 | — | REG-7, REG-8 | BOUNDARY | — | — | no action | 14 |
@@ -141,6 +193,8 @@ blocker from everyone's mental model before anything else is scoped (P1). REG-2 
 before REG-16 reviews the exact surface two of its ten dark tests cover (P2 before P6). REG-11's
 `gradlew.bat` migration is mechanical and de-risks REG-10's eventual Linux run, so it's worth doing
 just before it (P4 before P5). Everything else follows the register's own §4 reasoning, reconfirmed.
+**See §0 for which of these phases the implementer can actually guarantee closes an item, versus
+which need your action regardless of how this plan is sequenced.**
 
 ---
 
@@ -292,6 +346,24 @@ generator/kernel/runtime hot path.
 **Effort:** S/M, but the estimate assumes the true cause is small (a config/timeout tweak). If step 2
 lands on (b) with a real missing-bean cause not yet identified, re-scope before continuing.
 
+### 7.5 Fallback — if the fix turns out bigger than S/M
+
+This is the one phase in the plan whose fix size is genuinely unknown until step 1 runs. Do not let
+that uncertainty become open-ended debugging:
+
+- If, after capturing the exact exception and classifying it (steps 1–2), the fix is a config/profile
+  change, a timeout adjustment, or anything else contained to `NPDevRuntimeHost/src/test/resources/`
+  or a handful of test-support classes — proceed to full closure per the DoD below, same session.
+- If the fix would require restructuring how the ITs get their `DataSource` (candidate (b), the least
+  likely per the ruled-out-exclusion grep, but not impossible) — **stop at diagnosis.** Record the
+  exact root cause, the reason it's bigger than expected, and a re-scoped effort estimate in
+  `docs/OPEN_GAPS_AND_ROADMAP.md`'s `IT-EXTPG-1` entry. That is a real, certain, and valuable outcome
+  on its own: REG-2 goes from "root cause unconfirmed" (its actual problem today) to "root cause
+  confirmed, fix scoped" — a correct diagnosis with a deferred fix is not a failure of this phase, a
+  wrong-but-confident diagnosis (REG-2's history twice over) is.
+- Either way, do not skip step 5 (running the tests and logging what they find) just because the
+  diagnosis took longer than expected — that step is independent of how big the *wiring* fix was.
+
 ---
 
 ## 8. Phase P3 — REG-9: LNCH-4 secrets, rescoped
@@ -340,16 +412,22 @@ table — read it before this section).
    tokens correctly. This satisfies the "live > suite" guardrail — do not close this on a unit test
    alone.
 
-### 8.4 Steps — super-user key (blocked on Q1)
+### 8.4 Steps — super-user key (Q1, with a default)
 
-1. Get Q1's answer before writing code here.
+1. Check for Q1's answer before writing code here. **Do not block indefinitely on it:** if this phase
+   is reached and Q1 is still unanswered, treat that as a **default "no"** and take the step-3 path —
+   seeding a known super-user key is a security-posture *change* (operator-supplied vs. strictly
+   issued), and the safe default for an unreviewed posture change is to not make it. Record explicitly
+   that the default was applied, not a real "no," so the owner can revisit it any time without this
+   looking like a considered rejection.
 2. **If yes (seed a known key):** add `NPDEV_SUPERUSER_KEY` as an optional override in
    `SuperUserBootstrapper` — if present, use it instead of generating a random key; still persist it
    hashed via `CredentialRegistryService` the same way. Document the security-posture change
    explicitly (an operator-supplied key is a different trust model than an issued one).
-3. **If no:** close this half of REG-9 as WONTFIX with a one-line rationale in
-   `docs/OPEN_GAPS_AND_ROADMAP.md`, and make sure `docs/DEPLOYMENT.md` is explicit that the
-   super-user key is retrieved from the mounted volume after first boot, not supplied at deploy time.
+3. **If no, or defaulted per step 1:** close this half of REG-9 as WONTFIX with a one-line rationale
+   in `docs/OPEN_GAPS_AND_ROADMAP.md` (state whether it was an explicit answer or the default), and
+   make sure `docs/DEPLOYMENT.md` is explicit that the super-user key is retrieved from the mounted
+   volume after first boot, not supplied at deploy time.
 
 ### 8.5 Definition of Done
 
@@ -393,6 +471,13 @@ snapshot.
 
 ### 9.3 Steps
 
+**Reviewer's note (2026-07-21):** the original version of this phase treated step 4 below as
+optional. That let REG-11's item-level scope (the register/ledger names three surfaces — the
+`gradlew.bat` sites, the AppGen builder scripts, and "the Docker-Desktop-specific Postgres proof
+launcher") quietly shrink to just the first one. Step 4 is now **mandatory**, so this phase actually
+covers everything this repo's code can control for REG-11 — see §0 for why item-level closure still
+also needs REG-10.
+
 1. Re-enumerate the current `gradlew.bat` call sites (command above) — treat the table in §9.2 as a
    starting point, not gospel.
 2. For each file, replace the direct `gradlew.bat` invocation with a call to
@@ -403,20 +488,30 @@ snapshot.
 3. After each file (or in small batches), run that script's own smoke path if one exists, or at
    minimum a syntax check (`pwsh -NoProfile -Command "& { . .\scripts\quality\<file>.ps1 -WhatIf }"`
    style dry run if the script supports one) — do not batch all 13 into one untested commit.
-4. Optional, separate from this phase's DoD but worth flagging in the commit message: do a repo-wide
-   `D:\`/`D:/` literal sweep outside `scripts/appgen` and `scripts/quality` (e.g. `scripts/*.ps1`
-   directly, `scripts/hygiene/*.ps1`) to confirm or refute whether the broader REG-11 claim (Phases
-   2–4 covering "the AppGen builder scripts... and the Docker-Desktop-specific Postgres proof
-   launcher") has more surface than this phase closes.
+4. **Mandatory, not optional:** do a repo-wide `D:\`/`D:/` literal sweep outside `scripts/appgen` and
+   `scripts/quality` (e.g. `scripts/*.ps1` directly, `scripts/hygiene/*.ps1`, `scripts/ai/*.ps1` if
+   any exist) to find what the original REG-11 claim actually meant beyond the 13 files already
+   found. Fix what's found using the same helper, same per-file discipline as steps 2–3.
+5. **Mandatory:** locate "the Docker-Desktop-specific Postgres proof launcher" the register/ledger
+   names as untouched (grep for "Docker Desktop", "postgres" + "proof" together, or check
+   `scripts/quality/` and `scripts/appgen/` for anything invoking `docker compose` directly rather
+   than through a cross-platform wrapper). If it has the same `gradlew.bat`/drive-letter pattern, fix
+   it the same way. If it's genuinely Windows/Docker-Desktop-specific by necessity (not just by
+   historical accident), document why in `docs/OPEN_GAPS_AND_ROADMAP.md`'s `LNCH-20` entry rather
+   than silently leaving it — a named, justified exception is different from an unexamined gap.
 
 ### 9.4 Definition of Done
 
-- All 13 known files call the shared helper instead of hardcoding `gradlew.bat`.
+- All known `gradlew.bat` call sites (13 at last count, re-verify) call the shared helper.
+- The repo-wide `D:\` sweep (step 4) is done and every finding either fixed or logged with a reason
+  it wasn't.
+- The Docker-Desktop Postgres launcher (step 5) is identified and either fixed or has a documented,
+  reasoned exception — not silently skipped.
 - Each migrated script still runs (smoke-tested, not just visually inspected).
-- The repo-wide `D:\` sweep (step 4) is either done and its findings logged, or explicitly deferred
-  with a note in `docs/OPEN_GAPS_AND_ROADMAP.md`'s `LNCH-20` entry.
+- **This phase alone does not close REG-11** — it makes the code side fully ready. Say so explicitly
+  in the closing commit/evidence note rather than implying the item is DONE; full closure needs P5.
 
-**Effort:** S (down from the register's original M).
+**Effort:** S/M (up slightly from the original S, since steps 4–5 are no longer optional).
 
 ---
 
@@ -439,9 +534,15 @@ snapshot.
 
 ### 10.2 Steps
 
-1. **This step is yours, Marcelo (Q3):** open a PR from `lnch19-ci-verify` against `main` (or
-   whichever base branch is current) via `gh pr create` or the GitHub web UI, and watch the
-   `npdev-pr-gate.yml` run.
+1. **This step is yours, Marcelo (Q3) — minimized to one link.** Re-verified 2026-07-21:
+   `lnch19-ci-verify`'s actual branch point (`git merge-base lnch19-ci-verify beta1-vision-spine` =
+   `ab14e20`, "LNCH-20 Phase 1: fix gradlew.bat hardcoding on the LNCH-19 CI critical path") is on
+   `beta1-vision-spine`, not `main` — it was branched from the active development line, not the
+   generic default. The one-click compare/PR URL is:
+   `https://github.com/MarceloGiazzon/NPDevGeneral/compare/beta1-vision-spine...lnch19-ci-verify?expand=1`.
+   Open it, click "Create pull request," and watch the `npdev-pr-gate.yml` run. (If you'd rather
+   target `main` instead, the same URL works with `main` swapped in — that's a judgment call about
+   where this should land, not a technical requirement.)
 2. If it goes green: REG-10 is DONE. Update `docs/LAUNCH_READINESS_GAPS.md`'s `LNCH-19` row and the
    register.
 3. If it fails: capture the failure (it will be the first genuine cross-platform signal this project
@@ -491,7 +592,14 @@ production files, ~3,400+ LOC**. 12 existing test files were found (`TenantIsola
 **Precondition:** run this after P2 (REG-2), so `TenantIsolationE2EIT` and `JwtAuthExternalBetaIT` are
 actually executing — reviewing code whose own E2E safety net is dark is reviewing half-blind.
 
-**Round structure (mirror the LNCH-1 rounds exactly):**
+**Two-tier structure — read this before the round-by-round detail.** The original version of this
+phase presented R0–R4 as one undifferentiated block, which understated a real fact: R0–R2 are bounded
+and their completion is certain; R3–R4 are not bounded until R1's findings exist, and LNCH-1's own
+history (five rounds on a comparable subsystem) is direct evidence that "implement + re-review" can
+take more than one pass. Splitting them is not lowering the bar — it's stating plainly which part of
+"substantially advance REG-16" is guaranteed and which part is a strong, disciplined best effort.
+
+**Tier A — certain, bounded (R0–R2). Do not skip or compress any of it.**
 
 1. **R0 — Orientation.** Read all 23 files (not summaries), the 12 existing tests, `LNCH-2`/`LNCH-4`'s
    original why/DoD in `docs/LAUNCH_READINESS_GAPS.md`, and `docs/SCHEMA_EVOLUTION.md`'s tenant/auth
@@ -507,16 +615,34 @@ actually executing — reviewing code whose own E2E safety net is dark is review
    timing side-channels on login, and error-message information leakage (does a failed login or a
    cross-tenant fetch leak *which* part failed?). Produce a findings document in the same style as
    `LNCH1_HARDENING_PLAN.md`/`LNCH1_CLOSEOUT_PLAN.md`'s "Findings → phase map" tables — one row per
-   finding, severity, why it matters, concrete failure scenario.
-3. **R2 — Phased remediation plan.** Write it for an implementer with no project history, following
-   this document's own format: orientation table, VERIFY markers, guardrails, a stated minimum bar.
-   Do not pre-write this plan now — it depends on R1's actual findings.
-4. **R3 — Implement.** Reproduce RED first for every finding. Small bounded commits. A pre-existing
-   bug found along the way gets its own commit+test before the planned fix.
-5. **R4 — Re-review.** Confirm every R1 finding is closed, and — per the LNCH-1 pattern where nearly
-   every round's fix created the next round's finding — specifically check whether R3's fixes changed
-   any decision logic in a way that needs its own look (e.g. a tightened tenant check that might now
-   reject a legitimate cross-tenant SUPERUSER operation).
+   finding, severity, why it matters, concrete failure scenario. **This document, existing and
+   complete, is itself the certain outcome of Tier A** — REG-16's actual problem statement ("zero
+   adversarial review") is resolved the moment R1 is done, independent of what R3/R4 achieve.
+3. **R2 — Phased remediation plan, plus a severity triage.** Write the remediation plan for an
+   implementer with no project history, following this document's own format: orientation table,
+   VERIFY markers, guardrails, a stated minimum bar. In the same step, triage every R1 finding into
+   exactly one bucket — this triage is what makes R3 bounded instead of open-ended:
+   - **CRITICAL/HIGH:** must be fixed inside this plan's R3, no exceptions, treat as blocking priority
+     over any other unstarted phase in this document (matches LNCH-1's own precedent — a HIGH/CRITICAL
+     tenant-isolation or auth hole outranks scheduling convenience).
+   - **MEDIUM:** fixed in R3 if the remaining time budget allows; otherwise logged as a new, dated
+     entry in `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (a `REG-18`-and-up item, not silently dropped).
+   - **LOW:** always logged as a new dated register entry rather than fixed inline, the same way
+     LNCH-1's own low-severity residue became tracked follow-ups instead of scope creep mid-round.
+
+**Tier B — likely, but not guaranteed in one pass (R3–R4).**
+
+4. **R3 — Implement.** Reproduce RED first for every CRITICAL/HIGH (and any MEDIUM taken on) finding.
+   Small bounded commits. A pre-existing bug found along the way gets its own commit+test before the
+   planned fix.
+5. **R4 — Re-review.** Confirm every CRITICAL/HIGH finding from R1 is closed, and — per the LNCH-1
+   pattern where nearly every round's fix created the next round's finding — specifically check
+   whether R3's fixes changed any decision logic in a way that needs its own look (e.g. a tightened
+   tenant check that might now reject a legitimate cross-tenant SUPERUSER operation). **If R4 itself
+   finds a new CRITICAL/HIGH issue created by an R3 fix, that is not a failure of this plan — it is
+   the exact pattern LNCH-1 documented five times over, and it means a further round is genuinely
+   warranted, not that R3 was done carelessly.** Name it as a new dated item rather than quietly
+   re-opening R3.
 
 **Verification bar:** live rehearsal against real Postgres (not just H2/suite), and specifically a
 real multi-tenant scenario with two live tenants and cross-tenant attack attempts executed and
@@ -526,6 +652,11 @@ under `NPDev_General__OutsideRepo` per the evidence-location guardrail.
 
 **Effort:** L. This is genuinely the largest remaining item in the register by both LOC-in-scope and
 uncertainty (findings are unknown until R1 runs) — do not compress it to fit a smaller estimate.
+**Definition of "substantially advanced" if this phase runs out of budget before R4 closes:** Tier A
+complete (R0–R2 done, findings documented and triaged) plus every CRITICAL/HIGH finding fixed and
+re-reviewed in R3/R4, with any remaining MEDIUM/LOW findings logged as new register items rather than
+lost. That state is a legitimate, valuable stopping point — it is not the same as "nothing happened,"
+and it is not the same as REG-16 being fully closed either. Report it as what it is.
 
 ---
 
@@ -589,13 +720,33 @@ least once, to confirm the tests actually catch a real regression, not just pass
 
 **Full detail:** `docs/NPDEV_OPEN_ITEMS_REGISTER.md` §1.1, §1.5, §1.4.
 
-#### REG-1 — corpus flip, next batch
+#### REG-1 — corpus flip, full remaining batch
 
-**Correction (re-verified 2026-07-21):** exact count confirmed **6 recommended / 27 blanket / 5
-InMemory-N/A** of 38 total definitions. The next recommended batch is **4** `_official` apps, not 5
-— `Claude` is InMemory-N/A and is not a pending flip target.
+**Superseded 2026-07-21 — this sub-phase was stale.** Its original text (6 recommended / 27 blanket /
+5 InMemory-N/A of 38, "next batch is 4 apps") was written before the sample-app cleanup (commits
+`6e5d7a9`, `e32f9bc`) removed 18 unreferenced definitions and the register was re-verified against the
+live filesystem the same day. **Re-verified fresh for this review, not carried forward:**
+**6 recommended / 9 blanket / 5 InMemory-N/A of 20** total definitions.
 
-**Steps** (per app, never in bulk — WmsOffice, WordLab, AuxScreen, Pigmentampa):
+**Of the 9 remaining blanket-posture apps, only 2 are blanket on purpose:**
+
+| App | Pool | Disposition |
+|---|---|---|
+| `WmsOffice`, `WordLab`, `AuxScreen`, `Pigmentampa` | AppGen `_official` | Flip — no reason to stay blanket |
+| `invoice-bonds-demo` | AppGen | Flip — real, load-bearing, no reason to stay blanket |
+| `restaurant-saas-multitenant` | NPDevSamples | Flip — real, catalog-registered, no reason to stay blanket |
+| `superuser-admin-console` | NPDevSamples | Flip — real, cited across beta docs, no reason to stay blanket |
+| `lnch1-rehearsal` | AppGen | **Leave blanket** — deliberately, its `README.md` explains it exists to rehearse upgrades on a definition shaped like what actually shipped |
+| `simple-user-registry-h2local-freshdb` | AppGen | **Leave blanket** — deliberately, it's the cited "freshdb" CI pattern in `docs/SCHEMA_EVOLUTION.md`/`LNCH1_CLOSEOUT_PLAN.md`; flipping it would defeat the scenario it exists to test |
+
+**This phase now targets all 7 flip-worthy apps, not just the 4 `_official` ones.** The earlier
+4-app-only scope would have left REG-1 at 5 remaining blanket apps (2 deliberate + 3 real,
+unaddressed) after "completion" — a partial result presented as if it were the natural stopping
+point. Flipping all 7 is barely more work per the same proven per-app recipe, and it is what actually
+reaches REG-1's real "done" state: **zero unintentional blanket-posture apps.**
+
+**Steps** (per app, never in bulk — `WmsOffice`, `WordLab`, `AuxScreen`, `Pigmentampa`,
+`invoice-bonds-demo`, `restaurant-saas-multitenant`, `superuser-admin-console`):
 1. Edit `db.definition.json` → `strategy: KeepExistingIfCompatible`, `allowDestructiveRecreate: false`,
    `destructiveRecreateConfirmation: ""`. Copy exact field values from the already-proven
    `simple-user-registry-h2local` rather than inventing them.
@@ -603,41 +754,67 @@ InMemory-N/A** of 38 total definitions. The next recommended batch is **4** `_of
    destructive recreation`.
 3. **Watch the shared-output-root trap:** several `simple-user-registry-*` apps share one
    `scenario.name` and therefore one build root/container/port — verify the landed manifest carries
-   the right app's concept shape, per app.
-4. Leave `lnch1-rehearsal` on the blanket posture deliberately (its `README.md` explains why — it
-   rehearses upgrades on a definition shaped like what actually shipped).
+   the right app's concept shape, per app. (Less relevant for this batch's names, but re-check —
+   `restaurant-saas-multitenant` has its own dedicated harness dir; don't let its output collide with
+   anything else that happens to build in the same session.)
+4. Leave `lnch1-rehearsal` and `simple-user-registry-h2local-freshdb` on the blanket posture
+   deliberately, per the table above — do not flip these two.
 5. Rebuild the AI-authoring corpus (`python scripts/ai/build_knowledge.py`) and re-run the recount,
-   updating the numbers in `docs/SCHEMA_EVOLUTION.md`.
+   updating the numbers in `docs/SCHEMA_EVOLUTION.md` (which still shows the pre-cleanup 6/27/5-of-38
+   figures as of this review — that update is now part of this phase's DoD, not a separate pointer).
 
-**DoD:** 4/4 apps flipped and live-proven; corpus rebuilt; `docs/SCHEMA_EVOLUTION.md` recount updated
-to reflect **10 recommended / 23 blanket / 5 InMemory-N/A**. **Effort:** M.
+**DoD:** 7/7 apps flipped and live-proven (one boot + one additive change each, per guardrail #8 —
+live, not just suite); `docs/SCHEMA_EVOLUTION.md` recount table updated to
+**13 recommended / 2 blanket / 5 InMemory-N/A of 20** (the 2 remaining blanket apps being the
+deliberately-kept fixtures); corpus rebuilt. At that DoD, REG-1 is **fully closed** — every remaining
+blanket-posture definition in the platform is blanket for a documented reason, not by default.
+**Effort:** M (up slightly from the original M-for-4-apps estimate, since scope grew to 7 — but each
+app follows the identical, already-proven recipe, so this is linear, not open-ended, work).
 
 #### REG-5 — `GATE-OBS-1a` governance decision
 
-Blocked on **Q2**. Once an owner is assigned, that owner picks one of: (a) rewrite the
-surface-convergence checks in `scripts/quality/run-runtimehost-gate.ps1` (~lines 114–121, ~243–253 —
-**VERIFY**) against the exact-list model the beta-0 manifest refactor introduced; (b) formally retire
-them with a dated comment explaining what they used to assert and why it no longer applies; (c)
-restore the old "package == support bucket" convention. Then make the check blocking again or delete
-it — "advisory forever" is the failure mode this phase exists to prevent. Record the decision in
-`docs/OPEN_GAPS_AND_ROADMAP.md`. **Effort:** S (it's a decision, not a build).
+**Q2, with a default — do not leave this indefinitely blocked.** If an owner and a choice among
+(a)/(b)/(c) below haven't been assigned by the time this phase is reached, **default to (a) — rewrite
+the surface-convergence checks in `scripts/quality/run-runtimehost-gate.ps1` (~lines 114–121,
+~243–253 — **VERIFY**) against the exact-list model the beta-0 manifest refactor introduced.** This is
+the default because it's the option that keeps the check *meaningful* rather than either silently
+restoring a superseded convention (c) or giving up the check's original purpose (b) — reversible any
+time the owner weighs in with a different preference. Alternatives, if chosen instead: (b) formally
+retire the checks with a dated comment explaining what they used to assert and why it no longer
+applies; (c) restore the old "package == support bucket" convention. Whichever path, make the check
+blocking again or delete it — "advisory forever" is the failure mode this phase exists to prevent.
+Record the decision (including whether it was the default or an explicit owner choice) in
+`docs/OPEN_GAPS_AND_ROADMAP.md`. **Effort:** S. **DoD:** the check is either blocking again with an
+exact-list-model implementation, or formally retired/restored with a dated rationale — "advisory,
+unowned" is no longer a valid end state for this phase.
 
 #### REG-4 — `SandboxedPluginExecutionEngineTest` flake
 
 **Location confirmed:** `NPDevRuntimeHost/src/test/java/com/finalexec/SandboxedPluginExecutionEngineTest.java`.
+This item is honestly best-effort (see §0) — a flake by definition does not reproduce on command. The
+steps below are ordered to maximize the odds it reproduces **inside this plan's window**, rather than
+passively hoping it happens to occur.
+
 **Steps:**
-1. Wait for (or force, via repeated parallel-load runs) the next occurrence, and read what the
-   self-diagnosis instrumentation emits — it was added specifically so the next failure is
-   informative. Do not re-derive the timing assumption by hand first.
-2. Confirm which of the two previously-narrowed mechanisms it is.
-3. If it's a fixed timeout under contention: raise it and **quote the measured margin in the comment**
+1. **Force it, don't wait for it — this is the primary step, not a fallback.** Run the full suite
+   repeatedly under parallel load (the committed local tuning: `org.gradle.parallel=true`,
+   `workers.max=4`) — e.g. a loop of 10–20 runs — specifically to trigger the ~1-in-5-under-load
+   failure rate the register records. Only fall back to "wait for organic occurrence during other
+   work" if a reasonable number of forced attempts (document how many) genuinely doesn't reproduce it.
+2. When it fails, read what the self-diagnosis instrumentation emits — it was added specifically so
+   the next failure is informative. Do not re-derive the timing assumption by hand first.
+3. Confirm which of the two previously-narrowed mechanisms it is.
+4. If it's a fixed timeout under contention: raise it and **quote the measured margin in the comment**
    (e.g. "observed max 1.9s under 4-way parallelism; timeout 5s"). Never invent a tolerance that
    doesn't follow from a measurement.
-4. Record the measurement's configuration (serial vs. parallel, Gradle properties, `--rerun-tasks` or
+5. Record the measurement's configuration (serial vs. parallel, Gradle properties, `--rerun-tasks` or
    not) per guardrail #9 — the committed local tuning is local-only, CI doesn't use it.
 
-**DoD:** root cause confirmed against real instrumentation output (not re-guessed); fix's tolerance
-value is traceable to a specific measurement. **Effort:** S/M.
+**DoD (full close):** root cause confirmed against real instrumentation output (not re-guessed); fix's
+tolerance value is traceable to a specific measurement. **DoD (if forcing genuinely doesn't reproduce
+it):** the forcing attempt is documented (how many runs, what configuration) so the next session
+doesn't repeat wasted effort, and this is reported honestly as "still open, better instrumented" —
+not silently marked done. **Effort:** S/M.
 
 ---
 
@@ -737,12 +914,12 @@ this plan is a complete map of all 17 items — **do not create a phase for them
 
 ## 15. Effort roll-up and minimum bar
 
-| Effort | Items |
-|---|---|
-| S | P1 (REG-3), P4 (REG-11 partial), REG-5, REG-15 |
-| S/M | P2 (REG-2), P3 (REG-9), REG-4, REG-10, REG-13 |
-| M | P7 (REG-6), REG-1, REG-14, REG-17 |
-| L | P6 (REG-16), REG-12 |
+| Effort | Items | Closure certainty (see §0) |
+|---|---|---|
+| S | P1 (REG-3), REG-5 | Certain full close (both) |
+| S/M | P2 (REG-2), P3 (REG-9), P4 (REG-11), REG-4, REG-10, REG-13, REG-15 | REG-3/REG-9 certain; REG-2 substantial-advance-certain; REG-11 code-certain/item-owner-gated; REG-4 best-effort; REG-10/REG-13/REG-15 owner-gated |
+| M | P7 (REG-6), P8/REG-1 (7-app batch), REG-14, REG-17 | REG-6/REG-1 certain full close; REG-14/REG-17 owner-gated |
+| L | P6 (REG-16), REG-12 | REG-16 substantial-advance-certain (Tier A) / likely (Tier B); REG-12 Slice 2 certain, item PARTIAL by design |
 
 **If effort runs short, the non-negotiable core is P1 → P2 → P3.** These three are: nearly free
 (P1), a correctness-and-diagnosis prerequisite for the highest-severity remaining item (P2), and the
@@ -751,6 +928,16 @@ independently schedulable and none blocks the platform's basic honesty the way R
 P6 (REG-16) specifically should **not** be compressed to fit a deadline — per the retrospective's own
 §10 lesson #10, review effort has its highest return on a subsystem that's never been looked at, and
 compressing it defeats the point.
+
+**If there is room beyond the core, prioritize the other certain-full-closure items next** — P7
+(REG-6), P8's REG-1 (now the full 7-app batch) and REG-5 — before Tier B of P6 or anything
+owner-gated. They are bounded, carry no risk of stalling on someone else's schedule, and each one
+completed is one more item that moves from the register's open list to genuinely closed, not merely
+advanced. This is the concrete way to satisfy "close as many items as possible": spend the certain
+budget first, then spend the best-effort/likely budget (REG-2's fix, REG-16's Tier B, REG-4), and
+treat the six owner-gated items (REG-10, REG-13, REG-14, REG-17, REG-15, REG-12 Slice 3) as things to
+hand off with the friction already minimized — not as things this plan can fail to deliver on, since
+it was never able to deliver them alone.
 
 ---
 
