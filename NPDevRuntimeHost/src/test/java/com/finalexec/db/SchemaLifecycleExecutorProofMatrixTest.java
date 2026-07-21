@@ -1535,6 +1535,88 @@ class SchemaLifecycleExecutorProofMatrixTest {
         }
     }
 
+    @Test
+    @DisplayName("Scenario 27 (C-B1): a diff that cannot be explained item by item must be REFUSED "
+            + "on a blanket-posture app -- the whole-schema recreation destroys EVERY table's data, "
+            + "so it requires an itemized token exactly like a concept drop does")
+    void scenario27_wholeSchemaRecreationIsNotAuthorizedByTheBlanketFlagAlone() throws SQLException {
+        // The distinguishing fixture: 'widgets' is physically missing the platform column 'version'
+        // (the one column a real manifest declares but never marks additive -- see
+        // realisticAdditiveColumns), so the report carries an UNKNOWN item. Unlike scenario 24b, the
+        // new manifest still declares BOTH concepts, so there is NO DropTable to trip X4.4's gate.
+        // Before C1 that combination -- blanket posture, no token -- wiped every table in the app.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), "
+                    + "row_version BIGINT, tenant_id VARCHAR(64))");
+            statement.execute("INSERT INTO widgets (id, name) VALUES (1, 'Alpha')");
+            statement.execute("INSERT INTO widgets (id, name) VALUES (2, 'Beta')");
+            statement.execute("CREATE TABLE gadgets (id BIGINT PRIMARY KEY, label VARCHAR(50), "
+                    + "version BIGINT, row_version BIGINT, tenant_id VARCHAR(64))");
+            statement.execute("INSERT INTO gadgets (id, label, version) VALUES (1, 'G1', 0)");
+            statement.execute("INSERT INTO gadgets (id, label, version) VALUES (2, 'G2', 0)");
+        }
+        // Fingerprint + ownership through the PRODUCTION writer, never hand-inserted JSON.
+        executor.afterMigrate(dataSource, realisticTwoConceptManifest("sha256:old"));
+        assertEquals(Set.of("widgets", "gadgets"), SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource),
+                "precondition: the previous boot must have recorded BOTH tables as NPDev-owned");
+
+        SchemaLifecycleExecutor.SchemaManifest blanketOnly = realisticTwoConceptManifest("sha256:new");
+        SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, blanketOnly);
+        assertFalse(report.hasOnlyNamedDestructiveKinds(),
+                "precondition: the report must contain an UNKNOWN item for this scenario to mean anything");
+        for (SchemaDeltaItem item : report.items()) {
+            assertFalse(item instanceof SchemaDeltaItem.DropTable,
+                    "precondition: NO concept drop -- otherwise X4.4's gate (scenario 26), not C-B1's, "
+                            + "is what forces the token: " + report.stableStrings());
+        }
+
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.beforeMigrate(dataSource, blanketOnly));
+
+        String expectedToken = DestructiveAckToken.compute("sha256:new", report.stableStrings());
+        // The refusal must state plainly what would otherwise happen -- not merely that a token is
+        // missing, but that proceeding destroys every table in the app.
+        assertTrue(refusal.getMessage().contains("DROP AND RECREATE EVERY TABLE IN THIS APP"),
+                refusal.getMessage());
+        assertTrue(refusal.getMessage().contains("cannot be executed item by item"), refusal.getMessage());
+        assertTrue(refusal.getMessage().contains(expectedToken),
+                "the refusal must print the token that would authorize the pass: " + refusal.getMessage());
+        assertTrue(refusal.getMessage().contains("#acknowledging-destructive-changes"), refusal.getMessage());
+        for (SchemaDeltaItem item : report.items()) {
+            if (item instanceof SchemaDeltaItem.Unknown) {
+                assertTrue(refusal.getMessage().contains(item.stableString()),
+                        "the refusal must name the UNKNOWN item(s) that made the diff unexplainable: "
+                                + refusal.getMessage());
+            }
+        }
+
+        // Nothing may have been destroyed by a refused pass.
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(hasTable(metadata, "widgets"), "a refused pass must leave every table in place");
+            assertTrue(hasTable(metadata, "gadgets"), "a refused pass must leave every table in place");
+            assertEquals(2, rowCount(connection, "widgets"), "and all of their rows");
+            assertEquals(2, rowCount(connection, "gadgets"), "and all of their rows");
+        }
+        assertEquals("REFUSED", latestHistoryRow(dataSource).outcome());
+
+        // The SAME change, with the itemized token, proceeds -- proving C1 gates on the TOKEN, not on
+        // the item kind, and that it narrowed authorization without deleting the whole-schema path.
+        SchemaLifecycleExecutor.SchemaManifest authorized =
+                realisticTwoConceptManifest("sha256:new", expectedToken);
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, authorized);
+
+        assertTrue(result.performed(), "with the token supplied, the whole-schema recreation executes");
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertFalse(hasTable(metadata, "widgets"), "the whole-schema recreation drops every manifest table");
+            assertFalse(hasTable(metadata, "gadgets"), "the whole-schema recreation drops every manifest table");
+        }
+        assertEquals("APPLIED", latestHistoryRow(dataSource).outcome());
+        assertEquals(expectedToken, latestHistoryRow(dataSource).ackTokenUsed(),
+                "the token that authorized this pass must be recorded for audit");
+    }
+
     /** Two concepts shaped the way the generator really emits them -- the business columns PLUS the
      * platform columns {@code SchemaRealizationEmitter#fullColumnNames} always appends (id/version/
      * row_version/tenant_id) -- so the manifests built on top of them can carry a realistic
@@ -1561,6 +1643,14 @@ class SchemaLifecycleExecutorProofMatrixTest {
 
     /** The v1 manifest matching {@link #seedTwoRealisticConceptsWithData}: both concepts declared. */
     private static SchemaLifecycleExecutor.SchemaManifest realisticTwoConceptManifest(String fingerprint) {
+        return realisticTwoConceptManifest(fingerprint, "");
+    }
+
+    /** As above, but carrying an itemized acknowledgment token -- used by scenario 27, where the
+     * report contains an UNKNOWN item and NO concept drop, so the manifest must still declare both
+     * concepts. */
+    private static SchemaLifecycleExecutor.SchemaManifest realisticTwoConceptManifest(
+            String fingerprint, String token) {
         Map<String, List<String>> columns = Map.of(
                 "widgets", List.of("id", "name", "version", "row_version", "tenant_id"),
                 "gadgets", List.of("id", "label", "version", "row_version", "tenant_id"));
@@ -1568,7 +1658,7 @@ class SchemaLifecycleExecutorProofMatrixTest {
                 fingerprint, List.of("widgets", "gadgets"), columns,
                 realisticAdditiveColumns(columns, Map.of()),
                 Map.of("widgets", WIDGETS_TYPES, "gadgets", GADGETS_TYPES),
-                Map.of(), Map.of(), true, "", Map.of(), Map.of(), Map.of(), Map.of(), true);
+                Map.of(), Map.of(), true, token, Map.of(), Map.of(), Map.of(), Map.of(), true);
     }
 
     /** The v2 manifest: the 'gadgets' concept has been dropped from the model. */

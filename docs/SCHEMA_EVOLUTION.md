@@ -316,10 +316,29 @@ strategy == "DropAndRecreateOnStructureChange"  &&  allowDestructiveRecreate == 
 | Drop a column | authorizes it | no |
 | Narrow a column's type | authorizes it | no |
 | **Drop a whole concept (table)** | **does NOT authorize it** | **yes** |
+| **A diff that cannot be explained item by item (whole-schema recreation)** | **does NOT authorize it** | **yes** |
+
+**The rule in one sentence:** the blanket flag authorizes only surgical column drops and type
+narrowings; anything that destroys a whole table's worth of data requires the itemized token.
 
 - Authorized changes are **executed surgically** — only the itemized tables/columns are touched.
-  The whole-schema recreation is reached only when the delta report contains an `UNKNOWN` item that
-  cannot be explained item by item, and then it applies regardless of how the pass was authorized.
+- The whole-schema recreation is reached only when the delta report contains an `UNKNOWN` item that
+  cannot be explained item by item. Because it drops and recreates **every** table in the app, it
+  requires the itemized token too — the blanket flag alone is **refused**, and the refusal prints
+  the UNKNOWN item(s) and the token that would authorize the pass.
+
+**If you relied on "just recreate everything on boot" in dev/CI**, that behaviour is gone on a
+blanket-only app. Use one of these instead, in order of preference:
+
+1. **Delete the database file/volume between runs** — this is what a dev loop actually wants, and it
+   is the only option that guarantees a clean slate.
+2. **Use a `freshdb`-style app definition** (several ship already, e.g.
+   `simple-user-registry-h2local-freshdb`).
+
+> Note: `strategy: RecreateOnAppStart` is **not** an escape hatch. Despite the name it has no
+> distinct runtime behaviour — the strategy string is only read to evaluate the blanket posture
+> above, so `RecreateOnAppStart` behaves exactly like `KeepExistingIfCompatible` and recreates
+> nothing.
 - Every use prints a loud deprecation warning (`NPDev schema lifecycle: DEPRECATION WARNING`) naming
   exactly what is about to be executed, plus a one-line `NOTICE` on **every** boot of an app
   configured this way — so the posture is visible before the day it matters.

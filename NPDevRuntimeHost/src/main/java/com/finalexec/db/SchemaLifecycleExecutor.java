@@ -101,8 +101,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             System.out.println("NPDev schema lifecycle: NOTICE -- this app is configured with the deprecated "
                     + "blanket 'destructiveAllowed' posture (schemaLifecycle.strategy="
                     + "DropAndRecreateOnStructureChange + allowDestructiveRecreate=true). Destructive column "
-                    + "drops and type narrowings will proceed WITHOUT an itemized acknowledgment token. Concept "
-                    + "(whole-table) drops still require a token. Recommended: switch to "
+                    + "drops and type narrowings will proceed WITHOUT an itemized acknowledgment token. That is ALL "
+                    + "it authorizes: anything that destroys a whole table's worth of data -- a concept drop, or a "
+                    + "diff that cannot be executed item by item -- still requires a token. Recommended: switch to "
                     + "strategy=KeepExistingIfCompatible with allowDestructiveRecreate=false and use "
                     + "Build-NpdevApp.ps1 -PlanOnly / -AcknowledgeDestructive -- see docs/SCHEMA_EVOLUTION.md.");
         }
@@ -342,6 +343,15 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // life of the app. A DROP_TABLE therefore always requires the itemized token (either channel
         // -- static manifest field or ControlPanel pending acknowledgment), while blanket-authorized
         // column drops and type narrowings continue to work as before.
+        //
+        // LNCH-1 closeout C1 (finding C-B1, ratified 2026-07-20) extends that principle to its
+        // logical end: ANY pass that will destroy an entire table's worth of data requires the
+        // itemized token. X4.4 established that destroying ONE table's data needs a token -- but the
+        // whole-schema recreation below destroys EVERY table's data and was still reachable on the
+        // blanket flag alone, which inverted the very principle X4.4 set. The most destructive
+        // operation in the system had the weakest authorization requirement. Both reasons are
+        // collected in ONE gate rather than as two sequential near-duplicate `if (!tokenMatches)`
+        // blocks, so the refusal can name every reason that applies at once.
         if (!tokenMatches) {
             List<String> droppedTables = new ArrayList<>();
             for (SchemaDeltaItem item : report.items()) {
@@ -349,16 +359,39 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     droppedTables.add(dropTable.table());
                 }
             }
-            if (!droppedTables.isEmpty()) {
+            List<String> unexplainableItems = new ArrayList<>();
+            for (SchemaDeltaItem item : report.items()) {
+                if (item instanceof SchemaDeltaItem.Unknown) {
+                    unexplainableItems.add(item.stableString());
+                }
+            }
+            if (!droppedTables.isEmpty() || hasUnknown) {
                 writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classificationForFallthrough,
                         report, providedToken.isBlank() ? null : providedToken, "REFUSED");
+                StringBuilder reasons = new StringBuilder();
+                if (!droppedTables.isEmpty()) {
+                    reasons.append(" (1) It includes the DROP of one or more whole concept table(s): ")
+                            .append(droppedTables)
+                            .append(". Dropping a concept destroys that table's entire contents (LNCH-1 hardening "
+                                    + "X4.4).");
+                }
+                if (hasUnknown) {
+                    reasons.append(droppedTables.isEmpty() ? " (1)" : " (2)")
+                            .append(" This change cannot be executed item by item -- the delta report contains "
+                                    + "item(s) that cannot be explained as a column drop, a type narrowing or a "
+                                    + "declared rename: ").append(unexplainableItems)
+                            .append(". Proceeding would therefore DROP AND RECREATE EVERY TABLE IN THIS APP, "
+                                    + "destroying ALL of its data (LNCH-1 closeout C1).");
+                }
                 throw new IllegalStateException("Schema fingerprint changed from " + stored + " to "
-                        + manifest.schemaFingerprint() + " and includes the DROP of one or more whole concept "
-                        + "table(s): " + droppedTables + ". Dropping a concept requires an explicit, itemized "
-                        + "acknowledgment token -- the deprecated blanket 'destructiveAllowed' flag does NOT "
-                        + "authorize it (LNCH-1 hardening X4.4), because that flag is set once at authoring time "
-                        + "and would then silently authorize every future concept drop. Itemized destructive "
-                        + "report: " + report.stableStrings() + ". Expected acknowledgment token: " + expectedToken
+                        + manifest.schemaFingerprint() + ", and this change would destroy at least one whole "
+                        + "table's worth of data, which requires an explicit, itemized acknowledgment token."
+                        + reasons
+                        + " The deprecated blanket 'destructiveAllowed' flag does NOT authorize this -- it is set "
+                        + "once at authoring time and would then silently authorize every future whole-table "
+                        + "destruction for the life of the app. It authorizes only surgical column drops and type "
+                        + "narrowings. Itemized destructive report: " + report.stableStrings()
+                        + ". Expected acknowledgment token: " + expectedToken
                         + ". Set the generated manifest's destructiveAcknowledgment to this token, or submit it via "
                         + "the ControlPanel schema-migration screen on the currently running app, to proceed -- see "
                         + "docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes."
@@ -413,18 +446,20 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 unknownItems.add(item.stableString());
             }
         }
+        // LNCH-1 closeout C1: reaching here PROVES tokenMatches is true. The gate above refuses every
+        // !tokenMatches pass for which hasUnknown holds, and hasUnknown is exactly the condition that
+        // routes a pass here (the !hasUnknown branch returned above). So the wipe is now a
+        // token-authorized path only -- the `tokenMatches ? ... : "the deprecated blanket flag"`
+        // conditionals that used to live in this block described a state that can no longer occur.
         System.out.println("NPDev schema lifecycle: WARNING -- WHOLE-SCHEMA RECREATION STARTING. The delta report "
                 + "includes UNKNOWN item(s) the surgical path cannot safely explain: " + unknownItems
                 + ". Because the change cannot be executed item by item, EVERY manifest-listed table is about to be "
                 + "dropped and recreated: ALL DATA IN THIS APP'S TABLES WILL BE LOST (a pre-drop snapshot is written "
-                + "first -- see runtime-data/schema-snapshot-before-drop/). Authorized by "
-                + (tokenMatches ? "an itemized acknowledgment token" : "the deprecated blanket 'destructiveAllowed' flag")
-                + ". Full report: " + report.stableStrings());
-        DestructiveRecreation result = executeWholeSchemaWipe(dataSource, manifest, stored, classificationForFallthrough, report,
-                tokenMatches ? effectiveToken : null);
-        if (tokenMatches) {
-            consumePendingAcknowledgmentIfAny(dataSource, pendingAcknowledgment);
-        }
+                + "first -- see runtime-data/schema-snapshot-before-drop/). Authorized by an itemized acknowledgment "
+                + "token. Full report: " + report.stableStrings());
+        DestructiveRecreation result = executeWholeSchemaWipe(dataSource, manifest, stored, classificationForFallthrough,
+                report, effectiveToken);
+        consumePendingAcknowledgmentIfAny(dataSource, pendingAcknowledgment);
         return result;
     }
 
@@ -581,6 +616,12 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * method drops the tables the NEW manifest lists, so a dropped concept's orphaned table survived
      * while every still-modelled concept's data was destroyed. The authorization source no longer
      * influences which execution path runs -- only the presence of an {@code UNKNOWN} item does.
+     *
+     * <p><b>LNCH-1 closeout C1 (finding C-B1):</b> the authorization source no longer selects the
+     * path, but it does still gate it. Because this method destroys EVERY manifest-listed table's
+     * data, it now requires the itemized acknowledgment token exactly as a concept drop does -- the
+     * blanket flag alone is refused before we get here. Callers may therefore rely on
+     * {@code acknowledgmentToken} being non-null.
      */
     private DestructiveRecreation executeWholeSchemaWipe(
             DataSource dataSource,
