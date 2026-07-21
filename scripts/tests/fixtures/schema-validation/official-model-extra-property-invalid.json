@@ -4,6 +4,7 @@
   "namespace": "npdev.beta.fixture",
   "dslVersion": "1.0.0",
   "version": "1.0",
+  "npdevFixtureDeliberatelyUnknownRootProperty": "Must never be added to model.schema.json. This fixture's only job is to prove the model root still enforces additionalProperties:false. Before 2026-07-21 every property it relied on had been legitimately absorbed into the schema, so the fixture stopped being invalid and the guard went silently untested.",
   "concepts": [
     {
       "name": "Contact",

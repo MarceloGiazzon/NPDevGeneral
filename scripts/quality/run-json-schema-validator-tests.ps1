@@ -14,6 +14,13 @@ if (Test-Path -LiteralPath $testRoot) {
 }
 New-Item -ItemType Directory -Force -Path $testRoot | Out-Null
 
+# A failing case records itself and lets the run continue, instead of throwing.
+#
+# Before 2026-07-21 this function threw on the first failure, which meant the script could only ever
+# leave behind a report saying "passed" or no report at all - overallStatus below was a hardcoded
+# literal. The beta release gate cannot distinguish "this check failed" from "this check never ran"
+# when its producer behaves that way, which is the same conflation REG-3/GATE-REL-1 exists to fix at
+# the gate level. A producer must be able to emit failing evidence.
 function Invoke-ValidationCase {
     param(
         [string]$Name,
@@ -30,30 +37,46 @@ function Invoke-ValidationCase {
         -ReportPath $caseReportPath 2>$null | Out-Null
     $exitCode = $LASTEXITCODE
     $ErrorActionPreference = "Stop"
+
+    $expectedStatus = if ($ShouldPass) { "passed" } else { "failed" }
+    $failures = @()
+
     if (-not (Test-Path -LiteralPath $caseReportPath -PathType Leaf)) {
-        throw "Schema validation case did not write a report: $Name"
-    }
-    $result = Get-Content -Raw -LiteralPath $caseReportPath | ConvertFrom-Json
-    if ($ShouldPass -and ($exitCode -ne 0 -or $result.status -ne "passed")) {
-        throw "Expected schema validation case to pass: $Name"
-    }
-    if (-not $ShouldPass -and ($exitCode -eq 0 -or $result.status -ne "failed")) {
-        throw "Expected schema validation case to fail: $Name"
-    }
-    if (-not $ShouldPass -and -not [string]::IsNullOrWhiteSpace($ExpectedKeyword)) {
-        $keywords = @($result.errors | ForEach-Object { [string]$_.keyword })
-        if ($keywords -notcontains $ExpectedKeyword) {
-            throw "Expected schema validation case $Name to fail with keyword $ExpectedKeyword, got: $($keywords -join ', ')"
+        return [pscustomobject]@{
+            name = $Name; schemaPath = $SchemaPath; instancePath = $InstancePath
+            expectedStatus = $expectedStatus; actualStatus = "no-report"; status = "failed"
+            engine = ""; errorKeywords = @()
+            failures = @("Schema validation case did not write a report.")
         }
     }
+
+    $result = Get-Content -Raw -LiteralPath $caseReportPath | ConvertFrom-Json
+    $actualStatus = [string]$result.status
+    $keywords = @($result.errors | ForEach-Object { [string]$_.keyword })
+
+    if ($ShouldPass -and ($exitCode -ne 0 -or $actualStatus -ne "passed")) {
+        $failures += "Expected the instance to VALIDATE, but validation reported '$actualStatus' (exit $exitCode)."
+    }
+    if (-not $ShouldPass -and ($exitCode -eq 0 -or $actualStatus -ne "failed")) {
+        $failures += "Expected the instance to be REJECTED, but validation reported '$actualStatus' (exit $exitCode). " +
+            "Either the schema stopped enforcing this constraint, or the fixture drifted and is no longer invalid."
+    }
+    if (-not $ShouldPass -and $failures.Count -eq 0 -and -not [string]::IsNullOrWhiteSpace($ExpectedKeyword)) {
+        if ($keywords -notcontains $ExpectedKeyword) {
+            $failures += "Expected rejection via keyword '$ExpectedKeyword', got: $($keywords -join ', ')"
+        }
+    }
+
     return [pscustomobject]@{
         name = $Name
         schemaPath = $SchemaPath
         instancePath = $InstancePath
-        expectedStatus = if ($ShouldPass) { "passed" } else { "failed" }
-        actualStatus = [string]$result.status
+        expectedStatus = $expectedStatus
+        actualStatus = $actualStatus
+        status = if ($failures.Count -eq 0) { "passed" } else { "failed" }
         engine = [string]$result.engine
-        errorKeywords = @($result.errors | ForEach-Object { [string]$_.keyword })
+        errorKeywords = $keywords
+        failures = @($failures)
     }
 }
 
@@ -69,17 +92,34 @@ $cases = @(
     Invoke-ValidationCase "official-config-valid" "NPDevContract/schemas/config.schema.json" "scripts/tests/fixtures/schema-validation/official-config-valid.json" $true
 )
 
+$failedCases = @($cases | Where-Object { [string]$_.status -eq "failed" })
+$overallStatus = if ($failedCases.Count -eq 0) { "passed" } else { "failed" }
+
 $report = [pscustomobject]@{
     schemaVersion = "npdev-json-schema-validator-test-report.v1"
     runId = $RunId
     generatedAt = (Get-Date).ToUniversalTime().ToString("o")
     scriptPath = "scripts/quality/run-json-schema-validator-tests.ps1"
     workspaceRoot = $workspaceRoot
-    overallStatus = "passed"
+    overallStatus = $overallStatus
+    status = $overallStatus
+    caseCount = @($cases).Count
+    failedCaseCount = $failedCases.Count
+    failures = @($failedCases | ForEach-Object { [string]$_.name + ": " + (@($_.failures) -join " ") })
     cases = $cases
 }
 
 $reportPath = "scripts/reports/out/json-schema-validator-tests-report.json"
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $reportPath) | Out-Null
 $report | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $reportPath -Encoding UTF8
-Write-Host ("JSON schema validator tests passed. Report: " + $reportPath)
+
+if ($overallStatus -eq "passed") {
+    Write-Host ("JSON schema validator tests passed (" + [string]@($cases).Count + " cases). Report: " + $reportPath)
+    exit 0
+}
+
+Write-Host ("JSON schema validator tests FAILED: " + [string]$failedCases.Count + " of " + [string]@($cases).Count + " cases. Report: " + $reportPath)
+foreach ($failed in $failedCases) {
+    Write-Host ("  - " + [string]$failed.name + ": " + (@($failed.failures) -join " "))
+}
+exit 1
