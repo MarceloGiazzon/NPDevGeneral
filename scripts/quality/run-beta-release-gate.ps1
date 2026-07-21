@@ -1,10 +1,38 @@
+# Beta release gate.
+#
+# EVIDENCE ORCHESTRATION (REG-3, 2026-07-21)
+# ------------------------------------------
+# This gate EVALUATES evidence; it does not, by default, PRODUCE it. The 36 reports listed in
+# scripts/policy/beta-release-gate-policy.json#requiredReports are written by ~18 separate producer
+# scripts. Pass -GenerateReports to run those producers first (via
+# scripts/quality/run-beta-release-evidence-orchestration.ps1, which shares this run's RunId across
+# every producer so the gate's single-runId rule is satisfiable), or run that orchestration script
+# yourself as a documented manual pre-step.
+#
+# Decision (REG-3 step 4): orchestration is available in-gate but OPT-IN. Producing the full evidence
+# set builds and boots applications and can take a long time; making that implicit in every gate
+# invocation would make the cheap "evaluate what we have" path unavailable. -GenerateReports makes
+# "run the release gate" one command again when that is what you want.
+#
+# EXIT CODES (REG-3 step 5) - the distinction that matters:
+#   0  passed
+#   2  PRECONDITION-UNMET  - required evidence was never generated (reports missing/unreadable).
+#                            The gate could not evaluate the release; this is NOT a release failure.
+#   1  CHECK-FAILED        - evidence exists and something it asserts is actually broken.
+# Conflating 2 with 1 is what let GATE-REL-1/REG-3 stand misdiagnosed as a policy conflict for two
+# months: 35 of 36 reports were simply absent, and the gate reported that identically to a real
+# failure. The first output line always names which of the three states applies.
+
 param(
     [string]$PolicyPath = "scripts/policy/beta-release-gate-policy.json",
     [string]$ReportPath = "scripts/reports/out/beta-release-gate-report.json",
     [string]$ManifestPath = "scripts/reports/out/beta-release-evidence-manifest.json",
     [string]$SummaryPath = "scripts/reports/out/release-ready-summary.json",
     [string]$RunId = "",
-    [int]$MaxReportAgeHours = 0
+    [int]$MaxReportAgeHours = 0,
+    [switch]$GenerateReports,
+    [string]$OrchestrationScriptPath = "scripts/quality/run-beta-release-evidence-orchestration.ps1",
+    [string[]]$SkipProducers = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -448,6 +476,23 @@ function Test-RequiredReport {
     }
 }
 
+function Test-PreconditionBlocker {
+    # A "precondition" blocker means the gate could not evaluate that piece of evidence at all,
+    # because it was never produced. It is categorically different from a blocker that says an
+    # existing report asserts something is broken. See the exit-code note at the top of this file.
+    param([string]$Message, [bool]$EvidenceIncomplete)
+    if ([string]::IsNullOrWhiteSpace($Message)) { return $false }
+    if ($Message -like "Required report is missing:*") { return $true }
+    if ($Message -like "*: missing") { return $true }
+    if ($Message -like "*Report is not valid JSON*") { return $true }
+    if ($Message -like "*report could not be read*") { return $true }
+    if ($Message -like "Failed to refresh reproducibility report:*") { return $true }
+    # runId coherence blockers are a *symptom* of absent evidence while evidence is incomplete, and a
+    # genuine check failure once every report actually exists.
+    if ($EvidenceIncomplete -and $Message -like "*runId*") { return $true }
+    return $false
+}
+
 $workspaceRoot = (Resolve-Path ".").Path
 $schemaValidationRoot = Resolve-OutsideRepoScratchPath "report-schema-validation"
 $policyPathFull = Resolve-RepoPath $PolicyPath
@@ -475,6 +520,33 @@ if ([string]::IsNullOrWhiteSpace($RunId)) {
 }
 $maxAge = if ($MaxReportAgeHours -gt 0) { $MaxReportAgeHours } else { [int]$policy.maxReportAgeHours }
 $blockers = [System.Collections.Generic.List[string]]::new()
+$orchestration = $null
+
+if ($GenerateReports) {
+    $orchestrationScript = Resolve-RepoPath $OrchestrationScriptPath
+    if (-not (Test-Path -LiteralPath $orchestrationScript -PathType Leaf)) {
+        Add-Blocker $blockers ("Evidence orchestration script not found: " + $OrchestrationScriptPath)
+    }
+    else {
+        Write-Host ("Generating release evidence (runId " + $RunId + ") via " + $OrchestrationScriptPath + " ...")
+        $orchestrationReportPath = "scripts/reports/out/beta-release-evidence-orchestration-report.json"
+        $orchestrationArgs = @("-NoProfile", "-File", $orchestrationScript, "-RunId", $RunId, "-ReportPath", $orchestrationReportPath)
+        if (@($SkipProducers).Count -gt 0) {
+            # -File passes arguments as strings; a comma-joined value binds to the [string[]] param.
+            $orchestrationArgs += @("-SkipProducers", (@($SkipProducers) -join ","))
+        }
+        $ErrorActionPreference = "Continue"
+        & pwsh @orchestrationArgs
+        $ErrorActionPreference = "Stop"
+        $orchestrationFull = Resolve-RepoPath $orchestrationReportPath
+        if (Test-Path -LiteralPath $orchestrationFull -PathType Leaf) {
+            $orchestration = Read-JsonFile $orchestrationFull
+        }
+        else {
+            Add-Blocker $blockers "Evidence orchestration did not write its report."
+        }
+    }
+}
 
 try {
     pwsh -NoProfile -File scripts/quality/write-ai-beta-reproducibility-report.ps1 -ReportPath "scripts/reports/out/ai-beta-reproducibility-report.json" -RunId $RunId | Out-Null
@@ -637,6 +709,39 @@ $officialReleaseEligible = [bool]$officialEvaluation.passed -and $releaseReady -
 $status = if ($releaseReady -and $officialReleaseEligible) { "passed" } else { "failed" }
 $generatedAt = (Get-Date).ToUniversalTime().ToString("o")
 
+# --- REG-3: separate "evidence was never produced" from "evidence says something is broken" -------
+$missingReportNames = @($requiredReports | Where-Object { -not [bool]$_.exists } | ForEach-Object { [string]$_.name })
+$unreadableReportNames = @($requiredReports | Where-Object {
+        [bool]$_.exists -and @($_.blockers | Where-Object { [string]$_ -like "*not valid JSON*" }).Count -gt 0
+    } | ForEach-Object { [string]$_.name })
+$evidenceIncomplete = ($missingReportNames.Count + $unreadableReportNames.Count) -gt 0
+$allBlockers = @($blockers + $officialBlockers)
+$preconditionBlockers = @($allBlockers | Where-Object { Test-PreconditionBlocker -Message ([string]$_) -EvidenceIncomplete $evidenceIncomplete })
+$checkBlockers = @($allBlockers | Where-Object { -not (Test-PreconditionBlocker -Message ([string]$_) -EvidenceIncomplete $evidenceIncomplete) })
+
+$gateOutcome = if ($status -eq "passed") { "passed" }
+    elseif ($checkBlockers.Count -eq 0 -and $preconditionBlockers.Count -gt 0) { "precondition-unmet" }
+    else { "check-failed" }
+$gateExitCode = switch ($gateOutcome) { "passed" { 0 } "precondition-unmet" { 2 } default { 1 } }
+
+$preconditionSummary = [pscustomobject]@{
+    outcome = $gateOutcome
+    exitCode = $gateExitCode
+    evidenceComplete = -not $evidenceIncomplete
+    requiredReportCount = @($requiredReports).Count
+    presentReportCount = @($requiredReports | Where-Object { [bool]$_.exists }).Count
+    missingReports = $missingReportNames
+    unreadableReports = $unreadableReportNames
+    preconditionBlockerCount = $preconditionBlockers.Count
+    checkBlockerCount = $checkBlockers.Count
+    preconditionBlockers = $preconditionBlockers
+    checkBlockers = $checkBlockers
+    generateReportsRequested = [bool]$GenerateReports
+    orchestrationStatus = if ($null -eq $orchestration) { "not-run" } else { [string]$orchestration.overallStatus }
+    orchestrationReport = if ($null -eq $orchestration) { $null } else { "scripts/reports/out/beta-release-evidence-orchestration-report.json" }
+    interpretation = "outcome=precondition-unmet means required evidence was never generated and the release was NOT evaluated; it is not a release failure. Re-run with -GenerateReports (or run scripts/quality/run-beta-release-evidence-orchestration.ps1) before treating any result as a release verdict."
+}
+
 $manifest = [pscustomobject]@{
     schemaVersion = "npdev-beta-release-evidence-manifest.v1"
     runId = $RunId
@@ -696,6 +801,8 @@ $report = [pscustomobject]@{
     informationalReports = $informationalReports
     blockers = @($blockers + $officialBlockers)
     officialEligibilityBlockers = @($officialBlockers)
+    gateOutcome = $gateOutcome
+    evidencePreconditions = $preconditionSummary
     directEvidenceSummary = [pscustomobject]@{
         evidenceContractVersion = "npdev-direct-release-evidence.v1"
         blockingBooleansAreDirectlyEvidenced = $true
@@ -727,6 +834,10 @@ $summary = [pscustomobject]@{
     workspaceFingerprint = $workspaceFingerprint
     blockerCount = $blockers.Count
     officialEligibilityBlockerCount = $officialBlockers.Count
+    gateOutcome = $gateOutcome
+    evidenceComplete = -not $evidenceIncomplete
+    preconditionBlockerCount = $preconditionBlockers.Count
+    checkBlockerCount = $checkBlockers.Count
 }
 
 foreach ($path in @($ReportPath, $ManifestPath, $SummaryPath)) {
@@ -752,9 +863,27 @@ if ($selfSchemaExit -ne 0) {
     Write-Error ("Beta release gate report failed its report schema. Validation: " + $selfSchemaResultPath)
 }
 
-if ($status -eq "passed") {
-    Write-Host ("Beta release gate passed. Report: " + $ReportPath)
+if ($gateOutcome -eq "passed") {
+    Write-Host ("PASSED: beta release gate passed. Report: " + $ReportPath)
     exit 0
 }
 
+if ($gateOutcome -eq "precondition-unmet") {
+    # Exit 2, NOT 1. Nothing is asserted to be broken - the evidence to judge by was never produced.
+    Write-Host ("PRECONDITION-UNMET: beta release gate did not evaluate the release. " +
+        [string]$preconditionSummary.missingReports.Count + " of " + [string]$preconditionSummary.requiredReportCount +
+        " required reports were never generated (" + [string]$preconditionSummary.unreadableReports.Count + " unreadable). " +
+        "This is NOT a release failure. Generate evidence first: " +
+        "pwsh -File scripts/quality/run-beta-release-gate.ps1 -GenerateReports")
+    Write-Host ("Report: " + $ReportPath)
+    Write-Host ("Missing: " + (@($preconditionSummary.missingReports) -join ", "))
+    exit 2
+}
+
+Write-Host ("CHECK-FAILED: beta release gate evaluated the release and " + [string]$checkBlockers.Count +
+    " check(s) failed on real evidence. Report: " + $ReportPath)
+if ($preconditionBlockers.Count -gt 0) {
+    Write-Host ("Note: " + [string]$preconditionBlockers.Count + " precondition blocker(s) are also present; see evidencePreconditions in the report.")
+}
 Write-Error ("Beta release gate failed. Report: " + $ReportPath)
+exit 1
