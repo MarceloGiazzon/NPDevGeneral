@@ -116,7 +116,8 @@ public class NpdevObservabilityConfig {
             @Value("${npdev.auth.api-keys:}") String apiKeyMappings,
             @Value("${npdev.auth.jwt.issuer:}") String jwtIssuer,
             @Value("${npdev.auth.jwt.audience:}") String jwtAudience,
-            @Value("${npdev.auth.jwt.public-key-path:}") String jwtPublicKeyPath
+            @Value("${npdev.auth.jwt.public-key-path:}") String jwtPublicKeyPath,
+            @Value("${npdev.auth.jwt.private-key-path:}") String jwtPrivateKeyPath
     ) {
         return new StartupValidator(
                 runtimeSettings,
@@ -128,7 +129,8 @@ public class NpdevObservabilityConfig {
                 apiKeyMappings,
                 jwtIssuer,
                 jwtAudience,
-                jwtPublicKeyPath
+                jwtPublicKeyPath,
+                jwtPrivateKeyPath
         );
     }
 

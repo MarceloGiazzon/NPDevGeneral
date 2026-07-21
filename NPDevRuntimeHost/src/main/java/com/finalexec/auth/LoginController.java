@@ -55,7 +55,16 @@ public class LoginController {
             @Value("${npdev.auth.login.credential-table:usuarios}") String credentialTable,
             @Value("${npdev.auth.login.credential-user-id-column:user_id}") String credentialUserIdColumn,
             @Value("${npdev.auth.login.credential-password-column:senha_hash}") String credentialPasswordColumn,
-            @Value("${npdev.auth.jwt.private-key-path}") String privateKeyPath,
+            // REG-9 (2026-07-21): default to empty, so this bean can construct in a VERIFY-ONLY
+            // deployment. npdev.auth.mode=jwt has two legitimate shapes: (1) full - this instance
+            // both issues (signs) and validates its own tokens; needs a private key; (2) verify-only
+            // (the external-beta profile) - this instance only validates externally-issued tokens
+            // via JwtBearerAuthFilter's public key and never mints its own; needs NO private key.
+            // Before this change the missing property left ${npdev.auth.jwt.private-key-path}
+            // unresolved and crashed the WHOLE context at bean creation with an opaque
+            // placeholder error (this is IT-EXTPG-1/REG-2's JwtAuthExternalBetaIT failure). A
+            // set-but-unreadable key is now caught early with a clear message by StartupValidator.
+            @Value("${npdev.auth.jwt.private-key-path:}") String privateKeyPath,
             @Value("${npdev.auth.jwt.issuer:}") String issuer,
             @Value("${npdev.auth.jwt.audience:}") String audience,
             @Value("${npdev.auth.jwt.expiry-seconds:28800}") long expirySeconds
@@ -65,7 +74,9 @@ public class LoginController {
         this.credentialTable = credentialTable;
         this.credentialUserIdColumn = credentialUserIdColumn;
         this.credentialPasswordColumn = credentialPasswordColumn;
-        this.privateKey = JwtSigner.loadPrivateKey(readKeyFile(resourceLoader, privateKeyPath));
+        this.privateKey = (privateKeyPath == null || privateKeyPath.isBlank())
+                ? null
+                : JwtSigner.loadPrivateKey(readKeyFile(resourceLoader, privateKeyPath));
         this.issuer = issuer;
         this.audience = audience;
         this.expirySeconds = expirySeconds;
@@ -79,6 +90,17 @@ public class LoginController {
         String tenantId = (request.tenantId() == null || request.tenantId().isBlank()) ? "dev" : request.tenantId().trim();
         String username = request.username() == null ? null : request.username().trim();
         String password = request.password();
+
+        // REG-9: verify-only deployment (no signing key). This instance validates
+        // externally-issued tokens but cannot mint its own, so token issuance is unavailable
+        // rather than silently NPE-ing on a null key. Checked before any credential work so it
+        // never leaks whether a username/password was otherwise valid.
+        if (privateKey == null) {
+            return ResponseEntity.status(503).body(Map.of(
+                    "error", "token_issuance_unavailable",
+                    "detail", "This deployment validates externally-issued JWTs only; no signing key "
+                            + "(npdev.auth.jwt.private-key-path) is configured, so /api/auth/login cannot mint tokens."));
+        }
 
         if (username == null || username.isBlank() || password == null || password.isBlank()) {
             return unauthorized(tenantId, username);

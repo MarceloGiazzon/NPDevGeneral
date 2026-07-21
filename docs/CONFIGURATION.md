@@ -78,21 +78,41 @@ Only checked when `npdev.auth.enabled` (default `true`).
 
 ### `jwt` mode
 
-Two *different* consumers each require their own key path — missing either one breaks something,
-but only one of them fails with a message pointing here:
+`jwt` mode has **two legitimate deployment shapes**, and which keys you need depends on which:
 
-| Property | Required by | Validated at startup with a clear message? |
+- **Full issuer** — this instance both *mints* its own tokens (via `POST /api/auth/login`) and
+  *validates* them. Needs **both** the private (signing) and public (verification) key.
+- **Verify-only** — this instance only *validates* externally-issued tokens (e.g. from a central
+  identity provider) and never mints its own. The `external-beta` profile is exactly this. Needs
+  **only the public key**; the login endpoint returns `503 token_issuance_unavailable` if called.
+
+| Property | Required by | Startup validation (REG-9, 2026-07-21) |
 |---|---|---|
-| `npdev.auth.jwt.issuer` | token verification (`JwtBearerAuthFilter`) | Yes — `StartupValidator` |
-| `npdev.auth.jwt.audience` | token verification | Yes — `StartupValidator` |
-| `npdev.auth.jwt.public-key-path` | token verification | Yes — `StartupValidator` |
-| `npdev.auth.jwt.private-key-path` | token *signing* (`LoginController`, mints new tokens on login) | **No** — missing this fails with a raw Spring placeholder-resolution error at bean creation, not a docs-linked message. If login is broken but everything else about JWT config looks right, check this property first. |
+| `npdev.auth.jwt.issuer` | token verification (`JwtBearerAuthFilter`) | Required in jwt mode; placeholder-rejected. |
+| `npdev.auth.jwt.audience` | token verification | Required in jwt mode; placeholder-rejected. |
+| `npdev.auth.jwt.public-key-path` | token verification (both shapes) | Required; placeholder-rejected; **the key file must actually be readable** or startup fails fast with a `#authentication`-linked message (was: opaque per-request `jwt_public_key_not_found`). |
+| `npdev.auth.jwt.private-key-path` | token *signing* (`LoginController`) | **Optional** — blank = verify-only. If set, the file **must be readable** or startup fails fast with a `#authentication`-linked message. (Before REG-9 a set-but-missing path crashed the whole context with a raw Spring placeholder / `NoSuchFileException` at bean creation; a blank path *also* crashed, making verify-only impossible.) |
 | `npdev.auth.jwt.expiry-seconds` | token signing | No (defaults to `28800`, i.e. 8 hours) |
 
 `StartupValidator` also rejects obviously-placeholder values for `issuer`/`audience`/
 `public-key-path` — anything containing `example.com`, `your-auth-provider`, `changeme`,
 `change-me`, `replace-me`, `set-me`, `<`, or `todo` is treated as "you forgot to fill this in,"
 not a real value.
+
+**Supplying keys by environment variable (no key file baked into the image).** The generated
+Docker Compose / `.env.example` expose the key paths as env vars so a container can mount its keys
+as secrets. Mind the **same relaxed-binding hyphen-stripping** as `NPDEV_AUTH_APIKEYS`: the
+property `npdev.auth.jwt.private-key-path` binds from `NPDEV_AUTH_JWT_PRIVATEKEYPATH` (hyphens
+removed — **no** underscore before `KEYPATH`), *not* the intuitive `NPDEV_AUTH_JWT_PRIVATE_KEY_PATH`
+(which silently no-ops). Likewise `NPDEV_AUTH_JWT_PUBLICKEYPATH`. `issuer`/`audience` have no
+internal hyphens, so `NPDEV_AUTH_JWT_ISSUER` / `NPDEV_AUTH_JWT_AUDIENCE` bind as written.
+
+| Property | Environment variable |
+|---|---|
+| `npdev.auth.jwt.issuer` | `NPDEV_AUTH_JWT_ISSUER` |
+| `npdev.auth.jwt.audience` | `NPDEV_AUTH_JWT_AUDIENCE` |
+| `npdev.auth.jwt.public-key-path` | `NPDEV_AUTH_JWT_PUBLICKEYPATH` |
+| `npdev.auth.jwt.private-key-path` | `NPDEV_AUTH_JWT_PRIVATEKEYPATH` |
 
 Login also needs to know which table/columns hold credentials (defaults match the identity pack's
 own schema, override only if you're bonding to a differently-named concept — see
@@ -103,6 +123,20 @@ own schema, override only if you're bonding to a differently-named concept — s
 | `npdev.auth.login.credential-table` | `usuarios` |
 | `npdev.auth.login.credential-user-id-column` | `user_id` |
 | `npdev.auth.login.credential-password-column` | `senha_hash` |
+
+### ControlPanel Super User key
+
+The Super User key is **issued, not supplied**: `SuperUserBootstrapper` generates it on first boot
+(when none is active), persists it hashed, and writes the raw value once to `SUPER_USER_KEY.txt` in
+the working directory. There is deliberately **no** env var to seed a known key at boot (REG-9 /
+Q1 default 2026-07-21 — a WONTFIX preserving the issued-not-supplied trust model; revisit if an
+operator-supplied key is ever wanted). Retrieve the issued key from the file / mounted volume after
+first boot; see `docs/DEPLOYMENT.md`.
+
+- **`npdev.superuser.force-reissue`** (default `false`) — set `true` for one boot to revoke the
+  current key and issue a fresh one (see `Reissue-SuperUserKey.ps1`). **Relaxed-binding gotcha,
+  same as the JWT/apikey ones above:** the environment variable is `NPDEV_SUPERUSER_FORCEREISSUE`
+  (hyphen stripped — no underscore before `REISSUE`), *not* `NPDEV_SUPERUSER_FORCE_REISSUE`.
 
 ## Postgres-mode required variables
 

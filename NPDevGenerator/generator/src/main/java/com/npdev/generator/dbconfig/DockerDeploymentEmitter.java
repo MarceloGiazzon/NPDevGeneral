@@ -143,6 +143,19 @@ public final class DockerDeploymentEmitter {
                       # them to underscores, so 'npdev.auth.api-keys' binds from NPDEV_AUTH_APIKEYS,
                       # not the more intuitive NPDEV_AUTH_API_KEYS (which would silently no-op).
                       NPDEV_AUTH_APIKEYS: ${NPDEV_AUTH_APIKEYS:?NPDEV_AUTH_APIKEYS must be set in .env}
+                      # REG-9: JWT signing/verification keys, supplied by env var so no key file is
+                      # baked into the image. Only consumed when NPDEV_AUTH_MODE=jwt (harmless empty
+                      # in the default apikey mode), so these are optional rather than fail-fast.
+                      # Same relaxed-binding hyphen-stripping as APIKEYS above: 'private-key-path'
+                      # binds from NPDEV_AUTH_JWT_PRIVATEKEYPATH (no underscore before KEYPATH), NOT
+                      # NPDEV_AUTH_JWT_PRIVATE_KEY_PATH (which silently no-ops). Point these at files
+                      # mounted into the container (e.g. via a secrets volume), not into the image.
+                      # A verify-only deployment sets only the PUBLIC key; a full issuer sets both.
+                      # StartupValidator fails fast at boot if a path is set but unreadable.
+                      NPDEV_AUTH_JWT_ISSUER: ${NPDEV_AUTH_JWT_ISSUER:-}
+                      NPDEV_AUTH_JWT_AUDIENCE: ${NPDEV_AUTH_JWT_AUDIENCE:-}
+                      NPDEV_AUTH_JWT_PUBLICKEYPATH: ${NPDEV_AUTH_JWT_PUBLICKEYPATH:-}
+                      NPDEV_AUTH_JWT_PRIVATEKEYPATH: ${NPDEV_AUTH_JWT_PRIVATEKEYPATH:-}
                       # LNCH-14: defaults to the in-process file store (unchanged behavior) --
                       # set NPDEV_FILESTORE_PROVIDER=objectstore in .env (with the `objectstore`
                       # compose profile active) to switch to the S3-compatible adapter against the
@@ -286,6 +299,19 @@ public final class DockerDeploymentEmitter {
                       # them to underscores, so 'npdev.auth.api-keys' binds from NPDEV_AUTH_APIKEYS,
                       # not the more intuitive NPDEV_AUTH_API_KEYS (which would silently no-op).
                       NPDEV_AUTH_APIKEYS: ${NPDEV_AUTH_APIKEYS:?NPDEV_AUTH_APIKEYS must be set in .env}
+                      # REG-9: JWT signing/verification keys, supplied by env var so no key file is
+                      # baked into the image. Only consumed when NPDEV_AUTH_MODE=jwt (harmless empty
+                      # in the default apikey mode), so these are optional rather than fail-fast.
+                      # Same relaxed-binding hyphen-stripping as APIKEYS above: 'private-key-path'
+                      # binds from NPDEV_AUTH_JWT_PRIVATEKEYPATH (no underscore before KEYPATH), NOT
+                      # NPDEV_AUTH_JWT_PRIVATE_KEY_PATH (which silently no-ops). Point these at files
+                      # mounted into the container (e.g. via a secrets volume), not into the image.
+                      # A verify-only deployment sets only the PUBLIC key; a full issuer sets both.
+                      # StartupValidator fails fast at boot if a path is set but unreadable.
+                      NPDEV_AUTH_JWT_ISSUER: ${NPDEV_AUTH_JWT_ISSUER:-}
+                      NPDEV_AUTH_JWT_AUDIENCE: ${NPDEV_AUTH_JWT_AUDIENCE:-}
+                      NPDEV_AUTH_JWT_PUBLICKEYPATH: ${NPDEV_AUTH_JWT_PUBLICKEYPATH:-}
+                      NPDEV_AUTH_JWT_PRIVATEKEYPATH: ${NPDEV_AUTH_JWT_PRIVATEKEYPATH:-}
                       # LNCH-11: only consumed if this app's model bound the "mail" capability to
                       # adapter mail-smtp -- harmless if it's on mail-inproc (or unbound) instead.
                       # NPDEV_MAIL_SMTP_HOST defaults to the MailHog service below; point it
@@ -362,6 +388,17 @@ public final class DockerDeploymentEmitter {
                 # underscores. See the comment in docker-compose.yml if this looks like a typo.
                 NPDEV_AUTH_APIKEYS=change-me=prod:deploy:ADMIN
 
+                # REG-9: JWT keys -- only used when NPDEV_AUTH_MODE=jwt (leave blank for apikey mode).
+                # Supply keys via mounted files so nothing is baked into the image. Same relaxed-binding
+                # hyphen stripping as APIKEYS: use NPDEV_AUTH_JWT_PRIVATEKEYPATH / _PUBLICKEYPATH (no
+                # underscore before KEYPATH), NOT ..._PRIVATE_KEY_PATH (silently no-ops). A verify-only
+                # deployment sets only the PUBLIC key; a full token issuer sets both. Startup fails fast
+                # if a path is set but unreadable.
+                # NPDEV_AUTH_JWT_ISSUER=https://issuer.example.com
+                # NPDEV_AUTH_JWT_AUDIENCE=npdev-runtime
+                # NPDEV_AUTH_JWT_PUBLICKEYPATH=/run/secrets/jwt-public.pem
+                # NPDEV_AUTH_JWT_PRIVATEKEYPATH=/run/secrets/jwt-private.pem
+
                 # The ControlPanel Super User key is NOT set here -- it has no config property at all.
                 # SuperUserBootstrapper generates one automatically on first boot (if none is active
                 # yet) and writes it to SUPER_USER_KEY.txt in the app container's working directory.
@@ -404,6 +441,17 @@ public final class DockerDeploymentEmitter {
                 # binding strips hyphens from 'npdev.auth.api-keys' rather than mapping them to
                 # underscores. See the comment in docker-compose.yml if this looks like a typo.
                 NPDEV_AUTH_APIKEYS=change-me=prod:deploy:ADMIN
+
+                # REG-9: JWT keys -- only used when NPDEV_AUTH_MODE=jwt (leave blank for apikey mode).
+                # Supply keys via mounted files so nothing is baked into the image. Same relaxed-binding
+                # hyphen stripping as APIKEYS: use NPDEV_AUTH_JWT_PRIVATEKEYPATH / _PUBLICKEYPATH (no
+                # underscore before KEYPATH), NOT ..._PRIVATE_KEY_PATH (silently no-ops). A verify-only
+                # deployment sets only the PUBLIC key; a full token issuer sets both. Startup fails fast
+                # if a path is set but unreadable.
+                # NPDEV_AUTH_JWT_ISSUER=https://issuer.example.com
+                # NPDEV_AUTH_JWT_AUDIENCE=npdev-runtime
+                # NPDEV_AUTH_JWT_PUBLICKEYPATH=/run/secrets/jwt-public.pem
+                # NPDEV_AUTH_JWT_PRIVATEKEYPATH=/run/secrets/jwt-private.pem
 
                 # The ControlPanel Super User key is NOT set here -- it has no config property at all.
                 # SuperUserBootstrapper generates one automatically on first boot (if none is active

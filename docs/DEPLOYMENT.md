@@ -49,6 +49,39 @@ Note: `SuperUserBootstrapper` skips issuing a key entirely when there is no phys
 configured (`InMemory` engine) — Super User credentials require `H2Local`/`H2Server`/`Postgres`.
 This is existing, correct platform behavior, not a Docker-specific limitation.
 
+## JWT authentication: supplying keys without baking them into the image (REG-9)
+
+`NPDEV_AUTH_MODE=jwt` needs a token **verification** (public) key, and — only if this instance also
+**mints** tokens via `POST /api/auth/login` — a **signing** (private) key. Supply both by path via
+environment variable so no key material is baked into the image. The generated `docker-compose.yml`
+and `.env.example` already carry the four variables (commented out; uncomment and point them at
+mounted files):
+
+```
+NPDEV_AUTH_MODE=jwt
+NPDEV_AUTH_JWT_ISSUER=https://issuer.example.com
+NPDEV_AUTH_JWT_AUDIENCE=npdev-runtime
+NPDEV_AUTH_JWT_PUBLICKEYPATH=/run/secrets/jwt-public.pem     # verify-only needs ONLY this
+NPDEV_AUTH_JWT_PRIVATEKEYPATH=/run/secrets/jwt-private.pem   # add for a full token issuer
+```
+
+Mount the key files into the container — e.g. a bind mount or Docker/Compose `secrets:` entry that
+lands them at those paths. Two deployment shapes are supported:
+
+- **Verify-only** (e.g. the `external-beta` profile): set only `NPDEV_AUTH_JWT_PUBLICKEYPATH`. The
+  app validates externally-issued tokens; `POST /api/auth/login` returns `503
+  token_issuance_unavailable`. No private key file is needed anywhere.
+- **Full issuer**: set both. The app both mints and validates its own tokens.
+
+**Env-var name gotcha** (identical to `NPDEV_AUTH_APIKEYS`): Spring Boot's relaxed binding strips
+hyphens, so `npdev.auth.jwt.private-key-path` binds from `NPDEV_AUTH_JWT_PRIVATEKEYPATH` — **no**
+underscore before `KEYPATH`. `NPDEV_AUTH_JWT_PRIVATE_KEY_PATH` silently does nothing.
+
+`StartupValidator` fails fast at boot with a message linking `docs/CONFIGURATION.md#authentication`
+if `jwt` mode is active and the public key path (always) or a *set* private key path points at a
+file that isn't readable — rather than the old failure modes (an opaque per-request
+`jwt_public_key_not_found`, or a raw `NoSuchFileException` deep in `LoginController` bean creation).
+
 ## A stable database identity across redeploys
 
 If `db.definition.json`'s `database.databaseName` is left unset, the generator appends a fresh
