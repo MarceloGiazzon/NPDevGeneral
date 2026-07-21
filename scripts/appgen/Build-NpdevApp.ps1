@@ -239,10 +239,11 @@ report 'Fresh install -- no previous compiled model to diff against' and exit 0,
 script-friendly 'safe to proceed' signal -- for a database that may well need a destructive change.
 That is a wrong plan presented as a valid one, so this refuses instead.
 
-To proceed, restore a real starting point -- rebuild this app successfully once (without -PlanOnly),
-which regenerates the compiled model and re-preserves the snapshot. If you genuinely intend a fresh
-install, delete the stale plan artifacts in the directory above; that is a deliberate act, which is
-the point.
+To proceed, restore a real starting point -- rebuild this app successfully once with NEITHER -Upgrade
+NOR -PlanOnly (a plain build), which regenerates the compiled model and re-preserves the snapshot.
+Note that -Upgrade alone is NOT enough: this guard runs for -Upgrade and -PlanOnly alike, so an
+-Upgrade run refuses here too and cannot be the way out. If you genuinely intend a fresh install,
+delete the stale plan artifacts in the directory above; that is a deliberate act, which is the point.
 "@
     }
     Write-Step "No previous compiled model found at $PriorCompiledModelPath and no prior deployment evidence -- plan will be a fresh-install plan."

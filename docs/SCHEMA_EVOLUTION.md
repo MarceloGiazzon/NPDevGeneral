@@ -268,7 +268,6 @@ build was deployed with **no** `-AcknowledgeDestructive` flag at all: the pendin
 authorized it, which is why the second line says *via a ControlPanel pending acknowledgment*.
 
 ```
-NPDev schema lifecycle: relaxed NOT NULL on no-longer-required column(s): [users.version, users.row_version, users.tenant_id]
 NPDev schema lifecycle: destructive change acknowledged by itemized token (via a ControlPanel pending
   acknowledgment); executing surgically (only the affected table(s)/column(s), LNCH-1 Phase 4).
   Report: [DROP_TABLE:projects]
@@ -286,6 +285,59 @@ table was gone (its REST endpoint 404s) with all 3 of its rows preserved in the 
 column ended genuinely `NOT NULL` (a direct SQL `INSERT ... department NULL` was rejected by
 Postgres); the pending acknowledgment row was consumed; and a second boot was a clean no-op
 (`stored schema fingerprint matches generated schema fingerprint`).
+
+> **One line was removed from the capture above, deliberately and with disclosure.** The 2026-07-20
+> run also emitted, as its first line:
+> `NPDev schema lifecycle: relaxed NOT NULL on no-longer-required column(s): [users.version, users.row_version, users.tenant_id]`
+> That line was **a defect, not correct behaviour** — finding `T-B1`. The relax pass was stripping
+> `NOT NULL` from the platform-managed columns on every fingerprint-changing boot, because they appear
+> in the manifest's full column set but never in its model-derived *required* set. It is fixed (see
+> [Platform-managed columns](#platform-managed-columns)), so a current build cannot emit it, and
+> leaving it in a block labelled "verbatim capture" would ship a fixed bug as documentation. It is
+> quoted here rather than silently deleted so the capture stays honest about what it originally read.
+
+### Worked example: an ordinary additive upgrade repairing an already-loosened database
+
+Verbatim capture from a real run, 2026-07-21, against **real Postgres 15** (container
+`npdev-lnch1-rehearsal-pg`, database `npdev_lnch1_rehearsal`) holding **3 real rows** — an app whose
+platform columns had been left nullable by an earlier build, taking one ordinary optional field
+(`User.notes`) as its upgrade:
+
+```
+NPDev schema lifecycle: NOTICE -- this app is configured with the deprecated blanket
+  'destructiveAllowed' posture ...
+NPDev schema lifecycle: restored NOT NULL on platform-managed column(s) relaxed by an earlier build
+  (LNCH-1 T-B1 repair): [users.version, users.row_version, users.tenant_id]
+NPDev schema lifecycle: fingerprint changed from sha256:b8d3e882... to sha256:3d793ad0... but every
+  difference is a new non-bond column on an already-existing table; skipping destructive recreation
+  (handled by the additive repeatable migration).
+NPDev schema lifecycle: flyway.repair() reconciled schema-realization checksums for the additive change.
+```
+
+Note what is **absent**: there is no `relaxed NOT NULL on no-longer-required column(s)` line. The
+repair line appears in its place.
+
+Verified against the live database immediately afterwards:
+
+| | Before the upgrade | After |
+|---|---|---|
+| `users.version` | nullable | **`NOT NULL`**, default `0` |
+| `users.row_version` | nullable | **`NOT NULL`**, default `0` |
+| `users.tenant_id` | nullable | **`NOT NULL`**, default `'default'` |
+| `users.id` | `NOT NULL` | `NOT NULL` (the primary key, never affected) |
+| rows | 3 | **3, intact** |
+
+The three existing rows carried `tenant_id = 'dev'`, and **kept it** — the repair backfills only
+`NULL`s, it never overwrites a real value. One audit row records it:
+
+```
+classification            | outcome | items_json
+TIGHTEN_PLATFORM_COLUMNS  | APPLIED | ["TIGHTEN_PLATFORM_COLUMN users.version DEFAULT 0",
+                                       "TIGHTEN_PLATFORM_COLUMN users.row_version DEFAULT 0",
+                                       "TIGHTEN_PLATFORM_COLUMN users.tenant_id DEFAULT default"]
+```
+
+Evidence: `..\NPDev_General__OutsideRepo\lnch1-evidence\platcol-T9.md`.
 
 **Without a matching token**, the boot refuses outright — the app never starts with a half-applied
 or silently-guessed **destructive** change (the safe convergent steps — renames, relaxations — may
