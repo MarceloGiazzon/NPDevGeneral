@@ -571,7 +571,94 @@ findings remain open — in the evidence file, in the verification ledger, and i
 
 ---
 
+## 6. Round outcome (T0–T9, closed 2026-07-21) and Phase T10 — GATE-DET-1
+
+**T0–T9 ran to completion.** Full record: `..\NPDev_General__OutsideRepo\lnch1-evidence\platcol-final.md`
+(+ `platcol-T0.md`, `platcol-T1-T2.md`, `platcol-T9.md`). T1/T2/T3/T5/T8 CLOSED; T6.1/T7 PARTIAL
+(named, not fixed); **T4 (corpus posture flip) NOT DONE** — zero of the four ratified apps flipped,
+time budget went to T9.2's live re-capture and the two skipped gates instead. Commits:
+`15b036a`(T1) → `9c342e2`(T2) → `55e7298`(T3) → `8db7e0b`(T1 regression fix) → `aac5968`(T5) →
+`61aa6d0`(T6.1) → `70fe02e`(T9.2/T9.3) → T8/T9.4 closing commit. No suite regressed; every delta was
+`+N` new tests or a pre-existing, now-tracked item.
+
+**One thing checked and deliberately NOT touched this round:** `simple-user-registry-h2local`,
+`-postgres` and `-h2local-freshdb` all share `scenario.name: "simple-user-registry"` and therefore one
+`$OutRoot` under `D:\WorkSpace\NPDev\Build\generated-finalapps\` (plus identical `containerName`/
+`port`/`database` in their `config.json`s). `scripts/appgen/Build-NpdevApp.ps1` (~line 189) says outright
+this is **deliberate** — "several shipped definitions deliberately share one scenario.name" — and C4
+already built a workaround keyed by definition-folder name for the one place it caused real harm (the
+migration-plan snapshot). Renaming `scenario.name` to give each app a distinct identity was considered
+during this session and rejected: it would reverse a prior round's explicit design choice without
+owner sign-off, for a risk that is already fully written up (`README.md` in both app folders, T8.2).
+**Leave it exactly as documented — do not change `scenario.name` for these apps without asking the
+owner first.**
+
+### Phase T10 — Diagnose/fix GATE-DET-1 (generator non-determinism) (S/M)
+
+**Finding recap** (`docs/OPEN_GAPS_AND_ROADMAP.md`, `GATE-DET-1`/`GATE-DET-1a`): `run-generator-gate.ps1`
+fails its deterministic-generation check. Two full generations of `simple-contact-intake` from
+identical inputs produce byte-different copies of exactly one file:
+`App\src\main\resources\npdev\support\schema-realization.manifest.json` (all other 642 compared files
+are identical). Confirmed **intermittent**, not attributable to this round's T2 change (T2 was a
+deterministic content addition — a literal appended to a `List`, a fixed string appended to a
+`StringBuilder` — introducing no map/set iteration, filesystem ordering, or clock read). The file has
+no timestamp field, so the likely mechanism is an ordering- or environment-sensitive input to whichever
+emitter writes the `npdev/support` surface manifest. `GATE-DET-1a` is the secondary, smaller finding
+that the determinism check itself only reports `overallStatus` + two file counts, never which files
+differ — which is why this went four rounds unattributed.
+
+**T10.1 — Capture, don't just hash.** A `scratchpad\determinism-probe.ps1` from this session already
+replicates `check-deterministic-generation.ps1`'s exact scope (`ArtifactNP` + `App`, excluding
+`\build\` and `npdev-build-info.properties`) with per-file hashes; it may still exist in that session's
+scratchpad but is **not durable** (session-scoped temp dir) — do not assume it survived. If gone,
+recreate it: generate `simple-contact-intake` twice in a row from identical inputs (same model/config,
+`-GenerateOnly` is enough, no need to boot), and this time **save the actual file contents** of both
+copies of `schema-realization.manifest.json` (not just a hash) to a durable location under
+`D:\WorkSpace\NPDev\Build\` (never inside this repo). Diff them byte-for-byte.
+
+**T10.2 — Find the emitter.** Grep the generator module for whatever writes
+`npdev/support/schema-realization.manifest.json` (likely in or near `SchemaRealizationEmitter.java` or
+a sibling support-manifest emitter). Once the actual diff is in hand (T10.1), read that code with the
+diff in mind — the previous round's hypothesis is ordering-sensitive iteration (a `HashMap`/`HashSet`
+somewhere in the traversal that should be a `LinkedHashMap`/`TreeMap`/sorted list) or an environment
+read (locale, working directory, thread count) leaking into the manifest's content.
+
+**T10.3 — Fix and prove it.** Once the mechanism is identified: fix it (stable ordering / removed
+environment leakage), then **prove determinism directly** — generate the same app N≥5 times in a row
+(a tight loop is fine, `-GenerateOnly`) and diff every copy of the manifest file against the first;
+all must be byte-identical. Do not just re-run `run-generator-gate.ps1` once and call it fixed — its
+own check is what missed this for four rounds (`GATE-DET-1a`), so a single green run is weak evidence.
+
+**T10.4 — `GATE-DET-1a` (stretch, do only if T10.1–T10.3 finish with room to spare).** Make
+`check-deterministic-generation.ps1` (or whatever script backs `run-generator-gate.ps1`'s determinism
+check) report the differing file paths on failure, not just `overallStatus` + counts. Also close the
+latent gap the finding named: `Reports\generation-run.json` carries the same non-reproducible
+provenance shape (`generatedAt`, timestamp-derived `runId`) as the already-excluded
+`npdev-build-info.properties` but is not excluded from the comparison — it is outside the compared
+roots today (latent, not active), so this is a should-fix, not a must-fix.
+
+**T10.5 — If the mechanism cannot be pinned down in one focused session:** do not force a fix. Record
+exactly what was tried, what was ruled out, and what remains uncertain in a new
+`..\NPDev_General__OutsideRepo\lnch1-evidence\platcol-T10.md`, matching this saga's own standing rule
+that a diagnosed-but-unfixed finding, honestly recorded, is worth more than a guessed fix. Update
+`docs/OPEN_GAPS_AND_ROADMAP.md`'s `GATE-DET-1` row either to CLOSED (with the fix + proof described) or
+to reflect whatever new, narrower understanding was reached.
+
+**DoD:** either `GATE-DET-1` is closed (fix + N≥5-run proof) and `run-generator-gate.ps1` exits 0, or
+the mechanism is narrowed further than "ordering- or environment-sensitive" and the gap between
+diagnosis and fix is written down precisely enough that the next session does not have to re-derive
+T10.1's capture step.
+**Commit:** `LNCH-1 T10: <what was actually found/fixed for GATE-DET-1>` — small, bounded, no `git add .`.
+
+**Explicitly out of scope for T10:** T4 (corpus posture flip — separate, larger, needs regenerating
+and booting four apps individually), `IT-EXTPG-1` (a Spring wiring/profile-precedence bug, unrelated
+module), and the `simple-user-registry-*` shared-identity situation (see above — leave it as documented,
+do not rename `scenario.name`).
+
+---
+
 *Companion documents: `docs/LNCH1_SCHEMA_EVOLUTION_PLAN.md` (original 9-phase build) ·
 `docs/LNCH1_REMEDIATION_PLAN.md` (R0–R9) · `docs/LNCH1_HARDENING_PLAN.md` (X0–X9) ·
 `docs/LNCH1_CLOSEOUT_PLAN.md` (C0–C8) · `docs/SCHEMA_EVOLUTION.md` (user-facing contract) ·
-`..\NPDev_General__OutsideRepo\lnch1-evidence\hardening-verification-ledger.md` (the tiebreaker).*
+`..\NPDev_General__OutsideRepo\lnch1-evidence\hardening-verification-ledger.md` (the tiebreaker) ·
+`..\NPDev_General__OutsideRepo\lnch1-evidence\platcol-final.md` (T0–T9 final record).*
