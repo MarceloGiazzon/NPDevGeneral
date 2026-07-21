@@ -1,6 +1,7 @@
 package com.finalexec.db;
 
 import com.npdev.dsl.v1.schemaevolution.DestructiveAckToken;
+import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -656,6 +657,58 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
     }
 
     @Test
+    @DisplayName("Postgres scenario 27 (C-B1): a diff that cannot be explained item by item is "
+            + "REFUSED on a blanket-posture app -- the whole-schema recreation destroys EVERY "
+            + "table's data, so it requires an itemized token")
+    void postgresScenario27_wholeSchemaRecreationRequiresAToken() throws SQLException {
+        String widgets = table("widgets");
+        String gadgets = table("gadgets");
+        // Same construction as scenario 24b -- 'widgets' physically lacks the never-additive
+        // platform column 'version', so the report carries an UNKNOWN item -- EXCEPT that the new
+        // manifest still declares BOTH concepts, so there is no DropTable to trip X4.4's gate.
+        // Mirrors the H2 twin's scenario 27; see it for the full rationale.
+        seedTwoRealisticConcepts(widgets, gadgets, false);
+        executor.afterMigrate(dataSource, twoConceptManifest("sha256:old", widgets, gadgets));
+
+        SchemaLifecycleExecutor.SchemaManifest blanketOnly =
+                twoConceptManifest("sha256:new", widgets, gadgets);
+        SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, blanketOnly);
+        assertFalse(report.hasOnlyNamedDestructiveKinds(),
+                "precondition: the report must contain an UNKNOWN item");
+        for (SchemaDeltaItem item : report.items()) {
+            assertFalse(item instanceof SchemaDeltaItem.DropTable,
+                    "precondition: NO concept drop -- otherwise X4.4's gate, not C-B1's, forces the token: "
+                            + report.stableStrings());
+        }
+
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.beforeMigrate(dataSource, blanketOnly));
+
+        String expectedToken = DestructiveAckToken.compute("sha256:new", report.stableStrings());
+        assertTrue(refusal.getMessage().contains("DROP AND RECREATE EVERY TABLE IN THIS APP"),
+                refusal.getMessage());
+        assertTrue(refusal.getMessage().contains(expectedToken), refusal.getMessage());
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(hasTable(metadata, widgets), "a refused pass must leave every table in place");
+            assertTrue(hasTable(metadata, gadgets), "a refused pass must leave every table in place");
+            assertEquals(2, rowCount(connection, widgets), "and all of their rows");
+            assertEquals(2, rowCount(connection, gadgets), "and all of their rows");
+        }
+
+        // The SAME change WITH the token proceeds -- C1 gates on the token, not the item kind.
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(
+                dataSource, twoConceptManifest("sha256:new", widgets, gadgets, expectedToken));
+        assertTrue(result.performed(), "with the token supplied, the whole-schema recreation executes");
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertFalse(hasTable(metadata, widgets), "the whole-schema recreation drops every manifest table");
+            assertFalse(hasTable(metadata, gadgets), "the whole-schema recreation drops every manifest table");
+        }
+    }
+
+    @Test
     @DisplayName("Postgres scenario 25 (X-B3): an orphan surviving a pass stays owned and is droppable "
             + "on a later boot")
     void postgresScenario25_survivingOrphanStaysOwned() throws SQLException {
@@ -1002,13 +1055,20 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
 
     private static SchemaLifecycleExecutor.SchemaManifest twoConceptManifest(
             String fingerprint, String widgets, String gadgets) {
+        return twoConceptManifest(fingerprint, widgets, gadgets, "");
+    }
+
+    /** As above, but carrying an itemized acknowledgment token -- used by Postgres scenario 27,
+     * where the report has an UNKNOWN item and NO concept drop, so both concepts stay declared. */
+    private static SchemaLifecycleExecutor.SchemaManifest twoConceptManifest(
+            String fingerprint, String widgets, String gadgets, String token) {
         Map<String, List<String>> columns = Map.of(
                 widgets, List.of("id", "name", "version", "row_version", "tenant_id"),
                 gadgets, List.of("id", "label", "version", "row_version", "tenant_id"));
         return manifest(fingerprint, List.of(widgets, gadgets), columns,
                 realisticAdditiveColumns(columns, Map.of()),
                 Map.of(widgets, realisticTypes("name"), gadgets, realisticTypes("label")),
-                Map.of(), Map.of(), true, "", Map.of(), Map.of(), Map.of(), Map.of());
+                Map.of(), Map.of(), true, token, Map.of(), Map.of(), Map.of(), Map.of());
     }
 
     private static SchemaLifecycleExecutor.SchemaManifest conceptDropManifest(
