@@ -463,10 +463,14 @@ public final class FinalAppAssembler {
         manifest.put("businessSchemaRealizationSqlFilePattern", "V*__npdev_schema_realization.sql");
         manifest.put("schemaRealizationSqlCount", schemaRealizationSqlCount);
         manifest.put("runtimeSchemaSqlPattern", "V*.sql");
-        manifest.put("storageBoundary", Map.of(
-                "runtimeTables", "NPDev execution, audit, trace, scheduling, and reliability data",
-                "businessTables", "Generated model concept data"
-        ));
+        // Insertion-ordered, not Map.of(...): java.util.Map.of produces an ImmutableCollections.MapN
+        // whose iteration order is randomized per-JVM by ImmutableCollections.SALT. Jackson serializes
+        // maps in iteration order, so a Map.of here made this manifest's two storageBoundary keys emit
+        // in a run-to-run varying order -- the sole source of GATE-DET-1's byte-nondeterminism.
+        Map<String, Object> storageBoundary = new LinkedHashMap<>();
+        storageBoundary.put("runtimeTables", "NPDev execution, audit, trace, scheduling, and reliability data");
+        storageBoundary.put("businessTables", "Generated model concept data");
+        manifest.put("storageBoundary", storageBoundary);
         manifest.put("generatedArtifactMount", options.generatedFolderName());
         manifest.put("internalAnalysisArtifacts", List.of());
         manifest.put(
