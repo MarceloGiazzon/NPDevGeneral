@@ -117,6 +117,32 @@ class SandboxedPluginExecutionEngineTest {
      * <p>To exclude it from a run that must be deterministic: {@code -PexcludeTags=load-sensitive}
      * (or the equivalent JUnit tag filter). It is left ENABLED by default because it covers real
      * sandbox timeout containment, which is worth a 1-in-5 retry.
+     *
+     * <h2>LNCH-1 T6.1 (2026-07-21) — the timing assumption, named</h2>
+     *
+     * <p><b>The assumption is that {@code TIMED_OUT} is the only reachable outcome.</b> The engine
+     * does {@code future.get(25, MILLISECONDS)} against a handler that sleeps 200ms. The 25ms budget
+     * is measured from the {@code get()} call, so a task that merely <i>starts</i> late still times
+     * out — which is why widening the margin was correctly refused: lateness is not the mechanism.
+     * The flake must therefore be {@code get()} exiting through a path OTHER than
+     * {@code TimeoutException}, and {@code SandboxedPluginExecutionEngine} has exactly two:
+     *
+     * <ul>
+     *   <li>{@code InterruptedException} → {@code FAILED} / {@code PLUGIN_EXECUTION_INTERRUPTED},
+     *       if the calling (JUnit worker) thread carries an interrupt when {@code get()} is entered;</li>
+     *   <li>{@code ExecutionException} → {@code FAILED}, if {@code SlowHandler}'s
+     *       {@code Thread.sleep(200)} throws {@code InterruptedException} — which it does
+     *       <i>immediately</i>, without sleeping, on a pooled thread whose interrupt flag is already
+     *       set. The engine uses {@code Executors.newCachedThreadPool()}, which REUSES threads, and
+     *       {@code future.cancel(true)} sets exactly that flag.</li>
+     * </ul>
+     *
+     * <p><b>Root cause NOT established</b>, and deliberately not guessed at: distinguishing the two
+     * requires knowing which status the failing run actually returned, and the previous round
+     * recorded only that the test failed. The assertions below now print the full result on failure,
+     * so the next occurrence identifies the mechanism instead of restarting this analysis a third
+     * time. If it proves to be the second bullet, the fix is in the engine (clear the interrupt on a
+     * pooled thread before handing it work), not in this test's tolerance.
      */
     @Test
     @Tag("load-sensitive")
@@ -142,10 +168,19 @@ class SandboxedPluginExecutionEngineTest {
                     new SlowHandler()
             );
 
-            assertEquals(SandboxedPluginExecutionResult.Status.TIMED_OUT, result.status());
-            assertEquals("PLUGIN_EXECUTION_TIMEOUT", result.errorCode());
-            assertEquals(CapabilityErrorKind.TIMEOUT, result.errorKind());
-            assertFalse(result.toCapabilityResult().ok());
+            // LNCH-1 T6.1 (2026-07-21): the failure messages carry the full result because the
+            // previous round recorded only THAT this test failed under load, never which status it
+            // actually returned -- which is the one datum needed to separate the two candidate
+            // mechanisms (see this method's javadoc). Deliberately a diagnostic improvement, NOT a
+            // tolerance change: the assertions are unchanged.
+            assertEquals(SandboxedPluginExecutionResult.Status.TIMED_OUT, result.status(),
+                    () -> "T6.1 diagnostic -- actual result was: " + result);
+            assertEquals("PLUGIN_EXECUTION_TIMEOUT", result.errorCode(),
+                    () -> "T6.1 diagnostic -- actual result was: " + result);
+            assertEquals(CapabilityErrorKind.TIMEOUT, result.errorKind(),
+                    () -> "T6.1 diagnostic -- actual result was: " + result);
+            assertFalse(result.toCapabilityResult().ok(),
+                    () -> "T6.1 diagnostic -- actual result was: " + result);
         }
     }
 
