@@ -141,6 +141,103 @@ class SchemaLifecycleExecutorDestructiveCrashRecoveryTest {
         assertFalse(convergedRow.itemsJson().contains("gadgets"), "the converged history row must show only the residual trail, not a repeat of gadgets");
     }
 
+    /**
+     * LNCH-1 hardening X8.1 (finding X-G4). The remediation round (R4/F5) added write-before-execute
+     * history rows for the non-destructive mutating PASSES (renames, relaxations, widenings,
+     * backfills) via {@code recordStepPass}, but never wrote the crash variant for them -- so the
+     * claim "a crash mid-pass leaves the row at PARTIAL-CRASH" was untested for exactly the passes
+     * that mechanism was added for. This is the surgical crash test above, applied to a COLUMN_RENAME
+     * pass: two renames on one table, the second one faulted.
+     */
+    @Test
+    void crashMidColumnRenamePassLeavesPartialCrashHistory_thenAFreshBootConvergesWithoutRepeatingTheFirstRename()
+            throws SQLException {
+        try (Connection connection = realDataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, old_a VARCHAR(50), old_b VARCHAR(50))");
+            statement.execute("INSERT INTO widgets (id, old_a, old_b) VALUES (1, 'Alpha', 'Beta')");
+        }
+        seedStoredFingerprint(realDataSource, "sha256:old");
+
+        // Both renames are declared, so attemptInPlaceRenames plans TWO ALTER TABLE ... RENAME COLUMN
+        // statements in a single recordStepPass. Fail on the second (0-based index 1): the pass is
+        // interrupted after one of its two items has already committed.
+        FaultInjectingDataSource faultyDataSource = new FaultInjectingDataSource(realDataSource, 1);
+        SchemaLifecycleExecutor firstAttemptExecutor = new SchemaLifecycleExecutor();
+
+        assertThrows(IllegalStateException.class,
+                () -> firstAttemptExecutor.beforeMigrate(faultyDataSource, renameManifest("sha256:new")));
+
+        // (a) The COLUMN_RENAME row is left at PARTIAL-CRASH, listing the WHOLE intended pass --
+        //     an accurate record that this pass started and did not finish.
+        StepHistoryRow crashed = latestRowWithClassification(realDataSource, "COLUMN_RENAME");
+        assertEquals("PARTIAL-CRASH", crashed.outcome());
+        assertTrue(crashed.itemsJson().contains("RENAME_COLUMN widgets.old_a -> new_a"), crashed.itemsJson());
+        assertTrue(crashed.itemsJson().contains("RENAME_COLUMN widgets.old_b -> new_b"), crashed.itemsJson());
+
+        // Half-applied database: the first rename committed, the second never ran, no data lost.
+        try (Connection connection = realDataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(hasColumn(metadata, "widgets", "new_a"), "the first rename must have committed before the fault");
+            assertFalse(hasColumn(metadata, "widgets", "old_a"), "the first rename's old name must be gone");
+            assertTrue(hasColumn(metadata, "widgets", "old_b"), "the second rename must NOT have run");
+            assertFalse(hasColumn(metadata, "widgets", "new_b"), "the second rename must NOT have run");
+        }
+
+        // (b) A fresh executor on the next boot, no fault injection, against the half-applied database.
+        SchemaLifecycleExecutor freshExecutor = new SchemaLifecycleExecutor();
+        SchemaLifecycleExecutor.DestructiveRecreation result =
+                freshExecutor.beforeMigrate(realDataSource, renameManifest("sha256:new"));
+        assertFalse(result.performed(), "converging a rename must never escalate to destruction");
+
+        try (Connection connection = realDataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(hasColumn(metadata, "widgets", "new_a"));
+            assertTrue(hasColumn(metadata, "widgets", "new_b"), "the residual rename must now have completed");
+            try (PreparedStatement statement = connection.prepareStatement("SELECT new_a, new_b FROM widgets WHERE id = 1");
+                 ResultSet resultSet = statement.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertEquals("Alpha", resultSet.getString("new_a"), "renamed data must survive both passes");
+                assertEquals("Beta", resultSet.getString("new_b"), "renamed data must survive both passes");
+            }
+        }
+
+        // (c) The retry's own row ends APPLIED and records ONLY the residual rename -- no duplicated
+        //     DDL, because the rename planner re-resolves against the live (half-applied) schema.
+        StepHistoryRow converged = latestRowWithClassification(realDataSource, "COLUMN_RENAME");
+        assertEquals("APPLIED", converged.outcome());
+        assertTrue(converged.itemsJson().contains("RENAME_COLUMN widgets.old_b -> new_b"), converged.itemsJson());
+        assertFalse(converged.itemsJson().contains("old_a"),
+                "the converged row must not repeat the rename that already committed: " + converged.itemsJson());
+    }
+
+    private static SchemaLifecycleExecutor.SchemaManifest renameManifest(String toFingerprint) {
+        return new SchemaLifecycleExecutor.SchemaManifest(
+                "H2Local", "jdbc", true, toFingerprint, List.of(), List.of("widgets"),
+                Map.of("widgets", List.of("id", "new_a", "new_b")),
+                Map.of("widgets", List.of()),
+                Map.of("widgets", Map.of("id", "BIGINT", "new_a", "VARCHAR(50)", "new_b", "VARCHAR(50)")),
+                Map.of("widgets", Map.of("new_a", "old_a", "new_b", "old_b")), Map.of(),
+                false, "DropAndRecreateOnStructureChange", "NpdevOwnedTablesOnly",
+                "", "", Map.of(), Map.of(), Map.of(), Map.of());
+    }
+
+    private record StepHistoryRow(String classification, String itemsJson, String outcome) {
+    }
+
+    private static StepHistoryRow latestRowWithClassification(DataSource dataSource, String classification)
+            throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT classification, items_json, outcome FROM npdev_schema_history "
+                             + "WHERE classification = ? ORDER BY applied_at_utc DESC")) {
+            statement.setString(1, classification);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                assertTrue(resultSet.next(), "expected a " + classification + " history row");
+                return new StepHistoryRow(resultSet.getString(1), resultSet.getString(2), resultSet.getString(3));
+            }
+        }
+    }
+
     private static void seedStoredFingerprint(DataSource dataSource, String fingerprint) throws SQLException {
         try (Connection connection = dataSource.getConnection()) {
             try (Statement statement = connection.createStatement()) {
