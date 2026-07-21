@@ -51,8 +51,17 @@ $healthPatterns = @(
 )
 $healthMissingPatterns = @(Get-Bucket2MissingPatterns -PathValue $HealthTestPath -Patterns $healthPatterns)
 
+# LNCH-1 closeout C7.1 (2026-07-21). This scraped `public <Type> postgresXxx(...)` bean methods, a
+# naming convention NpdevRuntimeModeConfig no longer uses -- its store-backed beans are named
+# `jdbcXxx` (jdbcEventStore, jdbcFlowInstanceStore, jdbcTraceStore, ...). Verified live: the old
+# pattern matched ZERO methods, so $storeBackedSurfaces was empty, so the `-and .Count -gt 0` guard
+# below forced `health-indicator-coverage` to FAIL even though $healthMissingPatterns was empty.
+# The check had been failing vacuously -- reporting a coverage gap that did not exist -- for as long
+# as the beans have been named jdbc*. The check's intent is still valid, so the pattern is corrected
+# rather than the check removed. If this ever returns empty again the check fails loudly, which is
+# the desired behaviour: an empty surface set means this scrape has drifted, not that coverage is fine.
 $storeBackedSurfaces = @(
-    Select-String -Path $RuntimeModeConfigPath -Pattern 'public\s+([A-Za-z0-9_<>]+)\s+postgres[A-Za-z0-9_]+' |
+    Select-String -Path $RuntimeModeConfigPath -Pattern 'public\s+([A-Za-z0-9_<>]+)\s+jdbc[A-Za-z0-9_]+\s*\(' |
     ForEach-Object { $_.Matches[0].Groups[1].Value } |
     Select-Object -Unique
 )
