@@ -273,7 +273,7 @@ H2Server (persistent) example — pick a unique TCP port and a unique data folde
   "schemaLifecycle": {
     "strategy": "KeepExistingIfCompatible",
     "allowDestructiveRecreate": false,
-    "destructiveRecreateConfirmation": "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED",
+    "destructiveRecreateConfirmation": "",
     "scope": "NpdevOwnedTablesOnly"
   }
 }
@@ -281,10 +281,18 @@ H2Server (persistent) example — pick a unique TCP port and a unique data folde
 
 The `schemaLifecycle` block above is the **recommended default for new apps**: additive changes,
 renames, safe type widenings and NOT NULL relaxations still apply automatically on boot, while
-anything that destroys data requires an explicit, itemized acknowledgment token. The older
-`"strategy": "DropAndRecreateOnStructureChange"` + `"allowDestructiveRecreate": true` pairing
-pre-authorizes column drops and type narrowings once, at authoring time, and is deprecated — see
-`docs/SCHEMA_EVOLUTION.md`. Existing apps keep working unchanged.
+anything that destroys data requires an explicit, itemized acknowledgment token. All four fields are
+required, but `destructiveRecreateConfirmation` only means anything under
+`DropAndRecreateOnStructureChange` — leave it `""` here. `AppGen\apps\simple-user-registry-h2local`
+is a worked example you can copy.
+
+The older `"strategy": "DropAndRecreateOnStructureChange"` + `"allowDestructiveRecreate": true`
+pairing pre-authorizes **column** drops and type narrowings once, at authoring time, and is
+deprecated — see `docs/SCHEMA_EVOLUTION.md`. It never authorizes a whole-table destruction: dropping
+a concept, or applying a diff that cannot be executed item by item, requires the token regardless.
+**Most definitions shipped in this repo still carry the deprecated posture** for backward
+compatibility; that is history, not a recommendation, and those apps say so in a `NOTICE` on every
+boot. Existing apps keep working unchanged.
 
 ### 5.3 `model.json` — the actual app
 
