@@ -8,6 +8,7 @@ import com.finalexec.npdev.service.SandboxedPluginExecutionEngine;
 import com.finalexec.npdev.service.SandboxedPluginExecutionResult;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityErrorKind;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -86,7 +87,39 @@ class SandboxedPluginExecutionEngineTest {
         }
     }
 
+    /**
+     * LNCH-1 closeout C7.2 (2026-07-21). KNOWN LOAD-SENSITIVE. This test asserts on a real wall-clock
+     * timeout, so it is the one test in this class whose outcome depends on machine load.
+     *
+     * <p><b>Measured this session</b>, with the Gradle build cache disabled so every run really
+     * executed (a first attempt reported 5 identical 0.276s runs — that was one cached result being
+     * replayed, not five runs):
+     *
+     * <ul>
+     *   <li><b>In isolation, 5/5 green.</b> This test's own wall time ranged 0.042s–0.448s — a 10x
+     *       spread with no failures.</li>
+     *   <li><b>In the full 257-test suite, 4/5 green — 1 failure.</b> Wall times 0.056s–0.161s; the
+     *       failing run was the slowest of the five at 0.161s.</li>
+     * </ul>
+     *
+     * <p>So the flake rate under load is roughly <b>1 in 5</b>, and the ledger's earlier
+     * "pre-existing, load-dependent, green in isolation" characterisation is confirmed with numbers
+     * rather than a single anecdote.
+     *
+     * <p><b>Deliberately NOT "fixed" by widening the margin.</b> The engine budget is 25ms against a
+     * handler that sleeps 200ms — already 8x — so a task that merely starts late still times out;
+     * lengthening the sleep would not address whatever actually diverges under load. The root cause
+     * was not established within C7's timebox, and inventing a tolerance bump that does not follow
+     * from a diagnosed mechanism would be worse than an honest marker. Tagged instead, per the
+     * closeout plan's "raise the tolerance with a measured comment, or tag it appropriately — do not
+     * leave a known-flaky test unmarked."
+     *
+     * <p>To exclude it from a run that must be deterministic: {@code -PexcludeTags=load-sensitive}
+     * (or the equivalent JUnit tag filter). It is left ENABLED by default because it covers real
+     * sandbox timeout containment, which is worth a 1-in-5 retry.
+     */
     @Test
+    @Tag("load-sensitive")
     void timesOutSlowPluginExecution() {
         try (SandboxedPluginExecutionEngine engine = new SandboxedPluginExecutionEngine(
                 25,
