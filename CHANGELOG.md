@@ -35,6 +35,25 @@ Format: see `docs/RELEASE_PROCESS.md`. Dates are release-tag dates, not commit d
   proven by a test."
 
 ### Behavior changes
+- **LNCH-1 T1 (data-integrity fix): an upgrade no longer relaxes `NOT NULL` on the platform-managed
+  columns, and repairs databases an earlier build already loosened.** Every fingerprint-changing boot
+  used to strip `NOT NULL` from `version`, `row_version` and `tenant_id`, because they appear in the
+  manifest's full column set but never in its model-derived *required* set (only `id` escaped, via the
+  live primary-key read). A `NULL` `tenant_id` makes a row invisible to every tenant-scoped read; a
+  `NULL` `row_version` silently defeats LNCH-16's compare-and-swap. On the next boot, any already-
+  loosened platform column is backfilled (`NULL`s only — real values are never overwritten) to its
+  platform default and restored to `NOT NULL`, recorded as a `TIGHTEN_PLATFORM_COLUMNS` row in
+  `npdev_schema_history`. **Operators upgrading an app built before this change will see one repair
+  pass on the next boot.** Verified live on real Postgres with real data.
+- **LNCH-1 T2: the platform `version` column is now additive-eligible, so a table missing it
+  self-heals.** Previously `version` was declared by the manifest but never added by any migration, so
+  a table missing it produced an `UNKNOWN` delta item — which, since closeout C1, refuses the boot
+  unless an itemized token authorizing a **whole-schema wipe** is supplied. This removed the most
+  likely real-world trigger of a total data-loss event. `version` and `row_version` remain separate
+  columns. A consequence worth knowing: the missing-column route to the whole-schema recreation is now
+  unreachable from any diff the current generator can emit; the path is deliberately kept, and kept
+  token-gated, as a safety net for hand-modified schemas, pre-T2 manifests, and future non-additive
+  column kinds — see `docs/SCHEMA_EVOLUTION.md`.
 - `BuildInfoEmitter`'s `npdev.generator.version` (embedded in every generated app's
   `npdev-build-info.properties`) now reads `git describe --tags --always` against the platform's
   real release tags instead of a hardcoded `"0.1.0"` literal, falling back to that literal only
@@ -74,6 +93,17 @@ Format: see `docs/RELEASE_PROCESS.md`. Dates are release-tag dates, not commit d
   refuses the boot with the new expected token printed; no data is at risk).
 
 ### Fixed
+- **LNCH-1 T5 (`GATE-OBS-1`): `run-runtimehost-gate.ps1`'s exit code is truthful again.** The gate had
+  exited 1 for four consecutive rounds on one check, `runtime-surface-reports-current`, while
+  contradicting itself: it already passed `-PendingOk` to the surface-evidence step for exactly those
+  package-namespace convergence checks, then re-read the same reports in the observability step and
+  failed on them. The six named checks are now accepted as advisory, and **only** when they are the
+  sole failures — any other failing sub-check still fails the gate, naming it. Build-time allowlist
+  enforcement was and remains green. The governance realignment is tracked separately as
+  `GATE-OBS-1a`, still open and needing an owner.
+- **LNCH-1 T9.2: `LNCH-1-B8`'s refusal printed an unactionable remedy.** It advised rebuilding
+  "without `-PlanOnly`", but the guard covers `-PlanOnly` *or* `-Upgrade`, so an `-Upgrade` run hit the
+  same refusal and the instruction looped. It now says to rebuild with neither flag.
 - **LNCH-1 closeout C4 (`LNCH-1-B8`): a failed `-Upgrade` no longer degrades the next migration plan
   into a false "fresh install".** `Build-NpdevApp.ps1` reads the previous compiled model from the
   output root and then wipes that root; a run that failed after the wipe destroyed the model, so the
