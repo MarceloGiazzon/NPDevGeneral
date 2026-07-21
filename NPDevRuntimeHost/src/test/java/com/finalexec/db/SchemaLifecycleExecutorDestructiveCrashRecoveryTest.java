@@ -174,13 +174,23 @@ class SchemaLifecycleExecutorDestructiveCrashRecoveryTest {
         assertTrue(crashed.itemsJson().contains("RENAME_COLUMN widgets.old_a -> new_a"), crashed.itemsJson());
         assertTrue(crashed.itemsJson().contains("RENAME_COLUMN widgets.old_b -> new_b"), crashed.itemsJson());
 
-        // Half-applied database: the first rename committed, the second never ran, no data lost.
+        // Half-applied database: EXACTLY ONE of the two renames committed, and its old name is gone
+        // while the other column is untouched. Deliberately order-independent: the pass iterates
+        // RenameResolution#explainedRenames, whose order is not part of any contract, so asserting
+        // WHICH of the two committed would be asserting an implementation detail. (An earlier draft
+        // of this test did exactly that and failed intermittently.) The property that matters is
+        // "interrupted partway", not "interrupted at a particular item".
         try (Connection connection = realDataSource.getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
-            assertTrue(hasColumn(metadata, "widgets", "new_a"), "the first rename must have committed before the fault");
-            assertFalse(hasColumn(metadata, "widgets", "old_a"), "the first rename's old name must be gone");
-            assertTrue(hasColumn(metadata, "widgets", "old_b"), "the second rename must NOT have run");
-            assertFalse(hasColumn(metadata, "widgets", "new_b"), "the second rename must NOT have run");
+            boolean aRenamed = hasColumn(metadata, "widgets", "new_a");
+            boolean bRenamed = hasColumn(metadata, "widgets", "new_b");
+            assertTrue(aRenamed ^ bRenamed,
+                    "exactly one of the two renames must have committed before the fault (new_a=" + aRenamed
+                            + ", new_b=" + bRenamed + ")");
+            assertEquals(aRenamed, !hasColumn(metadata, "widgets", "old_a"),
+                    "the committed rename's OLD name must be gone, and only that one's");
+            assertEquals(bRenamed, !hasColumn(metadata, "widgets", "old_b"),
+                    "the committed rename's OLD name must be gone, and only that one's");
         }
 
         // (b) A fresh executor on the next boot, no fault injection, against the half-applied database.
@@ -205,9 +215,10 @@ class SchemaLifecycleExecutorDestructiveCrashRecoveryTest {
         //     DDL, because the rename planner re-resolves against the live (half-applied) schema.
         StepHistoryRow converged = latestRowWithClassification(realDataSource, "COLUMN_RENAME");
         assertEquals("APPLIED", converged.outcome());
-        assertTrue(converged.itemsJson().contains("RENAME_COLUMN widgets.old_b -> new_b"), converged.itemsJson());
-        assertFalse(converged.itemsJson().contains("old_a"),
-                "the converged row must not repeat the rename that already committed: " + converged.itemsJson());
+        int renameItems = converged.itemsJson().split("RENAME_COLUMN", -1).length - 1;
+        assertEquals(1, renameItems,
+                "the converged row must list exactly the ONE residual rename, never repeat the one that "
+                        + "already committed: " + converged.itemsJson());
     }
 
     private static SchemaLifecycleExecutor.SchemaManifest renameManifest(String toFingerprint) {
