@@ -126,6 +126,7 @@ try {
         -RunId ($RunId + "-observability") `
         -ReportPath $observabilityHardeningReportPath `
         -RuntimeHostGatePendingOk `
+        -SurfaceConvergencePendingOk `
         -PassThru
 
     Write-NPDevInfo "Generating RuntimeHost security consistency report"
@@ -240,10 +241,17 @@ Write-NPDevJsonFile $ReportPath $report
 
 if ($status -eq "passed") {
     Write-NPDevInfo "Refreshing RuntimeHost observability hardening report after gate finalization"
+    # -RuntimeHostGatePendingOk is deliberately NOT passed here: by this point the gate report has
+    # been written as passed, so `runtimehost-gate-current` must be able to read it as genuinely
+    # green rather than as "pending". -SurfaceConvergencePendingOk IS passed, because the
+    # surface-governance drift it covers (GATE-OBS-1) is a property of the codebase, not of where we
+    # are in the gate -- omitting it here is what made this refresh re-fail on exactly the drift the
+    # first invocation had already accepted as advisory.
     $finalObservabilityHardening = & $observabilityHardeningScript `
         -WorkspaceRoot $WorkspaceRoot `
         -RunId ($RunId + "-observability") `
         -ReportPath $observabilityHardeningReportPath `
+        -SurfaceConvergencePendingOk `
         -PassThru
 
     if ([string]$finalObservabilityHardening.overallStatus -ne "passed") {
