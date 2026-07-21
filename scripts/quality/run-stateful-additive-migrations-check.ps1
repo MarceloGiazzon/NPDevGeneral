@@ -88,6 +88,38 @@ if (Test-Path -LiteralPath $plannerXmlSource -PathType Leaf) {
 }
 Add-Check $checks "stateful-migration-unit-tests-pass" $testResult.passed $testResult
 
+# LNCH-1 closeout C4 (finding C-B2 / LNCH-1-B8). PLAN INTEGRITY: a migration plan must never report
+# a FRESH INSTALL for an app that has a prior deployment. Before C4, a generation run that failed
+# AFTER Build-NpdevApp.ps1 wiped the output root destroyed the previous compiled model, so the next
+# -PlanOnly reported "Fresh install -- no previous compiled model to diff against" AND EXITED 0 --
+# the script-friendly "safe to proceed" gate signal -- for a database that may need a destructive
+# change. Reproduced live 2026-07-21 (lnch1-evidence/closeout-C4.md).
+#
+# Same shape as the planner step above: run the real tests, then require their result XML, so this
+# is an executed proof and not a claim. The refusal semantics live in
+# GeneratorMainMigrationPlanCliTest; Build-NpdevApp.ps1's preserve/recover/refuse halves are
+# verified live in the evidence note (they need a full generator runtime + app definition, which is
+# heavier than this gate should carry).
+$planIntegrityResult = Invoke-CommandCapture "migration-plan-integrity-tests" {
+    & .\gradlew.bat -p NPDevGenerator :generator:test --tests "*GeneratorMainMigrationPlanCliTest" --rerun-tasks --no-daemon --console=plain
+}
+$planIntegrityXmlSource = Join-Path $root "NPDevGenerator/generator/build/test-results/test/TEST-com.npdev.generator.GeneratorMainMigrationPlanCliTest.xml"
+$planIntegrityXmlProof = Join-Path $proofRoot "TEST-com.npdev.generator.GeneratorMainMigrationPlanCliTest.xml"
+$planIntegrityXmlPresent = $false
+if (Test-Path -LiteralPath $planIntegrityXmlSource -PathType Leaf) {
+    Copy-Item -LiteralPath $planIntegrityXmlSource -Destination $planIntegrityXmlProof -Force
+    $planIntegrityXmlPresent = $true
+}
+Add-Check $checks "migration-plan-never-reports-false-fresh-install" ($planIntegrityResult.passed -and $planIntegrityXmlPresent) ([pscustomobject]@{
+        finding = "C-B2 / LNCH-1-B8"
+        testClass = "com.npdev.generator.GeneratorMainMigrationPlanCliTest"
+        refusalTest = "requirePreviousCompiledModelRefusesInsteadOfSilentlyEmittingAFreshInstallPlan"
+        guardTest = "requirePreviousCompiledModelIsANoOpWhenThePreviousModelIsPresent"
+        testsPassed = [bool]$planIntegrityResult.passed
+        resultXmlCaptured = $planIntegrityXmlPresent
+        evidencePath = "NPDev_General__OutsideRepo/lnch1-evidence/closeout-C4.md"
+    })
+
 # R8.1 (LNCH-1 remediation, 2026-07-20): the previous step ran
 # `:generator:test --tests "*StatefulFlywayPostgresMigrationProofTest"` and then required a
 # flyway-postgres-proof.json the matched test never writes. Confirmed live (2026-07-20) that this

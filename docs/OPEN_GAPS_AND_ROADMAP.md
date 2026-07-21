@@ -48,8 +48,9 @@
 |---|---|---|---|---|---|
 | LNCH-1-B7 | Concept drop previewed and acknowledged but never executed (classify() ignored orphan tables) | Runtime/plan incoherence | DONE (fixed 2026-07-20; ownership-gated drop + 5 proof-matrix scenarios) | P2 | M |
 | LNCH-1-B6 | Migration advisory lock (pg_advisory_lock / H2 equivalent) for multi-instance deployments; lock scope = the migrate(Flyway) entry | Runtime robustness | OPEN | P4 | M |
-| LNCH-1-B8 | A failed `-Upgrade` run silently degrades the NEXT plan to "Fresh install -- no previous compiled model to diff against" instead of erroring | Tooling footgun (silent wrong output) | OPEN | P3 | S |
+| LNCH-1-B8 | A failed `-Upgrade` run silently degrades the NEXT plan to "Fresh install -- no previous compiled model to diff against" instead of erroring | Tooling footgun (silent wrong output) | DONE (fixed 2026-07-21, closeout C4: durable compiled-model snapshot + refuse-don't-degrade; it also exited **0**, the "safe to proceed" gate signal) | P3 | S |
 | LNCH-1-B9 | Schema-ahead detector cannot see a pure column drop by a newer build (no residue to detect) | Runtime limitation (documented) | OPEN — WONTFIX for v1 | P4 | M |
+| GATE-OBS-1 | RuntimeHost gate's observability step fails on `runtime-surface-reports-current`: `runtime-surface-classification-report.json` and `runtime-footprint-report.json` are both `failed`, so `run-runtimehost-gate.ps1` reports failure *after* `:test` passes | Quality-gate evidence drift | OPEN (attributed by name 2026-07-21, closeout C7.1) | P3 | M |
 | BUG-16 | InMemory apps cannot boot ControlPanel | Runtime bug | DONE | P1 | S |
 | BOND-0 | Verify bond foundation is committed | Structural | DONE | P1 | S (verify) / L (if uncommitted) |
 | AW-RECONCILE | Reconcile AW phase-status markers against code | Planning | DONE | P2 | S |

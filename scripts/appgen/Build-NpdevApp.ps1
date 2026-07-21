@@ -175,7 +175,28 @@ Write-Step "Port     : $ServerPort  Profiles: $SpringProfiles"
 # before the generator ever runs again. This is the one narrow window where both the OLD file and
 # the about-to-be-regenerated NEW one can coexist (the wipe happens BEFORE the generator call, not
 # after) -- read/copy it out to a location OUTSIDE $OutRoot right now, before it is destroyed.
+# LNCH-1 closeout C4 (finding C-B2 / LNCH-1-B8). The capture above was only ever written to a
+# GUID-named file under %TEMP% that nothing ever read again, so it did not survive a FAILED run in
+# any USABLE sense: if generation failed after the wipe below, $OutRoot no longer held a compiled
+# model, and the NEXT -PlanOnly silently reported "Fresh install -- no previous compiled model to
+# diff against" and exited 0 -- the script-friendly "safe to proceed" signal -- for a database that
+# actually needed a destructive change. A wrong plan presented as a valid one.
+#
+# So the snapshot is now ALSO written to a durable, DISCOVERABLE location under the build-output
+# area, next to the plan echoes that already survive rebuilds, under a STABLE filename that the
+# next run looks for.
+#
+# Keyed by the definition folder, NOT by $AppId: several shipped definitions deliberately share one
+# scenario.name and therefore one $OutRoot (verified 2026-07-20: simple-user-registry-h2local,
+# -postgres and -h2local-freshdb are all scenario.name "simple-user-registry"). Keying the snapshot
+# by $AppId alone would let one app's model be diffed against another's and presented as
+# authoritative -- worse than the bug being fixed here.
+$AppDefinitionKey = (Split-Path -Leaf $AppFolder) -replace '[^A-Za-z0-9_.-]', '_'
+$PlanArtifactDir = Join-Path (Split-Path -Parent $BuildRoot) "$AppId\migration-plans"
+$PreservedCompiledModelPath = Join-Path $PlanArtifactDir "previous-compiled-model-$AppDefinitionKey.json"
+
 $PreviousCompiledModelPath = $null
+$HasPriorDeploymentEvidence = $false
 if ($PlanOnly -or $Upgrade) {
   $PriorCompiledModelPath = Join-Path $OutRoot 'App\npdev-generated\src\main\resources\npdev\compiled-model.json'
   if (Test-Path -LiteralPath $PriorCompiledModelPath) {
@@ -184,8 +205,47 @@ if ($PlanOnly -or $Upgrade) {
     $PreviousCompiledModelPath = Join-Path $PlanScratchDir "$AppId-previous-compiled-model-$([Guid]::NewGuid().ToString('N')).json"
     Copy-Item -LiteralPath $PriorCompiledModelPath -Destination $PreviousCompiledModelPath -Force
     Write-Step "Captured previous compiled model before wipe: $PreviousCompiledModelPath"
-  } else {
-    Write-Step "No previous compiled model found at $PriorCompiledModelPath -- plan will be a fresh-install plan."
+
+    # Durable copy (C4), so a failed run below cannot leave the next plan blind.
+    New-Item -ItemType Directory -Force -Path $PlanArtifactDir | Out-Null
+    Copy-Item -LiteralPath $PriorCompiledModelPath -Destination $PreservedCompiledModelPath -Force
+    Write-Step "Preserved previous compiled model outside the wiped tree: $PreservedCompiledModelPath"
+  }
+  elseif (Test-Path -LiteralPath $PreservedCompiledModelPath) {
+    # $OutRoot's copy is gone but a previous run preserved one -- the failed-upgrade case. Diff
+    # against the preserved snapshot, which is still the model this app was last GENERATED from.
+    $PreviousCompiledModelPath = $PreservedCompiledModelPath
+    Write-Step "No compiled model in the output root (a previous run was wiped or failed) -- using the preserved snapshot: $PreservedCompiledModelPath"
+  }
+  else {
+    # Neither. Is there durable EVIDENCE this app was ever generated before? The plan echoes written
+    # by past -Upgrade runs are exactly that, and they survive every wipe. If any exist, this is NOT
+    # a fresh install and we must NOT pretend otherwise -- refuse instead of degrading.
+    $PriorPlanEchoes = @(Get-ChildItem -LiteralPath $PlanArtifactDir -Filter 'plan-*.json' -ErrorAction SilentlyContinue)
+    $HasPriorDeploymentEvidence = ($PriorPlanEchoes.Count -gt 0)
+    if ($HasPriorDeploymentEvidence) {
+      throw @"
+Refusing to emit a migration plan for '$AppId' ($AppDefinitionKey).
+
+This app has evidence of a PRIOR deployment -- $($PriorPlanEchoes.Count) migration plan artifact(s) in
+  $PlanArtifactDir
+-- but no previous compiled model is available to diff against:
+  missing from the output root : $PriorCompiledModelPath
+  missing preserved snapshot   : $PreservedCompiledModelPath
+
+That combination means a previous compiled model existed and was then LOST -- almost always a
+generation run that failed AFTER the output root was wiped (LNCH-1-B8). Emitting a plan now would
+report 'Fresh install -- no previous compiled model to diff against' and exit 0, which is the
+script-friendly 'safe to proceed' signal -- for a database that may well need a destructive change.
+That is a wrong plan presented as a valid one, so this refuses instead.
+
+To proceed, restore a real starting point -- rebuild this app successfully once (without -PlanOnly),
+which regenerates the compiled model and re-preserves the snapshot. If you genuinely intend a fresh
+install, delete the stale plan artifacts in the directory above; that is a deliberate act, which is
+the point.
+"@
+    }
+    Write-Step "No previous compiled model found at $PriorCompiledModelPath and no prior deployment evidence -- plan will be a fresh-install plan."
   }
 }
 $PlanJsonPath = Join-Path $OutRoot 'migration-plan.json'
@@ -269,7 +329,16 @@ if (-not $UsesDirectGeneratorFlags) {
     '--cleanFinalApp'
   )
   if ($PreviousCompiledModelPath) { $DirectGeneratorArgs += @('--previousCompiledModel', $PreviousCompiledModelPath) }
-  if ($PlanOnly -or $Upgrade) { $DirectGeneratorArgs += @('--schemaMigrationPlanOut', $PlanJsonPath) }
+  if ($PlanOnly -or $Upgrade) {
+    $DirectGeneratorArgs += @('--schemaMigrationPlanOut', $PlanJsonPath)
+    # LNCH-1 closeout C4: belt-and-braces. The step-1a block above already refuses this combination
+    # before we get here, so this should be unreachable -- but asserting it at the generator boundary
+    # too means any OTHER caller that loses its previous model gets the same refusal instead of a
+    # silent fresh-install plan, and it fails loudly if step 1a is ever refactored wrong.
+    if (-not $PreviousCompiledModelPath -and $HasPriorDeploymentEvidence) {
+      $DirectGeneratorArgs += '--requirePreviousCompiledModel'
+    }
+  }
   if (-not [string]::IsNullOrWhiteSpace($AcknowledgeDestructive)) { $DirectGeneratorArgs += @('--destructiveAcknowledgment', $AcknowledgeDestructive) }
   $DirectJavaArgs = @('-cp', $GenClasspath, 'com.npdev.generator.GeneratorMain') + $DirectGeneratorArgs
 
@@ -330,10 +399,11 @@ if ($PlanOnly -or $Upgrade) {
   if ($Upgrade) {
     # Echoed OUTSIDE the wiped tree, sibling to $BuildRoot (not nested inside it), per the plan's
     # explicit ask -- so this plan survives the NEXT build's wipe too, as an operator-facing trail.
-    $PlanEchoDir = Join-Path (Split-Path -Parent $BuildRoot) "$AppId\migration-plans"
-    New-Item -ItemType Directory -Force -Path $PlanEchoDir | Out-Null
+    # $PlanArtifactDir is the same directory C4's preserved compiled-model snapshot lives in, and
+    # these echoes are what C4 reads as "evidence of a prior deployment" -- computed once, above.
+    New-Item -ItemType Directory -Force -Path $PlanArtifactDir | Out-Null
     $SafeFingerprint = ("$($PlanObj.toFingerprint)" -replace '[^A-Za-z0-9_.-]', '_')
-    $PlanEchoPath = Join-Path $PlanEchoDir "plan-$SafeFingerprint.json"
+    $PlanEchoPath = Join-Path $PlanArtifactDir "plan-$SafeFingerprint.json"
     Copy-Item -LiteralPath $PlanJsonPath -Destination $PlanEchoPath -Force
     Write-Step "Migration plan echoed outside the wiped tree: $PlanEchoPath"
   }

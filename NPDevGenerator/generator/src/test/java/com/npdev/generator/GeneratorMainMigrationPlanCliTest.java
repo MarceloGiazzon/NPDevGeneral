@@ -2,6 +2,7 @@ package com.npdev.generator;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -9,6 +10,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -104,6 +106,76 @@ class GeneratorMainMigrationPlanCliTest {
                 "identical model compiled twice against the same db definition must produce identical fingerprints");
         assertTrue(plan.path("items").isArray() && plan.path("items").isEmpty(), "no model change -- expected zero items");
         assertTrue(plan.path("destructiveAckToken").isNull());
+    }
+
+    @Test
+    @DisplayName("C-B2/LNCH-1-B8: with --requirePreviousCompiledModel and no previous model, the "
+            + "generator REFUSES rather than emitting a false 'fresh install' plan")
+    void requirePreviousCompiledModelRefusesInsteadOfSilentlyEmittingAFreshInstallPlan() throws Exception {
+        Path workspace = Files.createTempDirectory("npdev-migration-plan-cli-require-");
+        Path dbDefinition = writeInMemoryDbDefinition(workspace);
+        Path planOut = workspace.resolve("migration-plan.json");
+
+        // The caller (Build-NpdevApp.ps1) has DURABLE evidence this app was deployed before -- plan
+        // artifacts from earlier -Upgrade runs -- but the compiled model the diff needs is gone,
+        // because a previous run failed after wiping the output directory. Before C4 this emitted
+        // "Fresh install -- no previous compiled model to diff against" and exited 0, which is the
+        // script-friendly "safe to proceed" gate signal, for a database that may need a destructive
+        // change.
+        IllegalStateException refusal = assertThrows(IllegalStateException.class, () ->
+                GeneratorMain.main(new String[]{
+                        "--model", CANONICAL_DEMO_MODEL.toString(),
+                        "--out", workspace.resolve("out").toString(),
+                        "--schemaRealizationDir", workspace.resolve("schema-realization").toString(),
+                        "--dbDefinitionPath", dbDefinition.toString(),
+                        "--schemaMigrationPlanOut", planOut.toString(),
+                        "--requirePreviousCompiledModel",
+                        "--no-assembleFinalApp"
+                }));
+
+        assertTrue(refusal.getMessage().contains("FRESH INSTALL"), refusal.getMessage());
+        assertTrue(refusal.getMessage().contains("LNCH-1-B8"), refusal.getMessage());
+        assertTrue(refusal.getMessage().contains("--previousCompiledModel"), refusal.getMessage());
+        // The remedy must be actionable, not just a complaint.
+        assertTrue(refusal.getMessage().contains("Rebuild the app successfully once"), refusal.getMessage());
+
+        assertFalse(Files.exists(planOut),
+                "a refused plan must not leave a plan file behind for a later step to read as authoritative");
+    }
+
+    @Test
+    @DisplayName("C-B2 guard: --requirePreviousCompiledModel changes nothing when a previous model "
+            + "IS supplied -- it only forbids the silent degradation")
+    void requirePreviousCompiledModelIsANoOpWhenThePreviousModelIsPresent() throws Exception {
+        Path workspace = Files.createTempDirectory("npdev-migration-plan-cli-require-ok-");
+        Path dbDefinition = writeInMemoryDbDefinition(workspace);
+
+        Path out1 = workspace.resolve("out1");
+        GeneratorMain.main(new String[]{
+                "--model", CANONICAL_DEMO_MODEL.toString(),
+                "--out", out1.toString(),
+                "--schemaRealizationDir", workspace.resolve("schema-realization-1").toString(),
+                "--dbDefinitionPath", dbDefinition.toString(),
+                "--no-assembleFinalApp"
+        });
+        Path previousCompiledModel = out1.resolve("src/main/resources/npdev/compiled-model.json");
+
+        Path planOut = workspace.resolve("migration-plan.json");
+        GeneratorMain.main(new String[]{
+                "--model", CANONICAL_DEMO_MODEL.toString(),
+                "--out", workspace.resolve("out2").toString(),
+                "--schemaRealizationDir", workspace.resolve("schema-realization-2").toString(),
+                "--dbDefinitionPath", dbDefinition.toString(),
+                "--previousCompiledModel", previousCompiledModel.toString(),
+                "--schemaMigrationPlanOut", planOut.toString(),
+                "--requirePreviousCompiledModel",
+                "--no-assembleFinalApp"
+        });
+
+        JsonNode plan = MAPPER.readTree(planOut.toFile());
+        assertFalse(plan.path("freshInstall").asBoolean(),
+                "a previous model WAS supplied -- the flag must not change the outcome");
+        assertFalse(plan.path("fromFingerprint").isNull());
     }
 
     private static Path writeInMemoryDbDefinition(Path workspace) throws Exception {

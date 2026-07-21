@@ -120,6 +120,23 @@ public final class GeneratorMain {
                 Path previousModelPath = Path.of(a.previousCompiledModelPath).toAbsolutePath().normalize();
                 previousModel = com.npdev.dsl.v1.compiled.CompiledModelCanonicalJsonReader.read(previousModelPath);
                 System.out.println("Migration plan: previous compiled model read from " + previousModelPath);
+            } else if (a.requirePreviousCompiledModel) {
+                // LNCH-1 closeout C4 (finding C-B2 / LNCH-1-B8): refuse, don't degrade. The caller
+                // asserted this app was previously deployed, so "no previous model" cannot honestly
+                // be reported as a fresh install -- that emits an empty plan and a zero exit code,
+                // which is the "safe to proceed" signal, for a database that may need a destructive
+                // change. The generator has no database connection by design (it previews; the
+                // executor decides), so it cannot check the truth itself -- which is exactly why it
+                // must not guess.
+                throw new IllegalStateException(
+                        "--requirePreviousCompiledModel was given, but no --previousCompiledModel is available. "
+                                + "The caller asserted this app has a prior deployment, so a plan computed now "
+                                + "would report a FRESH INSTALL and exit successfully for a database that may "
+                                + "well need a destructive change -- a wrong plan presented as a valid one "
+                                + "(LNCH-1-B8). This usually means a previous generation run failed AFTER the "
+                                + "output directory was wiped, destroying the compiled model the diff needs. "
+                                + "Rebuild the app successfully once to restore a real starting point, or drop "
+                                + "--requirePreviousCompiledModel if this genuinely is a first generation.");
             } else {
                 System.out.println("Migration plan: no --previousCompiledModel given -- computing a fresh-install plan.");
             }
@@ -631,6 +648,14 @@ public final class GeneratorMain {
          * above -- {@link #rejectUnsupportedMigrationManagement}'s {@code cur.startsWith("--migration")}
          * quarantine only matches that literal prefix; verified by reading it before picking this name. */
         final String destructiveAcknowledgmentToken;
+        /** LNCH-1 closeout C4 (finding C-B2 / LNCH-1-B8). Optional: when set, a plan requested
+         * WITHOUT {@code --previousCompiledModel} is a hard error instead of a silent fresh-install
+         * plan. A caller passes this when it KNOWS the app was previously deployed -- knowledge the
+         * generator cannot have, and must not guess at (it has no database connection, by design:
+         * the generator previews, the executor decides). Without it, "no previous model" is
+         * genuinely ambiguous between a first generation and a lost one, and the honest default for
+         * an ambiguous case is the existing fresh-install plan. */
+        final boolean requirePreviousCompiledModel;
 
         private Args(
                 String configPath,
@@ -650,8 +675,10 @@ public final class GeneratorMain {
                 String metaFolderName,
                 String previousCompiledModelPath,
                 String migrationPlanOutPath,
-                String destructiveAcknowledgmentToken
+                String destructiveAcknowledgmentToken,
+                boolean requirePreviousCompiledModel
         ) {
+            this.requirePreviousCompiledModel = requirePreviousCompiledModel;
             this.configPath = configPath;
             this.modelPath = modelPath;
             this.outPath = outPath;
@@ -694,6 +721,7 @@ public final class GeneratorMain {
             String previousCompiledModelPath = null;
             String migrationPlanOutPath = null;
             String destructiveAcknowledgmentToken = null;
+            boolean requirePreviousCompiledModel = false;
 
             for (int i = 0; i < args.length; i++) {
                 String cur = args[i];
@@ -724,6 +752,8 @@ public final class GeneratorMain {
                     migrationPlanOutPath = args[++i];
                 } else if ("--destructiveAcknowledgment".equals(cur) && i + 1 < args.length) {
                     destructiveAcknowledgmentToken = args[++i];
+                } else if ("--requirePreviousCompiledModel".equals(cur)) {
+                    requirePreviousCompiledModel = true;
                 } else if ("--assembleFinalApp".equals(cur)) {
                     assemble = true;
                     assembleExplicit = true;
@@ -767,7 +797,8 @@ public final class GeneratorMain {
                     metaFolder,
                     previousCompiledModelPath,
                     migrationPlanOutPath,
-                    destructiveAcknowledgmentToken
+                    destructiveAcknowledgmentToken,
+                    requirePreviousCompiledModel
             );
         }
     }
