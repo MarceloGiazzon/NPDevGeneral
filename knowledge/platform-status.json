@@ -2,7 +2,7 @@
   "schemaVersion": "platform-status.v1",
   "generatedFrom": "docs/OPEN_GAPS_AND_ROADMAP.md",
   "note": "DERIVED -- do not hand-edit. Regenerate via scripts/ai/extract_platform_status.py.",
-  "count": 37,
+  "count": 38,
   "items": [
     {
       "id": "LNCH-1-B7",
@@ -24,9 +24,9 @@
       "id": "LNCH-1-B8",
       "title": "A failed -Upgrade run silently degrades the NEXT plan to \"Fresh install -- no previous compiled model to diff against\" instead of erroring",
       "category": "Tooling footgun (silent wrong output)",
-      "status": "OPEN",
+      "status": "DONE",
       "priority": "P3",
-      "notes": ""
+      "notes": "fixed 2026-07-21, closeout C4: durable compiled-model snapshot + refuse-don't-degrade; it also exited **0**, the \"safe to proceed\" gate signal"
     },
     {
       "id": "LNCH-1-B9",
@@ -35,6 +35,14 @@
       "status": "OPEN",
       "priority": "P4",
       "notes": "— WONTFIX for v1"
+    },
+    {
+      "id": "GATE-OBS-1",
+      "title": "RuntimeHost gate's sole remaining red check is runtime-surface-reports-current, driven by 6 named sub-checks: classification (service-buckets-are-exclusive overlappingServices=18; controller-namespaces-match-convergence-buckets mismatches=12; service-namespaces-match-convergence-buckets mismatches=17) and footprint (controller-namespace-convergence-is-clean 12; service-namespace-convergence-is-clean 17; supported-controller-footprint-stays-minority supported=25 vs excluded=7). This is runtime-surface namespace/bucket convergence drift, not a test failure — :test reports BUILD SUCCESSFUL first. Until it is resolved, run-runtimehost-gate.ps1 always exits 1, which trains everyone to ignore the gate",
+      "category": "Quality-gate evidence drift",
+      "status": "OPEN",
+      "priority": "P3",
+      "notes": "attributed by name + counts 2026-07-21, closeout C7.1"
     },
     {
       "id": "BUG-16",

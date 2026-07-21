@@ -78,12 +78,32 @@ $checks = [System.Collections.Generic.List[object]]::new()
 $proofRoot = Join-Path $workRoot "test-results"
 New-Item -ItemType Directory -Force -Path $proofRoot | Out-Null
 
+# LNCH-1 closeout C8 (2026-07-21). This gate assumed generator test results land in the in-tree
+# NPDevGenerator/generator/build/test-results/test. They do NOT: NPDevGenerator/build.gradle line 24
+# redirects layout.buildDirectory to <Build>/gradle/<rootProject>/<path>, per the build-output policy
+# (docs/BUILD_OUTPUT_LOCATION_POLICY.md). So every Copy-Item of a result XML below has been a SILENT
+# NO-OP -- the "proof" files were never captured. It went unnoticed because the pre-existing planner
+# check keys only on the command's exit code, never on the XML actually being there.
+# Surfaced when C4's new step made XML presence load-bearing. Resolved by looking in both places.
+function Resolve-GeneratorTestResultXml {
+    param([Parameter(Mandatory)][string]$ClassName)
+    $candidates = @(
+        (Join-Path $root "NPDevGenerator/generator/build/test-results/test/TEST-$ClassName.xml"),
+        (Join-Path (Split-Path -Parent (Split-Path -Parent $root)) "Build/gradle/npdev-generator/generator/test-results/test/TEST-$ClassName.xml"),
+        "D:/WorkSpace/NPDev/Build/gradle/npdev-generator/generator/test-results/test/TEST-$ClassName.xml"
+    )
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+    }
+    return $null
+}
+
 $testResult = Invoke-CommandCapture "stateful-migration-planner-tests" {
     & .\gradlew.bat -p NPDevGenerator :generator:test --tests "*StatefulMigrationPlannerTest" --rerun-tasks --no-daemon --console=plain
 }
-$plannerXmlSource = Join-Path $root "NPDevGenerator/generator/build/test-results/test/TEST-com.npdev.generator.migration.StatefulMigrationPlannerTest.xml"
+$plannerXmlSource = Resolve-GeneratorTestResultXml -ClassName "com.npdev.generator.migration.StatefulMigrationPlannerTest"
 $plannerXmlProof = Join-Path $proofRoot "TEST-com.npdev.generator.migration.StatefulMigrationPlannerTest.xml"
-if (Test-Path -LiteralPath $plannerXmlSource -PathType Leaf) {
+if ($plannerXmlSource) {
     Copy-Item -LiteralPath $plannerXmlSource -Destination $plannerXmlProof -Force
 }
 Add-Check $checks "stateful-migration-unit-tests-pass" $testResult.passed $testResult
@@ -103,10 +123,10 @@ Add-Check $checks "stateful-migration-unit-tests-pass" $testResult.passed $testR
 $planIntegrityResult = Invoke-CommandCapture "migration-plan-integrity-tests" {
     & .\gradlew.bat -p NPDevGenerator :generator:test --tests "*GeneratorMainMigrationPlanCliTest" --rerun-tasks --no-daemon --console=plain
 }
-$planIntegrityXmlSource = Join-Path $root "NPDevGenerator/generator/build/test-results/test/TEST-com.npdev.generator.GeneratorMainMigrationPlanCliTest.xml"
+$planIntegrityXmlSource = Resolve-GeneratorTestResultXml -ClassName "com.npdev.generator.GeneratorMainMigrationPlanCliTest"
 $planIntegrityXmlProof = Join-Path $proofRoot "TEST-com.npdev.generator.GeneratorMainMigrationPlanCliTest.xml"
 $planIntegrityXmlPresent = $false
-if (Test-Path -LiteralPath $planIntegrityXmlSource -PathType Leaf) {
+if ($planIntegrityXmlSource) {
     Copy-Item -LiteralPath $planIntegrityXmlSource -Destination $planIntegrityXmlProof -Force
     $planIntegrityXmlPresent = $true
 }

@@ -47,6 +47,24 @@ Format: see `docs/RELEASE_PROCESS.md`. Dates are release-tag dates, not commit d
   changes observable rollback behavior under failure.
 
 ### Changed
+- **LNCH-1 closeout C1 (operator-visible): the whole-schema recreation now requires an itemized
+  acknowledgment token.** Hardening X4.4 established that destroying *one* table's data needs a
+  token; the whole-schema recreation destroys *every* table's data and was still reachable on the
+  deprecated blanket `destructiveAllowed` flag alone — the most destructive operation in the system
+  had the weakest authorization requirement. On a blanket-posture app, a boot whose delta report
+  cannot be executed item by item (any `UNKNOWN` item) now **refuses** instead of dropping and
+  recreating every table. The refusal names the unexplainable item(s), states plainly that
+  proceeding would destroy all data in every table, and prints the token that authorizes it.
+  **The blanket flag now authorizes exactly two things: a surgical `DROP_COLUMN` and a
+  `NARROW_TYPE`.** Dev/CI loops that relied on "recreate everything on boot" should delete the
+  database between runs or use a `freshdb`-style definition — note that `RecreateOnAppStart` is
+  inert and is *not* an escape hatch. See `docs/SCHEMA_EVOLUTION.md`.
+- LNCH-1 closeout C3: `AppGen\apps\simple-user-registry-h2local` now ships the **recommended**
+  `schemaLifecycle` posture (`KeepExistingIfCompatible` + `allowDestructiveRecreate: false`) as a
+  copyable worked example, and the authoring docs no longer pair `allowDestructiveRecreate: false`
+  with the `I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED` confirmation string. Existing definitions are
+  untouched; most still carry the deprecated blanket posture for backward compatibility, which the
+  docs now state explicitly is history rather than a recommendation.
 - LNCH-1 remediation R1: a destructive-acknowledgment token for a dropped concept (`DROP_TABLE`) no
   longer includes the live row count in its hash, so a token copied from `-PlanOnly` now matches the
   executor's boot-time token on the first attempt (previously impossible for a concept drop). Both
@@ -56,6 +74,20 @@ Format: see `docs/RELEASE_PROCESS.md`. Dates are release-tag dates, not commit d
   refuses the boot with the new expected token printed; no data is at risk).
 
 ### Fixed
+- **LNCH-1 closeout C4 (`LNCH-1-B8`): a failed `-Upgrade` no longer degrades the next migration plan
+  into a false "fresh install".** `Build-NpdevApp.ps1` reads the previous compiled model from the
+  output root and then wipes that root; a run that failed after the wipe destroyed the model, so the
+  next `-PlanOnly` reported *"Fresh install — no previous compiled model to diff against"* **and
+  exited 0** — the documented script-friendly "safe to proceed" gate signal — for a database that
+  may need a destructive change. The snapshot is now preserved durably beside the plan echoes (keyed
+  by definition folder, since several shipped definitions deliberately share one `scenario.name`),
+  and a plan requested with no model available but durable evidence of a prior deployment now
+  **refuses** with an actionable message instead of degrading. `GeneratorMain` gained an opt-in
+  `--requirePreviousCompiledModel` so other callers get the same protection.
+- LNCH-1 closeout C7.1: the RuntimeHost gate's `health-indicator-coverage` check no longer fails
+  vacuously. It scraped `NpdevRuntimeModeConfig` for `public <Type> postgresXxx(...)` beans, a
+  naming convention that no longer exists (they are `jdbcXxx`), so it matched zero surfaces and
+  reported a coverage gap that did not exist.
 - **LNCH-1 X1 (critical, operator-visible): a destructive upgrade authorized only by the blanket
   `destructiveAllowed` flag no longer wipes the whole schema.** On any app with
   `allowDestructiveRecreate: true` — the shape of every shipped app definition — a destructive change
