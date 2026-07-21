@@ -1348,33 +1348,28 @@ class SchemaLifecycleExecutorProofMatrixTest {
     }
 
     @Test
-    @DisplayName("Scenario 24b (X-B1 guard): a report containing an UNKNOWN item STILL falls back to "
-            + "the whole-schema recreation -- X1 narrowed that path, it did not delete it")
+    @DisplayName("Scenario 24b (X-B1 guard): a report containing an UNKNOWN item -- here a declared, "
+            + "non-additive, non-required column missing from the live database -- STILL falls back "
+            + "to the whole-schema recreation; X1 narrowed that path, it did not delete it")
     void scenario24b_unknownItemStillTakesTheWholeSchemaWipePath() throws SQLException {
-        // Identical to scenario 24 EXCEPT that 'widgets' is physically missing the platform column
-        // 'version'. 'version' is the one column a real manifest declares but never marks additive
-        // (VERIFIED against SchemaRealizationEmitter#additiveColumnNames -- see
-        // realisticAdditiveColumns), so SchemaDeltaReport itemizes it as UNKNOWN: a column that is
-        // neither live, nor additive-eligible, nor explained by a declared rename.
-        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), "
-                    + "row_version BIGINT, tenant_id VARCHAR(64))");
-            statement.execute("INSERT INTO widgets (id, name) VALUES (1, 'Alpha')");
-            statement.execute("INSERT INTO widgets (id, name) VALUES (2, 'Beta')");
-            statement.execute("CREATE TABLE gadgets (id BIGINT PRIMARY KEY, label VARCHAR(50), "
-                    + "version BIGINT, row_version BIGINT, tenant_id VARCHAR(64))");
-            statement.execute("INSERT INTO gadgets (id, label, version) VALUES (1, 'G1', 0)");
-        }
+        // Identical to scenario 24 EXCEPT that the manifest declares the OPTIONAL bond column
+        // 'owner_ref' and marks it non-additive, while the live 'widgets' table does not have it --
+        // so SchemaDeltaReport itemizes it as UNKNOWN. See UNEXPLAINABLE_COLUMN for why this is the
+        // vehicle, and why the previous one (a physically missing 'version') stopped working at
+        // LNCH-1 T2: 'version' is now additive-eligible and self-heals.
+        seedTwoRealisticConceptsWithData();
         executor.afterMigrate(dataSource, realisticTwoConceptManifest("sha256:old"));
 
-        SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, realisticConceptDropManifest("", true));
+        SchemaDeltaReport report =
+                SchemaDeltaReport.generate(dataSource, realisticConceptDropManifest("sha256:new", "", true, true));
         assertFalse(report.hasOnlyNamedDestructiveKinds(),
                 "precondition: the report must contain an UNKNOWN item for this scenario to mean anything");
         // The report also contains a DROP_TABLE, which since X4.4 requires an itemized token
         // regardless of the blanket flag (scenario 26) -- so this pass supplies one. The token is not
         // what selects the execution path; the UNKNOWN item is.
         String token = DestructiveAckToken.compute("sha256:new", report.stableStrings());
-        SchemaLifecycleExecutor.SchemaManifest authorized = realisticConceptDropManifest(token, true);
+        SchemaLifecycleExecutor.SchemaManifest authorized =
+                realisticConceptDropManifest("sha256:new", token, true, true);
 
         SchemaLifecycleExecutor.DestructiveRecreation result =
                 executor.beforeMigrate(dataSource, authorized);
@@ -1397,17 +1392,12 @@ class SchemaLifecycleExecutorProofMatrixTest {
             + "token-authorized boot can still clean it up -- ownership is not silently forgotten")
     void scenario25_orphanSurvivingAPassStaysOwnedAndIsDroppableLater() throws SQLException {
         // ---- boot v1: both concepts exist and are recorded as owned -------------------------------
-        // 'widgets' deliberately lacks the platform column 'version', which is the one column a real
-        // manifest declares but never marks additive -- that is what makes v2's report UNKNOWN and
-        // sends it down the whole-schema path (see scenario 24b).
-        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), "
-                    + "row_version BIGINT, tenant_id VARCHAR(64))");
-            statement.execute("INSERT INTO widgets (id, name) VALUES (1, 'Alpha')");
-            statement.execute("CREATE TABLE gadgets (id BIGINT PRIMARY KEY, label VARCHAR(50), "
-                    + "version BIGINT, row_version BIGINT, tenant_id VARCHAR(64))");
-            statement.execute("INSERT INTO gadgets (id, label, version) VALUES (1, 'G1', 0)");
-        }
+        // v2's manifest declares the OPTIONAL bond column 'owner_ref' and marks it non-additive,
+        // while the live 'widgets' has no such column -- that is what makes v2's report UNKNOWN and
+        // sends it down the whole-schema path (see scenario 24b and UNEXPLAINABLE_COLUMN). Before
+        // LNCH-1 T2 this scenario used a physically missing 'version' instead; T2 made that column
+        // additive-eligible, so it self-heals and no longer produces an UNKNOWN.
+        seedTwoRealisticConceptsWithData();
         executor.afterMigrate(dataSource, realisticTwoConceptManifest("sha256:v1"));
         assertEquals(Set.of("widgets", "gadgets"), SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource));
 
@@ -1415,9 +1405,12 @@ class SchemaLifecycleExecutorProofMatrixTest {
         // The DROP_TABLE needs an itemized token since X4.4 (see scenario 26); the UNKNOWN item is
         // what routes this pass to the whole-schema path, not the authorization source.
         SchemaDeltaReport v2Report =
-                SchemaDeltaReport.generate(dataSource, realisticConceptDropManifest("sha256:v2", "", true));
+                SchemaDeltaReport.generate(dataSource, realisticConceptDropManifest("sha256:v2", "", true, true));
+        assertFalse(v2Report.hasOnlyNamedDestructiveKinds(),
+                "precondition: v2's report must contain an UNKNOWN item, or this scenario is not "
+                        + "exercising the whole-schema path at all: " + v2Report.stableStrings());
         SchemaLifecycleExecutor.SchemaManifest v2 = realisticConceptDropManifest(
-                "sha256:v2", DestructiveAckToken.compute("sha256:v2", v2Report.stableStrings()), true);
+                "sha256:v2", DestructiveAckToken.compute("sha256:v2", v2Report.stableStrings()), true, true);
         executor.beforeMigrate(dataSource, v2);
         try (Connection connection = dataSource.getConnection()) {
             // The whole-schema path drops the manifest-listed 'widgets'; the orphan 'gadgets' is NOT
@@ -1539,27 +1532,20 @@ class SchemaLifecycleExecutorProofMatrixTest {
             + "on a blanket-posture app -- the whole-schema recreation destroys EVERY table's data, "
             + "so it requires an itemized token exactly like a concept drop does")
     void scenario27_wholeSchemaRecreationIsNotAuthorizedByTheBlanketFlagAlone() throws SQLException {
-        // The distinguishing fixture: 'widgets' is physically missing the platform column 'version'
-        // (the one column a real manifest declares but never marks additive -- see
-        // realisticAdditiveColumns), so the report carries an UNKNOWN item. Unlike scenario 24b, the
+        // The distinguishing fixture: the new manifest declares the OPTIONAL bond column 'owner_ref'
+        // and marks it non-additive, while the live 'widgets' has no such column -- so the report
+        // carries an UNKNOWN item (see UNEXPLAINABLE_COLUMN; before LNCH-1 T2 this was a physically
+        // missing 'version', which is now additive-eligible and self-heals). Unlike scenario 24b, the
         // new manifest still declares BOTH concepts, so there is NO DropTable to trip X4.4's gate.
         // Before C1 that combination -- blanket posture, no token -- wiped every table in the app.
-        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), "
-                    + "row_version BIGINT, tenant_id VARCHAR(64))");
-            statement.execute("INSERT INTO widgets (id, name) VALUES (1, 'Alpha')");
-            statement.execute("INSERT INTO widgets (id, name) VALUES (2, 'Beta')");
-            statement.execute("CREATE TABLE gadgets (id BIGINT PRIMARY KEY, label VARCHAR(50), "
-                    + "version BIGINT, row_version BIGINT, tenant_id VARCHAR(64))");
-            statement.execute("INSERT INTO gadgets (id, label, version) VALUES (1, 'G1', 0)");
-            statement.execute("INSERT INTO gadgets (id, label, version) VALUES (2, 'G2', 0)");
-        }
+        seedTwoRealisticConceptsWithData();
         // Fingerprint + ownership through the PRODUCTION writer, never hand-inserted JSON.
         executor.afterMigrate(dataSource, realisticTwoConceptManifest("sha256:old"));
         assertEquals(Set.of("widgets", "gadgets"), SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource),
                 "precondition: the previous boot must have recorded BOTH tables as NPDev-owned");
 
-        SchemaLifecycleExecutor.SchemaManifest blanketOnly = realisticTwoConceptManifest("sha256:new");
+        SchemaLifecycleExecutor.SchemaManifest blanketOnly =
+                realisticTwoConceptManifest("sha256:new", "", true);
         SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, blanketOnly);
         assertFalse(report.hasOnlyNamedDestructiveKinds(),
                 "precondition: the report must contain an UNKNOWN item for this scenario to mean anything");
@@ -1602,7 +1588,7 @@ class SchemaLifecycleExecutorProofMatrixTest {
         // The SAME change, with the itemized token, proceeds -- proving C1 gates on the TOKEN, not on
         // the item kind, and that it narrowed authorization without deleting the whole-schema path.
         SchemaLifecycleExecutor.SchemaManifest authorized =
-                realisticTwoConceptManifest("sha256:new", expectedToken);
+                realisticTwoConceptManifest("sha256:new", expectedToken, true);
         SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, authorized);
 
         assertTrue(result.performed(), "with the token supplied, the whole-schema recreation executes");
@@ -1891,14 +1877,71 @@ class SchemaLifecycleExecutorProofMatrixTest {
      * concepts. */
     private static SchemaLifecycleExecutor.SchemaManifest realisticTwoConceptManifest(
             String fingerprint, String token) {
+        return realisticTwoConceptManifest(fingerprint, token, false);
+    }
+
+    /**
+     * @param withUnexplainableColumn when true, 'widgets' additionally declares the OPTIONAL bond
+     *        column {@code owner_ref} and marks it NON-additive, which is what makes a report
+     *        containing it an UNKNOWN. See {@link #UNEXPLAINABLE_COLUMN}'s note for why this is the
+     *        correct vehicle since LNCH-1 T2, and why the previous one ('version' physically absent)
+     *        no longer works.
+     */
+    private static SchemaLifecycleExecutor.SchemaManifest realisticTwoConceptManifest(
+            String fingerprint, String token, boolean withUnexplainableColumn) {
         Map<String, List<String>> columns = Map.of(
-                "widgets", List.of("id", "name", "version", "row_version", "tenant_id"),
+                "widgets", widgetsColumns(withUnexplainableColumn),
                 "gadgets", List.of("id", "label", "version", "row_version", "tenant_id"));
         return manifest(
                 fingerprint, List.of("widgets", "gadgets"), columns,
-                realisticAdditiveColumns(columns, Map.of()),
-                Map.of("widgets", WIDGETS_TYPES, "gadgets", GADGETS_TYPES),
+                realisticAdditiveColumns(columns, nonAdditiveWidgetColumns(withUnexplainableColumn)),
+                Map.of("widgets", widgetsTypes(withUnexplainableColumn), "gadgets", GADGETS_TYPES),
                 Map.of(), Map.of(), true, token, Map.of(), Map.of(), Map.of(), Map.of(), true);
+    }
+
+    /**
+     * The vehicle scenarios 24b, 25 and 27 use to manufacture an UNKNOWN delta item, since LNCH-1 T2.
+     *
+     * <p><b>Why not the old vehicle.</b> Those scenarios previously created 'widgets' without the
+     * platform column {@code version}: before T2 that column was declared by the manifest but never
+     * additive-eligible, so it could never be added back and the runtime itemized it as UNKNOWN. T2
+     * made {@code version} additive precisely so that stops happening, which would have left all
+     * three scenarios silently testing nothing.
+     *
+     * <p><b>Why this vehicle.</b> {@code SchemaDeltaReport} emits an {@code Unknown} in exactly one
+     * non-error case: a manifest-declared column that is missing live, NOT additive-eligible, and not
+     * explained by a declared rename. {@code SchemaLifecycleExecutor#refuseIfRequiredBondColumnMissing}
+     * intercepts that case with its own dedicated refusal BEFORE the report runs -- but only for
+     * columns listed in {@code businessTableRequiredColumns}. So the vehicle must be declared,
+     * non-additive, and NOT required: an OPTIONAL bond column, which is what this is.
+     *
+     * <p><b>Honest scope note.</b> After T2 this shape is largely synthetic: in a real generated
+     * manifest every non-additive column is a required bond (intercepted above) or a many-to-many
+     * bond (which has no scalar column and never appears in {@code fullColumnNames}). These scenarios
+     * therefore prove the executor's CONTRACT for an UNKNOWN -- refuse without a token, wipe with one
+     * -- rather than a diff a current generator would produce. Each asserts
+     * {@code hasOnlyNamedDestructiveKinds() == false} as an explicit precondition, so if this vehicle
+     * ever stops producing an UNKNOWN the scenarios fail loudly instead of hollowing out.
+     */
+    private static final String UNEXPLAINABLE_COLUMN = "owner_ref";
+
+    private static List<String> widgetsColumns(boolean withUnexplainableColumn) {
+        return withUnexplainableColumn
+                ? List.of("id", "name", "version", "row_version", "tenant_id", UNEXPLAINABLE_COLUMN)
+                : List.of("id", "name", "version", "row_version", "tenant_id");
+    }
+
+    private static Map<String, List<String>> nonAdditiveWidgetColumns(boolean withUnexplainableColumn) {
+        return withUnexplainableColumn ? Map.of("widgets", List.of(UNEXPLAINABLE_COLUMN)) : Map.of();
+    }
+
+    private static Map<String, String> widgetsTypes(boolean withUnexplainableColumn) {
+        if (!withUnexplainableColumn) {
+            return WIDGETS_TYPES;
+        }
+        Map<String, String> types = new java.util.LinkedHashMap<>(WIDGETS_TYPES);
+        types.put(UNEXPLAINABLE_COLUMN, "BIGINT");
+        return types;
     }
 
     /** The v2 manifest: the 'gadgets' concept has been dropped from the model. */
@@ -1909,12 +1952,17 @@ class SchemaLifecycleExecutorProofMatrixTest {
 
     private static SchemaLifecycleExecutor.SchemaManifest realisticConceptDropManifest(
             String fingerprint, String token, boolean blanketAllowed) {
-        Map<String, List<String>> columns = Map.of(
-                "widgets", List.of("id", "name", "version", "row_version", "tenant_id"));
+        return realisticConceptDropManifest(fingerprint, token, blanketAllowed, false);
+    }
+
+    /** @param withUnexplainableColumn see {@link #realisticTwoConceptManifest(String, String, boolean)} */
+    private static SchemaLifecycleExecutor.SchemaManifest realisticConceptDropManifest(
+            String fingerprint, String token, boolean blanketAllowed, boolean withUnexplainableColumn) {
+        Map<String, List<String>> columns = Map.of("widgets", widgetsColumns(withUnexplainableColumn));
         return manifest(
                 fingerprint, List.of("widgets"), columns,
-                realisticAdditiveColumns(columns, Map.of()),
-                Map.of("widgets", WIDGETS_TYPES),
+                realisticAdditiveColumns(columns, nonAdditiveWidgetColumns(withUnexplainableColumn)),
+                Map.of("widgets", widgetsTypes(withUnexplainableColumn)),
                 Map.of(), Map.of(), blanketAllowed, token, Map.of(), Map.of(), Map.of(), Map.of(), true);
     }
 
@@ -2156,11 +2204,18 @@ class SchemaLifecycleExecutorProofMatrixTest {
      * {@code #isAdditiveEligible} at commit {@code 98e8410} -- note this differs from the first draft
      * of the hardening plan's §3.2 helper in two ways that matter:
      * <ul>
-     *   <li>production seeds the additive list with {@code tenant_id} and {@code row_version}
-     *       unconditionally, so those ARE additive-eligible (the draft excluded only {@code id});</li>
-     *   <li>{@code version} is a platform column appended by {@code fullColumnNames} but never added
-     *       to the additive list, so it is NOT additive-eligible (the draft missed it entirely).</li>
+     *   <li>production seeds the additive list with {@code tenant_id}, {@code row_version} and --
+     *       since LNCH-1 T2 (finding T-B2) -- {@code version} unconditionally, so all three ARE
+     *       additive-eligible (the draft excluded only {@code id});</li>
+     *   <li>{@code id} is the only platform column that is never additive: it is the primary key,
+     *       present by construction on any table that exists at all.</li>
      * </ul>
+     *
+     * <p><b>Before T2</b>, {@code version} was declared by {@code fullColumnNames} but absent from
+     * {@code additiveColumnNames}, which is what made "a table missing {@code version}" the canonical
+     * way to manufacture an UNKNOWN item in this suite. It is no longer un-addable, so scenarios that
+     * need an UNKNOWN construct one from a declared, non-additive, non-required column instead --
+     * see {@code realisticTwoConceptManifest}'s {@code withUnexplainableColumn} flag.
      * A bond/FK column is additive-eligible unless it is required or many-to-many
      * ({@code isAdditiveEligible}); pass those in {@code nonAdditiveBondColumnsByTable}.
      *
@@ -2175,7 +2230,6 @@ class SchemaLifecycleExecutorProofMatrixTest {
             List<String> bonds = nonAdditiveBondColumnsByTable.getOrDefault(entry.getKey(), List.of());
             additive.put(entry.getKey(), entry.getValue().stream()
                     .filter(column -> !"id".equalsIgnoreCase(column))
-                    .filter(column -> !"version".equalsIgnoreCase(column))
                     .filter(column -> !bonds.contains(column))
                     .toList());
         }

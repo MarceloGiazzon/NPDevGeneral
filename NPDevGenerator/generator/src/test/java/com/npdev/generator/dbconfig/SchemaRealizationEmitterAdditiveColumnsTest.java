@@ -97,6 +97,71 @@ final class SchemaRealizationEmitterAdditiveColumnsTest {
         assertFalse(containsText(orderRequired, customerIdColumn));
     }
 
+    /**
+     * LNCH-1 T2 (finding T-B2). The DDL half of the runtime proof in
+     * {@code SchemaLifecycleExecutorProofMatrixTest} scenario 29: that scenario proves a table
+     * missing {@code version} no longer yields an UNKNOWN, but it drives the executor directly and
+     * has no Flyway, so the {@code ADD COLUMN} that physically restores the column is pinned here,
+     * where it is actually emitted.
+     *
+     * <p>Before T2, {@code version} was declared by {@code fullColumnNames} but absent from
+     * {@code additiveColumnNames} and from the additive script -- the one platform column no
+     * migration could ever add back. A table missing it therefore produced an UNKNOWN delta item,
+     * and since LNCH-1 closeout C1 an UNKNOWN refuses the boot unless an itemized token authorizing
+     * a whole-schema wipe is supplied. That made a missing {@code version} the most likely
+     * real-world trigger of a total data loss event.
+     */
+    @Test
+    void allThreePlatformColumnsAreAdditiveSoAMissingOneSelfHeals() throws Exception {
+        CompiledConcept order = new CompiledConcept(
+                "Order", "Order", "orders",
+                List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("name", "string", "String", false, true, false)
+                )
+        );
+        CompiledModel model = new CompiledModel("test", "1.0.0", "1.0.0", Map.of(order.getName(), order));
+
+        Path outRoot = tempDir.resolve("app");
+        new SchemaRealizationEmitter().emit(model, outRoot, plan(), tempDir.resolve("model.json"));
+
+        String additiveSql = Files.readString(outRoot.resolve(
+                "src/main/resources/db/schema-realization/R__npdev_schema_additive_columns.sql"));
+
+        // All three platform columns with a fixed default must be re-addable. 'version' is the one
+        // this test exists for; the other two are asserted alongside it so a future edit cannot drop
+        // one of them silently.
+        for (String platformColumn : List.of("version", "row_version", "tenant_id")) {
+            assertTrue(additiveSql.contains("ALTER TABLE orders ADD COLUMN IF NOT EXISTS " + platformColumn + " "),
+                    "platform column '" + platformColumn + "' must be re-addable to an existing table, "
+                            + "or a table missing it can only be recovered by a token-gated whole-schema "
+                            + "wipe: " + additiveSql);
+        }
+        // 'version' carries the same type and default as row_version -- which is precisely why making
+        // it additive is safe (see SchemaRealizationEmitter#appendAdditiveColumns).
+        assertTrue(additiveSql.contains("ADD COLUMN IF NOT EXISTS version BIGINT DEFAULT 0"), additiveSql);
+
+        // NOTE on 'id', established while writing this test rather than assumed: this concept DECLARES
+        // an id field, and a declared id is an ordinary field like any other -- isAdditiveEligible
+        // returns true for it, so the emitter does emit an ADD COLUMN for it. It is only the
+        // platform-INJECTED id (added by fullColumnNames when a concept declares no id of its own)
+        // that never reaches the additive list. That distinction is pinned by
+        // AdditiveColumnMirrorContractTest, which uses a concept with no declared id; asserting it
+        // here would assert the opposite of what this fixture actually produces.
+
+        // The manifest must agree with the script -- this pair is what the runtime reads to decide
+        // whether a missing column is explainable.
+        JsonNode manifest = new ObjectMapper().readTree(
+                outRoot.resolve("src/main/resources/npdev/db/schema-realization-manifest.json").toFile());
+        JsonNode additive = manifest.path("businessTableAdditiveColumns").path("orders");
+        for (String platformColumn : List.of("version", "row_version", "tenant_id")) {
+            assertTrue(containsText(additive, platformColumn),
+                    "manifest additive set must list '" + platformColumn + "': " + additive);
+        }
+        assertTrue(containsText(manifest.path("businessTableColumns").path("orders"), "version"),
+                "the full column set must still declare 'version'");
+    }
+
     private static boolean containsText(JsonNode array, String value) {
         if (array == null || !array.isArray()) {
             return false;

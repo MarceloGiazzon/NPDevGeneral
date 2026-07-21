@@ -208,6 +208,21 @@ public final class SchemaRealizationEmitter {
         // migration step needed.
         sql.append("ALTER TABLE ").append(table).append(" ADD COLUMN IF NOT EXISTS row_version ")
                 .append(renderType("BIGINT", engine)).append(" DEFAULT 0;\n");
+        // LNCH-1 T2 (finding T-B2): 'version' is added here for exactly the same reason, and with
+        // exactly the same type and default, as row_version above. Before this it was the one column
+        // fullColumnNames DECLARED but additiveColumnNames never marked additive, so no migration
+        // could ever add it to an existing table: a table missing it produced an UNKNOWN delta item,
+        // and since closeout C1 an UNKNOWN REFUSES the boot unless an itemized token authorizing a
+        // whole-schema wipe is supplied. A missing platform column now self-heals instead.
+        sql.append("ALTER TABLE ").append(table).append(" ADD COLUMN IF NOT EXISTS version ")
+                .append(renderType("BIGINT", engine)).append(" DEFAULT 0;\n");
+        // DELIBERATE ASYMMETRY (LNCH-1 T2, do not "fix" by adding NOT NULL here): the three platform
+        // columns above are emitted with a DEFAULT but WITHOUT NOT NULL, while appendBusinessTable's
+        // fresh CREATE TABLE emits them NOT NULL DEFAULT. Adding NOT NULL to an ADD COLUMN against a
+        // table that already has rows is engine-dependent and fragile (the constraint is evaluated
+        // before the default is applied on some engines). The two shapes CONVERGE instead:
+        // SchemaLifecycleExecutor#tightenPlatformColumns (LNCH-1 T1, finding T-B1) runs on the
+        // following boot, backfills any NULLs to these same defaults, and restores NOT NULL.
         for (CompiledField field : concept.getFields()) {
             if (!isAdditiveEligible(concept, field, conceptsByName)) {
                 continue;
@@ -662,6 +677,13 @@ public final class SchemaRealizationEmitter {
         List<String> columns = new ArrayList<>();
         columns.add("tenant_id");
         columns.add("row_version");
+        // LNCH-1 T2 (finding T-B2). Must stay in lockstep with appendAdditiveColumns, which emits an
+        // ADD COLUMN IF NOT EXISTS for each of these three. 'version' was previously declared by
+        // fullColumnNames but absent here, which made a table missing it un-healable: the runtime
+        // itemized it as an UNKNOWN, and an UNKNOWN can only be cleared by a token-gated
+        // whole-schema wipe. 'id' is deliberately NOT additive -- it is the primary key, present by
+        // construction on any table that exists at all.
+        columns.add("version");
         for (CompiledField field : concept.getFields()) {
             if (isAdditiveEligible(concept, field, conceptsByName)) {
                 columns.add(SqlIdentifierSupport.columnName(field));

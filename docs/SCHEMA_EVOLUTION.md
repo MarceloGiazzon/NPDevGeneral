@@ -327,6 +327,32 @@ narrowings; anything that destroys a whole table's worth of data requires the it
   requires the itemized token too — the blanket flag alone is **refused**, and the refusal prints
   the UNKNOWN item(s) and the token that would authorize the pass.
 
+### The whole-schema recreation is a safety net, not a path you can reach normally
+
+**A model change made through the normal authoring flow cannot produce an `UNKNOWN` item.** A missing
+column is itemized as `UNKNOWN` only when it is declared by the manifest, not additive-eligible, and
+not explained by a declared rename. In a manifest emitted by the current generator, every such column
+is either a **required bond** — which is intercepted earlier by its own dedicated refusal naming the
+field — or a **many-to-many bond**, which has no column at all. The one remaining exception used to
+be the platform column `version`; it is now additive-eligible and self-heals.
+
+**The path is deliberately kept anyway.** It exists for states the generator cannot emit but that do
+occur in the field:
+
+- a schema modified **by hand** outside NPDev (a column dropped or renamed directly in the database);
+- an app still running a **build older than this behaviour**, whose manifest declares `version` as
+  non-additive;
+- a **future change to the generator** that introduces a new kind of non-additive column.
+
+The last is the important one: "no current model change reaches this" is a property of today's
+generator, not a guarantee of the design. So the path stays, and stays behind the itemized token —
+it destroys every table's data, and the cost of keeping an unreachable guard is nothing next to the
+cost of removing one that later becomes reachable.
+
+**Practical consequence for operators:** if a boot ever refuses with an `UNKNOWN` item, treat it as a
+signal that the database has diverged from what NPDev generated — not as a routine upgrade prompt.
+Investigate the named column before supplying the token, because supplying it destroys every table.
+
 **If you relied on "just recreate everything on boot" in dev/CI**, that behaviour is gone on a
 blanket-only app. Use one of these instead, in order of preference:
 
@@ -393,8 +419,11 @@ catch:
 | A **required bond/FK column** is missing | **Yes** | Trigger A |
 | A newer build **purely dropped a column** (nothing left behind) | **No** | see below |
 
-- **Trigger A — a missing column that is not additive-eligible.** Catches `id`, `version`, and
-  required/many-to-many bond columns: things nothing re-adds automatically.
+- **Trigger A — a missing column that is not additive-eligible.** Catches required and
+  many-to-many bond columns: things nothing re-adds automatically. It no longer catches `version` —
+  that column is additive-eligible and self-heals, along with `row_version` and `tenant_id` (see
+  [Platform-managed columns](#platform-managed-columns)). `id` is the primary key and is present by
+  construction on any table that exists at all.
 - **Trigger B — a missing column on a table that also carries an *unexplained extra* live column.**
   An unexplained extra is a live column this build's manifest does not declare, that is not a
   platform column (`id`, `version`, `row_version`, `tenant_id`), and is not the old side of a
@@ -444,6 +473,10 @@ Three properties follow, and the platform enforces all of them:
   relaxes *that* column's `NOT NULL` — never a platform column's. This is unambiguous because a model
   field can never be *named* `version`, `row_version` or `tenant_id`: the generator rejects it at
   generation time, so a live column with one of those names is always platform-owned.
+- **A missing one is added back.** `version`, `row_version` and `tenant_id` are additive-eligible: if
+  an existing table lacks one, the ordinary additive migration adds it with the default above. A
+  missing platform column is never treated as an unexplainable difference, and therefore never
+  requires a destructive acknowledgment.
 - **A loosened one is repaired.** If an earlier build left one nullable, the next boot backfills any
   `NULL`s to the default above and restores `NOT NULL`, recording a `TIGHTEN_PLATFORM_COLUMNS` row in
   `npdev_schema_history` so the repair is auditable.

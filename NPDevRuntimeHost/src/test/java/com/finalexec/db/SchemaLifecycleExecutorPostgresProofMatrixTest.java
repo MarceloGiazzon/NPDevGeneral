@@ -607,7 +607,7 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
     void postgresScenario24_conceptDropDoesNotWipeUnrelatedTables() throws SQLException {
         String widgets = table("widgets");
         String gadgets = table("gadgets");
-        seedTwoRealisticConcepts(widgets, gadgets, true);
+        seedTwoRealisticConcepts(widgets, gadgets);
         executor.afterMigrate(dataSource, twoConceptManifest("sha256:old", widgets, gadgets));
         assertEquals(java.util.Set.of(widgets, gadgets),
                 SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource),
@@ -633,23 +633,26 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
     }
 
     @Test
-    @DisplayName("Postgres scenario 24b (X-B1 guard): an UNKNOWN item still forces the whole-schema "
+    @DisplayName("Postgres scenario 24b (X-B1 guard): an UNKNOWN item -- a declared, non-additive, "
+            + "non-required column missing from the live database -- still forces the whole-schema "
             + "recreation")
     void postgresScenario24b_unknownItemStillWipes() throws SQLException {
         String widgets = table("widgets");
         String gadgets = table("gadgets");
-        // 'version' is declared by every real manifest but never additive-eligible, so omitting it
-        // physically produces an UNKNOWN item (see the H2 twin).
-        seedTwoRealisticConcepts(widgets, gadgets, false);
+        // The manifest declares the optional bond column 'owner_ref' and marks it non-additive while
+        // the live table lacks it, which produces the UNKNOWN item (see UNEXPLAINABLE_COLUMN and the
+        // H2 twin). Before LNCH-1 T2 this was a physically missing 'version'; that column is now
+        // additive-eligible and self-heals.
+        seedTwoRealisticConcepts(widgets, gadgets);
         executor.afterMigrate(dataSource, twoConceptManifest("sha256:old", widgets, gadgets));
 
-        SchemaDeltaReport report =
-                SchemaDeltaReport.generate(dataSource, conceptDropManifest("sha256:new", widgets, "", true));
+        SchemaDeltaReport report = SchemaDeltaReport.generate(
+                dataSource, conceptDropManifest("sha256:new", widgets, "", true, true));
         assertFalse(report.hasOnlyNamedDestructiveKinds(),
                 "precondition: the report must contain an UNKNOWN item");
         String token = DestructiveAckToken.compute("sha256:new", report.stableStrings());
 
-        executor.beforeMigrate(dataSource, conceptDropManifest("sha256:new", widgets, token, true));
+        executor.beforeMigrate(dataSource, conceptDropManifest("sha256:new", widgets, token, true, true));
         try (Connection connection = dataSource.getConnection()) {
             assertFalse(hasTable(connection.getMetaData(), widgets),
                     "an UNKNOWN item must still force the whole-schema recreation");
@@ -663,15 +666,15 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
     void postgresScenario27_wholeSchemaRecreationRequiresAToken() throws SQLException {
         String widgets = table("widgets");
         String gadgets = table("gadgets");
-        // Same construction as scenario 24b -- 'widgets' physically lacks the never-additive
-        // platform column 'version', so the report carries an UNKNOWN item -- EXCEPT that the new
-        // manifest still declares BOTH concepts, so there is no DropTable to trip X4.4's gate.
-        // Mirrors the H2 twin's scenario 27; see it for the full rationale.
-        seedTwoRealisticConcepts(widgets, gadgets, false);
+        // Same construction as scenario 24b -- the manifest declares the non-additive, non-required
+        // 'owner_ref' which the live table lacks, so the report carries an UNKNOWN item -- EXCEPT
+        // that the new manifest still declares BOTH concepts, so there is no DropTable to trip
+        // X4.4's gate. Mirrors the H2 twin's scenario 27; see it for the full rationale.
+        seedTwoRealisticConcepts(widgets, gadgets);
         executor.afterMigrate(dataSource, twoConceptManifest("sha256:old", widgets, gadgets));
 
         SchemaLifecycleExecutor.SchemaManifest blanketOnly =
-                twoConceptManifest("sha256:new", widgets, gadgets);
+                twoConceptManifest("sha256:new", widgets, gadgets, "", true);
         SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, blanketOnly);
         assertFalse(report.hasOnlyNamedDestructiveKinds(),
                 "precondition: the report must contain an UNKNOWN item");
@@ -698,8 +701,11 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
         }
 
         // The SAME change WITH the token proceeds -- C1 gates on the token, not the item kind.
+        // NOTE the trailing `true`: the authorizing manifest must carry the SAME unexplainable column
+        // as the refused one, or there is no UNKNOWN item, nothing routes to the whole-schema path,
+        // and this assertion fails for a reason that has nothing to do with the token.
         SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(
-                dataSource, twoConceptManifest("sha256:new", widgets, gadgets, expectedToken));
+                dataSource, twoConceptManifest("sha256:new", widgets, gadgets, expectedToken, true));
         assertTrue(result.performed(), "with the token supplied, the whole-schema recreation executes");
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
@@ -714,13 +720,19 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
     void postgresScenario25_survivingOrphanStaysOwned() throws SQLException {
         String widgets = table("widgets");
         String gadgets = table("gadgets");
-        seedTwoRealisticConcepts(widgets, gadgets, false);
+        seedTwoRealisticConcepts(widgets, gadgets);
         executor.afterMigrate(dataSource, twoConceptManifest("sha256:v1", widgets, gadgets));
 
-        SchemaDeltaReport v2Report =
-                SchemaDeltaReport.generate(dataSource, conceptDropManifest("sha256:v2", widgets, "", true));
+        // v2's UNKNOWN comes from the declared, non-additive, non-required 'owner_ref' the live table
+        // lacks (see UNEXPLAINABLE_COLUMN). Before LNCH-1 T2 it came from a physically missing
+        // 'version', which is now additive-eligible and self-heals.
+        SchemaDeltaReport v2Report = SchemaDeltaReport.generate(
+                dataSource, conceptDropManifest("sha256:v2", widgets, "", true, true));
+        assertFalse(v2Report.hasOnlyNamedDestructiveKinds(),
+                "precondition: v2's report must contain an UNKNOWN item, or this scenario is not "
+                        + "exercising the whole-schema path at all: " + v2Report.stableStrings());
         String v2Token = DestructiveAckToken.compute("sha256:v2", v2Report.stableStrings());
-        executor.beforeMigrate(dataSource, conceptDropManifest("sha256:v2", widgets, v2Token, true));
+        executor.beforeMigrate(dataSource, conceptDropManifest("sha256:v2", widgets, v2Token, true, true));
 
         try (Connection connection = dataSource.getConnection()) {
             assertTrue(hasTable(connection.getMetaData(), gadgets),
@@ -731,7 +743,7 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
                         + "version BIGINT, row_version BIGINT, tenant_id VARCHAR(64))");
             }
         }
-        executor.afterMigrate(dataSource, conceptDropManifest("sha256:v2", widgets, v2Token, true));
+        executor.afterMigrate(dataSource, conceptDropManifest("sha256:v2", widgets, v2Token, true, true));
 
         assertEquals(java.util.Set.of(widgets, gadgets),
                 SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource),
@@ -755,7 +767,7 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
         String widgets = table("widgets");
         String gadgets = table("gadgets");
         String scratch = table("scratch_notes");
-        seedTwoRealisticConcepts(widgets, gadgets, true);
+        seedTwoRealisticConcepts(widgets, gadgets);
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE " + scratch + " (id BIGINT PRIMARY KEY, note VARCHAR(50))");
             statement.execute("INSERT INTO " + scratch + " (id, note) VALUES (1, 'operator owned')");
@@ -782,7 +794,7 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
     void postgresScenario26_blanketFlagCannotAuthorizeAConceptDrop() throws SQLException {
         String widgets = table("widgets");
         String gadgets = table("gadgets");
-        seedTwoRealisticConcepts(widgets, gadgets, true);
+        seedTwoRealisticConcepts(widgets, gadgets);
         executor.afterMigrate(dataSource, twoConceptManifest("sha256:old", widgets, gadgets));
 
         IllegalStateException refusal = assertThrows(IllegalStateException.class,
@@ -1025,20 +1037,25 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
             List<String> bonds = nonAdditiveBondColumnsByTable.getOrDefault(entry.getKey(), List.of());
             additive.put(entry.getKey(), entry.getValue().stream()
                     .filter(column -> !"id".equalsIgnoreCase(column))
-                    .filter(column -> !"version".equalsIgnoreCase(column))
                     .filter(column -> !bonds.contains(column))
                     .toList());
         }
         return additive;
     }
 
-    /** @param withVersionColumn when false, 'widgets' physically lacks the non-additive 'version'
-     *                           column, which is what makes a later report contain an UNKNOWN item. */
-    private void seedTwoRealisticConcepts(String widgets, String gadgets, boolean withVersionColumn)
-            throws SQLException {
+    /**
+     * Both concepts with the full platform column set.
+     *
+     * <p>The old {@code withVersionColumn=false} variant is gone: omitting {@code version} was how
+     * scenarios 24b, 25 and 27 manufactured an UNKNOWN item, and LNCH-1 T2 (finding T-B2) made
+     * {@code version} additive-eligible, so a missing one now self-heals rather than being
+     * unexplainable. Those scenarios build their UNKNOWN from a declared, non-additive, non-required
+     * column instead -- see {@link #UNEXPLAINABLE_COLUMN} and the H2 twin.
+     */
+    private void seedTwoRealisticConcepts(String widgets, String gadgets) throws SQLException {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE " + widgets + " (id BIGINT PRIMARY KEY, name VARCHAR(50), "
-                    + (withVersionColumn ? "version BIGINT, " : "") + "row_version BIGINT, tenant_id VARCHAR(64))");
+                    + "version BIGINT, row_version BIGINT, tenant_id VARCHAR(64))");
             statement.execute("INSERT INTO " + widgets + " (id, name) VALUES (1, 'Alpha')");
             statement.execute("INSERT INTO " + widgets + " (id, name) VALUES (2, 'Beta')");
             statement.execute("CREATE TABLE " + gadgets + " (id BIGINT PRIMARY KEY, label VARCHAR(50), "
@@ -1053,6 +1070,34 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
                 "row_version", "BIGINT", "tenant_id", "VARCHAR(64)");
     }
 
+    /**
+     * The vehicle Postgres scenarios 24b, 25 and 27 use to manufacture an UNKNOWN delta item since
+     * LNCH-1 T2 -- a declared, NON-additive, NON-required (optional bond) column that the live table
+     * does not have. See the H2 twin's {@code UNEXPLAINABLE_COLUMN} javadoc for the full rationale,
+     * including why a physically missing {@code version} no longer works and why the vehicle must not
+     * be a REQUIRED bond (which {@code refuseIfRequiredBondColumnMissing} intercepts first).
+     */
+    private static final String UNEXPLAINABLE_COLUMN = "owner_ref";
+
+    private static List<String> widgetsColumns(boolean withUnexplainableColumn) {
+        return withUnexplainableColumn
+                ? List.of("id", "name", "version", "row_version", "tenant_id", UNEXPLAINABLE_COLUMN)
+                : List.of("id", "name", "version", "row_version", "tenant_id");
+    }
+
+    private static Map<String, List<String>> nonAdditiveWidgetColumns(String widgets, boolean withUnexplainableColumn) {
+        return withUnexplainableColumn ? Map.of(widgets, List.of(UNEXPLAINABLE_COLUMN)) : Map.of();
+    }
+
+    private static Map<String, String> widgetsTypes(boolean withUnexplainableColumn) {
+        if (!withUnexplainableColumn) {
+            return realisticTypes("name");
+        }
+        Map<String, String> types = new java.util.LinkedHashMap<>(realisticTypes("name"));
+        types.put(UNEXPLAINABLE_COLUMN, "BIGINT");
+        return types;
+    }
+
     private static SchemaLifecycleExecutor.SchemaManifest twoConceptManifest(
             String fingerprint, String widgets, String gadgets) {
         return twoConceptManifest(fingerprint, widgets, gadgets, "");
@@ -1062,22 +1107,35 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
      * where the report has an UNKNOWN item and NO concept drop, so both concepts stay declared. */
     private static SchemaLifecycleExecutor.SchemaManifest twoConceptManifest(
             String fingerprint, String widgets, String gadgets, String token) {
+        return twoConceptManifest(fingerprint, widgets, gadgets, token, false);
+    }
+
+    /** @param withUnexplainableColumn see {@link #UNEXPLAINABLE_COLUMN} */
+    private static SchemaLifecycleExecutor.SchemaManifest twoConceptManifest(
+            String fingerprint, String widgets, String gadgets, String token,
+            boolean withUnexplainableColumn) {
         Map<String, List<String>> columns = Map.of(
-                widgets, List.of("id", "name", "version", "row_version", "tenant_id"),
+                widgets, widgetsColumns(withUnexplainableColumn),
                 gadgets, List.of("id", "label", "version", "row_version", "tenant_id"));
         return manifest(fingerprint, List.of(widgets, gadgets), columns,
-                realisticAdditiveColumns(columns, Map.of()),
-                Map.of(widgets, realisticTypes("name"), gadgets, realisticTypes("label")),
+                realisticAdditiveColumns(columns, nonAdditiveWidgetColumns(widgets, withUnexplainableColumn)),
+                Map.of(widgets, widgetsTypes(withUnexplainableColumn), gadgets, realisticTypes("label")),
                 Map.of(), Map.of(), true, token, Map.of(), Map.of(), Map.of(), Map.of());
     }
 
     private static SchemaLifecycleExecutor.SchemaManifest conceptDropManifest(
             String fingerprint, String widgets, String token, boolean blanketAllowed) {
-        Map<String, List<String>> columns = Map.of(
-                widgets, List.of("id", "name", "version", "row_version", "tenant_id"));
+        return conceptDropManifest(fingerprint, widgets, token, blanketAllowed, false);
+    }
+
+    /** @param withUnexplainableColumn see {@link #UNEXPLAINABLE_COLUMN} */
+    private static SchemaLifecycleExecutor.SchemaManifest conceptDropManifest(
+            String fingerprint, String widgets, String token, boolean blanketAllowed,
+            boolean withUnexplainableColumn) {
+        Map<String, List<String>> columns = Map.of(widgets, widgetsColumns(withUnexplainableColumn));
         return manifest(fingerprint, List.of(widgets), columns,
-                realisticAdditiveColumns(columns, Map.of()),
-                Map.of(widgets, realisticTypes("name")),
+                realisticAdditiveColumns(columns, nonAdditiveWidgetColumns(widgets, withUnexplainableColumn)),
+                Map.of(widgets, widgetsTypes(withUnexplainableColumn)),
                 Map.of(), Map.of(), blanketAllowed, token, Map.of(), Map.of(), Map.of(), Map.of());
     }
 
