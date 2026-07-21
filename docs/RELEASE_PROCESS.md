@@ -57,3 +57,24 @@ The release-checklist gate is deliberately narrow. It does not re-run the DSL/ke
 RuntimeHost test suites (that's `run-generator-gate.ps1`/`run-runtimehost-gate.ps1`/module test
 tasks — run those first, separately, as step 1 above already says) and does not check trademark
 clearance (a human step, not a scriptable one — see ADR-0007).
+
+## Local gate runs are tuned; CI is not
+
+The checked-in `gradle.properties` / `build.gradle` files set `org.gradle.parallel`,
+`org.gradle.caching`, `org.gradle.workers.max=4`, a 3 GB heap and a long daemon idle timeout. The
+memory math is documented in each file: six independent Gradle builds, one daemon each, against
+32 GB total.
+
+**CI does not use these settings.** The practical consequence, and the reason this is written down:
+
+- **A flake rate or timing measured locally does not transfer to CI.** A test that fails "about 1 in
+  5 under load" on a 4-way-parallel local run says nothing about its rate on a CI worker with
+  different parallelism, different core count and no build cache.
+- **Any recorded measurement must state the configuration it was taken under** — serial or parallel,
+  which properties were in effect, and whether `--rerun-tasks` was used. A cached Gradle task reports
+  `UP-TO-DATE` and executes **zero** tests while still printing `BUILD SUCCESSFUL`; treating that as a
+  measurement has produced false results in this repo more than once.
+- **Several similarly-named `test-results\test` directories coexist** under
+  `D:\WorkSpace\NPDev\Build\gradle\`, because the module builds redirect `layout.buildDirectory` out
+  of the repo. Confirm a results directory's modification time falls inside the run you are recording
+  before quoting a count from it.

@@ -49,4 +49,11 @@ tasks.named('run') {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // Perf: forked test JVMs default to 512m and do NOT inherit org.gradle.jvmargs.
+    // maxParallelForks is held at 2 (not 4): this suite drives Testcontainers/MinIO
+    // and also packages and boots whole generated FinalApps (which bind ports),
+    // so concurrent forks contend. Raise only with evidence the suite stays green.
+    maxHeapSize = '2g'
+    maxParallelForks = 2
+    jvmArgs '-XX:+UseParallelGC'
 }

@@ -51,6 +51,11 @@ subprojects {
 
     tasks.withType(Test).configureEach {
         useJUnitPlatform()
+        // Perf: see note on :generator:test. Forked test JVMs default to 512m
+        // and do NOT inherit org.gradle.jvmargs.
+        maxHeapSize = '2g'
+        maxParallelForks = 2
+        jvmArgs '-XX:+UseParallelGC'
     }
 }
 

@@ -375,6 +375,12 @@ tasks.named('bootRun') {
 tasks.named('test') {
     dependsOn 'enforceSingleSchemaRealizationSource'
     useJUnitPlatform()
+    // Perf: forked test JVMs default to 512m and do NOT inherit org.gradle.jvmargs.
+    // Deliberately no maxParallelForks here: these are Spring Boot slices sharing a
+    // context and (under the postgres profile) Testcontainers DB state, so concurrent
+    // forks would contend. Heap + parallel GC are the safe wins.
+    maxHeapSize = '2g'
+    jvmArgs '-XX:+UseParallelGC'
     def activeProfiles = providers.gradleProperty('spring.profiles.active')
             .orElse(providers.environmentVariable('SPRING_PROFILES_ACTIVE'))
             .orNull

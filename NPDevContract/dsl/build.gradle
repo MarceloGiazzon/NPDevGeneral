@@ -52,6 +52,11 @@ dependencies {
 
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
+    // Perf: forked test JVMs default to 512m and ignore org.gradle.jvmargs.
+    // These suites (ArchUnit/validation) are pure CPU and fork-safe.
+    maxHeapSize = '2g'
+    maxParallelForks = 4
+    jvmArgs '-XX:+UseParallelGC'
 }
 
 // AI-authoring loop: validate a draft model.json (structural + semantic) without generating.
@@ -184,5 +189,9 @@ subprojects {
 
     tasks.withType(Test).configureEach {
         useJUnitPlatform()
+        // Perf: see note on the root Test config above.
+        maxHeapSize = '2g'
+        maxParallelForks = 4
+        jvmArgs '-XX:+UseParallelGC'
     }
 }
