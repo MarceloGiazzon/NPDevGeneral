@@ -1,0 +1,707 @@
+# NPDev — Open Items Register (bugs, gaps, boundaries)
+
+> **Written:** 2026-07-21, verified against commit `c7e3519` (branch `beta1-vision-spine`,
+> `beta1-184-gc7e3519`). Working tree clean. No release tag cut.
+> **Corrected:** 2026-07-21 (same day) — an independent read-only verification pass ran 4 parallel
+> code audits against live source before any fix work started. Findings folded in below: REG-3's
+> premise was stale (the node_modules/slimness conflict it described was already fixed by commit
+> `437d19b` on 2026-05-14 — two months before this register was written); REG-9's scope was
+> overstated by roughly half (2 of its 4 secret categories already have working env-var support);
+> REG-2's "no DataSource bean" root cause is not supported by the code and needs re-diagnosis with
+> Docker running; REG-11's `D:\`-literal claim is unsubstantiated in the scripts it names. REG-1,
+> REG-6, REG-10, REG-16 were confirmed with minor corrections. This was one verification pass, not
+> a second independent one — treat the corrections as current, not as newly infallible.
+> **Scope:** everything still open across (a) the LNCH-1 schema-evolution programme — now closed
+> after five review/implementation rounds — and (b) the wider platform's launch-readiness ledger.
+> **Purpose:** one place that says what is left, why it matters, where it lives, what it looks like
+> in practice, and how to fix it. Written so a session that has never seen this project can act on
+> any single entry without reading the other twenty.
+>
+> **How to read an entry.** Every item has: **What** (the defect in one sentence) · **Why it
+> matters** (the consequence, not the abstraction) · **Where** (files, commands, IDs) ·
+> **Practical example** (a concrete sequence that exhibits it) · **How to fix** (an actionable
+> route, with the decision points named) · **Effort** (S ≤ 1 session · M = 2–5 · L = multi-week ·
+> XL = needs its own phased plan) · **Type**: `BUG` (wrong behaviour) · `GAP` (missing work) ·
+> `BOUNDARY` (deliberate limit — do not "fix" without a decision) · `PROCESS` (how we work).
+>
+> **Verification vocabulary used throughout:** *VERIFIED LIVE* (observed against a real running
+> app/database) · *VERIFIED BY SUITE* (committed, currently-green automated test) · *NOT VERIFIED*.
+> The tiebreaker for any disagreement about what is verified is
+> `..\NPDev_General__OutsideRepo\lnch1-evidence\hardening-verification-ledger.md`.
+
+---
+
+## 0. Status summary
+
+### 0.1 What just closed
+
+The LNCH-1 schema-evolution programme is **DONE**. Five rounds — original build (P0–P8),
+remediation (R0–R9), hardening (X0–X9), closeout (C0–C8), platform-column (T0–T10) — 60+ commits.
+The final round closed its last two review findings: all six multi-entry `Map.of` → Jackson
+non-determinism sites are fixed with a conformance test
+(`NoMultiEntryMapOfInGeneratedManifestEmittersTest`), and T4's corpus flip landed 4 of 4 apps, each
+regenerated, booted, and proven to preserve a row through a live additive change.
+
+Severity trend across the five review rounds — **HIGH → CRITICAL → HIGH → MEDIUM → (none above
+MEDIUM)** — is real convergence, not a treadmill.
+
+### 0.2 Register at a glance
+
+| ID | Title | Type | Sev | Effort | § |
+|---|---|---|---|---|---|
+| **REG-1** | 27 app definitions remain on the deprecated blanket destructive posture | GAP | MED | M | 1.1 |
+| **REG-2** | `IT-EXTPG-1` — 10 integration tests unrunnable; **root cause unconfirmed, re-diagnose first** | BUG | MED | S/M | 1.2 |
+| **REG-3** | `GATE-REL-1` — **corrected:** already fixed 2026-05-14; real gap is stale evidence-report orchestration | GAP | LOW | S | 1.3 |
+| **REG-4** | `T-F1` — load-sensitive flake, root cause unestablished | BUG | LOW | S/M | 1.4 |
+| **REG-5** | `GATE-OBS-1a` — surface-governance drift needs a governance owner | PROCESS | LOW | S | 1.5 |
+| **REG-6** | `ColumnFacts` — eight passes each re-derive column semantics (drift on main sets now CI-guarded) | GAP | MED | M | 1.6 |
+| **REG-7** | `LNCH-1-B6` — no migration advisory lock (multi-instance) | BOUNDARY | — | M | 1.7 |
+| **REG-8** | `LNCH-1-B9` — schema-ahead detector blind to a pure column drop | BOUNDARY | — | M | 1.8 |
+| **REG-9** | LNCH-4 — auth table stakes: secrets management still open (**rescoped: 2 of 4 already done**) | GAP | **P0** | S/M | 2.1 |
+| **REG-10** | LNCH-19 — Linux CI has never been observed green | GAP | **P1** | S/M | 2.2 |
+| **REG-11** | LNCH-20 — cross-platform build scripts, Phases 2–4 (**helper exists, unused** — lower effort) | GAP | P2 | S | 2.3 |
+| **REG-12** | LNCH-10 — Excel/PDF/print export beyond CSV | GAP | P1 | L | 2.4 |
+| **REG-13** | LNCH-18 — non-author usability test never run | GAP | P1 | S (blocked on a human) | 2.5 |
+| **REG-14** | LNCH-22 — newcomer documentation test never run | GAP | P2 | S (blocked on a human) | 2.6 |
+| **REG-15** | LNCH-23 — trademark clearance + release tag | PROCESS | P2 | S (blocked on you/counsel) | 2.7 |
+| **REG-16** | The other 23 launch items have had zero adversarial review (~23 files/3.4k LOC scoped) | PROCESS | **HIGH** | L | 3.1 |
+| **REG-17** | No third party has ever reproduced any verification | PROCESS | MED | M | 3.2 |
+
+---
+
+## 1. Items inherited from the LNCH-1 programme
+
+### 1.1 REG-1 — 27 app definitions remain on the deprecated blanket destructive posture
+
+**Type:** GAP · **Severity:** MEDIUM · **Effort:** M · **Status:** PARTIAL (6 of 33 flipped)
+
+**What.** `docs/SCHEMA_EVOLUTION.md` recommends `strategy: KeepExistingIfCompatible` +
+`allowDestructiveRecreate: false`. After T4, the real count is **6 recommended / 27 blanket /
+5 InMemory-N/A** (independently re-verified 2026-07-21: exact match, 38 definitions total). The 27
+blanket-posture apps include 4 of the 5 `_official` apps — WmsOffice, WordLab, AuxScreen, Pigmentampa
+— plus most `NPDevSamples` entries. **Correction:** the 5th `_official` app, `Claude`, is
+InMemory-N/A, not blanket — it is not a pending flip target.
+
+**Why it matters.** Two distinct reasons, and the second is the one people miss:
+
+1. *Operational.* On a blanket-posture app, a `DROP_COLUMN` or a type narrowing still applies with
+   no itemized acknowledgment. (Since the closeout round, concept drops and whole-schema
+   recreations do require a token — so the exposure is bounded, but it is not zero.)
+2. *Pedagogical, and larger.* These definitions are the corpus the AI-authoring loop learns from.
+   An AI asked to author a new app pattern-matches against 27 examples of the deprecated posture and
+   6 of the recommended one. T4 proved the knowledge card now ranks #1 for a direct question — but
+   direct questions are not how most authoring happens. Examples outvote documentation when the
+   model is imitating a shape.
+
+**Where.**
+- `D:\WorkSpace\NPDev\AppGen\apps\*\definition\db.definition.json` (layer 2 — source of truth for
+  app definitions, **not** a git repo)
+- `d:\WorkSpace\NPDev\NPDev_General\NPDevSamples\*\Input\db.definition.json`
+- Recount commands are written into `docs/SCHEMA_EVOLUTION.md` so the numbers stay checkable.
+- Already flipped: `simple-user-registry-h2local`, `simple-user-registry-postgres`,
+  `simple-product-h2local`, `simple-consumer-h2server`,
+  `NPDevSamples\12works\gift-idea-tracker` (+1 more per the recount).
+
+**Practical example.** An author (human or AI) copies `_official\WordLab`'s `db.definition.json` as
+a starting point — a reasonable thing to do, it is a working reference app. The new app inherits
+`strategy: DropAndRecreateOnStructureChange` + `allowDestructiveRecreate: true` +
+`I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED`. Months later a field is removed from the model; the
+column is dropped on the next boot with no acknowledgment prompt, because the posture pre-authorized
+it at authoring time.
+
+**How to fix.**
+1. Decide the batch (this is your call — T4's scope was explicitly ratified at four apps).
+   Recommended next batch: the four remaining `_official` apps still on the blanket posture —
+   WmsOffice, WordLab, AuxScreen, Pigmentampa — because they are the highest-signal examples in the
+   corpus. (`Claude` is InMemory-N/A and is not part of this batch.)
+2. For **each** app, and never in bulk: edit `db.definition.json` → regenerate → boot → take one
+   additive change through it → confirm the boot log says `skipping destructive recreation`.
+   Copy the field values from the already-proven `simple-user-registry-h2local` rather than
+   inventing them (`destructiveRecreateConfirmation` must be `""` under the safe strategy).
+3. **Watch for the shared-output-root trap.** Several `simple-user-registry-*` apps share one
+   `scenario.name` and therefore one build output root, container and port. T4 handled this by
+   verifying the landed manifest carried the right app's concept shape. Do the same, per app.
+4. Deliberately leave `lnch1-rehearsal` on the blanket posture — its `README.md` explains that it
+   exists to rehearse upgrades on a definition shaped like the ones that actually shipped.
+5. Rebuild the corpus (`python scripts/ai/build_knowledge.py`) and re-run the recount, updating the
+   numbers in `docs/SCHEMA_EVOLUTION.md`.
+
+---
+
+### 1.2 REG-2 — `IT-EXTPG-1`: 10 integration tests unrunnable; root cause re-opened
+
+**Type:** BUG · **Severity:** MEDIUM · **Effort:** S/M · **Status:** OPEN (two attributions made so far, **neither independently confirmed against a captured stack trace**)
+
+**What.** Ten `integrationTest` classes fail with `ApplicationContext` load errors
+(`JwtAuthExternalBetaIT` ×8, `PublicationRollbackE2EIT`, `TenantIsolationE2EIT`) — test inventory,
+profiles (`test,postgres`, plus `external-beta` for the JwtAuth suite), and the
+`application-postgres.yml` Testcontainers URL independently re-verified 2026-07-21. For three rounds
+these were recorded as "need an externally-configured Postgres". The platform-column round then
+re-attributed it: the `test,postgres` profile declares a Testcontainers URL and, it was claimed,
+**no `DataSource` bean is created at all**. **Correction (2026-07-21):** that second attribution
+does not hold up either. A full grep of `NPDevRuntimeHost`'s source and resources for
+`DataSourceAutoConfiguration` / `spring.autoconfigure.exclude` found zero matches — there is no
+exclusion visible in code that would suppress `DataSource` auto-configuration for this profile
+combination, and the declared `spring.datasource.*` properties are exactly the shape Spring Boot
+auto-configures from with no extra bean required. **The true root cause is still open.** A more
+likely candidate not yet ruled out: Hikari's default eager connection validation failing because the
+`jdbc:tc:` Testcontainers driver couldn't reach Docker in whatever environment last ran this, which
+presents identically to a context-load failure from the outside. Do not trust either prior
+attribution — capture a real stack trace first.
+
+**Why it matters.** Two of the three names are security-relevant — `TenantIsolationE2EIT` is part of
+the LNCH-2 adversarial isolation work, and `JwtAuthExternalBetaIT` covers the auth stack. They have
+not run in this branch's recent history. A tenant-isolation E2E test that cannot start is
+indistinguishable, from the outside, from one that passes: the suite reports a context failure, not
+an isolation failure. And the previous, wrong attribution would have cost a session to rediscover —
+it told the next reader to go provision infrastructure that was never the problem.
+
+**Where.**
+- `NPDevRuntimeHost/src/test/.../*IT.java` (the ten classes; run via the assembled app's
+  `integrationTest` task, `@Tag("integration")`)
+- The `test,postgres` profile configuration — start from `application-*.yml` in the RuntimeHost
+  template and whatever `@ActiveProfiles`/`@SpringBootTest` configuration those ITs declare.
+- Tracked as `IT-EXTPG-1` in `docs/OPEN_GAPS_AND_ROADMAP.md`.
+
+**Practical example.** Run the assembled app's `integrationTest` with Docker up. The schema-lifecycle
+Postgres twin passes (25 tests) because it supplies its own Testcontainers `DataSource`
+programmatically. The ten ITs fail during context load, before a single assertion runs, because the
+profile they activate declares a JDBC URL but never contributes a `DataSource` bean for Spring to
+inject.
+
+**How to fix.**
+1. Reproduce and capture the **exact** context-load exception (bean name, profile set active,
+   property source) with Docker running. Do not work from the summary above, and do not trust the
+   "no DataSource bean" theory below without a stack trace — it was re-checked 2026-07-21 and found
+   unsupported by the code.
+2. Determine which it actually is: (a) the profile is missing a `DataSource` `@Bean`/auto-config
+   that another profile provides, (b) profile precedence causes an exclusion —
+   **checked 2026-07-21: no `DataSourceAutoConfiguration` exclusion or
+   `spring.autoconfigure.exclude` exists anywhere in the tree, so this specific mechanism is now
+   ruled out** — (c) the ITs activate a profile combination nobody maintains any more, or (d)
+   **new candidate**: Hikari's eager connection validation timing out because the `jdbc:tc:`
+   Testcontainers driver can't reach Docker in the environment the suite last ran in — this would
+   look like a context-load failure but is an environment issue, not a wiring defect.
+3. Fix at the profile/config level; do **not** paper over it by giving each IT its own
+   Testcontainers datasource — that would hide the real defect and duplicate the twin's setup ten
+   times.
+4. Once green, add the run recipe (exact Gradle command, Docker prerequisite, expected count) to the
+   roadmap entry so a future session can run them in five minutes.
+5. Then treat the *results* as a separate question: ten tests that have not run in a long time may
+   surface real findings. Budget for that.
+
+---
+
+### 1.3 REG-3 — `GATE-REL-1`: **corrected** — the node_modules/slimness conflict was already fixed; the real gap is stale evidence reports
+
+**Type:** GAP · **Severity:** LOW (was MEDIUM) · **Effort:** S · **Status:** OPEN — orchestration gap, no decision needed
+
+**What — corrected 2026-07-21.** The original claim was that `run-beta-release-gate.ps1` requires
+`json-schema-validator`'s `node_modules` to be present in-repo, which the workspace slimness policy
+forbids at commit time, making the gate structurally unable to pass. **This premise is stale.**
+Independent verification against live source found:
+- `run-beta-release-gate.ps1` never touches `node_modules` directly — it only calls
+  `scripts/quality/Invoke-JsonSchemaValidation.ps1`.
+- That script resolves its runtime **outside the repo**, at
+  `..\NPDev_General__OutsideRepo\node-tools\json-schema-validator`, and only runs `npm install`
+  there if `node_modules` is missing or the lockfile fingerprint changed. It never creates
+  `node_modules` inside the repo. Confirmed on disk: the external `node_modules` already exists
+  with a matching `.package-lock.sha256` fingerprint — this mechanism has already run successfully.
+- This was landed by commit `437d19b` ("Keep schema validator dependencies outside workspace"),
+  dated **2026-05-14 — two months before this register was written**, and is exactly what
+  `docs/WORKSPACE_CLEANUP_POLICY.md` (lines 15, 45) documents as the required pattern.
+- `scripts/hygiene/Test-WorkspaceSlimness.ps1` (lines 165–172) only scans the in-repo workspace root
+  for forbidden `node_modules` directories; the external location is invisible to it. **There is no
+  conflict, and never was one after `437d19b`.** Options A/B/C below are moot — Option B is what
+  already shipped.
+
+**What is actually still true:** the gate did exit 1 with 35 of 36 required evidence reports
+missing, independently reconfirmed 2026-07-21. But the cause is that the constituent
+evidence-generating scripts (ai-beta-gate, sample-matrix, smoke suites, etc.) simply haven't been
+run recently — a **report-orchestration/staleness gap**, unrelated to `node_modules` or the
+slimness policy.
+
+**Why it matters (revised).** The gate is not structurally broken — it just has nothing to grade
+because its inputs are stale. That is a much smaller problem than "cannot pass in a committed
+state," and it needs no policy decision, only running (and probably scheduling) the report
+generators before the gate.
+
+**Where.**
+- `scripts/quality/run-beta-release-gate.ps1`, `scripts/quality/Invoke-JsonSchemaValidation.ps1`
+- `scripts/policy/beta-release-gate-policy.json` (defines the 36 `requiredReports`)
+- `scripts/reports/out/` (only `json-schema-validator-tests-report.json` present as of 2026-07-21)
+- `docs/WORKSPACE_CLEANUP_POLICY.md` (the slimness rule this already satisfies)
+- Tracked as `GATE-REL-1` in `docs/OPEN_GAPS_AND_ROADMAP.md` (filed `0d2cf71`) — **that entry
+  describes the same stale premise and needs the identical correction, not yet applied there**
+
+**Practical example.** Clean checkout → `pwsh -File scripts\quality\run-beta-release-gate.ps1` →
+exit 1, 35/36 evidence reports absent. This is not a `node_modules` problem — none of those 35
+reports are the schema-validator report; they are the other gates' outputs, simply never generated
+in this tree.
+
+**How to fix.**
+1. Enumerate the 36 `requiredReports` in `beta-release-gate-policy.json` and identify which
+   scripts/gates produce each one.
+2. Run (or script the running of) each producer in order, capturing output to
+   `scripts/reports/out/`, and re-run the release gate to see how many of the 35 are now real
+   findings vs. simply missing.
+3. Decide whether report generation should be a manual pre-step or wired into the release gate
+   itself as an orchestration phase (recommended, so "run the release gate" is one command again).
+4. Separately, still worth doing: make the gate distinguish *precondition unmet* (reports missing)
+   from *check failed* (a report says something is broken) in its exit code or first output line —
+   that ambiguity is what let this go two months without the correction above being made.
+
+---
+
+### 1.4 REG-4 — `T-F1`: load-sensitive flake, root cause unestablished
+
+**Type:** BUG · **Severity:** LOW · **Effort:** S/M · **Status:** OPEN (narrowed to two mechanisms, self-diagnosing on next occurrence)
+
+**What.** `SandboxedPluginExecutionEngineTest` fails roughly 1 in 5 runs under parallel load and 0
+in 5 in isolation. The timing assumption has been narrowed to two candidate mechanisms and the test
+now self-diagnoses on the next occurrence, but the root cause is not established.
+
+**Why it matters.** Low, honestly — it is a test-harness defect, not a product one. It matters
+mainly because a known-flaky test in the gate erodes trust in every other red the gate reports, and
+because it is the reason two rounds nearly recorded false measurements (one from a cached Gradle
+result replayed five times, one from overlapping `--rerun-tasks` runs).
+
+**Where.** `SandboxedPluginExecutionEngineTest` (kernel/adapters area — locate via Glob).
+Tracked in `docs/OPEN_GAPS_AND_ROADMAP.md`.
+
+**Practical example.** Run the full suite in parallel (the committed Gradle tuning sets
+`org.gradle.parallel=true`, `workers.max=4`): the test fails intermittently. Run it alone with
+`--rerun-tasks`: 5/5 green. The failure is contention-dependent.
+
+**How to fix.**
+1. Wait for the next occurrence and read what the self-diagnosis emitted — that instrumentation was
+   added precisely so the next failure is informative. Do not re-derive by hand first.
+2. Confirm which of the two narrowed mechanisms it is.
+3. If it is a fixed timeout under contention: raise it **and quote the measured margin in the
+   comment** (e.g. "observed max 1.9 s under 4-way parallelism; timeout 5 s"). Never invent a
+   tolerance that does not follow from a measurement — two rounds have correctly refused to do this.
+4. Record the measurement's configuration (serial vs parallel, Gradle properties in effect,
+   `--rerun-tasks` or not). The committed tuning is local-only; CI does not use it, so a locally
+   measured rate does not transfer.
+
+---
+
+### 1.5 REG-5 — `GATE-OBS-1a`: surface-governance drift needs a governance owner
+
+**Type:** PROCESS · **Severity:** LOW · **Effort:** S (decision) · **Status:** OPEN — needs an owner assigned
+
+**What.** The RuntimeHost gate's surface-convergence/exclusivity checks encode a pre-`d0bf41b`
+"package == support bucket" convention that the beta-0 manifest refactor replaced with exact lists.
+They now report as **advisory observations** (`-PendingOk`), so the gate's exit code is truthful
+again — but the underlying drift is unresolved and unowned.
+
+**Why it matters.** Advisory is the right interim state (a gate that always exits 1 trains everyone
+to ignore it), but "advisory forever" is how a check quietly stops meaning anything. Someone has to
+decide whether the old convention is being restored, formally retired, or the checks rewritten
+against the exact-list model.
+
+**Where.** `scripts/quality/run-runtimehost-gate.ps1` (~lines 114–121 and ~243–253),
+`scripts/quality/run-runtime-surface-evidence.ps1`, `run-observability-hardening.ps1`.
+Tracked as `GATE-OBS-1`/`GATE-OBS-1a`.
+
+**Practical example.** Run the RuntimeHost gate: it exits 0, and the surface-convergence
+observations appear as advisory notes. Nothing tells a reader whether those notes are a temporary
+accommodation or the permanent shape.
+
+**How to fix.** A decision, not code: assign an owner and pick one of — (a) rewrite the checks
+against the exact-list model the refactor introduced; (b) formally retire them with a dated comment
+explaining what they used to assert and why it no longer applies; (c) restore the old convention.
+Then either make the check blocking again or delete it. Record the decision in
+`docs/OPEN_GAPS_AND_ROADMAP.md`.
+
+---
+
+### 1.6 REG-6 — `ColumnFacts`: eight passes each re-derive column semantics
+
+**Type:** GAP (structural) · **Severity:** MEDIUM · **Effort:** M · **Status:** OPEN — never planned
+
+**What.** `SchemaLifecycleExecutor` contains roughly eight passes — relax, tighten, backfill,
+additive, delta-report, classify, bond-refusal, rename, unique-constraint — each performing its own
+set arithmetic over the same raw manifest maps to answer the same questions: is this column
+platform-managed? additive-eligible? required by the model? a bond? the primary key? There are
+already three overlapping notions of "platform column"
+(`RESERVED_BUSINESS_COLUMN_NAMES` in the emitter, `PLATFORM_MANAGED_COLUMNS` in the executor, the
+`fullColumnNames` tail), plus a fourth mirrored in the test fixtures. **Re-verified 2026-07-21:**
+pass count (~8), the ~55-method inventory, and the divergent sets are all confirmed —
+`PLATFORM_MANAGED_COLUMNS` = 4 entries (`id`, `version`, `row_version`, `tenant_id`),
+`RESERVED_BUSINESS_COLUMN_NAMES` = 3 entries (no `id`).
+
+**Why it matters.** **This is the root cause of the last two rounds of findings.** T-B1 was one pass
+(relax) inferring column semantics wrongly. T-B2 was another pass (additive) disagreeing with a
+third (delta-report) about `version`. Each round fixes one pass's inference; the structure that
+produced the wrong inference is untouched. A ninth pass added later will make a ninth independent
+inference, and the review loop will find it. Three separate conformance tests
+(`PlatformColumnContractTest`, `AdditiveColumnMirrorContractTest`,
+`NoMultiEntryMapOfInGeneratedManifestEmittersTest`) now exist to pin duplications that would not
+exist if the model were unified — they are treating symptoms, competently. **Correction:** this
+means the specific drift risk between the two main platform-column sets is already **CI-guarded** by
+`PlatformColumnContractTest` (it parses the executor's source as text, since RuntimeHost can't
+depend on the generator module, and fails if the sets diverge from what the emitter actually
+appends). The urgency here is the structural complexity and the risk a *new*, unpinned pass
+introduces — not an unguarded drift hazard on the sets that already exist.
+
+**Where.** `NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java`
+(**2,884 lines / ~176 KB, corrected from an earlier ≈145 KB estimate** — never full-read; Grep to a
+method, Read with `offset`/`limit`), `SchemaDeltaReport.java`, and the fixture helpers in both proof
+matrices.
+
+**Practical example.** To answer "is `tenant_id` required?", the relax pass consults
+`businessTableRequiredColumns` (model-derived, so: no) while the emitter emits it `NOT NULL DEFAULT
+'default'` (so: yes). Both are reading the same manifest and reaching opposite conclusions, because
+neither is reading a field that says *this column is platform-managed*. That disagreement was
+T-B1 — a live weakening of the tenant-isolation column on every upgrade.
+
+**How to fix.**
+1. Introduce one `ColumnFacts` projection, computed once per (table, column) when the manifest
+   loads: `{ isPlatformManaged, isAdditiveEligible, isRequiredByModel, isBond, isPrimaryKey,
+   declaredType, renamedFrom, literalDefault }`.
+2. Migrate the passes one at a time, each with its existing tests kept green — this is a refactor,
+   so **no behaviour change is permitted**; any test that changes expectation means the refactor
+   changed semantics and must be reworked.
+3. Collapse the three platform-column sets into the projection's `isPlatformManaged`, retiring the
+   conformance tests that exist only to pin duplicate copies (keep the emitter-side reserved-name
+   validation — that is a different job: rejecting a colliding *model field* at generation time).
+4. Do this **before** adding any new pass to the executor. That is the whole point.
+
+---
+
+### 1.7 REG-7 — `LNCH-1-B6`: no migration advisory lock (multi-instance)
+
+**Type:** BOUNDARY · **Effort:** M · **Status:** OPEN, deliberately out of scope
+
+**What.** The schema-lifecycle executor assumes exactly one app instance boots against a given
+database at a time. Two instances booting concurrently could interleave renames, widenings and drops
+with no database-level lock.
+
+**Why it is a boundary, not a bug.** Single-instance is the platform's stated deployment posture
+(`docs/DEPLOYMENT.md`), and the Docker Compose deployment enforces it in practice. This is recorded
+in `docs/SCHEMA_EVOLUTION.md`'s "Current limitations" — **do not roll out a multi-instance
+deployment of the same app+database until this exists.**
+
+**Where.** `docs/OPEN_GAPS_AND_ROADMAP.md` (`LNCH-1-B6`);
+the lock scope would be `SchemaLifecycleExecutor.migrate(Flyway)`.
+
+**Practical example.** Two containers of the same app start simultaneously against one Postgres.
+Both read the same stored fingerprint, both classify the same diff, both attempt
+`ALTER TABLE ... RENAME COLUMN`. The second fails — or worse, both proceed against different halves
+of a multi-step sequence.
+
+**How to fix (when horizontal scaling is on the roadmap).** Wrap `migrate(Flyway)` in a database
+advisory lock: `pg_advisory_lock(<stable app hash>)` on Postgres, an equivalent lock table on H2
+(H2 has no advisory-lock primitive — a `SELECT ... FOR UPDATE` on a dedicated single-row lock table
+is the portable shape). Release in a `finally`. The existing crash-recovery semantics already handle
+a holder dying mid-migration; the lock only prevents concurrent entry.
+
+---
+
+### 1.8 REG-8 — `LNCH-1-B9`: schema-ahead detector blind to a pure column drop
+
+**Type:** BOUNDARY · **Effort:** M · **Status:** OPEN — WONTFIX for v1
+
+**What.** The schema-ahead-of-build detector fires on two triggers: a missing non-additive column
+(Trigger A), or a missing column on a table that also has an *unexplained extra* live column
+(Trigger B — the signature of a rename by a newer build). A newer build that **purely dropped** a
+column leaves no residue, so neither trigger fires.
+
+**Why it is a boundary.** There is genuinely nothing to detect — the absence of a column that the
+old build expects is indistinguishable, from introspection alone, from a column that was never
+added. Closing it would require the executor to consult migration history rather than live schema
+shape, which is a different design.
+
+**Where.** `SchemaLifecycleExecutor.findSchemaAheadMissingColumns`;
+documented in `docs/SCHEMA_EVOLUTION.md#refusals-and-rollback`.
+
+**Practical example.** Build N+1 drops `users.nickname` (acknowledged, applied). The operator rolls
+back to build N, which still expects `nickname`. The additive migration re-adds it as an empty
+nullable column, and the app runs with a column that silently lost its data — no refusal.
+
+**How to fix (if ever).** Consult `npdev_schema_history` at boot: if a row exists whose
+`to_fingerprint` is *newer* than this build's fingerprint, the database has been migrated past this
+build regardless of what the live shape looks like. That is a clean signal and the history table
+already exists — the reason it is WONTFIX for v1 is scope, not impossibility.
+
+---
+
+## 2. Open items in the wider launch-readiness ledger
+
+Source of truth: `docs/LAUNCH_READINESS_GAPS.md` §2. Verified at `c7e3519`: **17 DONE, 6 PARTIAL,
+1 OPEN.** Only the non-DONE entries appear below.
+
+### 2.1 REG-9 — LNCH-4: auth table stakes, secrets management still open (**rescoped 2026-07-21**)
+
+**Type:** GAP · **Priority:** **P0** · **Effort:** S/M (was M — scope roughly halved) · **Status:** PARTIAL
+
+**What.** The P0 slice (JWT revocation via token-version, brute-force login throttling, a documented
+and tested CSRF posture) and the P1 password-reset slice are DONE. What remains: **secrets via
+environment variables / Spring config**, with file-on-disk as a dev-only fallback. **Correction:**
+independent verification of all four secret categories against live source found the gap is
+narrower than originally described — 2 of 4 already work.
+
+| Secret | Original claim | Verified 2026-07-21 |
+|---|---|---|
+| DB credentials | No env-var path | **Already works.** Plain `spring.datasource.url/username/password`, gets Spring's built-in `SPRING_DATASOURCE_URL/USERNAME/PASSWORD` binding automatically (no hyphen gotcha — this property has none), and is already emitted into the generated Docker Compose (`DockerDeploymentEmitter.java`) with fail-fast `${POSTGRES_PASSWORD:?...}` syntax. |
+| Runtime API keys | No env-var path | **Already works.** `npdev.auth.api-keys` binds from `NPDEV_AUTH_APIKEYS` (the relaxed-binding gotcha below is real, but it's already correctly handled — the compose emitter uses the right variable name and comments on the gotcha inline). |
+| JWT signing key (private) + verification key (public) | No env-var path | **Confirmed still missing.** `LoginController.java` reads `${npdev.auth.jwt.private-key-path}` (no default) via `Files.readString`; `JwtBearerAuthFilter.java` loads the public key the same way. `DockerDeploymentEmitter.java` emits **zero** `NPDEV_AUTH_JWT_*` entries in either the compose template or `.env.example`, and `StartupValidator` never even receives the key path — a missing key fails with a raw Spring bean-creation error, not a docs-linked one. **This is the real, still-open gap.** |
+| Super-user key | No env-var path | **Confirmed still missing, but different in kind.** `SuperUserBootstrapper.java` *generates* the key at first boot (it is issued, not operator-supplied) and writes it once to `SUPER_USER_KEY.txt`. Both `docs/DEPLOYMENT.md` and the compose emitter confirm there is genuinely no env-var path — but "add one" here means adding a new feature (seed a known key via e.g. `NPDEV_SUPERUSER_KEY`), not fixing a broken binding. That is a product decision as much as a bug fix. |
+
+**Why it matters.** This is the last P0 item in the entire ledger. The part that's actually still
+open — JWT key delivery, and optionally super-user-key seeding — is exactly the part that blocks a
+credible from-clean-host containerized deployment (a missing/rotated JWT key currently means editing
+a file path, which doesn't fit the ephemeral-filesystem Compose model LNCH-7 delivered). The DB
+credentials and API keys half of the original claim was already coherent with LNCH-7 before this
+correction.
+
+**Where.** JWT keys: `NPDevRuntimeHost/.../auth/LoginController.java` (`private-key-path` `@Value`,
+`readKeyFile`), `JwtBearerAuthFilter.java` (`loadPublicKey()`), `NpdevObservabilityConfig.java`
+(where `StartupValidator` is wired — `jwtPrivateKeyPath` is not among the params it currently
+receives). Super-user key: `com.finalexec.controlpanel.SuperUserBootstrapper.java`. Compose emission
+for both: `DockerDeploymentEmitter.java`. `docs/CONFIGURATION.md` (documents the `NPDEV_AUTH_APIKEYS`
+relaxed-binding gotcha — confirmed verbatim accurate; note `npdev.superuser.force-reissue` has the
+same gotcha and is currently undocumented). `docs/DEPLOYMENT.md`.
+
+**Practical example.** Deploy the compose stack on a fresh host with a rotated/custom JWT signing
+key. There is no `NPDEV_AUTH_JWT_PRIVATE_KEY_PATH` (or equivalent) wired into compose — the key must
+be baked into the image or mounted by hand outside the documented flow. DB credentials and API keys,
+by contrast, already deploy cleanly via `.env` today.
+
+**How to fix.**
+1. JWT keys: add `NPDEV_AUTH_JWT_PRIVATE_KEY_PATH` / `NPDEV_AUTH_JWT_PUBLIC_KEY_PATH` (or a
+   content-via-env / mounted-secret convention if that's preferred over a path) to the compose
+   template and `.env.example`; wire `jwtPrivateKeyPath` into `StartupValidator` reusing the
+   existing `AUTH_ANCHOR` convention (`configError(msg, anchor)` → links to
+   `docs/CONFIGURATION.md#authentication`) so a missing key fails fast with a docs-linked message
+   instead of a raw Spring bean-creation error.
+2. Super-user key: decide whether seeding a known key via env var is wanted at all (it changes the
+   security posture — "issued, never known to the operator" vs. "operator-supplied"). If yes, add
+   `NPDEV_SUPERUSER_KEY` as an optional override in `SuperUserBootstrapper`. If no, close this half
+   as WONTFIX and document why.
+3. Document both relaxed-binding gotchas (`NPDEV_AUTH_JWT_*`, `NPDEV_SUPERUSER_FORCEREISSUE`) in
+   `docs/CONFIGURATION.md` alongside the existing `NPDEV_AUTH_APIKEYS` one.
+4. Verify by deploying from a clean host with **no** key files present and a custom JWT key supplied
+   only via env var.
+
+### 2.2 REG-10 — LNCH-19: Linux CI has never been observed green
+
+**Type:** GAP · **Priority:** P1 · **Effort:** S/M · **Status:** PARTIAL
+
+**What.** `.github/workflows/npdev-pr-gate.yml` and siblings exist and are committed; the
+`gradlew.bat`-hardcoding blocker on the CI critical path was fixed. **Nobody has watched a real
+GitHub Actions run go green.** Creating the PR needs the `gh` CLI, unavailable in the sessions that
+prepared it. **Re-verified 2026-07-21:** confirmed exactly as described — 5 workflow files present
+and committed, `npdev-pr-gate.yml` uses POSIX `./gradlew` exclusively with `chmod +x` before the
+integration-test step, branch `lnch19-ci-verify` exists and is pushed to `origin`, and `gh` is still
+unavailable in this environment (identical blocker reproduced independently).
+
+**Why it matters.** Every quality claim in this project rests on gates run on one Windows machine.
+Until CI runs, "the gates pass" means "they pass here", and the committed local Gradle tuning
+(`parallel`, `caching`, `workers.max=4`) means the local environment is measurably not CI's. There
+is also a latent unknown: whether a generated FinalApp's copied `gradlew` preserves its execute bit
+through the generator's file-copy on Linux.
+
+**Where.** `.github/workflows/*.yml`, `scripts/appgen/generate-sample-app.ps1`,
+`scripts/appgen/run-sample-app.ps1`, branch `lnch19-ci-verify`.
+
+**Practical example.** Open the PR from `lnch19-ci-verify`. Either it goes green — and LNCH-19 is
+DONE with one click — or it fails, and the failure is the first genuine cross-platform signal this
+project has had.
+
+**How to fix.** Open the PR (one action, needs your GitHub session), watch the run, fix what it
+surfaces. Budget for the execute-bit issue and for path assumptions the Windows environment hides.
+
+### 2.3 REG-11 — LNCH-20: cross-platform build scripts, Phases 2–4 (**corrected 2026-07-21**)
+
+**Type:** GAP · **Priority:** P2 · **Effort:** S (was M — see correction) · **Status:** OPEN (Phase 1 shipped)
+
+**What.** Phase 1 (the `gradlew.bat` literals on the CI critical path) landed as a side effect of
+LNCH-19's fix. Phases 2–4 — the AppGen builder scripts, ~14 remaining quality-gate scripts with the
+same pattern, and the Docker-Desktop-specific Postgres proof launcher — are scoped and untouched.
+**Correction:** the `gradlew.bat` count is confirmed (13 files / 18 occurrences across
+`scripts/appgen/*.ps1` and `scripts/quality/*.ps1`, matching the "~14+" estimate), but a targeted
+grep for `D:\` / `D:/` literals in those same files returned **zero matches** — the "`D:\`-rooted
+path literals throughout" claim is not substantiated in the files this item names (drive-letter
+literals may exist elsewhere in the repo, but not in the scripts scoped here). More importantly: a
+working cross-platform helper, `Get-NPDevGradleWrapperExecutable` in `scripts/npdev-common.ps1`,
+**already exists** — it checks `$IsWindows` and resolves `gradlew.bat`/`gradlew` correctly. The 13
+files simply haven't been migrated to call it. This is a mechanical call-site migration to existing
+infrastructure, not new plumbing — hence the lower effort estimate.
+
+**Why it matters.** A contributor or evaluator on macOS/Linux cannot build the platform. This gates
+any external review (REG-17) and any open-source distribution posture (ADR-0007 chose
+self-hosted/source-first).
+
+**Where.** `scripts/appgen/*.ps1` (3 occurrences: `Build-ClaudeApp.ps1` ×2, `Build-NpdevApp.ps1` ×1),
+`scripts/quality/*.ps1` (15 occurrences across 10 files, notably
+`run-incremental-migration-testing-check.ps1`, `run-post-beta0-maturity-closure-check.ps1`,
+`run-stateful-additive-migrations-check.ps1`, `run-trusted-source-security-check.ps1` — each ×2).
+`scripts/npdev-common.ps1` (the existing helper: `Get-NPDevGradleWrapperExecutable`,
+`Test-NPDevGradleExecutable`, `Invoke-NPDevCommandCapture`/`Streaming`).
+
+**Practical example.** Clone on Linux, run one of the 13 affected scripts under `pwsh`. It fails on
+the `gradlew.bat` invocation specifically — not on a drive-letter literal, which this specific set of
+scripts does not contain.
+
+**How to fix.** Migrate each of the 13 files' `gradlew.bat` call sites to call
+`Get-NPDevGradleWrapperExecutable` from `scripts/npdev-common.ps1` instead — the helper already does
+the right thing, this is find-and-replace-grade work per file, not new design. Separately, do a
+repo-wide sweep for `D:\`/`D:/` literals outside this item's originally-named scope before assuming
+none remain elsewhere. Let CI (REG-10) be the enforcement mechanism rather than manual auditing.
+
+### 2.4 REG-12 — LNCH-10: Excel/PDF/print export beyond CSV
+
+**Type:** GAP · **Priority:** P1 · **Effort:** L · **Status:** PARTIAL (CSV DONE, volume-gated at 100k rows)
+
+**What.** Slice 1 (streaming CSV export from any grid) is DONE. Slice 2 (print stylesheet / print
+render mode) and Slice 3 (server-side PDF document objects) are not started.
+
+**Why it matters.** Business apps end in paper and spreadsheets. For the GeneXus-migration audience
+specifically — WMS-class apps with pick lists and packing slips — print output is not a nice-to-have,
+and its absence forces hand-authored `web/` pages at exactly the moment an app becomes real, which
+breaks the low-code promise.
+
+**Where.** `NPDevRuntimeHost/.../api/ConceptQueryController.java` (the CSV precedent),
+`npdev-templates/business-ui-app.mustache` (the grid toolbar).
+
+**Practical example.** A warehouse operator needs a printed pick list. Today: export CSV, open in
+Excel, format by hand. The declared panel has no print mode.
+
+**How to fix.** Slice 2 first — a print stylesheet plus a print render mode for declared panels is
+pure frontend and covers most of the need. Slice 3 (a `document` PAGE/procedure kind with a
+server-side renderer as a pluggable adapter pair) deserves its own plan; do not start it inside
+another item.
+
+### 2.5 REG-13 — LNCH-18: non-author usability test never run
+
+**Type:** GAP · **Priority:** P1 · **Effort:** S, but **blocked on a human who is not you**
+
+**What.** ADR-0006 ratified AI-first authoring. Its own Definition of Done requires a real,
+external, non-author person taking an app from description to running FinalApp. Never done. A
+structured friction-log template exists (`docs/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md`).
+
+**Why it matters.** Every app this platform has ever produced was built by you or by an AI you were
+supervising. The claim "a non-engineer can author an app" is entirely unvalidated. This is the
+single largest untested assumption in the product thesis.
+
+**How to fix.** Find one person who is not you and has not seen the project. Give them
+`docs/TUTORIAL_FIRST_APP.md` and the MCP toolbox, nothing else. Record friction in the template.
+Do not help them — the friction *is* the result.
+
+### 2.6 REG-14 — LNCH-22: newcomer documentation test never run
+
+**Type:** GAP · **Priority:** P2 · **Effort:** S, **blocked on a human** · **Status:** PARTIAL
+
+**What.** `docs/DSL_REFERENCE.md` (generated from schema, drift-checked in the generator gate),
+`docs/TUTORIAL_FIRST_APP.md` (built on the sample the RuntimeHost gate regenerates, so it cannot rot
+silently), and validator error codes/hints all exist. The DoD — a newcomer building the tutorial app
+from docs alone — has not been exercised.
+
+**How to fix.** Combine with REG-13: the same person, same session, two DoDs closed at once.
+
+### 2.7 REG-15 — LNCH-23: trademark clearance and release tag
+
+**Type:** PROCESS · **Priority:** P2 · **Blocked on you / counsel** · **Status:** PARTIAL
+
+**What.** LICENSE (Apache-2.0, ratified to Marcelo Giazzon), ADR-0007 (self-hosted/source-first, no
+telemetry at launch), `docs/RELEASE_PROCESS.md`, `CHANGELOG.md` and
+`run-release-checklist-gate.ps1` all exist. Two items remain: a **real trademark clearance** (two
+preliminary findings recorded — "NP DEV Soluções em T.I." at `npdev.com.br`, and **NPDEV LIMITED**,
+UK Companies House #14176093, active since 2022 — neither is a clearance), and **no release tag has
+been cut** (deferred by you three times; HEAD is `beta1-184-gc7e3519`).
+
+**How to fix.** The trademark question needs a professional search, not more web searching. The tag
+is your call — note that `run-release-checklist-gate.ps1` refuses an untagged release by design, and
+REG-3 currently blocks the larger release gate independently.
+
+---
+
+## 3. Process-level items
+
+### 3.1 REG-16 — The other 23 launch items have had zero adversarial review
+
+**Type:** PROCESS · **Severity:** **HIGH** · **Effort:** L
+
+**What.** LNCH-1 has absorbed **five** full review→plan→implement→review rounds. Every other item in
+the ledger — including LNCH-2 (tenant isolation), LNCH-4 (auth), LNCH-13 (row-level authz) — has had
+**none**. **Re-verified 2026-07-21** — sizing for the LNCH-2+4 surface specifically (the "how to
+fix" target below): `com.finalexec.auth` (10 files, 1,236 lines) + `com.finalexec.tenant` (1 file,
+101 lines) + 21 other tenant/auth-touching files across `api`, `controlpanel`, `db`, `npdev/dto`,
+`npdev/service`, `seed`, `config` — roughly **23 distinct production files, ~3,400+ LOC** total.
+12 existing test files were also found (`TenantIsolationAttackTest`, `TenantIsolationE2EIT`,
+`RowLevelAuthorizationAttackTest`, `JwtAuthExternalBetaIT`, etc.) — so this surface is not
+*untested*, only never adversarially reviewed, which is the distinct claim this item makes.
+
+**Why it matters.** The five LNCH-1 rounds found, in order: 2 HIGH, 1 CRITICAL, 1 HIGH, 2 MEDIUM,
+1 MEDIUM. That is what adversarial review of one subsystem yields on a codebase of this maturity.
+There is no reason to believe the auth stack or the tenant-isolation suite is cleaner — only that
+nobody has looked. LNCH-2's own attack suite was written by the same process that wrote the code it
+tests, and two of its E2E tests currently cannot start (REG-2).
+
+The marginal value of a sixth LNCH-1 round is now demonstrably lower than a **first** review of the
+security surface.
+
+**How to fix.** Run the same loop, next on **LNCH-2 + LNCH-4 together** (they share a surface):
+independent review → findings document → phased plan → implement → re-review. Reuse this
+programme's proven discipline: reproduce red first, verify live not just by suite, keep a
+verification ledger, and never let a summary claim more than its evidence file.
+
+### 3.2 REG-17 — No third party has ever reproduced any verification
+
+**Type:** PROCESS · **Severity:** MEDIUM · **Effort:** M
+
+**What.** Every green suite, live rehearsal and gate run in this project's history was produced on
+one machine, by you or an AI session you supervised. The verification ledger is honest and detailed
+— but it has never been *independently exercised*.
+
+**Why it matters.** Reproducibility is the difference between "we believe this works" and "this
+works". It is also a launch prerequisite: a self-hosted, source-first distribution (ADR-0007) means
+strangers will run these gates on hardware you have never seen.
+
+**Where.** Blocked on REG-10 (CI green) and REG-11 (cross-platform scripts) — those two are the
+mechanism by which a third party becomes *able* to reproduce anything.
+
+**How to fix.** REG-10 → REG-11 → then have one external person clone, build, and run the gates on
+Linux from `docs/` alone, recording every point where they had to ask a question. That is the same
+shape as REG-13/REG-14 and can be the same session.
+
+---
+
+## 4. Suggested order (revised 2026-07-21 after independent code verification)
+
+1. **REG-3** (`GATE-REL-1`) — near-free now: the design conflict it described was already fixed
+   2026-05-14. Close the misdiagnosis and wire up the stale evidence-report orchestration; removes a
+   phantom blocker from the picture before anything else is scoped.
+2. **REG-2** (`IT-EXTPG-1`) — **re-diagnose before fixing**: reproduce the actual exception with
+   Docker running; the previously recorded root cause did not survive a code check. Two of the ten
+   dead tests cover tenant isolation and auth — get them running before REG-16 reviews that surface,
+   so the review isn't done against code whose own E2E safety net is dark for an unknown reason.
+3. **REG-9** (LNCH-4 secrets) — the last P0 in the ledger, now re-scoped to JWT key delivery + a
+   super-user-key-seeding decision (DB credentials and API keys already work).
+4. **REG-11** (Phases 2–4, partial) — the `gradlew.bat` migration is mechanical (helper already
+   exists) and de-risks REG-10's eventual Linux run, since some of the 13 files are quality-gate
+   scripts CI is likely to touch. Worth doing alongside/just before REG-10 rather than after.
+5. **REG-10** (CI green) — one PR; genuinely blocked on `gh` CLI or GitHub web access, which no
+   session so far (including this one) has had. Unblocks REG-17.
+6. **REG-16** (review LNCH-2 + LNCH-4) — the highest-value use of the review loop now, once REG-2's
+   tests are actually running. Sized at ~23 files / ~3,400 LOC for scoping Round 1.
+7. **REG-6** (`ColumnFacts`) — before any new pass is added to the schema executor. Lower urgency
+   than originally stated: drift on the two main platform-column sets is already CI-guarded by
+   `PlatformColumnContractTest`; this is about structural complexity, not an active landmine.
+8. **REG-1** (corpus flip, next batch — correct target is **4** `_official` apps, not 5: `Claude` is
+   InMemory-N/A) · **REG-5** (assign owner) · **REG-4** (flake) — steady-state hygiene.
+9. **REG-13 / REG-14 / REG-17** — schedule the one external person; three DoDs close together.
+10. **REG-12**, **REG-15** — as the launch date firms up.
+
+**Boundaries (REG-7, REG-8) require no action** — they are deliberate limits with documented
+rationale. Do not let a future round "fix" them without a decision.
+
+---
+
+*Companion documents: `docs/LAUNCH_READINESS_GAPS.md` (the 24-item ledger) ·
+`docs/OPEN_GAPS_AND_ROADMAP.md` (runtime/generator items incl. `GATE-*`, `LNCH-1-B*`) ·
+`docs/SCHEMA_EVOLUTION.md` (user-facing schema-evolution contract) ·
+`docs/LNCH1_*_PLAN.md` (the five-round programme) ·
+`..\NPDev_General__OutsideRepo\lnch1-evidence\hardening-verification-ledger.md` (the tiebreaker).*
