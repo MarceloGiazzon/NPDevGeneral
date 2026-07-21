@@ -1169,12 +1169,22 @@ public final class SchemaRealizationEmitter {
         manifest.put("physicalDatabase", plan.jdbc());
         manifest.put("database", databaseIdentity(plan));
         manifest.put("schemaFingerprint", plan.schemaFingerprint());
-        manifest.put("schemaLifecycle", Map.of(
-                "strategy", plan.schemaLifecycle().strategy().externalName(),
-                "allowDestructiveRecreate", plan.schemaLifecycle().allowDestructiveRecreate(),
-                "scope", plan.schemaLifecycle().scope(),
-                "destructiveRecreateConfirmation", plan.schemaLifecycle().destructiveRecreateConfirmation()
-        ));
+        // Insertion-ordered, not Map.of(...): java.util.Map.of with 2+ entries produces an
+        // ImmutableCollections.MapN whose iteration order is randomized per-JVM by
+        // ImmutableCollections.SALT, which Jackson would otherwise serialize in that varying order
+        // -- the GATE-DET-1 byte-nondeterminism mechanism. This emitter's OBJECT_MAPPER happens to
+        // enable ORDER_MAP_ENTRIES_BY_KEYS, which today re-sorts every map (nested ones included) by
+        // key at write time and so masks the hazard for schema-realization-manifest.json -- unlike
+        // FinalAppAssembler's plain mapper, whose identical storageBoundary Map.of did flip run to
+        // run (the original T10 bug). We do NOT rely on that global flag to compensate for a
+        // per-site Map.of: this manifest is what SchemaLifecycleExecutor reads at boot, so keep each
+        // nested object insertion-ordered and the determinism guarantee local.
+        Map<String, Object> schemaLifecycle = new LinkedHashMap<>();
+        schemaLifecycle.put("strategy", plan.schemaLifecycle().strategy().externalName());
+        schemaLifecycle.put("allowDestructiveRecreate", plan.schemaLifecycle().allowDestructiveRecreate());
+        schemaLifecycle.put("scope", plan.schemaLifecycle().scope());
+        schemaLifecycle.put("destructiveRecreateConfirmation", plan.schemaLifecycle().destructiveRecreateConfirmation());
+        manifest.put("schemaLifecycle", schemaLifecycle);
         manifest.put("internalTables", internalTables);
         manifest.put("businessTables", businessTables);
         manifest.put("businessTableColumns", businessTableColumns);
@@ -1200,11 +1210,13 @@ public final class SchemaRealizationEmitter {
         // before, or an operator can now supply this at generation time instead of hand-editing the
         // manifest.
         manifest.put("destructiveAcknowledgment", destructiveAcknowledgmentToken == null ? "" : destructiveAcknowledgmentToken);
-        manifest.put("sourceOfTruth", Map.of(
-                "internal", resolveInternalSchemaSourcePath(plan.definitionPath()).toString(),
-                "business", modelSourcePath == null ? "" : modelSourcePath.toAbsolutePath().normalize().toString(),
-                "database", plan.definitionPath().toString()
-        ));
+        // Insertion-ordered, not Map.of(...) -- see the schemaLifecycle comment above for the
+        // ImmutableCollections.SALT mechanism this avoids.
+        Map<String, Object> sourceOfTruth = new LinkedHashMap<>();
+        sourceOfTruth.put("internal", resolveInternalSchemaSourcePath(plan.definitionPath()).toString());
+        sourceOfTruth.put("business", modelSourcePath == null ? "" : modelSourcePath.toAbsolutePath().normalize().toString());
+        sourceOfTruth.put("database", plan.definitionPath().toString());
+        manifest.put("sourceOfTruth", sourceOfTruth);
         manifest.put("fingerprintInputs", plan.fingerprintInputs());
 
         Path manifestPath = resourcesRoot.resolve("npdev").resolve("db").resolve("schema-realization-manifest.json");
@@ -1262,13 +1274,16 @@ public final class SchemaRealizationEmitter {
         database.put("host", plan.host());
         database.put("hostPort", plan.hostPort());
         database.put("jdbcUrl", plan.jdbcUrl());
-        database.put("dbeaver", Map.of(
-                "host", plan.dbeaverHost(),
-                "port", plan.dbeaverPort(),
-                "database", plan.dbeaverDatabase(),
-                "username", plan.dbeaverUsername(),
-                "ssl", "disabled"
-        ));
+        // Insertion-ordered, not Map.of(...) -- see the schemaLifecycle comment in
+        // writeSchemaRealizationManifest for the ImmutableCollections.SALT mechanism this avoids.
+        // This nested object lands in the same schema-realization-manifest.json.
+        Map<String, Object> dbeaver = new LinkedHashMap<>();
+        dbeaver.put("host", plan.dbeaverHost());
+        dbeaver.put("port", plan.dbeaverPort());
+        dbeaver.put("database", plan.dbeaverDatabase());
+        dbeaver.put("username", plan.dbeaverUsername());
+        dbeaver.put("ssl", "disabled");
+        database.put("dbeaver", dbeaver);
         return database;
     }
 

@@ -86,17 +86,26 @@ public final class OperationalRunbookEmitter {
         out.put("serverPort", serverPort);
         out.put("apiKey", apiKey);
         out.put("schemaFingerprint", plan.schemaFingerprint());
-        out.put("dbeaver", Map.of(
-                "host", plan.dbeaverHost(),
-                "port", plan.dbeaverPort(),
-                "database", plan.dbeaverDatabase(),
-                "username", plan.dbeaverUsername(),
-                "ssl", "disabled"
-        ));
-        out.put("smoke", Map.of(
-                "hasUserConcept", hasUserConcept,
-                "conceptCount", model == null ? 0 : model.getConcepts().size()
-        ));
+        // Insertion-ordered, not Map.of(...): java.util.Map.of with 2+ entries produces an
+        // ImmutableCollections.MapN whose iteration order is randomized per-JVM by
+        // ImmutableCollections.SALT, which Jackson would otherwise serialize in that varying order
+        // -- the GATE-DET-1 byte-nondeterminism mechanism. This emitter's ObjectMapper happens to
+        // set ORDER_MAP_ENTRIES_BY_KEYS, which today re-sorts every map (nested ones included) by
+        // key at write time and so masks the hazard for resolved-db-plan.json specifically. We do
+        // NOT rely on that global flag to compensate for a per-site Map.of: drop the flag and the
+        // non-determinism returns silently. Keep each nested object insertion-ordered so the
+        // guarantee is local and matches every other emitter in this bug class.
+        Map<String, Object> dbeaver = new LinkedHashMap<>();
+        dbeaver.put("host", plan.dbeaverHost());
+        dbeaver.put("port", plan.dbeaverPort());
+        dbeaver.put("database", plan.dbeaverDatabase());
+        dbeaver.put("username", plan.dbeaverUsername());
+        dbeaver.put("ssl", "disabled");
+        out.put("dbeaver", dbeaver);
+        Map<String, Object> smoke = new LinkedHashMap<>();
+        smoke.put("hasUserConcept", hasUserConcept);
+        smoke.put("conceptCount", model == null ? 0 : model.getConcepts().size());
+        out.put("smoke", smoke);
         return out;
     }
 
