@@ -13,7 +13,8 @@
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
         { "name": "name", "type": "string", "required": true, "ui": { "label": "Name", "widget": "text" } },
-        { "name": "relationship", "type": "string", "ui": { "label": "Relationship", "widget": "text" } }
+        { "name": "relationship", "type": "string", "ui": { "label": "Relationship", "widget": "text" } },
+        { "name": "notes", "type": "string", "required": false, "ui": { "label": "Notes", "widget": "text" } }
       ],
       "invariants": [
         { "name": "PersonNameRequired", "expr": "name != null && name != ''" }

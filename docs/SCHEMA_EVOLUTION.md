@@ -426,6 +426,18 @@ with `allowDestructiveRecreate: false`, which makes the itemized token the only 
 The flag exists for backward compatibility with apps generated before this feature; existing apps
 keep working unchanged.
 
+> **Where the shipped corpus actually stands (as of LNCH-1 T4, 2026-07-21).** The recommended posture
+> is the *documented* default, but most shipped definitions predate it and still carry the blanket
+> one — this is backward compatibility, not an endorsement. Counting the JDBC-backed
+> `db.definition.json` files under `AppGen\apps` and `NPDevSamples`: **6** are on the recommended
+> posture (`simple-user-registry-h2local`, `simple-product-h2local`, `simple-consumer-h2server`,
+> `simple-user-registry-postgres`, `NPDevSamples\12works\gift-idea-tracker`, and
+> `npdev_split_model_sample_app`) and **27** still carry the blanket posture; a further **5**
+> `InMemory`/`RecreateOnAppStart` definitions are non-persistent, so this posture does not apply to
+> them. Recount with:
+> `grep -rl '"strategy": "KeepExistingIfCompatible"'` vs
+> `grep -rl '"strategy": "DropAndRecreateOnStructureChange"'` across those two trees.
+
 **Migrating an existing app off it:** set `strategy` to `KeepExistingIfCompatible` and
 `allowDestructiveRecreate` to `false` in `db.definition.json`, then use
 `Build-NpdevApp.ps1 -Upgrade -PlanOnly` to review the plan and
