@@ -8,7 +8,6 @@ import com.finalexec.npdev.service.SandboxedPluginExecutionEngine;
 import com.finalexec.npdev.service.SandboxedPluginExecutionResult;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityErrorKind;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -137,15 +136,20 @@ class SandboxedPluginExecutionEngineTest {
      *       {@code future.cancel(true)} sets exactly that flag.</li>
      * </ul>
      *
-     * <p><b>Root cause NOT established</b>, and deliberately not guessed at: distinguishing the two
-     * requires knowing which status the failing run actually returned, and the previous round
-     * recorded only that the test failed. The assertions below now print the full result on failure,
-     * so the next occurrence identifies the mechanism instead of restarting this analysis a third
-     * time. If it proves to be the second bullet, the fix is in the engine (clear the interrupt on a
-     * pooled thread before handing it work), not in this test's tolerance.
+     * <h2>REG-4 (2026-07-21) — root cause ESTABLISHED and FIXED; no longer load-sensitive</h2>
+     *
+     * <p>It was the first bullet. Reproduced DETERMINISTICALLY (see
+     * {@link #timeoutIsNotCorruptedByAPreExistingCallerInterrupt}) by pre-interrupting the calling
+     * thread: {@code future.get(25ms)} then threw {@code InterruptedException} at
+     * {@code executionDurationMs=1} and the engine returned {@code FAILED/PLUGIN_EXECUTION_INTERRUPTED}
+     * instead of {@code TIMED_OUT}. Under a parallel suite ({@code workers.max=4}) a prior test on the
+     * same worker thread leaves that interrupt pending — the ~1-in-5 signature. Fixed in the engine,
+     * not by widening the margin: {@code SandboxedPluginExecutionEngine.execute} now reads-and-clears a
+     * stray caller interrupt before the bounded {@code get()} and re-asserts it afterwards, so a
+     * timeout can no longer be corrupted by unrelated interrupt state. The {@code @Tag("load-sensitive")}
+     * marker is removed because the mechanism that made it load-sensitive is gone.
      */
     @Test
-    @Tag("load-sensitive")
     void timesOutSlowPluginExecution() {
         try (SandboxedPluginExecutionEngine engine = new SandboxedPluginExecutionEngine(
                 25,
@@ -181,6 +185,66 @@ class SandboxedPluginExecutionEngineTest {
                     () -> "T6.1 diagnostic -- actual result was: " + result);
             assertFalse(result.toCapabilityResult().ok(),
                     () -> "T6.1 diagnostic -- actual result was: " + result);
+        }
+    }
+
+    /**
+     * REG-4 (2026-07-21) — the load-sensitive flake in {@link #timesOutSlowPluginExecution},
+     * reproduced DETERMINISTICALLY instead of waiting for it to recur under suite load.
+     *
+     * <p>T6.1 narrowed the flake to {@code future.get(timeout)} exiting via a path other than
+     * {@code TimeoutException}. Its first candidate was: the calling (JUnit worker) thread already
+     * carries an interrupt when {@code get()} is entered, so {@code get()} throws
+     * {@code InterruptedException} <i>immediately</i> — before the timeout can fire — and the engine
+     * returns {@code FAILED/PLUGIN_EXECUTION_INTERRUPTED} instead of {@code TIMED_OUT}. Under a
+     * parallel JUnit run ({@code workers.max=4}), a prior test on the same worker thread can leave
+     * that interrupt pending, which is exactly the ~1-in-5-under-load signature.
+     *
+     * <p>This test forces that state directly by interrupting the current thread before calling the
+     * engine. Before the fix it reproduced the flake 100% of the time (result {@code FAILED}); after
+     * it, the engine clears a stray pre-existing interrupt so a bounded execution's timeout semantics
+     * cannot be corrupted by unrelated interrupt state, and the interrupt is re-asserted afterwards so
+     * genuine cancellation is still delivered to the caller.
+     */
+    @Test
+    void timeoutIsNotCorruptedByAPreExistingCallerInterrupt() {
+        try (SandboxedPluginExecutionEngine engine = new SandboxedPluginExecutionEngine(
+                25,
+                allowAllPolicy(),
+                new InMemorySummaryStore()
+        )) {
+            CapabilityCall call = new CapabilityCall(
+                    "notification",
+                    "NotificationCapability",
+                    "notification-inproc",
+                    "send",
+                    Map.of("message", "slow")
+            );
+
+            // Simulate a prior test on this JUnit worker thread having left the interrupt flag set.
+            Thread.currentThread().interrupt();
+            SandboxedPluginExecutionResult result;
+            boolean interruptStillSetAfter;
+            try {
+                result = engine.execute(
+                        contribution("notification-inproc"),
+                        realizationSummary("notification-inproc-package", "notification-inproc"),
+                        call,
+                        Map.of(),
+                        new SlowHandler()
+                );
+            } finally {
+                // Consume whatever interrupt state remains so it cannot leak into the next test.
+                interruptStillSetAfter = Thread.interrupted();
+            }
+
+            assertEquals(SandboxedPluginExecutionResult.Status.TIMED_OUT, result.status(),
+                    () -> "REG-4: a stray caller interrupt must not turn a timeout into a failure. Actual: " + result);
+            assertEquals("PLUGIN_EXECUTION_TIMEOUT", result.errorCode());
+            assertEquals(CapabilityErrorKind.TIMEOUT, result.errorKind());
+            assertTrue(interruptStillSetAfter,
+                    "REG-4: the engine must re-assert the caller's interrupt after the bounded execution, "
+                            + "so genuine cancellation is deferred but not swallowed");
         }
     }
 

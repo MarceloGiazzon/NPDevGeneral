@@ -88,6 +88,16 @@ public final class SandboxedPluginExecutionEngine implements AutoCloseable {
 
         long startedAt = System.nanoTime();
         logStart(contribution, realizationSummary, call);
+        // REG-4 (2026-07-21): a stray interrupt already pending on the CALLING thread -- e.g. left by
+        // an unrelated prior task on the same worker thread under a parallel test/execution run --
+        // makes future.get(timeout) throw InterruptedException IMMEDIATELY, before the timeout can
+        // fire, turning a genuine timeout into a spurious PLUGIN_EXECUTION_INTERRUPTED (confirmed:
+        // executionDurationMs=1 with the caller pre-interrupted). This bounded execution's timeout
+        // semantics must not depend on unrelated interrupt state. Clear it for the duration
+        // (Thread.interrupted() reads-and-clears) and re-assert it in the finally, so a real pending
+        // cancellation is deferred by at most timeoutMs but never swallowed. A NEW interrupt arriving
+        // DURING get() still takes the InterruptedException path below, unchanged.
+        boolean callerWasInterrupted = Thread.interrupted();
         Future<CapabilityResult> future = executorService.submit(() -> invokeHandler(call, contextState, handler));
         try {
             CapabilityResult result = future.get(timeoutMs, TimeUnit.MILLISECONDS);
@@ -189,6 +199,12 @@ public final class SandboxedPluginExecutionEngine implements AutoCloseable {
             record(executionResult);
             logFinish(executionResult);
             return executionResult;
+        } finally {
+            // REG-4: re-assert a stray caller interrupt that was cleared above, so genuine
+            // cancellation is delivered to the caller after this bounded execution rather than lost.
+            if (callerWasInterrupted) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 
