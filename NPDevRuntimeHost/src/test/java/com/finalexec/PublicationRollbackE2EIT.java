@@ -231,11 +231,16 @@ class PublicationRollbackE2EIT extends AbstractScenarioIntegrationTest {
             String expectedStatus,
             String expectedOutcome
     ) {
+        // publication_execution_id is a TEXT column on this platform-owned internal table
+        // (every npdev_* id column is TEXT, see NpdevPublicationExecutionTable), so the bound
+        // parameter must stay text. The original CAST(? AS uuid) produced Postgres error
+        // "operator does not exist: text = uuid"; H2 silently coerced it, which is why this
+        // divergence went unnoticed until IT-EXTPG-1's Postgres run was un-blocked (REG-2, 2026-07-21).
         Map<String, Object> row = jdbcTemplate.queryForMap(
                 """
                 SELECT publication_status, publication_outcome
                 FROM npdev_publication_execution
-                WHERE publication_execution_id = CAST(? AS uuid)
+                WHERE publication_execution_id = ?
                 """,
                 realPublicationExecutionId
         );

@@ -19,3 +19,18 @@ npdev:
     enabled: true
   scheduler:
     enabled: false
+  # REG-2 / IT-EXTPG-1 (2026-07-21): this profile substitutes a Testcontainers-managed
+  # Postgres (jdbc:tc:postgresql, whose database is ALWAYS the container default name
+  # 'test') for whatever db.definition.json resolved for the real app (e.g.
+  # 'npdev_sample_postgres'). DatabaseIdentityStartupValidator runs `select
+  # current_database()` and aborts context load on the mismatch ('test' != the resolved
+  # name) - which presented for five rounds as an opaque ApplicationContext load failure
+  # and was twice mis-attributed (first to "needs an external Postgres", then to "no
+  # DataSource bean is created"; the DataSource IS created and the check runs against it).
+  # This is exactly the case the validator's own trial-override doc comment describes: a
+  # profile has intentionally substituted a fixed database in place of the resolved
+  # identity, so the identity check is meaningless here and is skipped. Do NOT instead pin
+  # npdev.database.resolved-name to 'test' - that hardcodes a Testcontainers default that
+  # can change and reads as a real identity when it is not one.
+  trial:
+    database-override: true
