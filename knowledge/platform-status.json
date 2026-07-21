@@ -2,7 +2,7 @@
   "schemaVersion": "platform-status.v1",
   "generatedFrom": "docs/OPEN_GAPS_AND_ROADMAP.md",
   "note": "DERIVED -- do not hand-edit. Regenerate via scripts/ai/extract_platform_status.py.",
-  "count": 35,
+  "count": 37,
   "items": [
     {
       "id": "LNCH-1-B7",
@@ -19,6 +19,22 @@
       "status": "OPEN",
       "priority": "P4",
       "notes": ""
+    },
+    {
+      "id": "LNCH-1-B8",
+      "title": "A failed -Upgrade run silently degrades the NEXT plan to \"Fresh install -- no previous compiled model to diff against\" instead of erroring",
+      "category": "Tooling footgun (silent wrong output)",
+      "status": "OPEN",
+      "priority": "P3",
+      "notes": ""
+    },
+    {
+      "id": "LNCH-1-B9",
+      "title": "Schema-ahead detector cannot see a pure column drop by a newer build (no residue to detect)",
+      "category": "Runtime limitation (documented)",
+      "status": "OPEN",
+      "priority": "P4",
+      "notes": "— WONTFIX for v1"
     },
     {
       "id": "BUG-16",
