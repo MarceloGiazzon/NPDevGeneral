@@ -197,6 +197,13 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // constraint never loses data), so it runs here, unconditionally, before classify() ever
         // sees the table, the same way renames do.
         relaxNoLongerRequiredColumns(dataSource, manifest);
+        // LNCH-1 T1 (finding T-B1), Half B. Runs immediately after the relax pass, unconditionally and
+        // for the same reason it does: restoring NOT NULL on a platform column whose default is fixed
+        // and known can never lose data, and deferring it would let the next boot re-relax what this
+        // one repaired. Half A (the exclusion inside relaxNoLongerRequiredColumns) only stops NEW
+        // damage; this is what repairs the apps an earlier build already loosened. No-op -- and writes
+        // no history row -- once every platform column is strict. Proven by scenarios 28 and 28b.
+        tightenPlatformColumns(dataSource, manifest);
 
         SchemaChangeClassification classification = classify(dataSource, manifest);
         SchemaChangeClassification classificationForFallthrough = classification;
@@ -1287,6 +1294,24 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                             || primaryKeyColumns.contains(column)) {
                         continue; // not shared yet, still required, or the primary key -- not this method's concern
                     }
+                    // LNCH-1 T1 (finding T-B1). The platform-managed columns are NEVER this method's
+                    // concern, and excluding them is unambiguously safe: a MODEL field can never carry
+                    // one of these names -- SchemaRealizationEmitter's RESERVED_BUSINESS_COLUMN_NAMES
+                    // makes 'version'/'row_version'/'tenant_id' a hard GENERATION-time error -- so a
+                    // live column with one of these names is always platform-owned, never a user's
+                    // field that legitimately became optional.
+                    //
+                    // Without this, every fingerprint-changing boot stripped NOT NULL from all three:
+                    // they appear in businessTableColumns (which is fullColumnNames, platform columns
+                    // included) but never in businessTableRequiredColumns (which is model-derived), so
+                    // they fell straight through. Only 'id' escaped, and only via the primary-key read
+                    // above. That silently defeated tenant isolation (a NULL tenant_id is unreachable
+                    // to every tenant-scoped read) and LNCH-16's compare-and-swap (a NULL row_version).
+                    // Proven live: scenario 28. Repaired on existing databases by
+                    // tightenPlatformColumns, which runs immediately after this pass.
+                    if (PLATFORM_MANAGED_COLUMNS.contains(column.toLowerCase(Locale.ROOT))) {
+                        continue;
+                    }
                     if (!isColumnNotNull(connection, table, column)) {
                         continue; // already nullable -- idempotent no-op
                     }
@@ -1309,6 +1334,126 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         }
         if (!relaxed.isEmpty()) {
             System.out.println("NPDev schema lifecycle: relaxed NOT NULL on no-longer-required column(s): " + relaxed);
+        }
+    }
+
+    /**
+     * The platform-managed columns that carry a FIXED, known default and are therefore repairable by
+     * {@link #tightenPlatformColumns}, in a deterministic order so the log line and the history row
+     * read the same way on every run.
+     *
+     * <p>Deliberately NOT the whole of {@link #PLATFORM_MANAGED_COLUMNS}: {@code id} is excluded
+     * because it has no platform default (it is the primary key, hence already {@code NOT NULL}, and
+     * a concept may declare its own id field). VERIFIED against the emitter's fresh {@code CREATE
+     * TABLE} lines ({@code SchemaRealizationEmitter:370-377}), which emit exactly
+     * {@code version BIGINT NOT NULL DEFAULT 0}, {@code row_version BIGINT NOT NULL DEFAULT 0} and
+     * {@code tenant_id VARCHAR(120) NOT NULL DEFAULT 'default'}.
+     */
+    private static final List<String> REPAIRABLE_PLATFORM_COLUMNS =
+            List.of("version", "row_version", "tenant_id");
+
+    /** The platform default for a {@link #REPAIRABLE_PLATFORM_COLUMNS} entry, as a bound parameter
+     * value (never string-concatenated into DDL). */
+    private static Object platformColumnDefault(String column) {
+        return switch (column) {
+            case "version", "row_version" -> 0L;
+            case "tenant_id" -> "default";
+            default -> throw new IllegalStateException("No platform default is defined for column: " + column);
+        };
+    }
+
+    /**
+     * LNCH-1 T1 (finding T-B1), Half B -- the repair half. Restores {@code NOT NULL} on the
+     * platform-managed columns of any table where it is missing, backfilling existing NULLs to the
+     * fixed platform default first.
+     *
+     * <p><b>Why this is needed at all:</b> Half A (the exclusion in
+     * {@link #relaxNoLongerRequiredColumns}) only stops the bleeding. Every app already upgraded by a
+     * build carrying the old behaviour has permanently nullable {@code version}, {@code row_version}
+     * and {@code tenant_id}, and nothing else would ever put them back.
+     *
+     * <p><b>Why it is safe to run unconditionally,</b> in the same place and for the same reason the
+     * relax pass does (before {@link #classify} ever sees the table): tightening a platform column
+     * whose default is fixed and known can never lose data -- the only writes are "give the rows that
+     * have no value the value they would have been created with" and "re-assert a constraint the
+     * generator's own fresh CREATE TABLE always emits". Leaving it to a later phase would also mean
+     * the very next boot re-relaxed it.
+     *
+     * <p><b>Idempotent by construction,</b> exactly like {@link #addBackfillAndTightenColumn}: live
+     * nullability is re-read via {@link #isColumnNotNull} on every call, so an already-strict column
+     * is a no-op and produces no history row (see {@link #recordStepPass}'s empty-list contract --
+     * no noise rows on converged boots).
+     *
+     * <p>A table whose platform column is <em>absent entirely</em> (a very old app) is not this
+     * pass's concern -- the additive migration adds it. Only live, nullable columns are touched.
+     *
+     * <p>Package-private (not private) so it is directly unit-testable against a real H2
+     * {@link DataSource}, following {@link #relaxNoLongerRequiredColumns}'s own precedent.
+     */
+    void tightenPlatformColumns(DataSource dataSource, SchemaManifest manifest) {
+        record Tightening(String table, String column, Object platformDefault) {
+        }
+        List<Tightening> plan = new ArrayList<>();
+        List<String> tightened = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            for (String table : manifest.businessTableColumns().keySet()) {
+                Set<String> actualColumns = readActualColumns(metadata, table);
+                if (actualColumns.isEmpty()) {
+                    continue; // brand-new table -- V1's CREATE TABLE IF NOT EXISTS emits it strict already
+                }
+                for (String column : REPAIRABLE_PLATFORM_COLUMNS) {
+                    if (!actualColumns.contains(column)) {
+                        continue; // absent entirely -- the additive migration's job, not this pass's
+                    }
+                    if (isColumnNotNull(connection, table, column)) {
+                        continue; // already strict -- idempotent no-op
+                    }
+                    plan.add(new Tightening(table, column, platformColumnDefault(column)));
+                }
+            }
+            // R4 (F5): one write-before-execute audit row for the whole repair pass -- the audit trail
+            // must show that a repair happened, not merely that the columns are strict now.
+            List<String> itemDetails = new ArrayList<>();
+            for (Tightening item : plan) {
+                itemDetails.add("TIGHTEN_PLATFORM_COLUMN " + item.table() + "." + item.column()
+                        + " DEFAULT " + item.platformDefault());
+            }
+            recordStepPass(dataSource, manifest, "TIGHTEN_PLATFORM_COLUMNS", itemDetails, () -> {
+                for (Tightening item : plan) {
+                    executeBackfillAndSetNotNull(connection, item.table(), item.column(), item.platformDefault());
+                    tightened.add(item.table() + "." + item.column());
+                }
+            });
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed restoring NOT NULL on platform-managed column(s)", exception);
+        }
+        if (!tightened.isEmpty()) {
+            System.out.println("NPDev schema lifecycle: restored NOT NULL on platform-managed column(s) "
+                    + "relaxed by an earlier build (LNCH-1 T-B1 repair): " + tightened);
+        }
+    }
+
+    /**
+     * Bound-parameter {@code UPDATE ... WHERE c IS NULL} -&gt; {@code SET NOT NULL}, for
+     * {@link #tightenPlatformColumns}. The same two trailing steps as
+     * {@link #addBackfillAndTightenColumn} (there is no {@code ADD COLUMN} step here: this pass only
+     * ever runs against a column already proven live), and needs no engine dialect branch for the
+     * same reason that method documents -- {@code ALTER COLUMN ... SET NOT NULL} is identical syntax
+     * on H2 and Postgres.
+     */
+    private static void executeBackfillAndSetNotNull(Connection connection, String table, String column,
+            Object platformDefault) throws SQLException {
+        String safeTable = safeIdentifier(table);
+        String safeColumn = safeIdentifier(column);
+        try (PreparedStatement update = connection.prepareStatement(
+                "UPDATE " + safeTable + " SET " + safeColumn + " = ? WHERE " + safeColumn + " IS NULL")) {
+            update.setObject(1, platformDefault);
+            update.executeUpdate();
+        }
+        try (PreparedStatement notNull = connection.prepareStatement(
+                "ALTER TABLE " + safeTable + " ALTER COLUMN " + safeColumn + " SET NOT NULL")) {
+            notNull.executeUpdate();
         }
     }
 

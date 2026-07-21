@@ -1616,6 +1616,194 @@ class SchemaLifecycleExecutorProofMatrixTest {
                 "the token that authorized this pass must be recorded for audit");
     }
 
+    @Test
+    @DisplayName("Scenario 28 (T-B1): an ordinary upgrade must NOT relax NOT NULL on the "
+            + "platform-managed columns -- tenant_id, row_version and version are platform-owned and "
+            + "their nullability never follows a model field's optionality")
+    void scenario28_ordinaryUpgradeNeverRelaxesPlatformManagedColumns() throws SQLException {
+        // The production shape: SchemaRealizationEmitter's fresh CREATE TABLE emits all three
+        // platform columns NOT NULL with a DEFAULT (VERIFIED at SchemaRealizationEmitter:370-377).
+        // seedTwoRealisticConceptsWithData deliberately does NOT (it creates them plain nullable), so
+        // this scenario needs its own fixture -- nullability is the whole subject here.
+        seedProductionShapedWidgets();
+
+        // Precondition: the fixture really is strict to begin with, or this scenario proves nothing.
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            for (String column : List.of("version", "row_version", "tenant_id")) {
+                assertTrue(isNotNull(metadata, "widgets", column),
+                        "precondition: the production-shaped fixture must start with " + column + " NOT NULL");
+            }
+        }
+
+        // Fingerprint + ownership through the PRODUCTION writer, never hand-inserted JSON.
+        executor.afterMigrate(dataSource, productionShapedWidgetsManifest("sha256:v1", false));
+
+        // v2 carries one ordinary, entirely unremarkable change: a new OPTIONAL field 'notes'.
+        // 'name' stays required in both manifests, so the only columns the relax pass could possibly
+        // act on are the three platform ones -- which is exactly what makes this test specific.
+        SchemaLifecycleExecutor.SchemaManifest v2 = productionShapedWidgetsManifest("sha256:v2", true);
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, v2);
+        assertFalse(result.performed(), "adding one optional column must never be destructive");
+
+        // THE T-B1 ASSERTION. Before the fix, relaxNoLongerRequiredColumns walked
+        // manifest.businessTableColumns() -- which carries the platform columns, since it is
+        // fullColumnNames -- and skipped a column only if it was model-'required' (never true of a
+        // platform column) or the live primary key (which is why 'id' alone escaped). All three were
+        // therefore stripped of NOT NULL on EVERY fingerprint-changing boot.
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(isNotNull(metadata, "widgets", "tenant_id"),
+                    "tenant_id NOT NULL is the guard that stops an in-place upgrade leaving rows "
+                            + "unreachable to every tenant-scoped read -- it must survive an ordinary upgrade");
+            assertTrue(isNotNull(metadata, "widgets", "row_version"),
+                    "a nullable row_version silently defeats LNCH-16's compare-and-swap");
+            assertTrue(isNotNull(metadata, "widgets", "version"),
+                    "version is platform-managed; no model field can be named 'version' "
+                            + "(RESERVED_BUSINESS_COLUMN_NAMES), so its nullability is never a model decision");
+            assertTrue(isNotNull(metadata, "widgets", "name"),
+                    "control: a genuinely still-required business column is also untouched");
+        }
+
+        // And it stays strict across a second boot -- the matrix's standing idempotence requirement.
+        executor.afterMigrate(dataSource, v2);
+        assertSecondBootIsNoOp(v2);
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            for (String column : List.of("version", "row_version", "tenant_id")) {
+                assertTrue(isNotNull(metadata, "widgets", column),
+                        column + " must still be NOT NULL after a second boot");
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("Scenario 28b (T-B1 repair): an app ALREADY loosened by the old relax pass is "
+            + "repaired -- NULLs backfilled to the platform defaults, NOT NULL restored, a "
+            + "TIGHTEN_PLATFORM_COLUMNS history row written, and the next boot is a clean no-op")
+    void scenario28b_alreadyRelaxedPlatformColumnsAreRepairedOnTheNextBoot() throws SQLException {
+        // Exactly the state the OLD behaviour left behind on every app it upgraded: the platform
+        // columns exist, are nullable, and real rows carry NULLs in them -- which is how rows became
+        // unreachable to tenant-scoped reads and how row_version stopped guarding anything.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets ("
+                    + "id BIGINT PRIMARY KEY, name VARCHAR(50) NOT NULL, "
+                    + "version BIGINT, row_version BIGINT, tenant_id VARCHAR(120))");
+            statement.execute("INSERT INTO widgets (id, name, version, row_version, tenant_id) "
+                    + "VALUES (1, 'Alpha', NULL, NULL, NULL)");
+            // A row that already holds real values, to prove the backfill touches ONLY the NULLs.
+            statement.execute("INSERT INTO widgets (id, name, version, row_version, tenant_id) "
+                    + "VALUES (2, 'Beta', 7, 3, 'acme')");
+        }
+        executor.afterMigrate(dataSource, productionShapedWidgetsManifest("sha256:v1", false));
+
+        SchemaLifecycleExecutor.SchemaManifest v2 = productionShapedWidgetsManifest("sha256:v2", true);
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, v2);
+        assertFalse(result.performed(), "a repair is never destructive");
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            for (String column : List.of("version", "row_version", "tenant_id")) {
+                assertTrue(isNotNull(metadata, "widgets", column),
+                        column + " must have been repaired back to NOT NULL");
+            }
+            // The NULL row is backfilled to the PLATFORM defaults -- the same values the generator's
+            // fresh CREATE TABLE would have given it (SchemaRealizationEmitter:370-377).
+            assertEquals("0", readColumn(connection, "widgets", "version", 1L));
+            assertEquals("0", readColumn(connection, "widgets", "row_version", 1L));
+            assertEquals("default", readColumn(connection, "widgets", "tenant_id", 1L));
+            // The row that already had real values keeps every one of them.
+            assertEquals("7", readColumn(connection, "widgets", "version", 2L));
+            assertEquals("3", readColumn(connection, "widgets", "row_version", 2L));
+            assertEquals("acme", readColumn(connection, "widgets", "tenant_id", 2L));
+        }
+
+        // The audit trail must show that a REPAIR happened, not merely that the columns are strict.
+        List<HistoryDetail> afterRepair = allHistoryRows(dataSource);
+        List<HistoryDetail> repairRows = afterRepair.stream()
+                .filter(row -> "TIGHTEN_PLATFORM_COLUMNS".equals(row.classification()))
+                .toList();
+        assertEquals(1, repairRows.size(),
+                "exactly one TIGHTEN_PLATFORM_COLUMNS pass row is expected: " + afterRepair);
+        assertEquals("APPLIED", repairRows.get(0).outcome());
+        for (String column : List.of("version", "row_version", "tenant_id")) {
+            assertTrue(repairRows.get(0).itemsJson().contains("widgets." + column),
+                    "the history row must itemize what it repaired: " + repairRows.get(0).itemsJson());
+        }
+
+        // A second boot is a clean no-op: nothing left to tighten, so NO new history row (recordStepPass
+        // writes nothing for an empty item list -- no noise rows on converged boots).
+        executor.afterMigrate(dataSource, v2);
+        assertSecondBootIsNoOp(v2);
+        long repairRowsAfterSecondBoot = allHistoryRows(dataSource).stream()
+                .filter(row -> "TIGHTEN_PLATFORM_COLUMNS".equals(row.classification()))
+                .count();
+        assertEquals(1, repairRowsAfterSecondBoot,
+                "the repair is idempotent -- a converged boot must not write a second repair row");
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            for (String column : List.of("version", "row_version", "tenant_id")) {
+                assertTrue(isNotNull(metadata, "widgets", column),
+                        column + " must still be NOT NULL after the second boot");
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("Scenario 29 (T-B2): a table missing the platform 'version' column self-heals "
+            + "additively -- it is not an unexplainable diff that demands a destructive token")
+    void scenario29_missingPlatformVersionColumnIsAdditiveNotUnknown() throws SQLException {
+        // 24b/27's construction: 'widgets' physically lacks 'version'. Before T2 that was the
+        // canonical way to manufacture an UNKNOWN item, because 'version' was the one column every
+        // real manifest DECLARES (fullColumnNames) but never marks ADDITIVE (additiveColumnNames) --
+        // so no migration could ever add it back, and since closeout C1 the resulting UNKNOWN
+        // REFUSES the boot unless an itemized whole-schema-wipe token is supplied.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), "
+                    + "row_version BIGINT, tenant_id VARCHAR(64))");
+            statement.execute("INSERT INTO widgets (id, name) VALUES (1, 'Alpha')");
+            statement.execute("INSERT INTO widgets (id, name) VALUES (2, 'Beta')");
+            statement.execute("CREATE TABLE gadgets (id BIGINT PRIMARY KEY, label VARCHAR(50), "
+                    + "version BIGINT, row_version BIGINT, tenant_id VARCHAR(64))");
+            statement.execute("INSERT INTO gadgets (id, label, version) VALUES (1, 'G1', 0)");
+            statement.execute("INSERT INTO gadgets (id, label, version) VALUES (2, 'G2', 0)");
+        }
+        executor.afterMigrate(dataSource, realisticTwoConceptManifest("sha256:old"));
+
+        SchemaLifecycleExecutor.SchemaManifest v2 = realisticTwoConceptManifest("sha256:new");
+
+        // Half one of the fix, at the manifest level: 'version' must now be declared additive, the
+        // same way 'row_version' already is. This is what the emitter change buys.
+        assertTrue(v2.businessTableAdditiveColumns().getOrDefault("widgets", List.of())
+                        .stream().anyMatch("version"::equalsIgnoreCase),
+                "'version' must be additive-eligible -- it is BIGINT DEFAULT 0, exactly like "
+                        + "row_version, which already is");
+
+        // Half two, the consequence that matters: the diff is now fully explainable, so no UNKNOWN.
+        SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, v2);
+        assertTrue(report.hasOnlyNamedDestructiveKinds(),
+                "a merely-missing platform 'version' column must no longer produce an UNKNOWN item: "
+                        + report.stableStrings());
+
+        // And therefore the boot is NOT refused. Before T2 this threw, demanding a token whose only
+        // effect would have been to DROP AND RECREATE EVERY TABLE IN THE APP.
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, v2);
+        assertFalse(result.performed(),
+                "a self-healing platform column must never route the boot through a destructive path");
+
+        // Rows are intact -- the whole point of not taking the wipe path.
+        try (Connection connection = dataSource.getConnection()) {
+            assertEquals(2, rowCount(connection, "widgets"), "no data may be lost by a self-healing column");
+            assertEquals(2, rowCount(connection, "gadgets"));
+        }
+
+        // NOTE on scope: the ALTER TABLE ... ADD COLUMN IF NOT EXISTS version DDL that physically
+        // restores the column is emitted by SchemaRealizationEmitter and applied by Flyway. This test
+        // class drives the executor directly and has no Flyway (see scenario 25's explicit "imitate
+        // that here" comment), so the DDL half is proven where it lives -- in the generator emitter
+        // test (SchemaRealizationEmitterTest, T2) -- rather than being faked here.
+    }
+
     /** Two concepts shaped the way the generator really emits them -- the business columns PLUS the
      * platform columns {@code SchemaRealizationEmitter#fullColumnNames} always appends (id/version/
      * row_version/tenant_id) -- so the manifests built on top of them can carry a realistic
@@ -1631,6 +1819,59 @@ class SchemaLifecycleExecutorProofMatrixTest {
             statement.execute("INSERT INTO gadgets (id, label, version) VALUES (1, 'G1', 0)");
             statement.execute("INSERT INTO gadgets (id, label, version) VALUES (2, 'G2', 0)");
         }
+    }
+
+    /**
+     * A single concept shaped EXACTLY as {@code SchemaRealizationEmitter}'s fresh {@code CREATE
+     * TABLE} emits it (VERIFIED against {@code SchemaRealizationEmitter:370-377}): every platform
+     * column {@code NOT NULL} with its fixed platform {@code DEFAULT}. Deliberately distinct from
+     * {@link #seedTwoRealisticConceptsWithData}, which creates the same columns plain nullable --
+     * that fixture is fine for the scenarios that only care about column PRESENCE, but scenario 28 is
+     * about NULLABILITY, so it needs the real production shape (LNCH-1 T-B1).
+     */
+    private void seedProductionShapedWidgets() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets ("
+                    + "id BIGINT PRIMARY KEY, "
+                    + "name VARCHAR(50) NOT NULL, "
+                    + "version BIGINT NOT NULL DEFAULT 0, "
+                    + "row_version BIGINT NOT NULL DEFAULT 0, "
+                    + "tenant_id VARCHAR(120) NOT NULL DEFAULT 'default')");
+            statement.execute("INSERT INTO widgets (id, name) VALUES (1, 'Alpha')");
+            statement.execute("INSERT INTO widgets (id, name) VALUES (2, 'Beta')");
+        }
+    }
+
+    /**
+     * The manifest matching {@link #seedProductionShapedWidgets}. {@code name} is declared required in
+     * BOTH versions, so the only columns the relax pass could act on are the three platform ones --
+     * which is what makes scenario 28 a specific test of T-B1 rather than a general one.
+     *
+     * @param withNotes when true, adds one new OPTIONAL business field -- an utterly ordinary,
+     *                  safe-additive upgrade, i.e. the everyday case in which T-B1 fired
+     */
+    private static SchemaLifecycleExecutor.SchemaManifest productionShapedWidgetsManifest(
+            String fingerprint, boolean withNotes) {
+        List<String> columns = withNotes
+                ? List.of("id", "name", "notes", "version", "row_version", "tenant_id")
+                : List.of("id", "name", "version", "row_version", "tenant_id");
+        Map<String, String> types = new java.util.LinkedHashMap<>();
+        types.put("id", "BIGINT");
+        types.put("name", "VARCHAR(50)");
+        if (withNotes) {
+            types.put("notes", "VARCHAR(50)");
+        }
+        types.put("version", "BIGINT");
+        types.put("row_version", "BIGINT");
+        types.put("tenant_id", "VARCHAR(120)");
+        Map<String, List<String>> columnsByTable = Map.of("widgets", columns);
+        return manifest(
+                fingerprint, List.of("widgets"), columnsByTable,
+                realisticAdditiveColumns(columnsByTable, Map.of()),
+                Map.of("widgets", types),
+                Map.of(), Map.of(), false, "",
+                Map.of("widgets", List.of("name")),
+                Map.of(), Map.of(), Map.of(), true);
     }
 
     private static final Map<String, String> WIDGETS_TYPES = Map.of(

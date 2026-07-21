@@ -424,6 +424,32 @@ table/column you need, and re-insert via SQL, the seed-data mechanism
 scoping decision — automating restore safely (conflict resolution against rows written since the
 drop, schema-shape reconciliation) is real, unstarted work; see Current limitations below.
 
+## Platform-managed columns
+
+Four columns on every business table belong to the platform, not to your model:
+
+| Column | Type | Default | Purpose |
+|---|---|---|---|
+| `id` | per the concept's id field (`UUID` when undeclared) | — | Primary key |
+| `version` | `BIGINT` | `0` | The generated entity's JPA optimistic-version check |
+| `row_version` | `BIGINT` | `0` | The compare-and-swap the ConceptGateway/ConceptStore perform (`LNCH-16`) |
+| `tenant_id` | `VARCHAR(120)` | `'default'` | Tenant scoping — every tenant-scoped read filters on it |
+
+Three properties follow, and the platform enforces all of them:
+
+- **They are always `NOT NULL`.** A fresh `CREATE TABLE` emits them `NOT NULL` with the defaults
+  above, and an upgrade never loosens them. A `NULL` `tenant_id` would make a row invisible to every
+  tenant-scoped read; a `NULL` `row_version` would silently defeat the compare-and-swap.
+- **Their nullability never follows a model field's optionality.** Making one of your fields optional
+  relaxes *that* column's `NOT NULL` — never a platform column's. This is unambiguous because a model
+  field can never be *named* `version`, `row_version` or `tenant_id`: the generator rejects it at
+  generation time, so a live column with one of those names is always platform-owned.
+- **A loosened one is repaired.** If an earlier build left one nullable, the next boot backfills any
+  `NULL`s to the default above and restores `NOT NULL`, recording a `TIGHTEN_PLATFORM_COLUMNS` row in
+  `npdev_schema_history` so the repair is auditable.
+
+You never declare, migrate, or acknowledge anything for these columns.
+
 ## Current limitations
 
 Deliberately out of scope for this feature (recorded here as known future work, not silently
