@@ -114,10 +114,12 @@ try {
 
     Write-NPDevInfo "Generating RuntimeHost surface evidence reports"
     # -PendingOk: the surface-governance convergence/exclusivity checks encode the pre-d0bf41b
-    # "package == support bucket" convention the beta-0 manifest refactor replaced with exact-lists;
-    # they are reported as advisory observations pending a governance-owner realignment (same
-    # pending-OK pattern the observability and sample-diagnostics steps use below). Build-time
-    # allowlist enforcement is unaffected.
+    # "package == support bucket" convention the beta-0 manifest refactor replaced with exact-lists.
+    # GATE-OBS-1a DECISION (REG-5, 2026-07-21): these six checks are FORMALLY RETIRED as superseded by
+    # the exact-list allowlist (runtime-surface-allowlist-report.json), which is the blocking
+    # enforcement and passes -- they are informational only, not a pending-owner item. The switch name
+    # stays -PendingOk for compatibility; the semantics are "retired convergence checks are advisory."
+    # See docs/OPEN_GAPS_AND_ROADMAP.md#GATE-OBS-1a and run-observability-hardening.ps1's header.
     & $runtimeSurfaceEvidenceScript -WorkspaceRoot $WorkspaceRoot -PendingOk
 
     Write-NPDevInfo "Generating RuntimeHost observability hardening report"

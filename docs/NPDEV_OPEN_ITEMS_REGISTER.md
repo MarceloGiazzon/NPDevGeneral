@@ -297,7 +297,7 @@ in this tree.
 
 ### 1.4 REG-4 — `T-F1`: load-sensitive flake, root cause unestablished
 
-**Type:** BUG · **Severity:** LOW · **Effort:** S/M · **Status:** OPEN (narrowed to two mechanisms, self-diagnosing on next occurrence)
+**Type:** BUG · **Severity:** LOW · **Effort:** S/M · **Status:** **CLOSED (2026-07-21, REG-4/P8) — root cause fixed, not just marked.** Reproduced the flake DETERMINISTICALLY (new `timeoutIsNotCorruptedByAPreExistingCallerInterrupt`, RED 100%: `status=FAILED, PLUGIN_EXECUTION_INTERRUPTED, executionDurationMs=1`) instead of waiting for suite load. It was T6.1's first candidate: `future.get(timeout)` runs on the calling thread, and a stray interrupt left by a prior test on the same worker made it throw `InterruptedException` before the timeout. Fixed in `SandboxedPluginExecutionEngine.execute` (read-and-clear a stray caller interrupt around the bounded `get()`, re-assert it after) — an engine robustness fix, not a tolerance widening. Removed `@Tag("load-sensitive")` from `timesOutSlowPluginExecution`; 6/6 green live.
 
 **What.** `SandboxedPluginExecutionEngineTest` fails roughly 1 in 5 runs under parallel load and 0
 in 5 in isolation. The timing assumption has been narrowed to two candidate mechanisms and the test
@@ -330,7 +330,7 @@ Tracked in `docs/OPEN_GAPS_AND_ROADMAP.md`.
 
 ### 1.5 REG-5 — `GATE-OBS-1a`: surface-governance drift needs a governance owner
 
-**Type:** PROCESS · **Severity:** LOW · **Effort:** S (decision) · **Status:** OPEN — needs an owner assigned
+**Type:** PROCESS · **Severity:** LOW · **Effort:** S (decision) · **Status:** **CLOSED (2026-07-21, REG-5/P8) — decision made and implemented.** Chose option (b) FORMAL RETIREMENT over the plan's default (a): a concrete check confirmed the exact-list allowlist (`runtime-surface-allowlist-report.json`, backed by `RuntimeControllerAllowlistConfig`) already IS the blocking exact-list-model enforcement and passes, so the 6 package-convention convergence checks are a redundant proxy for the superseded convention — rewriting them would only duplicate the allowlist. Retired to informational-only (reversible) with a dated rationale in `run-observability-hardening.ps1`, `run-runtimehost-gate.ps1`, and `docs/OPEN_GAPS_AND_ROADMAP.md#GATE-OBS-1a`. "Advisory, unowned" is no longer the state.
 
 **What.** The RuntimeHost gate's surface-convergence/exclusivity checks encode a pre-`d0bf41b`
 "package == support bucket" convention that the beta-0 manifest refactor replaced with exact lists.

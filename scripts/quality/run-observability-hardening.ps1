@@ -94,8 +94,18 @@ $brokenBackendAggregationPassed = ($brokenBackendMissingPatterns.Count -eq 0)
 # So: those six are excused only when the caller passes -SurfaceConvergencePendingOk, and only when
 # they are the ONLY failures. Any other failing sub-check, in any of the three reports, still fails
 # this check loudly. That keeps the exit code meaningful instead of blanket-suppressing the step.
-# The governance realignment itself is tracked as GATE-OBS-1 in docs/OPEN_GAPS_AND_ROADMAP.md.
-$surfaceGovernanceAdvisoryChecks = @(
+#
+# GATE-OBS-1a DECISION (REG-5, 2026-07-21): these six checks are now FORMALLY RETIRED, not "advisory
+# pending an owner." Concrete finding that settles it: runtime-surface-allowlist-report.json -- the
+# exact-list allowlist backed by RuntimeControllerAllowlistConfig reading
+# npdev/runtime-supported-controllers.json -- IS the exact-list-model enforcement the beta-0 manifest
+# refactor introduced, it is BLOCKING, and it passes. These six package-convention convergence/
+# exclusivity checks are a redundant proxy for the superseded "package == support bucket" rule; a
+# rewrite "against the exact-list model" (the other option considered) would only duplicate what the
+# allowlist already enforces. They are kept as informational observations, never as a gate blocker.
+# Reversible if the surface governance model ever changes. Recorded in docs/OPEN_GAPS_AND_ROADMAP.md
+# (GATE-OBS-1a). This ends the "advisory, unowned" state that REG-5 existed to close.
+$surfaceGovernanceRetiredChecks = @(
     "service-buckets-are-exclusive",
     "controller-namespaces-match-convergence-buckets",
     "service-namespaces-match-convergence-buckets",
@@ -127,7 +137,7 @@ $surfaceFailingCheckNames += Get-NPDevFailingCheckNames $allowlistReport
 $surfaceFailingCheckNames += Get-NPDevFailingCheckNames $footprintReport
 $surfaceFailingCheckNames = @($surfaceFailingCheckNames | Select-Object -Unique)
 $surfaceUnexpectedFailures = @(
-    $surfaceFailingCheckNames | Where-Object { $surfaceGovernanceAdvisoryChecks -notcontains $_ }
+    $surfaceFailingCheckNames | Where-Object { $surfaceGovernanceRetiredChecks -notcontains $_ }
 )
 
 $runtimeSurfaceReportsStrictlyGreen = (
@@ -149,7 +159,7 @@ $runtimeHostGatePendingAccepted = (-not $runtimeHostGateGreen -and $RuntimeHostG
 
 $checks = @(
     (New-NPDevCheckResult -Name "runtimehost-gate-current" -Status $(if ($runtimeHostGateGreen -or $runtimeHostGatePendingAccepted) { "passed" } else { "failed" }) -Summary $(if ($runtimeHostGateGreen) { "RuntimeHost gate is currently green." } elseif ($runtimeHostGatePendingAccepted) { "RuntimeHost gate finalization is pending in the current run; runtime surface evidence is green." } else { "RuntimeHost gate evidence is missing or failing." }) -Data ([pscustomobject]@{ reportPath = Get-Bucket2RelativePath $WorkspaceRoot $RuntimeHostReportPath; overallStatus = if ($null -eq $runtimeHostReport) { $null } else { [string]$runtimeHostReport.overallStatus }; runId = $RunId; pendingFinalizationAccepted = $runtimeHostGatePendingAccepted }))
-    (New-NPDevCheckResult -Name "runtime-surface-reports-current" -Status $(if ($runtimeSurfaceReportsGreen) { "passed" } else { "failed" }) -Summary $(if ($runtimeSurfaceReportsStrictlyGreen) { "Runtime surface evidence is current and green." } elseif ($runtimeSurfaceGovernanceDriftAccepted) { "ADVISORY (GATE-OBS-1): runtime surface evidence carries only the known package-namespace convergence drift [" + ($surfaceFailingCheckNames -join ", ") + "]; build-time allowlist enforcement is green. Tracked in docs/OPEN_GAPS_AND_ROADMAP.md pending a governance-owner realignment." } elseif (-not $surfaceReportsPresent) { "Runtime surface evidence is missing." } else { "Runtime surface evidence is failing on check(s) OUTSIDE the known GATE-OBS-1 governance drift: " + ($surfaceUnexpectedFailures -join ", ") }) -Data ([pscustomobject]@{ classification = if ($null -eq $classificationReport) { $null } else { [string]$classificationReport.overallStatus }; allowlist = if ($null -eq $allowlistReport) { $null } else { [string]$allowlistReport.overallStatus }; footprint = if ($null -eq $footprintReport) { $null } else { [string]$footprintReport.overallStatus }; failingChecks = @($surfaceFailingCheckNames); unexpectedFailures = @($surfaceUnexpectedFailures); governanceDriftAccepted = $runtimeSurfaceGovernanceDriftAccepted }))
+    (New-NPDevCheckResult -Name "runtime-surface-reports-current" -Status $(if ($runtimeSurfaceReportsGreen) { "passed" } else { "failed" }) -Summary $(if ($runtimeSurfaceReportsStrictlyGreen) { "Runtime surface evidence is current and green." } elseif ($runtimeSurfaceGovernanceDriftAccepted) { "RETIRED (GATE-OBS-1a, REG-5 2026-07-21): the only non-green runtime-surface sub-checks [" + ($surfaceFailingCheckNames -join ", ") + "] are the formally-retired package-convention convergence checks, superseded by the exact-list allowlist (runtime-surface-allowlist-report.json), which is BLOCKING and green. Not a pending item; informational only. See docs/OPEN_GAPS_AND_ROADMAP.md#GATE-OBS-1a." } elseif (-not $surfaceReportsPresent) { "Runtime surface evidence is missing." } else { "Runtime surface evidence is failing on check(s) OUTSIDE the retired GATE-OBS-1a convergence set: " + ($surfaceUnexpectedFailures -join ", ") }) -Data ([pscustomobject]@{ classification = if ($null -eq $classificationReport) { $null } else { [string]$classificationReport.overallStatus }; allowlist = if ($null -eq $allowlistReport) { $null } else { [string]$allowlistReport.overallStatus }; footprint = if ($null -eq $footprintReport) { $null } else { [string]$footprintReport.overallStatus }; failingChecks = @($surfaceFailingCheckNames); unexpectedFailures = @($surfaceUnexpectedFailures); governanceDriftAccepted = $runtimeSurfaceGovernanceDriftAccepted }))
     (New-NPDevCheckResult -Name "correlation-timeline-proof" -Status $(if ($correlationMissingPatterns.Count -eq 0) { "passed" } else { "failed" }) -Summary $(if ($correlationMissingPatterns.Count -eq 0) { "Async wait/resume canonical scenario proves correlation timeline and trace retrieval." } else { "Async wait/resume canonical scenario is missing required correlation timeline assertions." }) -Data ([pscustomobject]@{ testPath = Get-Bucket2RelativePath $WorkspaceRoot $AsyncWaitResumeTestPath; missingPatterns = @($correlationMissingPatterns) }))
     (New-NPDevCheckResult -Name "health-indicator-coverage" -Status $(if ($healthCoveragePassed) { "passed" } else { "failed" }) -Summary $(if ($healthCoveragePassed) { "Health coverage is documented against the store-backed runtime surface set." } else { "Health coverage evidence is incomplete for the store-backed runtime surface set." }) -Data ([pscustomobject]@{ testPath = Get-Bucket2RelativePath $WorkspaceRoot $HealthTestPath; storeBackedSurfaces = @($storeBackedSurfaces); missingPatterns = @($healthMissingPatterns) }))
     (New-NPDevCheckResult -Name "broken-backend-aggregation" -Status $(if ($brokenBackendAggregationPassed) { "passed" } else { "failed" }) -Summary $(if ($brokenBackendAggregationPassed) { "Health evidence includes broken-backend aggregation and alert-sink assertions." } else { "Broken-backend aggregation evidence is missing required assertions." }) -Data ([pscustomobject]@{ testPath = Get-Bucket2RelativePath $WorkspaceRoot $HealthTestPath; missingPatterns = @($brokenBackendMissingPatterns) }))
