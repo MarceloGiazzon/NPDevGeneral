@@ -1,5 +1,7 @@
 package com.npdev.generator.migration;
 
+import com.npdev.generator.testsupport.WorkspaceRootLocator;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -10,7 +12,7 @@ final class MigrationAuthorityQuarantineAssertions {
     }
 
     static void assertOldMigrationAuthorityAbsent() {
-        Path workspaceRoot = resolveWorkspaceRoot();
+        Path workspaceRoot = WorkspaceRootLocator.resolveWorkspaceRoot();
         assertFalse(
                 Files.exists(workspaceRoot.resolve("NPDevGenerator/generator/src/main/java/com/npdev/generator/migration")),
                 "Old active generator migration/model-diff package must remain quarantined outside src/main/java."
@@ -36,18 +38,5 @@ final class MigrationAuthorityQuarantineAssertions {
         } catch (Exception exception) {
             throw new IllegalStateException("Unable to inspect migration directory " + dir, exception);
         }
-    }
-
-    private static Path resolveWorkspaceRoot() {
-        Path current = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
-        while (current != null) {
-            if (Files.isDirectory(current.resolve("NPDevGenerator"))
-                    && Files.isDirectory(current.resolve("NPDevContract"))
-                    && Files.isDirectory(current.resolve("NPDevRuntimeHost"))) {
-                return current;
-            }
-            current = current.getParent();
-        }
-        throw new IllegalStateException("Unable to resolve workspace root from " + System.getProperty("user.dir"));
     }
 }

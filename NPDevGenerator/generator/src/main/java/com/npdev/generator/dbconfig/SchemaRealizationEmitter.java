@@ -623,6 +623,14 @@ public final class SchemaRealizationEmitter {
      * The full expected column set for a business table (id + version + every non-M2M field,
      * including scalar bond columns), used to detect when the live database has a column the
      * current model no longer declares (a removal — always structural, never safe-additive).
+     *
+     * <p><b>CONTRACT (LNCH-1 closeout C2):</b> the platform columns this method appends
+     * ({@code id} when the concept declares none, then {@code version}, {@code row_version},
+     * {@code tenant_id}) are hand-mirrored by
+     * {@code SchemaLifecycleExecutor.PLATFORM_MANAGED_COLUMNS} in the RuntimeHost template, which
+     * cannot depend on this module. {@code PlatformColumnContractTest} pins the two together — if
+     * you add or remove a platform column here, that test fails and tells you what to change.
+     * Do not "fix" the failure by editing the test.
      */
     private static List<String> fullColumnNames(CompiledConcept concept, Map<String, CompiledConcept> conceptsByName) {
         List<String> columns = new ArrayList<>();

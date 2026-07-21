@@ -53,6 +53,14 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * in the generator module, which the RuntimeHost template does not depend on. Used by
      * {@link #findSchemaAheadMissingColumns}'s Trigger B so a platform column can never be mistaken
      * for the leftover of a rename by a newer build.
+     *
+     * <p><b>PINNED (LNCH-1 closeout C2, finding C-D1):</b> this hand-copy is held equal to the
+     * emitter's real appended set by {@code PlatformColumnContractTest} in the GENERATOR test source
+     * set ({@code NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/}), which
+     * parses this very declaration out of this file as text. Before that test existed, an emitter
+     * that grew a fifth platform column would have left Trigger B treating it as an unexplained
+     * extra column — refusing a HEALTHY boot. Keep the declaration in the
+     * {@code PLATFORM_MANAGED_COLUMNS = Set.of("a", "b", ...)} shape the test's regex expects.
      */
     private static final Set<String> PLATFORM_MANAGED_COLUMNS =
             Set.of("id", "version", "row_version", "tenant_id");
