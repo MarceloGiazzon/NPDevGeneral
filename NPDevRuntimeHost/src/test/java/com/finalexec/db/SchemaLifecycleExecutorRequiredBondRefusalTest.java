@@ -102,8 +102,21 @@ class SchemaLifecycleExecutorRequiredBondRefusalTest {
             assertFalse(hasColumn(metadata, "orders", "owner_id"), "the required bond column must never be added");
         }
 
-        HistoryRow row = latestHistoryRow(dataSource);
-        assertEquals("REFUSED", row.outcome());
+        // LNCH-1 T1: this pass now writes TWO history rows, not one. The fixture's 'orders.version'
+        // is live and nullable, so tightenPlatformColumns (finding T-B1's repair half) records a
+        // TIGHTEN_PLATFORM_COLUMNS/APPLIED row before the bond refusal records its REFUSED row --
+        // consistent with the documented "refusals are not side-effect-free" contract, under which
+        // the safe convergent steps apply before the acknowledgment decision.
+        //
+        // latestHistoryRow orders only by applied_at_utc, with no tiebreaker, so when both rows land
+        // in the SAME millisecond their relative order is unspecified and "the latest row" is not a
+        // well-defined thing to assert. Observed: 3/3 green in isolation, failing under gate load.
+        //
+        // Asserting PRESENCE of the REFUSED row is the claim this test actually cares about, and is
+        // not weaker in any way that could hide a defect: if the refusal were not recorded at all,
+        // this still fails.
+        assertTrue(historyOutcomes(dataSource).contains("REFUSED"),
+                "the refusal must be recorded in npdev_schema_history: " + historyOutcomes(dataSource));
     }
 
     @Test
@@ -150,6 +163,22 @@ class SchemaLifecycleExecutorRequiredBondRefusalTest {
     }
 
     private record HistoryRow(String outcome) {
+    }
+
+    /** Every history row's outcome. Order-independent, unlike {@link #latestHistoryRow} -- a single
+     * boot can write several rows (a step pass plus a refusal), and rows sharing a millisecond have
+     * no defined order. See the T-B1 note in the required-bond refusal test above. */
+    private static List<String> historyOutcomes(DataSource dataSource) throws SQLException {
+        List<String> outcomes = new java.util.ArrayList<>();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT outcome FROM npdev_schema_history");
+             ResultSet resultSet = statement.executeQuery()) {
+            while (resultSet.next()) {
+                outcomes.add(resultSet.getString(1));
+            }
+        }
+        return outcomes;
     }
 
     private static HistoryRow latestHistoryRow(DataSource dataSource) throws SQLException {

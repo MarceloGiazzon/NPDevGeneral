@@ -2159,13 +2159,38 @@ class SchemaLifecycleExecutorProofMatrixTest {
         return rows;
     }
 
+    /**
+     * The classifications {@code recordStepPass} writes -- one row per mutating PASS within a boot,
+     * as opposed to the boot's own outcome row. Must track {@code recordStepPass}'s call sites in
+     * {@code SchemaLifecycleExecutor}.
+     *
+     * <p><b>Why this list exists (LNCH-1 T1).</b> A single boot can write several history rows, and
+     * {@code applied_at_utc} is only millisecond-precision while {@code id} is a random UUID -- so
+     * there is no deterministic tiebreaker in the schema, and two rows written in the same
+     * millisecond have no defined order. Every caller of {@link #latestHistoryRow} means "the
+     * outcome of this boot", never "whichever step pass happened to sort first", so step-pass rows
+     * are excluded here rather than left to chance. T1's {@code TIGHTEN_PLATFORM_COLUMNS} made this
+     * latent hazard reachable in the common case (it fires on any table with a nullable platform
+     * column, which most fixtures have); {@code RELAX_NOT_NULL} and the others already carried it.
+     */
+    private static final Set<String> STEP_PASS_CLASSIFICATIONS = Set.of(
+            "TABLE_RENAME", "COLUMN_RENAME", "TYPE_WIDENING", "REQUIRED_BACKFILL",
+            "RELAX_NOT_NULL", "TIGHTEN_PLATFORM_COLUMNS");
+
     private static HistoryRow latestHistoryRow(DataSource dataSource) throws SQLException {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(
-                     "SELECT outcome, ack_token_used FROM npdev_schema_history ORDER BY applied_at_utc DESC");
+                     "SELECT outcome, ack_token_used, classification FROM npdev_schema_history "
+                             + "ORDER BY applied_at_utc DESC");
              ResultSet resultSet = statement.executeQuery()) {
-            assertTrue(resultSet.next(), "expected at least one npdev_schema_history row");
-            return new HistoryRow(resultSet.getString(1), resultSet.getString(2));
+            while (resultSet.next()) {
+                String classification = resultSet.getString(3);
+                if (classification != null && STEP_PASS_CLASSIFICATIONS.contains(classification)) {
+                    continue; // a within-boot step pass, not this boot's outcome
+                }
+                return new HistoryRow(resultSet.getString(1), resultSet.getString(2));
+            }
+            throw new AssertionError("expected at least one non-step-pass npdev_schema_history row");
         }
     }
 
