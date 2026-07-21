@@ -11,6 +11,14 @@
 > Docker running; REG-11's `D:\`-literal claim is unsubstantiated in the scripts it names. REG-1,
 > REG-6, REG-10, REG-16 were confirmed with minor corrections. This was one verification pass, not
 > a second independent one — treat the corrections as current, not as newly infallible.
+> **Second pass, same day (commits `3ad4a73`, `6e5d7a9`):** 18 unreferenced sample-app definitions
+> (11 of 12 `12works/*` NPDevSamples demos, `widget-showcase-demo`, and 6 unreferenced generic
+> `AppGen/apps` definitions — `Portal`, `PortalFixed`, `manual-user-postgres[-freshdb]`,
+> `simple-stores-postgres`, `simple-user-registry-h2server`) were moved to
+> `D:\WorkSpace\NPDev\OutsideRepo\deprecated-sample-apps-2026-07-21` after a repo-wide reference
+> audit found each had zero external references. This shrinks REG-1's pool directly — re-verified
+> against the live filesystem post-cleanup: **6 recommended / 9 blanket / 5 InMemory-N/A of 20**
+> definitions, down from 6/27/5 of 38. See §1.1 for the full updated breakdown.
 > **Scope:** everything still open across (a) the LNCH-1 schema-evolution programme — now closed
 > after five review/implementation rounds — and (b) the wider platform's launch-readiness ledger.
 > **Purpose:** one place that says what is left, why it matters, where it lives, what it looks like
@@ -49,7 +57,7 @@ MEDIUM)** — is real convergence, not a treadmill.
 
 | ID | Title | Type | Sev | Effort | § |
 |---|---|---|---|---|---|
-| **REG-1** | 27 app definitions remain on the deprecated blanket destructive posture | GAP | MED | M | 1.1 |
+| **REG-1** | 9 app definitions remain on the deprecated blanket destructive posture (down from 27) | GAP | MED | S/M | 1.1 |
 | **REG-2** | `IT-EXTPG-1` — 10 integration tests unrunnable; **root cause unconfirmed, re-diagnose first** | BUG | MED | S/M | 1.2 |
 | **REG-3** | `GATE-REL-1` — **corrected:** already fixed 2026-05-14; real gap is stale evidence-report orchestration | GAP | LOW | S | 1.3 |
 | **REG-4** | `T-F1` — load-sensitive flake, root cause unestablished | BUG | LOW | S/M | 1.4 |
@@ -71,36 +79,67 @@ MEDIUM)** — is real convergence, not a treadmill.
 
 ## 1. Items inherited from the LNCH-1 programme
 
-### 1.1 REG-1 — 27 app definitions remain on the deprecated blanket destructive posture
+### 1.1 REG-1 — 9 app definitions remain on the deprecated blanket destructive posture (down from 27)
 
-**Type:** GAP · **Severity:** MEDIUM · **Effort:** M · **Status:** PARTIAL (6 of 33 flipped)
+**Type:** GAP · **Severity:** MEDIUM · **Effort:** S/M (was M) · **Status:** PARTIAL (6 of 15 flippable flipped)
 
 **What.** `docs/SCHEMA_EVOLUTION.md` recommends `strategy: KeepExistingIfCompatible` +
-`allowDestructiveRecreate: false`. After T4, the real count is **6 recommended / 27 blanket /
-5 InMemory-N/A** (independently re-verified 2026-07-21: exact match, 38 definitions total). The 27
-blanket-posture apps include 4 of the 5 `_official` apps — WmsOffice, WordLab, AuxScreen, Pigmentampa
-— plus most `NPDevSamples` entries. **Correction:** the 5th `_official` app, `Claude`, is
-InMemory-N/A, not blanket — it is not a pending flip target.
+`allowDestructiveRecreate: false`. **Re-verified 2026-07-21, after the sample-app cleanup below**
+(fresh count against the live filesystem, not carried forward from T4): **6 recommended / 9 blanket /
+5 InMemory-N/A of 20** total definitions.
+
+**Why the pool shrank from 38 to 20.** The same day, a repo-wide reference audit found 18 sample-app
+definitions — 11 of 12 `12works/*` NPDevSamples demos (all but `gift-idea-tracker`),
+`widget-showcase-demo`, and 6 generic `AppGen/apps` definitions (`Portal` — confirmed broken,
+`PortalFixed`, `manual-user-postgres`, `manual-user-postgres-freshdb`, `simple-stores-postgres`,
+`simple-user-registry-h2server`) — with **zero references** anywhere in scripts, docs, knowledge
+cards, or CI. All 18 were on the deprecated blanket posture (17 of them) or otherwise irrelevant to
+this count, and all were moved to
+`D:\WorkSpace\NPDev\OutsideRepo\deprecated-sample-apps-2026-07-21` (commits `3ad4a73`, `6e5d7a9`) —
+recoverable, not deleted. This was a **direct, and larger, way to close this item's pedagogical
+concern** (below) than flipping every one of them individually would have been: an unreferenced,
+undocumented demo teaching the AI-authoring corpus the wrong posture is better removed from the
+corpus than fixed in place.
+
+**The remaining 9 blanket-posture apps, in full:**
+
+| App | Pool | Disposition |
+|---|---|---|
+| `WmsOffice`, `WordLab`, `AuxScreen`, `Pigmentampa` | AppGen `_official` | **Next flip batch** (unchanged from before the cleanup) |
+| `lnch1-rehearsal` | AppGen | **Deliberately kept** — its `README.md` explains it exists to rehearse upgrades on a definition shaped like what actually shipped |
+| `simple-user-registry-h2local-freshdb` | AppGen | **Deliberately kept** — cited in `docs/SCHEMA_EVOLUTION.md` and `LNCH1_CLOSEOUT_PLAN.md` as the "freshdb" CI pattern; flipping it would defeat the scenario it exists to test |
+| `invoice-bonds-demo` | AppGen | Real, load-bearing (canonical bonds/events/procedure example, 8+ doc hits) — **a genuine flip candidate beyond the current batch**, just not yet scheduled |
+| `restaurant-saas-multitenant`, `superuser-admin-console` | NPDevSamples | Real, load-bearing (catalog-registered / gate-cited respectively) — **genuine flip candidates beyond the current batch** |
+
+So after the next batch (the 4 official apps) lands, only **3** apps will remain on blanket for a
+real reason to eventually flip (`invoice-bonds-demo`, `restaurant-saas-multitenant`,
+`superuser-admin-console`), plus 2 permanently-blanket-by-design fixtures. That is the whole
+remaining shape of this item — there is no more hidden long tail.
 
 **Why it matters.** Two distinct reasons, and the second is the one people miss:
 
 1. *Operational.* On a blanket-posture app, a `DROP_COLUMN` or a type narrowing still applies with
    no itemized acknowledgment. (Since the closeout round, concept drops and whole-schema
    recreations do require a token — so the exposure is bounded, but it is not zero.)
-2. *Pedagogical, and larger.* These definitions are the corpus the AI-authoring loop learns from.
-   An AI asked to author a new app pattern-matches against 27 examples of the deprecated posture and
-   6 of the recommended one. T4 proved the knowledge card now ranks #1 for a direct question — but
-   direct questions are not how most authoring happens. Examples outvote documentation when the
-   model is imitating a shape.
+2. *Pedagogical.* These definitions are the corpus the AI-authoring loop learns from. Before the
+   cleanup, an AI asked to author a new app pattern-matched against 27 examples of the deprecated
+   posture and 6 of the recommended one — a 4.5:1 ratio against the documented recommendation. After
+   removing the unreferenced/undocumented offenders, the ratio is **9:6**, close to parity, and every
+   remaining blanket-posture example is either a real reference app awaiting its flip or a fixture
+   that is blanket *on purpose* and documented as such. Examples outvote documentation when the model
+   is imitating a shape — this is now a much smaller problem than it was this morning.
 
 **Where.**
 - `D:\WorkSpace\NPDev\AppGen\apps\*\definition\db.definition.json` (layer 2 — source of truth for
   app definitions, **not** a git repo)
 - `d:\WorkSpace\NPDev\NPDev_General\NPDevSamples\*\Input\db.definition.json`
-- Recount commands are written into `docs/SCHEMA_EVOLUTION.md` so the numbers stay checkable.
+- Recount commands are written into `docs/SCHEMA_EVOLUTION.md` so the numbers stay checkable — **that
+  doc's recount table still says 6/27/5 of 38 and needs the same update applied here** (not yet
+  done as part of this correction pass).
 - Already flipped: `simple-user-registry-h2local`, `simple-user-registry-postgres`,
-  `simple-product-h2local`, `simple-consumer-h2server`,
-  `NPDevSamples\12works\gift-idea-tracker` (+1 more per the recount).
+  `simple-product-h2local`, `simple-consumer-h2server`, `npdev_split_model_sample_app`,
+  `NPDevSamples\12works\gift-idea-tracker`.
+- The 18 removed definitions, with per-item reasons: `D:\WorkSpace\NPDev\OutsideRepo\deprecated-sample-apps-2026-07-21\MANIFEST.md`.
 
 **Practical example.** An author (human or AI) copies `_official\WordLab`'s `db.definition.json` as
 a starting point — a reasonable thing to do, it is a working reference app. The new app inherits
@@ -110,10 +149,9 @@ column is dropped on the next boot with no acknowledgment prompt, because the po
 it at authoring time.
 
 **How to fix.**
-1. Decide the batch (this is your call — T4's scope was explicitly ratified at four apps).
-   Recommended next batch: the four remaining `_official` apps still on the blanket posture —
-   WmsOffice, WordLab, AuxScreen, Pigmentampa — because they are the highest-signal examples in the
-   corpus. (`Claude` is InMemory-N/A and is not part of this batch.)
+1. Flip the 4 remaining `_official` apps — WmsOffice, WordLab, AuxScreen, Pigmentampa — the same way
+   T4 flipped the first batch. This is unchanged by the cleanup; it was always the recommended next
+   step.
 2. For **each** app, and never in bulk: edit `db.definition.json` → regenerate → boot → take one
    additive change through it → confirm the boot log says `skipping destructive recreation`.
    Copy the field values from the already-proven `simple-user-registry-h2local` rather than
@@ -121,10 +159,14 @@ it at authoring time.
 3. **Watch for the shared-output-root trap.** Several `simple-user-registry-*` apps share one
    `scenario.name` and therefore one build output root, container and port. T4 handled this by
    verifying the landed manifest carried the right app's concept shape. Do the same, per app.
-4. Deliberately leave `lnch1-rehearsal` on the blanket posture — its `README.md` explains that it
-   exists to rehearse upgrades on a definition shaped like the ones that actually shipped.
-5. Rebuild the corpus (`python scripts/ai/build_knowledge.py`) and re-run the recount, updating the
-   numbers in `docs/SCHEMA_EVOLUTION.md`.
+4. Leave `lnch1-rehearsal` and `simple-user-registry-h2local-freshdb` on the blanket posture
+   deliberately, per the table above.
+5. Once the official-app batch is comfortable, revisit `invoice-bonds-demo`,
+   `restaurant-saas-multitenant`, and `superuser-admin-console` as a small final batch — at that
+   point every remaining blanket-posture definition would be intentional.
+6. Rebuild the corpus (`python scripts/ai/build_knowledge.py`) and re-run the recount, updating the
+   numbers in `docs/SCHEMA_EVOLUTION.md` (both the counts and the "already flipped" list need the
+   post-cleanup numbers — see the **Where** section above).
 
 ---
 
