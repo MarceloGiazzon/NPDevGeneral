@@ -121,15 +121,38 @@ jobs:
             -PnpdevRuntimeHostLibsDir="$GITHUB_WORKSPACE/../NPDev_General__OutsideRepo/runtimehost-libs" \
             --no-daemon --console=plain
 
+      - name: On failure, print failing test reports into the log (they hold the captured subprocess output)
+        if: failure()
+        shell: bash
+        run: |
+          # Why: the packaged-app proof tests capture `gradlew bootJar` / app-boot output into the JUnit
+          # assertion message (assertEquals(0, exitCode, bootJar.output())), then delete their own on-disk
+          # evidence in a finally block. The only surviving copy is the test-report XML's <failure> element.
+          # Build output is redirected to $NPDEV_BUILD_ROOT/gradle/... (not in-source build/), so scan there.
+          # Printing it here surfaces the real error in the step log instead of an (empty) artifact.
+          echo "Scanning for failing test-result XMLs under: $NPDEV_BUILD_ROOT"
+          found=0
+          while IFS= read -r xml; do
+            if grep -q "<failure\|<error" "$xml" 2>/dev/null; then
+              echo "::group::$xml"
+              cat "$xml"
+              echo
+              echo "::endgroup::"
+              found=1
+            fi
+          done < <(find "$NPDEV_BUILD_ROOT" -path "*test-results*" -name "*.xml" 2>/dev/null)
+          [ "$found" = 1 ] || echo "No failing test-result XMLs found under $NPDEV_BUILD_ROOT"
+
       - name: Upload PR gate evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: npdev-pr-gate-evidence
+          # Build output is redirected to $NPDEV_BUILD_ROOT (sibling Build/), so the in-source build/ dirs
+          # are empty on CI -- grab the redirected reports/results (relative to the workspace via ../Build).
           path: |
-            NPDevContract/dsl/**/build/test-results/test
-            NPDevKernel/**/build/test-results/test
-            NPDevGenerator/**/build/test-results/test
+            ../Build/gradle/**/test-results/test
+            ../Build/gradle/**/reports/tests/test
             NPDevSamples/simple-contact-intake/Output/App/build/test-results/test
           if-no-files-found: warn
           retention-days: 14
