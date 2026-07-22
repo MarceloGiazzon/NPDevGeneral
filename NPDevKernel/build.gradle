@@ -3,6 +3,10 @@ plugins {
 }
 
 def resolveNpdevBuildRoot = {
+    def prop = providers.gradleProperty('npdevBuildRoot').getOrNull()
+    if (prop != null && !prop.trim().isEmpty()) {
+        return file(prop)
+    }
     def configured = System.getenv('NPDEV_BUILD_ROOT')
     if (configured != null && !configured.trim().isEmpty()) {
         return file(configured)

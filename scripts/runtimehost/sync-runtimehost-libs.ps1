@@ -58,11 +58,11 @@ $externalGradleBuildRoot = Join-Path $externalBuildRoot "gradle"
 $env:NPDEV_BUILD_ROOT = $externalBuildRoot
 
 if ($BuildLocalJars) {
-    Write-NPDevInfo "Building local Kernel/Contract runtime jars for RuntimeHost staging (NPDEV_BUILD_ROOT=$externalBuildRoot)"
-    Invoke-NPDevCommandStreaming -WorkingDirectory $kernelRoot -Executable $kernelGradleWrapper -Arguments @("jar", "--no-daemon", "--console=plain")
+    Write-NPDevInfo "Building local Kernel/Contract runtime jars for RuntimeHost staging (npdevBuildRoot=$externalBuildRoot)"
+    Invoke-NPDevCommandStreaming -WorkingDirectory $kernelRoot -Executable $kernelGradleWrapper -Arguments @("jar", "-PnpdevBuildRoot=$externalBuildRoot", "--no-daemon", "--console=plain")
 
     Write-NPDevInfo "Building local Generator and CLI jars for RuntimeHost staging"
-    Invoke-NPDevCommandStreaming -WorkingDirectory $generatorRoot -Executable $generatorGradleWrapper -Arguments @(":generator:jar", ":tools:npdev-cli:jar", "--no-daemon", "--console=plain")
+    Invoke-NPDevCommandStreaming -WorkingDirectory $generatorRoot -Executable $generatorGradleWrapper -Arguments @(":generator:jar", ":tools:npdev-cli:jar", "-PnpdevBuildRoot=$externalBuildRoot", "--no-daemon", "--console=plain")
 }
 
 $sourceRoots = @(
