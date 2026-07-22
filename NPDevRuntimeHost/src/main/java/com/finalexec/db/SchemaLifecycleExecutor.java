@@ -410,7 +410,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // so it also short-circuits REG-8's Trigger C (P4): a mark is the operator's authoritative word
         // that this build legitimately owns this fingerprint, so the schema-ahead-of-build detector
         // must never second-guess it.
-        Optional<MigrationMarkStore.Mark> mark = MigrationMarkStore.findMatching(dataSource, manifest.schemaFingerprint());
+        Optional<MigrationMarkStore.Mark> mark = MigrationMarkStore.findMatching(dataSource, stored, manifest.schemaFingerprint());
         if (mark.isPresent()) {
             applyMigrationMark(dataSource, stored, manifest, mark.get());
             return DestructiveRecreation.none();
