@@ -19,6 +19,14 @@ public final class PasswordHasher {
     private static final int SALT_LENGTH_BYTES = 16;
     private static final String ALGORITHM = "PBKDF2WithHmacSHA256";
 
+    /**
+     * REG-18 (REG-16 finding F1): a fixed, valid stored-hash used only to spend the SAME PBKDF2 work
+     * on login paths that have no real credential to check (unknown user, missing credential row).
+     * Computed once at class load from a constant decoy password with a random salt; its plaintext is
+     * irrelevant -- it is never a real account. See {@link #verifyDecoy}.
+     */
+    private static final String DECOY_HASH = hash("npdev-constant-time-login-decoy");
+
     private PasswordHasher() {
     }
 
@@ -47,6 +55,17 @@ public final class PasswordHasher {
         } catch (Exception ignored) {
             return false;
         }
+    }
+
+    /**
+     * REG-18: perform a full password verification against a fixed decoy hash and ALWAYS deny.
+     * Login paths that have no real stored hash to check (unknown username, missing credential row)
+     * call this so they spend the same PBKDF2 time as the wrong-password path -- closing the timing
+     * side-channel that otherwise reveals which usernames exist. A {@code null} password still does
+     * the work (verify against the decoy returns false) rather than short-circuiting.
+     */
+    public static boolean verifyDecoy(String password) {
+        return verify(password == null ? "" : password, DECOY_HASH);
     }
 
     private static byte[] pbkdf2(String password, byte[] salt, int iterations) {

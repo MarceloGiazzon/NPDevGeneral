@@ -123,6 +123,9 @@ public class LoginController {
                 ps.setString(2, tenantId);
                 try (ResultSet rs = ps.executeQuery()) {
                     if (!rs.next() || !rs.getBoolean("active")) {
+                        // REG-18: spend the same PBKDF2 work as the wrong-password path so an unknown
+                        // (or inactive) username is not distinguishable by response latency.
+                        PasswordHasher.verifyDecoy(password);
                         return unauthorized(tenantId, username);
                     }
                     userId = rs.getString("id");
@@ -141,6 +144,9 @@ public class LoginController {
                 ps.setString(2, tenantId);
                 try (ResultSet rs = ps.executeQuery()) {
                     if (!rs.next()) {
+                        // REG-18: same-work decoy verify for a user that exists but has no credential
+                        // row, so this path is latency-indistinguishable from a wrong password.
+                        PasswordHasher.verifyDecoy(password);
                         return unauthorized(tenantId, username);
                     }
                     storedHash = rs.getString(1);
