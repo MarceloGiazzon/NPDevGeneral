@@ -88,6 +88,13 @@ dependencies {
     // jar-staging only copies this workspace's own project jars, not their third-party deps.
     implementation 'org.eclipse.angus:angus-mail:2.0.3'
 
+    // REG-12 Slice 3: the document-render-inproc adapter (staged via npdevRuntimeHostLibsDir like
+    // the other kernel adapters) needs OpenHTMLtoPDF/PDFBox on the runtime classpath -- same reason
+    // as the AWS SDK/Jakarta Mail above: jar-staging only copies this workspace's own project jars,
+    // not their third-party deps. Caught live: without this, DocumentRenderController#renderPdf
+    // threw NoClassDefFoundError on the first real request.
+    implementation 'com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10'
+
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.3.0'
     testImplementation 'org.testcontainers:testcontainers:1.21.4'

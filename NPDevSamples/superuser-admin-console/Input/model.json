@@ -221,5 +221,14 @@
         }
       ]
     }
+  ],
+  "documents": [
+    {
+      "name": "ProjectsPdf",
+      "concept": "Project",
+      "title": "Projects",
+      "pageSize": "A4",
+      "marginMm": 20
+    }
   ]
 }

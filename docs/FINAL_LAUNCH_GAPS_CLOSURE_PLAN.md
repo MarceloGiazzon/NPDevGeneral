@@ -1,6 +1,8 @@
 # Final Launch-Gaps Closure Plan — LNCH-10 Slice 3 (PDF) + LNCH-18 / LNCH-22 (external test)
 
-> **Status:** APPROVED PLAN — not started. **High priority** (owner: Marcelo, 2026-07-22).
+> **Status:** EXECUTED (2026-07-22) — Part A and Part B both DONE, verified live, committed. The
+> launch ledger (`docs/LAUNCH_READINESS_GAPS.md`) reaches **24 DONE · 0 PARTIAL · 0 OPEN**. See
+> `docs/NPDEV_OPEN_ITEMS_REGISTER.md` §0.1 addendum 3 for the closure record.
 > **Written:** 2026-07-22, against `main` at `beta1.1` (dev on `beta1-vision-spine`).
 > **Goal.** Close the **last three** non-DONE items on the launch ledger
 > (`docs/LAUNCH_READINESS_GAPS.md` §2: 21 DONE · 3 PARTIAL · 0 OPEN) so that ledger reaches

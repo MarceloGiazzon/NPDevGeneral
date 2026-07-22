@@ -28,7 +28,8 @@
     "PromotionController",
     "TenantAdminController",
     "CredentialAdminController",
-    "FileUploadController"
+    "FileUploadController",
+    "DocumentRenderController"
   ],
   "deferredControllers": [
     "HelloController",

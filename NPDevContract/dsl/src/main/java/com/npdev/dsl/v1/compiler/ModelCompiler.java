@@ -1,6 +1,7 @@
 package com.npdev.dsl.v1.compiler;
 
 import com.npdev.dsl.v1.ast.ConceptAst;
+import com.npdev.dsl.v1.ast.DocumentAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.FileMetadataAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
@@ -87,6 +88,7 @@ import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanel;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelComputed;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelSurface;
+import com.npdev.dsl.v1.compiled.CompiledDocument;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPanelDataSource;
@@ -132,6 +134,7 @@ public final class ModelCompiler {
         List<CompiledRuleProfile> ruleProfiles = new ArrayList<>();
         List<CompiledProcedure> procedures = new ArrayList<>();
         List<CompiledPanel> panels = new ArrayList<>();
+        List<CompiledDocument> documents = new ArrayList<>();
         Map<String, String> capabilityTypesByName = new HashMap<>();
         Map<String, Map<String, CompiledCapabilityOperation>> operationsByCapability = new HashMap<>();
         Map<String, List<String>> invariantRefsByConcept = new HashMap<>();
@@ -448,6 +451,16 @@ public final class ModelCompiler {
             panels.add(compilePanel(panelAst));
         }
 
+        List<DocumentAst> orderedDocuments = new ArrayList<>(modelAst.getDocuments());
+        orderedDocuments.sort(Comparator.comparing(document -> normalize(document.name())));
+        for (DocumentAst documentAst : orderedDocuments) {
+            if (!conceptsByLower.containsKey(normalize(documentAst.concept()))) {
+                throw new IllegalArgumentException("document '" + documentAst.name()
+                        + "' declares concept '" + documentAst.concept() + "', which is not a declared concept");
+            }
+            documents.add(compileDocument(documentAst));
+        }
+
         List<GuidePageAst> orderedGuidePages = new ArrayList<>(modelAst.getGuidePages());
         orderedGuidePages.sort(Comparator.comparing(page -> normalize(page.name())));
         List<CompiledGuidePage> guidePages = new ArrayList<>();
@@ -545,7 +558,19 @@ public final class ModelCompiler {
                 panels,
                 guidePages,
                 aggregates,
-                autoPanels
+                autoPanels,
+                documents
+        );
+    }
+
+    private static CompiledDocument compileDocument(DocumentAst documentAst) {
+        return new CompiledDocument(
+                documentAst.name(),
+                documentAst.concept(),
+                documentAst.title(),
+                documentAst.pageSize(),
+                documentAst.marginMm(),
+                sortObjectMap(documentAst.metadata())
         );
     }
 
