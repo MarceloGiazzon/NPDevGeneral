@@ -33,6 +33,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -337,13 +338,63 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         return problems;
     }
 
+    /**
+     * REG-7.2: applies an operator-recorded "mark done" -- fast-forwards the stored fingerprint
+     * pointer straight to {@code manifest.schemaFingerprint()}, writes a {@code MANUALLY_MARKED_DONE}
+     * history row, and consumes the mark. Deliberately does NOT run any rename/relax/tighten/classify/
+     * destructive pass: the operator's claim IS that the live schema already matches this build's
+     * model, so there is nothing for this executor to converge. (Flyway's own idempotent
+     * {@code CREATE TABLE IF NOT EXISTS} / {@code ADD COLUMN IF NOT EXISTS} scripts still run
+     * afterward via the normal {@link #migrate(Flyway, SchemaManifest)} flow -- harmless no-ops if the
+     * operator's claim holds, a safety net if it does not.)
+     */
+    private void applyMigrationMark(DataSource dataSource, String stored, SchemaManifest manifest, MigrationMarkStore.Mark mark) {
+        try (Connection connection = dataSource.getConnection()) {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "CREATE TABLE IF NOT EXISTS " + METADATA_TABLE
+                            + " (metadata_key TEXT PRIMARY KEY, metadata_value TEXT NOT NULL, updated_at_ms BIGINT NOT NULL)"
+            )) {
+                statement.executeUpdate();
+            }
+            upsertMetadata(connection, FINGERPRINT_KEY, manifest.schemaFingerprint());
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed fast-forwarding the schema fingerprint for a manually-marked-done migration", exception);
+        }
+        writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), null, null, null, "MANUALLY_MARKED_DONE");
+        MigrationMarkStore.consume(dataSource, mark.id());
+        System.out.println("NPDev schema lifecycle: fingerprint manually marked done (operator: " + mark.markedBy()
+                + (mark.note() == null || mark.note().isBlank() ? "" : ", note: " + mark.note()) + ") -- fast-forwarded "
+                + "the stored schema fingerprint from " + stored + " to " + manifest.schemaFingerprint()
+                + " with NO migration passes run.");
+    }
+
     /** Package-private (not private) so it is directly unit-testable against a real H2
      * {@link DataSource}, following {@link #classify}/{@link #attemptInPlaceRenames}'s precedent
      * (LNCH-1 Phase 4 -- the destructive-path integration tests drive this method directly). */
     DestructiveRecreation beforeMigrate(DataSource dataSource, SchemaManifest manifest) {
         String stored = readFingerprint(dataSource);
         if (stored == null || stored.isBlank()) {
+            // A genuinely fresh boot: nothing stored, nothing to fast-forward FROM, and -- critically
+            // -- nothing may touch the database here at all. VERIFIED LIVE (real boot rehearsal,
+            // simple-user-registry-h2local): an earlier draft called MigrationMarkStore.findMatching
+            // unconditionally at the top of this method, ahead of this branch. Its self-bootstrapped
+            // CREATE TABLE IF NOT EXISTS ran on the FIRST-EVER boot, before flyway.migrate() got a
+            // chance to run -- which made Flyway see a non-empty "public" schema with no
+            // flyway_schema_history table and refuse outright ("Found non-empty schema(s) 'public' but
+            // no schema history table"). The mark-done check below MUST stay strictly after this
+            // branch's early return.
             System.out.println("NPDev schema lifecycle: no stored schema fingerprint found; initializing schema realization.");
+            return DestructiveRecreation.none();
+        }
+        // REG-7.2 (D2/D4): an operator-recorded "mark done" for THIS build's target fingerprint takes
+        // priority over both branches below -- the GeneXus "the schema is already at this fingerprint;
+        // don't try to migrate to it" semantic. Checked ahead of the fingerprint-match fast path too,
+        // so it also short-circuits REG-8's Trigger C (P4): a mark is the operator's authoritative word
+        // that this build legitimately owns this fingerprint, so the schema-ahead-of-build detector
+        // must never second-guess it.
+        Optional<MigrationMarkStore.Mark> mark = MigrationMarkStore.findMatching(dataSource, manifest.schemaFingerprint());
+        if (mark.isPresent()) {
+            applyMigrationMark(dataSource, stored, manifest, mark.get());
             return DestructiveRecreation.none();
         }
         if (stored.equals(manifest.schemaFingerprint())) {

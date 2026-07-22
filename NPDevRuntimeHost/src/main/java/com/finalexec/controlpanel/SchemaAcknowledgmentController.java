@@ -1,5 +1,6 @@
 package com.finalexec.controlpanel;
 
+import com.finalexec.db.MigrationMarkStore;
 import com.finalexec.db.PendingSchemaAcknowledgmentStore;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
@@ -99,6 +100,58 @@ public class SchemaAcknowledgmentController {
         body.put("itemsJson", row.itemsJson());
         body.put("submittedAtUtc", row.submittedAtUtc());
         body.put("submittedBy", row.submittedBy());
+        return body;
+    }
+
+    // ---- REG-7.2: "mark migration as done" (D2 -- ControlPanel-only v1, no generator/CLI round-trip) ----
+
+    public record MarkDoneRequest(String fingerprint, String note) {
+    }
+
+    /**
+     * REG-7.2. GeneXus-style "the schema is already at this fingerprint; stop trying to migrate to
+     * it." Submitted on the CURRENTLY RUNNING app (same reasoning as {@link #acknowledge}: the boot
+     * this authorizes has no server of its own to accept the mark on). {@code SchemaLifecycleExecutor}
+     * (via {@link MigrationMarkStore}) consumes it on the next boot targeting that exact fingerprint,
+     * fast-forwarding the stored fingerprint pointer with NO migration passes run.
+     */
+    @PostMapping("/mark-done")
+    public ResponseEntity<Map<String, Object>> markDone(
+            @RequestBody MarkDoneRequest request, HttpServletRequest httpRequest
+    ) {
+        requireSuperUser(httpRequest);
+        DataSource dataSource = requireDataSource();
+
+        String fingerprint = request.fingerprint() == null ? null : request.fingerprint().trim();
+        if (fingerprint == null || fingerprint.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "missing_required_field",
+                    "detail", "fingerprint is required"));
+        }
+
+        ExecutionContext context = runtimeContextService.currentContext(httpRequest);
+        MigrationMarkStore.Mark inserted = MigrationMarkStore.insert(
+                dataSource, fingerprint, context.actorId(), request.note());
+
+        return ResponseEntity.status(201).body(toResponseBody(inserted));
+    }
+
+    @GetMapping("/marks")
+    public List<Map<String, Object>> marks(HttpServletRequest httpRequest) {
+        requireSuperUser(httpRequest);
+        DataSource dataSource = requireDataSource();
+
+        return MigrationMarkStore.listAll(dataSource).stream()
+                .map(SchemaAcknowledgmentController::toResponseBody)
+                .toList();
+    }
+
+    private static Map<String, Object> toResponseBody(MigrationMarkStore.Mark row) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("id", row.id());
+        body.put("markedFingerprint", row.markedFingerprint());
+        body.put("markedAtUtc", row.markedAtUtc());
+        body.put("markedBy", row.markedBy());
+        body.put("note", row.note());
         return body;
     }
 

@@ -92,11 +92,15 @@ final class SchemaDeltaReport {
      * the identical unconditional protection (confirmed live: without this, the executor's own
      * {@code CREATE TABLE IF NOT EXISTS} for it made every destructive-path test in this package
      * spuriously classify it as a DROP_TABLE candidate, since it is a real live table with no
-     * matching manifest entry).
+     * matching manifest entry). {@link MigrationMarkStore#TABLE} (REG-7.2) is the identical shape --
+     * self-bootstrapped by {@code beforeMigrate}'s very first read, ahead of {@code classify()} --
+     * and needs the same protection for the same confirmed-live reason (a real boot rehearsal with
+     * this omitted turned every destructive-path test into a spurious
+     * {@code DROP_TABLE:npdev_schema_migration_mark}).
      */
     private static final Set<String> ALWAYS_EXCLUDED_TABLES =
             Set.of("flyway_schema_history", "npdev_schema_history", "npdev_schema_metadata",
-                    PendingSchemaAcknowledgmentStore.TABLE);
+                    PendingSchemaAcknowledgmentStore.TABLE, MigrationMarkStore.TABLE);
 
     private final List<SchemaDeltaItem> items;
 
