@@ -73,8 +73,8 @@ honestly-named residual limitation.
 | **REG-7** | `LNCH-1-B6` — no migration advisory lock (multi-instance) | BOUNDARY | — | M | 1.7 |
 | **REG-8** | `LNCH-1-B9` — schema-ahead detector blind to a pure column drop | BOUNDARY | — | M | 1.8 |
 | **REG-9** | LNCH-4 — auth table stakes: secrets management still open (**rescoped: 2 of 4 already done**) | GAP | **P0** | S/M | 2.1 |
-| **REG-10** | LNCH-19 — Linux CI has never been observed green | GAP | **P1** | S/M | 2.2 |
-| **REG-11** | LNCH-20 — cross-platform build scripts, Phases 2–4 (**helper exists, unused** — lower effort) | GAP | P2 | S | 2.3 |
+| ~~**REG-10**~~ | LNCH-19 — Linux CI **now observed GREEN** (run `29899362276`, 2026-07-22) — DONE | GAP | **P1** | S/M | 2.2 |
+| ~~**REG-11**~~ | LNCH-20 — cross-platform build **PROVEN** by the green run; also fixed a real generated-app `D:/`-cache portability bug — DONE | GAP | P2 | S | 2.3 |
 | **REG-12** | LNCH-10 — Excel/PDF/print export beyond CSV | GAP | P1 | L | 2.4 |
 | **REG-13** | LNCH-18 — non-author usability test never run | GAP | P1 | S (blocked on a human) | 2.5 |
 | **REG-14** | LNCH-22 — newcomer documentation test never run | GAP | P2 | S (blocked on a human) | 2.6 |
@@ -587,6 +587,34 @@ by contrast, already deploy cleanly via `.env` today.
 
 ### 2.2 REG-10 — LNCH-19: Linux CI has never been observed green
 
+**Type:** GAP · **Priority:** P1 · **Effort:** S/M · **Status:**
+**DONE (2026-07-22).** `npdev-pr-gate.yml` ran **green** on GitHub Actions (ubuntu-latest) — run
+`29899362276`, commit `3dcc51e`, every step `success`: DSL contract check, kernel inproc adapters,
+all 168 generator unit tests (including the 3 packaged-app boot/HTTP/JDBC proof tests), RuntimeHost
+libs sync, sample generation, and the RuntimeHost generated-app suite. This is the first CI run ever
+observed green — every prior quality claim had run only on one Windows machine.
+
+> **What it took (six root-caused fixes, seven runs).** The PR was opened from `lnch19-ci-verify`
+> and CI surfaced a chain of first-contact-with-Linux defects, each fixed precisely (not guessed):
+> (1) a hardcoded Windows `pwsh.exe` path in the packaged-app tests → resolve `pwsh` via PATH;
+> (2) build output and the libs-sync disagreeing because both fall back to walking up for a folder
+> named `NPDev_General` while GitHub checks out as `NPDevGeneral` → pin `NPDEV_BUILD_ROOT`;
+> (3) **a real product portability bug** — every generated FinalApp inherited a hardcoded
+> `D:/WorkSpace/NPDev/Build` gradle `projectcachedir` from the RuntimeHost template, so a generated
+> app could not build on any machine but the dev box → removed it (see REG-11);
+> (4) the packaged-app tests' hand-maintained adapter list omitted `mail-inproc`/`mail-smtp`, masked
+> on Windows by pre-existing jars → added them; (5) a CI diagnostics step + direct GitHub-API log
+> access added so failures stopped being invisible; (6) a `..` in an artifact path
+> (`actions/upload-artifact` forbids it) → copy reports into an in-workspace dir first. Fixes committed
+> on `beta1-vision-spine` (`78eb2ce`, `28b91cf`, `4978936`, `962eb60`, `4eb8bce`, `ea19769`) and
+> cherry-picked onto `lnch19-ci-verify`.
+>
+> **Caveat:** the green run was on `lnch19-ci-verify` (an older code line + the six fixes), not on
+> `beta1-vision-spine`'s latest (REG-27/REG-7/REG-8/register work). The fixes are on both branches;
+> confirming CI green on the latest line is a follow-up (push `beta1-vision-spine` + PR/dispatch).
+
+**Original framing (kept for context):**
+
 **Type:** GAP · **Priority:** P1 · **Effort:** S/M · **Status:** PARTIAL
 
 **What.** `.github/workflows/npdev-pr-gate.yml` and siblings exist and are committed; the
@@ -615,7 +643,18 @@ surfaces. Budget for the execute-bit issue and for path assumptions the Windows 
 
 ### 2.3 REG-11 — LNCH-20: cross-platform build scripts, Phases 2–4 (**corrected 2026-07-21**)
 
-**Type:** GAP · **Priority:** P2 · **Effort:** S (was M — see correction) · **Status:** **CODE-COMPLETE (2026-07-21, REG-11/P4); item stays OPEN pending REG-10.** All genuine `gradlew.bat` call sites now resolve the wrapper per-OS (migrated to the shared helper where a script already imported it; fixed in place otherwise, including two resolvers that gated on file-existence instead of the OS, and the root `npdev-gradlew.ps1`). A repo-wide `D:\` sweep removed the one in-logic drive-letter literal (`run-stateful-additive-migrations-check.ps1`'s redundant test-XML fallback); the remaining `D:\` literals are overridable param defaults (sanctioned local convention). The Docker-Desktop Postgres proof launcher and 3 superuser demo scripts are documented as named Windows-only exceptions. **The register text names CI as "the enforcement mechanism," so true closure needs a green Linux Actions run (REG-10, owner-gated) — the code is ready, not yet proven.** Full disposition in `docs/LAUNCH_READINESS_GAPS.md` §LNCH-20.
+**Type:** GAP · **Priority:** P2 · **Effort:** S (was M — see correction) · **Status:**
+**DONE / PROVEN (2026-07-22).** The green Linux CI run REG-10 describes (run `29899362276`) is the
+proof this item was waiting for — the platform's DSL/kernel/generator/RuntimeHost build and a
+generated FinalApp's own `bootJar`/boot all ran on ubuntu-latest, not just the dev machine.
+**REG-10 additionally exposed and fixed a genuine distribution bug this item's "code-complete" state
+had missed:** every generated FinalApp shipped `NPDevRuntimeHost/gradle.properties`'s hardcoded
+`org.gradle.projectcachedir=D:/WorkSpace/NPDev/Build/...`, copied verbatim by `FinalAppAssembler`, so
+a generated app's `gradlew bootJar` could not run on any machine without that exact `D:` path (Linux,
+another Windows box, an evaluator's laptop). Removed from the template (`4978936`) so generated apps
+use gradle's portable default cache — the real cross-platform-portability fix, beyond the PowerShell
+scripts. Below is the pre-proof (2026-07-21) code-complete disposition, kept for detail:
+All genuine `gradlew.bat` call sites now resolve the wrapper per-OS (migrated to the shared helper where a script already imported it; fixed in place otherwise, including two resolvers that gated on file-existence instead of the OS, and the root `npdev-gradlew.ps1`). A repo-wide `D:\` sweep removed the one in-logic drive-letter literal (`run-stateful-additive-migrations-check.ps1`'s redundant test-XML fallback); the remaining `D:\` literals are overridable param defaults (sanctioned local convention). The Docker-Desktop Postgres proof launcher and 3 superuser demo scripts are documented as named Windows-only exceptions. **The register text names CI as "the enforcement mechanism," so true closure needs a green Linux Actions run (REG-10, owner-gated) — the code is ready, not yet proven.** Full disposition in `docs/LAUNCH_READINESS_GAPS.md` §LNCH-20.
 
 **What.** Phase 1 (the `gradlew.bat` literals on the CI critical path) landed as a side effect of
 LNCH-19's fix. Phases 2–4 — the AppGen builder scripts, ~14 remaining quality-gate scripts with the
