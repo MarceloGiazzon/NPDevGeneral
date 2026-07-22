@@ -214,7 +214,7 @@ named `NPDevGeneral` at `2adf8ec` ran the full documented tutorial (sync → gen
 | Item | State | Notes |
 |---|---|---|
 | **REG-6 — ColumnFacts** | ~40% / OPEN | Refactor of the ~2,900-line `SchemaLifecycleExecutor` to read one `ColumnFacts` projection everywhere. Deliberately deferred — all-or-nothing, needs many full H2+Postgres proof-matrix runs; a partial migration is worse per its own rationale. |
-| **Promotion-panel retry-loop bug** | OPEN, filed (register §2.4) | On InMemory apps `/api/admin/promotion` 503s; the 503 path never sets `loaded=true`, so `render()` re-triggers `loadPromotion()` → unbounded loop. Found during REG-12 Slice 2; not fixed. |
+| **Promotion-panel retry-loop bug** | **FIXED 2026-07-22 (`4943b73`)** | On InMemory apps `/api/admin/promotion` 503s; the 503 path never set `loaded=true`, so `render()` re-triggered `loadPromotion()` → unbounded loop. Found during REG-12 Slice 2. Fixed via a `state.promotion.attempted` flag (guard now requires `!attempted`); verified live (ScrapForAI, 10/10) — 1 call per render vs. the pre-fix flood. See register §2.4. |
 | **Latent item — wmsoffice `D:/` JWT paths** | latent | A generated app carries absolute `D:/` paths for JWT keys (portability). |
 | **Latent item — adapter-list fragility** | latent | New adapter jars must be manually added to the 3 `*PackagedGeneratedAppRuntimeProofTest` adapter lists + the sync/build-local-jars path, or the generated app won't compile on clean CI (the mail-adapter + document-render precedents). |
 | **Latent item — platform-status drift** | latent | `knowledge/platform-status.json` is a derived projection; regen via `python scripts/ai/extract_platform_status.py` — no automation guards staleness. |
