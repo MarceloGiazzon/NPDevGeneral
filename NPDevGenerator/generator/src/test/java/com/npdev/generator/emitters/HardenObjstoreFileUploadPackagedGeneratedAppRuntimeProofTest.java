@@ -340,6 +340,11 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
                         ":adapters:bulkhead-postgres:jar",
                         ":adapters:circuit-inproc:jar",
                         ":adapters:circuit-postgres:jar",
+                        // REG-12 Slice 3: NpdevDocumentRenderConfig imports both document-render
+                        // adapter classes unconditionally (same reason the mail adapters are listed
+                        // below) -- both jars must exist or the generated app fails to compile.
+                        ":adapters:document-render-inproc:jar",
+                        ":adapters:document-render-stub:jar",
                         ":adapters:expression-cel:jar",
                         ":adapters:file-store-inproc:jar",
                         ":adapters:file-store-objectstore:jar",

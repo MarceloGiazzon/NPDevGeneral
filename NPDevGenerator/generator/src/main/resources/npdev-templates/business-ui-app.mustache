@@ -35,7 +35,7 @@
     preferences: { records: [], loading: false, loaded: false },
     store: { packs: [], discoverable: false, loading: false, loaded: false, filter: "", installedIntents: {} },
     boxView: { boxes: [], note: "", loading: false, loaded: false },
-    promotion: { currentStage: "", history: [], loading: false, loaded: false },
+    promotion: { currentStage: "", history: [], loading: false, loaded: false, attempted: false },
     // Keyed by declared Panel name -- deliberately separate from state.panels (per-CONCEPT grid
     // pagination state, a pre-existing and unrelated use of that name).
     declaredPanels: {}
@@ -50,6 +50,7 @@
     app: document.getElementById("app"),
     modalRoot: document.getElementById("modalRoot"),
     pickerModalRoot: document.getElementById("pickerModalRoot"),
+    printRoot: document.getElementById("printRoot"),
     status: document.createElement("div"),
     apiKey: document.createElement("input")
   };
@@ -1512,6 +1513,11 @@
     } catch (error) {
       setStatus(error.message, true);
     }
+    // A completed attempt (success OR failure) must not auto-retry. On in-memory-storage apps
+    // /api/admin/promotion returns 503 and never sets loaded=true, which previously made
+    // renderPromotionPanel()'s auto-load guard re-trigger loadPromotion() on every render -- an
+    // unbounded loop. The Refresh button (which calls loadPromotion directly) is unaffected.
+    state.promotion.attempted = true;
     state.promotion.loading = false;
     render();
   }
@@ -1556,7 +1562,7 @@
     header.appendChild(actions);
     section.appendChild(header);
 
-    if (!state.promotion.loaded && !state.promotion.loading) {
+    if (!state.promotion.loaded && !state.promotion.loading && !state.promotion.attempted) {
       loadPromotion();
     }
 
@@ -1824,6 +1830,20 @@
     exportLink.target = "_blank";
     exportLink.rel = "noopener";
     actions.appendChild(exportLink);
+    // LNCH-10 slice 2 (REG-12): prints exactly the currently loaded page -- the same filtered/sorted
+    // rows on screen, not a full-table export (Export CSV already owns "every matching row").
+    actions.appendChild(button("Print", "", function () { printPanel(concept); }));
+    // LNCH-10 slice 3 (REG-12): a declared `document` bound to this concept -- a server-rendered PDF
+    // of every matching row (mirrors Export CSV's data path, not the on-screen page). Usually 0 or 1
+    // per concept; render one link per document if more than one is declared.
+    (concept.documents || []).forEach(function (doc) {
+      const pdfLink = document.createElement("a");
+      pdfLink.href = "/api/documents/" + encodeURIComponent(doc.name) + "/render.pdf";
+      pdfLink.textContent = "Download PDF";
+      pdfLink.target = "_blank";
+      pdfLink.rel = "noopener";
+      actions.appendChild(pdfLink);
+    });
     header.appendChild(actions);
     section.appendChild(header);
 
@@ -1953,6 +1973,76 @@
     next.disabled = (panel.page + 1) * panel.size >= panel.totalElements;
     pager.appendChild(next);
     return pager;
+  }
+
+  // LNCH-10 slice 2 (REG-12): the print render mode. Renders the panel's CURRENT (already loaded)
+  // filtered/sorted page into #printRoot -- a bare container with no app chrome (nav/app-bar/panel
+  // controls) -- and hands off to window.print(), which business-ui-style.mustache's `@media print`
+  // block then shows exclusively (everything else, including #printRoot itself on screen, is hidden
+  // outside of print). Deliberately self-contained, inlinable markup: this is also the seam Slice 3
+  // (docs/REG12_DOCUMENT_EXPORT_PLAN.md) reuses -- its server-side PDF renderer is designed to render
+  // this identical HTML shape, not a second bespoke layout.
+  function printPanel(concept) {
+    const panel = panelState(concept);
+    const fields = visibleFields(concept);
+
+    const doc = document.createElement("div");
+    doc.className = "print-document";
+
+    const header = document.createElement("div");
+    header.className = "print-header";
+    const title = document.createElement("h1");
+    title.textContent = concept.displayName;
+    header.appendChild(title);
+    const meta = document.createElement("div");
+    meta.className = "print-meta";
+    meta.textContent = "Printed " + new Date().toLocaleString()
+        + (panel.filter ? " -- filtered: \"" + panel.filter + "\"" : "");
+    header.appendChild(meta);
+    doc.appendChild(header);
+
+    const table = document.createElement("table");
+    table.className = "print-table";
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    fields.forEach(function (field) {
+      const th = document.createElement("th");
+      th.textContent = field.label || field.name;
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    if (panel.records.length === 0) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = Math.max(1, fields.length);
+      td.className = "empty";
+      td.textContent = "No records";
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    } else {
+      panel.records.forEach(function (record) {
+        const tr = document.createElement("tr");
+        fields.forEach(function (field) {
+          const td = document.createElement("td");
+          renderFieldValue(td, field, record[field.name], false);
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+    table.appendChild(tbody);
+    doc.appendChild(table);
+
+    const footer = document.createElement("div");
+    footer.className = "print-footer";
+    footer.textContent = "Total: " + panel.records.length + " of " + panel.totalElements + " record(s)";
+    doc.appendChild(footer);
+
+    el.printRoot.replaceChildren(doc);
+    window.print();
   }
 
   function visibleFields(concept) {

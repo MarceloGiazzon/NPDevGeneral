@@ -173,8 +173,10 @@ class SchemaLifecycleExecutorDatabaseMigratedPastBuildTest {
         seedHistoryRow(dataSource, "sha256:N", "APPLIED", 1_000L);
         seedHistoryRow(dataSource, "sha256:N+1", "APPLIED", 2_000L);
         seedStoredFingerprint(dataSource, "sha256:N+1");
-        // ...but the operator has explicitly authorized this older build to take back over.
-        MigrationMarkStore.insert(dataSource, "sha256:N", "super-user-1", "deliberately reverting to N");
+        // ...but the operator has explicitly authorized this older build to take back over, having
+        // observed the live database at its actual (N+1) stored fingerprint (REG-28: the mark is bound
+        // to that from -> to transition, not just the target).
+        MigrationMarkStore.insert(dataSource, "sha256:N+1", "sha256:N", "super-user-1", "deliberately reverting to N");
 
         SchemaLifecycleExecutor.SchemaManifest manifestBuildN = manifest(
                 "sha256:N", Map.of("users", List.of("id", "name", "nickname")),

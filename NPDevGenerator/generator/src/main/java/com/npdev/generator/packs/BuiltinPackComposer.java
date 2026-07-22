@@ -95,6 +95,12 @@ public final class BuiltinPackComposer {
                 }
             }
         }
+        // REG-12 Slice 3: was reconstructing CompiledModel via the truncated 14-arg constructor,
+        // which silently dropped guidePages/aggregates/autoPanels/documents for every app that
+        // composes built-in or installed packs (internal.tables=true, or packs.included non-empty)
+        // -- caught live when a declared `document` vanished from a superuser-admin-console-style
+        // app's compiled model. Use the canonical (widest) constructor so nothing app-level is lost
+        // by merging in pack concepts.
         return new CompiledModel(
                 app.getNamespace(),
                 app.getDslVersion(),
@@ -109,7 +115,11 @@ public final class BuiltinPackComposer {
                 app.getQueries(),
                 app.getRuleProfiles(),
                 app.getProcedures(),
-                app.getPanels()
+                app.getPanels(),
+                app.getGuidePages(),
+                app.getAggregates(),
+                app.getAutoPanels(),
+                app.getDocuments()
         );
     }
 

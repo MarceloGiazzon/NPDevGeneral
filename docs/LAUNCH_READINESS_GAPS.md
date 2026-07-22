@@ -3,7 +3,8 @@
 > **Purpose.** NPDev's stated goal is to be a low-code platform for building a range of
 > *complete web apps*. This document is a critical, realistic inventory of what is missing or
 > blocking between the platform's current state (originally written 2026-07-14, branch
-> `beta1-vision-spine`; status table last verified against real commits 2026-07-19) and a
+> `beta1-vision-spine`; **status table reconciled with the open-items register and re-verified against
+> real commits + a green CI run 2026-07-22 — see §2's reconciliation banner**) and a
 > state where formalization / launch is honest. It is written so that converting it into an
 > executable roadmap is a mechanical step: every gap states **why** it blocks launch, **where**
 > the problem lives (files/modules), **how** to fix it, a **Definition of Done**, an effort
@@ -54,8 +55,10 @@ apps:
    pre-checks/backfills, a migration-plan preview, a permanent proof matrix. `docs/SCHEMA_EVOLUTION.md`.
 2. **Secure** — tenant isolation has been fixed reactively bug-by-bug, never audited
    adversarially; one known auth-filter flaw remains deferred; the boring auth table stakes
-   (reset, revocation, rate limiting) don't exist. **Mostly closed**: LNCH-2/3 done, LNCH-4's P0
-   slice + password reset done; secrets-via-env-vars remains open.
+   (reset, revocation, rate limiting) don't exist. **Closed** (2026-07-22): LNCH-2/3 done, LNCH-4's P0
+   slice + password reset + secrets-via-env-vars all done (the last via REG-9 — JWT keys env-bound,
+   super-user-key seeding WONTFIX by decision). The REG-16 adversarial tenant/auth review also ran:
+   no CRITICAL/HIGH, 5 MEDIUM findings fixed.
 3. **Scale** — panel/query filtering is in-memory post-filtering; fine at demo size, fatal at
    100k rows; there is no pagination pushed to SQL and no index emission for query fields.
    **Closed**: LNCH-5 (SQL push-down, 100k-row volume-gated) and LNCH-6 (index emission) both done.
@@ -64,10 +67,12 @@ apps:
    health/metrics/backup story, and the *less-exercised* database path (Postgres) is the
    production one. **Closed**: LNCH-7/8/9 all done, live-verified via real `docker compose` runs.
 5. **Distribute** — no CI, Windows-only build scripts, internal-facing docs only, no license,
-   no packaging decision, no upgrade contract for generated apps. **Partially closed**: license,
-   ADRs, upgrade contract, and CI workflows exist (LNCH-21/23 done, LNCH-19 committed+pushed but not
-   independently confirmed green on a real runner); Windows-only build scripts (LNCH-20) remain
-   genuinely untouched.
+   no packaging decision, no upgrade contract for generated apps. **Closed** (2026-07-22): license,
+   ADRs, upgrade contract done (LNCH-21/23); **Linux CI observed green on a real GitHub Actions
+   runner** (LNCH-19 / REG-10 — the first CI-green in the project's history); cross-platform build
+   **proven** by that run (LNCH-20 / REG-11), which also surfaced and fixed a real generated-app
+   `D:/`-cache portability bug; release tag `beta1.1` cut. Only trademark clearance is parked (owner's
+   call — portfolio project).
 
 Every real low-code platform failure mode lived in one of those five verbs. The roadmap that
 falls out of this document is organized around them; §2's table is the source of truth for what
@@ -77,18 +82,68 @@ is actually done today.
 
 ## 2. Priority index (machine-parseable)
 
+> **2026-07-22 reconciliation — the launch ledger unified with the open-items register.**
+> Since the last update (2026-07-19), the still-open *slices* of the LNCH items were tracked at finer
+> grain in `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (the `REG-*` items) and worked to closure. This revision
+> folds those closures back into the table below. **New tally: 21 DONE · 3 PARTIAL · 0 OPEN** (was
+> 17 / 6 / 1). The one structural change worth stating up front: **Linux CI has now been observed
+> green on a real GitHub Actions runner** (REG-10), which retroactively *proves* several items that
+> were "done but only on one Windows machine."
+>
+> **2026-07-22 addendum — `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` executed; all three closed
+> (LNCH-22 on the second attempt, after a real fix).** LNCH-10 Slice 3 (server-side PDF) closed against
+> `docs/REG12_DOCUMENT_EXPORT_PLAN.md`, verified live + **CI-green** (run `29943008077`, SHA `b5c7c88`).
+> LNCH-18 (authoring) closed via an independent cold-tester run. **LNCH-22 (docs):** its first closure
+> was *reverted on verification* — two independent cold runs could not build the tutorial *from docs
+> alone*, hitting an unstated `runtimehost-libs` staging wall. Root cause: `sync-runtimehost-libs.ps1`
+> and `build.gradle` resolved the external build root by different algorithms, diverging whenever the
+> repo folder isn't named exactly `NPDev_General` (a `git clone` → `NPDevGeneral`, or a nested worktree).
+> Fixed in `2adf8ec` — the sync now mirrors `build.gradle`'s walk — plus the tutorial's one-time-setup
+> step, a `400`→`422` correction, and a Windows-safe verify-curl. **Validated by a genuinely
+> project-blind in-sandbox run on `2adf8ec`: the tutorial built (`FinalExec-0.1.0.jar`) and booted from
+> the docs alone (201 valid / 422 invariant), no source-reading, no leftover libs**
+> (`external-tester-evidence/2026-07-22/lnch22-insandbox-blind-PASS.md`). **Final tally: 24 DONE ·
+> 0 PARTIAL · 0 OPEN — the launch ledger is fully closed.**
+>
+> **LNCH ↔ REG crosswalk (where an LNCH's remaining slice lived as a register item):**
+>
+> | LNCH | Register item | Old LNCH status | Now | What closed it |
+> |---|---|---|---|---|
+> | LNCH-4 (auth stakes) | REG-9 | PARTIAL | **DONE** | JWT keys via env var + fail-fast validation + verify-only boot; super-user-key seeding WONTFIX by decision |
+> | LNCH-10 (export) | REG-12 | PARTIAL | **DONE** | All 3 slices DONE (2026-07-22) — CSV, print, and server-side PDF (`docs/REG12_DOCUMENT_EXPORT_PLAN.md`) |
+> | LNCH-18 (authoring test) | REG-13 | PARTIAL | **DONE** | Independent cold-tester run 2026-07-22 (subagent, fresh context, own worktree, cold brief only — see `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part B.1 option 2) authored an issue tracker via the CLI validator fallback (no MCP tools registered) and verified create/list/edit/close over REST, unaided. Evidence + friction log: `NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/` |
+> | LNCH-19 (Linux CI) | REG-10 | PARTIAL | **DONE** | `npdev-pr-gate.yml` observed **green** on ubuntu-latest (run `29899362276`); six root-caused first-contact-with-Linux fixes |
+> | LNCH-20 (cross-platform) | REG-11 | OPEN | **DONE** | Cross-platform build **proven** by the green run; also fixed a real generated-app `D:/`-cache portability bug |
+> | LNCH-22 (docs test) | REG-14 | PARTIAL | **DONE** | Closed on the 2nd attempt: the first pass was reverted on verification (two cold runs could not build *from docs alone* — a `runtimehost-libs` build-root divergence), fixed in `2adf8ec` (sync mirrors `build.gradle`'s walk) + tutorial one-time-setup step + Windows-safe verify-curl. **Validated by a project-blind in-sandbox run on `2adf8ec`: tutorial built + booted from docs alone (201/422), no source-reading, no leftover libs.** Evidence: `NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/lnch22-insandbox-blind-PASS.md` |
+> | LNCH-23 (launch checklist) | REG-15 | PARTIAL | **DONE** | Release tag cut (`beta1.1`, on the `beta1→main` merge); license/ADR/release-process already done; trademark parked (portfolio project, owner's decision) |
+>
+> **Register-native items (findings that are NOT LNCH gaps — do not look for them here).** The register
+> also tracks work with no LNCH equivalent, all closed/decided except where noted: LNCH-1's own
+> five-round residue (REG-1..8: posture flips, `IT-EXTPG-1`, `GATE-REL-1`, the flake, `GATE-OBS-1a`,
+> `ColumnFacts`=**REG-6 ~40%/OPEN**, and REG-7/REG-8 boundaries **converted to features**); the REG-16
+> adversarial tenant/auth review (no CRITICAL/HIGH; 5 MEDIUM fixed) + REG-17 third-party reproduction;
+> and this session's verification findings REG-18..30 (all CLOSED/decided) plus a new pre-existing
+> **promotion-panel retry-loop** bug (register §2.4) still open. The register is now the live, granular
+> tracker; this table is the launch-lifecycle roll-up.
+>
+> **All three previously-remaining launch items are now closed** (2026-07-22): LNCH-10 Slice 3
+> (server-side PDF), LNCH-18 (authoring), and LNCH-22 (docs) — the last closed on a second attempt,
+> after fixing a real `runtimehost-libs` build-root divergence (`2adf8ec`) and confirming it with a
+> project-blind in-sandbox tutorial build from docs alone. The launch ledger reads **24 DONE ·
+> 0 PARTIAL · 0 OPEN**.
+
 | ID | Title | Verb | Status | Priority | Effort |
 |---|---|---|---|---|---|
 | LNCH-1 | Model-diff schema evolution for live apps (migrations) | Evolve | DONE | P0 | XL |
 | LNCH-2 | Adversarial tenant-isolation audit + test suite | Secure | DONE | P0 | M |
 | LNCH-3 | Fix `RuntimeApiKeyAuthFilter` clobbering flaw | Secure | DONE | P0 | S |
-| LNCH-4 | Auth table stakes: reset, revocation, lockout, rate limit, CSRF posture | Secure | PARTIAL | P0 | L |
+| LNCH-4 | Auth table stakes: reset, revocation, lockout, rate limit, CSRF posture | Secure | DONE | P0 | L |
 | LNCH-5 | SQL push-down for panel/query filtering + server-side pagination | Scale | DONE | P0 | L |
 | LNCH-6 | Index emission from the model | Scale | DONE | P1 | M |
 | LNCH-7 | Postgres-first Dockerized deployment story | Operate | DONE | P0 | L |
 | LNCH-8 | Observability: health, metrics, structured logs | Operate | DONE | P1 | M |
 | LNCH-9 | Backup / restore / data export procedure | Operate | DONE | P1 | M |
-| LNCH-10 | Reporting & export primitives (CSV/Excel/PDF/print) | Complete | PARTIAL | P1 | L |
+| LNCH-10 | Reporting & export primitives (CSV/Excel/PDF/print) | Complete | DONE | P1 | L |
 | LNCH-11 | Email / notification primitive | Complete | DONE | P1 | M |
 | LNCH-12 | Scheduled / background job trigger for flows & procedures | Complete | DONE | P1 | M |
 | LNCH-13 | Row-level (data-scoped) authorization | Complete | DONE | P1 | L |
@@ -96,12 +151,12 @@ is actually done today.
 | LNCH-15 | One unified expression language | Complete | DONE | P1 | L |
 | LNCH-16 | Optimistic locking / concurrent-edit protection | Complete | DONE | P1 | M |
 | LNCH-17 | Transaction-boundary contract for multi-step flows | Complete | DONE | P1 | M |
-| LNCH-18 | Authoring-path decision: editor-complete vs AI-first productization | Distribute | PARTIAL | P1 | L/XL |
-| LNCH-19 | Linux CI running the quality gates + sample harness | Distribute | PARTIAL | P1 | M |
-| LNCH-20 | Cross-platform build scripts (drop the Windows-only assumption) | Distribute | OPEN | P2 | M |
+| LNCH-18 | Authoring-path decision: editor-complete vs AI-first productization | Distribute | DONE | P1 | L/XL |
+| LNCH-19 | Linux CI running the quality gates + sample harness | Distribute | DONE | P1 | M |
+| LNCH-20 | Cross-platform build scripts (drop the Windows-only assumption) | Distribute | DONE | P2 | M |
 | LNCH-21 | Generated-app upgrade contract & compatibility policy | Distribute | DONE | P2 | M |
-| LNCH-22 | User-facing documentation & error-message quality | Distribute | PARTIAL | P2 | L |
-| LNCH-23 | Launch checklist: license, packaging, telemetry, release process | Distribute | PARTIAL | P2 | M |
+| LNCH-22 | User-facing documentation & error-message quality | Distribute | DONE | P2 | L |
+| LNCH-23 | Launch checklist: license, packaging, telemetry, release process | Distribute | DONE | P2 | M |
 | LNCH-24 | Commit hygiene: land the current uncommitted working tree | Distribute | DONE | P1 | S |
 
 ---
@@ -283,12 +338,16 @@ knowledge card updated to close the deferral note.
 
 ### LNCH-4 — Authentication table stakes
 
-**Status:** PARTIAL (2026-07-14/16) · **Priority:** P0 (subset can be staged) · **Effort:** L
+**Status:** DONE (2026-07-22) · **Priority:** P0 · **Effort:** L
+
+**Update (2026-07-22).** The last open slice — secrets-via-env-vars — is DONE (REG-9): JWT
+signing/verification keys are env-var-supplied with fail-fast startup validation and a verify-only
+boot mode; DB credentials and runtime API keys were already env-bound; super-user-key seeding is
+WONTFIX by decision (issued, not operator-supplied). LNCH-4 now fully DONE.
 
 **Update (2026-07-16).** DONE: P0 slice (token revocation via `tokenVersion`, login throttling,
 CSRF-posture doc + structural guard script) and the P1 self-service password-reset flow (built on
-LNCH-11's mail primitive). Still OPEN: the other named P1 sub-item, secrets-via-env-vars (pairs
-with LNCH-7).
+LNCH-11's mail primitive). Secrets-via-env-vars was the one remaining sub-item — see 2026-07-22 above.
 
 **The gap (why).** Current auth is a working but skeletal patchwork: JWT via the identity
 pack, `X-Super-User-Key` from a key file, runtime API keys. What every deployed business app
@@ -503,7 +562,28 @@ JSON round-trips through the seeder.
 
 ### LNCH-10 — Reporting & export primitives
 
-**Status:** PARTIAL (2026-07-17) · **Priority:** P1 · **Effort:** L
+**Status:** DONE (2026-07-22 — all 3 slices) · **Priority:** P1 · **Effort:** L
+
+**Update (2026-07-22, Slice 3) — closed.** Server-side PDF documents shipped via
+`docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part A: a new `document` DSL kind (bound to a concept,
+declarative, 4-copy schema mirror) + a `DocumentRenderContract` port/adapter pair
+(`document-render-inproc`, pure-JVM OpenHTMLtoPDF/PDFBox, no native/display deps; `document-render-stub`
+as the pair's second half) + `GET /api/documents/{document}/render.pdf` (mirrors `export.csv`'s data
+path exactly) + a "Download PDF" toolbar link next to Export CSV/Print. Verified live: a real
+generated app (`superuser-admin-console`) streamed a real, valid PDF (`%PDF-1.4` header, PDFBox
+text-extraction confirmed exact row/column content, human-eye-verified) for a declared
+`ProjectsPdf` document. Evidence: `NPDev_General__OutsideRepo/reg12-slice3-evidence/`. Found and
+fixed three real, pre-existing "field silently dropped" bugs while wiring this through (same bug
+class `CanonicalJsonRoundTripCompletenessTest` exists to catch, just at different reconstruction
+sites): `ModelResolver` and `BuiltinPackComposer` both reconstructed `ModelAst`/`CompiledModel` via
+truncated constructor overloads that dropped `documents` (the latter also silently dropped
+pre-existing `guidePages`/`aggregates`/`autoPanels` for any pack-composing app — fixed too); and a
+static RuntimeHost controller allowlist (`runtime-supported-controllers.json`) that would have
+silently 404'd the new endpoint. `docs/DSL_REFERENCE.md` regenerated (documents the `document` kind).
+
+**Update (2026-07-22, Slice 2).** Print stylesheet + print render mode for declared panels is DONE
+(REG-12): a "Print" toolbar button, a self-contained `#printRoot` print document, and an `@media print`
+stylesheet, verified live in a real browser (empty and with real row data).
 
 **Update (2026-07-17).** Slice 1 (CSV) DONE: `GET /api/concepts/{concept}/export.csv`, streamed
 page-by-page through the LNCH-5 push-down contract (never holds more than one page in the JVM),
@@ -746,13 +826,29 @@ forEach freeze-thread technique); CRUD write+event atomicity proven under JDBC.
 
 ### LNCH-18 — The authoring-path decision: editor-complete vs AI-first
 
-**Status:** PARTIAL (2026-07-17) · **Priority:** P1 ·
+**Status:** DONE (2026-07-22) · **Priority:** P1 ·
 **Effort:** decision S; consequence L–XL
 
 **Update (2026-07-17).** `docs/adr/ADR-0006-authoring-path.md` ratified: AI-first/editor-secondary.
 The DoD's human-run step — a real non-author completing a build from a plain-English description —
 is explicitly left OPEN, not claimed done (bucket-4, real-person-only; see
 `docs/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` for the prep work done toward it).
+
+**Update (2026-07-22) — closed.** `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part B ran the DoD's
+non-author step via an independent cold-start tester: a subagent given ONLY
+`docs/EXTERNAL_TESTER_COLDSTART.md`'s brief, a fresh context window, and its own isolated git
+worktree — no coaching, no access to this project's plans/register/retrospective (Part B.1 option 2,
+"a reasonable approximation" of a truly separate human/AI-tool session, explicitly sanctioned by the
+closure plan as fully runnable inside a session). Took the brief's issue-tracker description
+("issues have a title, description, status, assignee; create/list/edit/close") from description to a
+running FinalApp using the documented CLI validator fallback (no NPDev MCP tools were registered in
+session), verified unaided over REST (create/list/edit/close all confirmed). Task A pass bar met on
+the first cold run — no re-run iteration needed. Friction log + evidence:
+`NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/friction-log-task-a.md`. Headline
+finding filed as a dated finding below ("External-tester findings, 2026-07-22" section, end of this
+tier): the manual's own `updateConcept` examples omit the `persistence` capability/binding block,
+producing a model that validates cleanly but 500s at runtime with no diagnostic pointing at the real
+cause.
 
 **Why.** Be honest about how every real app has been built: JSON authored by an AI through
 the MCP/validate→fix→generate loop, with the React editor used for slices and inspection.
@@ -812,7 +908,16 @@ commit in small bounded steps per the established discipline (no `git add .`).
 
 ### LNCH-19 — Linux CI running the quality gates + sample harness
 
-**Status:** PARTIAL (2026-07-14) · **Priority:** P1 · **Effort:** M
+**Status:** DONE (2026-07-22) · **Priority:** P1 · **Effort:** M
+
+**Update (2026-07-22, REG-10).** `npdev-pr-gate.yml` ran **green** on ubuntu-latest — run
+`29899362276`, commit `3dcc51e`, every step success (DSL, kernel, all generator tests incl. the 3
+packaged-app boot/HTTP/JDBC proofs, sample generation, RuntimeHost app suite) — and again green on the
+promoted `main` line. The first CI-green in the project's history. It took six root-caused
+first-contact-with-Linux fixes (hardcoded `pwsh.exe` path; `NPDev_General` folder-name build-root
+assumption; a real generated-app `D:/` gradle-cache portability bug; a missing mail-adapter jar in the
+packaged-app test list; CI diagnostics + direct GitHub-API log access; an `..` artifact-path typo).
+LNCH-19 DONE; see the LNCH-20 entry for the cross-platform proof this simultaneously delivered.
 
 **Update (2026-07-14).** `npdev-pr-gate.yml` (fast, `pull_request`-triggered) and a `schedule` trigger
 added to the existing heavy `npdev-ci-validation.yml`, both committed and pushed to
@@ -846,7 +951,16 @@ gate's PR auto-run trigger (commit `b3b1253`) is prior art for the wiring style.
 
 ### LNCH-20 — Cross-platform build scripts
 
-**Status:** OPEN (scoped, not started) · **Priority:** P2 · **Effort:** M
+**Status:** DONE (2026-07-22) · **Priority:** P2 · **Effort:** M
+
+**Update (2026-07-22, REG-11).** PROVEN. The green Linux CI run (LNCH-19) is the proof this item was
+waiting for — the platform's DSL/kernel/generator/RuntimeHost build and a generated FinalApp's own
+`bootJar`/boot all ran on ubuntu-latest, not just the dev machine. The "code side ready, not yet
+proven" flag below is now resolved. Notably, the CI run also **exposed and fixed a genuine
+distribution bug** the code-complete state had missed: every generated FinalApp shipped
+`NPDevRuntimeHost/gradle.properties`'s hardcoded `org.gradle.projectcachedir=D:/WorkSpace/NPDev/Build/…`
+(copied verbatim by `FinalAppAssembler`), so a generated app could not build on any machine without
+that exact `D:` path — removed so generated apps use gradle's portable default cache. LNCH-20 DONE.
 
 **Why.** Windows-only scripts and `D:\`-rooted path assumptions mean a contributor or
 evaluator on macOS/Linux cannot even build the platform, and LNCH-19's Linux CI will trip on
@@ -930,8 +1044,10 @@ produced this disposition:
   local-workspace convention (CLAUDE.md mandates `D:\WorkSpace\NPDev\Build`), not execution-blocking
   hardcodes — left as documented convention.
 
-**Still OPEN at the item level:** proof (a green Linux Actions run) still needs REG-10/LNCH-19, which
-is owner-gated (no `gh` CLI in any session). The code is ready; it is not yet *proven* cross-platform.
+**RESOLVED (2026-07-22):** the green Linux Actions run this was waiting on happened (REG-10, run
+`29899362276`) — the code is now *proven* cross-platform, not merely ready. LNCH-20 is DONE. (The
+green run additionally caught the generated-app `D:/` gradle-cache portability bug noted in this item's
+2026-07-22 status update.)
 
 ### LNCH-21 — Generated-app upgrade contract
 
@@ -958,14 +1074,33 @@ version N upgrades to N+1 with local `web/` customizations intact, proven in the
 
 ### LNCH-22 — User-facing documentation & error-message quality
 
-**Status:** PARTIAL (2026-07-17/19) · **Priority:** P2 · **Effort:** L (incremental)
+**Status:** DONE (2026-07-22 — closed on the 2nd attempt: reverted on verification, then fixed
+(`2adf8ec`) and confirmed by a project-blind in-sandbox tutorial build from docs alone) ·
+**Priority:** P2 · **Effort:** L (incremental)
 
 **Update (2026-07-19).** `docs/DSL_REFERENCE.md` (generated, `--check`-mode drift detection),
 `docs/CONFIGURATION.md` (startup-validator refusal anchors), `docs/TUTORIAL_FIRST_APP.md`, and now
 `docs/SCHEMA_EVOLUTION.md` (LNCH-1) all follow the same "refusal message links a stable doc anchor"
 pattern. `ValidationDiagnostic`/`ValidationDiagnosticNormalizer` (code/suggestedFix/helpKey) already
 existed; the LNCH-1 knowledge cards extend `npdev_search_fix` coverage to schema-evolution refusals.
-Still OPEN: the DoD's human newcomer test (same person as LNCH-18's DoD) has not been run.
+
+**Update (2026-07-22) — DONE (closed on the second attempt, after a real fix + a genuinely blind
+validation).** The first closure was *reverted on verification*: two independent cold runs could not
+build `NPDevSamples/simple-contact-intake` *from docs alone* — the tutorial's `gradlew.bat bootJar`
+failed on an unstated RuntimeHost-libs staging prerequisite whose own suggested fix also failed
+standalone, and both runs only got unstuck by reading generated `build.gradle` + a pre-populated libs
+dir a fresh clone would not have. **Root cause:** `sync-runtimehost-libs.ps1` and `build.gradle`
+resolved the external build root by *different* algorithms, diverging whenever the repo folder is not
+named exactly `NPDev_General` (a `git clone` → `NPDevGeneral`, or a git worktree nested under
+`.claude/worktrees`) — proven by an in-sandbox diagnostic. **Fix (`2adf8ec`):** the sync now resolves
+the build root by mirroring `build.gradle`'s walk exactly, so jar-discovery scans wherever gradle
+actually writes; plus the tutorial gained an explicit one-time libs-staging step, a `400`→`422`
+correction, and a Windows-safe verify-curl. **Validated by a genuinely project-blind in-sandbox run on
+`2adf8ec`** (own worktree, checked out the fixed commit, cold brief, no coaching): the tutorial built
+(`FinalExec-0.1.0.jar`, 80 MB) and booted **from the docs alone** — valid POST → 201, blank-name → 422
+`NameRequired` — with no source-reading and no leftover libs. Evidence:
+`NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/lnch22-insandbox-blind-PASS.md`
+(+ the earlier `cold-run-1-report.md` / `friction-log-task-{a,b,c}.md` that surfaced the blocker).
 
 **Why.** The existing docs are excellent *internal* docs — written for the platform's
 builders. A stranger has: no "first app in 30 minutes" tutorial, no DSL reference manual
@@ -980,9 +1115,71 @@ corpus (`knowledge/cards/`) already contains the raw material for the troublesho
 alongside `failure-index.json`. **DoD.** A newcomer test (same person as LNCH-18's DoD)
 builds the tutorial app from docs alone; validator errors carry codes + hints.
 
+### External-tester findings, 2026-07-22 (LNCH-18/22/REG-17 closure run)
+
+Per `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part B.4 ("every friction point the successful run
+still surfaced is filed as a dated finding, docs improve even on a pass"). None of these blocked the
+run's own pass bars (all three tasks passed on the first cold run — no re-run iteration was
+needed), but each is a real, reproducible gap an unaided newcomer hits. Full detail + exact repro
+steps: `NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/friction-log-task-{a,b,c}.md`.
+Not yet actioned — filed per the loop's own discipline ("do not silently patch").
+
+1. **(Systemic, highest-value) RuntimeHost-libs staging fails standalone in a fresh worktree, twice
+   independently.** `sync-runtimehost-libs.ps1 -BuildLocalJars` (the exact remedy
+   `:verifyNpdevRuntimeHostLibs`'s own failure message suggests) fails with `No RuntimeHost jars were
+   discovered under build/libs after local jar build` when no libs are already staged — hit
+   independently building the tutorial (Task B) and running `run-runtimehost-gate.ps1` (Task C). The
+   only working fix found was an undocumented `NPDEV_RUNTIMEHOST_LIBS_DIR` env var override (visible
+   only by reading a freshly *generated* `build.gradle`) pointed at a pre-existing, already-populated
+   libs directory left over from prior workspace setup — not reconstructable from `docs/` alone in a
+   genuinely fresh clone.
+2. **`NPDEV_USER_MANUAL.md`'s own `createConcept`/`updateConcept` examples omit the required
+   `persistence` capability/binding block.** Following the shown pattern literally (Level 1 and Level
+   3 examples) validates cleanly (`npdev validate model` passes) but 500s at runtime with a bare,
+   code-free Spring Boot default error body the moment the flow actually runs — real cause
+   (`Capability binding not found for capability 'persistence'`) is visible only in the app's raw
+   stdout log, which no doc names as a debugging step.
+3. **No doc names the automatically-generated concept CRUD's REST verbs/paths** beyond the one `POST`
+   create example shown in the tutorial and the manual — list/get/update/delete are undocumented
+   (correctly guessable from REST convention, but unverified against the docs).
+4. **The `version` field (optimistic locking) on every concept record is never documented** in
+   `DSL_REFERENCE.md` or `NPDEV_CONCEPTS_DEEP_DIVE.md` — `OPTIMISTIC_LOCKING.md` exists but isn't
+   linked from either.
+5. **`docs/TUTORIAL_FIRST_APP.md`'s claimed `400` status code for an invariant violation is actually
+   `422`** in the built app (the error body's content otherwise matches the doc's description).
+6. **`docs/GETTING_STARTED.md`'s own example (`generate app --output build/npdev-generated`) writes
+   build output inside the repo tree**, contradicting `docs/BUILD_OUTPUT_LOCATION_POLICY.md` — the doc
+   never flags the conflict. The tutorial's own "full assembled-and-buildable FinalApp" command has the
+   same issue (writes to `NPDevSamples/<sample>/Output/`).
+7. **No entry point discovers "the quality gates."** `README.md` is pure architecture doctrine and
+   names only one narrow, unrelated gate; `scripts/quality/` has ~75 scripts with no index;
+   `docs/RELEASE_PROCESS.md` names three gates but is framed around releasing, not onboarding; the one
+   real curated index of "the 5 gates that matter" lives in the repo-root `CLAUDE.md`, which is
+   AI-assistant-oriented and linked from nowhere a human contributor would look.
+8. **No `docs/` file states prerequisite tool versions** (JDK/Node/Python/PowerShell) anywhere.
+9. **(Minor) `config.json`'s `scenario.outputRoot` field has no effect** on `Build-AppGenApp.ps1`'s
+   actual output location (always `D:\WorkSpace\NPDev\Build\generated-finalapps\<scenario.name>`) —
+   the template implies it's configurable; it isn't, undocumented.
+
+**REG-17 (third-party reproduction)** also advanced by this run (bonus, per
+`docs/EXTERNAL_TESTER_COLDSTART.md`): `run-generator-gate.ps1` ran to completion (FAILED: 3/172
+tests, a real pre-existing suite finding, not a tooling gap — see register); `run-runtimehost-gate.ps1`
+ran and hit finding #1 above; `run-frontend-gate.ps1`/`run-beta-release-gate.ps1` were not attempted
+(time budget, the latter is an explicitly long-running multi-script evidence orchestration). Every
+question the tester had to ask is logged in `friction-log-task-c.md`.
+
 ### LNCH-23 — Launch checklist: license, packaging, telemetry, release process
 
-**Status:** PARTIAL (2026-07-17) · **Priority:** P2 · **Effort:** M (mostly decisions)
+**Status:** DONE (2026-07-22) · **Priority:** P2 · **Effort:** M (mostly decisions)
+
+**Update (2026-07-22, REG-15).** The **release tag was cut**: `beta1.1` (annotated, on the
+`beta1-vision-spine → main` merge commit `3e29cca`) — the CI-green, register-closed milestone. `beta1`
+was already taken by the original milestone, hence `beta1.1`. With license (Apache-2.0), the
+distribution ADR (self-hosted / no telemetry), `docs/RELEASE_PROCESS.md`, `CHANGELOG.md`, and the
+release-checklist gate all already in place, and the tag now cut, LNCH-23 is DONE. **Trademark
+clearance is deliberately parked** — the owner confirmed this is an individual portfolio project with
+no mark to defend, so a professional clearance can wait indefinitely without blocking anything (the two
+preliminary findings stay on file for if the posture ever changes).
 
 **Update (2026-07-17).** `LICENSE` (Apache-2.0, ratified copyright holder Marcelo Giazzon),
 `docs/adr/ADR-0007-distribution-model.md` (self-hosted, no telemetry — both ratified),
@@ -1020,8 +1217,8 @@ To keep the roadmap honest, these are recorded as consciously deferred, not forg
   v1 posture; multi-instance requires LNCH-14 (shared file store) and a session/lock review,
   and belongs to a post-launch roadmap.
 - **i18n/l10n and accessibility audits** — real, but not before Tier 1/2; log as post-launch.
-- **PDF documents (LNCH-10 slice 3)** and in-app notifications (LNCH-11 slice 2) — the CSV
-  and email slices are the launch line.
+- **PDF documents (LNCH-10 slice 3)** — DONE (2026-07-22), per `docs/REG12_DOCUMENT_EXPORT_PLAN.md`.
+  In-app notifications (LNCH-11 slice 2) remain a conscious post-launch deferral.
 - **Merge-conflict UI** for LNCH-16 — 409 + reload is the v1 contract.
 
 ---
@@ -1061,7 +1258,10 @@ word: this document, kept current, is the credibility asset.
 
 ---
 
-*Assessment date: 2026-07-14 · Branch: `beta1-vision-spine` · Companion ledger:
+*Assessment date: 2026-07-14 · Reconciled with the open-items register + green CI: 2026-07-22,
+launch ledger fully closed same day (24 DONE · 0 PARTIAL · 0 OPEN) ·
+Branch: `beta1-vision-spine` (merged to `main`, tagged `beta1.1`) ·
+Companion ledger:
 `docs/OPEN_GAPS_AND_ROADMAP.md` (app-level bugs/lifts, ~all DONE) · Derived projection:
 `knowledge/platform-status.json` (regenerate via `scripts/ai/extract_platform_status.py`
 if this document's items are added to the tracked ledger).*

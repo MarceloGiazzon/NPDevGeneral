@@ -153,6 +153,60 @@ class SchemaLifecycleExecutorMigrationClaimTest {
         assertEquals(otherInstance.instanceId(), MigrationClaimStore.current(dataSource).orElseThrow().instanceId());
     }
 
+    @Test
+    @DisplayName("a refusal thrown while this boot holds its claim still releases it -- a recoverable refusal must not wedge the database")
+    void refusalWhileHoldingOwnClaimStillReleasesIt() throws SQLException {
+        // Live shape matches build N+1's already-applied drop (REG-8 Trigger C's canonical shape,
+        // reused from SchemaLifecycleExecutorDatabaseMigratedPastBuildTest): nothing left to see from
+        // live shape alone, so only npdev_schema_history can catch it.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE users (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+        }
+        seedHistoryRow(dataSource, "sha256:N", "APPLIED", 1_000L);
+        seedHistoryRow(dataSource, "sha256:N+1", "APPLIED", 2_000L);
+        // Non-blank stored fingerprint -- (a) this boot DOES acquire its own claim in migrate().
+        seedStoredFingerprint(dataSource, "sha256:N+1");
+
+        // The OLD jar (build N) still expects nickname -- Trigger C fires from beforeMigrate, which
+        // migrate() calls from inside its try block, AFTER the claim above was already acquired.
+        SchemaLifecycleExecutor.SchemaManifest manifestBuildN = new SchemaLifecycleExecutor.SchemaManifest(
+                "H2Local", "jdbc", true, "sha256:N", List.of(), List.of("users"),
+                Map.of("users", List.of("id", "name", "nickname")),
+                Map.of("users", List.of("nickname")),
+                Map.of("users", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "nickname", "VARCHAR(50)")),
+                Map.of(), Map.of(),
+                false, "DropAndRecreateOnStructureChange", "NpdevOwnedTablesOnly",
+                "", "", Map.of(), Map.of(), Map.of(), Map.of());
+        Flyway flyway = Flyway.configure().dataSource(dataSource).locations(new String[0]).load();
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class,
+                () -> executor.migrate(flyway, manifestBuildN));
+        assertTrue(exception.getMessage().contains("migrated PAST this build"), exception.getMessage());
+
+        assertTrue(MigrationClaimStore.current(dataSource).isEmpty(),
+                "a refusal thrown while this boot held its OWN claim must still release it in the finally -- "
+                        + "otherwise every future boot is wedged by a recoverable refusal");
+    }
+
+    private static void seedHistoryRow(DataSource dataSource, String toFingerprint, String outcome, long appliedAtUtc) throws SQLException {
+        try (Connection connection = dataSource.getConnection()) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE IF NOT EXISTS npdev_schema_history "
+                        + "(id TEXT PRIMARY KEY, applied_at_utc BIGINT NOT NULL, from_fingerprint TEXT, "
+                        + "to_fingerprint TEXT, classification TEXT, items_json TEXT, ack_token_used TEXT, outcome TEXT NOT NULL)");
+            }
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "INSERT INTO npdev_schema_history (id, applied_at_utc, from_fingerprint, to_fingerprint, "
+                            + "classification, items_json, ack_token_used, outcome) VALUES (?, ?, NULL, ?, NULL, NULL, NULL, ?)")) {
+                statement.setString(1, java.util.UUID.randomUUID().toString());
+                statement.setLong(2, appliedAtUtc);
+                statement.setString(3, toFingerprint);
+                statement.setString(4, outcome);
+                statement.executeUpdate();
+            }
+        }
+    }
+
     /**
      * A {@link Flyway} instance that has already run once against the STILL-EMPTY schema, so its own
      * {@code flyway_schema_history} bookkeeping table already exists -- exactly the invariant a real

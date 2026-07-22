@@ -3,6 +3,7 @@ package com.npdev.generator.emitters;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledDocument;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledEnumOption;
@@ -300,6 +301,20 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         root.put("guidePages", guidePageNodes(guidePages.guidePages()));
         root.put("defaultGuidePage", guidePages.defaultGuidePage());
 
+        // REG-12 Slice 3: index declared `document`s by their bound concept so each concept node
+        // below can carry its own (usually 0 or 1) documents -- the toolbar's "Download PDF"
+        // affordance is per-document, sitting next to "Export CSV"/"Print".
+        Map<String, List<Map<String, Object>>> documentsByConcept = new LinkedHashMap<>();
+        if (model != null) {
+            for (CompiledDocument document : model.getDocuments()) {
+                Map<String, Object> documentNode = new LinkedHashMap<>();
+                documentNode.put("name", document.name());
+                documentNode.put("title", document.title() == null || document.title().isBlank()
+                        ? document.name() : document.title());
+                documentsByConcept.computeIfAbsent(document.concept(), key -> new ArrayList<>()).add(documentNode);
+            }
+        }
+
         List<Map<String, Object>> conceptNodes = new ArrayList<>();
         for (CompiledConcept concept : concepts) {
             CompiledField idField = idField(concept);
@@ -318,6 +333,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("guidePage", resolveGuidePage(concept, settingResolver, knownGuidePageNames, guidePages.defaultGuidePage()));
             node.put("fields", manifestFields(concept, conceptsByName(concepts), settingResolver));
             node.put("list", manifestList(concept, idField));
+            node.put("documents", documentsByConcept.getOrDefault(concept.getName(), List.of()));
             Map<String, Object> actions = new LinkedHashMap<>();
             actions.put("list", true);
             actions.put("create", true);

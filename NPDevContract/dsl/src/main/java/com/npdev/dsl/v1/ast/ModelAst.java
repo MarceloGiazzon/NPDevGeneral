@@ -26,6 +26,7 @@ public final class ModelAst {
     private final List<AggregateAst> aggregates;
     private final List<AutoPanelAst> autoPanels;
     private final List<SelectorAst> selectors;
+    private final List<DocumentAst> documents;
     private final List<String> parserWarnings;
 
     public ModelAst(String namespace, String version, List<? extends EntityAst> entities) {
@@ -223,6 +224,34 @@ public final class ModelAst {
             List<SelectorAst> selectors,
             List<String> parserWarnings
     ) {
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates,
+                autoPanels, selectors, List.of(), parserWarnings);
+    }
+
+    /** REG-12 Slice 3: canonical constructor, adds {@code documents} (LNCH-10's `document` PAGE kind). */
+    public ModelAst(
+            String namespace,
+            String dslVersion,
+            String version,
+            List<? extends EntityAst> entities,
+            List<DomainTypeAst> domainTypes,
+            List<CapabilityAst> capabilities,
+            List<CapabilityBindingAst> bindings,
+            List<EventAst> events,
+            List<FlowAst> flows,
+            List<OrchestrationAst> orchestrationRules,
+            List<QueryAst> queries,
+            List<RuleProfileAst> ruleProfiles,
+            List<ProcedureAst> procedures,
+            List<PanelAst> panels,
+            List<GuidePageAst> guidePages,
+            List<AggregateAst> aggregates,
+            List<AutoPanelAst> autoPanels,
+            List<SelectorAst> selectors,
+            List<DocumentAst> documents,
+            List<String> parserWarnings
+    ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
         this.version = version;
@@ -241,6 +270,7 @@ public final class ModelAst {
         this.aggregates = new ArrayList<>(aggregates);
         this.autoPanels = new ArrayList<>(autoPanels);
         this.selectors = new ArrayList<>(selectors);
+        this.documents = new ArrayList<>(documents);
         this.parserWarnings = new ArrayList<>(parserWarnings);
     }
 
@@ -314,6 +344,10 @@ public final class ModelAst {
 
     public List<SelectorAst> getSelectors() {
         return Collections.unmodifiableList(selectors);
+    }
+
+    public List<DocumentAst> getDocuments() {
+        return Collections.unmodifiableList(documents);
     }
 
     public List<String> getParserWarnings() {

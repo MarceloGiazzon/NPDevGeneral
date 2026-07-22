@@ -159,6 +159,7 @@ public final class JsonModelParser {
         List<AggregateAst> aggregates = new ArrayList<>();
         List<AutoPanelAst> autoPanels = new ArrayList<>();
         List<SelectorAst> selectors = new ArrayList<>();
+        List<DocumentAst> documents = new ArrayList<>();
         List<String> parserWarnings = new ArrayList<>(sourceWarnings == null ? List.of() : sourceWarnings);
         Map<String, ConceptAst> conceptsByLowerName = new LinkedHashMap<>();
 
@@ -541,6 +542,7 @@ public final class JsonModelParser {
         aggregates.addAll(parseAggregates(root.get("aggregates")));
         autoPanels.addAll(parseAutoPanels(root.get("autoPanels")));
         selectors.addAll(parseSelectors(root.get("selectors")));
+        documents.addAll(parseDocuments(root.get("documents")));
 
         return new ModelAst(
                 namespace,
@@ -561,6 +563,7 @@ public final class JsonModelParser {
                 aggregates,
                 autoPanels,
                 selectors,
+                documents,
                 parserWarnings
         );
     }
@@ -774,6 +777,27 @@ public final class JsonModelParser {
                     parseObjectMap(panelNode.get("explainability")),
                     parseObjectMap(panelNode.get("metadata")),
                     readText(panelNode, "guidePage")
+            ));
+        }
+        return out;
+    }
+
+    private static List<DocumentAst> parseDocuments(JsonNode node) throws IOException {
+        List<DocumentAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("documents must be an array");
+        }
+        for (JsonNode documentNode : node) {
+            out.add(new DocumentAst(
+                    requiredText(documentNode, "name"),
+                    requiredText(documentNode, "concept"),
+                    readText(documentNode, "title"),
+                    readText(documentNode, "pageSize"),
+                    readOptionalDouble(documentNode, "marginMm"),
+                    parseObjectMap(documentNode.get("metadata"))
             ));
         }
         return out;
