@@ -1,0 +1,909 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/ai-model.schema.json",
+  "title": "NPDev AI Model",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "app",
+    "entities",
+    "flows"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "ai-model.v1"
+    },
+    "app": {
+      "type": "object",
+      "required": [
+        "name",
+        "kind"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "simple-crud-workflow",
+            "expanded-beta-application"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "entities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/entity"
+      }
+    },
+    "flows": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/flow"
+      }
+    },
+    "panels": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/panel"
+      },
+      "default": []
+    },
+    "procedures": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/procedure"
+      },
+      "default": []
+    },
+    "workflows": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/workflow"
+      },
+      "default": []
+    },
+    "tenancy": {
+      "$ref": "#/$defs/tenancy"
+    },
+    "auth": {
+      "$ref": "#/$defs/auth"
+    },
+    "roles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/role"
+      },
+      "default": []
+    },
+    "enums": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/namedEnum"
+      },
+      "default": []
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9-]*$"
+    },
+    "classIdentifier": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Za-z0-9]*$"
+    },
+    "fieldIdentifier": {
+      "type": "string",
+      "pattern": "^[a-z][A-Za-z0-9]*$"
+    },
+    "fieldType": {
+      "enum": [
+        "string",
+        "text",
+        "email",
+        "integer",
+        "boolean",
+        "date",
+        "datetime",
+        "uuid",
+        "enum"
+      ]
+    },
+    "entity": {
+      "type": "object",
+      "required": [
+        "name",
+        "fields"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/classIdentifier"
+        },
+        "tenantScoped": {
+          "type": "boolean",
+          "default": false
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "type",
+              "required"
+            ],
+            "properties": {
+              "name": {
+                "$ref": "#/$defs/fieldIdentifier"
+              },
+              "type": {
+                "$ref": "#/$defs/fieldType"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "unique": {
+                "type": "boolean",
+                "default": false
+              },
+              "enumName": {
+                "$ref": "#/$defs/classIdentifier"
+              },
+              "enumRef": {
+                "$ref": "#/$defs/classIdentifier"
+              },
+              "enumValues": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "$ref": "#/$defs/enumOption"
+                    }
+                  ]
+                }
+              },
+              "values": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "$ref": "#/$defs/enumOption"
+                    }
+                  ]
+                }
+              },
+              "default": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "flow": {
+      "type": "object",
+      "required": [
+        "name",
+        "entity",
+        "operation"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/classIdentifier"
+        },
+        "entity": {
+          "$ref": "#/$defs/classIdentifier"
+        },
+        "operation": {
+          "enum": [
+            "create",
+            "read",
+            "update",
+            "delete",
+            "list"
+          ]
+        },
+        "requiredRole": {
+          "$ref": "#/$defs/identifier"
+        },
+        "tenantScoped": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "typedField": {
+      "type": "object",
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/fieldIdentifier"
+        },
+        "type": {
+          "$ref": "#/$defs/fieldType"
+        },
+        "required": {
+          "type": "boolean",
+          "default": false
+        },
+        "enumName": {
+          "$ref": "#/$defs/classIdentifier"
+        },
+        "enumRef": {
+          "$ref": "#/$defs/classIdentifier"
+        },
+        "enumValues": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "$ref": "#/$defs/enumOption"
+              }
+            ]
+          }
+        },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "$ref": "#/$defs/enumOption"
+              }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "panel": {
+      "type": "object",
+      "required": [
+        "panelId",
+        "type",
+        "route",
+        "dataSource",
+        "requiredRole",
+        "tenantScoped"
+      ],
+      "properties": {
+        "panelId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "type": {
+          "enum": [
+            "entity-list",
+            "entity-detail",
+            "form",
+            "dashboard-summary",
+            "procedure-action",
+            "workflow-task"
+          ]
+        },
+        "route": {
+          "type": "string",
+          "pattern": "^/[A-Za-z0-9/_-]+$"
+        },
+        "dataSource": {
+          "type": "object",
+          "required": [
+            "kind",
+            "name"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "entity",
+                "procedure",
+                "workflow",
+                "summary"
+              ]
+            },
+            "name": {
+              "$ref": "#/$defs/identifier"
+            }
+          },
+          "additionalProperties": false
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "text",
+              "integer",
+              "date",
+              "email",
+              "boolean",
+              "table",
+              "detail-card",
+              "form",
+              "button-action",
+              "workflow-status-badge",
+              "procedure-result-block"
+            ]
+          },
+          "default": []
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          },
+          "default": []
+        },
+        "requiredRole": {
+          "$ref": "#/$defs/identifier"
+        },
+        "tenantScoped": {
+          "type": "boolean"
+        },
+        "metadata": {
+          "$ref": "#/$defs/customPanelMetadata"
+        },
+        "implementation": {
+          "$ref": "#/$defs/trustedPanelImplementation"
+        }
+      },
+      "additionalProperties": false
+    },
+    "customPanelMetadata": {
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[^<>`$]*$"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 240,
+          "pattern": "^[^<>`$]*$"
+        },
+        "emptyStateMessage": {
+          "type": "string",
+          "maxLength": 160,
+          "pattern": "^[^<>`$]*$"
+        },
+        "icon": {
+          "enum": [
+            "table",
+            "form",
+            "summary",
+            "workflow",
+            "status"
+          ]
+        },
+        "variant": {
+          "enum": [
+            "default",
+            "compact",
+            "readonly"
+          ]
+        }
+      },
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "script"
+            ]
+          },
+          {
+            "required": [
+              "component"
+            ]
+          },
+          {
+            "required": [
+              "componentUrl"
+            ]
+          },
+          {
+            "required": [
+              "dynamicComponent"
+            ]
+          },
+          {
+            "required": [
+              "externalUrl"
+            ]
+          },
+          {
+            "required": [
+              "html"
+            ]
+          }
+        ]
+      },
+      "additionalProperties": false
+    },
+    "trustedPanelImplementation": {
+      "type": "object",
+      "required": [
+        "mode",
+        "language",
+        "entrypoint"
+      ],
+      "properties": {
+        "mode": {
+          "const": "trustedSource"
+        },
+        "language": {
+          "enum": [
+            "html+javascript",
+            "html",
+            "javascript"
+          ]
+        },
+        "entrypoint": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_./-]+\\.(html|js)$",
+          "not": {
+            "pattern": "(^/|^[A-Za-z]:|\\.\\.)"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "procedure": {
+      "type": "object",
+      "required": [
+        "procedureId",
+        "type",
+        "inputs",
+        "outputs",
+        "sideEffectType",
+        "requiredRole",
+        "tenantScoped",
+        "maxAffectedRows"
+      ],
+      "properties": {
+        "procedureId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "type": {
+          "enum": [
+            "read-only-query",
+            "single-entity-command",
+            "bulk-command",
+            "workflow-action",
+            "computed-summary"
+          ]
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/typedField"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/typedField"
+          }
+        },
+        "sideEffectType": {
+          "enum": [
+            "none",
+            "single-entity",
+            "bulk",
+            "workflow"
+          ]
+        },
+        "requiredRole": {
+          "$ref": "#/$defs/identifier"
+        },
+        "tenantScoped": {
+          "type": "boolean"
+        },
+        "allowedEntities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/classIdentifier"
+          },
+          "default": []
+        },
+        "maxAffectedRows": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "idempotency": {
+          "enum": [
+            "required",
+            "not-required"
+          ],
+          "default": "required"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "enum": [
+                  "readConcept",
+                  "listConcepts",
+                  "runQuery",
+                  "saveConcept",
+                  "callProcedure",
+                  "return"
+                ]
+              },
+              "concept": {
+                "$ref": "#/$defs/classIdentifier"
+              },
+              "query": {
+                "$ref": "#/$defs/identifier"
+              },
+              "procedure": {
+                "$ref": "#/$defs/identifier"
+              },
+              "value": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "default": []
+        },
+        "implementation": {
+          "$ref": "#/$defs/trustedProcedureImplementation"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "bulk-command"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "maxAffectedRows": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              "sideEffectType": {
+                "const": "bulk"
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "trustedProcedureImplementation": {
+      "type": "object",
+      "required": [
+        "mode",
+        "language",
+        "entrypoint",
+        "className"
+      ],
+      "properties": {
+        "mode": {
+          "const": "trustedSource"
+        },
+        "language": {
+          "const": "java"
+        },
+        "entrypoint": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_./-]+\\.java$",
+          "not": {
+            "pattern": "(^/|^[A-Za-z]:|\\.\\.)"
+          }
+        },
+        "className": {
+          "$ref": "#/$defs/classIdentifier"
+        },
+        "method": {
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9]*$",
+          "default": "execute"
+        }
+      },
+      "additionalProperties": false
+    },
+    "workflow": {
+      "type": "object",
+      "required": [
+        "workflowId",
+        "entity",
+        "states",
+        "startState",
+        "terminalStates",
+        "transitions",
+        "tenantScoped"
+      ],
+      "properties": {
+        "workflowId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "entity": {
+          "$ref": "#/$defs/classIdentifier"
+        },
+        "states": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "startState": {
+          "$ref": "#/$defs/identifier"
+        },
+        "terminalStates": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "transitions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "from",
+              "to",
+              "requiredRole"
+            ],
+            "properties": {
+              "name": {
+                "$ref": "#/$defs/identifier"
+              },
+              "from": {
+                "$ref": "#/$defs/identifier"
+              },
+              "to": {
+                "$ref": "#/$defs/identifier"
+              },
+              "requiredRole": {
+                "$ref": "#/$defs/identifier"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "tenantScoped": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "tenancy": {
+      "type": "object",
+      "required": [
+        "mode",
+        "tenantIdField",
+        "testTenants"
+      ],
+      "properties": {
+        "mode": {
+          "const": "shared-app-tenant-scoped-data"
+        },
+        "tenantIdField": {
+          "$ref": "#/$defs/fieldIdentifier"
+        },
+        "testTenants": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "auth": {
+      "type": "object",
+      "required": [
+        "mode",
+        "principalFields",
+        "testUsers"
+      ],
+      "properties": {
+        "mode": {
+          "const": "generated-test-token"
+        },
+        "principalFields": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "userId",
+              "tenantId",
+              "roles"
+            ]
+          },
+          "minItems": 3
+        },
+        "testUsers": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "required": [
+              "userId",
+              "tenantId",
+              "roles"
+            ],
+            "properties": {
+              "userId": {
+                "$ref": "#/$defs/identifier"
+              },
+              "tenantId": {
+                "$ref": "#/$defs/identifier"
+              },
+              "roles": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/$defs/identifier"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "role": {
+      "type": "object",
+      "required": [
+        "roleId",
+        "permissions"
+      ],
+      "properties": {
+        "roleId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "permissions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$",
+            "not": {
+              "pattern": "(bypass|all-tenants|cross-tenant|all:all)"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "enumOption": {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "order": {
+          "type": "integer"
+        },
+        "group": {
+          "type": "string",
+          "minLength": 1
+        },
+        "default": {
+          "type": "boolean",
+          "default": false
+        },
+        "deprecated": {
+          "type": "boolean",
+          "default": false
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "iconHint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "badgeHint": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "namedEnum": {
+      "type": "object",
+      "required": [
+        "name",
+        "values"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/classIdentifier"
+        },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "$ref": "#/$defs/enumOption"
+              }
+            ]
+          }
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

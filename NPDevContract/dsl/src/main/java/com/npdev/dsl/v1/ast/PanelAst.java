@@ -14,7 +14,8 @@ public record PanelAst(
         String enabledWhen,
         List<PanelActionAst> actions,
         Map<String, Object> explainability,
-        Map<String, Object> metadata
+        Map<String, Object> metadata,
+        String guidePage
 ) {
     public PanelAst {
         dataSources = dataSources == null ? List.of() : List.copyOf(dataSources);

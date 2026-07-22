@@ -1,22 +1,35 @@
 package com.npdev.dsl.v1.validation;
 
 import com.npdev.dsl.v1.ast.CapabilityAst;
+import com.npdev.dsl.v1.ast.ConceptAccessAst;
 import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.DomainTypeAst;
 import com.npdev.dsl.v1.ast.CapabilityPolicyAst;
-import com.npdev.dsl.v1.ast.EntityAst;
+import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.EventAst;
 import com.npdev.dsl.v1.ast.EventPayloadAst;
 import com.npdev.dsl.v1.ast.EnumOptionAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.FlowAst;
+import com.npdev.dsl.v1.ast.FlowScheduleAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.ast.OrchestrationActionAst;
 import com.npdev.dsl.v1.ast.OrchestrationAst;
 import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
+import com.npdev.dsl.v1.ast.AggregateAst;
+import com.npdev.dsl.v1.ast.AggregateCollectionAst;
+import com.npdev.dsl.v1.ast.AutoPanelAst;
+import com.npdev.dsl.v1.ast.AutoPanelComputedAst;
+import com.npdev.dsl.v1.ast.AutoPanelSurfaceAst;
+import com.npdev.dsl.v1.ast.SelectorAst;
+import com.npdev.dsl.v1.ast.GuidePageAst;
+import com.npdev.dsl.v1.expr.ComputedExpression;
+import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
+import com.npdev.dsl.v1.compiled.FieldWidgetDefaults;
+import com.npdev.dsl.v1.compiled.GuidePageDefaults;
 import com.npdev.dsl.v1.ast.PanelActionAst;
 import com.npdev.dsl.v1.ast.PanelAst;
 import com.npdev.dsl.v1.ast.PanelDataSourceAst;
@@ -27,6 +40,7 @@ import com.npdev.dsl.v1.ast.ProcedureStepAst;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
 import com.npdev.dsl.v1.ast.RuleProfileAst;
+import com.npdev.dsl.v1.ast.TruthLevel;
 import com.npdev.dsl.v1.ast.SchemaAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
 import com.npdev.dsl.v1.ast.StateTransitionAst;
@@ -45,7 +59,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -69,7 +85,8 @@ public final class SemanticValidator {
             "enum",
             "reference",
             "object",
-            "array"
+            "array",
+            "file"
     );
     private static final Set<String> DOMAIN_BASE_TYPES = Set.of(
             "string",
@@ -129,6 +146,8 @@ public final class SemanticValidator {
             Set.of("conceptquery", "runquery", "run_query");
     private static final Set<String> PROCEDURE_CALL_STEP_TYPES =
             Set.of("procedurecall", "callprocedure", "call_procedure");
+    private static final Set<String> PROCEDURE_CAPABILITY_CALL_STEP_TYPES =
+            Set.of("capabilitycall", "callcapability", "call_capability");
     private static final Set<String> PROCEDURE_BRANCH_STEP_TYPES =
             Set.of("condition", "if");
     private static final Set<String> PROCEDURE_LOOP_STEP_TYPES =
@@ -166,7 +185,8 @@ public final class SemanticValidator {
         }
         ModelAst effectiveModel = resolvedModel.modelAst();
         validateDslVersion(effectiveModel, errors);
-        Map<String, EntityAst> entitiesByLower = indexEntities(effectiveModel.getEntities(), errors);
+        Map<String, ConceptAst> entitiesByLower = indexEntities(effectiveModel.getConcepts(), errors);
+        validateConceptRenamedFrom(effectiveModel, entitiesByLower, errors, semanticWarnings);
 
         validateCapabilities(effectiveModel, errors);
         validateBindings(effectiveModel, errors);
@@ -177,7 +197,7 @@ public final class SemanticValidator {
         validateTechnologyNeutrality(effectiveModel, errors);
 
         Map<String, EffectiveEntity> effectiveCache = new HashMap<>();
-        for (EntityAst e : effectiveModel.getEntities()) {
+        for (ConceptAst e : effectiveModel.getConcepts()) {
             EffectiveEntity effective = resolveEffective(
                     e,
                     entitiesByLower,
@@ -195,7 +215,9 @@ public final class SemanticValidator {
                 errors.add("Entity " + e.getName() + ": must have exactly 1 id field, found " + idCount);
             }
 
+            Map<String, String> renamedFromSeen = new HashMap<>();
             for (FieldAst f : effective.fields()) {
+                validateRenamedFrom(e, f, fieldNames, renamedFromSeen, errors, semanticWarnings);
                 String normalizedType = normalize(f.getType());
                 if (!KNOWN_TYPES.contains(normalizedType)) {
                     errors.add("Entity " + e.getName() + " field " + f.getName() + ": unknown type " + f.getType());
@@ -271,6 +293,17 @@ public final class SemanticValidator {
                             + ": enumValues are only allowed when type is enum");
                 }
 
+                String connectable = normalize(f.getConnectable());
+                if (!connectable.isBlank()) {
+                    if (!"anchor".equals(connectable)) {
+                        errors.add("Entity " + e.getName() + " field " + f.getName()
+                                + ": connectable must be \"anchor\"");
+                    } else if (!f.isId() && !f.isUnique()) {
+                        errors.add("Entity " + e.getName() + " field " + f.getName()
+                                + ": connectable anchor field must be unique (or the id field)");
+                    }
+                }
+
                 if ("reference".equals(normalizedType)) {
                     String target = normalize(f.getReferenceTarget());
                     if (target.isBlank()) {
@@ -288,13 +321,26 @@ public final class SemanticValidator {
                                 errors
                         );
                         validateReferenceSemantics(e.getName(), f, effectiveTarget, errors);
+                        validateBondTruthEdge(e, f, entitiesByLower.get(target), semanticWarnings);
+                        validateReferenceFieldHint(
+                                e.getName(), f, effectiveTarget,
+                                f.getUi() == null ? null : f.getUi().getImageField(),
+                                "imageField", errors
+                        );
                     }
                 } else if ((f.getReferenceTarget() != null && !f.getReferenceTarget().isBlank())
                         || f.getReferenceSemantics() != null) {
-                    errors.add("Entity " + e.getName() + " field " + f.getName()
-                            + ": ref/reference is only allowed when type is reference");
+                    validateScalarReferenceLookupMetadata(
+                            e.getName(),
+                            f,
+                            normalizedType,
+                            entitiesByLower,
+                            effectiveCache,
+                            errors
+                    );
                 }
 
+                validateFieldWidgetCompatibility(e, f, normalizedType, errors);
                 validateFieldValueBehavior(e.getName(), f, fieldNames, errors);
             }
             validateFieldValueBehaviorGraph(e.getName(), effective.fields(), fieldNames, errors);
@@ -308,21 +354,28 @@ public final class SemanticValidator {
                     }
                 }
 
-                // Fields referenced must exist
+                // Fields referenced must exist. Dotted paths (cliente.tipo) check their
+                // root segment only — nested-field existence isn't modeled here.
                 for (String fn : referencedFields(inv)) {
-                    if (!fieldNames.contains(normalize(fn))) {
+                    String rootSegment = fn.contains(".") ? fn.substring(0, fn.indexOf('.')) : fn;
+                    if (!fieldNames.contains(normalize(rootSegment))) {
                         errors.add("Entity " + e.getName() + " invariant " + inv.getType()
                                 + ": references unknown field " + fn);
                     }
                 }
 
-                // MVP: unique supports only single-field unique
+                // LIFT-UNIQUE-P1: unique supports one or more fields (compound unique).
                 if ("unique".equalsIgnoreCase(inv.getType())) {
                     if (inv.getFields() == null || inv.getFields().isEmpty()) {
                         errors.add("Entity " + e.getName() + " invariant unique: must declare fields");
-                    } else if (inv.getFields().size() != 1) {
-                        errors.add("Entity " + e.getName()
-                                + " invariant unique: compound unique (multiple fields) not supported yet: " + inv.getFields());
+                    } else {
+                        Set<String> seen = new HashSet<>();
+                        for (String fn : inv.getFields()) {
+                            if (fn != null && !seen.add(normalize(fn))) {
+                                errors.add("Entity " + e.getName()
+                                        + " invariant unique: duplicate field '" + fn + "' in " + inv.getFields());
+                            }
+                        }
                     }
                 } else if ("expression".equalsIgnoreCase(inv.getType())) {
                     String expression = inv.getExpression();
@@ -331,21 +384,33 @@ public final class SemanticValidator {
                     } else if (!supportsExpressionFormat(expression)) {
                         errors.add("Entity " + e.getName()
                                 + " invariant expression: unsupported expression format: " + expression);
+                    } else {
+                        validateInvariantExpressionShape(e.getName(), expression, errors);
                     }
                 }
             }
 
+            validateAccessRules(e.getName(), e.getAccess(), fieldNames, errors);
             validateLifecycle(e, effective, errors);
         }
 
-        validateFlows(effectiveModel, entitiesByLower, effectiveCache, allowUnboundFlowCapabilities, errors);
+        validateFlows(effectiveModel, entitiesByLower, effectiveCache, allowUnboundFlowCapabilities, errors, semanticWarnings);
         validateOrchestrationRules(effectiveModel, errors);
         validateQueries(effectiveModel, entitiesByLower, errors);
         validateRuleProfiles(effectiveModel, entitiesByLower, errors);
         validateProcedures(effectiveModel, entitiesByLower, errors);
         validatePanels(effectiveModel, entitiesByLower, errors);
+        validateGuidePages(effectiveModel, errors);
+        validateAggregates(effectiveModel, entitiesByLower, errors);
+        validateAutoPanels(effectiveModel, entitiesByLower, errors, warnings);
+        validateSelectors(effectiveModel, entitiesByLower, errors);
         errors = canonicalizeConceptTerminology(errors);
         semanticWarnings = canonicalizeConceptTerminology(semanticWarnings);
+        for (String semanticWarning : semanticWarnings) {
+            if (!warnings.contains(semanticWarning)) {
+                warnings.add(semanticWarning);
+            }
+        }
 
         List<ValidationDiagnostic> diagnostics = new ArrayList<>();
         for (String error : errors) {
@@ -383,7 +448,7 @@ public final class SemanticValidator {
                 .replace(" entity ", " concept ");
     }
 
-    private static void validateQueries(ModelAst modelAst, Map<String, EntityAst> entitiesByLower, List<String> errors) {
+    private static void validateQueries(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         Set<String> queryNames = new HashSet<>();
         for (QueryAst query : modelAst.getQueries()) {
             if (!queryNames.add(normalize(query.name()))) {
@@ -396,7 +461,7 @@ public final class SemanticValidator {
         }
     }
 
-    private static void validateRuleProfiles(ModelAst modelAst, Map<String, EntityAst> entitiesByLower, List<String> errors) {
+    private static void validateRuleProfiles(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         Set<String> names = new HashSet<>();
         Set<String> knownTargets = new HashSet<>(entitiesByLower.keySet());
         for (QueryAst query : modelAst.getQueries()) {
@@ -425,7 +490,7 @@ public final class SemanticValidator {
         }
     }
 
-    private static void validateProcedures(ModelAst modelAst, Map<String, EntityAst> entitiesByLower, List<String> errors) {
+    private static void validateProcedures(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         Set<String> procedureNames = modelAst.getProcedures().stream()
                 .map(ProcedureAst::name)
                 .map(SemanticValidator::normalize)
@@ -434,6 +499,10 @@ public final class SemanticValidator {
                 .map(QueryAst::name)
                 .map(SemanticValidator::normalize)
                 .collect(Collectors.toSet());
+        Map<String, CapabilityAst> capabilitiesByLower = new HashMap<>();
+        for (CapabilityAst capability : modelAst.getCapabilities()) {
+            capabilitiesByLower.put(normalize(capability.getName()), capability);
+        }
         Set<String> seen = new HashSet<>();
         for (ProcedureAst procedure : modelAst.getProcedures()) {
             String procedureName = procedure.name();
@@ -451,6 +520,7 @@ public final class SemanticValidator {
                     entitiesByLower,
                     queryNames,
                     procedureNames,
+                    capabilitiesByLower,
                     errors
             );
         }
@@ -460,9 +530,10 @@ public final class SemanticValidator {
             String procedureName,
             String path,
             List<ProcedureStepAst> steps,
-            Map<String, EntityAst> entitiesByLower,
+            Map<String, ConceptAst> entitiesByLower,
             Set<String> queryNames,
             Set<String> procedureNames,
+            Map<String, CapabilityAst> capabilitiesByLower,
             List<String> errors
     ) {
         int index = 0;
@@ -485,20 +556,250 @@ public final class SemanticValidator {
                     && !procedureNames.contains(normalize(step.procedure()))) {
                 errors.add("Procedure " + procedureName + " step " + stepPath + ": procedure not found: " + step.procedure());
             }
+            if (PROCEDURE_CAPABILITY_CALL_STEP_TYPES.contains(type)) {
+                validateProcedureCapabilityCall(procedureName, stepPath, step, capabilitiesByLower, errors);
+            }
             if (PROCEDURE_BRANCH_STEP_TYPES.contains(type) && !hasText(step.condition())) {
                 errors.add("Procedure " + procedureName + " step " + stepPath + ": condition is required");
             }
             if (PROCEDURE_LOOP_STEP_TYPES.contains(type) && !hasText(step.items())) {
                 errors.add("Procedure " + procedureName + " step " + stepPath + ": forEach requires items");
             }
-            validateProcedureSteps(procedureName, stepPath + ".then", step.thenSteps(), entitiesByLower, queryNames, procedureNames, errors);
-            validateProcedureSteps(procedureName, stepPath + ".else", step.elseSteps(), entitiesByLower, queryNames, procedureNames, errors);
-            validateProcedureSteps(procedureName, stepPath + ".steps", step.steps(), entitiesByLower, queryNames, procedureNames, errors);
+            validateProcedureSteps(procedureName, stepPath + ".then", step.thenSteps(), entitiesByLower, queryNames, procedureNames, capabilitiesByLower, errors);
+            validateProcedureSteps(procedureName, stepPath + ".else", step.elseSteps(), entitiesByLower, queryNames, procedureNames, capabilitiesByLower, errors);
+            validateProcedureSteps(procedureName, stepPath + ".steps", step.steps(), entitiesByLower, queryNames, procedureNames, capabilitiesByLower, errors);
             index++;
         }
     }
 
-    private static void validatePanels(ModelAst modelAst, Map<String, EntityAst> entitiesByLower, List<String> errors) {
+    /**
+     * LIFT-QUERY-P3: a {@code callCapability} procedure step references a declared capability +
+     * operation, and its arg count matches that operation's declared {@code input} arity -- the
+     * dispatcher itself matches by name+arity only (no type-checking, per LIFT-QUERY-P2's
+     * research), so this is the only place a mismatched arity gets caught before runtime.
+     */
+    private static void validateProcedureCapabilityCall(
+            String procedureName,
+            String stepPath,
+            ProcedureStepAst step,
+            Map<String, CapabilityAst> capabilitiesByLower,
+            List<String> errors
+    ) {
+        if (!hasText(step.capability())) {
+            errors.add("Procedure " + procedureName + " step " + stepPath + ": capability is required for callCapability");
+            return;
+        }
+        CapabilityAst capability = capabilitiesByLower.get(normalize(step.capability()));
+        if (capability == null) {
+            errors.add("Procedure " + procedureName + " step " + stepPath + ": capability not found: " + step.capability());
+            return;
+        }
+        if (!hasText(step.operation())) {
+            errors.add("Procedure " + procedureName + " step " + stepPath + ": operation is required for callCapability");
+            return;
+        }
+        Optional<CapabilityOperationAst> operation = capability.getOperations().stream()
+                .filter(op -> normalize(op.getName()).equals(normalize(step.operation())))
+                .findFirst();
+        if (operation.isEmpty()) {
+            errors.add("Procedure " + procedureName + " step " + stepPath + ": capability " + step.capability()
+                    + " has no operation named " + step.operation());
+            return;
+        }
+        // Arity is declared one of two ways depending on authoring style: the legacy plain-array
+        // `input: ["a","b"]` shorthand (CapabilityOperationAst.getInput()), or the schemaObject
+        // form (`input: {type: object, properties: {a: {...}, b: {...}}}`) that's the only shape
+        // the JSON Schema's capabilityOperation.input actually accepts today. The bare-string
+        // `"operations": ["save", "unique"]` shorthand declares neither -- no contract to check
+        // arity against, so it's skipped rather than flagged (consistent with treating an
+        // underspecified operation as accepting anything, its existing behavior everywhere else).
+        Integer declaredArity = null;
+        if (!operation.get().getInput().isEmpty()) {
+            declaredArity = operation.get().getInput().size();
+        } else if (operation.get().getInputSchema() != null && !operation.get().getInputSchema().getProperties().isEmpty()) {
+            declaredArity = operation.get().getInputSchema().getProperties().size();
+        }
+        if (declaredArity == null) {
+            return;
+        }
+        int actualArity = step.args() == null ? 0 : step.args().size();
+        if (!declaredArity.equals(actualArity)) {
+            errors.add("Procedure " + procedureName + " step " + stepPath + ": capability " + step.capability() + "."
+                    + step.operation() + " expects " + declaredArity + " arg(s) but this call supplies " + actualArity);
+        }
+    }
+
+    private static void validateAggregates(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
+        Set<String> aggregateNames = new HashSet<>();
+        for (AggregateAst aggregate : modelAst.getAggregates()) {
+            if (!aggregateNames.add(normalize(aggregate.name()))) {
+                errors.add("Aggregate " + aggregate.name() + ": duplicate aggregate name");
+            }
+            if (!hasText(aggregate.root())) {
+                errors.add("Aggregate " + aggregate.name() + ": root concept is required");
+            } else if (!entitiesByLower.containsKey(normalize(aggregate.root()))) {
+                errors.add("Aggregate " + aggregate.name() + ": root concept not found: " + aggregate.root());
+            }
+            validateAggregateCollections(
+                    aggregate.name(),
+                    "Aggregate " + aggregate.name(),
+                    aggregate.collections(),
+                    entitiesByLower,
+                    new HashSet<>(),
+                    errors);
+        }
+    }
+
+    private static void validateAggregateCollections(
+            String aggregateName,
+            String path,
+            List<AggregateCollectionAst> collections,
+            Map<String, ConceptAst> entitiesByLower,
+            Set<String> conceptChain,
+            List<String> errors) {
+        Set<String> siblingNames = new HashSet<>();
+        for (AggregateCollectionAst collection : collections) {
+            String here = path + " collection " + collection.name();
+            if (!siblingNames.add(normalize(collection.name()))) {
+                errors.add(here + ": duplicate collection name among siblings");
+            }
+            if (!hasText(collection.childField())) {
+                errors.add(here + ": childField is required");
+            }
+            String normalizedConcept = normalize(collection.concept());
+            if (!hasText(collection.concept())) {
+                errors.add(here + ": concept is required");
+            } else if (!entitiesByLower.containsKey(normalizedConcept)) {
+                errors.add(here + ": concept not found: " + collection.concept());
+            }
+            if (hasText(collection.ownership())
+                    && !normalize(collection.ownership()).equals("owned")
+                    && !normalize(collection.ownership()).equals("referenced")) {
+                errors.add(here + ": ownership must be 'owned' or 'referenced', found: " + collection.ownership());
+            }
+            // Guard against an owned composition cycle (a concept owning an ancestor concept).
+            boolean owned = !hasText(collection.ownership()) || normalize(collection.ownership()).equals("owned");
+            if (owned && hasText(collection.concept()) && conceptChain.contains(normalizedConcept)) {
+                errors.add(here + ": owned composition cycle detected on concept " + collection.concept());
+                continue;
+            }
+            Set<String> nextChain = new HashSet<>(conceptChain);
+            if (hasText(collection.concept())) {
+                nextChain.add(normalizedConcept);
+            }
+            validateAggregateCollections(aggregateName, here, collection.collections(),
+                    entitiesByLower, nextChain, errors);
+        }
+    }
+
+    private static void validateSelectors(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
+        Set<String> selectorNames = new HashSet<>();
+        for (SelectorAst selector : modelAst.getSelectors()) {
+            String here = "Selector " + selector.name();
+            if (!selectorNames.add(normalize(selector.name()))) {
+                errors.add(here + ": duplicate selector name");
+            }
+            if (!hasText(selector.concept())) {
+                errors.add(here + ": concept is required");
+            } else if (!entitiesByLower.containsKey(normalize(selector.concept()))) {
+                errors.add(here + ": concept not found: " + selector.concept());
+            }
+        }
+    }
+
+    private static void validateAutoPanels(
+            ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors, List<String> warnings) {
+        Set<String> aggregateNames = modelAst.getAggregates().stream()
+                .map(AggregateAst::name)
+                .map(SemanticValidator::normalize)
+                .collect(Collectors.toSet());
+        Set<String> autoPanelNames = new HashSet<>();
+        for (AutoPanelAst autoPanel : modelAst.getAutoPanels()) {
+            String label = hasText(autoPanel.name()) ? autoPanel.name()
+                    : firstNonBlankBinding(autoPanel);
+            String here = "AutoPanel " + label;
+
+            if (hasText(autoPanel.name()) && !autoPanelNames.add(normalize(autoPanel.name()))) {
+                errors.add(here + ": duplicate autoPanel name");
+            }
+
+            boolean hasConcept = hasText(autoPanel.concept());
+            boolean hasAggregate = hasText(autoPanel.aggregate());
+            if (hasConcept == hasAggregate) {
+                errors.add(here + ": exactly one of concept or aggregate must be declared");
+            }
+            if (hasConcept && !entitiesByLower.containsKey(normalize(autoPanel.concept()))) {
+                errors.add(here + ": concept not found: " + autoPanel.concept());
+            }
+            if (hasAggregate && !aggregateNames.contains(normalize(autoPanel.aggregate()))) {
+                errors.add(here + ": aggregate not found: " + autoPanel.aggregate());
+            }
+
+            for (String surface : autoPanel.surfaces()) {
+                String normalizedSurface = normalize(surface);
+                if (!normalizedSurface.equals("selection")
+                        && !normalizedSurface.equals("detail")
+                        && !normalizedSurface.equals("transaction")
+                        && !normalizedSurface.equals("prompt")) {
+                    errors.add(here + ": unknown surface: " + surface);
+                }
+            }
+
+            validateSurfaceComputed(here, "selection", autoPanel.selection(), errors, warnings);
+            validateSurfaceComputed(here, "detail", autoPanel.detail(), errors, warnings);
+            validateSurfaceComputed(here, "transaction", autoPanel.transaction(), errors, warnings);
+            validateSurfaceComputed(here, "prompt", autoPanel.prompt(), errors, warnings);
+        }
+    }
+
+    private static void validateSurfaceComputed(
+            String panelLabel, String surface, AutoPanelSurfaceAst surfaceAst, List<String> errors, List<String> warnings) {
+        if (surfaceAst == null) {
+            return;
+        }
+        Set<String> cols = new HashSet<>();
+        for (AutoPanelComputedAst computed : surfaceAst.computed()) {
+            if (!cols.add(normalize(computed.col()))) {
+                errors.add(panelLabel + " " + surface + ": duplicate computed column: " + computed.col());
+            }
+            try {
+                ComputedExpression.validate(computed.expr());
+            } catch (ComputedExpression.ExpressionException ex) {
+                errors.add(panelLabel + " " + surface + " computed column " + computed.col()
+                        + ": invalid expression: " + ex.getMessage());
+            }
+        }
+        // AW-P3: computed[] is compiled into the workbench descriptor's metadata for introspection,
+        // but no client evaluator reads it -- the live keystroke-recompute UX is delivered entirely
+        // by transaction.metadata.recompute (a server-round-trip procedure). Warn rather than let a
+        // declared computed[] silently do nothing on this surface, without blocking authoring.
+        if (!surfaceAst.computed().isEmpty() && !hasText(recomputeProcedureName(surfaceAst))) {
+            warnings.add(panelLabel + " " + surface + ": declares computed[] but no "
+                    + "transaction.metadata.recompute procedure -- computed[] stays panel metadata "
+                    + "only and will NOT recompute live in the generated page unless a recompute "
+                    + "procedure is also declared.");
+        }
+    }
+
+    private static String recomputeProcedureName(AutoPanelSurfaceAst surfaceAst) {
+        Object declared = surfaceAst.metadata().get("recompute");
+        if (declared instanceof Map<?, ?> map) {
+            declared = map.get("procedure");
+        }
+        return declared == null ? null : String.valueOf(declared).trim();
+    }
+
+    private static String firstNonBlankBinding(AutoPanelAst autoPanel) {
+        if (hasText(autoPanel.concept())) {
+            return autoPanel.concept();
+        }
+        if (hasText(autoPanel.aggregate())) {
+            return autoPanel.aggregate();
+        }
+        return "(unbound)";
+    }
+
+    private static void validatePanels(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         Set<String> queryNames = modelAst.getQueries().stream()
                 .map(QueryAst::name)
                 .map(SemanticValidator::normalize)
@@ -534,6 +835,32 @@ public final class SemanticValidator {
                     errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
                             + ": procedure not found: " + dataSource.procedure());
                 }
+                if (hasText(dataSource.parentDataSource())) {
+                    if (normalize(dataSource.parentDataSource()).equals(normalize(dataSource.name()))) {
+                        errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
+                                + ": cannot declare itself as parentDataSource");
+                    }
+                    Optional<PanelDataSourceAst> parent = panel.dataSources().stream()
+                            .filter(candidate -> normalize(candidate.name()).equals(normalize(dataSource.parentDataSource())))
+                            .findFirst();
+                    if (parent.isEmpty()) {
+                        errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
+                                + ": parentDataSource not found among sibling dataSources: " + dataSource.parentDataSource());
+                    } else if (hasText(parent.get().parentDataSource())) {
+                        errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
+                                + ": nesting is limited to one level (parentDataSource " + dataSource.parentDataSource()
+                                + " is itself a child dataSource)");
+                    }
+                    if (!hasText(dataSource.childField())) {
+                        errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
+                                + ": childField is required when parentDataSource is declared");
+                    }
+                    if (hasText(dataSource.procedure())) {
+                        errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
+                                + ": a child dataSource (parentDataSource declared) must be concept/query-bound, not procedure-bound");
+                    }
+                }
+                validatePanelRowOps(panel, dataSource, entitiesByLower, errors);
             }
             for (PanelActionAst action : panel.actions()) {
                 String binding = normalize(action.binding());
@@ -563,6 +890,90 @@ public final class SemanticValidator {
         }
     }
 
+    private static final Set<String> PANEL_ROW_OPS = Set.of("add", "delete");
+
+    /**
+     * LIFT-ROWOPS-P1: a declared Panel dataSource may opt into {@code rowOps: [add, delete]} (an
+     * optional header add-row form via {@code addFormFields}). Row mutation writes through the
+     * generic CRUD gateway (LIFT-ROWOPS-P3), so it needs a concept target -- not a query/procedure
+     * dataSource -- and, for a child (nested) dataSource, the parent-FK {@code childField} that the
+     * existing nesting validation above already requires.
+     */
+    private static void validatePanelRowOps(
+            PanelAst panel,
+            PanelDataSourceAst dataSource,
+            Map<String, ConceptAst> entitiesByLower,
+            List<String> errors
+    ) {
+        if (dataSource.rowOps() == null || dataSource.rowOps().isEmpty()) {
+            return;
+        }
+        Set<String> seen = new HashSet<>();
+        for (String op : dataSource.rowOps()) {
+            String normalizedOp = normalize(op);
+            if (!PANEL_ROW_OPS.contains(normalizedOp)) {
+                errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
+                        + ": unsupported rowOps value '" + op + "' (must be add or delete)");
+            } else if (!seen.add(normalizedOp)) {
+                errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
+                        + ": duplicate rowOps value '" + op + "'");
+            }
+        }
+        if (!hasText(dataSource.concept())) {
+            errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
+                    + ": rowOps requires a concept-bound dataSource (query/procedure dataSources can't be mutated)");
+            return;
+        }
+        ConceptAst concept = entitiesByLower.get(normalize(dataSource.concept()));
+        if (concept == null || dataSource.addFormFields() == null || dataSource.addFormFields().isEmpty()) {
+            return;
+        }
+        Set<String> conceptFieldNames = concept.getFields().stream()
+                .map(FieldAst::getName)
+                .map(SemanticValidator::normalize)
+                .collect(Collectors.toSet());
+        for (String fieldName : dataSource.addFormFields()) {
+            if (!conceptFieldNames.contains(normalize(fieldName))) {
+                errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
+                        + ": addFormFields references unknown field " + fieldName + " on concept " + dataSource.concept());
+            }
+        }
+    }
+
+    private static void validateGuidePages(ModelAst modelAst, List<String> errors) {
+        Set<String> guidePageNames = new HashSet<>();
+        boolean sawDefault = false;
+        for (GuidePageAst guidePage : modelAst.getGuidePages()) {
+            if (!guidePageNames.add(normalize(guidePage.name()))) {
+                errors.add("GuidePage " + guidePage.name() + ": duplicate guide page name");
+            }
+            if (guidePage.isDefault()) {
+                if (sawDefault) {
+                    errors.add("GuidePage " + guidePage.name() + ": more than one guide page marked default");
+                }
+                sawDefault = true;
+            }
+            for (GuidePageGadgetAst gadget : guidePage.gadgets()) {
+                if (!hasText(gadget.name())) {
+                    errors.add("GuidePage " + guidePage.name() + ": gadget is missing a name");
+                }
+                if (!hasText(gadget.type())) {
+                    errors.add("GuidePage " + guidePage.name() + " gadget " + gadget.name() + ": gadget is missing a type");
+                }
+            }
+        }
+
+        Set<String> knownGuidePageNames = new HashSet<>(guidePageNames);
+        for (String builtinName : GuidePageDefaults.BUILTIN_NAMES) {
+            knownGuidePageNames.add(normalize(builtinName));
+        }
+        for (PanelAst panel : modelAst.getPanels()) {
+            if (hasText(panel.guidePage()) && !knownGuidePageNames.contains(normalize(panel.guidePage()))) {
+                errors.add("Panel " + panel.name() + ": guidePage not found: " + panel.guidePage());
+            }
+        }
+    }
+
     private static void validateParameterNames(String owner, List<ProcedureParameterAst> parameters, List<String> errors) {
         Set<String> names = new HashSet<>();
         for (ProcedureParameterAst parameter : parameters) {
@@ -577,10 +988,10 @@ public final class SemanticValidator {
 
     private static List<ValidationDiagnostic> validatePresentationMetadata(
             ModelAst modelAst,
-            Map<String, EntityAst> entitiesByLower
+            Map<String, ConceptAst> entitiesByLower
     ) {
         List<ValidationDiagnostic> diagnostics = new ArrayList<>();
-        for (EntityAst entity : modelAst.getEntities()) {
+        for (ConceptAst entity : modelAst.getConcepts()) {
             PresentationMetadataAst conceptUi = entity.getUi();
             if (conceptUi == null || normalize(conceptUi.getLabel()).isBlank()) {
                 diagnostics.add(uxDiagnostic(
@@ -698,7 +1109,7 @@ public final class SemanticValidator {
 
     private static void validateConceptLayoutMetadata(
             List<ValidationDiagnostic> diagnostics,
-            EntityAst entity,
+            ConceptAst entity,
             PresentationMetadataAst conceptUi,
             Set<String> fieldNames
     ) {
@@ -742,7 +1153,7 @@ public final class SemanticValidator {
 
     private static void validateFieldLayoutMetadata(
             List<ValidationDiagnostic> diagnostics,
-            EntityAst entity,
+            ConceptAst entity,
             FieldAst field,
             PresentationMetadataAst fieldUi,
             Map<Integer, String> listColumnOwners,
@@ -800,6 +1211,24 @@ public final class SemanticValidator {
                         fieldName,
                         "fields",
                         "Use a supported ui.width hint so responsive layout behavior stays predictable."
+                ));
+            }
+        }
+        if (hasText(fieldUi.getWidget())) {
+            String normalizedType = normalize(field.getType());
+            FieldWidgetDefaults.Compatibility compatibility =
+                    FieldWidgetDefaults.classify(toFieldShape(field, normalizedType), fieldUi.getWidget());
+            if (compatibility == FieldWidgetDefaults.Compatibility.DISCOURAGED) {
+                diagnostics.add(uxDiagnostic(
+                        "discouraged_widget",
+                        "Entity " + entityName + " field " + fieldName + ": ui.widget \""
+                                + fieldUi.getWidget().trim() + "\" is unusual for type " + field.getType()
+                                + " and may render without the effect you expect",
+                        basePath + ".widget",
+                        entityName,
+                        fieldName,
+                        "fields",
+                        "Double-check this widget/type combination, or switch to a widget better suited to this field's type."
                 ));
             }
         }
@@ -984,10 +1413,10 @@ public final class SemanticValidator {
 
     private static void validateInteractionPickerMetadata(
             List<ValidationDiagnostic> diagnostics,
-            EntityAst entity,
+            ConceptAst entity,
             FieldAst field,
             PresentationMetadataAst fieldUi,
-            Map<String, EntityAst> entitiesByLower
+            Map<String, ConceptAst> entitiesByLower
     ) {
         if (fieldUi == null) {
             return;
@@ -1021,7 +1450,7 @@ public final class SemanticValidator {
             ));
         }
 
-        EntityAst targetEntity = referenceField
+        ConceptAst targetEntity = referenceField
                 ? entitiesByLower.get(normalize(field.getReferenceTarget()))
                 : null;
         Set<String> seen = new HashSet<>();
@@ -1069,6 +1498,160 @@ public final class SemanticValidator {
         }
     }
 
+    /**
+     * LNCH-1 P2 §2.3: the same three {@code renamedFrom} hygiene rules as
+     * {@link #validateRenamedFrom}, at the CONCEPT level instead of the field level (checked once
+     * per model, across ALL concepts, since concept names -- unlike field names -- aren't scoped
+     * to a single containing entity):
+     * <ol>
+     *   <li>{@code renamedFrom} equal to the concept's own current name is almost certainly a
+     *       leftover/copy-paste marker, not a real rename declaration -- warning, not an error.</li>
+     *   <li>{@code renamedFrom} naming a concept that still currently exists is ambiguous: is it
+     *       declaring a rename, or accidentally referencing a real concept? -- error. Because
+     *       {@code entitiesByLower} indexes every concept in the model (not just the entity being
+     *       checked), this single check also covers "renamedFrom must not equal ANY OTHER
+     *       concept's current name" -- verified, not a separate rule to duplicate.</li>
+     *   <li>Two different concepts declaring the same {@code renamedFrom} value is ambiguous: which
+     *       one is the actual rename target for the live database's old table? -- error.</li>
+     * </ol>
+     * An unmatched {@code renamedFrom} (no current concept carries that name, and no other concept
+     * also claims it) is valid and unremarkable here -- it is a silent no-op at runtime (a fresh
+     * install, or a rename that already ran).
+     */
+    private static void validateConceptRenamedFrom(
+            ModelAst effectiveModel,
+            Map<String, ConceptAst> entitiesByLower,
+            List<String> errors,
+            List<String> semanticWarnings
+    ) {
+        Map<String, String> renamedFromSeen = new HashMap<>();
+        for (ConceptAst concept : effectiveModel.getConcepts()) {
+            String renamedFrom = concept.getRenamedFrom();
+            if (renamedFrom == null || renamedFrom.isBlank()) {
+                continue;
+            }
+            String normalizedRenamedFrom = normalize(renamedFrom);
+            String normalizedOwnName = normalize(concept.getName());
+
+            if (normalizedRenamedFrom.equals(normalizedOwnName)) {
+                semanticWarnings.add("Concept " + concept.getName()
+                        + ": renamedFrom equals the concept's own name; this has no effect and is likely a leftover marker");
+            } else if (entitiesByLower.containsKey(normalizedRenamedFrom)) {
+                errors.add("Concept " + concept.getName()
+                        + ": renamedFrom " + renamedFrom + " names a concept that still exists "
+                        + "(ambiguous: is this a rename or a reference to a real concept?)");
+            }
+
+            String firstConceptName = renamedFromSeen.putIfAbsent(normalizedRenamedFrom, concept.getName());
+            if (firstConceptName != null && !normalize(firstConceptName).equals(normalizedOwnName)) {
+                errors.add("Concepts " + firstConceptName + " and " + concept.getName()
+                        + ": both declare renamedFrom " + renamedFrom
+                        + " (ambiguous: which one is the actual rename target?)");
+            }
+        }
+    }
+
+    /**
+     * LNCH-1 §2.1 hygiene rules for the {@code renamedFrom} marker (checked once per field, for
+     * every field regardless of type validity):
+     * <ol>
+     *   <li>{@code renamedFrom} equal to the field's own current name is almost certainly a
+     *       leftover/copy-paste marker, not a real rename declaration -- warning, not an error.</li>
+     *   <li>{@code renamedFrom} naming a field that still exists (as a CURRENT field name) in the
+     *       same concept is ambiguous: is it declaring a rename, or accidentally referencing a real
+     *       field? -- error.</li>
+     *   <li>Two different fields in the same concept declaring the same {@code renamedFrom} value
+     *       is ambiguous: which one is the actual rename target for the live database's old
+     *       column? -- error.</li>
+     * </ol>
+     * An unmatched {@code renamedFrom} (no current field carries that name, and no other field
+     * also claims it) is valid and unremarkable here -- it is a silent no-op at runtime (a fresh
+     * install, or a rename that already ran).
+     */
+    private static void validateRenamedFrom(
+            ConceptAst entity,
+            FieldAst field,
+            Set<String> currentFieldNames,
+            Map<String, String> renamedFromSeen,
+            List<String> errors,
+            List<String> semanticWarnings
+    ) {
+        String renamedFrom = field.getRenamedFrom();
+        if (renamedFrom == null || renamedFrom.isBlank()) {
+            return;
+        }
+        String normalizedRenamedFrom = normalize(renamedFrom);
+        String normalizedOwnName = normalize(field.getName());
+
+        if (normalizedRenamedFrom.equals(normalizedOwnName)) {
+            semanticWarnings.add("Entity " + entity.getName() + " field " + field.getName()
+                    + ": renamedFrom equals the field's own name; this has no effect and is likely a leftover marker");
+        } else if (currentFieldNames.contains(normalizedRenamedFrom)) {
+            errors.add("Entity " + entity.getName() + " field " + field.getName()
+                    + ": renamedFrom " + renamedFrom + " names a field that still exists in this concept "
+                    + "(ambiguous: is this a rename or a reference to a real field?)");
+        }
+
+        String firstFieldName = renamedFromSeen.putIfAbsent(normalizedRenamedFrom, field.getName());
+        if (firstFieldName != null && !normalize(firstFieldName).equals(normalizedOwnName)) {
+            errors.add("Entity " + entity.getName() + " fields " + firstFieldName + " and " + field.getName()
+                    + ": both declare renamedFrom " + renamedFrom
+                    + " (ambiguous: which one is the actual rename target?)");
+        }
+    }
+
+    private static void validateFieldWidgetCompatibility(
+            ConceptAst entity,
+            FieldAst field,
+            String normalizedType,
+            List<String> errors
+    ) {
+        PresentationMetadataAst ui = field.getUi();
+        String widget = ui == null ? null : ui.getWidget();
+        if (!hasText(widget)) {
+            return;
+        }
+        FieldWidgetDefaults.Compatibility compatibility =
+                FieldWidgetDefaults.classify(toFieldShape(field, normalizedType), widget);
+        if (compatibility == FieldWidgetDefaults.Compatibility.UNKNOWN_WIDGET) {
+            errors.add("Entity " + entity.getName() + " field " + field.getName()
+                    + ": unknown ui.widget \"" + widget.trim() + "\" (supported: "
+                    + String.join(", ", new TreeSet<>(FieldWidgetDefaults.SUPPORTED_WIDGETS)) + ")");
+        } else if (compatibility == FieldWidgetDefaults.Compatibility.INCOMPATIBLE) {
+            errors.add("Entity " + entity.getName() + " field " + field.getName()
+                    + ": ui.widget \"" + widget.trim() + "\" is incompatible with type " + field.getType());
+        }
+    }
+
+    private static FieldWidgetDefaults.FieldShape toFieldShape(FieldAst field, String normalizedType) {
+        boolean isReference = "reference".equals(normalizedType)
+                || (field.getReferenceTarget() != null && !field.getReferenceTarget().isBlank())
+                || field.getReferenceSemantics() != null;
+        boolean isMultiReference = field.getReferenceSemantics() != null && field.getReferenceSemantics().isMultiple();
+        boolean hasEnumValues = !field.getEnumValues().isEmpty();
+        boolean isClosedEnumArray = "array".equals(normalizedType)
+                && field.getSchema() != null
+                && field.getSchema().getItems() != null
+                && "enum".equals(normalize(field.getSchema().getItems().getType()))
+                && field.getSchema().getItems().getEnumValues() != null
+                && !field.getSchema().getItems().getEnumValues().isEmpty();
+        boolean hasAnyEnumOptionIcon = field.getEnumOptions().stream()
+                .anyMatch(option -> option != null && hasText(option.getIconHint()));
+        PresentationMetadataAst ui = field.getUi();
+        boolean hasImageFieldHint = ui != null && hasText(ui.getImageField());
+        boolean hasCustomWidgetRef = ui != null && hasText(ui.getCustomWidgetRef());
+        return new FieldWidgetDefaults.FieldShape(
+                normalizedType,
+                isReference,
+                isMultiReference,
+                hasEnumValues,
+                isClosedEnumArray,
+                hasAnyEnumOptionIcon,
+                hasImageFieldHint,
+                hasCustomWidgetRef
+        );
+    }
+
     private static ValidationDiagnostic uxDiagnostic(
             String code,
             String message,
@@ -1094,9 +1677,9 @@ public final class SemanticValidator {
         );
     }
 
-    private static Map<String, EntityAst> indexEntities(Collection<EntityAst> entities, List<String> errors) {
-        Map<String, EntityAst> byLower = new LinkedHashMap<>();
-        for (EntityAst entity : entities) {
+    private static Map<String, ConceptAst> indexEntities(Collection<ConceptAst> entities, List<String> errors) {
+        Map<String, ConceptAst> byLower = new LinkedHashMap<>();
+        for (ConceptAst entity : entities) {
             String key = normalize(entity.getName());
             if (byLower.containsKey(key)) {
                 errors.add("Duplicate concept name: " + entity.getName());
@@ -1108,7 +1691,7 @@ public final class SemanticValidator {
     }
 
     private static void validateEntityLocalFields(ModelAst modelAst, List<String> errors) {
-        for (EntityAst e : modelAst.getEntities()) {
+        for (ConceptAst e : modelAst.getConcepts()) {
             Set<String> localFieldNames = new HashSet<>();
             for (FieldAst f : e.getFields()) {
                 String fieldKey = normalize(f.getName());
@@ -1192,6 +1775,91 @@ public final class SemanticValidator {
         }
     }
 
+    private static void validateScalarReferenceLookupMetadata(
+            String entityName,
+            FieldAst field,
+            String normalizedType,
+            Map<String, ConceptAst> entitiesByLower,
+            Map<String, EffectiveEntity> effectiveCache,
+            List<String> errors
+    ) {
+        if (field.isId()) {
+            errors.add("Entity " + entityName + " field " + field.getName()
+                    + ": reference lookup metadata is not allowed on id fields");
+            return;
+        }
+
+        if (!isScalarLookupReferenceType(normalizedType)) {
+            errors.add("Entity " + entityName + " field " + field.getName()
+                    + ": ref/reference metadata on non-reference fields is supported only for scalar id fields");
+            return;
+        }
+
+        String target = normalize(field.getReferenceTarget());
+        if (target.isBlank()) {
+            errors.add("Entity " + entityName + " field " + field.getName()
+                    + ": reference lookup metadata must declare ref (or reference.target)");
+            return;
+        }
+
+        ConceptAst targetConceptAst = entitiesByLower.get(target);
+        if (targetConceptAst == null) {
+            errors.add("Entity " + entityName + " field " + field.getName()
+                    + ": reference target not found: " + field.getReferenceTarget());
+            return;
+        }
+
+        EffectiveEntity effectiveTarget = resolveEffective(
+                targetConceptAst,
+                entitiesByLower,
+                effectiveCache,
+                new HashSet<>(),
+                errors
+        );
+        validateScalarReferenceTargetId(entityName, field, normalizedType, effectiveTarget, errors);
+        validateReferenceSemantics(entityName, field, effectiveTarget, errors);
+        validateReferenceFieldHint(
+                entityName, field, effectiveTarget,
+                field.getUi() == null ? null : field.getUi().getImageField(),
+                "imageField", errors
+        );
+    }
+
+    private static boolean isScalarLookupReferenceType(String normalizedType) {
+        return "uuid".equals(normalizedType)
+                || "string".equals(normalizedType)
+                || "integer".equals(normalizedType)
+                || "long".equals(normalizedType);
+    }
+
+    private static void validateScalarReferenceTargetId(
+            String entityName,
+            FieldAst field,
+            String normalizedType,
+            EffectiveEntity targetEntity,
+            List<String> errors
+    ) {
+        List<FieldAst> targetIdFields = targetEntity.fields().stream()
+                .filter(FieldAst::isId)
+                .toList();
+
+        if (targetIdFields.size() != 1) {
+            errors.add("Entity " + entityName + " field " + field.getName()
+                    + ": scalar reference target " + field.getReferenceTarget()
+                    + " must declare exactly one id field");
+            return;
+        }
+
+        FieldAst targetId = targetIdFields.get(0);
+        String targetIdType = normalize(targetId.getType());
+        if (!normalizedType.equals(targetIdType)) {
+            errors.add("Entity " + entityName + " field " + field.getName()
+                    + ": scalar reference type " + normalizedType
+                    + " must match target id type " + field.getReferenceTarget() + "." + targetId.getName()
+                    + " (" + targetIdType + ")");
+        }
+    }
+
     private static void validateReferenceSemantics(
             String entityName,
             FieldAst field,
@@ -1202,11 +1870,6 @@ public final class SemanticValidator {
         if (referenceSemantics == null) {
             return;
         }
-        if (referenceSemantics.isMultiple()) {
-            errors.add("Entity " + entityName + " field " + field.getName()
-                    + ": reference multiple=true is not supported on scalar reference fields yet");
-        }
-
         String inlineCreatePolicy = normalize(referenceSemantics.getInlineCreatePolicy());
         if (!inlineCreatePolicy.isBlank()
                 && !"allow".equals(inlineCreatePolicy)
@@ -1215,12 +1878,82 @@ public final class SemanticValidator {
                     + ": inlineCreate must be allow or deny");
         }
 
+        String onDelete = normalize(referenceSemantics.getOnDelete());
+        if (!onDelete.isBlank()
+                && !"restrict".equals(onDelete)
+                && !"cascade".equals(onDelete)
+                && !"nullify".equals(onDelete)) {
+            errors.add("Entity " + entityName + " field " + field.getName()
+                    + ": reference onDelete must be one of restrict, cascade, nullify");
+        }
+        // nullify => SET NULL, which cannot apply to a NOT NULL column. A required port and an
+        // N:M port (whose junction target column is part of a NOT NULL composite PK) both forbid it.
+        if ("nullify".equals(onDelete)) {
+            if (field.isRequired()) {
+                errors.add("Entity " + entityName + " field " + field.getName()
+                        + ": reference onDelete=nullify is invalid on a required field (SET NULL cannot apply to a NOT NULL column)");
+            }
+            if (referenceSemantics.isMultiple()) {
+                errors.add("Entity " + entityName + " field " + field.getName()
+                        + ": reference onDelete=nullify is invalid on a multiple (N:M) bond (the junction key cannot be null)");
+            }
+        }
+
+        String via = normalize(referenceSemantics.getVia());
+        if (!via.isBlank()) {
+            FieldAst anchor = targetEntity.fields().stream()
+                    .filter(candidate -> via.equals(normalize(candidate.getName())))
+                    .findFirst()
+                    .orElse(null);
+            if (anchor == null) {
+                errors.add("Entity " + entityName + " field " + field.getName()
+                        + ": reference via anchor not found on target "
+                        + field.getReferenceTarget() + ": " + referenceSemantics.getVia());
+            } else if (!isConnectableAnchor(anchor)) {
+                errors.add("Entity " + entityName + " field " + field.getName()
+                        + ": reference via must target a connectable anchor (the id field, or a non-id field"
+                        + " with unique=true and connectable:anchor): " + referenceSemantics.getVia());
+            }
+        }
+
         validateReferenceFieldHint(entityName, field, targetEntity, referenceSemantics.getDisplayField(), "displayField", errors);
         validateReferenceFieldHintList(entityName, field, targetEntity, referenceSemantics.getSearchFields(), "searchFields", errors);
         validateReferenceFieldHintList(entityName, field, targetEntity, referenceSemantics.getPreviewFields(), "previewFields", errors);
         validateReferenceFieldHintList(entityName, field, targetEntity, referenceSemantics.getPickerColumns(), "pickerColumns", errors);
         validateReferenceTemplate(entityName, field, targetEntity, referenceSemantics.getDisplayTemplate(), "displayTemplate", errors);
         validateReferenceTemplate(entityName, field, targetEntity, referenceSemantics.getPreviewCardTemplate(), "previewCardTemplate", errors);
+    }
+
+    /**
+     * Bond truth integrity ("no upward edges"): a bond may not point at a concept whose
+     * truth level is below the source's. Surfaced as a warning so it never blocks creation
+     * (truth is restrictive only at release); a release gate can later elevate it to an error.
+     */
+    private static void validateBondTruthEdge(
+            ConceptAst source,
+            FieldAst port,
+            ConceptAst target,
+            List<String> warnings
+    ) {
+        if (source == null || target == null) {
+            return;
+        }
+        TruthLevel sourceTruth = source.getTruthLevel();
+        TruthLevel targetTruth = target.getTruthLevel();
+        if (sourceTruth == null || targetTruth == null) {
+            return;
+        }
+        if (targetTruth.rank() < sourceTruth.rank()) {
+            warnings.add("Entity " + source.getName() + " field " + port.getName()
+                    + ": bond points at lower-truth concept " + target.getName()
+                    + " (" + sourceTruth.code() + " -> " + targetTruth.code()
+                    + "); a concept may not depend on a less-true concept (no upward truth edges)");
+        }
+    }
+
+    private static boolean isConnectableAnchor(FieldAst field) {
+        return field.isId()
+                || (field.isUnique() && "anchor".equals(normalize(field.getConnectable())));
     }
 
     private static void validateReferenceFieldHint(
@@ -1293,15 +2026,15 @@ public final class SemanticValidator {
         }
     }
 
-    private static void validateInheritanceGraph(Map<String, EntityAst> entitiesByLower, List<String> errors) {
+    private static void validateInheritanceGraph(Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         Set<String> globallyVisited = new HashSet<>();
 
-        for (EntityAst entity : entitiesByLower.values()) {
+        for (ConceptAst entity : entitiesByLower.values()) {
             String entityKey = normalize(entity.getName());
 
             String parentName = entity.getExtendsName();
             if (parentName != null && !parentName.isBlank()) {
-                EntityAst parent = entitiesByLower.get(normalize(parentName));
+                ConceptAst parent = entitiesByLower.get(normalize(parentName));
                 if (parent == null) {
                     errors.add("Entity " + entity.getName() + ": extends unknown base " + parentName);
                 } else if (normalize(parentName).equals(entityKey)) {
@@ -1314,8 +2047,8 @@ public final class SemanticValidator {
     }
 
     private static void detectInheritanceCycle(
-            EntityAst current,
-            Map<String, EntityAst> entitiesByLower,
+            ConceptAst current,
+            Map<String, ConceptAst> entitiesByLower,
             Set<String> globallyVisited,
             Set<String> stack,
             List<String> errors
@@ -1329,7 +2062,7 @@ public final class SemanticValidator {
 
         String parentName = current.getExtendsName();
         if (parentName != null && !parentName.isBlank()) {
-            EntityAst parent = entitiesByLower.get(normalize(parentName));
+            ConceptAst parent = entitiesByLower.get(normalize(parentName));
             if (parent != null) {
                 detectInheritanceCycle(parent, entitiesByLower, globallyVisited, stack, errors);
             }
@@ -1340,8 +2073,8 @@ public final class SemanticValidator {
     }
 
     private static EffectiveEntity resolveEffective(
-            EntityAst entity,
-            Map<String, EntityAst> entitiesByLower,
+            ConceptAst entity,
+            Map<String, ConceptAst> entitiesByLower,
             Map<String, EffectiveEntity> cache,
             Set<String> stack,
             List<String> errors
@@ -1360,7 +2093,7 @@ public final class SemanticValidator {
 
         String parentName = entity.getExtendsName();
         if (parentName != null && !parentName.isBlank()) {
-            EntityAst parent = entitiesByLower.get(normalize(parentName));
+            ConceptAst parent = entitiesByLower.get(normalize(parentName));
             if (parent != null) {
                 EffectiveEntity parentEffective = resolveEffective(parent, entitiesByLower, cache, stack, errors);
                 for (FieldAst parentField : parentEffective.fields()) {
@@ -1461,12 +2194,44 @@ public final class SemanticValidator {
         }
     }
 
+    /**
+     * LNCH-12: structural-only cron check (field count, not full cron grammar -- this module has
+     * no Spring dependency to reuse {@code CronExpression.parse} for real validation, and the
+     * runtime scheduler will reject a malformed expression loudly at boot anyway). Accepts both
+     * the classic 5-field cron (minute hour day month weekday) and Spring's 6-field
+     * seconds-first form, since the DoD explicitly calls for shrinking a schedule to seconds in a
+     * gate test.
+     */
+    private static void validateFlowSchedule(FlowAst flow, List<String> errors) {
+        FlowScheduleAst schedule = flow.getSchedule();
+        if (schedule == null) {
+            return;
+        }
+        String cron = schedule.getCron();
+        if (cron == null || cron.isBlank()) {
+            errors.add("Flow " + flow.getName() + ": schedule.cron must not be blank");
+            return;
+        }
+        int fieldCount = cron.trim().split("\\s+").length;
+        if (fieldCount != 5 && fieldCount != 6) {
+            errors.add("Flow " + flow.getName() + ": schedule.cron must have 5 or 6 space-separated fields, got "
+                    + fieldCount + " (\"" + cron + "\")");
+        }
+        for (String tenantId : schedule.getTenantScope()) {
+            if (tenantId == null || tenantId.isBlank()) {
+                errors.add("Flow " + flow.getName() + ": schedule.tenantScope must not contain blank entries");
+                break;
+            }
+        }
+    }
+
     private static void validateFlows(
             ModelAst modelAst,
-            Map<String, EntityAst> entitiesByLower,
+            Map<String, ConceptAst> entitiesByLower,
             Map<String, EffectiveEntity> effectiveCache,
             boolean allowUnboundFlowCapabilities,
-            List<String> errors
+            List<String> errors,
+            List<String> warnings
     ) {
         Set<String> flowNames = new HashSet<>();
         Map<String, Set<String>> operationsByCapability = resolveCapabilityOperations(modelAst);
@@ -1486,7 +2251,9 @@ public final class SemanticValidator {
                 errors.add("Flow " + flow.getName() + ": steps must not be empty");
             }
 
-            EntityAst concept = entitiesByLower.get(normalize(flow.getConcept()));
+            validateFlowSchedule(flow, errors);
+
+            ConceptAst concept = entitiesByLower.get(normalize(flow.getConcept()));
             if (concept == null) {
                 errors.add("Flow " + flow.getName() + ": references unknown concept " + flow.getConcept());
                 continue;
@@ -1510,11 +2277,59 @@ public final class SemanticValidator {
                     new HashSet<>(),
                     errors
             );
+            warnCreateOrUpdateFlowWithoutPersistenceSemantics(flow, warnings);
         }
 
         if (!allowUnboundFlowCapabilities) {
             validateReferencedCapabilityBindings(modelAst, referencedCapabilities, errors);
         }
+    }
+
+    private static void warnCreateOrUpdateFlowWithoutPersistenceSemantics(FlowAst flow, List<String> warnings) {
+        if (flow == null || warnings == null) {
+            return;
+        }
+        String mode = normalize(flow.getMode());
+        if (!"create".equals(mode) && !"update".equals(mode)) {
+            return;
+        }
+        if (hasPersistenceSemantics(flow.getSteps())) {
+            return;
+        }
+        warnings.add("Flow " + flow.getName() + ": input mode '" + flow.getMode()
+                + "' does not imply persistence by name or mode alone. Declare an explicit createConcept, "
+                + "updateConcept, saveConcept, or persistence.save step to persist business data.");
+    }
+
+    private static boolean hasPersistenceSemantics(List<StepAst> steps) {
+        if (steps == null || steps.isEmpty()) {
+            return false;
+        }
+        for (StepAst step : steps) {
+            if (step == null) {
+                continue;
+            }
+            String type = normalize(step.getType());
+            if ("createconcept".equals(type)
+                    || "updateconcept".equals(type)
+                    || "saveconcept".equals(type)
+                    || "createentity".equals(type)
+                    || "updateentity".equals(type)
+                    || "saveentity".equals(type)) {
+                return true;
+            }
+            String capability = normalize(step.getCapability());
+            String operation = normalize(step.getOperation());
+            if (("capability".equals(type) || "capabilitycall".equals(type))
+                    && "persistence".equals(capability)
+                    && ("save".equals(operation) || "delete".equals(operation))) {
+                return true;
+            }
+            if (hasPersistenceSemantics(step.getThenSteps()) || hasPersistenceSemantics(step.getElseSteps())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void validateFlowSteps(
@@ -1565,10 +2380,128 @@ public final class SemanticValidator {
                         errors
                 );
                 case "await" -> validateAwaitStep(flow, step, eventNames, errors);
+                case "foreach" -> validateForEachStep(
+                        flow,
+                        step,
+                        operationsByCapability,
+                        eventNames,
+                        conceptInvariantRefs,
+                        referencedCapabilities,
+                        knownStepNames,
+                        errors
+                );
                 default -> errors.add("Flow " + flow.getName() + " step " + step.getName()
                         + ": unsupported step type " + step.getType());
             }
         }
+    }
+
+    /** LIFT-LOOP-P4: flow state keys a forEach itemKey must never shadow -- KernelRunner writes
+     * {@code state.put(itemKey, item)} on every iteration, so reusing one of these silently
+     * clobbers framework-critical state (e.g. itemKey="input" would overwrite the flow's own
+     * input mid-loop, corrupting every later {@code input.*} reference in that same iteration). */
+    private static final Set<String> RESERVED_FLOW_STATE_KEYS = Set.of(
+            "input", "last", "executionid", "correlationid", "causationid",
+            "tenantid", "actorid", "_npdeventityname"
+    );
+
+    private static final int MAX_LOOP_ITERATIONS_CEILING = 1_000_000;
+
+    /**
+     * LIFT-LOOP-P1/P4: {@code forEach} flow step validation. Collection/itemKey/non-empty body are
+     * already required by the JSON Schema; this adds the semantic checks the schema can't express:
+     * item-var shadowing (of reserved flow state, the loop's own collection, and any enclosing
+     * loop's item variable), a sane ceiling on {@code maxLoopIterations}, and the P1 design decision
+     * to reject {@code await} nested inside a loop body (durable resume of an in-flight await
+     * *inside* a loop iteration is deliberately deferred to a later slice -- see
+     * BOUNDARY_LIFT_ROADMAP.md's risk register).
+     */
+    private static void validateForEachStep(
+            FlowAst flow,
+            StepAst step,
+            Map<String, Set<String>> operationsByCapability,
+            Set<String> eventNames,
+            Set<String> conceptInvariantRefs,
+            Set<String> referencedCapabilities,
+            Set<String> knownStepNames,
+            List<String> errors
+    ) {
+        String itemKey = step.getItemKey();
+        String normalizedItemKey = normalize(itemKey);
+        if (hasText(itemKey) && RESERVED_FLOW_STATE_KEYS.contains(normalizedItemKey)) {
+            errors.add("Flow " + flow.getName() + " step " + step.getName()
+                    + ": itemKey '" + itemKey + "' shadows a reserved flow state key");
+        }
+        if (hasText(itemKey) && hasText(step.getCollectionRef())) {
+            String collectionRoot = normalize(step.getCollectionRef()).split("\\.", 2)[0];
+            if (normalizedItemKey.equals(collectionRoot)) {
+                errors.add("Flow " + flow.getName() + " step " + step.getName()
+                        + ": itemKey must not shadow its own collection reference");
+            }
+        }
+        if (step.getMaxLoopIterations() != null) {
+            if (step.getMaxLoopIterations() <= 0) {
+                errors.add("Flow " + flow.getName() + " step " + step.getName()
+                        + ": maxLoopIterations must be positive");
+            } else if (step.getMaxLoopIterations() > MAX_LOOP_ITERATIONS_CEILING) {
+                errors.add("Flow " + flow.getName() + " step " + step.getName()
+                        + ": maxLoopIterations must not exceed " + MAX_LOOP_ITERATIONS_CEILING);
+            }
+        }
+        if (containsAwaitStep(step.getLoopSteps())) {
+            errors.add("Flow " + flow.getName() + " step " + step.getName()
+                    + ": await is not supported inside a forEach loop body yet");
+        }
+        if (hasText(itemKey)) {
+            checkNestedItemKeyShadowing(flow, step, normalizedItemKey, step.getLoopSteps(), errors);
+        }
+        validateFlowSteps(
+                flow,
+                step.getLoopSteps(),
+                operationsByCapability,
+                eventNames,
+                conceptInvariantRefs,
+                referencedCapabilities,
+                knownStepNames,
+                errors
+        );
+    }
+
+    /** LIFT-LOOP-P4: flags a nested forEach reusing an enclosing loop's itemKey -- the inner
+     * loop's {@code state.put(itemKey, item)} would silently shadow the outer item for the rest
+     * of that inner iteration, a common source of "wrong item" authoring bugs. */
+    private static void checkNestedItemKeyShadowing(
+            FlowAst flow,
+            StepAst outerStep,
+            String outerItemKey,
+            List<StepAst> steps,
+            List<String> errors
+    ) {
+        for (StepAst step : steps) {
+            String type = normalize(step.getType());
+            if ("foreach".equals(type) && outerItemKey.equals(normalize(step.getItemKey()))) {
+                errors.add("Flow " + flow.getName() + " step " + step.getName()
+                        + ": itemKey '" + step.getItemKey() + "' shadows enclosing forEach step "
+                        + outerStep.getName() + "'s item variable");
+            }
+            checkNestedItemKeyShadowing(flow, outerStep, outerItemKey, step.getThenSteps(), errors);
+            checkNestedItemKeyShadowing(flow, outerStep, outerItemKey, step.getElseSteps(), errors);
+            checkNestedItemKeyShadowing(flow, outerStep, outerItemKey, step.getLoopSteps(), errors);
+        }
+    }
+
+    private static boolean containsAwaitStep(List<StepAst> steps) {
+        for (StepAst step : steps) {
+            String type = normalize(step.getType());
+            if ("await".equals(type)) {
+                return true;
+            }
+            if (containsAwaitStep(step.getThenSteps()) || containsAwaitStep(step.getElseSteps())
+                    || containsAwaitStep(step.getLoopSteps())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void validateInvariantStep(
@@ -1893,13 +2826,9 @@ public final class SemanticValidator {
         return operationsByCapability;
     }
 
-    private static Set<String> collectInvariantReferences(EntityAst concept) {
-        return collectInvariantReferences(null, concept, new EffectiveEntity(concept.getFields(), concept.getInvariants()));
-    }
-
     private static Set<String> collectInvariantReferences(
             FlowAst flow,
-            EntityAst concept,
+            ConceptAst concept,
             EffectiveEntity effectiveConcept
     ) {
         Set<String> out = new HashSet<>();
@@ -2035,7 +2964,7 @@ public final class SemanticValidator {
         };
     }
 
-    private static void validateLifecycle(EntityAst entity, EffectiveEntity effective, List<String> errors) {
+    private static void validateLifecycle(ConceptAst entity, EffectiveEntity effective, List<String> errors) {
         LifecycleAst lifecycle = entity.getLifecycle();
         if (lifecycle == null) {
             return;
@@ -2227,7 +3156,7 @@ public final class SemanticValidator {
             return;
         }
 
-        Map<String, EntityAst> entitiesByName = modelAst.getEntities().stream()
+        Map<String, ConceptAst> entitiesByName = modelAst.getConcepts().stream()
                 .collect(Collectors.toMap(
                         entity -> normalize(entity.getName()),
                         entity -> entity,
@@ -2321,7 +3250,7 @@ public final class SemanticValidator {
                         errors.add("Orchestration " + name + ": " + actionLabel + " concept is required");
                         continue;
                     }
-                    EntityAst targetConcept = entitiesByName.get(conceptKey);
+                    ConceptAst targetConcept = entitiesByName.get(conceptKey);
                     if (targetConcept == null) {
                         errors.add("Orchestration " + name + ": " + actionLabel
                                 + " concept not found: " + action.getConcept());
@@ -2542,7 +3471,7 @@ public final class SemanticValidator {
     }
 
     private static void validateTechnologyNeutrality(ModelAst modelAst, List<String> errors) {
-        for (EntityAst entity : modelAst.getEntities()) {
+        for (ConceptAst entity : modelAst.getConcepts()) {
             validateNameAgainstForbiddenKeywords("Entity", entity.getName(), errors);
             for (FieldAst field : entity.getFields()) {
                 validateNameAgainstForbiddenKeywords("Field", field.getName(), errors);
@@ -2579,6 +3508,9 @@ public final class SemanticValidator {
             }
             if (!step.getElseSteps().isEmpty()) {
                 validateFlowStepTechnologyNeutrality(step.getElseSteps(), errors);
+            }
+            if (!step.getLoopSteps().isEmpty()) {
+                validateFlowStepTechnologyNeutrality(step.getLoopSteps(), errors);
             }
         }
     }
@@ -2621,6 +3553,16 @@ public final class SemanticValidator {
             String expression = inv.getExpression();
             if (expression == null || expression.isBlank()) return List.of();
 
+            // LIFT-EXPR-P3: prefer the unified ComputedExpression grammar (covers parens/!/
+            // arithmetic/dotted paths, so compound expressions get real field checking instead
+            // of being silently skipped). Falls back to the legacy single-shape regexes for
+            // CEL-specific syntax ComputedExpression doesn't parse (matches/uniqueBy/etc).
+            try {
+                return List.copyOf(ComputedExpression.referencedFields(expression));
+            } catch (ComputedExpression.ExpressionException ignored) {
+                // fall through to legacy extraction
+            }
+
             Matcher matchesMatcher = FIELD_MATCHES_PATTERN.matcher(expression);
             if (matchesMatcher.matches()) return List.of(matchesMatcher.group(1));
 
@@ -2633,6 +3575,77 @@ public final class SemanticValidator {
             return List.of();
         }
         return inv.getFields();
+    }
+
+    /**
+     * LIFT-EXPR-P3: static boolean-shape check for the ComputedExpression-parseable subset of
+     * invariant expressions (comparisons/&&/||/!/parens/arithmetic). Expressions using
+     * CEL-specific syntax (regex .matches(), .uniqueBy(), .all()/.exists() quantifiers,
+     * conflicts()/scope.exists()) don't parse here and are left to runtime validation
+     * (CelInvariantEngine), which remains their source of truth.
+     */
+    private static void validateInvariantExpressionShape(String entityName, String expression, List<String> errors) {
+        try {
+            if (!ComputedExpression.isBooleanShaped(expression)) {
+                errors.add("Entity " + entityName
+                        + " invariant expression: expression must evaluate to a boolean: " + expression);
+            }
+        } catch (ComputedExpression.ExpressionException ignored) {
+            // CEL-specific syntax; no static shape check available for it yet.
+        }
+    }
+
+    /**
+     * LNCH-13: compile-time checks for a concept's declarative row-level access rules
+     * (access: { read, write }) -- both must parse, both must be boolean-shaped, and every
+     * referenced field must either be a real field on this concept or a {@code $user.*}
+     * pseudo-variable (the current actor context, always considered valid here since its shape
+     * is fixed by the platform, not the model).
+     */
+    private static void validateAccessRules(
+            String entityName,
+            ConceptAccessAst access,
+            Set<String> fieldNames,
+            List<String> errors
+    ) {
+        if (access == null) {
+            return;
+        }
+        validateAccessExpression(entityName, "read", access.getRead(), fieldNames, errors);
+        validateAccessExpression(entityName, "write", access.getWrite(), fieldNames, errors);
+    }
+
+    private static void validateAccessExpression(
+            String entityName,
+            String label,
+            String expression,
+            Set<String> fieldNames,
+            List<String> errors
+    ) {
+        if (expression == null || expression.isBlank()) {
+            return;
+        }
+        try {
+            ComputedExpression.validate(expression);
+        } catch (ComputedExpression.ExpressionException syntaxError) {
+            errors.add("Entity " + entityName + " access." + label
+                    + ": syntax error in expression: " + expression + " (" + syntaxError.getMessage() + ")");
+            return;
+        }
+        if (!ComputedExpression.isBooleanShaped(expression)) {
+            errors.add("Entity " + entityName + " access." + label
+                    + ": expression must evaluate to a boolean: " + expression);
+        }
+        for (String referenced : ComputedExpression.referencedFields(expression)) {
+            if (referenced.startsWith("$")) {
+                continue;
+            }
+            String rootSegment = referenced.contains(".") ? referenced.substring(0, referenced.indexOf('.')) : referenced;
+            if (!fieldNames.contains(normalize(rootSegment))) {
+                errors.add("Entity " + entityName + " access." + label
+                        + ": references unknown field " + referenced);
+            }
+        }
     }
 
     private static void validateFieldValueBehavior(

@@ -3,8 +3,8 @@
   "namespace": "npdev.beta.contract",
   "concepts": [
     {
-      "name": "Learner",
-      "fields": ["id"]
+      "name": "User",
+      "fields": ["id", "email"]
     }
   ],
   "procedures": [],

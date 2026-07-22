@@ -41,7 +41,7 @@ public class RuntimeControllerAllowlistConfig {
                     if (beanClassName == null) {
                         continue;
                     }
-                    if (!beanClassName.startsWith("com.finalexec.api.") || !beanClassName.endsWith("Controller")) {
+                    if (!beanClassName.startsWith("com.finalexec.") || !beanClassName.endsWith("Controller")) {
                         continue;
                     }
                     String simpleName = beanClassName.substring(beanClassName.lastIndexOf('.') + 1);
@@ -61,15 +61,15 @@ public class RuntimeControllerAllowlistConfig {
     private static RuntimeSurfaceManifest loadManifest() {
         try (InputStream inputStream = new ClassPathResource(ALLOWLIST_RESOURCE).getInputStream()) {
             JsonNode root = OBJECT_MAPPER.readTree(inputStream);
-            Set<String> supportedCoreControllers = readValues(root.path("supportedCoreControllers"));
-            if (supportedCoreControllers.isEmpty()) {
+            Set<String> allowedControllers = readValues(root.path("allowedControllers"));
+            if (allowedControllers.isEmpty()) {
                 throw new IllegalStateException("Runtime supported-controller allowlist is empty: " + ALLOWLIST_RESOURCE);
             }
             return new RuntimeSurfaceManifest(
                     root.path("defaultSurfaceProfile").asText("supported-core").trim(),
-                    supportedCoreControllers,
-                    readValues(root.path("nonDefaultPatterns")),
-                    readValues(root.path("experimentalPatterns"))
+                    allowedControllers,
+                    readValues(root.path("deferredControllers")),
+                    readValues(root.path("testOnlyControllers"))
             );
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to load runtime supported-controller allowlist: " + ALLOWLIST_RESOURCE, exception);
@@ -91,9 +91,9 @@ public class RuntimeControllerAllowlistConfig {
 
     private record RuntimeSurfaceManifest(
             String defaultSurfaceProfile,
-            Set<String> supportedCoreControllers,
-            Set<String> nonDefaultPatterns,
-            Set<String> experimentalPatterns
+            Set<String> allowedControllers,
+            Set<String> deferredControllers,
+            Set<String> testOnlyControllers
     ) {
         boolean allowsController(String controllerName, String requestedSurfaceProfile) {
             String effectiveProfile = requestedSurfaceProfile == null || requestedSurfaceProfile.isBlank()
@@ -101,38 +101,13 @@ public class RuntimeControllerAllowlistConfig {
                     : requestedSurfaceProfile.trim();
 
             return switch (effectiveProfile) {
-                case "supported-core" -> supportedCoreControllers.contains(controllerName);
-                case "non-default" -> supportedCoreControllers.contains(controllerName)
-                        || matchesAnyPattern(controllerName, nonDefaultPatterns);
-                case "experimental" -> supportedCoreControllers.contains(controllerName)
-                        || matchesAnyPattern(controllerName, nonDefaultPatterns)
-                        || matchesAnyPattern(controllerName, experimentalPatterns);
+                case "supported-core" -> allowedControllers.contains(controllerName);
+                case "non-default", "experimental" -> allowedControllers.contains(controllerName)
+                        || deferredControllers.contains(controllerName);
                 default -> throw new IllegalStateException(
                         "Unsupported runtime surface profile '" + effectiveProfile + "' for " + ALLOWLIST_RESOURCE
                 );
             };
-        }
-
-        private boolean matchesAnyPattern(String controller, Set<String> patterns) {
-            for (String pattern : patterns) {
-                if (matchesPattern(controller, pattern)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        private boolean matchesPattern(String value, String pattern) {
-            StringBuilder regex = new StringBuilder();
-            for (int index = 0; index < pattern.length(); index++) {
-                char ch = pattern.charAt(index);
-                if (ch == '*') {
-                    regex.append(".*");
-                } else {
-                    regex.append(java.util.regex.Pattern.quote(String.valueOf(ch)));
-                }
-            }
-            return value.matches(regex.toString());
         }
     }
 }

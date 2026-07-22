@@ -6,6 +6,8 @@ import com.finalexec.npdev.service.ClasspathArtifactRealizationProvider;
 import com.finalexec.npdev.service.FileRuntimePluginExecutionSummaryStore;
 import com.finalexec.npdev.service.FilesystemArtifactRealizationProvider;
 import com.finalexec.npdev.service.GenericCustomProcedureCapabilityAdapter;
+import com.finalexec.npdev.service.GenericMountedCapabilityHandler;
+import com.finalexec.npdev.service.JavaSourceArtifactRealizationProvider;
 import com.finalexec.npdev.service.PluginExecutionPolicyEvaluator;
 import com.finalexec.npdev.service.PluginManifestSchemaValidator;
 import com.finalexec.npdev.service.PluginPackageSchemaValidator;
@@ -29,6 +31,8 @@ import com.finalexec.npdev.service.RuntimePluginRuntimeRefResolver;
 import com.finalexec.npdev.service.RuntimePluginStatusSummary;
 import com.finalexec.npdev.service.RuntimeRefArtifactRealizationProvider;
 import com.finalexec.npdev.service.SandboxedPluginExecutionEngine;
+import com.npdev.adapters.mail.inproc.InProcMailCapabilityAdapter;
+import com.npdev.adapters.mail.smtp.SmtpMailCapabilityAdapter;
 import com.npdev.adapters.notification.inproc.InProcNotificationCapabilityAdapter;
 import com.npdev.adapters.notification.inproc.InProcWarningNotificationCapabilityAdapter;
 import com.npdev.adapters.persistence.inproc.InMemoryPersistenceCapabilityAdapter;
@@ -221,6 +225,13 @@ public class NpdevPluginConfig {
     }
 
     @Bean
+    public RuntimePluginArtifactRealizationProvider javaSourceArtifactRealizationProvider(
+            RuntimePluginRuntimeRefResolver runtimePluginRuntimeRefResolver
+    ) {
+        return new JavaSourceArtifactRealizationProvider(runtimePluginRuntimeRefResolver);
+    }
+
+    @Bean
     public RuntimePluginPackageRealizationService runtimePluginPackageRealizationService(
             RuntimePluginPackageCatalog runtimePluginPackageCatalog,
             RuntimePluginProfileResolver.ResolvedRuntimePluginProfile runtimePluginProfile,
@@ -250,25 +261,58 @@ public class NpdevPluginConfig {
     }
 
     @Bean
-    public RuntimePluginRealizationProvider persistenceInMemoryRuntimePluginRealizationProvider() {
+    public RuntimePluginRealizationProvider mailInProcRuntimePluginRealizationProvider() {
+        return namedRuntimePluginRealizationProvider(
+                "mailInProcCapabilityAdapter",
+                InProcMailCapabilityAdapter::new
+        );
+    }
+
+    // LNCH-11: constructed lazily (realize() is only invoked if a model actually binds a
+    // capability to adapterId "mail-smtp") -- same reason persistencePostgresRuntimePluginRealizationProvider
+    // can require a DataSource unconditionally without breaking in-memory-only apps.
+    @Bean
+    public RuntimePluginRealizationProvider mailSmtpRuntimePluginRealizationProvider(
+            @Value("${npdev.mail.smtp.host:}") String host,
+            @Value("${npdev.mail.smtp.port:25}") int port,
+            @Value("${npdev.mail.smtp.username:}") String username,
+            @Value("${npdev.mail.smtp.password:}") String password,
+            @Value("${npdev.mail.smtp.from:no-reply@example.com}") String from,
+            @Value("${npdev.mail.smtp.starttls:true}") boolean startTls
+    ) {
+        return namedRuntimePluginRealizationProvider(
+                "mailSmtpCapabilityAdapter",
+                () -> new SmtpMailCapabilityAdapter(host, port, username, password, from, startTls)
+        );
+    }
+
+    @Bean
+    public RuntimePluginRealizationProvider persistenceInMemoryRuntimePluginRealizationProvider(
+            CompiledModel compiledModel
+    ) {
         return namedRuntimePluginRealizationProvider(
                 "persistenceInMemoryCapabilityAdapter",
-                InMemoryPersistenceCapabilityAdapter::new
+                () -> new InMemoryPersistenceCapabilityAdapter(compiledModel)
         );
     }
 
     @Bean
     public RuntimePluginRealizationProvider persistencePostgresRuntimePluginRealizationProvider(
-            ObjectProvider<DataSource> dataSourceProvider
+            ObjectProvider<DataSource> dataSourceProvider,
+            @Value("${npdev.storage.mode:in-memory}") String storageMode,
+            CompiledModel compiledModel
     ) {
         return namedRuntimePluginRealizationProvider(
                 "persistencePostgresCapabilityAdapter",
                 () -> {
                     DataSource dataSource = dataSourceProvider.getIfAvailable();
+                    if ("in-memory".equalsIgnoreCase(storageMode)) {
+                        return new InMemoryPersistenceCapabilityAdapter(compiledModel);
+                    }
                     if (dataSource == null) {
                         throw new IllegalStateException("DataSource is required for postgres persistence adapter");
                     }
-                    return new PostgresPersistenceCapabilityAdapter(dataSource);
+                    return new PostgresPersistenceCapabilityAdapter(dataSource, compiledModel);
                 }
         );
     }
@@ -286,6 +330,14 @@ public class NpdevPluginConfig {
         return namedRuntimePluginRealizationProvider(
                 "genericCustomProcedureCapabilityAdapter",
                 GenericCustomProcedureCapabilityAdapter::new
+        );
+    }
+
+    @Bean
+    public RuntimePluginRealizationProvider genericMountedCapabilityRuntimePluginRealizationProvider() {
+        return namedRuntimePluginRealizationProvider(
+                "genericMountedCapabilityHandler",
+                GenericMountedCapabilityHandler::new
         );
     }
 

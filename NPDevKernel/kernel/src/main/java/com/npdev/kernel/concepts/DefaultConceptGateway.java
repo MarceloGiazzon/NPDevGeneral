@@ -84,7 +84,12 @@ public final class DefaultConceptGateway implements ConceptGateway {
                 ruleProfilesForRead(effectiveContext)
         );
 
+        // LNCH-13: row-level read scoping checked BEFORE field-visibility filtering (a hidden
+        // field the access rule references, e.g. ownerId, must still be visible to the rule
+        // itself) -- a denied row is treated identically to "not found" (see isRowReadable's
+        // javadoc: never confirms a row exists outside the caller's scope).
         Optional<ConceptRecord> record = store.findById(tenantId, request.conceptName(), request.id())
+                .filter(item -> semanticPolicy.isRowReadable(item, requestContext))
                 .map(item -> semanticPolicy.filterVisibleFields(item, requestContext));
         audit(effectiveContext, "CONCEPT_READ", request.conceptName(), request.id(),
                 record.isPresent() ? "SUCCESS" : "NOT_FOUND", record.isPresent() ? "allowed" : "not_found", tenantId);
@@ -114,11 +119,61 @@ public final class DefaultConceptGateway implements ConceptGateway {
         );
 
         List<ConceptRecord> records = store.findAll(tenantId, request.conceptName()).stream()
+                .filter(item -> semanticPolicy.isRowReadable(item, requestContext))
                 .map(item -> semanticPolicy.filterVisibleFields(item, requestContext))
+                .filter(item -> matchesExact(item, request.filterField(), request.filterValue()))
                 .toList();
         audit(effectiveContext, "CONCEPT_LIST", request.conceptName(), "*", "SUCCESS", "allowed", tenantId);
         trace(requestContext, "SUCCESS", "allowed", decision);
         return records;
+    }
+
+    @Override
+    public ConceptPage query(ConceptQueryRequest request, ExecutionContext context) {
+        ExecutionContext effectiveContext = normalizeContext(context);
+        String tenantId = enforceTenant(request.tenantId(), effectiveContext, "CONCEPT_LIST", request.conceptName(), "*");
+        enforcePermission(effectiveContext, "concept.list", request.conceptName(), "CONCEPT_LIST", "*");
+
+        ConceptGatewayRequestContext requestContext = requestContext(
+                ConceptGatewayOperation.LIST,
+                request.conceptName(),
+                "*",
+                tenantId,
+                Map.of(),
+                effectiveContext,
+                Optional.empty()
+        );
+        ConceptSemanticDecision decision = evaluateRuleProfiles(
+                requestContext,
+                ruleProfilesForRead(effectiveContext)
+        );
+
+        // Push the filter/sort/page window down to the store (SQL LIMIT/OFFSET on JDBC), then apply
+        // per-record field visibility to the returned page only -- never materialize the whole table.
+        ConceptPage page = store.query(tenantId, request.conceptName(), request.query());
+        List<ConceptRecord> visible = new ArrayList<>(page.items().size());
+        for (ConceptRecord item : page.items()) {
+            // LNCH-13: row-level scoping applied to the already-paginated page, not pushed into
+            // the SQL WHERE clause -- a deliberate v1 boundary (see docs/EXPRESSIONS.md /
+            // LAUNCH_READINESS_GAPS.md). This prevents cross-scope row LEAKAGE (the security
+            // property the DoD's attack suite checks) at the cost of page.total()/hasMore()
+            // possibly over-reporting relative to the row-scoped result set, since the store's
+            // count was computed before this filter ran.
+            if (semanticPolicy.isRowReadable(item, requestContext)) {
+                visible.add(semanticPolicy.filterVisibleFields(item, requestContext));
+            }
+        }
+        audit(effectiveContext, "CONCEPT_LIST", request.conceptName(), "*", "SUCCESS", "allowed", tenantId);
+        trace(requestContext, "SUCCESS", "allowed", decision);
+        return new ConceptPage(visible, page.total(), page.hasMore());
+    }
+
+    private static boolean matchesExact(ConceptRecord record, String field, String value) {
+        if (field == null) {
+            return true;
+        }
+        Object actual = record.data().get(field);
+        return Objects.equals(actual == null ? null : String.valueOf(actual), value);
     }
 
     @Override
@@ -144,9 +199,22 @@ public final class DefaultConceptGateway implements ConceptGateway {
         );
 
         enforcePermission(effectiveContext, "concept.write", request.conceptName(), "CONCEPT_WRITE", request.id());
+        enforceRowWritable(requestContext, "CONCEPT_WRITE");
 
-        ConceptRecord record = new ConceptRecord(request.conceptName(), request.id(), tenantId, decision.data());
-        ConceptRecord saved = store.save(record);
+        // LNCH-16: expectedRowVersion is a compare-and-swap request; force explicitly opts out of
+        // it even when a version was supplied (a flow declaring last-write-wins intent). Anything
+        // else -- no expectedRowVersion, the common case for every caller that predates this
+        // feature -- is an unconditional write, unchanged from today.
+        Long rowVersion = request.force() ? null : request.expectedRowVersion();
+        ConceptRecord record = new ConceptRecord(request.conceptName(), request.id(), tenantId, decision.data(), rowVersion);
+        ConceptRecord saved;
+        try {
+            saved = store.save(record);
+        } catch (ConceptStoreOptimisticLockException exception) {
+            audit(effectiveContext, "CONCEPT_WRITE", request.conceptName(), request.id(), "CONFLICT", "optimistic_lock", tenantId);
+            throw new ConceptGatewayOptimisticLockException(
+                    exception.conceptName(), exception.id(), exception.tenantId(), exception.currentRecord());
+        }
         ConceptSemanticDecision afterCommit = evaluateRuleProfiles(
                 requestContext.withData(saved.data()).withPreviousRecord(Optional.of(saved)),
                 ruleProfilesForAfterCommit(effectiveContext)
@@ -177,6 +245,7 @@ public final class DefaultConceptGateway implements ConceptGateway {
         );
 
         enforcePermission(effectiveContext, "concept.delete", request.conceptName(), "CONCEPT_DELETE", request.id());
+        enforceRowWritable(requestContext, "CONCEPT_DELETE");
         store.deleteById(tenantId, request.conceptName(), request.id());
         audit(effectiveContext, "CONCEPT_DELETE", request.conceptName(), request.id(), "SUCCESS", "allowed", tenantId);
         trace(requestContext, "SUCCESS", "allowed", decision);
@@ -310,6 +379,28 @@ public final class DefaultConceptGateway implements ConceptGateway {
                     decision.message().isBlank() ? "Concept Gateway permission denied." : decision.message()
             );
         }
+    }
+
+    /**
+     * LNCH-13: row-level write scoping -- {@link ConceptGatewaySemanticPolicy#isRowWritable}
+     * against the previous record (update/delete) or incoming data (create). Unlike the read
+     * path (which fails closed to "not found" per-record), a denied write throws immediately:
+     * there's no silent-omission equivalent for "this save/delete may not proceed."
+     */
+    private void enforceRowWritable(ConceptGatewayRequestContext requestContext, String action) {
+        if (semanticPolicy.isRowWritable(requestContext)) {
+            return;
+        }
+        ExecutionContext context = requestContext.executionContext();
+        String message = "Concept Gateway denied row-level write access for concept " + requestContext.conceptName();
+        audit(context, action, requestContext.conceptName(), requestContext.id(), "DENIED", "row_scope_denied", requestContext.tenantId());
+        trace(
+                requestContext,
+                "DENIED",
+                "row_scope_denied",
+                ConceptSemanticDecision.deny("ROW_SCOPE_DENIED", message)
+        );
+        throw new ConceptGatewayAccessDeniedException("ROW_SCOPE_DENIED", message);
     }
 
     private void audit(

@@ -66,8 +66,8 @@ class NestedStructuresSupportTest {
                 """);
 
         ModelAst ast = new JsonModelParser().parse(modelPath);
-        FieldAst emergencyContact = ast.getEntities().get(0).getFields().get(1);
-        FieldAst allergies = ast.getEntities().get(0).getFields().get(2);
+        FieldAst emergencyContact = ast.getConcepts().get(0).getFields().get(1);
+        FieldAst allergies = ast.getConcepts().get(0).getFields().get(2);
         assertEquals("object", emergencyContact.getSchema().getType());
         assertEquals("array", allergies.getSchema().getType());
         assertEquals(20, allergies.getSchema().getMaxItems());
@@ -77,7 +77,7 @@ class NestedStructuresSupportTest {
         assertTrue(errors.isEmpty(), "Expected semantic validation to accept nested structures, got: " + errors);
 
         CompiledModel compiled = new ModelCompiler().compile(ast);
-        CompiledField compiledAllergies = compiled.findEntity("Patient")
+        CompiledField compiledAllergies = compiled.findConcept("Patient")
                 .orElseThrow()
                 .getFields()
                 .stream()

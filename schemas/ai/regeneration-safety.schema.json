@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/regeneration-safety.schema.json",
+  "title": "NPDev Regeneration Safety",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "regenerationSafetyId",
+    "applicationId",
+    "mode",
+    "enabledByDefault",
+    "generatedBy",
+    "generatedAppRoot",
+    "sandboxRoot",
+    "protectedResources",
+    "generatedOnlyResources",
+    "mutationPlan",
+    "preservationPolicy",
+    "conflictPolicy",
+    "evidencePolicy",
+    "truthPolicy",
+    "releaseGatePolicy",
+    "nonGoals"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "npdev.regeneration-safety.v1" },
+    "regenerationSafetyId": { "type": "string" },
+    "applicationId": { "const": "app.salesflow" },
+    "mode": { "const": "RegenerationSafetyLocalPrototype" },
+    "enabledByDefault": { "const": false },
+    "generatedBy": { "const": "scripts/box-object/run-box-object-generator-adapter.ps1" },
+    "generatedAppRoot": { "type": "string" },
+    "sandboxRoot": { "type": "string" },
+    "protectedResources": { "type": "array", "minItems": 4 },
+    "generatedOnlyResources": { "type": "array", "minItems": 1 },
+    "mutationPlan": { "type": "array" },
+    "preservationPolicy": { "type": "array", "contains": { "const": "NeverOverwriteProtected" } },
+    "conflictPolicy": { "type": "array", "contains": { "const": "PreserveProtected" } },
+    "evidencePolicy": { "type": "object" },
+    "truthPolicy": {
+      "type": "object",
+      "required": ["maxTruthClaim", "noAutoPromotion", "noT5", "noT6"],
+      "properties": {
+        "maxTruthClaim": { "enum": ["LocalPrototype", "T3"] },
+        "noAutoPromotion": { "const": true },
+        "noT5": { "const": true },
+        "noT6": { "const": true }
+      }
+    },
+    "releaseGatePolicy": {
+      "type": "object",
+      "required": ["impact"],
+      "properties": { "impact": { "const": "NoImpact" } }
+    },
+    "nonGoals": { "type": "array", "contains": { "const": "no production regeneration policy" } }
+  }
+}

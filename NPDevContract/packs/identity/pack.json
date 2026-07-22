@@ -1,0 +1,52 @@
+{
+  "$schema": "../../schemas/pack.schema.json",
+  "dslVersion": "1.0.0",
+  "pack": "identity",
+  "version": "1.0.0",
+  "namespace": "com.npdev.identity",
+  "description": "Built-in NPDev identity model: users, roles, and their assignments. Intended as the persistent backing for in-app super-user administration and per-user preferences.",
+  "category": "security",
+  "author": "NPDev",
+  "concepts": [
+    {
+      "name": "User",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "username", "type": "string", "required": true, "unique": true, "maxLength": 120 },
+        { "name": "displayName", "type": "string", "required": true, "maxLength": 200 },
+        { "name": "email", "type": "string", "required": false, "maxLength": 200 },
+        { "name": "active", "type": "boolean", "required": true },
+        { "name": "tokenVersion", "type": "int", "required": false }
+      ]
+    },
+    {
+      "name": "Role",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "name", "type": "string", "required": true, "unique": true, "maxLength": 80 },
+        { "name": "description", "type": "string", "required": false, "maxLength": 280 }
+      ]
+    },
+    {
+      "name": "UserRole",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "userId", "type": "reference", "required": true,
+          "reference": { "target": "User", "onDelete": "cascade" } },
+        { "name": "roleId", "type": "reference", "required": true,
+          "reference": { "target": "Role", "onDelete": "restrict" } }
+      ]
+    },
+    {
+      "name": "PasswordResetToken",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "userId", "type": "reference", "required": true,
+          "reference": { "target": "User", "onDelete": "cascade" } },
+        { "name": "tokenHash", "type": "string", "required": true, "unique": true, "maxLength": 64 },
+        { "name": "expiresAt", "type": "datetime", "required": true },
+        { "name": "usedAt", "type": "datetime", "required": false }
+      ]
+    }
+  ]
+}

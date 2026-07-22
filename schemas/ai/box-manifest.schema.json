@@ -1,0 +1,1262 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/box-manifest.schema.json",
+  "title": "NPDev Box Manifest",
+  "description": "Schema for NPDev structural Boxes: ApplicationBox, ModuleBox, EntityBox, RuleBox, IntegrationBox, EvidenceBox, and ReleaseBox.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifestVersion",
+    "box",
+    "identity",
+    "classification",
+    "defaults",
+    "layers",
+    "children",
+    "relationships",
+    "customizationPoints",
+    "artifacts",
+    "truth",
+    "evidence",
+    "promotion",
+    "release",
+    "regenerationPolicy",
+    "audit"
+  ],
+  "properties": {
+    "manifestVersion": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "box": {
+      "$ref": "#/$defs/boxHeader"
+    },
+    "identity": {
+      "$ref": "#/$defs/identity"
+    },
+    "classification": {
+      "$ref": "#/$defs/classification"
+    },
+    "defaults": {
+      "$ref": "#/$defs/defaults"
+    },
+    "layers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/layer"
+      }
+    },
+    "children": {
+      "$ref": "#/$defs/children"
+    },
+    "relationships": {
+      "$ref": "#/$defs/relationships"
+    },
+    "customizationPoints": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/customizationPoint"
+      }
+    },
+    "artifacts": {
+      "$ref": "#/$defs/artifacts"
+    },
+    "truth": {
+      "$ref": "truth-classification.schema.json"
+    },
+    "evidence": {
+      "$ref": "#/$defs/evidenceRef"
+    },
+    "promotion": {
+      "$ref": "promotion-workflow.schema.json"
+    },
+    "release": {
+      "$ref": "#/$defs/releaseRef"
+    },
+    "regenerationPolicy": {
+      "$ref": "#/$defs/regenerationPolicy"
+    },
+    "audit": {
+      "$ref": "#/$defs/audit"
+    },
+    "application": {
+      "$ref": "#/$defs/applicationBox"
+    },
+    "module": {
+      "$ref": "#/$defs/moduleBox"
+    },
+    "entity": {
+      "$ref": "#/$defs/entityBox"
+    },
+    "rule": {
+      "$ref": "#/$defs/ruleBox"
+    },
+    "integration": {
+      "$ref": "#/$defs/integrationBox"
+    },
+    "evidenceBox": {
+      "$ref": "#/$defs/evidenceBox"
+    },
+    "releaseBox": {
+      "$ref": "#/$defs/releaseBox"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "box": {
+            "properties": {
+              "type": {
+                "const": "ApplicationBox"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "application"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "box": {
+            "properties": {
+              "type": {
+                "const": "ModuleBox"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "module"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "box": {
+            "properties": {
+              "type": {
+                "const": "EntityBox"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "entity"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "box": {
+            "properties": {
+              "type": {
+                "const": "RuleBox"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "rule"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "box": {
+            "properties": {
+              "type": {
+                "const": "IntegrationBox"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "integration"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "box": {
+            "properties": {
+              "type": {
+                "const": "EvidenceBox"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "evidenceBox"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "box": {
+            "properties": {
+              "type": {
+                "const": "ReleaseBox"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "releaseBox"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "boxType": {
+      "type": "string",
+      "enum": [
+        "ApplicationBox",
+        "ModuleBox",
+        "EntityBox",
+        "RuleBox",
+        "IntegrationBox",
+        "EvidenceBox",
+        "ReleaseBox"
+      ]
+    },
+    "objectType": {
+      "type": "string",
+      "enum": [
+        "PanelObject",
+        "ProcedureObject"
+      ]
+    },
+    "boxHeader": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "name",
+        "title",
+        "description",
+        "purpose",
+        "owner",
+        "tags"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "$ref": "#/$defs/boxType"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "applicationId",
+        "parentBoxId",
+        "stableKey",
+        "humanName",
+        "technicalName",
+        "namespace"
+      ],
+      "properties": {
+        "applicationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parentBoxId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stableKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "humanName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "technicalName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "namespace": {
+          "type": "string"
+        }
+      }
+    },
+    "classification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "domain",
+        "criticality",
+        "sensitivity",
+        "lifecycle",
+        "creationMode"
+      ],
+      "properties": {
+        "domain": {
+          "type": "string",
+          "enum": [
+            "Business",
+            "Runtime",
+            "Release",
+            "Evidence",
+            "Integration",
+            "Governance",
+            "Security",
+            "UI",
+            "Data"
+          ]
+        },
+        "criticality": {
+          "type": "string",
+          "enum": [
+            "Low",
+            "Medium",
+            "High",
+            "Critical"
+          ]
+        },
+        "sensitivity": {
+          "type": "string",
+          "enum": [
+            "Low",
+            "Medium",
+            "High",
+            "Critical"
+          ]
+        },
+        "lifecycle": {
+          "type": "string",
+          "enum": [
+            "Idea",
+            "Active",
+            "Deprecated",
+            "Archived"
+          ]
+        },
+        "creationMode": {
+          "type": "string",
+          "enum": [
+            "HumanAuthored",
+            "AIGenerated",
+            "AIGeneratedWithHumanReview",
+            "Imported",
+            "GeneratedFromStandard"
+          ]
+        }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "standardUsed",
+        "defaultBehavior",
+        "defaultEvidencePolicy",
+        "defaultCustomizationPolicy"
+      ],
+      "properties": {
+        "standardUsed": {
+          "type": "string"
+        },
+        "defaultBehavior": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "defaultEvidencePolicy": {
+          "type": "string",
+          "enum": [
+            "None",
+            "Basic",
+            "Strict",
+            "Release"
+          ]
+        },
+        "defaultCustomizationPolicy": {
+          "type": "string",
+          "enum": [
+            "Open",
+            "Guarded",
+            "Strict"
+          ]
+        }
+      }
+    },
+    "layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "level",
+        "name",
+        "description",
+        "visibleByDefault",
+        "editableByUser"
+      ],
+      "properties": {
+        "level": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "visibleByDefault": {
+          "type": "boolean"
+        },
+        "editableByUser": {
+          "type": "boolean"
+        }
+      }
+    },
+    "children": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "boxes",
+        "objects"
+      ],
+      "properties": {
+        "boxes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "objects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allowedBoxChildTypes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/boxType"
+          }
+        },
+        "allowedObjectChildTypes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/objectType"
+          }
+        }
+      }
+    },
+    "relationships": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dependsOn",
+        "usedBy",
+        "calls",
+        "validates",
+        "proves",
+        "releases"
+      ],
+      "properties": {
+        "dependsOn": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "usedBy": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "calls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "validates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "proves": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "releases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "customizationPoint": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "description",
+        "preserveOnRegeneration",
+        "truthImpact"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "allowedAuthors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "Human",
+              "AIWithReview",
+              "Generator",
+              "Import"
+            ]
+          }
+        },
+        "preserveOnRegeneration": {
+          "type": "boolean"
+        },
+        "truthImpact": {
+          "type": "string"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceFiles",
+        "generatedFiles",
+        "manualFiles",
+        "documentationFiles"
+      ],
+      "properties": {
+        "sourceFiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "generatedFiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "manualFiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "documentationFiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidenceStatus",
+        "evidenceBoxes",
+        "requiredEvidenceForRelease",
+        "lastEvidencePath"
+      ],
+      "properties": {
+        "evidenceStatus": {
+          "type": "string",
+          "enum": [
+            "None",
+            "Draft",
+            "Current",
+            "Stale",
+            "ReleaseApproved"
+          ]
+        },
+        "evidenceBoxes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "requiredEvidenceForRelease": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "lastEvidencePath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "releaseRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "includedInRelease",
+        "minimumTruthLevelForRelease",
+        "currentReleaseEligibility",
+        "reason"
+      ],
+      "properties": {
+        "includedInRelease": {
+          "type": "boolean"
+        },
+        "minimumTruthLevelForRelease": {
+          "type": "string",
+          "enum": [
+            "T0",
+            "T1",
+            "T2",
+            "T3",
+            "T4",
+            "T5",
+            "T6"
+          ]
+        },
+        "currentReleaseEligibility": {
+          "type": "string",
+          "enum": [
+            "NotApplicable",
+            "NotYetEligible",
+            "Eligible",
+            "Approved"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "regenerationPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canRegenerate",
+        "protectManualFiles",
+        "preserveCustomizationPoints",
+        "onConflict",
+        "conflictPolicy"
+      ],
+      "properties": {
+        "canRegenerate": {
+          "type": "boolean"
+        },
+        "protectManualFiles": {
+          "type": "boolean"
+        },
+        "preserveCustomizationPoints": {
+          "type": "boolean"
+        },
+        "onConflict": {
+          "type": "string",
+          "enum": [
+            "AskUser",
+            "KeepCustom",
+            "ReplaceGenerated",
+            "Block"
+          ]
+        },
+        "conflictPolicy": {
+          "type": "string"
+        }
+      }
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "createdBy",
+        "reviewedBy",
+        "createdAt",
+        "updatedAt",
+        "changeLog"
+      ],
+      "properties": {
+        "createdBy": {
+          "type": "string",
+          "enum": [
+            "Human",
+            "AI",
+            "Import",
+            "Generator"
+          ]
+        },
+        "reviewedBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "createdAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "changeLog": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "applicationBox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "displayName",
+        "targetUsers",
+        "businessGoals",
+        "modules",
+        "applicationRuleBoxes",
+        "applicationIntegrationBoxes",
+        "applicationEvidenceBoxes",
+        "releaseBoxes"
+      ],
+      "properties": {
+        "displayName": {
+          "type": "string"
+        },
+        "targetUsers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "businessGoals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "modules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "applicationRuleBoxes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "applicationIntegrationBoxes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "applicationEvidenceBoxes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "releaseBoxes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "moduleBox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "businessCapability",
+        "entityBoxes",
+        "integrationBoxes",
+        "panelObjects",
+        "procedureObjects",
+        "moduleRuleBoxes",
+        "moduleEvidenceBoxes"
+      ],
+      "properties": {
+        "businessCapability": {
+          "type": "string"
+        },
+        "entityBoxes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "integrationBoxes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "panelObjects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "procedureObjects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "moduleRuleBoxes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "moduleEvidenceBoxes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "entityBox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fields",
+        "relationships",
+        "entityRuleBoxes",
+        "defaultPanelObjects",
+        "defaultProcedureObjects"
+      ],
+      "properties": {
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entityField"
+          }
+        },
+        "relationships": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "entityRuleBoxes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "defaultPanelObjects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "defaultProcedureObjects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "entityField": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "name",
+        "type",
+        "required"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "identity": {
+          "type": "boolean"
+        },
+        "userVisible": {
+          "type": "boolean"
+        },
+        "sensitivity": {
+          "type": "string"
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ruleBox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "appliesTo",
+        "condition",
+        "when",
+        "severity",
+        "failureBehavior",
+        "releasePolicy"
+      ],
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": [
+            "Application",
+            "Module",
+            "Entity",
+            "Integration",
+            "Release"
+          ]
+        },
+        "appliesTo": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "condition": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "language",
+            "expression"
+          ],
+          "properties": {
+            "language": {
+              "type": "string"
+            },
+            "expression": {
+              "type": "string"
+            }
+          }
+        },
+        "when": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "Blocking",
+            "Warning",
+            "Advisory",
+            "ReleaseOnly"
+          ]
+        },
+        "failureBehavior": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "releasePolicy": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "integrationBox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "integrationKind",
+        "direction",
+        "provider",
+        "usedBy",
+        "interface",
+        "integrationRuleBoxes",
+        "failureBehavior",
+        "security"
+      ],
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": [
+            "Application",
+            "Module",
+            "Procedure",
+            "Panel"
+          ]
+        },
+        "integrationKind": {
+          "type": "string",
+          "enum": [
+            "ExternalApi",
+            "ModuleCall",
+            "DatabaseBridge",
+            "FileImport",
+            "FileExport",
+            "Email",
+            "AIService",
+            "RuntimeBridge",
+            "ProcedureInterface"
+          ]
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "Inbound",
+            "Outbound",
+            "Bidirectional",
+            "Internal"
+          ]
+        },
+        "provider": {
+          "type": "string"
+        },
+        "usedBy": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "interface": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "integrationRuleBoxes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "failureBehavior": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "security": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "evidenceBox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provesClaims",
+        "generatedBy",
+        "evidenceFiles",
+        "validatedBoxes",
+        "validatedObjects",
+        "freshness",
+        "reproducibility"
+      ],
+      "properties": {
+        "provesClaims": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "generatedBy": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "evidenceFiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "validatedBoxes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "validatedObjects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "freshness": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "reproducibility": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "releaseBox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "candidateName",
+        "includedBoxes",
+        "includedObjects",
+        "excludedScope",
+        "requiredEvidenceBoxes",
+        "requiredChecks",
+        "releaseDecisionFields",
+        "deferredItems"
+      ],
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "candidateName": {
+          "type": "string"
+        },
+        "includedBoxes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "includedObjects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "excludedScope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "requiredEvidenceBoxes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "requiredChecks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "releaseDecisionFields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        },
+        "deferredItems": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

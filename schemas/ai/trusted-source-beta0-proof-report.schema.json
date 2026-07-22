@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/trusted-source-beta0-proof-report.schema.json",
+  "title": "NPDev Trusted Source Beta0 Proof Report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "overallStatus",
+    "releaseBlocking",
+    "trustedSourceSupportStatus",
+    "overlayHarnessUsed",
+    "generatedRuntimeOverlayHarnessStatus",
+    "productGeneratedTrustedSourceIntegrationStatus",
+    "trustedSourceProductionPath",
+    "manifestLock",
+    "javaContainment",
+    "panelContainment",
+    "compile",
+    "runtimeInvocation",
+    "procedureSmoke",
+    "panelSmoke",
+    "roleChecks",
+    "tenantChecks",
+    "negativeCases",
+    "scenarios",
+    "commands",
+    "artifacts",
+    "failures"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-trusted-source-beta0-proof-report.v1"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "scriptPath": {
+      "const": "scripts/quality/run-trusted-source-beta0-proof.ps1"
+    },
+    "overallStatus": {
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "releaseBlocking": {
+      "type": "boolean"
+    },
+    "trustedSourceSupportStatus": {
+      "enum": [
+        "passed",
+        "failed",
+        "deferred"
+      ]
+    },
+    "overlayHarnessUsed": {
+      "const": false
+    },
+    "generatedRuntimeOverlayHarnessStatus": {
+      "enum": [
+        "not-run",
+        "passed",
+        "failed"
+      ]
+    },
+    "productGeneratedTrustedSourceIntegrationStatus": {
+      "enum": [
+        "passed",
+        "failed",
+        "not-run"
+      ]
+    },
+    "trustedSourceProductionPath": {
+      "type": "object"
+    },
+    "manifestLock": {
+      "type": "object"
+    },
+    "javaContainment": {
+      "type": "object"
+    },
+    "panelContainment": {
+      "type": "object"
+    },
+    "compile": {
+      "type": "object"
+    },
+    "runtimeInvocation": {
+      "type": "object"
+    },
+    "procedureSmoke": {
+      "type": "object"
+    },
+    "panelSmoke": {
+      "type": "object"
+    },
+    "roleChecks": {
+      "type": "object"
+    },
+    "tenantChecks": {
+      "type": "object"
+    },
+    "localHarnessEvidence": {
+      "type": "object"
+    },
+    "negativeCases": {
+      "type": "array"
+    },
+    "scenarios": {
+      "type": "array"
+    },
+    "commands": {
+      "type": "array"
+    },
+    "artifacts": {
+      "type": "array"
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "beta0DeferredGeneratedRuntimeTrustedSourceProof": {
+      "type": "boolean",
+      "description": "True when Beta0 explicitly defers real generated-runtime trusted-source proof while static containment and Docker AI beta evidence are proven separately."
+    },
+    "beta0DeferredGeneratedRuntimeTrustedSourceReason": {
+      "type": "string",
+      "description": "Human-readable Beta0 deferral rationale for generated-runtime trusted-source proof."
+    }
+  },
+  "additionalProperties": false
+}

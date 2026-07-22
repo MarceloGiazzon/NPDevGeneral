@@ -1,0 +1,185 @@
+{
+  "schemaVersion": "ai-verification-report.v1",
+  "scenarioId": "tenant-service-desk",
+  "baseUrlVariable": "NPDEV_GENERATED_APP_BASE_URL",
+  "requiredSurfaceCoverage": [
+    "custom-ui-panels",
+    "custom-procedures",
+    "multi-tenancy",
+    "authentication",
+    "roles",
+    "workflow-engine",
+    "rest-smoke"
+  ],
+  "checks": [
+    {
+      "id": "health-ok",
+      "type": "http",
+      "method": "GET",
+      "path": "/actuator/health",
+      "expectedStatus": 200,
+      "expectedJsonContains": {
+        "status": "UP"
+      },
+      "coversSurfaces": [
+        "rest-smoke"
+      ]
+    },
+    {
+      "id": "missing-auth-rejected",
+      "type": "http",
+      "method": "GET",
+      "path": "/api/admin/runtime/metadata",
+      "expectedStatus": 401,
+      "expectedJsonContains": {
+        "error": "missing_api_key"
+      },
+      "coversSurfaces": [
+        "authentication"
+      ]
+    },
+    {
+      "id": "invalid-auth-rejected",
+      "type": "http",
+      "method": "GET",
+      "path": "/api/admin/runtime/metadata",
+      "headers": {
+        "X-Api-Key": "not-a-valid-key"
+      },
+      "expectedStatus": 401,
+      "expectedJsonContains": {
+        "error": "invalid_api_key"
+      },
+      "coversSurfaces": [
+        "authentication"
+      ]
+    },
+    {
+      "id": "scenario-authenticated-create-case",
+      "type": "http",
+      "method": "POST",
+      "path": "/api/cases",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Api-Key": "ai-tenant-service-desk-support-a"
+      },
+      "body": {
+        "tenantId": "tenant-a",
+        "subject": "Service desk request",
+        "priority": "high",
+        "status": "new"
+      },
+      "expectedStatus": 201,
+      "expectedJsonContains": {
+        "tenantId": "tenant-a",
+        "subject": "Service desk request"
+      },
+      "coversSurfaces": [
+        "authentication",
+        "multi-tenancy"
+      ]
+    },
+    {
+      "id": "cross-tenant-panel-action-rejected",
+      "type": "http",
+      "method": "POST",
+      "path": "/api/execute/panel-action",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Api-Key": "ai-tenant-service-desk-support-a"
+      },
+      "body": {
+        "tenantId": "tenant-b",
+        "panelName": "support-case-dashboard",
+        "actionName": "summarize-cases",
+        "input": {
+          "tenantId": "tenant-b"
+        }
+      },
+      "expectedStatus": 403,
+      "coversSurfaces": [
+        "multi-tenancy"
+      ]
+    },
+    {
+      "id": "scenario-role-not-admin",
+      "type": "http",
+      "method": "GET",
+      "path": "/api/admin/runtime/metadata",
+      "headers": {
+        "X-Api-Key": "ai-tenant-service-desk-support-a"
+      },
+      "expectedStatus": 403,
+      "coversSurfaces": [
+        "roles"
+      ]
+    },
+    {
+      "id": "workflow-lifecycle-metadata",
+      "type": "http",
+      "method": "GET",
+      "path": "/api/admin/runtime/metadata/concepts/Case",
+      "headers": {
+        "X-Api-Key": "dev-key"
+      },
+      "expectedStatus": 200,
+      "expectedJsonContains": {
+        "concept": {
+          "name": "Case",
+          "lifecycleStatusField": "status",
+          "initialState": "new",
+          "transitionCount": 2
+        }
+      },
+      "coversSurfaces": [
+        "workflow-engine"
+      ]
+    },
+    {
+      "id": "custom-panel-load",
+      "type": "http",
+      "method": "GET",
+      "path": "/api/runtime/metadata/ui/panels/support-case-dashboard",
+      "headers": {
+        "X-Api-Key": "ai-tenant-service-desk-support-a"
+      },
+      "expectedStatus": 200,
+      "expectedJsonContains": {
+        "surfaceType": "panel-runtime",
+        "operation": "loadPanel",
+        "panelName": "support-case-dashboard",
+        "tenantId": "tenant-a"
+      },
+      "coversSurfaces": [
+        "custom-ui-panels",
+        "multi-tenancy"
+      ]
+    },
+    {
+      "id": "custom-procedure-panel-action",
+      "type": "http",
+      "method": "POST",
+      "path": "/api/runtime/metadata/ui/panels/support-case-dashboard/actions/summarize-cases",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Api-Key": "ai-tenant-service-desk-support-a"
+      },
+      "body": {
+        "tenantId": "tenant-a"
+      },
+      "expectedStatus": 200,
+      "expectedJsonContains": {
+        "surfaceType": "panel-runtime",
+        "operation": "executeAction",
+        "panelName": "support-case-dashboard",
+        "actionName": "summarize-cases",
+        "status": "OK",
+        "tenantId": "tenant-a"
+      },
+      "coversSurfaces": [
+        "custom-procedures",
+        "custom-ui-panels"
+      ]
+    }
+  ]
+}

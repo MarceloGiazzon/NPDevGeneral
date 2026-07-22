@@ -1,0 +1,33 @@
+{
+  "$schema": "NPDevContract/schemas/model.schema.json",
+  "namespace": "npdev.beta.fixture",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "concepts": [
+    {
+      "name": "Contact",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        "save"
+      ]
+    }
+  ]
+}

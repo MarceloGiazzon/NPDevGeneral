@@ -1,6 +1,10 @@
 
 package com.npdev.adapters.persistence.postgres;
 
+import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.dsl.v1.compiled.CompiledLifecycle;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.ports.PersistenceCapabilityContract;
 
 import javax.sql.DataSource;
@@ -39,11 +43,22 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class PostgresPersistenceCapabilityAdapter implements PersistenceCapabilityContract {
 
     private final DataSource dataSource;
+    private final CompiledModel compiledModel;
     private final Map<String, TableColumns> tableColumnsCache = new ConcurrentHashMap<>();
 
     public PostgresPersistenceCapabilityAdapter(DataSource dataSource) {
+        this(dataSource, null);
+    }
+
+    // Flow-compiled createConcept/updateConcept steps dispatch straight to this adapter's save(),
+    // bypassing the generated per-concept service's enforceWithKernel/validateLifecycleTransitions
+    // check that generic CRUD PUT/POST goes through (that check only exists in generated code, not
+    // here). Without compiledModel, a concept's lifecycle-declared transitions were silently
+    // unenforced on this path -- confirmed live: a flow-driven update jumped a Recebimento straight
+    // from its initial stage to its terminal stage, skipping two required stages, with no error.
+    public PostgresPersistenceCapabilityAdapter(DataSource dataSource, CompiledModel compiledModel) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
-        System.out.println("NPDEV-UPGRADE-MARKER 2026-03-03 :: PostgresPersistenceCapabilityAdapter created (this proves NP export is running)");
+        this.compiledModel = compiledModel;
     }
 
     @Override
@@ -54,35 +69,38 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
     public Object save(Object concept, Object entity) {
         String table = tableName(concept);
         Map<String, Object> runtimeRecord = mutableRecord(entity);
+        applyFieldDefaults(concept, runtimeRecord);
+        String conceptIdField = inferredRuntimeIdField(concept, table);
 
         Object id = runtimeRecord.get("id");
+        if (id == null && conceptIdField != null) {
+            id = runtimeRecord.get(conceptIdField);
+        }
         if (id == null || String.valueOf(id).isBlank()) {
             id = UUID.randomUUID().toString();
-            runtimeRecord.put("id", id);
         }
+        // Always normalize the id onto the canonical runtime "id" key. The schema-aware
+        // resolveColumn maps "id" to whatever the table's real primary-key column is (e.g.
+        // "id" or "user_id"), so injecting a concept-derived field like "contactId" only
+        // produces a phantom column that normalizeRecordForSave rejects.
+        runtimeRecord.put("id", id);
 
         try (Connection connection = dataSource.getConnection()) {
             TableColumns tableColumns = resolveTableColumns(connection, table);
+            enforceLifecycleTransition(connection, concept, table, tableColumns, id, runtimeRecord);
             Map<String, Object> sqlRecord = normalizeRecordForSave(table, runtimeRecord, tableColumns);
+            String idColumn = resolveIdColumn(table, tableColumns);
 
             List<String> columns = new ArrayList<>(sqlRecord.keySet());
-            ensureIdFirst(columns);
+            ensureColumnFirst(columns, idColumn);
 
-            String sql = buildUpsertSql(connection, table, columns);
-            System.out.println(String.format(
-                    "NPDEV-PG-SAVE :: concept=%s table=%s columns=%s sql=%s recordKeys=%s",
-                    concept,
-                    table,
-                    columns,
-                    sql,
-                    runtimeRecord.keySet()
-            ));
-
+            String sql = buildUpsertSql(connection, table, columns, idColumn);
+            Map<String, String> dslTypeByColumn = dslTypeByColumn(concept, table, tableColumns);
             try (PreparedStatement ps = connection.prepareStatement(sql)) {
                 int idx = 1;
                 for (String column : columns) {
                     Object value = sqlRecord.get(column);
-                    value = coerceValueForColumn(column, value);
+                    value = coerceValueForColumn(column, value, dslTypeByColumn.get(column));
                     ps.setObject(idx++, value);
                 }
                 ps.executeUpdate();
@@ -90,8 +108,161 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
             }
 
         } catch (SQLException e) {
+            if (isIntegrityConstraintViolation(e)) {
+                // SQLState class 23 = integrity constraint violation (foreign key / unique / not null
+                // / check). Surface it as IllegalArgumentException so the kernel classifies the
+                // capability failure as a CONTRACT violation (a bad/missing reference supplied by the
+                // caller) instead of a generic system_exception. The DB still rejects the write — this
+                // only sharpens the error code reported to the caller (e.g. a bond to a missing row).
+                throw new IllegalArgumentException(
+                        "Referential/constraint violation persisting table " + table + ": " + e.getMessage(), e);
+            }
             throw new IllegalStateException("Postgres persistence save failed for table " + table + ": " + e.getMessage(), e);
         }
+    }
+
+    private void enforceLifecycleTransition(
+            Connection connection,
+            Object concept,
+            String table,
+            TableColumns tableColumns,
+            Object id,
+            Map<String, Object> runtimeRecord
+    ) throws SQLException {
+        if (compiledModel == null) {
+            return;
+        }
+        CompiledConcept compiledConcept = findCompiledConcept(concept);
+        if (compiledConcept == null) {
+            return;
+        }
+        CompiledLifecycle lifecycle = compiledConcept.getLifecycle();
+        if (lifecycle == null || lifecycle.getStatusField() == null || lifecycle.getStatusField().isBlank()) {
+            return;
+        }
+        String statusField = lifecycle.getStatusField();
+        if (!runtimeRecord.containsKey(statusField)) {
+            return;
+        }
+        String statusColumn = resolveColumn(table, statusField, tableColumns);
+        String idColumn = resolveIdColumn(table, tableColumns);
+        if (statusColumn == null) {
+            return;
+        }
+
+        String previousValue = null;
+        boolean rowExists = false;
+        String sql = "SELECT " + statusColumn + " FROM " + table + " WHERE " + idColumn + " = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setObject(1, coerceValueForColumn(idColumn, id));
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    rowExists = true;
+                    Object raw = rs.getObject(1);
+                    previousValue = raw == null ? null : String.valueOf(raw);
+                }
+            }
+        }
+        if (!rowExists || previousValue == null) {
+            return;
+        }
+
+        Object nextValueRaw = runtimeRecord.get(statusField);
+        String nextValue = nextValueRaw == null ? null : String.valueOf(nextValueRaw);
+        if (previousValue.equals(nextValue)) {
+            return;
+        }
+        String fromValue = previousValue;
+        boolean allowed = lifecycle.getTransitions().stream()
+                .anyMatch(transition -> fromValue.equals(transition.getFrom())
+                        && Objects.equals(nextValue, transition.getTo()));
+        if (!allowed) {
+            throw new IllegalArgumentException(
+                    "Status transition from '" + previousValue + "' to '" + nextValue
+                            + "' is not allowed for " + compiledConcept.getName());
+        }
+    }
+
+    /**
+     * Maps each of the target concept's declared "date"/"datetime" fields onto its resolved
+     * column name, so {@link #coerceValueForColumn} can convert the JSON-string value it receives
+     * from a Flow's runtime payload into a real {@code java.sql.Date}/{@code Timestamp} instead of
+     * relying on {@code isDateColumn}/{@code isTimestampColumn}'s English-naming-convention
+     * heuristic (which never matched Portuguese-named columns like {@code data_movimento} —
+     * confirmed live: every date-bearing WmsOffice concept saved via a Flow's createConcept/
+     * updateConcept step failed against Postgres with "column is of type date but expression is
+     * of type character varying" until this lookup was added). Empty when the model doesn't know
+     * the concept (mirrors every other {@code compiledModel == null} guard in this class).
+     */
+    private Map<String, String> dslTypeByColumn(Object concept, String table, TableColumns tableColumns) {
+        CompiledConcept compiledConcept = findCompiledConcept(concept);
+        if (compiledConcept == null) {
+            return Map.of();
+        }
+        Map<String, String> out = new LinkedHashMap<>();
+        for (CompiledField field : compiledConcept.getFields()) {
+            String dslType = field.getDslType();
+            if (!"date".equals(dslType) && !"datetime".equals(dslType)) {
+                continue;
+            }
+            String column = resolveColumn(table, field.getName(), tableColumns);
+            if (column != null) {
+                out.put(column, dslType);
+            }
+        }
+        return out;
+    }
+
+    // Flow-compiled createConcept/updateConcept steps dispatch straight to save() (see the
+    // constructor note above), bypassing ConceptGatewaySemanticPolicy.applyDefaultsAndDerivedValues
+    // -- the pass generic CRUD create goes through. Without this, a flow create that omits a field
+    // with a declared default persisted it as null/missing instead of the default (ARCH-8b).
+    // Scoped to literal defaultValue only, matching the CRUD path's simplest/most common case --
+    // defaultExpression (computed from other fields) is not evaluated here.
+    private void applyFieldDefaults(Object concept, Map<String, Object> runtimeRecord) {
+        CompiledConcept compiledConcept = findCompiledConcept(concept);
+        if (compiledConcept == null) {
+            return;
+        }
+        for (CompiledField field : compiledConcept.getFields()) {
+            if (field.getSchema() == null || field.getSchema().getDefaultValue() == null) {
+                continue;
+            }
+            Object existing = runtimeRecord.get(field.getName());
+            if (existing == null || (existing instanceof String text && text.isBlank())) {
+                runtimeRecord.put(field.getName(), field.getSchema().getDefaultValue());
+            }
+        }
+    }
+
+    private CompiledConcept findCompiledConcept(Object concept) {
+        if (concept == null || compiledModel == null) {
+            return null;
+        }
+        String name = String.valueOf(concept);
+        for (CompiledConcept candidate : compiledModel.getConcepts()) {
+            if (candidate.getName().equalsIgnoreCase(name)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isIntegrityConstraintViolation(SQLException exception) {
+        for (SQLException current = exception; current != null; current = current.getNextException()) {
+            String sqlState = current.getSQLState();
+            if (sqlState != null && sqlState.startsWith("23")) {
+                return true;
+            }
+        }
+        String message = exception.getMessage() == null
+                ? ""
+                : exception.getMessage().toLowerCase(java.util.Locale.ROOT);
+        return message.contains("referential integrity")
+                || message.contains("foreign key")
+                || message.contains("unique index or primary key")
+                || message.contains("unique constraint")
+                || message.contains("constraint violation");
     }
 
     @Override
@@ -100,17 +271,20 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
             return null;
         }
         String table = tableName(concept);
-        String sql = "select * from " + table + " where id = ?";
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
+        try (Connection c = dataSource.getConnection()) {
+            TableColumns tableColumns = resolveTableColumns(c, table);
+            String idColumn = resolveIdColumn(table, tableColumns);
+            String sql = "select * from " + table + " where " + idColumn + " = ?";
 
-            ps.setObject(1, coerceValueForColumn("id", id));
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) {
-                    return null;
+            try (PreparedStatement ps = c.prepareStatement(sql)) {
+                ps.setObject(1, coerceValueForColumn(idColumn, id));
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) {
+                        return null;
+                    }
+                    return rowToMap(rs);
                 }
-                return rowToMap(rs);
             }
 
         } catch (SQLException e) {
@@ -169,13 +343,16 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
             return false;
         }
         String table = tableName(concept);
-        String sql = "delete from " + table + " where id = ?";
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
+        try (Connection c = dataSource.getConnection()) {
+            TableColumns tableColumns = resolveTableColumns(c, table);
+            String idColumn = resolveIdColumn(table, tableColumns);
+            String sql = "delete from " + table + " where " + idColumn + " = ?";
 
-            ps.setObject(1, coerceValueForColumn("id", id));
-            return ps.executeUpdate() > 0;
+            try (PreparedStatement ps = c.prepareStatement(sql)) {
+                ps.setObject(1, coerceValueForColumn(idColumn, id));
+                return ps.executeUpdate() > 0;
+            }
 
         } catch (SQLException e) {
             throw new IllegalStateException("Postgres persistence delete failed for table " + table + ": " + e.getMessage(), e);
@@ -279,11 +456,26 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
             throw unknownFieldException(table, unknownFields, tableColumns);
         }
 
-        if (!sqlRecord.containsKey("id")) {
-            throw new IllegalArgumentException("Persistence save requires an 'id' field for table " + table);
+        String idColumn = resolveIdColumn(table, tableColumns);
+        if (!sqlRecord.containsKey(idColumn)) {
+            throw new IllegalArgumentException(
+                    "Persistence save requires id field/column '" + idColumn + "' for table " + table);
         }
 
         return sqlRecord;
+    }
+
+    private static String resolveIdColumn(String table, TableColumns tableColumns) {
+        if (tableColumns == null || !tableColumns.isAvailable()) {
+            return "id";
+        }
+        String idColumn = resolveColumn(table, "id", tableColumns);
+        if (idColumn == null || idColumn.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Persistence table " + table + " has no resolvable id column. Allowed database columns: "
+                            + tableColumns.columnNames());
+        }
+        return idColumn;
     }
 
     private static Map<String, Object> normalizeCriteria(String table, Map<String, Object> runtimeCriteria, TableColumns tableColumns) {
@@ -340,6 +532,13 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
             return tableColumns.columnName(dbColumn);
         }
 
+        if ("id".equalsIgnoreCase(runtimeField)) {
+            String inferredIdColumn = toDbColumn(inferredRuntimeIdField(null, table));
+            if (tableColumns.hasColumn(inferredIdColumn)) {
+                return tableColumns.columnName(inferredIdColumn);
+            }
+        }
+
         String runtimeAlias = toRuntimeField(runtimeField);
         if (tableColumns.hasRuntimeField(runtimeAlias)) {
             return tableColumns.columnNameForRuntimeField(runtimeAlias);
@@ -370,14 +569,61 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
     }
 
     private static String tableName(Object concept) {
-        String c = Objects.toString(concept, "default").trim().toLowerCase(Locale.ROOT);
-        if (c.isBlank()) {
-            c = "default";
+        String raw = Objects.toString(concept, "default").trim();
+        if (raw.isBlank()) {
+            raw = "default";
         }
-        if (c.endsWith("s")) {
-            return c;
+        // Concept names are PascalCase/camelCase (e.g. "CareLogEntry"); the generated schema's
+        // table names are snake_case-pluralized (e.g. "care_log_entrys") via SqlIdentifierSupport.
+        // A plain toLowerCase() here would compute "carelogentrys" and never find the real table --
+        // this conversion must keep matching that naming, since callers (e.g. Flow createConcept
+        // steps) pass bare concept names rather than already-resolved table names.
+        String snake = toSnakeCase(raw);
+        if (snake.isBlank()) {
+            snake = "default";
         }
-        return c + "s";
+        return snake.endsWith("s") ? snake : snake + "s";
+    }
+
+    private static String toSnakeCase(String value) {
+        StringBuilder out = new StringBuilder(value.length() + 8);
+        char previous = '\0';
+        for (int index = 0; index < value.length(); index++) {
+            char current = value.charAt(index);
+            if (Character.isUpperCase(current) && index > 0
+                    && (Character.isLowerCase(previous) || Character.isDigit(previous))) {
+                out.append('_');
+            }
+            if (Character.isLetterOrDigit(current)) {
+                out.append(Character.toLowerCase(current));
+            } else {
+                out.append('_');
+            }
+            previous = current;
+        }
+        return out.toString().replaceAll("_+", "_").replaceAll("^_+|_+$", "");
+    }
+
+    private static String inferredRuntimeIdField(Object concept, String table) {
+        String raw = concept == null ? "" : Objects.toString(concept, "").trim();
+        String base;
+        if (!raw.isBlank()) {
+            base = raw.substring(0, 1).toLowerCase(Locale.ROOT) + raw.substring(1);
+        } else {
+            String normalizedTable = table == null ? "" : table.trim().toLowerCase(Locale.ROOT);
+            if (normalizedTable.endsWith("ies") && normalizedTable.length() > 3) {
+                base = normalizedTable.substring(0, normalizedTable.length() - 3) + "y";
+            } else if (normalizedTable.endsWith("s") && normalizedTable.length() > 1) {
+                base = normalizedTable.substring(0, normalizedTable.length() - 1);
+            } else {
+                base = normalizedTable;
+            }
+            base = toRuntimeField(base);
+        }
+        if (base.isBlank() || "default".equalsIgnoreCase(base)) {
+            return "id";
+        }
+        return base + "Id";
     }
 
     private static Map<String, Object> mutableRecord(Object entity) {
@@ -409,9 +655,9 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
         return out;
     }
 
-    private static void ensureIdFirst(List<String> columns) {
-        columns.remove("id");
-        columns.add(0, "id");
+    private static void ensureColumnFirst(List<String> columns, String firstColumn) {
+        columns.remove(firstColumn);
+        columns.add(0, firstColumn);
     }
 
     private static String toDbColumn(String name) {
@@ -455,11 +701,11 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
         return sb.toString();
     }
 
-    private static String buildUpsertSql(Connection connection, String table, List<String> columns) {
+    private static String buildUpsertSql(Connection connection, String table, List<String> columns, String idColumn) {
         if (isH2Connection(connection)) {
-            return buildH2UpsertSql(table, columns);
+            return buildH2UpsertSql(table, columns, idColumn);
         }
-        return buildPostgresUpsertSql(table, columns);
+        return buildPostgresUpsertSql(table, columns, idColumn);
     }
 
     private static boolean isH2Connection(Connection connection) {
@@ -476,17 +722,17 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
         }
     }
 
-    private static String buildPostgresUpsertSql(String table, List<String> columns) {
+    private static String buildPostgresUpsertSql(String table, List<String> columns, String idColumn) {
         StringBuilder sb = new StringBuilder();
         sb.append("insert into ").append(table).append(" (");
         sb.append(String.join(", ", columns));
         sb.append(") values (");
         sb.append(String.join(", ", Collections.nCopies(columns.size(), "?")));
-        sb.append(") on conflict (id) do update set ");
+        sb.append(") on conflict (").append(idColumn).append(") do update set ");
 
         List<String> sets = new ArrayList<>();
         for (String col : columns) {
-            if ("id".equalsIgnoreCase(col)) {
+            if (idColumn.equalsIgnoreCase(col)) {
                 continue;
             }
             sets.add(col + " = excluded." + col);
@@ -495,17 +741,41 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
         return sb.toString();
     }
 
-    private static String buildH2UpsertSql(String table, List<String> columns) {
+    private static String buildH2UpsertSql(String table, List<String> columns, String idColumn) {
         StringBuilder sb = new StringBuilder();
         sb.append("merge into ").append(table).append(" (");
         sb.append(String.join(", ", columns));
-        sb.append(") key(id) values (");
+        sb.append(") key(").append(idColumn).append(") values (");
         sb.append(String.join(", ", Collections.nCopies(columns.size(), "?")));
         sb.append(")");
         return sb.toString();
     }
 
+    private static Object coerceValueForColumn(String column, Object value, String knownDslType) {
+        // Model-driven check first (exact, works for any column-naming language) -- falls back to
+        // the heuristic-based overload's English-naming guesses only when the caller has no
+        // CompiledModel field-type info for this column (e.g. the id-lookup/delete call sites).
+        if (value instanceof CharSequence) {
+            if ("date".equals(knownDslType)) {
+                return coerceDate(value);
+            }
+            if ("datetime".equals(knownDslType)) {
+                return coerceTimestamp(value);
+            }
+        }
+        return coerceValueForColumn(column, value);
+    }
+
     private static Object coerceValueForColumn(String column, Object value) {
+        // Object/array fields arrive here as a parsed Map/List (from the Flow's runtime
+        // payload). Passing that raw Java structure straight to setObject() makes the JDBC
+        // driver serialize it as a JAVA_OBJECT blob instead of writing it into the column's
+        // actual JSON type, which the generated (non-Flow) CRUD repository path avoids by
+        // always writing JSON text. Mirror that here so Flow-driven persistence of nested
+        // object/array fields round-trips the same way.
+        if (value instanceof Map<?, ?> || value instanceof List<?>) {
+            return toJsonText(value);
+        }
         if (isUuidColumn(column)) {
             return coerceUuid(value);
         }
@@ -516,6 +786,69 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
             return coerceTimestamp(value);
         }
         return value;
+    }
+
+    private static String toJsonText(Object value) {
+        StringBuilder sb = new StringBuilder();
+        appendJson(sb, value);
+        return sb.toString();
+    }
+
+    private static void appendJson(StringBuilder sb, Object value) {
+        if (value == null) {
+            sb.append("null");
+        } else if (value instanceof Map<?, ?> map) {
+            sb.append('{');
+            boolean first = true;
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (!first) {
+                    sb.append(',');
+                }
+                first = false;
+                appendJsonString(sb, String.valueOf(entry.getKey()));
+                sb.append(':');
+                appendJson(sb, entry.getValue());
+            }
+            sb.append('}');
+        } else if (value instanceof List<?> list) {
+            sb.append('[');
+            boolean first = true;
+            for (Object item : list) {
+                if (!first) {
+                    sb.append(',');
+                }
+                first = false;
+                appendJson(sb, item);
+            }
+            sb.append(']');
+        } else if (value instanceof CharSequence) {
+            appendJsonString(sb, value.toString());
+        } else if (value instanceof Boolean || value instanceof Number) {
+            sb.append(value);
+        } else {
+            appendJsonString(sb, value.toString());
+        }
+    }
+
+    private static void appendJsonString(StringBuilder sb, String text) {
+        sb.append('"');
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            switch (c) {
+                case '"': sb.append("\\\""); break;
+                case '\\': sb.append("\\\\"); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                default:
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+            }
+        }
+        sb.append('"');
     }
 
     private static boolean isUuidColumn(String column) {

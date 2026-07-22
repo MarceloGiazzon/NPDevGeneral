@@ -1,0 +1,21 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
+    repositories {
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'NPDev_General'
+
+include ':NPDevContract:dsl'
+project(':NPDevContract:dsl').projectDir = file('NPDevContract/dsl')
+
+include ':NPDevContract:dsl:core'
+project(':NPDevContract:dsl:core').projectDir = file('NPDevKernel/core')

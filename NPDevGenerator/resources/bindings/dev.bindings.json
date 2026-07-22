@@ -48,6 +48,22 @@
       "adapterClass": "com.npdev.adapters.webhook.inproc.InProcWebhookCapabilityAdapter",
       "environment": "",
       "tenantId": ""
+    },
+    {
+      "capability": "mail",
+      "capabilityType": "EmailCapability",
+      "adapterId": "mail-inproc",
+      "adapterClass": "com.npdev.adapters.mail.inproc.InProcMailCapabilityAdapter",
+      "environment": "",
+      "tenantId": ""
+    },
+    {
+      "capability": "mail",
+      "capabilityType": "EmailCapability",
+      "adapterId": "mail-smtp",
+      "adapterClass": "com.npdev.adapters.mail.smtp.SmtpMailCapabilityAdapter",
+      "environment": "",
+      "tenantId": ""
     }
   ]
 }

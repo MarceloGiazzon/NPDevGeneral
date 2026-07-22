@@ -309,7 +309,7 @@ function buildFlow(name: string, concept: string): AuthoringFlow {
 }
 
 function buildTemplateModel(templateId: StarterTemplateId): AuthoringModelDocument {
-  const modelSchemaId = "https://npdev.local/schema/npdev-model-1.0.0.schema.json";
+  const modelSchemaId = "https://npdev.local/schema/npdev-model.schema.json";
   switch (templateId) {
     case "case-intake":
       return {

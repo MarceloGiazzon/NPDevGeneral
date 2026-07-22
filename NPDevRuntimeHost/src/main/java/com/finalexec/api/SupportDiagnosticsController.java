@@ -49,6 +49,11 @@ public class SupportDiagnosticsController {
         return run(() -> supportDiagnosticsService.blockedStates(requirePrivilegedContext(request)));
     }
 
+    @GetMapping({"/api/v1/support/business-persistence-evidence", "/api/support/business-persistence-evidence"})
+    public Map<String, Object> businessPersistenceEvidence(HttpServletRequest request) {
+        return run(() -> supportDiagnosticsService.businessPersistenceEvidence(requirePrivilegedContext(request)));
+    }
+
     private ExecutionContext requirePrivilegedContext(HttpServletRequest request) {
         ExecutionContext context = runtimeContextService.currentContext(request);
         if (!betaSecurityRoleEvaluator.hasPrivilegedAccess(context)) {

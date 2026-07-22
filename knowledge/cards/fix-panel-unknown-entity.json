@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "knowledge-card.v1",
+  "id": "fix-panel-unknown-entity",
+  "type": "error-fix",
+  "title": "Panel references an entity/concept that isn't declared",
+  "body": "A panel's data source points at an entity that the model doesn't declare. Either the entity name is misspelled, or the entity was never added. Fix: add the missing entity/concept to `entities`/`concepts`, or correct the panel's entity reference to an existing concept name (names are case-sensitive and must match exactly). Use `npdev_inspect_app` to list the concepts that already exist before referencing one.",
+  "keywords": ["panel", "unknown", "entity", "concept", "reference", "undeclared", "missing"],
+  "appliesTo": ["panel"],
+  "signature": "panel <id> references unknown entity <id>",
+  "fix": "Add the entity to entities/concepts, or fix the panel's entity reference to an existing concept name (exact, case-sensitive). List existing concepts with npdev_inspect_app first.",
+  "sourceRefs": ["golden-ai-scenarios/panel-unknown-entity"],
+  "status": "active"
+}

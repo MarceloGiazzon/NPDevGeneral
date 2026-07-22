@@ -238,7 +238,7 @@ class ContractSurfaceSupportTest {
                 () -> new JsonModelParser().parse(modelPath)
         );
         assertEquals(
-                "The V1 Contract requires 'concepts'. 'entities' is no longer supported.",
+                "Official DSL models must use root 'concepts'. Root 'entities' is no longer supported.",
                 exception.getMessage()
         );
     }

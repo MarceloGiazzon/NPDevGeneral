@@ -2,6 +2,18 @@ server:
   port: 8080
 
 spring:
+  config:
+    import: "optional:classpath:application-npdev-db.properties,optional:classpath:application-npdev-auth.properties,optional:classpath:application-npdev-log.properties"
+
+  # LIFT-UPLOAD-P3: Spring's own multipart defaults (1MB/10MB) silently reject anything bigger --
+  # the platform's own limit is the field's declared file.maxSizeBytes (FileUploadController),
+  # so this ceiling just needs to be generous enough not to be the actual constraint in practice.
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 25MB
+      max-request-size: 25MB
+
   datasource:
     url: jdbc:postgresql://localhost:5432/finalexec
     username: finalexec
@@ -19,7 +31,7 @@ spring:
 
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    locations: classpath:db/schema-realization
 
 logging:
   level:

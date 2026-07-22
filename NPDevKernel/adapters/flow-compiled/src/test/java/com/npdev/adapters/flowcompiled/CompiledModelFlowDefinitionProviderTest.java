@@ -105,6 +105,76 @@ class CompiledModelFlowDefinitionProviderTest {
     }
 
     @Test
+    void providerMapsCompiledForEachStepAndExecutesEachLoopIterationOnce() throws Exception {
+        CompiledModel compiled = compile("""
+                {
+                  "namespace": "wms",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    { "name": "Order", "fields": [ { "name":"id", "type":"uuid", "id":true, "required":true } ] }
+                  ],
+                  "events": [
+                    { "name":"OrderProcessed", "payload":[{"name":"id","type":"uuid"}] }
+                  ],
+                  "flows": [
+                    {
+                      "name": "ProcessOrders",
+                      "input": { "concept":"Order", "mode":"update" },
+                      "steps": [
+                        { "name":"process-orders", "type":"forEach", "collection":"input.orders", "itemKey":"order",
+                          "maxLoopIterations": 5,
+                          "steps": [
+                            { "type":"emitEvent", "event":"OrderProcessed", "from":"$order" }
+                          ]
+                        },
+                        { "type":"return", "value":"$input" }
+                      ]
+                    }
+                  ]
+                }
+                """);
+
+        CompiledModelFlowDefinitionProvider provider = new CompiledModelFlowDefinitionProvider(compiled);
+        FlowDefinition flow = provider.getFlow("ProcessOrders");
+
+        FlowStepDefinition forEachStep = flow.getSteps().get(0);
+        assertEquals(FlowStepDefinition.Type.FOR_EACH, forEachStep.getType());
+        assertEquals("input.orders", forEachStep.getCollectionRef());
+        assertEquals("order", forEachStep.getItemKey());
+        assertEquals(5, forEachStep.getMaxLoopIterations());
+        assertEquals(1, forEachStep.getLoopSteps().size());
+        assertEquals(FlowStepDefinition.Type.EMIT_EVENT, forEachStep.getLoopSteps().get(0).getType());
+
+        List<EventEnvelope> published = new ArrayList<>();
+        ForEachEventInfrastructure eventInfrastructure = new ForEachEventInfrastructure(published);
+        KernelRunner runner = new KernelRunner(
+                eventInfrastructure,
+                (entityName, payload) -> List.of(),
+                provider,
+                (call, state) -> com.npdev.kernel.CapabilityResult.success(null),
+                eventInfrastructure
+        );
+
+        Map<String, Object> input = Map.of(
+                "id", "11111111-1111-1111-1111-111111111111",
+                "orders", List.of(
+                        Map.of("id", "22222222-2222-2222-2222-222222222222"),
+                        Map.of("id", "33333333-3333-3333-3333-333333333333")
+                )
+        );
+
+        ExecutionResult result = runner.execute("ProcessOrders", input);
+
+        assertEquals(ExecutionStatus.OK, result.getStatus());
+        assertEquals(
+                List.of("22222222-2222-2222-2222-222222222222", "33333333-3333-3333-3333-333333333333"),
+                published.stream().map(event -> String.valueOf(event.payload().get("id"))).toList(),
+                "each item in the compiled forEach's collection must be processed exactly once, in order"
+        );
+    }
+
+    @Test
     void providerThrowsUnknownFlowException() throws Exception {
         CompiledModel compiled = compile("""
                 {
@@ -480,6 +550,38 @@ class CompiledModelFlowDefinitionProviderTest {
             return stored.stream()
                     .filter(event -> eventName.equals(event.eventName()))
                     .toList();
+        }
+    }
+
+    private static final class ForEachEventInfrastructure implements EventBus, EventStore {
+        private final List<EventEnvelope> published;
+
+        private ForEachEventInfrastructure(List<EventEnvelope> published) {
+            this.published = published;
+        }
+
+        @Override
+        public void publish(EventEnvelope event) {
+            published.add(event);
+        }
+
+        @Override
+        public void append(EventEnvelope event) {
+        }
+
+        @Override
+        public java.util.Optional<EventEnvelope> findFirst(String eventName, String correlationId) {
+            return java.util.Optional.empty();
+        }
+
+        @Override
+        public List<EventEnvelope> readByCorrelation(String correlationId) {
+            return List.of();
+        }
+
+        @Override
+        public List<EventEnvelope> readByEventName(String eventName) {
+            return List.of();
         }
     }
 

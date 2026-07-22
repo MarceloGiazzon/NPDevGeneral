@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://npdev.local/schema/npdev-model-1.0.0.schema.json",
+  "$id": "https://npdev.local/schema/npdev-model.schema.json",
   "title": "NPDev DSL 1.0.0 Model",
   "version": "1.0.0",
   "deprecated": false,
@@ -55,91 +55,464 @@
       "type": "string",
       "minLength": 1
     },
-
     "concepts": {
       "type": "array",
       "minItems": 1,
       "items": {
-        "$ref": "#/$defs/concept"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/concept"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "domainTypes": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/domainType"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/domainType"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "capabilities": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/capability"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/capability"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "customCapabilities": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/capability"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/capability"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "bindings": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/binding"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/binding"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "events": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/event"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/event"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "flows": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/flow"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/flow"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "orchestrationRules": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/orchestrationRule"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/orchestrationRule"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "orchestrations": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/orchestrationRule"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/orchestrationRule"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "queries": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/query"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/query"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "ruleProfiles": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/ruleProfile"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/ruleProfile"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "procedures": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/procedure"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/procedure"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "panels": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/panel"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/panel"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "guidePages": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/guidePage"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "aggregates": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/aggregate"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "autoPanels": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/autoPanel"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "selectors": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/selector"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
       }
     },
     "metadata": {
       "type": "object"
+    },
+    "fragments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/localModelRef"
+      }
+    },
+    "packs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/packRef"
+      }
     }
   },
   "$defs": {
+    "aggregate": {
+      "type": "object",
+      "required": [
+        "name",
+        "root"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "root": {
+          "type": "string",
+          "minLength": 1
+        },
+        "collections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/aggregateCollection"
+          }
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "aggregateCollection": {
+      "type": "object",
+      "required": [
+        "name",
+        "concept",
+        "childField"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "concept": {
+          "type": "string",
+          "minLength": 1
+        },
+        "via": {
+          "type": "string",
+          "minLength": 1
+        },
+        "childField": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownership": {
+          "type": "string",
+          "enum": [
+            "owned",
+            "referenced"
+          ]
+        },
+        "orderBy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "collections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/aggregateCollection"
+          }
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "autoPanel": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "concept": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregate": {
+          "type": "string",
+          "minLength": 1
+        },
+        "route": {
+          "type": "string",
+          "minLength": 1
+        },
+        "surfaces": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "selection",
+              "detail",
+              "transaction",
+              "prompt"
+            ]
+          }
+        },
+        "selection": {
+          "$ref": "#/$defs/autoPanelSurface"
+        },
+        "detail": {
+          "$ref": "#/$defs/autoPanelSurface"
+        },
+        "transaction": {
+          "$ref": "#/$defs/autoPanelSurface"
+        },
+        "prompt": {
+          "$ref": "#/$defs/autoPanelSurface"
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "autoPanelSurface": {
+      "type": "object",
+      "properties": {
+        "filters": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "computed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "col",
+              "expr"
+            ],
+            "properties": {
+              "col": {
+                "type": "string",
+                "minLength": 1
+              },
+              "expr": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "labelField": {
+          "type": "string",
+          "minLength": 1
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "selector": {
+      "type": "object",
+      "required": [
+        "name",
+        "concept"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "concept": {
+          "type": "string",
+          "minLength": 1
+        },
+        "multiSelect": {
+          "type": "boolean"
+        },
+        "filters": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "returnMapping": {
+          "type": "object"
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
     "concept": {
       "type": "object",
       "required": [
@@ -159,6 +532,26 @@
           "type": "string",
           "minLength": 1
         },
+        "truthLevel": {
+          "type": "string",
+          "enum": [
+            "T0",
+            "T1",
+            "T2",
+            "T3",
+            "T4",
+            "T5",
+            "T6"
+          ]
+        },
+        "module": {
+          "type": "string",
+          "minLength": 1
+        },
+        "renamedFrom": {
+          "type": "string",
+          "description": "Declares this concept is a rename of a previously-existing concept with this name, so a regeneration's schema-lifecycle classifies its table as a rename instead of an unrelated drop+create."
+        },
         "fields": {
           "type": "array",
           "minItems": 1,
@@ -171,6 +564,15 @@
           "items": {
             "$ref": "#/$defs/invariant"
           }
+        },
+        "indexes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/index"
+          }
+        },
+        "access": {
+          "$ref": "#/$defs/conceptAccess"
         },
         "events": {
           "type": "array",
@@ -320,7 +722,8 @@
             "enum",
             "reference",
             "object",
-            "array"
+            "array",
+            "file"
           ]
         },
         "id": {
@@ -345,6 +748,39 @@
         "unique": {
           "type": "boolean",
           "default": false
+        },
+        "connectable": {
+          "type": "string",
+          "enum": [
+            "anchor"
+          ]
+        },
+        "renamedFrom": {
+          "type": "string",
+          "description": "Declares this field is a rename of a previously-existing column with this name, so a regeneration's schema-lifecycle classifies it as a rename instead of an unrelated remove+add."
+        },
+        "file": {
+          "type": "object",
+          "description": "Metadata for a file-typed field (LIFT-UPLOAD). The persisted value is a FileHandle (or list, if multiple), never raw bytes.",
+          "properties": {
+            "contentTypes": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "maxSizeBytes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "multiple": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "additionalProperties": false
         },
         "enumValues": {
           "type": "array",
@@ -505,7 +941,7 @@
               "items": {
                 "properties": {
                   "type": {
-                    "const": "object"
+                    "enum": ["object", "enum"]
                   }
                 },
                 "required": [
@@ -536,6 +972,24 @@
                 ]
               }
             ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "file"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "unique": {
+                "const": false
+              },
+              "reference": false,
+              "ref": false
+            }
           }
         }
       ],
@@ -718,6 +1172,18 @@
             "allow",
             "deny"
           ]
+        },
+        "via": {
+          "type": "string",
+          "minLength": 1
+        },
+        "onDelete": {
+          "type": "string",
+          "enum": [
+            "restrict",
+            "cascade",
+            "nullify"
+          ]
         }
       },
       "additionalProperties": false
@@ -827,6 +1293,9 @@
         "listColumn": {
           "type": "boolean"
         },
+        "showInDefaultWebUi": {
+          "type": "boolean"
+        },
         "listColumnOrder": {
           "type": "integer"
         },
@@ -837,11 +1306,23 @@
           "type": "string",
           "minLength": 1
         },
+        "formPresentation": {
+          "type": "string",
+          "enum": ["modal", "standard"]
+        },
         "defaultSort": {
           "type": "string",
           "minLength": 1
         },
         "defaultGroup": {
+          "type": "string",
+          "minLength": 1
+        },
+        "imageField": {
+          "type": "string",
+          "minLength": 1
+        },
+        "customWidgetRef": {
           "type": "string",
           "minLength": 1
         }
@@ -888,6 +1369,65 @@
           "minLength": 1
         },
         "inputFormHint": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "index": {
+      "type": "object",
+      "required": [
+        "fields"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "unique": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "flowSchedule": {
+      "type": "object",
+      "description": "LNCH-12: recurring execution for a flow (cron expression + tenant scope). The runtime scheduler invokes the flow exactly like an HTTP-triggered run -- same authorization, same event emission -- under a system principal, not the superuser key.",
+      "required": [
+        "cron"
+      ],
+      "properties": {
+        "cron": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenantScope": {
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "conceptAccess": {
+      "type": "object",
+      "description": "LNCH-13: declarative row-level (data-scoped) authorization. Each expression is evaluated per-record through the platform's unified expression language (ComputedExpression), with $user.id/$user.tenantId/$user.actorId/$user.roles available alongside the record's own fields. read scopes which rows a query/list may return; write scopes which rows a save/delete may affect. Absent = no additional row-level restriction beyond tenant isolation and role permissions.",
+      "properties": {
+        "read": {
+          "type": "string",
+          "minLength": 1
+        },
+        "write": {
           "type": "string",
           "minLength": 1
         }
@@ -1006,7 +1546,6 @@
         },
         "input": {
           "oneOf": [
-
             {
               "$ref": "#/$defs/capabilityContractSchemaRef"
             },
@@ -1017,7 +1556,6 @@
         },
         "output": {
           "oneOf": [
-
             {
               "$ref": "#/$defs/capabilityContractSchemaRef"
             },
@@ -1093,6 +1631,15 @@
               }
             ]
           }
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "create",
+            "update",
+            "delete"
+          ],
+          "description": "When set on a concept-nested event, generated CRUD publishes this event directly from the matching mutation step (in addition to any Flow's own emitEvent step) -- no Flow required to reach it."
         }
       },
       "additionalProperties": false
@@ -1170,6 +1717,12 @@
         },
         "action": {
           "$ref": "#/$defs/actionMetadata"
+        },
+        "startEndpoint": {
+          "type": "boolean"
+        },
+        "schedule": {
+          "$ref": "#/$defs/flowSchedule"
         },
         "hooks": {
           "type": "array",
@@ -1590,6 +2143,8 @@
             "capability",
             "capabilityCall",
             "callCapability",
+            "generatedAction",
+            "generated_action",
             "event",
             "emitEvent",
             "scheduleEvent",
@@ -1602,7 +2157,9 @@
             "createConcept",
             "updateConcept",
             "assign",
-            "evaluateInvariant"
+            "evaluateInvariant",
+            "forEach",
+            "loop"
           ]
         },
         "checkpoint": {
@@ -1694,6 +2251,10 @@
         "action": {
           "$ref": "#/$defs/actionMetadata"
         },
+        "actionName": {
+          "type": "string",
+          "minLength": 1
+        },
         "then": {
           "type": "array",
           "items": {
@@ -1736,6 +2297,35 @@
         "value": {
           "type": "string",
           "minLength": 1
+        },
+        "collection": {
+          "type": "string",
+          "minLength": 1,
+          "description": "LIFT-LOOP: state ref to the collection a forEach flow step iterates."
+        },
+        "itemKey": {
+          "type": "string",
+          "minLength": 1,
+          "description": "LIFT-LOOP: state variable name each forEach iteration's item is bound to."
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/flowStep"
+          },
+          "description": "LIFT-LOOP: the forEach loop body, executed once per item."
+        },
+        "maxLoopIterations": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "LIFT-LOOP: safety cap on forEach iterations, mirroring Procedures' forEach."
+        },
+        "onFailure": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/flowStep"
+          },
+          "description": "LNCH-17: compensation steps run in reverse completion order if a later step in the same flow terminally fails. Not a distributed transaction -- best-effort cleanup, per the saga pattern; see docs/architecture/FLOW_TRANSACTION_CONTRACT.md."
         }
       },
       "allOf": [
@@ -1792,6 +2382,23 @@
                   "op"
                 ]
               }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "generatedAction",
+                  "generated_action"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "actionName"
             ]
           }
         },
@@ -1940,6 +2547,30 @@
             "required": [
               "value"
             ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "forEach",
+                  "loop"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "collection",
+              "itemKey",
+              "steps"
+            ],
+            "properties": {
+              "steps": {
+                "minItems": 1
+              }
+            }
           }
         }
       ],
@@ -2137,8 +2768,61 @@
             "write"
           ]
         },
+        "actionDescriptor": {
+          "$ref": "#/$defs/generatedActionDescriptor"
+        },
         "metadata": {
           "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "generatedActionDescriptor": {
+      "type": "object",
+      "properties": {
+        "actionName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "affectedConcepts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "sideEffectConcept": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventNameOnSuccess": {
+          "type": "string",
+          "minLength": 1
+        },
+        "auditResourceType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "idempotencyPolicy": {
+          "type": "string",
+          "enum": [
+            "record",
+            "disabled"
+          ]
+        },
+        "tracePolicy": {
+          "type": "string",
+          "enum": [
+            "record",
+            "disabled"
+          ]
+        },
+        "correlationPolicy": {
+          "type": "string",
+          "enum": [
+            "claim",
+            "disabled"
+          ]
         }
       },
       "additionalProperties": false
@@ -2363,6 +3047,10 @@
         },
         "metadata": {
           "type": "object"
+        },
+        "guidePage": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "additionalProperties": false
@@ -2391,6 +3079,35 @@
         },
         "params": {
           "type": "object"
+        },
+        "parentDataSource": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parentField": {
+          "type": "string",
+          "minLength": 1
+        },
+        "childField": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rowOps": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "add",
+              "delete"
+            ]
+          }
+        },
+        "addFormFields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       },
       "additionalProperties": false
@@ -2459,6 +3176,9 @@
         },
         "ui": {
           "$ref": "#/$defs/presentationMetadata"
+        },
+        "editable": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false
@@ -2528,6 +3248,116 @@
         },
         "metadata": {
           "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "guidePage": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "default": {
+          "type": "boolean"
+        },
+        "regions": {
+          "$ref": "#/$defs/guidePageRegions"
+        },
+        "theme": {
+          "$ref": "#/$defs/guidePageTheme"
+        },
+        "gadgets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/guidePageGadget"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "guidePageRegions": {
+      "type": "object",
+      "properties": {
+        "top": {
+          "type": "boolean"
+        },
+        "left": {
+          "$ref": "#/$defs/guidePageRegion"
+        },
+        "right": {
+          "$ref": "#/$defs/guidePageRegion"
+        }
+      },
+      "additionalProperties": false
+    },
+    "guidePageRegion": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "collapsible": {
+          "type": "boolean"
+        },
+        "defaultCollapsed": {
+          "type": "boolean"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "guidePageTheme": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "accent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "density": {
+          "type": "string",
+          "minLength": 1
+        },
+        "logoText": {
+          "type": "string",
+          "minLength": 1
+        },
+        "logoUrl": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "guidePageGadget": {
+      "type": "object",
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "additionalProperties": false
@@ -2774,10 +3604,41 @@
         }
       },
       "additionalProperties": false
+    },
+    "packRef": {
+      "type": "object",
+      "required": [
+        "$ref"
+      ],
+      "properties": {
+        "$ref": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?![A-Za-z][A-Za-z0-9+.-]*:)(?!/).*\\.json$"
+        },
+        "as": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "description": "Optional alias overriding the pack's own identifier as the namespace prefix in this model."
+        }
+      },
+      "additionalProperties": false
+    },
+    "localModelRef": {
+      "type": "object",
+      "required": [
+        "$ref"
+      ],
+      "properties": {
+        "$ref": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?![A-Za-z][A-Za-z0-9+.-]*:)(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).*\\.json$"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false
 }
-
-
-

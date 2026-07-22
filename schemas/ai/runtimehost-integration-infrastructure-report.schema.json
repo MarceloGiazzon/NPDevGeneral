@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/runtimehost-integration-infrastructure-report.schema.json",
+  "title": "NPDev RuntimeHost Integration Infrastructure Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "overallStatus",
+    "integrationTestTaskExists",
+    "unitTestTaskDoesNotRequireGeneratedMount",
+    "integrationTestRequiresGeneratedMount",
+    "integrationTestsTaggedCount",
+    "linuxCiGeneratesRuntimeBeforeIntegrationTests",
+    "runtimehostTestArtifactsUploaded",
+    "generatedRuntimeIntegrationTestPassed",
+    "generatedRuntimeIntegrationTestResultPath",
+    "checks",
+    "blockers",
+    "newFindings",
+    "notSolved"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-runtimehost-integration-infrastructure-report.v1"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scriptPath": {
+      "const": "scripts/quality/run-runtimehost-integration-infrastructure-check.ps1"
+    },
+    "workspaceRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "overallStatus": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "integrationTestTaskExists": {
+      "const": true
+    },
+    "unitTestTaskDoesNotRequireGeneratedMount": {
+      "const": true
+    },
+    "integrationTestRequiresGeneratedMount": {
+      "const": true
+    },
+    "integrationTestsTaggedCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "linuxCiGeneratesRuntimeBeforeIntegrationTests": {
+      "const": true
+    },
+    "runtimehostTestArtifactsUploaded": {
+      "const": true
+    },
+    "generatedRuntimeIntegrationTestPassed": {
+      "const": true
+    },
+    "generatedRuntimeIntegrationTestResultPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "newFindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "classification"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "classification": {
+            "enum": [
+              "current-checkpoint-blocker",
+              "current-roadmap-blocker",
+              "known-risk-accepted",
+              "post-roadmap-backlog",
+              "human-decision-required",
+              "invalid-or-duplicate"
+            ]
+          }
+        }
+      }
+    },
+    "notSolved": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "overallStatus": {
+            "const": "passed"
+          }
+        },
+        "required": [
+          "overallStatus"
+        ]
+      },
+      "then": {
+        "properties": {
+          "blockers": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ]
+}

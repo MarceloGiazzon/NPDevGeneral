@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/npdev-concept-fragment.schema.json",
+  "title": "NPDev local concept fragment",
+  "description": "Single concept object referenced from a model concepts array. This is NPDev-local include syntax, not JSON Schema remote $ref.",
+  "$ref": "model.schema.json#/$defs/concept"
+}

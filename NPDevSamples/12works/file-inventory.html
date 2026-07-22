@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>12works Thread — File Inventory</title>
+<style>
+  :root {
+    --border: #d7dbe0;
+    --head-bg: #1f2937;
+    --head-fg: #f8fafc;
+    --row-alt: #f7f8fa;
+    --accent: #2563eb;
+    --created: #15803d;
+    --modified: #b45309;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 24px;
+    background: #f1f3f6;
+    color: #1f2430;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 16px; color: #5b6472; font-size: 13px; }
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .toolbar input[type="text"] {
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    min-width: 220px;
+  }
+  .toolbar button {
+    padding: 7px 12px;
+    border: 1px solid var(--border);
+    background: white;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .toolbar button:hover { background: #eef1f5; }
+  .count { font-size: 13px; color: #5b6472; margin-left: auto; }
+  .table-wrap {
+    overflow: auto;
+    max-height: 80vh;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: white;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  thead tr.headers th {
+    background: var(--head-bg);
+    color: var(--head-fg);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 9px 10px;
+    text-align: left;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    border-right: 1px solid #33415580;
+  }
+  thead tr.headers th:hover { background: #29344a; }
+  thead tr.headers th .arrow { opacity: .6; font-size: 11px; margin-left: 4px; }
+  thead tr.filters th {
+    background: #e9ecf1;
+    position: sticky;
+    top: 35px;
+    z-index: 1;
+    padding: 5px 6px;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  thead tr.filters th select,
+  thead tr.filters th input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 4px 5px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  tbody td {
+    padding: 7px 10px;
+    border-right: 1px solid #eceff3;
+    border-bottom: 1px solid #eceff3;
+    vertical-align: top;
+  }
+  tbody tr:nth-child(even) { background: var(--row-alt); }
+  tbody tr:hover { background: #eaf1ff; }
+  td.path, td.proposal, td.reason, td.observation { max-width: 320px; }
+  td code { font-size: 11.5px; background: #f0f2f5; padding: 1px 4px; border-radius: 3px; }
+  .badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge.created { background: #dcfce7; color: var(--created); }
+  .badge.modified { background: #fef3c7; color: var(--modified); }
+  .badge.sample {
+    background: #e0e7ff;
+    color: #3730a3;
+  }
+  .badge.general {
+    background: #f3e8ff;
+    color: #6b21a8;
+  }
+  tbody td.idx { color: #9aa3b2; text-align: right; }
+  tfoot td { padding: 8px 10px; font-size: 12px; color: #5b6472; background: #f7f8fa; }
+</style>
+</head>
+<body>
+
+<h1>12works Thread — File Inventory</h1>
+<p class="sub">All files created/modified across: scaffold + 12 sample builds + flagship regression sweep. Click a header to sort; type in a filter box to narrow rows. 74 rows.</p>
+
+<div class="toolbar">
+  <input type="text" id="globalSearch" placeholder="Search all columns…">
+  <button id="clearFilters">Clear filters</button>
+  <span class="count" id="rowCount"></span>
+</div>
+
+<div class="table-wrap">
+<table id="dataTable">
+  <thead>
+    <tr class="headers">
+      <th data-key="idx" data-type="num">#<span class="arrow"></span></th>
+      <th data-key="sample" data-type="text">Sample # / General<span class="arrow"></span></th>
+      <th data-key="name" data-type="text">Name<span class="arrow"></span></th>
+      <th data-key="path" data-type="text">Path<span class="arrow"></span></th>
+      <th data-key="status" data-type="text">Created/Modified<span class="arrow"></span></th>
+      <th data-key="proposal" data-type="text">File Proposal<span class="arrow"></span></th>
+      <th data-key="reason" data-type="text">Reason of Modification<span class="arrow"></span></th>
+      <th data-key="observation" data-type="text">Special Observation<span class="arrow"></span></th>
+    </tr>
+    <tr class="filters">
+      <th></th>
+      <th><select data-filter="sample"><option value="">All</option></select></th>
+      <th><input type="text" data-filter="name" placeholder="filter…"></th>
+      <th><input type="text" data-filter="path" placeholder="filter…"></th>
+      <th><select data-filter="status"><option value="">All</option><option value="Created">Created</option><option value="Modified">Modified</option></select></th>
+      <th><input type="text" data-filter="proposal" placeholder="filter…"></th>
+      <th><input type="text" data-filter="reason" placeholder="filter…"></th>
+      <th><input type="text" data-filter="observation" placeholder="filter…"></th>
+    </tr>
+  </thead>
+  <tbody id="tbody"></tbody>
+  <tfoot>
+    <tr><td colspan="8">Excludes generated <code>Output/</code> build trees and two stale H2 DB-file deletions (cleanup, not create/modify).</td></tr>
+  </tfoot>
+</table>
+</div>
+
+<script>
+const ROWS = [
+{idx:1,sample:"General",name:"business-ui-app.mustache",path:"NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache",status:"Modified",proposal:"Generator template emitting the vanilla-JS business UI's form-payload coercion logic.",reason:"Added \"integer\" to the recognized numeric-type list (previously only \"int\") so type:\"integer\" fields get parsed as numbers instead of raw strings — the fix referenced by the regression-sweep task.",observation:"2-line diff; confirmed via git diff. Both flagship samples re-verified clean (9/9 and 5/5 routines green)."},
+{idx:2,sample:"General",name:"PostgresPersistenceCapabilityAdapter.java",path:"NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java",status:"Modified",proposal:"Postgres adapter's table-name resolution + value coercion for Flow-driven persistence.",reason:"UNCONFIRMED in this thread. ~104-line diff (PascalCase→snake_case table-name fix + JSON serialization for Map/List values) found via git diff but does not correspond to anything in retained conversation history.",observation:"Flagged, not asserted — verify origin independently (git log -p / blame)."},
+{idx:3,sample:"2",name:"01-giftidea-crud.json",path:"NPDevSamples/12works/gift-idea-tracker/browser-routines/01-giftidea-crud.json",status:"Created",proposal:"ScrapForAI browser-verification routine for sample #2.",reason:"NA",observation:"No specific edit-history retained (pre-#10 segment, compacted). Confirmed new via git (12works/ untracked)."},
+{idx:4,sample:"2",name:"demonstrate-browser.ps1",path:"NPDevSamples/12works/gift-idea-tracker/demonstrate-browser.ps1",status:"Created",proposal:"Harness driving the above routine against the booted app.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:5,sample:"2",name:"config.json",path:"NPDevSamples/12works/gift-idea-tracker/Input/config.json",status:"Created",proposal:"Generator config (port, db name, output paths).",reason:"NA",observation:"Same caveat as row 3."},
+{idx:6,sample:"2",name:"db.definition.json",path:"NPDevSamples/12works/gift-idea-tracker/Input/db.definition.json",status:"Created",proposal:"Database engine/schema-lifecycle definition.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:7,sample:"2",name:"manifest.json",path:"NPDevSamples/12works/gift-idea-tracker/Input/manifest.json",status:"Created",proposal:"Sample metadata (id/title/purpose/walkthrough/expected outcomes).",reason:"NA",observation:"Same caveat as row 3."},
+{idx:8,sample:"2",name:"model.json",path:"NPDevSamples/12works/gift-idea-tracker/Input/model.json",status:"Created",proposal:"Concept/field/UI model definition for sample #2.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:9,sample:"6",name:"01-habit-checkin-crud.json",path:"NPDevSamples/12works/habit-streak-tracker/browser-routines/01-habit-checkin-crud.json",status:"Created",proposal:"ScrapForAI routine for sample #6.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:10,sample:"6",name:"demonstrate-browser.ps1",path:"NPDevSamples/12works/habit-streak-tracker/demonstrate-browser.ps1",status:"Created",proposal:"Harness for sample #6.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:11,sample:"6",name:"config.json",path:"NPDevSamples/12works/habit-streak-tracker/Input/config.json",status:"Created",proposal:"Generator config for sample #6.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:12,sample:"6",name:"db.definition.json",path:"NPDevSamples/12works/habit-streak-tracker/Input/db.definition.json",status:"Created",proposal:"DB definition for sample #6.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:13,sample:"6",name:"manifest.json",path:"NPDevSamples/12works/habit-streak-tracker/Input/manifest.json",status:"Created",proposal:"Sample metadata for sample #6.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:14,sample:"6",name:"model.json",path:"NPDevSamples/12works/habit-streak-tracker/Input/model.json",status:"Created",proposal:"Model definition for sample #6.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:15,sample:"10",name:"01-item-warranty-tags-crud.json",path:"NPDevSamples/12works/home-inventory/browser-routines/01-item-warranty-tags-crud.json",status:"Created",proposal:"Routine for sample #10: Room/Tag/Item CRUD, 3-level nested warranty object, N:1 Room picker, N:M Tag bond via multiselect, round-trip re-open.",reason:"NA",observation:"Full history retained. Edited 3x: field-rename propagation, 52->50-step trim, then restored a waitForTimeout (cutting 2 screenshot steps instead) after a grid-refresh race condition. Final: 50/50 steps, 0 errors."},
+{idx:16,sample:"10",name:"demonstrate-browser.ps1",path:"NPDevSamples/12works/home-inventory/demonstrate-browser.ps1",status:"Created",proposal:"Harness (port 8110): wipes Item->Room->Tag in FK order.",reason:"NA",observation:"No further edits."},
+{idx:17,sample:"10",name:"config.json",path:"NPDevSamples/12works/home-inventory/Input/config.json",status:"Created",proposal:"Generator config: port 8110, db home_inventory.",reason:"NA",observation:"Read-only; never edited."},
+{idx:18,sample:"10",name:"db.definition.json",path:"NPDevSamples/12works/home-inventory/Input/db.definition.json",status:"Created",proposal:"DB definition for sample #10.",reason:"NA",observation:"Not edited."},
+{idx:19,sample:"10",name:"manifest.json",path:"NPDevSamples/12works/home-inventory/Input/manifest.json",status:"Created",proposal:"Sample metadata for sample #10.",reason:"NA",observation:"Not edited."},
+{idx:20,sample:"10",name:"model.json",path:"NPDevSamples/12works/home-inventory/Input/model.json",status:"Modified",proposal:"Model for sample #10 (Room/Tag/Item, 3-level nested object, N:M bond).",reason:"(a) Removed invalid onDelete:\"nullify\" from tagRefs N:M bond — junction keys in a many-to-many bond can't be null. (b) Renamed field value->estimatedValue — VALUE is an H2 reserved SQL keyword, breaking the Flyway migration.",observation:"Two edits, two unrelated root causes, both found only at generation/boot time."},
+{idx:21,sample:"7",name:"01-lent-item-crud.json",path:"NPDevSamples/12works/lent-borrowed-items/browser-routines/01-lent-item-crud.json",status:"Created",proposal:"Routine for sample #7.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:22,sample:"7",name:"demonstrate-browser.ps1",path:"NPDevSamples/12works/lent-borrowed-items/demonstrate-browser.ps1",status:"Created",proposal:"Harness for sample #7.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:23,sample:"7",name:"config.json",path:"NPDevSamples/12works/lent-borrowed-items/Input/config.json",status:"Created",proposal:"Generator config for sample #7.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:24,sample:"7",name:"db.definition.json",path:"NPDevSamples/12works/lent-borrowed-items/Input/db.definition.json",status:"Created",proposal:"DB definition for sample #7.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:25,sample:"7",name:"manifest.json",path:"NPDevSamples/12works/lent-borrowed-items/Input/manifest.json",status:"Created",proposal:"Sample metadata for sample #7.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:26,sample:"7",name:"model.json",path:"NPDevSamples/12works/lent-borrowed-items/Input/model.json",status:"Created",proposal:"Model definition for sample #7.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:27,sample:"5",name:"01-maintenance-crud.json",path:"NPDevSamples/12works/maintenance-log/browser-routines/01-maintenance-crud.json",status:"Created",proposal:"Routine for sample #5.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:28,sample:"5",name:"demonstrate-browser.ps1",path:"NPDevSamples/12works/maintenance-log/demonstrate-browser.ps1",status:"Created",proposal:"Harness for sample #5.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:29,sample:"5",name:"config.json",path:"NPDevSamples/12works/maintenance-log/Input/config.json",status:"Created",proposal:"Generator config for sample #5.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:30,sample:"5",name:"db.definition.json",path:"NPDevSamples/12works/maintenance-log/Input/db.definition.json",status:"Created",proposal:"DB definition for sample #5.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:31,sample:"5",name:"manifest.json",path:"NPDevSamples/12works/maintenance-log/Input/manifest.json",status:"Created",proposal:"Sample metadata for sample #5.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:32,sample:"5",name:"model.json",path:"NPDevSamples/12works/maintenance-log/Input/model.json",status:"Created",proposal:"Model definition for sample #5.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:33,sample:"4",name:"01-item-crud.json",path:"NPDevSamples/12works/pantry-expiry-tracker/browser-routines/01-item-crud.json",status:"Created",proposal:"Routine for sample #4.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:34,sample:"4",name:"demonstrate-browser.ps1",path:"NPDevSamples/12works/pantry-expiry-tracker/demonstrate-browser.ps1",status:"Created",proposal:"Harness for sample #4.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:35,sample:"4",name:"config.json",path:"NPDevSamples/12works/pantry-expiry-tracker/Input/config.json",status:"Created",proposal:"Generator config for sample #4.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:36,sample:"4",name:"db.definition.json",path:"NPDevSamples/12works/pantry-expiry-tracker/Input/db.definition.json",status:"Created",proposal:"DB definition for sample #4.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:37,sample:"4",name:"manifest.json",path:"NPDevSamples/12works/pantry-expiry-tracker/Input/manifest.json",status:"Created",proposal:"Sample metadata for sample #4.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:38,sample:"4",name:"model.json",path:"NPDevSamples/12works/pantry-expiry-tracker/Input/model.json",status:"Created",proposal:"Model definition for sample #4.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:39,sample:"11",name:"01-event-guest-task-crud.json",path:"NPDevSamples/12works/party-checklist-rsvp/browser-routines/01-event-guest-task-crud.json",status:"Created",proposal:"Routine for sample #11: Event create, Guest/Task create via picker + explicit enum select, UpdateRsvp update-Flow exercise.",reason:"NA",observation:"Full history retained. Trimmed 52->50 steps; bulk sed-renamed #concept-Event -> #concept-PartyEvent selectors after the concept rename (row 44). Final: 50/50, 0 errors."},
+{idx:40,sample:"11",name:"demonstrate-browser.ps1",path:"NPDevSamples/12works/party-checklist-rsvp/demonstrate-browser.ps1",status:"Created",proposal:"Harness (port 8111): cleans Guest/Task before Event.",reason:"NA",observation:"Edited once: REST route /api/events -> /api/party_events after the concept rename."},
+{idx:41,sample:"11",name:"config.json",path:"NPDevSamples/12works/party-checklist-rsvp/Input/config.json",status:"Created",proposal:"Generator config: port 8111, db party_checklist_rsvp.",reason:"NA",observation:"Not edited."},
+{idx:42,sample:"11",name:"db.definition.json",path:"NPDevSamples/12works/party-checklist-rsvp/Input/db.definition.json",status:"Created",proposal:"DB definition for sample #11.",reason:"NA",observation:"Not edited."},
+{idx:43,sample:"11",name:"manifest.json",path:"NPDevSamples/12works/party-checklist-rsvp/Input/manifest.json",status:"Created",proposal:"Sample metadata for sample #11.",reason:"NA",observation:"Not edited."},
+{idx:44,sample:"11",name:"model.json",path:"NPDevSamples/12works/party-checklist-rsvp/Input/model.json",status:"Modified",proposal:"Model for sample #11 (Event/Guest/Task + custom event + update-Flow).",reason:"Renamed concept Event->PartyEvent (+ both reference targets) — collided with the generator's built-in /api/events domain-event-query route, causing IllegalStateException: Ambiguous handler methods.",observation:"New, generalizable platform bug (reserved route namespace) — first sample to trip it."},
+{idx:45,sample:"3",name:"01-plant-carelog-crud.json",path:"NPDevSamples/12works/plant-care-log/browser-routines/01-plant-carelog-crud.json",status:"Created",proposal:"Routine for sample #3.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:46,sample:"3",name:"demonstrate-browser.ps1",path:"NPDevSamples/12works/plant-care-log/demonstrate-browser.ps1",status:"Created",proposal:"Harness for sample #3.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:47,sample:"3",name:"config.json",path:"NPDevSamples/12works/plant-care-log/Input/config.json",status:"Created",proposal:"Generator config for sample #3.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:48,sample:"3",name:"db.definition.json",path:"NPDevSamples/12works/plant-care-log/Input/db.definition.json",status:"Created",proposal:"DB definition for sample #3.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:49,sample:"3",name:"manifest.json",path:"NPDevSamples/12works/plant-care-log/Input/manifest.json",status:"Created",proposal:"Sample metadata for sample #3.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:50,sample:"3",name:"model.json",path:"NPDevSamples/12works/plant-care-log/Input/model.json",status:"Created",proposal:"Model definition for sample #3.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:51,sample:"1",name:"01-book-crud.json",path:"NPDevSamples/12works/reading-list/browser-routines/01-book-crud.json",status:"Created",proposal:"Routine for sample #1.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:52,sample:"1",name:"demonstrate-browser.ps1",path:"NPDevSamples/12works/reading-list/demonstrate-browser.ps1",status:"Created",proposal:"Harness for sample #1.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:53,sample:"1",name:"config.json",path:"NPDevSamples/12works/reading-list/Input/config.json",status:"Created",proposal:"Generator config for sample #1.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:54,sample:"1",name:"db.definition.json",path:"NPDevSamples/12works/reading-list/Input/db.definition.json",status:"Created",proposal:"DB definition for sample #1.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:55,sample:"1",name:"manifest.json",path:"NPDevSamples/12works/reading-list/Input/manifest.json",status:"Created",proposal:"Sample metadata (\"Reading list with status, rating, per-book quotes; concept-scoped ui.frame.mode=minimal override\").",reason:"NA",observation:"Content confirmed by direct read."},
+{idx:56,sample:"1",name:"model.json",path:"NPDevSamples/12works/reading-list/Input/model.json",status:"Created",proposal:"Model definition for sample #1.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:57,sample:"9",name:"01-recipe-ingredients-crud.json",path:"NPDevSamples/12works/recipe-box-shopping-list/browser-routines/01-recipe-ingredients-crud.json",status:"Created",proposal:"Routine for sample #9.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:58,sample:"9",name:"demonstrate-browser.ps1",path:"NPDevSamples/12works/recipe-box-shopping-list/demonstrate-browser.ps1",status:"Created",proposal:"Harness for sample #9.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:59,sample:"9",name:"config.json",path:"NPDevSamples/12works/recipe-box-shopping-list/Input/config.json",status:"Created",proposal:"Generator config for sample #9.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:60,sample:"9",name:"db.definition.json",path:"NPDevSamples/12works/recipe-box-shopping-list/Input/db.definition.json",status:"Created",proposal:"DB definition for sample #9.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:61,sample:"9",name:"manifest.json",path:"NPDevSamples/12works/recipe-box-shopping-list/Input/manifest.json",status:"Created",proposal:"Sample metadata for sample #9.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:62,sample:"9",name:"model.json",path:"NPDevSamples/12works/recipe-box-shopping-list/Input/model.json",status:"Created",proposal:"Model definition for sample #9.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:63,sample:"12",name:"01-household-member-expense-crud.json",path:"NPDevSamples/12works/roommate-expense-splitter/browser-routines/01-household-member-expense-crud.json",status:"Created",proposal:"Routine for sample #12: Household, Member create via picker, Expense create via two independently-scoped pickers + splitWithRefs N:M bond via multiselect.",reason:"NA",observation:"Full history retained. Two placeholder selectors replaced with .lookup-control:has(input[name=\"...\"]) scoping; trimmed 56->46 steps by dropping a redundant second Member-creation block. Final: 46/46, 0 errors."},
+{idx:64,sample:"12",name:"demonstrate-browser.ps1",path:"NPDevSamples/12works/roommate-expense-splitter/demonstrate-browser.ps1",status:"Created",proposal:"Harness (port 8112): cleans Expense before Member before Household.",reason:"NA",observation:"Not edited after creation."},
+{idx:65,sample:"12",name:"config.json",path:"NPDevSamples/12works/roommate-expense-splitter/Input/config.json",status:"Created",proposal:"Generator config: port 8112, db roommate_expense_splitter.",reason:"NA",observation:"Not edited."},
+{idx:66,sample:"12",name:"db.definition.json",path:"NPDevSamples/12works/roommate-expense-splitter/Input/db.definition.json",status:"Created",proposal:"DB definition for sample #12.",reason:"NA",observation:"Not edited."},
+{idx:67,sample:"12",name:"manifest.json",path:"NPDevSamples/12works/roommate-expense-splitter/Input/manifest.json",status:"Created",proposal:"Sample metadata for sample #12.",reason:"NA",observation:"Not edited."},
+{idx:68,sample:"12",name:"model.json",path:"NPDevSamples/12works/roommate-expense-splitter/Input/model.json",status:"Modified",proposal:"Model for sample #12 (Household/Member/Expense, N:M split-with bond).",reason:"Removed onDelete:\"nullify\" from splitWithRefs N:M bond — same invalid-onDelete-on-N:M-bond issue as row 20.",observation:"Applied PROACTIVELY before ever generating, based on the lesson from row 20 — unlike rows 20/44 which were reactive fixes."},
+{idx:69,sample:"8",name:"01-subscription-renew-crud.json",path:"NPDevSamples/12works/subscription-renewal-tracker/browser-routines/01-subscription-renew-crud.json",status:"Created",proposal:"Routine for sample #8.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:70,sample:"8",name:"demonstrate-browser.ps1",path:"NPDevSamples/12works/subscription-renewal-tracker/demonstrate-browser.ps1",status:"Created",proposal:"Harness for sample #8.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:71,sample:"8",name:"config.json",path:"NPDevSamples/12works/subscription-renewal-tracker/Input/config.json",status:"Created",proposal:"Generator config for sample #8.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:72,sample:"8",name:"db.definition.json",path:"NPDevSamples/12works/subscription-renewal-tracker/Input/db.definition.json",status:"Created",proposal:"DB definition for sample #8.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:73,sample:"8",name:"manifest.json",path:"NPDevSamples/12works/subscription-renewal-tracker/Input/manifest.json",status:"Created",proposal:"Sample metadata for sample #8.",reason:"NA",observation:"Same caveat as row 3."},
+{idx:74,sample:"8",name:"model.json",path:"NPDevSamples/12works/subscription-renewal-tracker/Input/model.json",status:"Created",proposal:"Model definition for sample #8.",reason:"NA",observation:"Same caveat as row 3."}
+];
+
+const tbody = document.getElementById('tbody');
+const rowCount = document.getElementById('rowCount');
+const globalSearch = document.getElementById('globalSearch');
+const filterInputs = document.querySelectorAll('[data-filter]');
+let sortKey = 'idx';
+let sortDir = 1;
+
+function populateSampleFilter() {
+  const sel = document.querySelector('select[data-filter="sample"]');
+  const values = Array.from(new Set(ROWS.map(r => r.sample)));
+  values.sort((a,b) => {
+    const an = parseInt(a, 10), bn = parseInt(b, 10);
+    if (!isNaN(an) && !isNaN(bn)) return an - bn;
+    if (!isNaN(an)) return -1;
+    if (!isNaN(bn)) return 1;
+    return a.localeCompare(b);
+  });
+  values.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v;
+    opt.textContent = v === 'General' ? 'General' : ('Sample #' + v);
+    sel.appendChild(opt);
+  });
+}
+
+function currentFilters() {
+  const f = {};
+  filterInputs.forEach(el => { f[el.dataset.filter] = el.value.trim().toLowerCase(); });
+  return f;
+}
+
+function applyFiltersAndSort() {
+  const f = currentFilters();
+  const g = globalSearch.value.trim().toLowerCase();
+
+  let rows = ROWS.filter(r => {
+    for (const key in f) {
+      if (!f[key]) continue;
+      const val = String(r[key] ?? '').toLowerCase();
+      if (key === 'status' || key === 'sample') {
+        if (val !== f[key]) return false;
+      } else {
+        if (!val.includes(f[key])) return false;
+      }
+    }
+    if (g) {
+      const blob = Object.values(r).join(' ').toLowerCase();
+      if (!blob.includes(g)) return false;
+    }
+    return true;
+  });
+
+  rows.sort((a, b) => {
+    let av = a[sortKey], bv = b[sortKey];
+    if (sortKey === 'idx' || (!isNaN(parseFloat(av)) && !isNaN(parseFloat(bv)) && sortKey === 'sample')) {
+      av = parseFloat(av) || 0; bv = parseFloat(bv) || 0;
+      return (av - bv) * sortDir;
+    }
+    av = String(av ?? '').toLowerCase();
+    bv = String(bv ?? '').toLowerCase();
+    if (av < bv) return -1 * sortDir;
+    if (av > bv) return 1 * sortDir;
+    return 0;
+  });
+
+  render(rows);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function render(rows) {
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td class="idx">${r.idx}</td>
+      <td>${r.sample === 'General' ? '<span class="badge general">General</span>' : '<span class="badge sample">#' + escapeHtml(r.sample) + '</span>'}</td>
+      <td>${escapeHtml(r.name)}</td>
+      <td class="path"><code>${escapeHtml(r.path)}</code></td>
+      <td>${r.status === 'Created' ? '<span class="badge created">Created</span>' : '<span class="badge modified">Modified</span>'}</td>
+      <td class="proposal">${escapeHtml(r.proposal)}</td>
+      <td class="reason">${escapeHtml(r.reason)}</td>
+      <td class="observation">${escapeHtml(r.observation)}</td>
+    </tr>
+  `).join('');
+  rowCount.textContent = rows.length + ' / ' + ROWS.length + ' rows';
+}
+
+document.querySelectorAll('thead tr.headers th').forEach(th => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.key;
+    if (sortKey === key) { sortDir *= -1; } else { sortKey = key; sortDir = 1; }
+    document.querySelectorAll('thead tr.headers th .arrow').forEach(a => a.textContent = '');
+    th.querySelector('.arrow').textContent = sortDir === 1 ? '▲' : '▼';
+    applyFiltersAndSort();
+  });
+});
+
+filterInputs.forEach(el => el.addEventListener('input', applyFiltersAndSort));
+globalSearch.addEventListener('input', applyFiltersAndSort);
+document.getElementById('clearFilters').addEventListener('click', () => {
+  filterInputs.forEach(el => el.value = '');
+  globalSearch.value = '';
+  applyFiltersAndSort();
+});
+
+populateSampleFilter();
+applyFiltersAndSort();
+</script>
+
+</body>
+</html>

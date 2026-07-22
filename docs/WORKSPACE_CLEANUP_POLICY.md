@@ -12,7 +12,9 @@ These remain source and should not be cleaned as residue:
 
 ## Disposable By Default
 
-- Gradle/npm/build caches: `.npdev-gradle`, `.gradle`, `build`, `node_modules`, `dist`, `coverage`, `target`.
+- Gradle/npm/build caches: `.npdev-gradle`, `.gradle`, `build`, `node_modules`, `dist`, `coverage`, `target`. New Gradle caches default outside the workspace under the user cache directory, unless `NPDEV_GRADLE_USER_HOME` or `NPDEV_LOCAL_CACHE_ROOT` is set.
+- IDE Java-language-server compile output: `bin` (Eclipse JDT/VSCode Java extension default output folder, independent of Gradle's `build`).
+- RuntimeHost local jars: staged outside the workspace in `..\NPDev_General__OutsideRepo\runtimehost-libs` by default, unless `NPDEV_RUNTIMEHOST_LIBS_DIR` is set. Generated apps reference that external folder instead of copying jars into source, evidence, or sample output folders.
 - Generated app/sample output: `Output`, `RunOutput`.
 - Rebuildable RuntimeHost assembly residue: `NPDevRuntimeHost\libs`, `NPDevRuntimeHost\npdev-generated`, `NPDevRuntimeHost\npdev-meta`, generated `NPDevRuntimeHost\build.gradle`, and `npdev-build-info.properties`.
 - IDE-local metadata: `.idea`, `.vscode`, `*.iml`.
@@ -21,6 +23,26 @@ These remain source and should not be cleaned as residue:
 - Empty archived-source placeholders such as empty `src-disabled` folders.
 
 Empty `NPDevSamples\<sample>\Output\Reports` scaffolds are intentionally retained because layout checks expect them. Generated files inside sample `Output` directories remain disposable.
+
+## Slim Workspace Gate
+
+`NPDev_General` is source, not an artifact cache. The blocking slimness policy is enforced by:
+
+```powershell
+pwsh -File scripts\hygiene\Test-WorkspaceSlimness.ps1
+```
+
+Default limits:
+
+- maximum workspace size, excluding `.git`: `75 MB`
+- maximum workspace file count, excluding `.git`: `3000`
+- maximum `scripts` size: `10 MB`
+- maximum `scripts` file count: `500`
+- maximum `scripts\reports\out` size: `15 MB`
+- forbidden residue: `scripts\reports\tmp`, `scripts\reports\cache`, subproject `.gradle`, `build`, `bin`, `target`, `dist`, `coverage`, `node_modules`, `RunOutput`, sample `Output` (at any nesting depth), RuntimeHost generated assembly folders, and archives.
+- forbidden jars: all `*.jar` files except `gradle\wrapper\gradle-wrapper.jar`.
+
+Any generated app, release scratch area, local dependency jar, state zip, or diagnostic bundle that would violate these limits must be written under `..\NPDev_General__OutsideRepo` or an explicit external cache path. Set `NPDEV_WORKSPACE_SCRATCH_ROOT` only when a gate needs a different external scratch root.
 
 ## Evidence Handling
 
@@ -33,6 +55,16 @@ Do not manually combine focused reports into a release claim. Rerun:
 ```powershell
 pwsh -File scripts\quality\run-beta-release-gate.ps1
 ```
+
+## Enforcement Hook
+
+Git hooks are not versioned by git itself, so each clone must install the pre-commit hook once:
+
+```powershell
+pwsh -File scripts\hooks\install.ps1
+```
+
+This installs `scripts\hooks\pre-commit.ps1` as `.git\hooks\pre-commit`, which runs `Test-WorkspaceSlimness.ps1` before every commit and blocks the commit (with a pointer to the cleanup command) if the workspace has drifted out of policy. Without this hook installed, residue can silently accumulate until someone happens to run the gate manually.
 
 ## Cleanup Command
 
@@ -55,6 +87,7 @@ pwsh -File scripts\hygiene\clean-workspace-state.ps1
 ```
 
 The cleanup script verifies every recursive delete target is inside the workspace and belongs to an explicit disposable category before removal.
+It removes nested subproject `.gradle` directories, build outputs, sample outputs, node/npm outputs, and `scripts\reports\tmp`.
 
 Full rebuildable-artifact cleanup:
 
@@ -62,7 +95,13 @@ Full rebuildable-artifact cleanup:
 pwsh -File scripts\hygiene\clean-rebuildable-artifacts.ps1
 ```
 
-That wrapper removes the disposable workspace state above, clears `scripts\reports\out`, deletes all release bundles under `scripts\reports\releases`, and removes local RuntimeHost synced jars/build residue. By default it writes its report to the OS temp directory so the workspace does not get a fresh cleanup artifact immediately after being cleaned.
+That wrapper removes heavyweight disposable workspace state and local RuntimeHost synced jars/build residue, while preserving release evidence under `scripts\reports\out` and `scripts\reports\releases` by default. By default it writes its report to the OS temp directory so the workspace does not get a fresh cleanup artifact immediately after being cleaned.
+
+Evidence cleanup is intentionally opt-in:
+
+```powershell
+pwsh -File scripts\hygiene\clean-rebuildable-artifacts.ps1 -CleanReportsOut -CleanReleaseBundles
+```
 
 ## Release Bundle Retention
 
@@ -83,163 +122,3 @@ Preserve a specific bundle while pruning:
 ```powershell
 pwsh -File scripts\hygiene\prune-release-evidence.ps1 -KeepLatest 5 -PreserveReleaseBundle runtimehost-beta-YYYYMMDD-HHMMSS
 ```
-    $target = Normalize-NPDevPath $TargetPath
-    if (-not $root.EndsWith("\")) {
-        $root += "\"
-    }
-    return $target.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)
-}
-
-function Assert-RebuildableTarget(
-    [string]$TargetPath,
-    [string]$Category
-) {
-    $target = Normalize-NPDevPath $TargetPath
-    if (-not (Test-PathInsideRoot -RootPath $WorkspaceRoot -TargetPath $target)) {
-        throw ("Refusing to clean outside workspace: " + $target)
-    }
-
-    $relative = Get-NPDevWorkspaceRelativePath $WorkspaceRoot $target
-    switch ($Category) {
-        "runtimehost-local-libs" {
-            if ($relative -ne "NPDevRuntimeHost\libs") {
-                throw ("Refusing unexpected RuntimeHost libs path: " + $relative)
-            }
-        }
-        "runtimehost-generated-dir" {
-            if ($relative -notin @("NPDevRuntimeHost\npdev-generated", "NPDevRuntimeHost\npdev-meta", "NPDevRuntimeHost\runtime-data")) {
-                throw ("Refusing unexpected RuntimeHost generated directory: " + $relative)
-            }
-        }
-        "runtimehost-generated-file" {
-            if ($relative -notin @("NPDevRuntimeHost\build.gradle", "NPDevRuntimeHost\npdev-build-info.properties")) {
-                throw ("Refusing unexpected RuntimeHost generated file: " + $relative)
-            }
-        }
-        default {
-            throw ("Unknown rebuildable target category: " + $Category)
-        }
-    }
-}
-
-function New-RebuildableTarget(
-    [string]$PathValue,
-    [string]$Category
-) {
-    $normalizedPath = Normalize-NPDevPath $PathValue
-    if (-not (Test-Path -LiteralPath $normalizedPath)) {
-        return $null
-    }
-
-    Assert-RebuildableTarget -TargetPath $normalizedPath -Category $Category
-    $item = Get-Item -LiteralPath $normalizedPath -Force
-    $files = @(if ($item.PSIsContainer) {
-            Get-ChildItem -LiteralPath $normalizedPath -Recurse -File -Force -ErrorAction SilentlyContinue
-        }
-        else {
-            $item
-        })
-    $sizeMeasure = $files | Measure-Object -Property Length -Sum
-    $sizeBytes = if ($null -eq $sizeMeasure -or $null -eq $sizeMeasure.Sum) { 0 } else { [int64]$sizeMeasure.Sum }
-
-    return [pscustomobject]@{
-        path = $normalizedPath
-        relativePath = Get-NPDevWorkspaceRelativePath $WorkspaceRoot $normalizedPath
-        category = $Category
-        isDirectory = [bool]$item.PSIsContainer
-        fileCount = $files.Count
-        sizeBytes = $sizeBytes
-    }
-}
-
-& $workspaceCleanupScript `
-    -WorkspaceRoot $WorkspaceRoot `
-    -ReportPath $workspaceCleanupReportPath `
-    -DryRun:$DryRun `
-    -CleanIdeMetadata `
-    -CleanReportsOut `
-    -CleanReleaseBundles
-
-if (-not (Test-Path -LiteralPath $workspaceCleanupReportPath)) {
-    throw "Workspace cleanup script did not emit its temporary report."
-}
-
-$workspaceCleanupReport = Get-Content -LiteralPath $workspaceCleanupReportPath -Raw | ConvertFrom-Json
-
-$extraTargets = [System.Collections.Generic.List[object]]::new()
-foreach ($target in @(
-        @{ path = (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\libs"); category = "runtimehost-local-libs" },
-        @{ path = (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\npdev-generated"); category = "runtimehost-generated-dir" },
-        @{ path = (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\npdev-meta"); category = "runtimehost-generated-dir" },
-        @{ path = (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\runtime-data"); category = "runtimehost-generated-dir" },
-        @{ path = (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\build.gradle"); category = "runtimehost-generated-file" },
-        @{ path = (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\npdev-build-info.properties"); category = "runtimehost-generated-file" }
-    )) {
-    $candidate = New-RebuildableTarget -PathValue $target.path -Category $target.category
-    if ($null -ne $candidate) {
-        [void]$extraTargets.Add($candidate)
-    }
-}
-
-$removedExtraTargets = [System.Collections.Generic.List[object]]::new()
-$failedExtraRemovals = [System.Collections.Generic.List[object]]::new()
-foreach ($candidate in $extraTargets) {
-    if ($DryRun) {
-        continue
-    }
-    if (-not (Test-Path -LiteralPath $candidate.path)) {
-        continue
-    }
-
-    Assert-RebuildableTarget -TargetPath $candidate.path -Category $candidate.category
-    try {
-        Remove-Item -LiteralPath $candidate.path -Recurse:$candidate.isDirectory -Force
-        [void]$removedExtraTargets.Add($candidate)
-    }
-    catch {
-        [void]$failedExtraRemovals.Add([pscustomobject]@{
-                relativePath = $candidate.relativePath
-                category = $candidate.category
-                error = $_.Exception.Message
-            })
-    }
-}
-
-$extraSizeMeasure = $extraTargets | Measure-Object -Property sizeBytes -Sum
-$extraBytes = if ($null -eq $extraSizeMeasure -or $null -eq $extraSizeMeasure.Sum) { 0 } else { [int64]$extraSizeMeasure.Sum }
-$failedCount = @($workspaceCleanupReport.failedRemovals).Count + $failedExtraRemovals.Count
-
-$report = [pscustomobject]@{
-    generatedAt = (Get-Date).ToString("o")
-    workspaceRoot = $WorkspaceRoot
-    overallStatus = if ($failedCount -gt 0) { "warning" } else { "passed" }
-    dryRun = [bool]$DryRun
-    reportInWorkspace = [bool]$reportInWorkspace
-    baseCleanupReportPath = $workspaceCleanupReportPath
-    summary = [pscustomobject]@{
-        baseCleanupCandidates = [int]$workspaceCleanupReport.candidateCount
-        baseCleanupRemoved = [int]$workspaceCleanupReport.removedCount
-        extraTargets = $extraTargets.Count
-        extraTargetsRemoved = $removedExtraTargets.Count
-        totalExtraSizeMB = [math]::Round($extraBytes / 1MB, 2)
-        failedRemovals = $failedCount
-    }
-    baseCleanup = $workspaceCleanupReport
-    extraTargets = $extraTargets
-    removedExtraTargets = $removedExtraTargets
-    failedExtraRemovals = $failedExtraRemovals
-}
-
-Write-NPDevJsonFile $ReportPath $report
-
-if ($DryRun) {
-    Write-NPDevInfo ("Rebuildable artifact cleanup dry run found " + ($workspaceCleanupReport.candidateCount + $extraTargets.Count) + " target(s). Report: " + $ReportPath)
-    return
-}
-
-if ($failedCount -gt 0) {
-    Write-NPDevWarn ("Rebuildable artifact cleanup completed with " + $failedCount + " failed removal(s). Report: " + $ReportPath)
-    return
-}
-
-Write-NPDevOk ("Rebuildable artifact cleanup removed workspace state plus " + $removedExtraTargets.Count + " RuntimeHost-specific target(s). Report: " + $ReportPath)

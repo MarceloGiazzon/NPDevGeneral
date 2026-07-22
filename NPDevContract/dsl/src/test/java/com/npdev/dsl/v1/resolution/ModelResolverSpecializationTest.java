@@ -28,7 +28,7 @@ class ModelResolverSpecializationTest {
         ResolvedModel resolved = new ModelResolver().resolve(source);
 
         assertNotNull(resolved.modelAst());
-        assertFalse(resolved.modelAst().getEntities().isEmpty());
+        assertFalse(resolved.modelAst().getConcepts().isEmpty());
         assertTrue(resolved.deterministicHashSha256().matches("^[a-f0-9]{64}$"));
 
         FlowAst flow = resolved.modelAst().getFlows().stream()

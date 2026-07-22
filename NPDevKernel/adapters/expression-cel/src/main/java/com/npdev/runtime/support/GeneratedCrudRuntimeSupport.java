@@ -2,27 +2,45 @@ package com.npdev.runtime.support;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.npdev.dsl.v1.compiled.CompiledEntity;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledEvent;
+import com.npdev.dsl.v1.compiled.CompiledEventField;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledLifecycle;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledOrchestration;
 import com.npdev.dsl.v1.compiled.CompiledOrchestrationAction;
 import com.npdev.dsl.v1.compiled.CompiledOrchestrationTrigger;
+import com.npdev.dsl.v1.compiled.CompiledReferenceSemantics;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.compiled.CompiledStateTransition;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
+import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityRegistry;
 import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.FlowStepDefinition;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.KernelRunner;
+import com.npdev.kernel.concepts.ConceptGateway;
+import com.npdev.kernel.concepts.ConceptListRequest;
+import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.events.EventEnvelope;
+import com.npdev.kernel.audit.AuditRecord;
+import com.npdev.kernel.capability.IdempotencyRecord;
+import com.npdev.kernel.ports.AuditLogStore;
 import com.npdev.kernel.ports.CapabilityDispatcher;
+import com.npdev.kernel.ports.IdempotencyStore;
 import com.npdev.kernel.ports.InvariantEngine;
 import com.npdev.kernel.ports.InvariantScopeProvider;
+import com.npdev.kernel.ports.PermissionEvaluator;
 import com.npdev.kernel.ports.PersistenceCapability;
 import com.npdev.kernel.ports.RuntimeInvariantEngineFactory;
+import com.npdev.kernel.security.PermissionDecision;
+import com.npdev.kernel.security.PermissionRequirement;
+import com.npdev.kernel.security.PermissionSubject;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
@@ -35,6 +53,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -45,6 +64,7 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -85,6 +105,22 @@ public final class GeneratedCrudRuntimeSupport {
     private static final Set<String> VALUE_BEHAVIOR_FUNCTIONS =
             Set.of("concat", "coalesce", "trim", "uppercase", "lowercase");
 
+    /**
+     * LNCH-15: {@code concat}/{@code coalesce}/{@code trim}/{@code uppercase}/{@code lowercase}
+     * as {@link ComputedExpression.ExprFunction}s, so schema default/derived expressions route
+     * through the same unified grammar as invariants instead of this class's own hand-rolled
+     * literal/identifier/call evaluator (see {@link #evaluateSchemaExpression}). Behavior is
+     * identical to {@link #applyValueBehaviorFunction} -- kept as the implementation both this
+     * registry and the legacy fallback path share, rather than duplicating the logic twice.
+     */
+    private static final ComputedExpression.FunctionRegistry SCHEMA_EXPRESSION_FUNCTIONS =
+            ComputedExpression.FunctionRegistry.of(VALUE_BEHAVIOR_FUNCTIONS.stream().collect(
+                    java.util.stream.Collectors.toMap(
+                            name -> name,
+                            name -> (ComputedExpression.ExprFunction) (args, vars) -> applyValueBehaviorFunction(
+                                    name, args.stream().map(arg -> arg.eval(vars)).toList())
+                    )));
+
     @FunctionalInterface
     public interface UniqueValueLookup {
         boolean exists(
@@ -99,6 +135,26 @@ public final class GeneratedCrudRuntimeSupport {
     @FunctionalInterface
     public interface UniqueFieldLookup<ID> {
         boolean exists(String fieldName, Object value, ID excludeId);
+    }
+
+    /** LIFT-UNIQUE-P3: existence check for a compound-unique invariant's field group, at the
+     * concept-name level (mirrors {@link RuntimeInvariantEngineFactory.CompoundUniqueValueLookup}). */
+    @FunctionalInterface
+    public interface CompoundUniqueValueLookup {
+        boolean exists(
+                String entityName,
+                List<String> fieldNames,
+                List<Object> values,
+                UUID excludeId,
+                Map<String, Object> payload
+        );
+    }
+
+    /** LIFT-UNIQUE-P3: existence check for a compound-unique invariant's field group, scoped to
+     * a single generated service's own store (mirrors {@link UniqueFieldLookup}). */
+    @FunctionalInterface
+    public interface CompoundUniqueFieldLookup<ID> {
+        boolean exists(List<String> fieldNames, List<Object> values, ID excludeId);
     }
 
     public record InvariantViolationDetail(
@@ -187,6 +243,19 @@ public final class GeneratedCrudRuntimeSupport {
     private final RuntimeClock runtimeClock;
     private final OrchestrationExecutionRegistry orchestrationExecutionRegistry;
     private final RuntimeInvariantEngineFactory runtimeInvariantEngineFactory;
+    private final AuditLogStore auditLogStore;
+    private final PermissionEvaluator permissionEvaluator;
+    private final IdempotencyStore idempotencyStore;
+    private ConceptGateway conceptGateway;
+
+    // Fallback existence check for cross-concept reference validation when there is no
+    // EntityManager (e.g. npdev.storage.mode=in-memory). Set via withConceptGateway after
+    // construction rather than threaded through the constructor overloads below, since this
+    // is an optional capability rather than a required dependency.
+    public GeneratedCrudRuntimeSupport withConceptGateway(ConceptGateway conceptGateway) {
+        this.conceptGateway = conceptGateway;
+        return this;
+    }
 
     public GeneratedCrudRuntimeSupport(CompiledModel compiledModel, KernelRunner kernelRunner) {
         this(compiledModel, kernelRunner, null, null, null, null);
@@ -265,6 +334,25 @@ public final class GeneratedCrudRuntimeSupport {
             OrchestrationExecutionRegistry orchestrationExecutionRegistry,
             RuntimeInvariantEngineFactory runtimeInvariantEngineFactory
     ) {
+        this(compiledModel, kernelRunner, entityManager, capabilityDispatcher, capabilityRegistry,
+                dataSource, runtimeClock, orchestrationExecutionRegistry, runtimeInvariantEngineFactory,
+                null, null, null);
+    }
+
+    public GeneratedCrudRuntimeSupport(
+            CompiledModel compiledModel,
+            KernelRunner kernelRunner,
+            EntityManager entityManager,
+            CapabilityDispatcher capabilityDispatcher,
+            CapabilityRegistry capabilityRegistry,
+            DataSource dataSource,
+            RuntimeClock runtimeClock,
+            OrchestrationExecutionRegistry orchestrationExecutionRegistry,
+            RuntimeInvariantEngineFactory runtimeInvariantEngineFactory,
+            AuditLogStore auditLogStore,
+            PermissionEvaluator permissionEvaluator,
+            IdempotencyStore idempotencyStore
+    ) {
         if (compiledModel == null) {
             throw new IllegalArgumentException("compiledModel is required");
         }
@@ -284,6 +372,9 @@ public final class GeneratedCrudRuntimeSupport {
         this.runtimeInvariantEngineFactory = runtimeInvariantEngineFactory == null
                 ? missingRuntimeInvariantEngineFactory()
                 : runtimeInvariantEngineFactory;
+        this.auditLogStore = auditLogStore == null ? AuditLogStore.noop() : auditLogStore;
+        this.permissionEvaluator = permissionEvaluator == null ? PermissionEvaluator.allowAll() : permissionEvaluator;
+        this.idempotencyStore = idempotencyStore == null ? IdempotencyStore.noop() : idempotencyStore;
         initializeOrchestrationSubscribers();
     }
 
@@ -303,6 +394,19 @@ public final class GeneratedCrudRuntimeSupport {
             Predicate<ID> existsById,
             Consumer<ID> deleteById,
             UniqueFieldLookup<ID> uniqueFieldLookup
+    ) {
+        return persistenceCapability(findById, findAll, save, existsById, deleteById, uniqueFieldLookup, null);
+    }
+
+    /** LIFT-UNIQUE-P3: overload adding a compound-unique field lookup. */
+    public static <T, ID> PersistenceCapability<T, ID> persistenceCapability(
+            Function<ID, Optional<T>> findById,
+            Supplier<List<T>> findAll,
+            Function<T, T> save,
+            Predicate<ID> existsById,
+            Consumer<ID> deleteById,
+            UniqueFieldLookup<ID> uniqueFieldLookup,
+            CompoundUniqueFieldLookup<ID> compoundUniqueFieldLookup
     ) {
         return new PersistenceCapability<>() {
             @Override
@@ -343,11 +447,17 @@ public final class GeneratedCrudRuntimeSupport {
             public boolean existsUnique(String fieldName, Object value, ID excludeId) {
                 return uniqueFieldLookup != null && uniqueFieldLookup.exists(fieldName, value, excludeId);
             }
+
+            @Override
+            public boolean existsUniqueCompound(List<String> fieldNames, List<Object> values, ID excludeId) {
+                return compoundUniqueFieldLookup != null
+                        && compoundUniqueFieldLookup.exists(fieldNames, values, excludeId);
+            }
         };
     }
 
     public Map<String, Object> buildCreateInvariantPayload(String entityName, Object dto) {
-        CompiledEntity entity = requireEntity(entityName);
+        CompiledConcept entity = requireEntity(entityName);
         return new LinkedHashMap<>(materializeEntityValues(entity, dto, null, false));
     }
 
@@ -357,11 +467,84 @@ public final class GeneratedCrudRuntimeSupport {
             Object existing,
             Object dto
     ) {
-        CompiledEntity entity = requireEntity(entityName);
+        CompiledConcept entity = requireEntity(entityName);
         Map<String, Object> payload = new LinkedHashMap<>(materializeEntityValues(entity, dto, existing, true));
         payload.put("__id", id);
         payload.put("id", id);
         return payload;
+    }
+
+    /**
+     * Closes a real cross-tenant data-integrity gap: the FK constraint on a scalar bond column only
+     * checks that the referenced ROW EXISTS, never that it belongs to the CALLER's own tenant. Without
+     * this, tenant A can create a row whose bond field points at tenant B's private business data --
+     * confirmed live (a StaffMember create with a cross-tenant tenantRef succeeded with 200) before
+     * this check existed. For every non-M2M reference field present in the payload, requires that the
+     * target row exists AND its tenant_id matches the caller's tenant; otherwise throws the same
+     * InvariantViolationException shape every other CRUD validation failure uses, deliberately worded
+     * like a not-found rather than a forbidden, so it never confirms a row exists in another tenant.
+     */
+    public void enforceBondTargetTenant(String entityName, Map<String, Object> payload, ExecutionContext context) {
+        if (payload == null || dataSource == null) {
+            return;
+        }
+        CompiledConcept entity = requireEntity(entityName);
+        String callerTenant = normalizeTenantForBondCheck(context == null ? null : context.tenantId());
+        for (CompiledField field : entity.getFields()) {
+            if (field == null || field.isId()) {
+                continue;
+            }
+            CompiledReferenceSemantics semantics = field.getReferenceSemantics();
+            if (semantics != null && semantics.isMultiple()) {
+                continue; // many-to-many lives in a junction table, not a column on this payload
+            }
+            String targetName = referenceTargetName(field);
+            if (targetName == null || targetName.isBlank()) {
+                continue; // not a reference field at all
+            }
+            Object rawValue = readMapValue(payload, field.getName());
+            if (rawValue == null) {
+                continue; // optional reference left unset
+            }
+            CompiledConcept targetEntity = findEntity(targetName).orElse(null);
+            if (targetEntity == null) {
+                continue; // unresolvable target name is a model problem, not this caller's to diagnose
+            }
+            CompiledField anchor = resolveReferenceAnchor(field, targetEntity).orElse(null);
+            if (anchor == null) {
+                continue;
+            }
+            String table = SqlIdentifierSupport.tableName(targetEntity);
+            String column = SqlIdentifierSupport.columnName(anchor);
+            if (!bondTargetExistsForTenant(table, column, rawValue, callerTenant)) {
+                throw new InvariantViolationException(List.of(new InvariantViolationDetail(
+                        "bond_target_not_found",
+                        entityName,
+                        "BondTenantScope",
+                        field.getName(),
+                        "Referenced " + targetName + " was not found",
+                        false
+                )));
+            }
+        }
+    }
+
+    private boolean bondTargetExistsForTenant(String table, String column, Object value, String tenantId) {
+        String sql = "SELECT 1 FROM " + table + " WHERE " + column + " = ? AND tenant_id = ?";
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setObject(1, value);
+            statement.setString(2, tenantId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next();
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed validating bond target tenant for table " + table, exception);
+        }
+    }
+
+    private static String normalizeTenantForBondCheck(String tenantId) {
+        return tenantId == null || tenantId.isBlank() ? "default" : tenantId.trim();
     }
 
     public UUID ensureGeneratedId(Map<String, Object> payload) {
@@ -378,6 +561,26 @@ public final class GeneratedCrudRuntimeSupport {
         return generatedId;
     }
 
+    public UUID ensureGeneratedId(String entityName, Map<String, Object> payload) {
+        if (payload == null) {
+            return UUID.randomUUID();
+        }
+        String idField = idFieldName(entityName);
+        UUID existing = toUuid(readMapValue(payload, idField));
+        if (existing == null) {
+            existing = toUuid(readMapValue(payload, "id"));
+        }
+        if (existing != null) {
+            payload.put(idField, existing);
+            payload.put("id", existing);
+            return existing;
+        }
+        UUID generatedId = UUID.randomUUID();
+        payload.put(idField, generatedId);
+        payload.put("id", generatedId);
+        return generatedId;
+    }
+
     public void assignGeneratedId(Object entity, UUID generatedId) {
         if (entity == null || generatedId == null) {
             return;
@@ -389,12 +592,148 @@ public final class GeneratedCrudRuntimeSupport {
         writeObjectValue(entity, "id", generatedId);
     }
 
+    public void assignGeneratedId(String entityName, Object entity, UUID generatedId) {
+        if (entity == null || generatedId == null) {
+            return;
+        }
+        String idField = idFieldName(entityName);
+        Object currentId = readObjectValue(entity, idField);
+        if (currentId != null) {
+            return;
+        }
+        writeObjectValue(entity, idField, generatedId);
+    }
+
     public void applyCreateFields(String entityName, Object source, Object target) {
         applyEntityFields(entityName, source, target, false);
     }
 
     public void applyUpdateFields(String entityName, Object source, Object target) {
         applyEntityFields(entityName, source, target, true);
+    }
+
+    // No version in the request means no check, so callers unaware of versioning are unaffected.
+    public void checkOptimisticVersion(String conceptName, Object existing, Object source) {
+        Long expected = extractVersion(source);
+        if (expected == null) {
+            return;
+        }
+        Long actual = extractVersion(existing);
+        if (actual == null || !actual.equals(expected)) {
+            throw new InvariantViolationException(List.of(new InvariantViolationDetail(
+                    "version_conflict",
+                    conceptName,
+                    "optimisticConcurrency",
+                    "version",
+                    "Record was modified by another request. expected=" + expected + " actual=" + actual,
+                    true
+            )));
+        }
+    }
+
+    private static Long extractVersion(Object source) {
+        Object raw = readObjectValue(source, "version");
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof Number number) {
+            return number.longValue();
+        }
+        try {
+            return Long.parseLong(String.valueOf(raw).trim());
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    public List<Object> listBondMembers(String sourceConceptName, Object sourceId, String fieldName) {
+        BondRuntimeShape shape = requireBondRuntimeShape(sourceConceptName, fieldName);
+        if (dataSource == null) {
+            return List.of();
+        }
+        String sql = "SELECT " + shape.targetColumn() + " FROM " + shape.junctionTable()
+                + " WHERE CAST(" + shape.sourceColumn() + " AS VARCHAR) = ? ORDER BY " + shape.targetColumn();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, String.valueOf(normalizeByDslType(shape.sourceIdField().getDslType(), sourceId)));
+            try (ResultSet rows = statement.executeQuery()) {
+                List<Object> out = new ArrayList<>();
+                while (rows.next()) {
+                    out.add(rows.getObject(1));
+                }
+                return List.copyOf(out);
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed listing bond members for "
+                    + sourceConceptName + "." + fieldName, exception);
+        }
+    }
+
+    public void addBondMember(String sourceConceptName, Object sourceId, String fieldName, Object targetAnchorValue) {
+        BondRuntimeShape shape = requireBondRuntimeShape(sourceConceptName, fieldName);
+        requireDataSourceForBond(shape);
+        String sql = "INSERT INTO " + shape.junctionTable()
+                + " (" + shape.sourceColumn() + ", " + shape.targetColumn() + ") VALUES (?, ?)";
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setObject(1, normalizeByDslType(shape.sourceIdField().getDslType(), sourceId));
+            statement.setObject(2, normalizeByDslType(shape.targetAnchorField().getDslType(), targetAnchorValue));
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw mapDataIntegrityViolation(sourceConceptName, fieldName, exception)
+                    .orElseThrow(() -> new IllegalStateException("Failed adding bond member for "
+                            + sourceConceptName + "." + fieldName, exception));
+        }
+    }
+
+    public void removeBondMember(String sourceConceptName, Object sourceId, String fieldName, Object targetAnchorValue) {
+        BondRuntimeShape shape = requireBondRuntimeShape(sourceConceptName, fieldName);
+        requireDataSourceForBond(shape);
+        String sql = "DELETE FROM " + shape.junctionTable()
+                + " WHERE CAST(" + shape.sourceColumn() + " AS VARCHAR) = ?"
+                + " AND CAST(" + shape.targetColumn() + " AS VARCHAR) = ?";
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, String.valueOf(normalizeByDslType(shape.sourceIdField().getDslType(), sourceId)));
+            statement.setString(2, String.valueOf(normalizeByDslType(shape.targetAnchorField().getDslType(), targetAnchorValue)));
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw mapDataIntegrityViolation(sourceConceptName, fieldName, exception)
+                    .orElseThrow(() -> new IllegalStateException("Failed removing bond member for "
+                            + sourceConceptName + "." + fieldName, exception));
+        }
+    }
+
+    public void replaceBondMembers(String sourceConceptName, Object sourceId, String fieldName, Collection<?> targetAnchorValues) {
+        BondRuntimeShape shape = requireBondRuntimeShape(sourceConceptName, fieldName);
+        requireDataSourceForBond(shape);
+        String deleteSql = "DELETE FROM " + shape.junctionTable()
+                + " WHERE CAST(" + shape.sourceColumn() + " AS VARCHAR) = ?";
+        String insertSql = "INSERT INTO " + shape.junctionTable()
+                + " (" + shape.sourceColumn() + ", " + shape.targetColumn() + ") VALUES (?, ?)";
+        Object normalizedSourceId = normalizeByDslType(shape.sourceIdField().getDslType(), sourceId);
+        try (Connection connection = dataSource.getConnection()) {
+            boolean previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try (PreparedStatement delete = connection.prepareStatement(deleteSql)) {
+                delete.setString(1, String.valueOf(normalizedSourceId));
+                delete.executeUpdate();
+            }
+            try (PreparedStatement insert = connection.prepareStatement(insertSql)) {
+                for (Object targetAnchorValue : targetAnchorValues == null ? List.of() : targetAnchorValues) {
+                    insert.setObject(1, normalizedSourceId);
+                    insert.setObject(2, normalizeByDslType(shape.targetAnchorField().getDslType(), targetAnchorValue));
+                    insert.addBatch();
+                }
+                insert.executeBatch();
+            }
+            connection.commit();
+            connection.setAutoCommit(previousAutoCommit);
+        } catch (SQLException exception) {
+            throw mapDataIntegrityViolation(sourceConceptName, fieldName, exception)
+                    .orElseThrow(() -> new IllegalStateException("Failed replacing bond members for "
+                            + sourceConceptName + "." + fieldName, exception));
+        }
     }
 
     public List<Map<String, Object>> listScheduledEvents(Integer limit, Integer offset) {
@@ -531,7 +870,17 @@ public final class GeneratedCrudRuntimeSupport {
             Map<String, Object> payload,
             UniqueValueLookup uniqueValueLookup
     ) {
-        return validateEntityDetailed(entityName, payload, uniqueValueLookup).stream()
+        return validateEntity(entityName, payload, uniqueValueLookup, null);
+    }
+
+    /** LIFT-UNIQUE-P3: overload adding a compound-unique lookup. */
+    public List<String> validateEntity(
+            String entityName,
+            Map<String, Object> payload,
+            UniqueValueLookup uniqueValueLookup,
+            CompoundUniqueValueLookup compoundUniqueValueLookup
+    ) {
+        return validateEntityDetailed(entityName, payload, uniqueValueLookup, compoundUniqueValueLookup).stream()
                 .map(InvariantViolationDetail::message)
                 .toList();
     }
@@ -541,7 +890,17 @@ public final class GeneratedCrudRuntimeSupport {
             Map<String, Object> payload,
             UniqueValueLookup uniqueValueLookup
     ) {
-        Optional<CompiledEntity> entityOpt = findEntity(entityName);
+        return validateEntityDetailed(entityName, payload, uniqueValueLookup, null);
+    }
+
+    /** LIFT-UNIQUE-P3: overload adding a compound-unique lookup. */
+    public List<InvariantViolationDetail> validateEntityDetailed(
+            String entityName,
+            Map<String, Object> payload,
+            UniqueValueLookup uniqueValueLookup,
+            CompoundUniqueValueLookup compoundUniqueValueLookup
+    ) {
+        Optional<CompiledConcept> entityOpt = findEntity(entityName);
         if (entityOpt.isEmpty()) {
             return List.of(new InvariantViolationDetail(
                     "invariant_failed",
@@ -553,7 +912,7 @@ public final class GeneratedCrudRuntimeSupport {
             ));
         }
 
-        CompiledEntity entity = entityOpt.get();
+        CompiledConcept entity = entityOpt.get();
         Map<String, Object> safePayload = immutablePayload(payload);
         Map<String, Object> normalizedPayload = normalizePayloadForValidation(entity, safePayload);
         List<InvariantViolationDetail> violations = new ArrayList<>();
@@ -607,7 +966,15 @@ public final class GeneratedCrudRuntimeSupport {
                     ) {
                         return scopeExists(conceptName, fieldPath, expectedValue);
                     }
-                }
+                },
+                (requestedEntity, fieldNames, values, rawPayload) -> compoundUniqueValueLookup != null
+                        && compoundUniqueValueLookup.exists(
+                        requestedEntity,
+                        fieldNames,
+                        values,
+                        extractCurrentId(rawPayload),
+                        toPayloadMap(rawPayload, normalizedPayload)
+                )
         );
         List<String> refs = entity.getInvariants().stream()
                 .filter(invariant -> invariant != null && invariant.getRef() != null && !invariant.getRef().isBlank())
@@ -663,11 +1030,33 @@ public final class GeneratedCrudRuntimeSupport {
         ));
     }
 
+    /**
+     * Publishes an author-declared custom event (model.json's {@code events} section, a concept-
+     * nested event with a {@code mode} field) directly from generated CRUD's mutation step --
+     * closes the gap where reaching a custom event required declaring an entire Flow for that
+     * concept+mode just to use its {@code emitEvent} step. Unlike {@link #publishMutationEvent}
+     * (which always derives the topic as {@code entityName + "." + action}), the topic here is the
+     * event's own declared name verbatim, since a custom event is not one of the 3 built-in
+     * create/update/delete shapes.
+     */
+    public void publishDeclaredEvent(String eventName, String entityName, UUID id, Object snapshot) {
+        if (eventName == null || eventName.isBlank()) {
+            return;
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("entity", entityName);
+        payload.put("id", id);
+        if (snapshot != null) {
+            payload.put("snapshot", snapshot);
+        }
+        publishRuntimeEvent(eventName.trim(), payload, Map.of("entity", entityName));
+    }
+
     public String captureLifecycleStatus(String entityName, Object snapshot) {
         if (snapshot == null) {
             return null;
         }
-        Optional<CompiledEntity> entityOpt = findEntity(entityName);
+        Optional<CompiledConcept> entityOpt = findEntity(entityName);
         if (entityOpt.isEmpty()) {
             return null;
         }
@@ -700,11 +1089,11 @@ public final class GeneratedCrudRuntimeSupport {
             return;
         }
 
-        Optional<CompiledEntity> entityOpt = findEntity(entityName);
+        Optional<CompiledConcept> entityOpt = findEntity(entityName);
         if (entityOpt.isEmpty()) {
             return;
         }
-        CompiledEntity entity = entityOpt.get();
+        CompiledConcept entity = entityOpt.get();
         CompiledLifecycle lifecycle = entity.getLifecycle();
         if (lifecycle == null || lifecycle.getTransitions().isEmpty()) {
             return;
@@ -738,10 +1127,42 @@ public final class GeneratedCrudRuntimeSupport {
             payload.put(toLowerCamel(conceptName) + "Id", id);
         }
 
+        appendDeclaredEventPayloadFields(transition.getEvent().trim(), updatedSnapshot, fallbackPayload, payload);
+
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("entity", conceptName);
         metadata.put("transition", previous + "->" + nextStatus);
         publishRuntimeEvent(transition.getEvent().trim(), payload, metadata);
+    }
+
+    private void appendDeclaredEventPayloadFields(
+            String eventName,
+            Object updatedSnapshot,
+            Map<String, Object> fallbackPayload,
+            Map<String, Object> payload
+    ) {
+        if (eventName == null || eventName.isBlank() || payload == null) {
+            return;
+        }
+        Optional<CompiledEvent> eventOpt = compiledModel.getEvents().stream()
+                .filter(event -> event != null && eventName.equals(event.getName()))
+                .findFirst();
+        if (eventOpt.isEmpty()) {
+            return;
+        }
+        for (CompiledEventField field : eventOpt.get().getPayloadFields()) {
+            if (field == null || field.getName() == null || field.getName().isBlank()) {
+                continue;
+            }
+            String fieldName = field.getName().trim();
+            if (payload.containsKey(fieldName)) {
+                continue;
+            }
+            Object value = readLifecycleValue(updatedSnapshot, fallbackPayload, fieldName);
+            if (value != null) {
+                payload.put(fieldName, value);
+            }
+        }
     }
 
     private void publishRuntimeEvent(String eventName, Map<String, Object> payload, Map<String, Object> metadata) {
@@ -866,11 +1287,11 @@ public final class GeneratedCrudRuntimeSupport {
         if (action == null || entityManager == null) {
             return null;
         }
-        Optional<CompiledEntity> targetEntityOpt = findEntity(action.getConcept());
+        Optional<CompiledConcept> targetEntityOpt = findEntity(action.getConcept());
         if (targetEntityOpt.isEmpty()) {
             return null;
         }
-        CompiledEntity targetEntity = targetEntityOpt.get();
+        CompiledConcept targetEntity = targetEntityOpt.get();
         Map<String, CompiledField> fieldsByName = new LinkedHashMap<>();
         List<String> uniqueFields = new ArrayList<>();
         for (CompiledField field : targetEntity.getFields()) {
@@ -883,13 +1304,7 @@ public final class GeneratedCrudRuntimeSupport {
             }
         }
         uniqueFields.sort(String.CASE_INSENSITIVE_ORDER);
-        String table = targetEntity.getTableName();
-        if (table == null || table.isBlank()) {
-            String entityName = targetEntity.getName() == null
-                    ? ""
-                    : targetEntity.getName().trim().toLowerCase(Locale.ROOT);
-            table = entityName.endsWith("s") ? entityName : entityName + "s";
-        }
+        String table = tableName(targetEntity);
         if (table == null || table.isBlank()) {
             return null;
         }
@@ -1017,7 +1432,7 @@ public final class GeneratedCrudRuntimeSupport {
         }
         String normalizedType = normalize(action.type());
         if ("create".equals(normalizedType)) {
-            return executeCreateOrchestrationAction(action.createAction(), eventPayload);
+            return executeCreateOrchestrationAction(action.createAction(), envelope, eventPayload);
         }
         if ("callcapability".equals(normalizedType)) {
             return executeCapabilityOrchestrationAction(
@@ -1041,12 +1456,13 @@ public final class GeneratedCrudRuntimeSupport {
 
     private OrchestrationActionExecutionResult executeCreateOrchestrationAction(
             EventCreateOrchestration action,
+            EventEnvelope envelope,
             Map<String, Object> eventPayload
     ) {
         if (action == null) {
             return OrchestrationActionExecutionResult.failed("failed", "create_action_missing");
         }
-        Map<String, Object> createPayload = resolveCreatePayload(action, eventPayload);
+        Map<String, Object> createPayload = resolveCreatePayload(action, envelope, eventPayload);
         if (createPayload.isEmpty()) {
             return OrchestrationActionExecutionResult.failed("failed", "mapped_payload_empty");
         }
@@ -1385,6 +1801,7 @@ public final class GeneratedCrudRuntimeSupport {
 
     private Map<String, Object> resolveCreatePayload(
             EventCreateOrchestration orchestration,
+            EventEnvelope envelope,
             Map<String, Object> eventPayload
     ) {
         if (orchestration == null || orchestration.fieldMap().isEmpty()) {
@@ -1406,6 +1823,17 @@ public final class GeneratedCrudRuntimeSupport {
                     || "reference".equals(normalizeType(idField.getDslType())))) {
                 values.put(idField.getName(), UUID.randomUUID());
             }
+        }
+        // Without this, an orchestration-created row silently falls back to the table's schema-level
+        // tenant_id default ("default") instead of the tenant that actually triggered the event -- the
+        // row exists but is invisible through the normal tenant-scoped list/read endpoints. Confirmed
+        // live: a create-orchestration row was findable only via a direct SQL query, never via the
+        // generated concept's REST API under the acting tenant. "tenantId" has no CompiledField (it's
+        // a generator-injected infra column, never DSL-authored), so it's added under its raw key --
+        // insertMappedRow's columnName() already falls back to a computed identifier for keys with no
+        // matching field, exactly for cases like this one.
+        if (!hasMapKey(values, "tenantId") && envelope != null && envelope.tenantId() != null) {
+            values.put("tenantId", envelope.tenantId());
         }
         return values.isEmpty() ? Map.of() : Map.copyOf(values);
     }
@@ -1718,7 +2146,8 @@ public final class GeneratedCrudRuntimeSupport {
                 sql.append(" AND ");
             }
             sql.append("CAST(")
-                    .append(toSnake(checks.get(index).getKey()))
+                    .append(columnName(orchestration.fieldsByName().get(normalize(checks.get(index).getKey())),
+                            checks.get(index).getKey()))
                     .append(" AS VARCHAR) = :u")
                     .append(index);
         }
@@ -1735,8 +2164,8 @@ public final class GeneratedCrudRuntimeSupport {
         }
     }
 
-    private void insertMappedRow(EventCreateOrchestration orchestration, Map<String, Object> payload) {
-        if (entityManager == null
+    private void insertMappedRow(EventCreateOrchestration orchestration, Map<String, Object> payload) throws SQLException {
+        if (dataSource == null
                 || orchestration == null
                 || payload == null
                 || payload.isEmpty()) {
@@ -1751,16 +2180,28 @@ public final class GeneratedCrudRuntimeSupport {
                 columns.append(", ");
                 values.append(", ");
             }
-            columns.append(toSnake(entries.get(index).getKey()));
-            values.append(":p").append(index);
+            columns.append(columnName(orchestration.fieldsByName().get(normalize(entries.get(index).getKey())),
+                    entries.get(index).getKey()));
+            values.append("?");
         }
         String sql = "INSERT INTO " + orchestration.targetTable()
                 + " (" + columns + ") VALUES (" + values + ")";
-        Query query = entityManager.createNativeQuery(sql);
-        for (int index = 0; index < entries.size(); index++) {
-            query.setParameter("p" + index, entries.get(index).getValue());
+        // An event-triggered orchestration runs outside the originating request's JPA transaction,
+        // so it persists through its own short JDBC transaction. Using the shared EntityManager here
+        // is not allowed (it surfaced as TransactionRequiredException); the DataSource path mirrors
+        // the bond membership writes in this class.
+        try (Connection connection = dataSource.getConnection()) {
+            boolean previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try (PreparedStatement insert = connection.prepareStatement(sql)) {
+                for (int index = 0; index < entries.size(); index++) {
+                    insert.setObject(index + 1, entries.get(index).getValue());
+                }
+                insert.executeUpdate();
+            }
+            connection.commit();
+            connection.setAutoCommit(previousAutoCommit);
         }
-        query.executeUpdate();
     }
 
     private static boolean isUniqueViolation(Exception exception) {
@@ -1784,24 +2225,180 @@ public final class GeneratedCrudRuntimeSupport {
         return false;
     }
 
+    public static Optional<InvariantViolationException> mapDataIntegrityViolation(
+            String conceptName,
+            String fieldName,
+            Exception exception
+    ) {
+        if (exception == null) {
+            return Optional.empty();
+        }
+        String safeConcept = conceptName == null || conceptName.isBlank() ? null : conceptName;
+        String safeField = fieldName == null || fieldName.isBlank() ? null : fieldName;
+        if (exception instanceof com.npdev.kernel.concepts.ReferentialIntegrityException referentialIntegrityException) {
+            return Optional.of(new InvariantViolationException(List.of(new InvariantViolationDetail(
+                    "reference_integrity_failed",
+                    safeConcept != null ? safeConcept : referentialIntegrityException.getConceptName(),
+                    "in_memory_reference_constraint",
+                    safeField != null ? safeField : referentialIntegrityException.getFieldName(),
+                    referentialIntegrityException.getMessage(),
+                    false
+            ))));
+        }
+        if (isUniqueViolation(exception)) {
+            return Optional.of(new InvariantViolationException(List.of(new InvariantViolationDetail(
+                    "unique_integrity_failed",
+                    safeConcept,
+                    "database_unique_constraint",
+                    safeField,
+                    "A unique value already exists for " + (safeConcept == null ? "this concept" : safeConcept),
+                    true
+            ))));
+        }
+        if (isForeignKeyViolation(exception)) {
+            return Optional.of(new InvariantViolationException(List.of(new InvariantViolationDetail(
+                    "reference_integrity_failed",
+                    safeConcept,
+                    "database_reference_constraint",
+                    safeField,
+                    "A referenced record does not exist or is restricted by a bond",
+                    false
+            ))));
+        }
+        return Optional.empty();
+    }
+
+    /** HARDEN-GC-P1/P2: a bare (storeId, key) pointer into a {@link com.npdev.kernel.ports.FileStoreContract}. */
+    public record FileHandleRef(String storeId, String key) {
+    }
+
+    /**
+     * HARDEN-GC-P1/P2: reads every {@code FileHandle} referenced by a file-typed field's stored
+     * JSON value -- a single object for {@code multiple:false}, an array for {@code multiple:true}.
+     * Malformed/partial entries (missing storeId or key) are skipped rather than failing the
+     * caller, since this runs on the delete/update hot path.
+     */
+    public static List<FileHandleRef> extractFileHandleRefs(JsonNode fieldValue) {
+        List<FileHandleRef> refs = new ArrayList<>();
+        if (fieldValue == null || fieldValue.isNull() || fieldValue.isMissingNode()) {
+            return refs;
+        }
+        if (fieldValue.isArray()) {
+            for (JsonNode item : fieldValue) {
+                FileHandleRef ref = toFileHandleRef(item);
+                if (ref != null) {
+                    refs.add(ref);
+                }
+            }
+        } else {
+            FileHandleRef ref = toFileHandleRef(fieldValue);
+            if (ref != null) {
+                refs.add(ref);
+            }
+        }
+        return refs;
+    }
+
+    private static FileHandleRef toFileHandleRef(JsonNode node) {
+        if (node == null || node.isNull() || !node.isObject()) {
+            return null;
+        }
+        String storeId = node.path("storeId").asText(null);
+        String key = node.path("key").asText(null);
+        if (storeId == null || storeId.isBlank() || key == null || key.isBlank()) {
+            return null;
+        }
+        return new FileHandleRef(storeId, key);
+    }
+
+    /**
+     * HARDEN-GC-P1: deletes every referenced file's bytes through {@code fileStore}, tolerating
+     * (log + continue) an individual store failure so a store outage never aborts the record
+     * mutation that triggered the cascade -- {@code fileStore} being unavailable is itself
+     * tolerated the same way, since a delete-cascade is best-effort GC, not a correctness gate.
+     */
+    public static void deleteFileHandles(
+            com.npdev.kernel.ports.FileStoreContract fileStore,
+            List<FileHandleRef> refs,
+            String conceptName
+    ) {
+        if (fileStore == null || refs == null || refs.isEmpty()) {
+            return;
+        }
+        for (FileHandleRef ref : refs) {
+            try {
+                fileStore.delete(new com.npdev.kernel.ports.FileHandle(
+                        ref.storeId(), ref.key(), "application/octet-stream", 0, "file"));
+            } catch (RuntimeException exception) {
+                LOG.log(Level.WARNING, "Failed to delete file bytes for " + conceptName + " key=" + ref.key()
+                        + " (tolerated: a future orphan sweep can reclaim stragglers)", exception);
+            }
+        }
+    }
+
+    /**
+     * HARDEN-GC-P2: after a successful update, deletes whichever of {@code oldValue}'s file
+     * handles are no longer present in {@code newValue} -- covers both a {@code multiple:false}
+     * replacement and a {@code multiple:true} field losing some of its entries. Never called
+     * before the save succeeds, so a failed save can never orphan the still-referenced old file.
+     */
+    public static void cascadeReplacedFileField(
+            com.npdev.kernel.ports.FileStoreContract fileStore,
+            String conceptName,
+            JsonNode oldValue,
+            JsonNode newValue
+    ) {
+        List<FileHandleRef> oldRefs = extractFileHandleRefs(oldValue);
+        if (oldRefs.isEmpty() || fileStore == null) {
+            return;
+        }
+        Set<String> newKeys = new HashSet<>();
+        for (FileHandleRef ref : extractFileHandleRefs(newValue)) {
+            newKeys.add(ref.key());
+        }
+        List<FileHandleRef> orphaned = new ArrayList<>();
+        for (FileHandleRef ref : oldRefs) {
+            if (!newKeys.contains(ref.key())) {
+                orphaned.add(ref);
+            }
+        }
+        deleteFileHandles(fileStore, orphaned, conceptName);
+    }
+
+    private static boolean isForeignKeyViolation(Throwable exception) {
+        if (exception == null) {
+            return false;
+        }
+        if (exception instanceof SQLException sqlException) {
+            String sqlState = sqlException.getSQLState();
+            if ("23503".equals(sqlState)) {
+                return true;
+            }
+        }
+        String message = exception.getMessage();
+        if (message != null) {
+            String normalized = message.toLowerCase(Locale.ROOT);
+            if (normalized.contains("foreign key")
+                    || normalized.contains("referential integrity")
+                    || normalized.contains("violates referential")
+                    || normalized.contains("constraint violation")) {
+                return true;
+            }
+        }
+        return isForeignKeyViolation(exception.getCause());
+    }
+
     private List<ScheduledEventRecord> selectDueScheduledEvents(boolean forceDue, int limit) {
         if (dataSource == null) {
             return List.of();
         }
-        String sql = "SELECT id, schedule_key, orchestration_name, action_index, source_event_name, source_event_id, "
-                + "trigger_correlation_id, event_name, due_at, status, attempt_count, created_at, updated_at, "
-                + "processed_at, payload "
-                + "FROM " + SCHEDULE_TABLE + " "
-                + "WHERE status = ? "
-                + (forceDue ? "" : "AND due_at <= ? ")
-                + "ORDER BY due_at ASC, created_at ASC "
-                + "LIMIT ?";
+        String sql = ScheduledEventSql.selectDue(forceDue);
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             int parameterIndex = 1;
             statement.setString(parameterIndex++, SCHEDULE_STATUS_PENDING);
             if (!forceDue) {
-                statement.setObject(parameterIndex++, runtimeClock.nowUtc());
+                statement.setTimestamp(parameterIndex++, toTimestamp(runtimeClock.nowUtc()));
             }
             statement.setInt(parameterIndex, limit);
             try (ResultSet rows = statement.executeQuery()) {
@@ -1824,14 +2421,14 @@ public final class GeneratedCrudRuntimeSupport {
         if (dataSource == null || scheduleId == null) {
             return false;
         }
-        String sql = "UPDATE " + SCHEDULE_TABLE + " "
-                + "SET status = ?, updated_at = NOW() "
-                + "WHERE id = ? AND status = ?";
+        String sql = ScheduledEventSql.claim();
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
+            Timestamp now = toTimestamp(runtimeClock.nowUtc());
             statement.setString(1, SCHEDULE_STATUS_PROCESSING);
-            statement.setObject(2, scheduleId);
-            statement.setString(3, SCHEDULE_STATUS_PENDING);
+            statement.setTimestamp(2, now);
+            statement.setString(3, scheduleId.toString());
+            statement.setString(4, SCHEDULE_STATUS_PENDING);
             return statement.executeUpdate() > 0;
         } catch (Exception exception) {
             LOG.log(Level.WARNING, "Failed to claim scheduled event " + scheduleId, exception);
@@ -1843,14 +2440,14 @@ public final class GeneratedCrudRuntimeSupport {
         if (dataSource == null || scheduleId == null) {
             return;
         }
-        String sql = "UPDATE " + SCHEDULE_TABLE + " "
-                + "SET status = ?, attempt_count = attempt_count + 1, "
-                + "processed_at = NOW(), updated_at = NOW() "
-                + "WHERE id = ?";
+        String sql = ScheduledEventSql.markProcessed();
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
+            Timestamp now = toTimestamp(runtimeClock.nowUtc());
             statement.setString(1, SCHEDULE_STATUS_PROCESSED);
-            statement.setObject(2, scheduleId);
+            statement.setTimestamp(2, now);
+            statement.setTimestamp(3, now);
+            statement.setString(4, scheduleId.toString());
             statement.executeUpdate();
         } catch (Exception exception) {
             LOG.log(Level.WARNING, "Failed to mark scheduled event processed " + scheduleId, exception);
@@ -1861,13 +2458,13 @@ public final class GeneratedCrudRuntimeSupport {
         if (dataSource == null || scheduleId == null) {
             return;
         }
-        String sql = "UPDATE " + SCHEDULE_TABLE + " "
-                + "SET status = ?, attempt_count = attempt_count + 1, updated_at = NOW() "
-                + "WHERE id = ?";
+        String sql = ScheduledEventSql.markFailed();
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
+            Timestamp now = toTimestamp(runtimeClock.nowUtc());
             statement.setString(1, SCHEDULE_STATUS_FAILED);
-            statement.setObject(2, scheduleId);
+            statement.setTimestamp(2, now);
+            statement.setString(3, scheduleId.toString());
             statement.executeUpdate();
         } catch (Exception exception) {
             LOG.log(Level.WARNING, "Failed to mark scheduled event failed " + scheduleId, exception);
@@ -1889,15 +2486,11 @@ public final class GeneratedCrudRuntimeSupport {
         if (dataSource == null) {
             throw new SQLException("scheduler datasource unavailable");
         }
-        String sql = "INSERT INTO " + SCHEDULE_TABLE + " ("
-                + "id, schedule_key, orchestration_name, action_index, source_event_name, source_event_id, "
-                + "trigger_correlation_id, event_name, due_at, payload, status, attempt_count, created_at, updated_at"
-                + ") VALUES ("
-                + "?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS JSONB), ?, 0, NOW(), NOW()"
-                + ")";
+        String sql = ScheduledEventSql.insert();
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, id);
+            Timestamp now = toTimestamp(runtimeClock.nowUtc());
+            statement.setString(1, id.toString());
             statement.setString(2, scheduleKey);
             statement.setString(3, orchestrationName);
             statement.setInt(4, actionIndex);
@@ -1905,10 +2498,56 @@ public final class GeneratedCrudRuntimeSupport {
             statement.setString(6, sourceEventId);
             statement.setString(7, correlationId);
             statement.setString(8, eventName);
-            statement.setObject(9, dueAt);
+            statement.setTimestamp(9, toTimestamp(dueAt));
             statement.setString(10, payloadJson);
             statement.setString(11, SCHEDULE_STATUS_PENDING);
+            statement.setTimestamp(12, now);
+            statement.setTimestamp(13, now);
             statement.executeUpdate();
+        }
+    }
+
+    static final class ScheduledEventSql {
+        private ScheduledEventSql() {
+        }
+
+        static String selectDue(boolean forceDue) {
+            return "SELECT id, schedule_key, orchestration_name, action_index, source_event_name, source_event_id, "
+                    + "trigger_correlation_id, event_name, due_at, status, attempt_count, created_at, updated_at, "
+                    + "processed_at, payload "
+                    + "FROM " + SCHEDULE_TABLE + " "
+                    + "WHERE status = ? "
+                    + (forceDue ? "" : "AND due_at <= ? ")
+                    + "ORDER BY due_at ASC, created_at ASC "
+                    + "LIMIT ?";
+        }
+
+        static String claim() {
+            return "UPDATE " + SCHEDULE_TABLE + " "
+                    + "SET status = ?, updated_at = ? "
+                    + "WHERE id = ? AND status = ?";
+        }
+
+        static String markProcessed() {
+            return "UPDATE " + SCHEDULE_TABLE + " "
+                    + "SET status = ?, attempt_count = attempt_count + 1, "
+                    + "processed_at = ?, updated_at = ? "
+                    + "WHERE id = ?";
+        }
+
+        static String markFailed() {
+            return "UPDATE " + SCHEDULE_TABLE + " "
+                    + "SET status = ?, attempt_count = attempt_count + 1, updated_at = ? "
+                    + "WHERE id = ?";
+        }
+
+        static String insert() {
+            return "INSERT INTO " + SCHEDULE_TABLE + " ("
+                    + "id, schedule_key, orchestration_name, action_index, source_event_name, source_event_id, "
+                    + "trigger_correlation_id, event_name, due_at, payload, status, attempt_count, created_at, updated_at"
+                    + ") VALUES ("
+                    + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?"
+                    + ")";
         }
     }
 
@@ -2170,12 +2809,41 @@ public final class GeneratedCrudRuntimeSupport {
                 return ExecutionContext.anonymous();
             }
 
-            Set<String> roles = parseRoles(claims.get("roles"));
+            // LNCH-4: a token minted with a 'tv' claim is only valid while it still matches the
+            // identity pack's live token_version for this (tenant, actor) -- same revocation contract
+            // IdentityAwareContextResolver enforces on the RuntimeHost admin/business-UI path. Only
+            // checked when actorId itself resolved (this path's own claim key, unlike the JWT resolver,
+            // has no 'sub' fallback -- see below); otherwise IdentityRoleLookup.tokenVersion's
+            // null-actor guard would report version 0 and falsely "revoke" every non-zero-versioned
+            // token whose actor didn't resolve here, rather than correctly no-op'ing.
+            if (actorId != null && isTokenRevoked(claims.get("tv"), tenantId, actorId)) {
+                return ExecutionContext.anonymous();
+            }
+
+            // Identity-backed roles (when the identity pack is populated for this tenant+actor) are
+            // authoritative over the principal's claim-roles -- same supplement-with-fallback contract
+            // the RuntimeHost IdentityAwareContextResolver applies, kept consistent across both
+            // context-resolution paths via the shared IdentityRoleLookup.
+            Set<String> identityRoles = IdentityRoleLookup.rolesFor(dataSource, tenantId, actorId);
+            Set<String> roles = identityRoles.isEmpty() ? parseRoles(claims.get("roles")) : identityRoles;
             ExecutionContext context = ExecutionContext.of(tenantId, actorId);
             return roles.isEmpty() ? context : context.withRoles(roles);
         } catch (Exception ignored) {
             return ExecutionContext.anonymous();
         }
+    }
+
+    private boolean isTokenRevoked(Object rawTokenVersion, String tenantId, String actorId) {
+        if (rawTokenVersion == null) {
+            return false;
+        }
+        int claimedVersion;
+        try {
+            claimedVersion = Integer.parseInt(String.valueOf(rawTokenVersion));
+        } catch (NumberFormatException malformed) {
+            return false;
+        }
+        return claimedVersion != IdentityRoleLookup.tokenVersion(dataSource, tenantId, actorId);
     }
 
     private static Set<String> parseRoles(Object rawRoles) {
@@ -2232,7 +2900,7 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     private Map<String, Object> normalizePayloadForValidation(
-            CompiledEntity entity,
+            CompiledConcept entity,
             Map<String, Object> payload
     ) {
         if (entity == null || payload == null || payload.isEmpty()) {
@@ -2262,6 +2930,17 @@ public final class GeneratedCrudRuntimeSupport {
         return immutablePayload(normalized);
     }
 
+    private Object normalizeFieldValue(CompiledConcept owner, CompiledField field, Object rawValue) {
+        String dslType = normalizeType(field == null ? null : field.getDslType());
+        if ("reference".equals(dslType)) {
+            CompiledField anchor = resolveReferenceAnchor(field).orElse(null);
+            if (anchor != null) {
+                return normalizeByDslType(anchor.getDslType(), rawValue);
+            }
+        }
+        return normalizeFieldValue(field, rawValue);
+    }
+
     private static Object normalizeFieldValue(CompiledField field, Object rawValue) {
         String dslType = normalizeType(field == null ? null : field.getDslType());
         if ("uuid".equals(dslType) || "reference".equals(dslType)) {
@@ -2272,6 +2951,25 @@ public final class GeneratedCrudRuntimeSupport {
             return rawValue;
         }
         return toJavaJsonValue(rawValue);
+    }
+
+    private static Object normalizeByDslType(String dslType, Object rawValue) {
+        if (rawValue == null) {
+            return null;
+        }
+        String normalized = normalizeType(dslType);
+        return switch (normalized) {
+            case "uuid", "reference" -> toUuid(rawValue);
+            case "int", "integer" -> toInteger(rawValue);
+            case "long" -> toLong(rawValue);
+            case "boolean" -> toBoolean(rawValue);
+            case "date" -> rawValue instanceof LocalDate ? rawValue : String.valueOf(rawValue).trim();
+            case "datetime" -> {
+                OffsetDateTime dateTime = toOffsetDateTime(rawValue);
+                yield dateTime == null ? rawValue : dateTime;
+            }
+            default -> rawValue instanceof String text ? text.trim() : rawValue;
+        };
     }
 
     private static Object toJavaJsonValue(Object value) {
@@ -2312,7 +3010,7 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     private Map<String, Object> materializeEntityValues(
-            CompiledEntity entity,
+            CompiledConcept entity,
             Object explicitSource,
             Object existingSource,
             boolean patchMode
@@ -2328,7 +3026,7 @@ public final class GeneratedCrudRuntimeSupport {
             }
             Object existingValue = readObjectValue(existingSource, field.getName());
             if (existingValue != null) {
-                values.put(field.getName(), normalizeFieldValue(field, existingValue));
+                values.put(field.getName(), normalizeFieldValue(entity, field, existingValue));
             }
         }
 
@@ -2338,11 +3036,11 @@ public final class GeneratedCrudRuntimeSupport {
             }
             Object explicitValue = readObjectValue(explicitSource, field.getName());
             if (explicitValue != null) {
-                values.put(field.getName(), normalizeFieldValue(field, explicitValue));
+                values.put(field.getName(), normalizeFieldValue(entity, field, explicitValue));
             } else if (!patchMode && readObjectValue(existingSource, field.getName()) == null && field.isId()) {
                 Object idValue = readObjectValue(explicitSource, field.getName());
                 if (idValue != null) {
-                    values.put(field.getName(), normalizeFieldValue(field, idValue));
+                    values.put(field.getName(), normalizeFieldValue(entity, field, idValue));
                 }
             }
         }
@@ -2351,7 +3049,7 @@ public final class GeneratedCrudRuntimeSupport {
         return values;
     }
 
-    private void applySchemaValueBehaviors(CompiledEntity entity, Map<String, Object> values) {
+    private void applySchemaValueBehaviors(CompiledConcept entity, Map<String, Object> values) {
         if (entity == null || values == null) {
             return;
         }
@@ -2367,7 +3065,7 @@ public final class GeneratedCrudRuntimeSupport {
                 Object currentValue = readMapValue(values, fieldName);
 
                 if (currentValue == null && schema.getDefaultValue() != null) {
-                    Object normalizedDefault = normalizeFieldValue(field, cloneSchemaDefaultValue(schema.getDefaultValue()));
+                    Object normalizedDefault = normalizeFieldValue(entity, field, cloneSchemaDefaultValue(schema.getDefaultValue()));
                     values.put(fieldName, normalizedDefault);
                     currentValue = normalizedDefault;
                     changed = true;
@@ -2376,7 +3074,7 @@ public final class GeneratedCrudRuntimeSupport {
                 if (currentValue == null && schema.getDefaultExpression() != null && !schema.getDefaultExpression().isBlank()) {
                     Object evaluated = evaluateSchemaExpression(schema.getDefaultExpression(), values);
                     if (evaluated != null) {
-                        Object normalizedDefault = normalizeFieldValue(field, evaluated);
+                        Object normalizedDefault = normalizeFieldValue(entity, field, evaluated);
                         values.put(fieldName, normalizedDefault);
                         currentValue = normalizedDefault;
                         changed = true;
@@ -2385,7 +3083,7 @@ public final class GeneratedCrudRuntimeSupport {
 
                 if (schema.getDerivedExpression() != null && !schema.getDerivedExpression().isBlank()) {
                     Object evaluated = evaluateSchemaExpression(schema.getDerivedExpression(), values);
-                    Object normalizedDerived = normalizeFieldValue(field, evaluated);
+                    Object normalizedDerived = normalizeFieldValue(entity, field, evaluated);
                     if (!Objects.equals(currentValue, normalizedDerived)) {
                         if (normalizedDerived == null) {
                             values.remove(fieldName);
@@ -2413,6 +3111,16 @@ public final class GeneratedCrudRuntimeSupport {
         String trimmed = expression == null ? "" : expression.trim();
         if (trimmed.isBlank()) {
             return null;
+        }
+        // LNCH-15: try the unified ComputedExpression grammar first (concat/coalesce/trim/
+        // uppercase/lowercase via SCHEMA_EXPRESSION_FUNCTIONS). Falls through to this method's
+        // own legacy evaluator -- kept as a defensive safety net, not deleted -- for anything it
+        // doesn't recognize, so a malformed expression still yields null at record-save time
+        // instead of throwing.
+        try {
+            return ComputedExpression.evaluate(trimmed, values, SCHEMA_EXPRESSION_FUNCTIONS);
+        } catch (ComputedExpression.ExpressionException ignored) {
+            // fall through to the legacy evaluator below
         }
         if (isQuotedLiteral(trimmed)) {
             return trimmed.substring(1, trimmed.length() - 1);
@@ -2602,7 +3310,7 @@ public final class GeneratedCrudRuntimeSupport {
         return false;
     }
 
-    private List<String> validateFieldTypesAndReferences(CompiledEntity entity, Map<String, Object> payload) {
+    private List<String> validateFieldTypesAndReferences(CompiledConcept entity, Map<String, Object> payload) {
         if (entity == null || entity.getName() == null || entity.getName().isBlank()) {
             return List.of("Entity metadata is required for runtime field validation");
         }
@@ -2719,23 +3427,32 @@ public final class GeneratedCrudRuntimeSupport {
             return;
         }
 
-        UUID referenceId = toUuid(value);
-        if (referenceId == null) {
-            violations.add("Entity " + entityName + ": reference field '" + field.getName()
-                    + "' must be a UUID");
-            return;
-        }
-
-        Optional<CompiledEntity> targetEntityOpt = findEntity(targetEntityName);
+        Optional<CompiledConcept> targetEntityOpt = findEntity(targetEntityName);
         if (targetEntityOpt.isEmpty()) {
             violations.add("Entity " + entityName + ": reference target '" + targetEntityName
                     + "' not found in compiled model");
             return;
         }
 
-        if (!existsById(targetEntityOpt.get(), referenceId)) {
+        CompiledConcept targetEntity = targetEntityOpt.get();
+        CompiledField anchor = resolveReferenceAnchor(field, targetEntity).orElse(null);
+        if (anchor == null) {
+            violations.add("Entity " + entityName + ": reference field '" + field.getName()
+                    + "' has no resolvable target anchor");
+            return;
+        }
+
+        Object anchorValue = normalizeByDslType(anchor.getDslType(), value);
+        if (anchorValue == null) {
+            violations.add("Entity " + entityName + ": reference field '" + field.getName()
+                    + "' must match anchor " + targetEntityName + "." + anchor.getName());
+            return;
+        }
+
+        if (!existsByAnchor(targetEntity, anchor, anchorValue)) {
             violations.add("Entity " + entityName + ": reference '" + field.getName()
-                    + "' points to non-existent " + targetEntityName + " id " + referenceId);
+                    + "' points to non-existent " + targetEntityName + "." + anchor.getName()
+                    + " " + anchorValue);
         }
     }
 
@@ -2963,7 +3680,7 @@ public final class GeneratedCrudRuntimeSupport {
         );
     }
 
-    private static Set<String> collectUniqueInvariantRefs(CompiledEntity entity) {
+    private static Set<String> collectUniqueInvariantRefs(CompiledConcept entity) {
         Set<String> out = new java.util.HashSet<>();
         if (entity == null || entity.getInvariants() == null) {
             return out;
@@ -3174,13 +3891,13 @@ public final class GeneratedCrudRuntimeSupport {
         return null;
     }
 
-    private Optional<CompiledEntity> findEntity(String name) {
-        Optional<CompiledEntity> exact = compiledModel.findEntity(name);
+    private Optional<CompiledConcept> findEntity(String name) {
+        Optional<CompiledConcept> exact = compiledModel.findConcept(name);
         if (exact.isPresent()) {
             return exact;
         }
         String normalized = normalize(name);
-        for (CompiledEntity entity : compiledModel.getEntities()) {
+        for (CompiledConcept entity : compiledModel.getConcepts()) {
             if (normalize(entity.getName()).equals(normalized)) {
                 return Optional.of(entity);
             }
@@ -3188,16 +3905,151 @@ public final class GeneratedCrudRuntimeSupport {
         return Optional.empty();
     }
 
-    private CompiledEntity requireEntity(String entityName) {
+    private CompiledConcept requireEntity(String entityName) {
         return findEntity(entityName)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown entity for runtime support: " + entityName));
+    }
+
+    private String idFieldName(String entityName) {
+        CompiledConcept entity = requireEntity(entityName);
+        String found = null;
+        for (CompiledField field : entity.getFields()) {
+            if (field == null || !field.isId()) {
+                continue;
+            }
+            if (found != null) {
+                throw new IllegalArgumentException("Entity " + entityName + " must have exactly one id field");
+            }
+            found = field.getName();
+        }
+        if (found == null || found.isBlank()) {
+            throw new IllegalArgumentException("Entity " + entityName + " must have exactly one id field");
+        }
+        return found;
+    }
+
+    private Optional<CompiledField> resolveReferenceAnchor(CompiledField referenceField) {
+        if (referenceField == null) {
+            return Optional.empty();
+        }
+        String targetEntityName = referenceTargetName(referenceField);
+        if (targetEntityName == null || targetEntityName.isBlank()) {
+            return Optional.empty();
+        }
+        Optional<CompiledConcept> target = findEntity(targetEntityName);
+        return target.flatMap(entity -> resolveReferenceAnchor(referenceField, entity));
+    }
+
+    private Optional<CompiledField> resolveReferenceAnchor(CompiledField referenceField, CompiledConcept targetEntity) {
+        if (referenceField == null || targetEntity == null) {
+            return Optional.empty();
+        }
+        CompiledReferenceSemantics semantics = referenceField.getReferenceSemantics();
+        String via = semantics == null ? null : semantics.getVia();
+        if (via == null || via.isBlank()) {
+            return idField(targetEntity);
+        }
+        for (CompiledField candidate : targetEntity.getFields()) {
+            if (candidate != null && via.equalsIgnoreCase(candidate.getName())) {
+                return Optional.of(candidate);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private Optional<CompiledField> idField(CompiledConcept entity) {
+        if (entity == null) {
+            return Optional.empty();
+        }
+        CompiledField found = null;
+        for (CompiledField field : entity.getFields()) {
+            if (field == null || !field.isId()) {
+                continue;
+            }
+            if (found != null) {
+                return Optional.empty();
+            }
+            found = field;
+        }
+        return Optional.ofNullable(found);
+    }
+
+    private static String referenceTargetName(CompiledField referenceField) {
+        if (referenceField == null) {
+            return "";
+        }
+        CompiledReferenceSemantics semantics = referenceField.getReferenceSemantics();
+        if (semantics != null && semantics.getTarget() != null && !semantics.getTarget().isBlank()) {
+            return semantics.getTarget();
+        }
+        return referenceField.getReferenceTarget();
+    }
+
+    private BondRuntimeShape requireBondRuntimeShape(String sourceConceptName, String fieldName) {
+        CompiledConcept sourceEntity = requireEntity(sourceConceptName);
+        CompiledField sourceField = null;
+        for (CompiledField field : sourceEntity.getFields()) {
+            if (field != null && fieldName != null && fieldName.equalsIgnoreCase(field.getName())) {
+                sourceField = field;
+                break;
+            }
+        }
+        if (sourceField == null) {
+            throw new IllegalArgumentException("Unknown bond field " + sourceConceptName + "." + fieldName);
+        }
+        CompiledReferenceSemantics semantics = sourceField.getReferenceSemantics();
+        if (semantics == null || !semantics.isMultiple()) {
+            throw new IllegalArgumentException("Bond field is not a multiple reference: "
+                    + sourceConceptName + "." + fieldName);
+        }
+        CompiledConcept targetEntity = findEntity(referenceTargetName(sourceField))
+                .orElseThrow(() -> new IllegalArgumentException("Unknown bond target for "
+                        + sourceConceptName + "." + fieldName));
+        CompiledField sourceId = idField(sourceEntity)
+                .orElseThrow(() -> new IllegalArgumentException("Source concept has no id field: " + sourceConceptName));
+        CompiledField targetAnchor = resolveReferenceAnchor(sourceField, targetEntity)
+                .orElseThrow(() -> new IllegalArgumentException("Bond target anchor is not resolvable for "
+                        + sourceConceptName + "." + fieldName));
+
+        // Junction table + column naming is shared with the generator through Contract naming
+        // support so runtime membership operations query the same DDL that Flyway emits.
+        String junctionTable = SqlIdentifierSupport.junctionTableName(sourceEntity, sourceField);
+        return new BondRuntimeShape(
+                sourceEntity,
+                sourceField,
+                targetEntity,
+                sourceId,
+                targetAnchor,
+                junctionTable,
+                SqlIdentifierSupport.sourceJunctionColumn(sourceId),
+                SqlIdentifierSupport.targetJunctionColumn(targetAnchor)
+        );
+    }
+
+    private void requireDataSourceForBond(BondRuntimeShape shape) {
+        if (dataSource == null) {
+            throw new IllegalStateException("JDBC DataSource is required for bond set operations: "
+                    + shape.sourceEntity().getName() + "." + shape.sourceField().getName());
+        }
+    }
+
+    private record BondRuntimeShape(
+            CompiledConcept sourceEntity,
+            CompiledField sourceField,
+            CompiledConcept targetEntity,
+            CompiledField sourceIdField,
+            CompiledField targetAnchorField,
+            String junctionTable,
+            String sourceColumn,
+            String targetColumn
+    ) {
     }
 
     private void applyEntityFields(String entityName, Object source, Object target, boolean patchMode) {
         if (target == null) {
             return;
         }
-        CompiledEntity entity = requireEntity(entityName);
+        CompiledConcept entity = requireEntity(entityName);
         Map<String, Object> materialized = materializeEntityValues(entity, source, patchMode ? target : null, patchMode);
         for (CompiledField field : entity.getFields()) {
             if (field == null || field.isId()) {
@@ -3274,6 +4126,80 @@ public final class GeneratedCrudRuntimeSupport {
         if (UUID.class.equals(boxedTargetType)) {
             return toUuid(value);
         }
+        if (LocalDate.class.equals(boxedTargetType)) {
+            return toLocalDate(value);
+        }
+        if (LocalDateTime.class.equals(boxedTargetType)) {
+            return toLocalDateTime(value);
+        }
+        if (OffsetDateTime.class.equals(boxedTargetType)) {
+            return toOffsetDateTime(value);
+        }
+        if (Long.class.equals(boxedTargetType)) {
+            return toLong(value);
+        }
+        if (Integer.class.equals(boxedTargetType)) {
+            return toInteger(value);
+        }
+        if (Double.class.equals(boxedTargetType)) {
+            return toDouble(value);
+        }
+        if (Float.class.equals(boxedTargetType)) {
+            Double d = toDouble(value);
+            return d == null ? null : Float.valueOf(d.floatValue());
+        }
+        if (Short.class.equals(boxedTargetType)) {
+            Integer i = toInteger(value);
+            return i == null ? null : Short.valueOf(i.shortValue());
+        }
+        if (Byte.class.equals(boxedTargetType)) {
+            Integer i = toInteger(value);
+            return i == null ? null : Byte.valueOf(i.byteValue());
+        }
+        if (Boolean.class.equals(boxedTargetType)) {
+            return toBoolean(value);
+        }
+        if (java.math.BigDecimal.class.equals(boxedTargetType)) {
+            return toBigDecimal(value);
+        }
+        if (java.math.BigInteger.class.equals(boxedTargetType)) {
+            java.math.BigDecimal bigDecimal = toBigDecimal(value);
+            return bigDecimal == null ? null : bigDecimal.toBigInteger();
+        }
+        return null;
+    }
+
+    private static LocalDate toLocalDate(Object value) {
+        if (value instanceof LocalDate localDate) {
+            return localDate;
+        }
+        if (value instanceof java.sql.Date sqlDate) {
+            return sqlDate.toLocalDate();
+        }
+        if (value instanceof String text) {
+            try {
+                return LocalDate.parse(text.trim(), DateTimeFormatter.ISO_LOCAL_DATE);
+            } catch (DateTimeParseException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static LocalDateTime toLocalDateTime(Object value) {
+        if (value instanceof LocalDateTime localDateTime) {
+            return localDateTime;
+        }
+        if (value instanceof OffsetDateTime offsetDateTime) {
+            return offsetDateTime.toLocalDateTime();
+        }
+        if (value instanceof String text) {
+            try {
+                return LocalDateTime.parse(text.trim(), DateTimeFormatter.ISO_DATE_TIME);
+            } catch (DateTimeParseException ignored) {
+                return null;
+            }
+        }
         return null;
     }
 
@@ -3308,22 +4234,21 @@ public final class GeneratedCrudRuntimeSupport {
         return type;
     }
 
-    private boolean existsById(CompiledEntity entity, UUID id) {
+    private boolean existsById(CompiledConcept entity, UUID id) {
         if (entityManager == null || entity == null || id == null) {
             return false;
         }
-        String table = entity.getTableName();
-        if (table == null || table.isBlank()) {
-            table = entity.getName() == null ? "" : entity.getName().toLowerCase(Locale.ROOT) + "s";
-        }
+        String table = tableName(entity);
         if (table.isBlank()) {
+            return false;
+        }
+        Optional<CompiledField> idField = idField(entity);
+        if (idField.isEmpty()) {
             return false;
         }
 
         try {
-            Query query = entityManager.createNativeQuery(
-                    "SELECT 1 FROM " + table + " WHERE CAST(id AS VARCHAR) = :id"
-            );
+            Query query = entityManager.createNativeQuery(existsByIdSql(entity, idField.get()));
             query.setParameter("id", id.toString());
             query.setMaxResults(1);
             List<?> rows = query.getResultList();
@@ -3331,6 +4256,62 @@ public final class GeneratedCrudRuntimeSupport {
         } catch (Exception ignored) {
             return false;
         }
+    }
+
+    private boolean existsByAnchor(CompiledConcept entity, CompiledField anchor, Object value) {
+        if (entity == null || anchor == null || value == null) {
+            return false;
+        }
+        if (entityManager == null) {
+            return existsByAnchorViaConceptGateway(entity, anchor, value);
+        }
+        String table = tableName(entity);
+        String column = columnName(anchor);
+        if (table.isBlank() || column.isBlank()) {
+            return false;
+        }
+
+        try {
+            Query query = entityManager.createNativeQuery(
+                    "SELECT 1 FROM " + table + " WHERE CAST(" + column + " AS VARCHAR) = :value"
+            );
+            query.setParameter("value", String.valueOf(value));
+            query.setMaxResults(1);
+            List<?> rows = query.getResultList();
+            return rows != null && !rows.isEmpty();
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    // Reference-existence fallback for npdev.storage.mode=in-memory, where there is no
+    // EntityManager and the referenced concept lives only in the ConceptGateway/ConceptStore.
+    private boolean existsByAnchorViaConceptGateway(CompiledConcept entity, CompiledField anchor, Object value) {
+        if (conceptGateway == null) {
+            return false;
+        }
+        try {
+            ExecutionContext context = resolveCurrentCrudContext();
+            String anchorName = anchor.getName();
+            if ("id".equalsIgnoreCase(anchorName)) {
+                return conceptGateway.read(
+                        new ConceptReadRequest(entity.getName(), String.valueOf(value), context.tenantId()),
+                        context
+                ).isPresent();
+            }
+            return conceptGateway.list(new ConceptListRequest(entity.getName(), context.tenantId()), context)
+                    .stream()
+                    .anyMatch(record -> referenceValuesEqual(record.data().get(anchorName), value));
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private static boolean referenceValuesEqual(Object left, Object right) {
+        if (left == null || right == null) {
+            return false;
+        }
+        return left.equals(right) || String.valueOf(left).equalsIgnoreCase(String.valueOf(right));
     }
 
     private boolean resourceHasConflict(
@@ -3344,8 +4325,7 @@ public final class GeneratedCrudRuntimeSupport {
             Object excludeIdValue,
             Object payload
     ) {
-        if (entityManager == null
-                || entityName == null
+        if (entityName == null
                 || entityName.isBlank()
                 || resourceFieldPath == null
                 || resourceFieldPath.isBlank()
@@ -3355,26 +4335,38 @@ public final class GeneratedCrudRuntimeSupport {
                 || durationMinutesFieldPath.isBlank()) {
             return false;
         }
+        if (entityManager == null) {
+            return resourceHasConflictViaConceptGateway(
+                    entityName,
+                    resourceFieldPath,
+                    resourceIdValue,
+                    startsAtFieldPath,
+                    scheduledAtValue,
+                    durationMinutesFieldPath,
+                    durationMinutesValue,
+                    excludeIdValue,
+                    payload
+            );
+        }
 
-        Optional<CompiledEntity> entityOpt = findEntity(entityName);
+        Optional<CompiledConcept> entityOpt = findEntity(entityName);
         if (entityOpt.isEmpty()) {
             return false;
         }
-        CompiledEntity entity = entityOpt.get();
-        String table = entity.getTableName();
-        if (table == null || table.isBlank()) {
-            table = entity.getName() == null ? "" : entity.getName().toLowerCase(Locale.ROOT) + "s";
-        }
+        CompiledConcept entity = entityOpt.get();
+        String table = tableName(entity);
         if (table.isBlank()) {
             return false;
         }
 
-        String resourceColumn = toSnake(resourceFieldPath);
-        String startsAtColumn = toSnake(startsAtFieldPath);
-        String durationColumn = toSnake(durationMinutesFieldPath);
-        if (resourceColumn.isBlank() || startsAtColumn.isBlank() || durationColumn.isBlank()) {
+        String resourceColumn = columnName(entity, resourceFieldPath);
+        String startsAtColumn = columnName(entity, startsAtFieldPath);
+        String durationColumn = columnName(entity, durationMinutesFieldPath);
+        Optional<CompiledField> idField = idField(entity);
+        if (resourceColumn.isBlank() || startsAtColumn.isBlank() || durationColumn.isBlank() || idField.isEmpty()) {
             return false;
         }
+        String idColumn = columnName(idField.get());
 
         Object effectiveExcludeId = resolveConflictExcludeId(excludeIdValue, payload);
         UUID resourceId = toUuid(resourceIdValue);
@@ -3387,10 +4379,10 @@ public final class GeneratedCrudRuntimeSupport {
 
         try {
             Query query = entityManager.createNativeQuery(
-                    "SELECT id, " + startsAtColumn + ", " + durationColumn + " "
+                    "SELECT " + idColumn + ", " + startsAtColumn + ", " + durationColumn + " "
                             + "FROM " + table + " "
                             + "WHERE CAST(" + resourceColumn + " AS VARCHAR) = :resourceId "
-                            + "  AND (:excludeId = '' OR CAST(id AS VARCHAR) <> :excludeId)"
+                            + "  AND (:excludeId = '' OR CAST(" + idColumn + " AS VARCHAR) <> :excludeId)"
             );
             query.setParameter("resourceId", resourceId.toString());
             query.setParameter("excludeId", excludeId == null ? "" : excludeId.toString());
@@ -3419,6 +4411,58 @@ public final class GeneratedCrudRuntimeSupport {
         }
     }
 
+    // Conflict-detection fallback for npdev.storage.mode=in-memory, where there is no
+    // EntityManager and the resource's existing bookings live only in the ConceptGateway/ConceptStore.
+    private boolean resourceHasConflictViaConceptGateway(
+            String entityName,
+            String resourceFieldPath,
+            Object resourceIdValue,
+            String startsAtFieldPath,
+            Object scheduledAtValue,
+            String durationMinutesFieldPath,
+            Object durationMinutesValue,
+            Object excludeIdValue,
+            Object payload
+    ) {
+        if (conceptGateway == null) {
+            return false;
+        }
+        Object effectiveExcludeId = resolveConflictExcludeId(excludeIdValue, payload);
+        UUID resourceId = toUuid(resourceIdValue);
+        OffsetDateTime start = toOffsetDateTime(scheduledAtValue);
+        Integer durationMinutes = toInteger(durationMinutesValue);
+        UUID excludeId = toUuid(effectiveExcludeId);
+        if (resourceId == null || start == null || durationMinutes == null || durationMinutes <= 0) {
+            return false;
+        }
+        OffsetDateTime newEnd = start.plusMinutes(durationMinutes);
+
+        try {
+            ExecutionContext context = resolveCurrentCrudContext();
+            return conceptGateway.list(new ConceptListRequest(entityName, context.tenantId()), context)
+                    .stream()
+                    .anyMatch(record -> {
+                        Map<String, Object> data = record.data();
+                        if (!referenceValuesEqual(data.get(resourceFieldPath), resourceId.toString())) {
+                            return false;
+                        }
+                        UUID rowId = toUuid(data.get("id"));
+                        if (excludeId != null && excludeId.equals(rowId)) {
+                            return false;
+                        }
+                        OffsetDateTime existingStart = toOffsetDateTime(data.get(startsAtFieldPath));
+                        Integer existingDuration = toInteger(data.get(durationMinutesFieldPath));
+                        if (existingStart == null || existingDuration == null || existingDuration <= 0) {
+                            return false;
+                        }
+                        OffsetDateTime existingEnd = existingStart.plusMinutes(existingDuration);
+                        return start.isBefore(existingEnd) && existingStart.isBefore(newEnd);
+                    });
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private boolean scopeExists(String conceptName, String fieldPath, Object expectedValue) {
         if (entityManager == null
                 || conceptName == null
@@ -3434,21 +4478,18 @@ public final class GeneratedCrudRuntimeSupport {
             return false;
         }
 
-        Optional<CompiledEntity> entityOpt = findEntity(conceptName);
+        Optional<CompiledConcept> entityOpt = findEntity(conceptName);
         if (entityOpt.isEmpty()) {
             return false;
         }
 
-        CompiledEntity entity = entityOpt.get();
-        String table = entity.getTableName();
-        if (table == null || table.isBlank()) {
-            table = entity.getName() == null ? "" : entity.getName().toLowerCase(Locale.ROOT) + "s";
-        }
+        CompiledConcept entity = entityOpt.get();
+        String table = tableName(entity);
         if (table.isBlank()) {
             return false;
         }
 
-        String column = toSnake(trimmedFieldPath);
+        String column = columnName(entity, trimmedFieldPath);
         if (column.isBlank()) {
             return false;
         }
@@ -3551,6 +4592,51 @@ public final class GeneratedCrudRuntimeSupport {
         return null;
     }
 
+    private static Double toDouble(Object value) {
+        if (value instanceof Double d) {
+            return d;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value instanceof String raw) {
+            String trimmed = raw.trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
+            try {
+                return Double.parseDouble(trimmed);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static java.math.BigDecimal toBigDecimal(Object value) {
+        if (value instanceof java.math.BigDecimal bd) {
+            return bd;
+        }
+        if (value instanceof java.math.BigInteger bi) {
+            return new java.math.BigDecimal(bi);
+        }
+        if (value instanceof Number number) {
+            return new java.math.BigDecimal(number.toString());
+        }
+        if (value instanceof String raw) {
+            String trimmed = raw.trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
+            try {
+                return new java.math.BigDecimal(trimmed);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
     private static Boolean toBoolean(Object value) {
         if (value instanceof Boolean bool) {
             return bool;
@@ -3622,6 +4708,10 @@ public final class GeneratedCrudRuntimeSupport {
         return null;
     }
 
+    private static Timestamp toTimestamp(OffsetDateTime value) {
+        return value == null ? null : Timestamp.from(value.toInstant());
+    }
+
     private static String normalizeType(String dslType) {
         if (dslType == null || dslType.isBlank()) {
             return "";
@@ -3650,7 +4740,7 @@ public final class GeneratedCrudRuntimeSupport {
 
     private void validateLifecycleTransitions(
             String entityName,
-            CompiledEntity entity,
+            CompiledConcept entity,
             Map<String, Object> payload,
             List<InvariantViolationDetail> violations
     ) {
@@ -3850,22 +4940,21 @@ public final class GeneratedCrudRuntimeSupport {
         return null;
     }
 
-    private String fetchCurrentStatus(CompiledEntity entity, UUID id, String statusField) {
+    private String fetchCurrentStatus(CompiledConcept entity, UUID id, String statusField) {
         if (entityManager == null || entity == null || id == null) {
             return null;
         }
-        String table = entity.getTableName();
+        String table = tableName(entity);
         if (table == null || table.isBlank()) {
             return null;
         }
-        String statusColumn = toSnake(statusField);
-        if (statusColumn.isBlank()) {
+        String statusColumn = columnName(entity, statusField);
+        Optional<CompiledField> idField = idField(entity);
+        if (statusColumn.isBlank() || idField.isEmpty()) {
             return null;
         }
         try {
-            Query query = entityManager.createNativeQuery(
-                    "SELECT " + statusColumn + " FROM " + table + " WHERE CAST(id AS VARCHAR) = :id"
-            );
+            Query query = entityManager.createNativeQuery(fetchCurrentStatusSql(entity, idField.get(), statusColumn));
             query.setParameter("id", id.toString());
             query.setMaxResults(1);
             List<?> rows = query.getResultList();
@@ -3896,14 +4985,148 @@ public final class GeneratedCrudRuntimeSupport {
         return false;
     }
 
-    private static String toSnake(String value) {
-        if (value == null || value.isBlank()) {
-            return "";
+    private static String tableName(CompiledConcept entity) {
+        return SqlIdentifierSupport.tableName(entity);
+    }
+
+    private static String columnName(CompiledField field) {
+        return SqlIdentifierSupport.columnName(field);
+    }
+
+    private static String columnName(CompiledField field, String fallbackName) {
+        String column = columnName(field);
+        return column == null || column.isBlank()
+                ? SqlIdentifierSupport.safeSqlIdentifier(fallbackName)
+                : column;
+    }
+
+    private static String columnName(CompiledConcept entity, String fieldName) {
+        if (entity != null && fieldName != null) {
+            for (CompiledField field : entity.getFields()) {
+                if (field != null && fieldName.equalsIgnoreCase(field.getName())) {
+                    return columnName(field);
+                }
+            }
         }
-        String snake = value
-                .replaceAll("([a-z0-9])([A-Z])", "$1_$2")
-                .replaceAll("[^A-Za-z0-9]+", "_")
-                .toLowerCase(Locale.ROOT);
-        return snake.replaceAll("^_+|_+$", "");
+        return SqlIdentifierSupport.safeSqlIdentifier(fieldName);
+    }
+
+    static String existsByIdSql(CompiledConcept entity, CompiledField idField) {
+        return "SELECT 1 FROM " + tableName(entity)
+                + " WHERE CAST(" + columnName(idField) + " AS VARCHAR) = :id";
+    }
+
+    static String fetchCurrentStatusSql(CompiledConcept entity, CompiledField idField, String statusColumn) {
+        return "SELECT " + statusColumn + " FROM " + tableName(entity)
+                + " WHERE CAST(" + columnName(idField) + " AS VARCHAR) = :id";
+    }
+
+    private static String truncateIdentifier(String value) {
+        return SqlIdentifierSupport.safeSqlIdentifier(value);
+    }
+
+    // -------------------------------------------------------------------------
+    // CRUD kernel-port integration: context, permission, audit, idempotency
+    // -------------------------------------------------------------------------
+
+    public ExecutionContext resolveCurrentCrudContext() {
+        return resolveCurrentExecutionContext();
+    }
+
+    public String extractCrudIdempotencyKey() {
+        try {
+            RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+            if (!(attributes instanceof ServletRequestAttributes servletAttributes)) {
+                return null;
+            }
+            String key = servletAttributes.getRequest().getHeader("X-Idempotency-Key");
+            return (key == null || key.isBlank()) ? null : key.trim();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    public void checkCrudPermission(String conceptName, String operation, ExecutionContext ctx) {
+        ExecutionContext safeCtx = ctx == null ? ExecutionContext.anonymous() : ctx;
+        PermissionSubject subject = new PermissionSubject(
+                safeCtx.actorId(), safeCtx.tenantId(),
+                new ArrayList<>(safeCtx.roles()), List.of()
+        );
+        PermissionRequirement requirement = new PermissionRequirement(
+                operation.toLowerCase(Locale.ROOT) + ":" + conceptName.toLowerCase(Locale.ROOT),
+                conceptName, conceptName
+        );
+        PermissionDecision decision = permissionEvaluator.evaluate(subject, requirement);
+        if (decision != null && !decision.allowed()) {
+            appendCrudAudit(conceptName, operation, null, "DENY", safeCtx);
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "forbidden: " + conceptName + "." + operation);
+        }
+    }
+
+    public void auditCrudMutation(String conceptName, String operation, String resourceId,
+                                  String outcome, ExecutionContext ctx) {
+        appendCrudAudit(conceptName, operation, resourceId, outcome, ctx);
+    }
+
+    public Optional<String> checkCrudIdempotency(String tenantId, String conceptName,
+                                                  String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank() || conceptName == null) {
+            return Optional.empty();
+        }
+        String safeTenant = (tenantId == null || tenantId.isBlank()) ? "default" : tenantId;
+        try {
+            Optional<IdempotencyRecord> record = idempotencyStore.find(
+                    safeTenant, "crud." + conceptName, "create", idempotencyKey
+            );
+            if (record.isPresent() && record.get().success()) {
+                String stored = record.get().resultJsonRedacted();
+                return Optional.of(stored == null ? "" : stored);
+            }
+            return Optional.empty();
+        } catch (Exception ignored) {
+            return Optional.empty();
+        }
+    }
+
+    public void recordCrudIdempotencySuccess(String tenantId, String conceptName,
+                                              String resourceId, String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank() || conceptName == null) {
+            return;
+        }
+        String safeTenant = (tenantId == null || tenantId.isBlank()) ? "default" : tenantId;
+        try {
+            idempotencyStore.saveSuccess(
+                    safeTenant, "crud." + conceptName, "create", idempotencyKey,
+                    resourceId == null ? "" : resourceId,
+                    System.currentTimeMillis()
+            );
+        } catch (Exception ignored) {
+            // Idempotency recording must never break primary execution.
+        }
+    }
+
+    private void appendCrudAudit(String conceptName, String operation, String resourceId,
+                                  String outcome, ExecutionContext ctx) {
+        try {
+            ExecutionContext safeCtx = ctx == null ? ExecutionContext.anonymous() : ctx;
+            String safeResourceType = (conceptName == null || conceptName.isBlank())
+                    ? "UNKNOWN" : conceptName.toUpperCase(Locale.ROOT);
+            String safeOperation = (operation == null || operation.isBlank()) ? "UNKNOWN" : operation;
+            auditLogStore.append(AuditRecord.create(
+                    safeCtx.tenantId(),
+                    safeCtx.actorId(),
+                    safeCtx.roles(),
+                    "CRUD_" + safeOperation.toUpperCase(Locale.ROOT),
+                    safeResourceType,
+                    resourceId == null ? "<none>" : resourceId,
+                    outcome == null ? "UNKNOWN" : outcome,
+                    "crud_" + safeOperation.toLowerCase(Locale.ROOT),
+                    Map.of("conceptName", safeResourceType),
+                    Map.of("operation", safeOperation)
+            ));
+        } catch (Exception ignored) {
+            // Audit must never break primary execution.
+        }
     }
 }

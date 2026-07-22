@@ -1,0 +1,19 @@
+# WmsOffice-specific JWT login config (npdev.auth.mode itself is set via config.json's
+# "defaults": {"auth.mode": "jwt"}, emitted into application-npdev-auth.properties by the
+# generator). This file only supplies the JWT-specific values (issuer/audience/key paths) that
+# RuntimeAuthPropertiesEmitter doesn't cover yet -- inert for any app that doesn't activate the
+# "wmsoffice" Spring profile, so it's safe to ship in the shared RuntimeHost template.
+npdev:
+  auth:
+    # application-dev.yml (loaded earlier in the "dev,trial,wmsoffice" profile list) hardcodes
+    # mode: apikey; a later-activated profile's YAML wins over an earlier one's for the same key,
+    # so restating mode: jwt here (not just relying on the generated application-npdev-auth
+    # .properties import, whose precedence against profile YAML files is unreliable) is what
+    # actually flips WmsOffice over to JWT.
+    mode: jwt
+    jwt:
+      issuer: wmsoffice
+      audience: wmsoffice-api
+      public-key-path: D:/WorkSpace/NPDev/Build/wmsoffice-keys/jwt-public.pem
+      private-key-path: D:/WorkSpace/NPDev/Build/wmsoffice-keys/jwt-private-pkcs8.pem
+      expiry-seconds: 28800

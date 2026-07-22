@@ -1,0 +1,54 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "gift-idea-tracker",
+    "description": "12works sample: Gift ideas per person and occasion, with the GiftIdea.personRef reference rendered via field.widget=select instead of the lookup picker.",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": {
+    "root": "..\\..\\..\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\Output\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\Output\\App",
+    "deleteBeforeMount": true
+  },
+  "database": {
+    "provider": "h2-local",
+    "database": "gift_idea_tracker",
+    "resetMode": "reset"
+  },
+  "runtime": {
+    "springProfile": "dev,trial",
+    "serverPort": 8102,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "overrides": {
+    "field:GiftIdea.personRef": { "field.widget": "select" }
+  },
+  "trialDefaults": {
+    "apiKey": "dev-key",
+    "recommendedProfiles": "dev,trial",
+    "runtimeUrl": "http://localhost:8102/",
+    "databaseMode": "h2-local",
+    "notes": [
+      "12works sample, built to exercise: Gift ideas per person and occasion, with the GiftIdea.personRef reference rendered via field.widget=select instead of the lookup picker."
+    ]
+  }
+}

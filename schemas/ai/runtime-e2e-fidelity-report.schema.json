@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/runtime-e2e-fidelity-report.schema.json",
+  "title": "NPDev Runtime E2E Fidelity Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "checkpoint",
+    "overallStatus",
+    "publicationRollbackRealE2E",
+    "publicationRollbackDbAssertion",
+    "jwtAuthUsesPostgresAndFlyway",
+    "tenantIsolationE2E",
+    "standaloneSetupIntegrationTestCount",
+    "validationLogs",
+    "grepEvidence",
+    "findings",
+    "doesNotSolve"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-runtime-e2e-fidelity-report.v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "name"],
+      "properties": {
+        "number": {
+          "const": 3
+        },
+        "name": {
+          "const": "True E2E Runtime Fidelity"
+        }
+      }
+    },
+    "overallStatus": {
+      "enum": ["passed", "failed"]
+    },
+    "publicationRollbackRealE2E": {
+      "type": "boolean"
+    },
+    "publicationRollbackDbAssertion": {
+      "enum": ["passed", "failed"]
+    },
+    "jwtAuthUsesPostgresAndFlyway": {
+      "type": "boolean"
+    },
+    "tenantIsolationE2E": {
+      "enum": ["passed", "failed"]
+    },
+    "standaloneSetupIntegrationTestCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "validationLogs": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "path", "status"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "enum": ["passed", "failed"]
+          }
+        }
+      }
+    },
+    "grepEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "standaloneSetupIntegrationTest",
+        "jwtH2CreateDropFlywayDisabled"
+      ],
+      "properties": {
+        "standaloneSetupIntegrationTest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "matchCount"],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "matchCount": {
+              "const": 0
+            }
+          }
+        },
+        "jwtH2CreateDropFlywayDisabled": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "matchCount"],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "matchCount": {
+              "const": 0
+            }
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "classification", "status", "summary"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "classification": {
+            "enum": [
+              "current-roadmap-blocker",
+              "known-risk",
+              "post-roadmap-backlog",
+              "human-decision-required",
+              "invalid-or-duplicate"
+            ]
+          },
+          "status": {
+            "enum": ["open", "resolved", "invalid-or-duplicate"]
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "doesNotSolve": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

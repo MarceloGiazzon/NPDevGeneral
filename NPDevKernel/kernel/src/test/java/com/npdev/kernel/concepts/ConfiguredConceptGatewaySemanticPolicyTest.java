@@ -76,6 +76,68 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
         assertFalse(listed.data().containsKey("internalNote"));
     }
 
+    @Test
+    void allowsUniqueByInvariantWhenSubfieldValuesAreDistinct() {
+        ConceptGateway gateway = ConceptGateways.inMemory(patientPolicy());
+        ExecutionContext context = ExecutionContext.of("tenant-a", "operator-a");
+
+        ConceptRecord saved = gateway.save(
+                new ConceptWriteRequest("Patient", "patient-1", null, Map.of(
+                        "allergies", List.of(
+                                Map.of("code", "PEANUT"),
+                                Map.of("code", "LATEX")
+                        )
+                )),
+                context
+        );
+
+        assertEquals("patient-1", saved.id());
+    }
+
+    @Test
+    void rejectsUniqueByInvariantWhenSubfieldValuesRepeat() {
+        ConceptGateway gateway = ConceptGateways.inMemory(patientPolicy());
+        ExecutionContext context = ExecutionContext.of("tenant-a", "operator-a");
+
+        ConceptGatewaySemanticException exception = assertThrows(
+                ConceptGatewaySemanticException.class,
+                () -> gateway.save(
+                        new ConceptWriteRequest("Patient", "patient-1", null, Map.of(
+                                "allergies", List.of(
+                                        Map.of("code", "PEANUT"),
+                                        Map.of("code", "PEANUT")
+                                )
+                        )),
+                        context
+                )
+        );
+
+        assertEquals("CONCEPT_INVARIANT_REJECTED", exception.code());
+    }
+
+    private static ConfiguredConceptGatewaySemanticPolicy patientPolicy() {
+        return new ConfiguredConceptGatewaySemanticPolicy(List.of(
+                ConfiguredConceptGatewaySemanticPolicy.ConceptDefinition.of(
+                        "Patient",
+                        List.of(
+                                new ConfiguredConceptGatewaySemanticPolicy.FieldDefinition(
+                                        "allergies",
+                                        false,
+                                        List.of(),
+                                        null,
+                                        null,
+                                        null
+                                )
+                        ),
+                        List.of(new ConfiguredConceptGatewaySemanticPolicy.InvariantDefinition(
+                                "allergyCodesUnique",
+                                "allergies.uniqueBy(code)"
+                        )),
+                        null
+                )
+        ));
+    }
+
     private static ConfiguredConceptGatewaySemanticPolicy expensePolicy() {
         return new ConfiguredConceptGatewaySemanticPolicy(List.of(
                 ConfiguredConceptGatewaySemanticPolicy.ConceptDefinition.of(

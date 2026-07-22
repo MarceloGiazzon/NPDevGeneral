@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/portable-tooling-report.schema.json",
+  "title": "NPDev Portable Tooling Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "overallStatus",
+    "cliToolExists",
+    "cliVersionWorks",
+    "cliModelValidationWorks",
+    "cliModelValidationUsesCanonicalSchema",
+    "cliInvalidModelRejected",
+    "cliAiNormalizeWorks",
+    "cliGenerateWorks",
+    "hardcodedDriveLettersCount",
+    "powershellScriptCountInGradleCoreTasks",
+    "linuxCommandExamplesPresent",
+    "commands",
+    "pathNeutralityScanScope",
+    "pathNeutralityExcludedPaths",
+    "runtimeAbsoluteOutputPathsIgnored",
+    "pathNeutralityScan",
+    "gradleCoreTaskScan",
+    "findings",
+    "doesNotSolve"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "npdev-portable-tooling-report.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "scriptPath": { "const": "scripts/quality/run-portable-tooling-check.ps1" },
+    "workspaceRoot": { "type": "string", "minLength": 1 },
+    "overallStatus": { "enum": ["passed", "failed"] },
+    "cliToolExists": { "type": "boolean" },
+    "cliVersionWorks": { "type": "boolean" },
+    "cliModelValidationWorks": { "type": "boolean" },
+    "cliModelValidationUsesCanonicalSchema": { "type": "boolean" },
+    "cliInvalidModelRejected": { "type": "boolean" },
+    "cliAiNormalizeWorks": { "type": "boolean" },
+    "cliGenerateWorks": { "type": "boolean" },
+    "hardcodedDriveLettersCount": { "type": "integer", "minimum": 0 },
+    "powershellScriptCountInGradleCoreTasks": { "type": "integer", "minimum": 0 },
+    "linuxCommandExamplesPresent": { "type": "boolean" },
+    "commands": { "type": "array", "items": { "type": "object" } },
+    "pathNeutralityScanScope": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "pathNeutralityExcludedPaths": { "type": "array", "items": { "type": "object" } },
+    "runtimeAbsoluteOutputPathsIgnored": { "type": "boolean" },
+    "pathNeutralityScan": { "type": "array", "items": { "type": "object" } },
+    "gradleCoreTaskScan": { "type": "array", "items": { "type": "object" } },
+    "findings": { "type": "array", "items": { "type": "object" } },
+    "doesNotSolve": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "overallStatus": { "const": "passed" } }, "required": ["overallStatus"] },
+      "then": {
+        "properties": {
+          "cliToolExists": { "const": true },
+          "cliVersionWorks": { "const": true },
+          "cliModelValidationWorks": { "const": true },
+          "cliModelValidationUsesCanonicalSchema": { "const": true },
+          "cliInvalidModelRejected": { "const": true },
+          "cliAiNormalizeWorks": { "const": true },
+          "cliGenerateWorks": { "const": true },
+          "hardcodedDriveLettersCount": { "const": 0 },
+          "powershellScriptCountInGradleCoreTasks": { "const": 0 },
+          "linuxCommandExamplesPresent": { "const": true },
+          "runtimeAbsoluteOutputPathsIgnored": { "const": true }
+        }
+      }
+    }
+  ]
+}

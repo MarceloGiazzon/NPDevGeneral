@@ -4,7 +4,7 @@
     "scenario":  {
                      "name":  "minimal-contract-smoke",
                      "description":  "Portable config used to validate the Editor to Generator handoff.",
-                     "outputRoot":  "D:\\WorkSpace\\NPDev_General\\NPDevSamples\\generated\\minimal-contract-smoke"
+                     "outputRoot":  "NPDevSamples/generated/minimal-contract-smoke"
                  },
     "generator":  {
                       "failIfModelMissing":  true,
@@ -15,17 +15,17 @@
                       "emitUiAssets":  true
                   },
     "bootstrap":  {
-                      "root":  "D:\\WorkSpace\\NPDev_General\\NPDevRuntimeHost",
+                      "root":  "NPDevRuntimeHost",
                       "mergeStrategy":  "clean-copy"
                   },
     "artifact":  {
-                     "root":  "D:\\WorkSpace\\NPDev_General\\NPDevSamples\\generated\\minimal-contract-smoke\\artifacts",
+                     "root":  "NPDevSamples/generated/minimal-contract-smoke/artifacts",
                      "generatedFolderName":  "generated",
                      "libsFolderName":  "libs",
                      "metaFolderName":  "meta"
                  },
     "finalExec":  {
-                      "root":  "D:\\WorkSpace\\NPDev_General\\NPDevSamples\\generated\\minimal-contract-smoke\\finalexec",
+                      "root":  "NPDevSamples/generated/minimal-contract-smoke/finalexec",
                       "deleteBeforeMount":  true
                   },
     "database":  {

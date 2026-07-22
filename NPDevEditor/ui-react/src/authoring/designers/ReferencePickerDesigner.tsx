@@ -23,6 +23,8 @@ export default function ReferencePickerDesigner({
   const semantics = field.reference ?? { target: "" };
   const targetEntity = entities.find((entity) => entity.name === semantics.target) ?? null;
   const targetFields = targetEntity?.fields.map((entry) => entry.name) ?? [];
+  const targetAnchors =
+    targetEntity?.fields.filter((entry) => entry.id || (entry.unique && entry.connectable === "anchor")) ?? [];
 
   const applyReference = (updater: NonNullable<AuthoringField["reference"]>) => {
     onChange((fieldDraft) => ({
@@ -83,6 +85,46 @@ export default function ReferencePickerDesigner({
         </label>
 
         <label>
+          Via anchor
+          <select
+            value={semantics.via ?? ""}
+            disabled={!targetEntity}
+            onChange={(event) =>
+              applyReference({
+                ...semantics,
+                via: event.target.value || undefined
+              })
+            }
+          >
+            <option value="">id</option>
+            {targetAnchors
+              .filter((anchorField) => anchorField.name !== "id")
+              .map((anchorField) => (
+                <option key={anchorField.name} value={anchorField.name}>
+                  {anchorField.name} ({anchorField.type ?? "string"})
+                </option>
+              ))}
+          </select>
+        </label>
+
+        <label>
+          Delete policy
+          <select
+            value={semantics.onDelete ?? "restrict"}
+            onChange={(event) =>
+              applyReference({
+                ...semantics,
+                onDelete: event.target.value as NonNullable<typeof semantics.onDelete>
+              })
+            }
+          >
+            <option value="restrict">restrict</option>
+            <option value="cascade">cascade</option>
+            <option value="nullify">nullify</option>
+          </select>
+        </label>
+
+        <label>
           Picker type
           <select
             value={field.ui?.pickerType ?? "dialog"}
@@ -125,6 +167,20 @@ export default function ReferencePickerDesigner({
             }}
           />
           Allow inline create
+        </label>
+
+        <label className="authoring-toggle-row">
+          <input
+            type="checkbox"
+            checked={semantics.multiple ?? false}
+            onChange={(event) =>
+              applyReference({
+                ...semantics,
+                multiple: event.target.checked || undefined
+              })
+            }
+          />
+          Multiple
         </label>
       </div>
 

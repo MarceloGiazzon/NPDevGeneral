@@ -15,6 +15,8 @@ public final class CompiledReferenceSemantics {
     private final List<String> pickerColumns;
     private final String previewCardTemplate;
     private final String defaultFilter;
+    private final String via;
+    private final String onDelete;
 
     public CompiledReferenceSemantics(
             String target,
@@ -28,6 +30,24 @@ public final class CompiledReferenceSemantics {
             String previewCardTemplate,
             String defaultFilter
     ) {
+        this(target, multiple, displayField, searchFields, previewFields, inlineCreatePolicy,
+                displayTemplate, pickerColumns, previewCardTemplate, defaultFilter, null, null);
+    }
+
+    public CompiledReferenceSemantics(
+            String target,
+            boolean multiple,
+            String displayField,
+            List<String> searchFields,
+            List<String> previewFields,
+            String inlineCreatePolicy,
+            String displayTemplate,
+            List<String> pickerColumns,
+            String previewCardTemplate,
+            String defaultFilter,
+            String via,
+            String onDelete
+    ) {
         this.target = target;
         this.multiple = multiple;
         this.displayField = displayField;
@@ -38,6 +58,8 @@ public final class CompiledReferenceSemantics {
         this.pickerColumns = pickerColumns == null ? List.of() : new ArrayList<>(pickerColumns);
         this.previewCardTemplate = previewCardTemplate;
         this.defaultFilter = defaultFilter;
+        this.via = via;
+        this.onDelete = onDelete;
     }
 
     public String getTarget() {
@@ -78,5 +100,15 @@ public final class CompiledReferenceSemantics {
 
     public String getDefaultFilter() {
         return defaultFilter;
+    }
+
+    /** Anchor field on the target this port binds to ({@code via}); null/blank means the target's id. */
+    public String getVia() {
+        return via;
+    }
+
+    /** Referential integrity on target delete: restrict|cascade|nullify; null/blank means restrict. */
+    public String getOnDelete() {
+        return onDelete;
     }
 }

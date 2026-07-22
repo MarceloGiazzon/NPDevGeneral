@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "app": {
+    "name": "Raw Shell Procedure",
+    "kind": "expanded-beta-application"
+  },
+  "entities": [
+    {
+      "name": "Ticket",
+      "fields": [
+        {
+          "name": "title",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "CreateTicket",
+      "entity": "Ticket",
+      "operation": "create"
+    }
+  ],
+  "panels": [],
+  "procedures": [
+    {
+      "procedureId": "unsafe-shell",
+      "type": "single-entity-command",
+      "inputs": [],
+      "outputs": [],
+      "sideEffectType": "single-entity",
+      "requiredRole": "agent",
+      "tenantScoped": true,
+      "maxAffectedRows": 1,
+      "externalCommand": "pwsh -Command unsafe"
+    }
+  ],
+  "workflows": [],
+  "roles": [],
+  "tenancy": {
+    "mode": "shared-app-tenant-scoped-data",
+    "tenantIdField": "tenantId",
+    "testTenants": [
+      "tenant-a",
+      "tenant-b"
+    ]
+  },
+  "auth": {
+    "mode": "generated-test-token",
+    "principalFields": [
+      "userId",
+      "tenantId",
+      "roles"
+    ],
+    "testUsers": [
+      {
+        "userId": "agent-a",
+        "tenantId": "tenant-a",
+        "roles": [
+          "agent"
+        ]
+      },
+      {
+        "userId": "agent-b",
+        "tenantId": "tenant-b",
+        "roles": [
+          "agent"
+        ]
+      }
+    ]
+  }
+}

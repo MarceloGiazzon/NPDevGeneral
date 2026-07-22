@@ -4,7 +4,13 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const uiRoot = resolve(__dirname, "..");
-const distDir = resolve(uiRoot, "dist");
+const workspaceRoot = resolve(uiRoot, "..", "..");
+const npdevBuildRoot = process.env.NPDEV_BUILD_ROOT
+  ? resolve(process.env.NPDEV_BUILD_ROOT)
+  : resolve(workspaceRoot, "..", "Build");
+const distDir = process.env.NPDEV_UI_DIST_DIR
+  ? resolve(process.env.NPDEV_UI_DIST_DIR)
+  : resolve(npdevBuildRoot, "ui", "npdev-editor-ui-react", "dist");
 const targetDir = resolve(
   uiRoot,
   "..",

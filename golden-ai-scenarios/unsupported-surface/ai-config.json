@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "ai-generator-config.v1",
+  "scenario": "unsupported-surface",
+  "target": {
+    "runtime": "node-express",
+    "profile": "ai-beta-local"
+  },
+  "database": {
+    "mode": "embedded-test"
+  },
+  "output": {
+    "directory": "out/generated/unsupported-surface"
+  }
+}

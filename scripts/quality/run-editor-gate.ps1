@@ -24,7 +24,9 @@ else {
 }
 
 $projectRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevEditor"
-$gradleWrapperPath = Join-Path $projectRoot "gradlew.bat"
+# REG-11: resolve the OS-appropriate wrapper (gradlew.bat on Windows, gradlew on Linux/macOS)
+# via the shared helper so this gate runs unchanged on CI's Linux runners.
+$gradleWrapperPath = Get-NPDevGradleWrapperExecutable $projectRoot
 Write-NPDevInfo "Running NPDevEditor gate"
 
 Invoke-NPDevReportedCommand `

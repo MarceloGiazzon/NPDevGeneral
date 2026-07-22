@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/beta0-final-closure-report.schema.json",
+  "title": "NPDev Beta 0 Final Closure Report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "runId",
+    "status",
+    "overallStatus",
+    "candidateReady",
+    "releaseReady",
+    "provenanceReady",
+    "officialReleaseEligible",
+    "beta0TagAllowed",
+    "workspaceDirty",
+    "requiredReports",
+    "blockers"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-beta0-final-closure-report.v1"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": ["passed", "failed"]
+    },
+    "overallStatus": {
+      "enum": ["passed", "failed"]
+    },
+    "candidateReady": {
+      "type": "boolean"
+    },
+    "releaseReady": {
+      "type": "boolean"
+    },
+    "provenanceReady": {
+      "type": "boolean"
+    },
+    "officialReleaseEligible": {
+      "type": "boolean"
+    },
+    "beta0TagAllowed": {
+      "type": "boolean"
+    },
+    "workspaceDirty": {
+      "type": "boolean"
+    },
+    "requiredReports": {
+      "type": "array",
+      "minItems": 1
+    },
+    "blockers": {
+      "type": "array"
+    }
+  },
+  "if": {
+    "properties": {
+      "beta0TagAllowed": {
+        "const": true
+      }
+    },
+    "required": ["beta0TagAllowed"]
+  },
+  "then": {
+    "properties": {
+      "status": { "const": "passed" },
+      "overallStatus": { "const": "passed" },
+      "candidateReady": { "const": true },
+      "releaseReady": { "const": true },
+      "provenanceReady": { "const": true },
+      "officialReleaseEligible": { "const": true },
+      "workspaceDirty": { "const": false }
+    }
+  },
+  "additionalProperties": true
+}

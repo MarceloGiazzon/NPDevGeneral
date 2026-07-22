@@ -1,0 +1,168 @@
+name: NPDev PR Gate
+
+# LNCH-19: "a PR that breaks a gate shows red on GitHub without any human running a script."
+# Deliberately a NEW, faster workflow rather than adding `pull_request` to the existing
+# `npdev-ci-validation.yml` Linux job -- that job is scoped for on-demand/release use (Postgres
+# Testcontainers kernel adapters, Playwright, full maturity-report bootstrap, ~120min) and running
+# all of that on every single PR would be slow and expensive. This workflow runs the doc's actual
+# "on PR" DoD subset -- DSL (which includes ReleaseGateValidatorTest, so ReleaseGateValidator is
+# exercised without a separate step), kernel inproc adapters, generator, and a RuntimeHost smoke
+# via a real generated sample app's own test task -- and leaves the Postgres-Testcontainers kernel
+# adapters + integrationTest + Playwright + full maturity bootstrap to the existing nightly-scoped
+# workflow_dispatch job. Style follows ai-knowledge-gate.yml (this repo's prior art for
+# lightweight PR-triggered gates, referenced by docs/LAUNCH_READINESS_GAPS.md's LNCH-19 write-up).
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: npdev-pr-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-gate:
+    name: PR gate (DSL/kernel/generator/RuntimeHost smoke, Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    defaults:
+      run:
+        shell: bash
+
+    env:
+      CI: true
+      # REG-10: pin the external build-output root explicitly. Without this, NPDevKernel/NPDevGenerator
+      # build.gradle AND scripts/runtimehost/sync-runtimehost-libs.ps1 each fall back to walking up for a
+      # folder named literally "NPDev_General" (else <workspace-parent>/Build). GitHub checks the repo out
+      # as "NPDevGeneral" (no underscore -- the GitHub repo name), so that name-match fails and the gradle
+      # builds emit jars to one Build dir while the sync script scans a different one -> zero jars found ->
+      # "RuntimeHost libs sync failed" -> the packaged-app-boot proof tests fail. All three honor
+      # NPDEV_BUILD_ROOT when set, so pinning it makes them agree. Sibling-of-repo, mirroring the dev
+      # machine (D:\WorkSpace\NPDev\Build) and the ../NPDev_General__OutsideRepo path this workflow already uses.
+      NPDEV_BUILD_ROOT: ${{ github.workspace }}/../Build
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: DSL contract check (includes ReleaseGateValidatorTest)
+        working-directory: NPDevContract/dsl
+        timeout-minutes: 15
+        run: |
+          # gradle.properties hardcodes org.gradle.projectcachedir to a D:\WorkSpace\NPDev\Build
+          # path (this repo's own Windows-local build-output policy, docs/BUILD_OUTPUT_LOCATION_POLICY.md)
+          # -- meaningless on a Linux runner. Gradle reads this from gradle.properties during its
+          # own wrapper bootstrap, before a --project-cache-dir CLI override can take effect
+          # (confirmed live: the CLI flag alone did not fix this) -- strip the line instead so
+          # Gradle falls back to its own default (<project>/.gradle), which works on any OS.
+          sed -i '/org\.gradle\.projectcachedir/d' gradle.properties
+          ./gradlew check --no-daemon --console=plain
+
+      - name: Kernel inproc adapter tests
+        working-directory: NPDevKernel
+        timeout-minutes: 20
+        run: |
+          sed -i '/org\.gradle\.projectcachedir/d' gradle.properties
+          ./gradlew \
+            :kernel:test \
+            :adapters:audit-inproc:test \
+            :adapters:bulkhead-inproc:test \
+            :adapters:circuit-inproc:test \
+            :adapters:events-inproc:test \
+            :adapters:flowinstance-inproc:test \
+            :adapters:idempotency-inproc:test \
+            :adapters:notification-inproc:test \
+            :adapters:persistence-inproc:test \
+            :adapters:tracing-inproc:test \
+            :adapters:webhook-inproc:test \
+            :adapters:file-store-inproc:test \
+            --no-daemon --console=plain
+
+      - name: Generator unit tests
+        working-directory: NPDevGenerator
+        timeout-minutes: 20
+        run: |
+          sed -i '/org\.gradle\.projectcachedir/d' gradle.properties
+          ./gradlew :generator:test --no-daemon --console=plain
+
+      - name: Sync RuntimeHost libs for sample generation
+        timeout-minutes: 15
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass \
+            -File "$GITHUB_WORKSPACE/scripts/runtimehost/sync-runtimehost-libs.ps1" \
+            -BuildLocalJars \
+            -RuntimeHostLibsDir "$GITHUB_WORKSPACE/../NPDev_General__OutsideRepo/runtimehost-libs"
+
+      - name: Generate simple-contact-intake sample (InMemory, fast RuntimeHost smoke)
+        timeout-minutes: 15
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass \
+            -File "$GITHUB_WORKSPACE/NPDevSamples/scripts/generate-sample-app.ps1" \
+            -SampleId simple-contact-intake \
+            -NPDevRoot "$GITHUB_WORKSPACE"
+
+      - name: RuntimeHost generated-app test suite
+        working-directory: NPDevSamples/simple-contact-intake/Output/App
+        timeout-minutes: 20
+        run: |
+          chmod +x ./gradlew
+          sed -i '/org\.gradle\.projectcachedir/d' gradle.properties
+          ./gradlew test \
+            -PnpdevRuntimeHostLibsDir="$GITHUB_WORKSPACE/../NPDev_General__OutsideRepo/runtimehost-libs" \
+            --no-daemon --console=plain
+
+      - name: On failure, print failing test reports into the log (they hold the captured subprocess output)
+        if: failure()
+        shell: bash
+        run: |
+          # Why: the packaged-app proof tests capture `gradlew bootJar` / app-boot output into the JUnit
+          # assertion message (assertEquals(0, exitCode, bootJar.output())), then delete their own on-disk
+          # evidence in a finally block. The only surviving copy is the test-report XML's <failure> element.
+          # Build output is redirected to $NPDEV_BUILD_ROOT/gradle/... (not in-source build/), so scan there.
+          # Printing it here surfaces the real error in the step log instead of an (empty) artifact.
+          echo "Scanning for failing test-result XMLs under: $NPDEV_BUILD_ROOT"
+          found=0
+          while IFS= read -r xml; do
+            if grep -q "<failure\|<error" "$xml" 2>/dev/null; then
+              echo "::group::$xml"
+              cat "$xml"
+              echo
+              echo "::endgroup::"
+              found=1
+            fi
+          done < <(find "$NPDEV_BUILD_ROOT" -path "*test-results*" -name "*.xml" 2>/dev/null)
+          [ "$found" = 1 ] || echo "No failing test-result XMLs found under $NPDEV_BUILD_ROOT"
+
+      # Build output is redirected to $NPDEV_BUILD_ROOT (the sibling Build/), which is OUTSIDE the
+      # workspace -- and actions/upload-artifact forbids '..' in path patterns. Copy the redirected
+      # test reports into an in-workspace dir first so the upload has a legal, non-'..' path.
+      - name: Collect redirected test reports for the evidence artifact
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p ci-evidence
+          if [ -d "$NPDEV_BUILD_ROOT/gradle" ]; then
+            cp -r "$NPDEV_BUILD_ROOT/gradle" ci-evidence/ 2>/dev/null || true
+          fi
+
+      - name: Upload PR gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npdev-pr-gate-evidence
+          path: |
+            ci-evidence/**/test-results/test
+            ci-evidence/**/reports/tests/test
+            NPDevSamples/simple-contact-intake/Output/App/build/test-results/test
+          if-no-files-found: warn
+          retention-days: 14

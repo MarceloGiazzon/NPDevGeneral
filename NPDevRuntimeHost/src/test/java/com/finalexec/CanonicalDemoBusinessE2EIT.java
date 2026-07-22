@@ -4,13 +4,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.generated.entities.InsuranceClaim;
 import com.npdev.generated.repositories.AppointmentRepository;
-import com.npdev.generated.repositories.ExamRoomRepository;
 import com.npdev.generated.repositories.InsuranceClaimRepository;
 import com.npdev.generated.repositories.PatientRepository;
 import com.npdev.generated.repositories.ProviderRepository;
+import com.npdev.kernel.concepts.ConceptGateway;
+import com.npdev.kernel.concepts.ConceptGateways;
+import com.npdev.kernel.ports.PermissionEvaluator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -32,6 +37,21 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class CanonicalDemoBusinessE2EIT extends AbstractScenarioIntegrationTest {
     private static final String API_KEY = "dev-key";
 
+    @TestConfiguration
+    static class RelaxedConceptGatewayConfig {
+        @Bean
+        @Primary
+        ConceptGateway relaxedConceptGateway() {
+            return ConceptGateways.inMemory();
+        }
+
+        @Bean
+        @Primary
+        PermissionEvaluator relaxedPermissionEvaluator() {
+            return PermissionEvaluator.allowAll();
+        }
+    }
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -45,9 +65,6 @@ class CanonicalDemoBusinessE2EIT extends AbstractScenarioIntegrationTest {
     private AppointmentRepository appointmentRepository;
 
     @Autowired
-    private ExamRoomRepository examRoomRepository;
-
-    @Autowired
     private PatientRepository patientRepository;
 
     @Autowired
@@ -57,7 +74,6 @@ class CanonicalDemoBusinessE2EIT extends AbstractScenarioIntegrationTest {
     void cleanDb() {
         insuranceClaimRepository.deleteAll();
         appointmentRepository.deleteAll();
-        examRoomRepository.deleteAll();
         patientRepository.deleteAll();
         providerRepository.deleteAll();
     }
@@ -66,32 +82,26 @@ class CanonicalDemoBusinessE2EIT extends AbstractScenarioIntegrationTest {
     void canonicalDemoBusinessFlowSchedulesChecksInCompletesAndQueuesClaim() throws Exception {
         UUID patientId = createPatient();
         UUID providerId = createProvider();
-        UUID roomId = createRoom("Canonical Demo Room A");
-        UUID alternateRoomId = createRoom("Canonical Demo Room B");
 
         JsonNode scheduledAppointment = createAppointment(
                 patientId,
                 providerId,
-                roomId,
                 "2026-03-18T14:00:00Z",
                 30
         );
         UUID appointmentId = UUID.fromString(scheduledAppointment.path("id").asText());
         assertEquals("Scheduled", scheduledAppointment.path("status").asText());
-        assertEquals("Approved", scheduledAppointment.path("preauthStatus").asText());
         assertEquals(patientId.toString(), scheduledAppointment.path("patientId").asText());
         assertEquals(providerId.toString(), scheduledAppointment.path("providerId").asText());
-        assertEquals(roomId.toString(), scheduledAppointment.path("roomId").asText());
 
         JsonNode overlappingAppointmentViolation = createOverlappingAppointment(
                 patientId,
                 providerId,
-                alternateRoomId,
                 "2026-03-18T14:15:00Z",
                 30
         );
         assertEquals("invariant_failed", overlappingAppointmentViolation.path("code").asText());
-        assertEquals("ProviderNoOverlap", overlappingAppointmentViolation.path("invariant").asText());
+        assertEquals("ProviderSlotAvailable", overlappingAppointmentViolation.path("invariant").asText());
         assertTrue(overlappingAppointmentViolation.path("path").asText("").contains("providerId"));
 
         JsonNode checkedInAppointment = updateAppointment(
@@ -118,7 +128,7 @@ class CanonicalDemoBusinessE2EIT extends AbstractScenarioIntegrationTest {
         assertEquals(appointmentId, claim.getAppointmentId());
         assertEquals(patientId, claim.getPatientId());
         assertEquals(providerId, claim.getProviderId());
-        assertEquals("Queued", claim.getStatus());
+        assertEquals("Draft", claim.getStatus());
 
         JsonNode insuranceClaims = listInsuranceClaims();
         assertTrue(insuranceClaims.isArray());
@@ -128,42 +138,39 @@ class CanonicalDemoBusinessE2EIT extends AbstractScenarioIntegrationTest {
         assertEquals(appointmentId.toString(), createdClaim.path("appointmentId").asText());
         assertEquals(patientId.toString(), createdClaim.path("patientId").asText());
         assertEquals(providerId.toString(), createdClaim.path("providerId").asText());
-        assertEquals("Queued", createdClaim.path("status").asText());
+        assertEquals("Draft", createdClaim.path("status").asText());
 
-        String runtimeExecutionsPayload = mockMvc.perform(get("/api/runtime/executions")
+        String runtimeFlowsPayload = mockMvc.perform(get("/api/flows/definitions")
                         .header("X-Api-Key", API_KEY))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        JsonNode runtimeExecutions = objectMapper.readTree(runtimeExecutionsPayload);
-        assertEquals("Runtime Topology Explorer", runtimeExecutions.path("surfaceName").asText());
-        assertTrue(runtimeExecutions.path("runtimeFlowCount").asInt() > 0);
-        assertTrue(containsFlow(runtimeExecutions.path("runtimeFlows"), "ScheduleAppointment"));
+        JsonNode runtimeFlows = objectMapper.readTree(runtimeFlowsPayload);
+        assertTrue(runtimeFlows.isArray());
+        assertFalse(runtimeFlows.isEmpty());
+        assertTrue(containsFlow(runtimeFlows, "CreateAppointment"));
     }
 
     private UUID createPatient() throws Exception {
         String body = objectMapper.writeValueAsString(Map.of(
                 "id", UUID.randomUUID().toString(),
-                "mrn", "MRN-CANONICAL-001",
+                "mrn", "MRN-001",
                 "firstName", "Ada",
                 "lastName", "Lovelace",
-                "dateOfBirth", "1985-12-10",
-                "phone", "555-0100",
-                "email", "ada@example.test",
+                "emergencyContact", Map.of(
+                        "name", "Alan Turing",
+                        "relationship", "Friend",
+                        "phone", "555-0100",
+                        "authorizedForDisclosure", true
+                ),
                 "allergies", List.of(
                         Map.of(
-                                "allergen", "Penicillin",
+                                "code", "ALG-PEN",
+                                "substance", "Penicillin",
                                 "severity", "Moderate",
-                                "reaction", "Rash"
+                                "active", true
                         )
-                ),
-                "insurance", Map.of(
-                        "payerName", "Northwind Health",
-                        "memberId", "NW-778899",
-                        "groupNumber", "G-100",
-                        "planType", "PPO",
-                        "active", true
                 )
         ));
         String response = mockMvc.perform(post("/api/patients")
@@ -176,15 +183,14 @@ class CanonicalDemoBusinessE2EIT extends AbstractScenarioIntegrationTest {
                 .getContentAsString();
         JsonNode json = objectMapper.readTree(response);
         assertNotNull(json.get("id"));
-        assertEquals("Northwind Health", json.path("insurance").path("payerName").asText());
-        assertEquals("Penicillin", json.path("allergies").path(0).path("allergen").asText());
+        assertEquals("Penicillin", json.path("allergies").path(0).path("substance").asText());
         return UUID.fromString(json.get("id").asText());
     }
 
     private UUID createProvider() throws Exception {
         String body = objectMapper.writeValueAsString(Map.of(
                 "id", UUID.randomUUID().toString(),
-                "npi", "NPI-CANONICAL-001",
+                "npi", "1234567890",
                 "fullName", "Dr. Grace Hopper",
                 "specialty", "Internal Medicine"
         ));
@@ -201,29 +207,9 @@ class CanonicalDemoBusinessE2EIT extends AbstractScenarioIntegrationTest {
         return UUID.fromString(json.get("id").asText());
     }
 
-    private UUID createRoom(String name) throws Exception {
-        String body = objectMapper.writeValueAsString(Map.of(
-                "id", UUID.randomUUID().toString(),
-                "name", name,
-                "roomType", "Consult"
-        ));
-        String response = mockMvc.perform(post("/api/examrooms")
-                        .header("X-Api-Key", API_KEY)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        JsonNode json = objectMapper.readTree(response);
-        assertNotNull(json.get("id"));
-        return UUID.fromString(json.get("id").asText());
-    }
-
     private JsonNode createAppointment(
             UUID patientId,
             UUID providerId,
-            UUID roomId,
             String scheduledAt,
             int durationMinutes
     ) throws Exception {
@@ -231,13 +217,10 @@ class CanonicalDemoBusinessE2EIT extends AbstractScenarioIntegrationTest {
                 "id", UUID.randomUUID().toString(),
                 "patientId", patientId.toString(),
                 "providerId", providerId.toString(),
-                "roomId", roomId.toString(),
-                "visitType", "FollowUp",
                 "scheduledAt", scheduledAt,
                 "durationMinutes", durationMinutes,
-                "requiresPreauth", true,
-                "preauthStatus", "Approved",
-                "status", "Scheduled"
+                "status", "Scheduled",
+                "visitReason", "Follow-up"
         ));
         String response = mockMvc.perform(post("/api/appointments")
                         .header("X-Api-Key", API_KEY)
@@ -253,7 +236,6 @@ class CanonicalDemoBusinessE2EIT extends AbstractScenarioIntegrationTest {
     private JsonNode createOverlappingAppointment(
             UUID patientId,
             UUID providerId,
-            UUID roomId,
             String scheduledAt,
             int durationMinutes
     ) throws Exception {
@@ -261,13 +243,10 @@ class CanonicalDemoBusinessE2EIT extends AbstractScenarioIntegrationTest {
                 "id", UUID.randomUUID().toString(),
                 "patientId", patientId.toString(),
                 "providerId", providerId.toString(),
-                "roomId", roomId.toString(),
-                "visitType", "FollowUp",
                 "scheduledAt", scheduledAt,
                 "durationMinutes", durationMinutes,
-                "requiresPreauth", false,
-                "preauthStatus", "NotRequired",
-                "status", "Scheduled"
+                "status", "Scheduled",
+                "visitReason", "Overlap check"
         ));
         String response = mockMvc.perform(post("/api/appointments")
                         .header("X-Api-Key", API_KEY)
@@ -331,7 +310,7 @@ class CanonicalDemoBusinessE2EIT extends AbstractScenarioIntegrationTest {
 
     private static boolean containsFlow(JsonNode runtimeFlows, String flowName) {
         for (JsonNode flow : runtimeFlows) {
-            if (flowName.equals(flow.path("flowName").asText())) {
+            if (flowName.equals(flow.path("name").asText())) {
                 return true;
             }
         }

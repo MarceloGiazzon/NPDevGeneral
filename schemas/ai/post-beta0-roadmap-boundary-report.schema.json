@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/post-beta0-roadmap-boundary-report.schema.json",
+  "title": "NPDev Post-Beta0 Roadmap Boundary Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "overallStatus",
+    "checkpointCount",
+    "beta0TagImmutable",
+    "newPhaseExpansionAllowed",
+    "findingClassificationPolicyPresent",
+    "checks",
+    "blockers"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-post-beta0-roadmap-boundary-report.v1"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scriptPath": {
+      "const": "scripts/quality/run-post-beta0-roadmap-boundary-check.ps1"
+    },
+    "workspaceRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "overallStatus": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "checkpointCount": {
+      "const": 8
+    },
+    "beta0TagImmutable": {
+      "const": true
+    },
+    "newPhaseExpansionAllowed": {
+      "const": false
+    },
+    "findingClassificationPolicyPresent": {
+      "const": true
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "passed",
+          "reason",
+          "evidence"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "overallStatus": {
+            "const": "passed"
+          }
+        },
+        "required": [
+          "overallStatus"
+        ]
+      },
+      "then": {
+        "properties": {
+          "blockers": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ]
+}

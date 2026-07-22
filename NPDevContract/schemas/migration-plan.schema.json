@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/migration-plan.schema.json",
+  "title": "NPDev Migration Plan",
+  "description": "LNCH-1 Phase 6 (task 6.1). The generator-computed preview of what a future app boot's schema-lifecycle executor would do to an already-deployed app's database when regenerated from a NEW compiled model, given the PREVIOUS compiled model the app was last generated from (or absent, for a fresh install). Produced by com.npdev.generator.schemaevolution.MigrationPlanEmitter. This is a PREVIEW for a human/AI operator to review before running an upgrade -- it never executes anything itself, and the runtime executor (com.finalexec.db.SchemaLifecycleExecutor) remains the sole authority on what actually happens at boot, independently re-deriving its own classification from live-database introspection (see docs/LNCH1_SCHEMA_EVOLUTION_PLAN.md §2.3). NOT one of the four copies of model.schema.json -- this is a new, single-copy schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "migrationPlanVersion",
+    "freshInstall",
+    "toFingerprint",
+    "items"
+  ],
+  "properties": {
+    "migrationPlanVersion": {
+      "type": "string",
+      "const": "1",
+      "description": "Schema/format version of this plan document, independent of the app's own schema fingerprint."
+    },
+    "freshInstall": {
+      "type": "boolean",
+      "description": "True when no previous compiled model was supplied (first-ever generation for this app/database). Distinguished from the separate, also-valid 'no changes since last build' state, where freshInstall is false, fromFingerprint equals toFingerprint, and items is empty."
+    },
+    "fromFingerprint": {
+      "type": ["string", "null"],
+      "description": "The schema fingerprint the previous compiled model would have produced (computed via the same algorithm SchemaRealizationEmitter/UserDatabaseDefinitionLoader use for the current model, applied to the previous one). Null when freshInstall is true. Never null when freshInstall is false."
+    },
+    "toFingerprint": {
+      "type": "string",
+      "description": "The schema fingerprint the NEW compiled model produces -- always the exact value GeneratedDatabasePlan#schemaFingerprint() computed for this generation run (never re-derived)."
+    },
+    "destructiveAckToken": {
+      "type": ["string", "null"],
+      "description": "SHA-256 hex digest from com.npdev.dsl.v1.schemaevolution.DestructiveAckToken#compute(toFingerprint, destructive item stable strings), present only when at least one destructive item (kind DROP_COLUMN, DROP_TABLE, NARROW_TYPE, or UNKNOWN) is in items. Null when there are no destructive items (including the fresh-install and no-change cases)."
+    },
+    "items": {
+      "type": "array",
+      "description": "Every detected change between the previous and new compiled model, safe and destructive alike, in a deterministic order. Empty for a fresh install or a no-change build.",
+      "items": { "$ref": "#/$defs/migrationPlanItem" }
+    },
+    "warnings": {
+      "type": "array",
+      "description": "LNCH-1 remediation R6 (F7). Non-fatal advisory warnings surfaced during the diff -- currently a stale renamedFrom marker (a rename whose declared previous name does not exist in the previous model, which would silently degrade a rename into a destructive drop). Empty when there is nothing to warn about. Does not affect the exit code.",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "migrationPlanItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "table", "destructive", "sqlPreview", "description"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "ADD_TABLE",
+            "ADD_COLUMN",
+            "ADD_COLUMN_BACKFILL",
+            "RENAME_TABLE",
+            "RENAME_COLUMN",
+            "WIDEN_TYPE",
+            "ADD_UNIQUE_CONSTRAINT",
+            "DROP_COLUMN",
+            "DROP_TABLE",
+            "NARROW_TYPE",
+            "UNKNOWN"
+          ],
+          "description": "ADD_TABLE/ADD_COLUMN/RENAME_TABLE/RENAME_COLUMN/WIDEN_TYPE/ADD_UNIQUE_CONSTRAINT are safe, auto-appliable items. ADD_COLUMN_BACKFILL is a safe-but-notable item: a new required field with a literal default (Phase 5's backfill path handles it at boot; not destructive). DROP_COLUMN/DROP_TABLE/NARROW_TYPE/UNKNOWN are the exact Phase 4 destructive vocabulary (com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem) and are the only kinds counted toward destructiveAckToken."
+        },
+        "table": {
+          "type": "string",
+          "description": "The (new, i.e. post-rename) physical table name this item concerns. Empty string only for an UNKNOWN item with no single table attribution."
+        },
+        "column": {
+          "type": ["string", "null"],
+          "description": "The column this item concerns, where applicable (column-level kinds); null for table-level kinds (ADD_TABLE, RENAME_TABLE, DROP_TABLE) and for ADD_UNIQUE_CONSTRAINT (see constraintColumns)."
+        },
+        "fromType": {
+          "type": ["string", "null"],
+          "description": "Populated only for WIDEN_TYPE and NARROW_TYPE: the previous SQL type."
+        },
+        "toType": {
+          "type": ["string", "null"],
+          "description": "Populated only for WIDEN_TYPE and NARROW_TYPE: the new SQL type."
+        },
+        "renamedFrom": {
+          "type": ["string", "null"],
+          "description": "Populated only for RENAME_TABLE/RENAME_COLUMN: the previous name."
+        },
+        "constraintColumns": {
+          "type": ["array", "null"],
+          "items": { "type": "string" },
+          "description": "Populated only for ADD_UNIQUE_CONSTRAINT: the column(s) the new unique constraint covers."
+        },
+        "destructive": {
+          "type": "boolean",
+          "description": "True only for DROP_COLUMN, DROP_TABLE, NARROW_TYPE, and UNKNOWN -- exactly the items contributing to destructiveAckToken."
+        },
+        "sqlPreview": {
+          "type": "string",
+          "description": "A best-effort, human-readable preview of roughly what DDL this item will trigger at boot (e.g. 'ALTER TABLE users DROP COLUMN legacy_flag'). This is NOT executed and is not guaranteed to byte-match the executor's actual dialect-specific statement -- it is an honest approximation for operator review, documented as such."
+        },
+        "description": {
+          "type": "string",
+          "description": "A short human-readable explanation of the change."
+        },
+        "stableString": {
+          "type": ["string", "null"],
+          "description": "Populated only for the four destructive kinds: the exact com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem#stableString() value, identical in format to what the runtime executor's SchemaDeltaReport would independently compute for the same underlying database state. This is the string this item contributes to destructiveAckToken's hash input. Null for safe items."
+        }
+      }
+    }
+  }
+}

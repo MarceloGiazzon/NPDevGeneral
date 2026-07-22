@@ -1,34 +1,14 @@
 {
-  "schemaVersion": "ai-scenario.v1",
+  "schemaVersion": "ai-scenario-manifest.v1",
   "scenarioId": "base-ai-loop",
-  "kind": "ai-only-functional-beta",
+  "kind": "positive",
+  "expectedOutcome": "pass",
   "files": {
+    "aiModel": "ai-model.json",
+    "aiConfig": "ai-config.json",
+    "verification": "ai-verification-report.json",
+    "expectedBehavior": "expected-behavior.json",
     "model": "model.json",
-    "config": "config.json",
-    "expectedBehavior": "expected-behavior.json"
-  },
-  "runtime": {
-    "strictExecution": true,
-    "surfaceProfile": "supported-core"
-  },
-  "requestedSurfaces": ["supported-core"],
-  "operations": [
-    {
-      "type": "generate",
-      "target": "supported-core"
-    },
-    {
-      "type": "run",
-      "mode": "deterministic"
-    }
-  ],
-  "expectedOutcome": {
-    "class": "PASS_EXACT",
-    "mustPass": true
-  },
-  "reviewMetadata": {
-    "reviewer": "npdev-release-governance",
-    "reviewedAt": "2026-04-23T00:00:00Z",
-    "reason": "Reviewed as a must-pass golden AI baseline scenario for release gating."
+    "config": "config.json"
   }
 }

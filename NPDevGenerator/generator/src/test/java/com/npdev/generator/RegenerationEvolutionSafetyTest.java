@@ -9,14 +9,6 @@ import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.parser.JsonModelParser;
 import com.npdev.dsl.v1.validation.SemanticValidator;
 import com.npdev.generator.api.GeneratorFacade;
-import com.npdev.generator.migration.MigrationRiskAssessment;
-import com.npdev.generator.migration.MigrationRiskAssessmentBuilder;
-import com.npdev.generator.migration.ModelDiffPreview;
-import com.npdev.generator.migration.ModelDiffPreviewBuilder;
-import com.npdev.generator.migration.RuntimeModelCompatibilityReport;
-import com.npdev.generator.migration.RuntimeModelCompatibilityReportBuilder;
-import com.npdev.generator.migration.StorageSchemaSnapshot;
-import com.npdev.generator.migration.StorageSchemaSnapshotStore;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.strategy.RegenerationPolicy;
 import com.npdev.generator.templates.TemplateEngine;
@@ -27,10 +19,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
-import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -94,43 +84,12 @@ class RegenerationEvolutionSafetyTest {
         assertTrue(evolvedCompiledMetadataOne.contains("Evolved scheduling baseline used to verify safe iteration."),
                 "The metadata evolution must propagate into compiled metadata.");
 
-        String migrationPlanOne = readMigrationPlan(evolvedDbRootOne);
-        String migrationPlanTwo = readMigrationPlan(evolvedDbRootTwo);
-        assertEquals(migrationPlanOne, migrationPlanTwo,
-                "Migration planning for the evolved model must be deterministic from the same baseline snapshot.");
-        assertTrue(migrationPlanOne.contains("ALTER TABLE patients ADD COLUMN IF NOT EXISTS portal_nickname"),
-                "The additive field evolution must produce an additive migration plan.");
-        assertFalse(migrationPlanOne.toLowerCase().contains("drop column"),
-                "The evolution scenario should not require destructive column drops.");
-
-        StorageSchemaSnapshotStore store = new StorageSchemaSnapshotStore();
-        StorageSchemaSnapshot baselineSnapshot = store.loadIfExists(
-                baselineDbRoot.resolve("schema-snapshots").resolve("latest-storage-schema.json"));
-        StorageSchemaSnapshot evolvedSnapshot = store.loadIfExists(
-                evolvedDbRootOne.resolve("schema-snapshots").resolve("latest-storage-schema.json"));
-
-        ModelDiffPreview preview = new ModelDiffPreviewBuilder().build(baselineSnapshot, evolvedSnapshot);
-        MigrationRiskAssessment risk = new MigrationRiskAssessmentBuilder().build(baselineSnapshot, evolvedSnapshot);
-        RuntimeModelCompatibilityReport report = new RuntimeModelCompatibilityReportBuilder()
-                .build(baselineSnapshot, evolvedSnapshot, buildInfo());
-
-        assertTrue(preview.deterministicDiff(), "The evolved diff must be deterministic.");
-        assertTrue(preview.additiveChanges().stream().anyMatch(value -> value.contains("patients.portal_nickname")),
-                "The diff preview must describe the added Patient portal nickname field.");
-        assertTrue(preview.breakingChanges().isEmpty(),
-                "The chosen evolution scenario should not create breaking schema changes.");
-        assertEquals("SAFE_ADDITIVE", risk.overallRisk(),
-                "The chosen evolution scenario should remain additive from a migration-risk perspective.");
-        assertTrue(report.compatible(), "The evolved model should remain runtime-compatible.");
-        assertEquals("COMPATIBLE", report.compatibilityStatus(),
-                "The runtime compatibility report should stay compatible for this additive evolution.");
-    }
-
-    private static Properties buildInfo() {
-        Properties buildInfo = new Properties();
-        buildInfo.setProperty("npdev.version", "step47-test");
-        buildInfo.setProperty("npdev.builtAt", "2026-03-31T19:15:00Z");
-        return buildInfo;
+        String schemaManifestOne = readGeneratedSchemaAsset(evolvedOutOne, "npdev/db/schema-realization-manifest.json");
+        String schemaManifestTwo = readGeneratedSchemaAsset(evolvedOutTwo, "npdev/db/schema-realization-manifest.json");
+        assertEquals(schemaManifestOne, schemaManifestTwo,
+                "The in-memory schema realization manifest must stay deterministic across repeated regenerations.");
+        assertTrue(schemaManifestOne.contains("patients"),
+                "The schema realization manifest must continue to describe business stores for evolved models.");
     }
 
     private static ObjectNode buildEvolvedModel(Path canonicalModel) throws Exception {
@@ -225,8 +184,8 @@ class RegenerationEvolutionSafetyTest {
         return Files.readString(outRoot.resolve("src").resolve("main").resolve("resources").resolve("npdev").resolve(fileName));
     }
 
-    private static String readMigrationPlan(Path dbRoot) throws Exception {
-        return Files.readString(dbRoot.resolve("migration-plans").resolve("latest-model-delta.sql"));
+    private static String readGeneratedSchemaAsset(Path outRoot, String relativePath) throws Exception {
+        return Files.readString(outRoot.resolve("src").resolve("main").resolve("resources").resolve(relativePath));
     }
 
     private static void copyDirectory(Path source, Path target) throws IOException {

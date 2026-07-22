@@ -47,6 +47,62 @@ class DefaultConceptGatewayTest {
         assertTrue(audit.records.stream().allMatch(record -> "tenant-a".equals(record.tenantId())));
     }
 
+    /**
+     * LNCH-16: two callers read the same row, both compute their edit against rowVersion 0. The
+     * first writer wins and moves the row to rowVersion 1; the second (the loser of the race) must
+     * be rejected with the winner's current state attached, not silently overwrite it.
+     */
+    @Test
+    void interleavedUpdatesRejectLoserWithWinnersCurrentState() {
+        DefaultConceptGateway gateway = new DefaultConceptGateway(new InMemoryConceptStore());
+        ExecutionContext context = ExecutionContext.of("tenant-a", "actor-a");
+        ConceptRecord created = gateway.save(
+                new ConceptWriteRequest("UserAccount", "user-1", "tenant-a", Map.of("email", "a@example.test")),
+                context
+        );
+        assertEquals(0L, created.rowVersion());
+
+        ConceptRecord winnerWrite = gateway.save(
+                new ConceptWriteRequest("UserAccount", "user-1", "tenant-a", Map.of("email", "winner@example.test"), 0L, false),
+                context
+        );
+        assertEquals(1L, winnerWrite.rowVersion());
+        assertEquals("winner@example.test", winnerWrite.data().get("email"));
+
+        ConceptGatewayOptimisticLockException conflict = assertThrows(
+                ConceptGatewayOptimisticLockException.class,
+                () -> gateway.save(
+                        new ConceptWriteRequest("UserAccount", "user-1", "tenant-a", Map.of("email", "loser@example.test"), 0L, false),
+                        context
+                )
+        );
+        assertTrue(conflict.currentRecord().isPresent());
+        assertEquals("winner@example.test", conflict.currentRecord().orElseThrow().data().get("email"));
+        assertEquals(1L, conflict.currentRecord().orElseThrow().rowVersion());
+
+        Optional<ConceptRecord> loaded = gateway.read(new ConceptReadRequest("UserAccount", "user-1", "tenant-a"), context);
+        assertEquals("winner@example.test", loaded.orElseThrow().data().get("email"));
+    }
+
+    @Test
+    void forceUpdateBypassesVersionCheckButStillIncrementsIt() {
+        DefaultConceptGateway gateway = new DefaultConceptGateway(new InMemoryConceptStore());
+        ExecutionContext context = ExecutionContext.of("tenant-a", "actor-a");
+        gateway.save(new ConceptWriteRequest("UserAccount", "user-1", "tenant-a", Map.of("email", "a@example.test")), context);
+        gateway.save(
+                new ConceptWriteRequest("UserAccount", "user-1", "tenant-a", Map.of("email", "b@example.test"), 0L, false),
+                context
+        );
+
+        ConceptRecord forced = gateway.save(
+                new ConceptWriteRequest("UserAccount", "user-1", "tenant-a", Map.of("email", "forced@example.test"), 99L, true),
+                context
+        );
+
+        assertEquals("forced@example.test", forced.data().get("email"));
+        assertEquals(2L, forced.rowVersion());
+    }
+
     @Test
     void rejectsCrossTenantReadsBeforeStoreLookup() {
         CapturingAuditLogStore audit = new CapturingAuditLogStore();
@@ -196,6 +252,39 @@ class DefaultConceptGatewayTest {
         assertEquals(ConceptGatewayOperation.LIST, listTrace.operation());
         assertTrue(listTrace.ruleProfiles().contains("query"));
         assertTrue(listTrace.ruleProfiles().contains("interactive"));
+    }
+
+    @Test
+    void listWithFilterFieldReturnsOnlyMatchingRecords() {
+        DefaultConceptGateway gateway = new DefaultConceptGateway(
+                new InMemoryConceptStore(),
+                PermissionEvaluator.allowAll(),
+                (left, right) -> left.equals(right),
+                AuditLogStore.noop(),
+                new SemanticPolicy(false),
+                new CapturingTraceSink()
+        );
+        ExecutionContext context = ExecutionContext.of("tenant-a", "actor-a")
+                .withTag("executionMode", "interactive");
+
+        gateway.save(new ConceptWriteRequest("MovimentoItem", "item-1", null,
+                Map.of("amount", 10, "movimentoId", "mov-1", "quantidade", 10)), context);
+        gateway.save(new ConceptWriteRequest("MovimentoItem", "item-2", null,
+                Map.of("amount", 20, "movimentoId", "mov-2", "quantidade", 20)), context);
+        gateway.save(new ConceptWriteRequest("MovimentoItem", "item-3", null,
+                Map.of("amount", 30, "movimentoId", "mov-1", "quantidade", 30)), context);
+
+        List<ConceptRecord> filtered = gateway.list(
+                new ConceptListRequest("MovimentoItem", null, "movimentoId", "mov-1"), context);
+        assertEquals(2, filtered.size());
+        assertTrue(filtered.stream().allMatch(record -> "mov-1".equals(record.data().get("movimentoId"))));
+
+        List<ConceptRecord> unfiltered = gateway.list(new ConceptListRequest("MovimentoItem", null), context);
+        assertEquals(3, unfiltered.size());
+
+        List<ConceptRecord> noMatch = gateway.list(
+                new ConceptListRequest("MovimentoItem", null, "movimentoId", "mov-does-not-exist"), context);
+        assertTrue(noMatch.isEmpty());
     }
 
     private static final class CapturingAuditLogStore implements AuditLogStore {

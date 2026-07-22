@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "npdev-ai-command-request.v1",
+  "type": "raw-command",
+  "description": "A malicious AI request attempts external network access through an allowed executable argument.",
+  "executable": "node",
+  "arguments": [
+    "https://example.com"
+  ],
+  "workingDirectory": ".",
+  "timeoutSeconds": 5,
+  "expectedErrorCode": "NPDEV_COMMAND_NETWORK_BLOCKED"
+}

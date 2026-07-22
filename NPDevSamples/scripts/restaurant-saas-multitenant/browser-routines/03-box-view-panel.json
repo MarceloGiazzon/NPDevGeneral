@@ -1,0 +1,18 @@
+{
+  "scenarioName": "restaurant-box-view-panel",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "value": "api-dev" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-__boxview__\"]", "state": "visible", "label": "Super-user nav ready" },
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-__boxview__\"]", "label": "Open the Box View surface" },
+    { "action": "waitForSelector", "selector": "#concept-__boxview__", "state": "visible", "label": "Box View panel rendered" },
+    { "action": "assertVisible", "selector": "#concept-__boxview__ table.records", "label": "Box View renders the box manifest table (served from /api/admin/box)" },
+    { "action": "assertTextContains", "selector": "#concept-__boxview__", "text": "T3", "label": "Truth level bumped to T3_RUNS_LOCALLY by serving the box view" },
+    { "action": "screenshot", "name": "box_view_panel" },
+    { "action": "collect", "what": ["domText", "url"] }
+  ]
+}

@@ -1,23 +1,25 @@
 {
-  "bundleVersion": "1.0.0",
-  "contract": "npdev-authoring-bundle",
-  "modelPath": "model.json",
-  "configPath": "config.json",
+  "bundleVersion": "2.0.0",
+  "contract": "npdev-ai-beta-authoring-bundle",
+  "aiModelPath": "ai-model.json",
+  "aiConfigPath": "ai-config.json",
+  "verificationPath": "ai-verification-report.json",
+  "normalizedModelPath": "normalized/model.json",
+  "normalizedConfigPath": "normalized/config.json",
   "intendedConsumers": [
     "AI assistant",
-    "CLI",
-    "Editor",
+    "AI beta gate",
+    "Contract normalizer",
     "Generator"
   ],
   "requiredAuthoringSurfaces": [
-    "concepts",
-    "queries",
-    "ruleProfiles",
-    "procedures",
-    "panels"
+    "ai-model.v1",
+    "ai-generator-config.v1",
+    "ai-verification-report.v1"
   ],
   "verification": {
-    "rootGate": "scripts/quality/run-ai-bundle-gate.ps1",
-    "report": "scripts/reports/out/ai-bundle-gate-report.json"
+    "aiBetaGate": "scripts/quality/run-ai-beta-gate.ps1",
+    "aiBetaReport": "scripts/reports/out/ai-beta-gate-report.json",
+    "normalizer": "scripts/ai/Normalize-AiContract.ps1"
   }
 }

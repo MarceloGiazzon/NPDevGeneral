@@ -1,8 +1,8 @@
 package com.npdev.dsl.v1.compiler;
 
 import com.npdev.dsl.v1.ast.ConceptAst;
-import com.npdev.dsl.v1.ast.EntityAst;
 import com.npdev.dsl.v1.ast.FieldAst;
+import com.npdev.dsl.v1.ast.FileMetadataAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.ast.OrchestrationAst;
@@ -17,6 +17,20 @@ import com.npdev.dsl.v1.ast.EventAst;
 import com.npdev.dsl.v1.ast.EventPayloadAst;
 import com.npdev.dsl.v1.ast.EnumOptionAst;
 import com.npdev.dsl.v1.ast.FlowAst;
+import com.npdev.dsl.v1.ast.FlowScheduleAst;
+import com.npdev.dsl.v1.ast.GeneratedActionDescriptorAst;
+import com.npdev.dsl.v1.ast.AggregateAst;
+import com.npdev.dsl.v1.ast.AggregateCollectionAst;
+import com.npdev.dsl.v1.ast.AutoPanelAst;
+import com.npdev.dsl.v1.ast.AutoPanelComputedAst;
+import com.npdev.dsl.v1.ast.AutoPanelSurfaceAst;
+import com.npdev.dsl.v1.ast.SelectorAst;
+import com.npdev.dsl.v1.ast.GuidePageAst;
+import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
+import com.npdev.dsl.v1.ast.GuidePageRegionAst;
+import com.npdev.dsl.v1.ast.GuidePageRegionsAst;
+import com.npdev.dsl.v1.ast.GuidePageThemeAst;
+import com.npdev.dsl.v1.ast.IndexAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.OrchestrationActionAst;
 import com.npdev.dsl.v1.ast.SchemaAst;
@@ -37,6 +51,7 @@ import com.npdev.dsl.v1.ast.RuleProfileAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
 import com.npdev.dsl.v1.ast.StateTransitionAst;
 import com.npdev.dsl.v1.ast.StepAst;
+import com.npdev.dsl.v1.compiled.CompiledFileMetadata;
 import com.npdev.dsl.v1.compiled.CompiledCapability;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityCall;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityBinding;
@@ -44,6 +59,8 @@ import com.npdev.dsl.v1.compiled.CompiledActionMetadata;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityExecutionPolicy;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityOperation;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledIndex;
+import com.npdev.dsl.v1.compiled.CompiledConceptAccess;
 import com.npdev.dsl.v1.compiled.CompiledDomainType;
 import com.npdev.dsl.v1.compiled.CompiledDomainTypeUi;
 import com.npdev.dsl.v1.compiled.CompiledEnumOption;
@@ -51,13 +68,25 @@ import com.npdev.dsl.v1.compiled.CompiledEvent;
 import com.npdev.dsl.v1.compiled.CompiledEventField;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
+import com.npdev.dsl.v1.compiled.CompiledFlowSchedule;
 import com.npdev.dsl.v1.compiled.CompiledFlowStep;
+import com.npdev.dsl.v1.compiled.CompiledGeneratedActionDescriptorSpec;
+import com.npdev.dsl.v1.compiled.CompiledGuidePage;
+import com.npdev.dsl.v1.compiled.CompiledGuidePageGadget;
+import com.npdev.dsl.v1.compiled.CompiledGuidePageRegion;
+import com.npdev.dsl.v1.compiled.CompiledGuidePageRegions;
+import com.npdev.dsl.v1.compiled.CompiledGuidePageTheme;
 import com.npdev.dsl.v1.compiled.CompiledInvariant;
 import com.npdev.dsl.v1.compiled.CompiledLifecycle;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledOrchestration;
 import com.npdev.dsl.v1.compiled.CompiledOrchestrationAction;
 import com.npdev.dsl.v1.compiled.CompiledOrchestrationTrigger;
+import com.npdev.dsl.v1.compiled.CompiledAggregate;
+import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
+import com.npdev.dsl.v1.compiled.CompiledAutoPanel;
+import com.npdev.dsl.v1.compiled.CompiledAutoPanelComputed;
+import com.npdev.dsl.v1.compiled.CompiledAutoPanelSurface;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPanelDataSource;
@@ -74,6 +103,8 @@ import com.npdev.dsl.v1.compiled.CompiledRuleProfile;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.compiled.CompiledStateMachineState;
 import com.npdev.dsl.v1.compiled.CompiledStateTransition;
+import com.npdev.dsl.v1.compiled.JavaIdentifierSupport;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.dsl.v1.resolution.ModelResolver;
 import com.npdev.dsl.v1.resolution.ResolvedModel;
 
@@ -118,8 +149,8 @@ public final class ModelCompiler {
         List<ConceptAst> orderedConcepts = new ArrayList<>(modelAst.getConcepts());
         orderedConcepts.sort(Comparator.comparing(concept -> normalize(concept.getName())));
         for (ConceptAst concept : orderedConcepts) {
-            String className = toPascal(concept.getName());
-            String tableName = toSnakePlural(concept.getName());
+            String className = JavaIdentifierSupport.className(concept.getName());
+            String tableName = SqlIdentifierSupport.toSnakePlural(concept.getName());
 
             EffectiveEntityDef effective = resolveEffective(
                     concept,
@@ -133,28 +164,32 @@ public final class ModelCompiler {
             LinkedHashMap<String, CompiledInvariant> invariantsByCanonicalRef = new LinkedHashMap<>();
             Map<String, String> invariantRefAlias = new LinkedHashMap<>();
 
-            // Derive unique fields from entity invariants (type=unique, single-field for now).
+            // Derive unique fields from entity invariants (type=unique). A single-field unique
+            // also marks the CompiledField.unique flag; a compound (multi-field) unique is
+            // carried only on the CompiledInvariant's ordered fields list (LIFT-UNIQUE-P1) since
+            // it doesn't correspond to any one field's own uniqueness.
             //
             // IMPORTANT:
             // Treat field names case-insensitively so that an invariant like ["Email"]
             // still applies to a field named "email".
             Set<String> uniqueFromInvariantsLower = new HashSet<>();
             for (InvariantAst inv : effective.invariants()) {
-                if ("unique".equalsIgnoreCase(inv.getType()) && inv.getFields().size() == 1) {
-                    String invField = inv.getFields().get(0);
-                    if (invField != null) {
-                        uniqueFromInvariantsLower.add(invField.toLowerCase(Locale.ROOT));
-                        String canonicalRef = invariantCanonicalRef(inv);
-                        registerInvariant(
-                                invariantsByCanonicalRef,
-                                invariantRefAlias,
-                                canonicalRef,
-                                "unique",
-                                invField,
-                                null,
-                                List.of("unique(" + invField + ")")
-                        );
+                if ("unique".equalsIgnoreCase(inv.getType()) && inv.getFields() != null && !inv.getFields().isEmpty()) {
+                    List<String> invFields = inv.getFields();
+                    if (invFields.size() == 1) {
+                        uniqueFromInvariantsLower.add(invFields.get(0).toLowerCase(Locale.ROOT));
                     }
+                    String canonicalRef = invariantCanonicalRef(inv);
+                    registerInvariant(
+                            invariantsByCanonicalRef,
+                            invariantRefAlias,
+                            canonicalRef,
+                            "unique",
+                            invFields.get(0),
+                            null,
+                            invFields,
+                            List.of("unique(" + String.join(",", invFields) + ")")
+                    );
                 } else if ("expression".equalsIgnoreCase(inv.getType())) {
                     String expr = inv.getExpression();
                     if (expr != null && !expr.isBlank()) {
@@ -201,7 +236,10 @@ public final class ModelCompiler {
                         f.getDomainType(),
                         toCompiledSchema(effectiveSchema),
                         toCompiledEnumOptions(f.getEnumOptions()),
-                        toCompiledPresentationMetadata(f.getUi())
+                        toCompiledPresentationMetadata(f.getUi()),
+                        f.getConnectable(),
+                        f.getRenamedFrom(),
+                        toCompiledFileMetadata(f.getFile())
                 ));
 
                 if (f.isRequired()) {
@@ -223,6 +261,14 @@ public final class ModelCompiler {
             List<CompiledInvariant> compiledInvariants = new ArrayList<>(invariantsByCanonicalRef.values());
             compiledInvariants.sort(Comparator.comparing(invariant -> normalize(invariant.getRef())));
 
+            List<CompiledIndex> compiledIndexes = new ArrayList<>();
+            for (IndexAst index : concept.getIndexes()) {
+                compiledIndexes.add(new CompiledIndex(index.getName(), index.getFields(), index.isUnique()));
+            }
+            CompiledConceptAccess compiledAccess = concept.getAccess() == null
+                    ? null
+                    : new CompiledConceptAccess(concept.getAccess().getRead(), concept.getAccess().getWrite());
+
             concepts.put(
                     concept.getName(),
                     new CompiledConcept(
@@ -233,7 +279,12 @@ public final class ModelCompiler {
                             expressionInvariants,
                             compiledInvariants,
                             toCompiledLifecycle(effective.lifecycle()),
-                            toCompiledPresentationMetadata(concept.getUi())
+                            toCompiledPresentationMetadata(concept.getUi()),
+                            concept.getTruthLevel() == null ? null : concept.getTruthLevel().code(),
+                            concept.getModule(),
+                            compiledIndexes,
+                            compiledAccess,
+                            concept.getRenamedFrom()
                     )
             );
             List<String> invariantRefs = new ArrayList<>(invariantsByCanonicalRef.keySet());
@@ -282,7 +333,7 @@ public final class ModelCompiler {
                 payloadFields.add(new CompiledEventField(payloadField.getName(), payloadField.getType()));
             }
             payloadFields.sort(Comparator.comparing(field -> normalize(field.getName())));
-            events.add(new CompiledEvent(eventAst.getName(), eventAst.getConceptName(), payloadFields));
+            events.add(new CompiledEvent(eventAst.getName(), eventAst.getConceptName(), payloadFields, eventAst.getTriggerMode()));
         }
 
         List<FlowAst> orderedFlows = new ArrayList<>(modelAst.getFlows());
@@ -303,7 +354,9 @@ public final class ModelCompiler {
                     flowSteps,
                     toCompiledSchema(flowAst.getInputSchema()),
                     toCompiledSchema(flowAst.getOutputSchema()),
-                    toCompiledActionMetadata(flowAst.getAction())
+                    toCompiledActionMetadata(flowAst.getAction()),
+                    flowAst.isStartEndpoint(),
+                    toCompiledFlowSchedule(flowAst.getSchedule())
             ));
         }
 
@@ -384,6 +437,7 @@ public final class ModelCompiler {
                     sortedStrings(procedureAst.permissionRequirements()),
                     procedureAst.tracePolicy(),
                     procedureAst.auditPolicy(),
+                    compileGeneratedActionDescriptor(procedureAst),
                     sortObjectMap(procedureAst.metadata())
             ));
         }
@@ -392,6 +446,86 @@ public final class ModelCompiler {
         orderedPanels.sort(Comparator.comparing(panel -> normalize(panel.name())));
         for (PanelAst panelAst : orderedPanels) {
             panels.add(compilePanel(panelAst));
+        }
+
+        List<GuidePageAst> orderedGuidePages = new ArrayList<>(modelAst.getGuidePages());
+        orderedGuidePages.sort(Comparator.comparing(page -> normalize(page.name())));
+        List<CompiledGuidePage> guidePages = new ArrayList<>();
+        for (GuidePageAst guidePageAst : orderedGuidePages) {
+            guidePages.add(compileGuidePage(guidePageAst));
+        }
+
+        List<AggregateAst> orderedAggregates = new ArrayList<>(modelAst.getAggregates());
+        orderedAggregates.sort(Comparator.comparing(aggregate -> normalize(aggregate.name())));
+        List<CompiledAggregate> aggregates = new ArrayList<>();
+        for (AggregateAst aggregateAst : orderedAggregates) {
+            aggregates.add(compileAggregate(aggregateAst));
+        }
+
+        List<AutoPanelAst> orderedAutoPanels = new ArrayList<>(modelAst.getAutoPanels());
+        orderedAutoPanels.sort(Comparator.comparing(autoPanel -> normalize(autoPanelKey(autoPanel))));
+        List<CompiledAutoPanel> autoPanels = new ArrayList<>();
+        for (AutoPanelAst autoPanelAst : orderedAutoPanels) {
+            autoPanels.add(compileAutoPanel(autoPanelAst));
+        }
+
+        // Expand concept-bound AutoPanels into ordinary panels (Selection/Detail/Transaction/Prompt),
+        // reading defaults from the concept. Aggregate-bound AutoPanels are expanded later (P4).
+        Map<String, ConceptAst> conceptsByNormalizedName = new LinkedHashMap<>();
+        Map<String, List<String>> fieldNamesByConcept = new LinkedHashMap<>();
+        for (ConceptAst concept : modelAst.getConcepts()) {
+            conceptsByNormalizedName.put(normalize(concept.getName()), concept);
+            List<String> names = new ArrayList<>();
+            for (FieldAst field : concept.getFields()) {
+                names.add(field.getName());
+            }
+            fieldNamesByConcept.put(normalize(concept.getName()), names);
+        }
+        Map<String, CompiledAggregate> aggregatesByNormalizedName = new LinkedHashMap<>();
+        for (CompiledAggregate aggregate : aggregates) {
+            aggregatesByNormalizedName.put(normalize(aggregate.name()), aggregate);
+        }
+        // Registry of each concept's Prompt picker, so a form's FK field can auto-wire to it.
+        Map<String, AutoPanelExpander.PromptRef> promptsByConcept = new LinkedHashMap<>();
+        for (CompiledAutoPanel autoPanel : autoPanels) {
+            if (autoPanel.concept() == null || autoPanel.concept().isBlank()) {
+                continue;
+            }
+            ConceptAst concept = conceptsByNormalizedName.get(normalize(autoPanel.concept()));
+            if (concept == null) {
+                continue;
+            }
+            AutoPanelExpander.PromptRef ref = AutoPanelExpander.promptRefFor(autoPanel, concept.getFields());
+            if (ref != null) {
+                promptsByConcept.put(normalize(autoPanel.concept()), ref);
+            }
+        }
+        for (CompiledAutoPanel autoPanel : autoPanels) {
+            if (autoPanel.concept() != null && !autoPanel.concept().isBlank()) {
+                ConceptAst concept = conceptsByNormalizedName.get(normalize(autoPanel.concept()));
+                if (concept != null) {
+                    panels.addAll(AutoPanelExpander.expand(autoPanel, concept.getFields(), promptsByConcept));
+                }
+            } else if (autoPanel.aggregate() != null && !autoPanel.aggregate().isBlank()) {
+                // Aggregate-bound: the Transaction surface becomes the multi-level Aggregate Workbench.
+                CompiledAggregate aggregate = aggregatesByNormalizedName.get(normalize(autoPanel.aggregate()));
+                if (aggregate != null) {
+                    panels.addAll(AutoPanelExpander.expandAggregateWorkbench(
+                            autoPanel, aggregate, fieldNamesByConcept, conceptsByNormalizedName));
+                }
+            }
+        }
+
+        // Expand standalone selectors into reusable picker panels.
+        for (SelectorAst selector : modelAst.getSelectors()) {
+            ConceptAst concept = conceptsByNormalizedName.get(normalize(selector.concept()));
+            List<String> fieldNames = new ArrayList<>();
+            if (concept != null) {
+                for (FieldAst field : concept.getFields()) {
+                    fieldNames.add(field.getName());
+                }
+            }
+            panels.add(AutoPanelExpander.expandSelector(selector, fieldNames));
         }
 
         return new CompiledModel(
@@ -408,8 +542,135 @@ public final class ModelCompiler {
                 queries,
                 ruleProfiles,
                 procedures,
-                panels
+                panels,
+                guidePages,
+                aggregates,
+                autoPanels
         );
+    }
+
+    private static String autoPanelKey(AutoPanelAst autoPanel) {
+        if (autoPanel.name() != null && !autoPanel.name().isBlank()) {
+            return autoPanel.name();
+        }
+        if (autoPanel.concept() != null && !autoPanel.concept().isBlank()) {
+            return autoPanel.concept();
+        }
+        return autoPanel.aggregate() == null ? "" : autoPanel.aggregate();
+    }
+
+    private static CompiledAutoPanel compileAutoPanel(AutoPanelAst autoPanelAst) {
+        return new CompiledAutoPanel(
+                autoPanelAst.name(),
+                autoPanelAst.concept(),
+                autoPanelAst.aggregate(),
+                autoPanelAst.route(),
+                new ArrayList<>(autoPanelAst.surfaces()),
+                compileAutoPanelSurface(autoPanelAst.selection()),
+                compileAutoPanelSurface(autoPanelAst.detail()),
+                compileAutoPanelSurface(autoPanelAst.transaction()),
+                compileAutoPanelSurface(autoPanelAst.prompt()),
+                sortObjectMap(autoPanelAst.metadata())
+        );
+    }
+
+    private static CompiledAutoPanelSurface compileAutoPanelSurface(AutoPanelSurfaceAst surface) {
+        if (surface == null) {
+            return null;
+        }
+        List<CompiledAutoPanelComputed> computed = new ArrayList<>();
+        for (AutoPanelComputedAst c : surface.computed()) {
+            computed.add(new CompiledAutoPanelComputed(c.col(), c.expr()));
+        }
+        return new CompiledAutoPanelSurface(
+                new ArrayList<>(surface.filters()),
+                new ArrayList<>(surface.columns()),
+                new ArrayList<>(surface.fields()),
+                computed,
+                surface.labelField(),
+                sortObjectMap(surface.metadata())
+        );
+    }
+
+    private static CompiledAggregate compileAggregate(AggregateAst aggregateAst) {
+        return new CompiledAggregate(
+                aggregateAst.name(),
+                aggregateAst.root(),
+                compileAggregateCollections(aggregateAst.collections()),
+                sortObjectMap(aggregateAst.metadata())
+        );
+    }
+
+    private static List<CompiledAggregateCollection> compileAggregateCollections(
+            List<AggregateCollectionAst> collections) {
+        List<CompiledAggregateCollection> out = new ArrayList<>();
+        for (AggregateCollectionAst collection : collections) {
+            out.add(new CompiledAggregateCollection(
+                    collection.name(),
+                    collection.concept(),
+                    collection.via(),
+                    collection.childField(),
+                    collection.ownership(),
+                    collection.orderBy(),
+                    compileAggregateCollections(collection.collections()),
+                    sortObjectMap(collection.metadata())
+            ));
+        }
+        return out;
+    }
+
+    private static CompiledGuidePage compileGuidePage(GuidePageAst guidePageAst) {
+        return new CompiledGuidePage(
+                guidePageAst.name(),
+                guidePageAst.isDefault(),
+                compileGuidePageRegions(guidePageAst.regions()),
+                compileGuidePageTheme(guidePageAst.theme()),
+                compileGuidePageGadgets(guidePageAst.gadgets())
+        );
+    }
+
+    private static CompiledGuidePageRegions compileGuidePageRegions(GuidePageRegionsAst regionsAst) {
+        if (regionsAst == null) {
+            return null;
+        }
+        return new CompiledGuidePageRegions(
+                regionsAst.top(),
+                compileGuidePageRegion(regionsAst.left()),
+                compileGuidePageRegion(regionsAst.right())
+        );
+    }
+
+    private static CompiledGuidePageRegion compileGuidePageRegion(GuidePageRegionAst regionAst) {
+        if (regionAst == null) {
+            return null;
+        }
+        return new CompiledGuidePageRegion(
+                regionAst.enabled(),
+                regionAst.collapsible(),
+                regionAst.defaultCollapsed(),
+                regionAst.width()
+        );
+    }
+
+    private static CompiledGuidePageTheme compileGuidePageTheme(GuidePageThemeAst themeAst) {
+        if (themeAst == null) {
+            return null;
+        }
+        return new CompiledGuidePageTheme(
+                themeAst.mode(),
+                themeAst.accent(),
+                themeAst.density(),
+                themeAst.logoText(),
+                themeAst.logoUrl()
+        );
+    }
+
+    private static List<CompiledGuidePageGadget> compileGuidePageGadgets(List<GuidePageGadgetAst> gadgetAsts) {
+        List<CompiledGuidePageGadget> out = new ArrayList<>();
+        for (GuidePageGadgetAst gadgetAst : gadgetAsts) {
+            out.add(new CompiledGuidePageGadget(gadgetAst.name(), gadgetAst.type(), gadgetAst.title()));
+        }
+        return out;
     }
 
     private static Map<String, ConceptAst> indexConcepts(List<ConceptAst> concepts) {
@@ -432,8 +693,8 @@ public final class ModelCompiler {
     }
 
     private static EffectiveEntityDef resolveEffective(
-            EntityAst entity,
-            Map<String, ? extends EntityAst> entitiesByLower,
+            ConceptAst entity,
+            Map<String, ? extends ConceptAst> entitiesByLower,
             Map<String, EffectiveEntityDef> cache,
             Set<String> stack
     ) {
@@ -451,7 +712,7 @@ public final class ModelCompiler {
 
         String parentName = entity.getExtendsName();
         if (parentName != null && !parentName.isBlank()) {
-            EntityAst parent = entitiesByLower.get(normalize(parentName));
+            ConceptAst parent = entitiesByLower.get(normalize(parentName));
             if (parent != null) {
                 EffectiveEntityDef parentEffective = resolveEffective(parent, entitiesByLower, cache, stack);
                 for (FieldAst pf : parentEffective.fields()) {
@@ -495,6 +756,11 @@ public final class ModelCompiler {
             case "enum" -> "String";
             case "reference" -> "java.util.UUID";
             case "object", "array" -> "com.fasterxml.jackson.databind.JsonNode";
+            // HARDEN-OBJSTORE: a file field's SQL column is JSONB (SqlTypeSupport) storing a
+            // FileHandle (or list, if multiple) -- without this case it fell through to the
+            // "String" default, mismatching the JSONB column and breaking entity (de)serialization
+            // for any model that declares a file field through the real authoring pipeline.
+            case "file" -> "com.fasterxml.jackson.databind.JsonNode";
             default -> "String";
         };
     }
@@ -550,20 +816,102 @@ public final class ModelCompiler {
         return List.copyOf(compiled);
     }
 
-    private static String toPascal(String s) {
-        if (s == null || s.isBlank()) return s;
-        String t = s.trim();
-        return t.substring(0, 1).toUpperCase() + t.substring(1);
-    }
-
-    private static String toSnakePlural(String s) {
-        String base = s.trim().toLowerCase(Locale.ROOT);
-        if (base.endsWith("s")) return base;
-        return base + "s";
-    }
-
     private static String normalize(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static CompiledGeneratedActionDescriptorSpec compileGeneratedActionDescriptor(ProcedureAst procedureAst) {
+        GeneratedActionDescriptorAst explicit = procedureAst.actionDescriptor();
+        if (explicit != null) {
+            String actionName = firstNonBlank(explicit.actionName(), procedureAst.name());
+            String sideEffectConcept = blankToNull(explicit.sideEffectConcept());
+            List<String> affectedConcepts = copyStrings(explicit.affectedConcepts());
+            if (affectedConcepts.isEmpty() && sideEffectConcept != null) {
+                affectedConcepts = List.of(sideEffectConcept);
+            }
+            return new CompiledGeneratedActionDescriptorSpec(
+                    actionName,
+                    affectedConcepts,
+                    sideEffectConcept,
+                    firstNonBlank(explicit.eventNameOnSuccess(), defaultGeneratedActionEvent(actionName)),
+                    firstNonBlank(explicit.auditResourceType(), "GENERATED_ACTION"),
+                    firstNonBlank(explicit.idempotencyPolicy(), "record"),
+                    firstNonBlank(explicit.tracePolicy(), "record"),
+                    firstNonBlank(explicit.correlationPolicy(), "claim"),
+                    true
+            );
+        }
+
+        Map<String, Object> metadata = procedureAst.metadata();
+        String actionName = firstNonBlank(metadataText(metadata, "actionName"), procedureAst.name());
+        String sideEffectConcept = firstNonBlank(metadataText(metadata, "sideEffectConcept"), inferLegacyConceptName(procedureAst.name()));
+        List<String> affectedConcepts = splitMetadataList(metadataText(metadata, "affectedConcepts"));
+        if (affectedConcepts.isEmpty()) {
+            affectedConcepts = List.of(sideEffectConcept);
+        }
+        return new CompiledGeneratedActionDescriptorSpec(
+                actionName,
+                affectedConcepts,
+                sideEffectConcept,
+                firstNonBlank(metadataText(metadata, "eventNameOnSuccess"), defaultGeneratedActionEvent(actionName)),
+                firstNonBlank(metadataText(metadata, "auditResourceType"), "GENERATED_ACTION"),
+                firstNonBlank(metadataText(metadata, "idempotencyPolicy"), "record"),
+                firstNonBlank(metadataText(metadata, "tracePolicy"), "record"),
+                firstNonBlank(metadataText(metadata, "correlationPolicy"), "claim"),
+                false
+        );
+    }
+
+    private static String metadataText(Map<String, Object> metadata, String key) {
+        if (metadata == null || key == null) {
+            return "";
+        }
+        Object value = metadata.get(key);
+        return value == null ? "" : String.valueOf(value).trim();
+    }
+
+    private static List<String> splitMetadataList(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (String token : raw.split(",")) {
+            String item = token == null ? "" : token.trim();
+            if (!item.isBlank()) {
+                out.add(item);
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private static String blankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isBlank() ? null : trimmed;
+    }
+
+    private static String defaultGeneratedActionEvent(String actionName) {
+        String token = actionName == null || actionName.isBlank() ? "action" : actionName.trim();
+        token = token.replaceAll("([a-z])([A-Z])", "$1-$2")
+                .replaceAll("[^A-Za-z0-9]+", "-")
+                .replaceAll("^-|-$", "")
+                .toLowerCase(Locale.ROOT);
+        return "generated.action." + (token.isBlank() ? "action" : token) + ".completed";
+    }
+
+    private static String inferLegacyConceptName(String actionName) {
+        String cleaned = actionName == null ? "" : actionName.trim();
+        if (cleaned.isBlank()) {
+            return "GeneratedAction";
+        }
+        for (String prefix : List.of("Create", "Add", "Register", "Upsert", "Update", "Save")) {
+            if (cleaned.startsWith(prefix) && cleaned.length() > prefix.length()) {
+                return cleaned.substring(prefix.length());
+            }
+        }
+        return cleaned;
     }
 
     private static CompiledLifecycle toCompiledLifecycle(LifecycleAst lifecycleAst) {
@@ -722,6 +1070,9 @@ public final class ModelCompiler {
         for (StepAst stepAst : steps) {
             CompiledCapabilityCall capabilityCall = null;
             String stepType = normalize(stepAst.getType());
+            if (stepAst.getGeneratedActionName() != null && !stepAst.getGeneratedActionName().isBlank()) {
+                stepType = "generatedAction";
+            }
             String resolvedScope = stepAst.getScope();
             List<String> resolvedInvariantRefs = stepAst.getInvariants();
 
@@ -761,7 +1112,8 @@ public final class ModelCompiler {
                         : toCompiledPolicy(stepAst.getCapabilityPolicy());
                 capabilityCall = new CompiledCapabilityCall(
                         capabilityName,
-                        capabilityTypesByName.get(normalize(capabilityName)),
+                        resolveCapabilityTypeForStep(stepType, capabilityName, capabilityTypesByName),
+                        resolveAdapterIdForStep(stepType),
                         operationName,
                         argsRefs,
                         stepAst.getInput(),
@@ -801,6 +1153,22 @@ public final class ModelCompiler {
                     invariantRefsByConcept,
                     invariantRefAliasByConcept
             );
+            List<CompiledFlowStep> loopSteps = compileFlowSteps(
+                    stepAst.getLoopSteps(),
+                    capabilityTypesByName,
+                    operationsByCapability,
+                    flowConcept,
+                    invariantRefsByConcept,
+                    invariantRefAliasByConcept
+            );
+            List<CompiledFlowStep> onFailureSteps = compileFlowSteps(
+                    stepAst.getOnFailureSteps(),
+                    capabilityTypesByName,
+                    operationsByCapability,
+                    flowConcept,
+                    invariantRefsByConcept,
+                    invariantRefAliasByConcept
+            );
 
             out.add(new CompiledFlowStep(
                     stepAst.getName(),
@@ -823,7 +1191,13 @@ public final class ModelCompiler {
                     stepAst.getOutput(),
                     stepAst.getReturnValue(),
                     capabilityCall,
-                    toCompiledActionMetadata(stepAst.getAction())
+                    toCompiledActionMetadata(stepAst.getAction()),
+                    stepAst.getGeneratedActionName(),
+                    stepAst.getCollectionRef(),
+                    stepAst.getItemKey(),
+                    loopSteps,
+                    stepAst.getMaxLoopIterations(),
+                    onFailureSteps
             ));
         }
         return out;
@@ -843,6 +1217,13 @@ public final class ModelCompiler {
                 actionMetadata.getPermissionHint(),
                 actionMetadata.getInputFormHint()
         );
+    }
+
+    private static CompiledFlowSchedule toCompiledFlowSchedule(FlowScheduleAst schedule) {
+        if (schedule == null) {
+            return null;
+        }
+        return new CompiledFlowSchedule(schedule.getCron(), schedule.getTenantScope());
     }
 
     private static List<CompiledProcedureParameter> compileProcedureParameters(List<ProcedureParameterAst> parameters) {
@@ -927,7 +1308,8 @@ public final class ModelCompiler {
                 panelAst.enabledWhen(),
                 compilePanelActions(panelAst.actions()),
                 sortObjectMap(panelAst.explainability()),
-                sortObjectMap(panelAst.metadata())
+                sortObjectMap(panelAst.metadata()),
+                panelAst.guidePage()
         );
     }
 
@@ -937,12 +1319,20 @@ public final class ModelCompiler {
             return out;
         }
         for (PanelDataSourceAst dataSource : dataSources) {
+            List<String> rowOps = new ArrayList<>(dataSource.rowOps());
+            rowOps.replaceAll(op -> op == null ? "" : op.trim().toLowerCase(Locale.ROOT));
+            rowOps.sort(String.CASE_INSENSITIVE_ORDER);
             out.add(new CompiledPanelDataSource(
                     dataSource.name(),
                     dataSource.concept(),
                     dataSource.query(),
                     dataSource.procedure(),
-                    sortObjectMap(dataSource.params())
+                    sortObjectMap(dataSource.params()),
+                    dataSource.parentDataSource(),
+                    dataSource.parentField(),
+                    dataSource.childField(),
+                    List.copyOf(rowOps),
+                    List.copyOf(dataSource.addFormFields())
             ));
         }
         out.sort(Comparator.comparing(dataSource -> normalize(dataSource.name())));
@@ -977,7 +1367,8 @@ public final class ModelCompiler {
                     binding.visibleWhen(),
                     binding.enabledWhen(),
                     binding.readonlyWhen(),
-                    toCompiledPresentationMetadata(binding.ui())
+                    toCompiledPresentationMetadata(binding.ui()),
+                    binding.editable()
             ));
         }
         out.sort(Comparator.comparing(binding -> normalize(binding.field())));
@@ -1051,8 +1442,17 @@ public final class ModelCompiler {
                 referenceSemantics.getDisplayTemplate(),
                 referenceSemantics.getPickerColumns(),
                 referenceSemantics.getPreviewCardTemplate(),
-                referenceSemantics.getDefaultFilter()
+                referenceSemantics.getDefaultFilter(),
+                referenceSemantics.getVia(),
+                referenceSemantics.getOnDelete()
         );
+    }
+
+    private static CompiledFileMetadata toCompiledFileMetadata(FileMetadataAst file) {
+        if (file == null) {
+            return null;
+        }
+        return new CompiledFileMetadata(file.contentTypes(), file.maxSizeBytes(), file.multiple());
     }
 
     private static CompiledPresentationMetadata toCompiledPresentationMetadata(PresentationMetadataAst metadata) {
@@ -1086,17 +1486,23 @@ public final class ModelCompiler {
                 metadata.getWidth(),
                 metadata.getSummaryCard(),
                 metadata.getListColumn(),
+                metadata.getShowInDefaultWebUi(),
                 metadata.getListColumnOrder(),
                 metadata.getFormColumns(),
                 metadata.getDisplayMode(),
+                metadata.getFormPresentation(),
                 metadata.getDefaultSort(),
-                metadata.getDefaultGroup()
+                metadata.getDefaultGroup(),
+                metadata.getImageField(),
+                metadata.getCustomWidgetRef()
         );
     }
 
 
     private static boolean isCapabilityLikeStep(String stepType) {
         return "capability".equals(stepType)
+                || "generatedAction".equalsIgnoreCase(stepType)
+                || "generatedaction".equals(stepType)
                 || "createEntity".equalsIgnoreCase(stepType)
                 || "updateEntity".equalsIgnoreCase(stepType)
                 || "createConcept".equalsIgnoreCase(stepType)
@@ -1107,6 +1513,9 @@ public final class ModelCompiler {
         if (isConceptPersistenceStep(stepType)) {
             return "persistence";
         }
+        if ("generatedAction".equalsIgnoreCase(stepType) || "generatedaction".equals(stepType)) {
+            return stepAst.getCapability();
+        }
         return stepAst.getCapability();
     }
 
@@ -1114,7 +1523,28 @@ public final class ModelCompiler {
         if (isConceptPersistenceStep(stepType)) {
             return "save";
         }
+        if ("generatedAction".equalsIgnoreCase(stepType) || "generatedaction".equals(stepType)) {
+            return "run";
+        }
         return stepAst.getOperation();
+    }
+
+    private static String resolveCapabilityTypeForStep(
+            String stepType,
+            String capabilityName,
+            Map<String, String> capabilityTypesByName
+    ) {
+        if ("generatedAction".equalsIgnoreCase(stepType) || "generatedaction".equals(stepType)) {
+            return "GeneratedActionCapability";
+        }
+        return capabilityTypesByName.get(normalize(capabilityName));
+    }
+
+    private static String resolveAdapterIdForStep(String stepType) {
+        if ("generatedAction".equalsIgnoreCase(stepType) || "generatedaction".equals(stepType)) {
+            return "generated-action";
+        }
+        return null;
     }
 
     private static boolean isConceptPersistenceStep(String stepType) {
@@ -1259,8 +1689,8 @@ public final class ModelCompiler {
 
         if ("unique".equalsIgnoreCase(invariant.getType())
                 && invariant.getFields() != null
-                && invariant.getFields().size() == 1) {
-            return "unique(" + invariant.getFields().get(0) + ")";
+                && !invariant.getFields().isEmpty()) {
+            return "unique(" + String.join(",", invariant.getFields()) + ")";
         }
 
         String expression = invariant.getExpression();
@@ -1282,13 +1712,26 @@ public final class ModelCompiler {
             String expression,
             List<String> aliases
     ) {
+        registerInvariant(invariantsByCanonicalRef, invariantRefAlias, canonicalRef, type, field, expression, null, aliases);
+    }
+
+    private static void registerInvariant(
+            Map<String, CompiledInvariant> invariantsByCanonicalRef,
+            Map<String, String> invariantRefAlias,
+            String canonicalRef,
+            String type,
+            String field,
+            String expression,
+            List<String> fields,
+            List<String> aliases
+    ) {
         if (canonicalRef == null || canonicalRef.isBlank()) {
             return;
         }
 
         invariantsByCanonicalRef.putIfAbsent(
                 canonicalRef,
-                new CompiledInvariant(canonicalRef, type, field, expression)
+                new CompiledInvariant(canonicalRef, type, field, expression, fields)
         );
         invariantRefAlias.put(normalize(canonicalRef), canonicalRef);
         if (aliases == null || aliases.isEmpty()) {

@@ -24,7 +24,8 @@ else {
 }
 
 $projectRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevGenerator"
-$gradleWrapperPath = Join-Path $projectRoot "gradlew.bat"
+# REG-11: resolve the OS-appropriate wrapper via the shared helper so this gate runs on Linux CI.
+$gradleWrapperPath = Get-NPDevGradleWrapperExecutable $projectRoot
 $deterministicGenerationScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\hygiene\check-deterministic-generation.ps1"
 $deterministicGenerationReportPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\deterministic-generation-report.json"
 $generatorGovernanceScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\quality\run-generator-governance.ps1"
@@ -100,13 +101,39 @@ $generatorGovernanceEvidence = [pscustomobject]@{
 $gateReport | Add-Member -NotePropertyName deterministicGeneration -NotePropertyValue $deterministicGenerationEvidence -Force
 $gateReport | Add-Member -NotePropertyName generatorGovernance -NotePropertyValue $generatorGovernanceEvidence -Force
 
+# LNCH-1 P8 (task 8.2): docs/DSL_REFERENCE.md is generated from model.schema.json +
+# FieldWidgetDefaults.java (scripts/docs/generate_dsl_reference.py), not hand-written -- this drift
+# gate was written but never wired into any gate (confirmed by grep at the time). Runs --check
+# (read-only, never mutates the committed doc) so a schema change that should have regenerated the
+# reference fails the gate loudly instead of silently rotting.
+$dslReferenceScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\docs\generate_dsl_reference.py"
+$dslReferenceError = $null
+$dslReferenceExitCode = $null
+$dslReferenceOutput = @()
+try {
+    $dslReferenceOutput = & python $dslReferenceScript "--check" 2>&1 | ForEach-Object { $_.ToString() }
+    $dslReferenceExitCode = $LASTEXITCODE
+}
+catch {
+    $dslReferenceError = $_.Exception.Message
+}
+$dslReferencePassed = ($null -eq $dslReferenceError) -and ($dslReferenceExitCode -eq 0)
+$dslReferenceEvidence = [pscustomobject]@{
+    overallStatus = if ($dslReferencePassed) { "passed" } else { "failed" }
+    exitCode = $dslReferenceExitCode
+    output = @($dslReferenceOutput | Select-Object -Last 20)
+    error = $dslReferenceError
+}
+$gateReport | Add-Member -NotePropertyName dslReferenceDrift -NotePropertyValue $dslReferenceEvidence -Force
+
 if (
     -not [string]::IsNullOrWhiteSpace($deterministicGenerationError) -or
     -not [string]::IsNullOrWhiteSpace($generatorGovernanceError) -or
     ($null -eq $deterministicGenerationReport) -or
     ([string]$deterministicGenerationReport.overallStatus -ne "passed") -or
     ($null -eq $generatorGovernanceReport) -or
-    ([string]$generatorGovernanceReport.overallStatus -ne "passed")
+    ([string]$generatorGovernanceReport.overallStatus -ne "passed") -or
+    (-not $dslReferencePassed)
 ) {
     $gateReport.overallStatus = "failed"
     $gateReport.failureReasons = @(
@@ -123,6 +150,9 @@ if (
             }
             elseif ($null -ne $generatorGovernanceReport -and [string]$generatorGovernanceReport.overallStatus -ne "passed") {
                 "Generator governance report returned status " + [string]$generatorGovernanceReport.overallStatus + "."
+            }
+            if (-not $dslReferencePassed) {
+                "docs/DSL_REFERENCE.md is stale -- run 'python scripts/docs/generate_dsl_reference.py' and commit the result."
             }
         )
     )

@@ -278,7 +278,8 @@
         },
         {
           "name": "PatientNameRequired",
-          "expr": "firstName != null && firstName != '' && lastName != null && lastName != ''"
+          "type": "expression",
+          "expression": "firstName != null && firstName != '' && lastName != null && lastName != ''"
         },
         {
           "name": "AllergyCodesUnique",

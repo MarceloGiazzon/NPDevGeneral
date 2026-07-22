@@ -1,0 +1,147 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "app": {
+    "name": "Custom Panel Invalid Binding",
+    "kind": "expanded-beta-application"
+  },
+  "entities": [
+    {
+      "name": "Learner",
+      "fields": [
+        {
+          "name": "status",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "CreateLearner",
+      "entity": "Learner",
+      "operation": "create",
+      "requiredRole": "coach",
+      "tenantScoped": true
+    }
+  ],
+  "panels": [
+    {
+      "panelId": "learner-dashboard",
+      "type": "entity-list",
+      "route": "/learners",
+      "dataSource": {
+        "kind": "entity",
+        "name": "MissingLearner"
+      },
+      "components": [
+        "table"
+      ],
+      "actions": [],
+      "requiredRole": "coach",
+      "tenantScoped": true,
+      "metadata": {
+        "displayName": "Learner dashboard",
+        "description": "Invalid binding keeps CP12 negative coverage honest.",
+        "icon": "table",
+        "variant": "readonly"
+      }
+    }
+  ],
+  "procedures": [
+    {
+      "procedureId": "learner-summary",
+      "type": "read-only-query",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "total",
+          "type": "integer"
+        }
+      ],
+      "sideEffectType": "none",
+      "requiredRole": "coach",
+      "tenantScoped": true,
+      "allowedEntities": [
+        "Learner"
+      ],
+      "maxAffectedRows": 0,
+      "steps": [
+        {
+          "type": "return",
+          "value": "summary"
+        }
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "workflowId": "learner-lifecycle",
+      "entity": "Learner",
+      "states": [
+        "new",
+        "active",
+        "archived"
+      ],
+      "startState": "new",
+      "terminalStates": [
+        "archived"
+      ],
+      "transitions": [
+        {
+          "name": "activate",
+          "from": "new",
+          "to": "active",
+          "requiredRole": "coach"
+        },
+        {
+          "name": "archive",
+          "from": "active",
+          "to": "archived",
+          "requiredRole": "coach"
+        }
+      ],
+      "tenantScoped": true
+    }
+  ],
+  "tenancy": {
+    "mode": "shared-app-tenant-scoped-data",
+    "tenantIdField": "tenantId",
+    "testTenants": [
+      "tenant-a",
+      "tenant-b"
+    ]
+  },
+  "auth": {
+    "mode": "generated-test-token",
+    "principalFields": [
+      "userId",
+      "tenantId",
+      "roles"
+    ],
+    "testUsers": [
+      {
+        "userId": "coach-a",
+        "tenantId": "tenant-a",
+        "roles": [
+          "coach"
+        ]
+      },
+      {
+        "userId": "coach-b",
+        "tenantId": "tenant-b",
+        "roles": [
+          "coach"
+        ]
+      }
+    ]
+  },
+  "roles": [
+    {
+      "roleId": "coach",
+      "permissions": [
+        "learner:read"
+      ]
+    }
+  ]
+}

@@ -5,17 +5,17 @@
       "name": "canonical-model-alias",
       "path": "NPDevContract\\dsl\\resources\\Schemas\\model.schema.json",
       "expectedValues": {
-        "$id": "https://npdev.local/schema/npdev-model-1.0.0.schema.json",
+        "$id": "https://npdev.local/schema/npdev-model.schema.json",
         "version": "1.0.0",
         "canonicalSchema": "model.schema.json",
         "deprecated": false
       }
     },
     {
-      "name": "versioned-model-schema",
-      "path": "NPDevContract\\dsl\\resources\\Schemas\\model-1.0.0.schema.json",
+      "name": "archived-legacy-model-schema",
+      "path": "NPDevContract\\schemas\\archive\\legacy-model-schema-alias.json",
       "expectedValues": {
-        "$id": "https://npdev.local/schema/npdev-model-1.0.0.schema.json",
+        "$id": "https://npdev.local/schema/npdev-model.schema.json",
         "version": "1.0.0",
         "canonicalSchema": "model.schema.json",
         "deprecated": true
@@ -25,7 +25,7 @@
       "name": "classpath-model-schema",
       "path": "NPDevContract\\dsl\\src\\main\\resources\\schema\\model.schema.json",
       "expectedValues": {
-        "$id": "https://npdev.local/schema/npdev-model-1.0.0.schema.json",
+        "$id": "https://npdev.local/schema/npdev-model.schema.json",
         "version": "1.0.0"
       }
     },
@@ -40,8 +40,8 @@
       }
     },
     {
-      "name": "versioned-config-schema",
-      "path": "NPDevContract\\dsl\\resources\\Schemas\\config-1.0.schema.json",
+      "name": "archived-legacy-config-schema",
+      "path": "NPDevContract\\schemas\\archive\\legacy-config-schema-alias.json",
       "expectedValues": {
         "$id": "https://npdev.local/schema/npdev-config-v1.schema.json",
         "version": "1.0",

@@ -1,65 +1,63 @@
 {
-  "version": "1.1",
-  "betaRelease": {
-    "includedSurfaces": [
-      "contract",
-      "editor",
-      "generator",
-      "kernel",
-      "runtimehost",
-      "sample-matrix",
-      "ai-beta",
-      "frontend-audit-policy",
-      "runtime-surface-evidence",
-      "npdev-cli-runtime"
+  "schemaVersion": "npdev-beta-scope.v2",
+  "release": "ai-only-beta-0",
+  "delegatesTo": "scripts/policy/beta0-scope.json",
+  "expandedBeta0ContractVersion": "expanded-beta0.2026-05-05",
+  "supportedSurfaces": {
+    "inputContracts": [
+      "ai-model.v1",
+      "ai-generator-config.v1",
+      "ai-custom-panel.v1",
+      "ai-custom-procedure.v1",
+      "workflow-contract.v1",
+      "tenant-auth-role-contract.v1",
+      "ai-verification-report.v1",
+      "npdev-ai-command-request.v1"
     ],
-    "excludedSurfaces": [],
-    "betaScopeTransitions": [
-      {
-        "id": "npdev-cli-runtime",
-        "status": "beta-covered",
-        "owner": "NPDevGenerator",
-        "reason": "CLI runtime semantic beta coverage is restored; closure evidence is retained outside excludedSurfaces so current inclusion and exclusion lists remain semantically clean.",
-        "reentryCondition": "No remaining CLI/runtime semantic exclusions.",
-        "disabledTests": [],
-        "closureItems": [
-          {
-            "priority": 1,
-            "test": "com.npdev.cli.NPDevCliMainTest#executeAndTraceCommandsWorkWithSharedStoreDir",
-            "status": "re-enabled-this-cycle",
-            "owner": "NPDevGenerator",
-            "implementationNote": "The CLI regression now executes CreateUser against a shared --store-dir, persists cli-state.json, and resolves the saved trace by the returned executionId."
-          },
-          {
-            "priority": 2,
-            "test": "com.npdev.cli.NPDevCliMainTest#waitingPublishAndResumeLifecycleWorksInCli",
-            "status": "re-enabled-this-cycle",
-            "owner": "NPDevGenerator",
-            "implementationNote": "The CLI AwaitDemo regression now publishes SomethingHappened with the execution correlation id and asserts the waiting execution resumes and disappears from the waiting list."
-          },
-          {
-            "priority": 3,
-            "test": "com.npdev.cli.NPDevCliMainTest#idempotencyHitReturnsCachedResultMetadata",
-            "status": "re-enabled-this-cycle",
-            "owner": "NPDevGenerator",
-            "implementationNote": "The CLI idempotency regression now executes the same request twice against a shared store, asserts the cached output is reused, and verifies the trace plus persisted idempotency record expose the HIT metadata."
-          },
-          {
-            "priority": 4,
-            "test": "com.npdev.cli.NPDevCliMainTest#circuitBreakerCanBeExercisedFromCliSimulation",
-            "status": "re-enabled-this-cycle",
-            "owner": "NPDevGenerator",
-            "implementationNote": "The CLI circuit-breaker regression now drives five transient save failures, asserts the sixth execution is short-circuited with CAPABILITY_CIRCUIT_OPEN, and verifies OPEN state in both the trace and persisted circuit store."
-          },
-          {
-            "priority": 5,
-            "test": "com.npdev.cli.runtime.CliRuntimeFactoryBulkheadTest#inprocBulkheadRejectsWhenConcurrencyLimitIsExceeded",
-            "status": "re-enabled-this-cycle",
-            "owner": "NPDevGenerator",
-            "implementationNote": "The CLI runtime bulkhead regression now launches a synchronized burst of concurrent executions against one runtime instance and asserts CAPABILITY_BULKHEAD_FULL with REJECTED bulkhead trace metadata."
-          }
-        ]
-      }
+    "officialContracts": [
+      "model.schema.json",
+      "config.schema.json",
+      "panel-contract",
+      "procedure-contract",
+      "workflow-contract",
+      "security-contract"
+    ],
+    "verificationMedium": "expanded-smoke-checks",
+    "runtimeProfile": "ai-beta-local",
+    "databaseModes": [
+      "embedded-test",
+      "docker-postgres"
+    ],
+    "appKinds": [
+      "expanded-beta-application"
     ]
+  },
+  "excludedSurfaces": [
+    "public-production-deployment",
+    "arbitrary-shell",
+    "arbitrary-inline-custom-code",
+    "external-network-by-default",
+    "manual-smoke-pass",
+    "production-auth",
+    "multi-cloud-deployment",
+    "ui-only-required-verification"
+  ],
+  "commandExecution": {
+    "mode": "typed-structured-requests-only",
+    "defaultTimeoutSeconds": 300,
+    "maxTimeoutSeconds": 600,
+    "network": "disabled-by-default",
+    "workspaceRootRequired": true
+  },
+  "sourceOfTruth": {
+    "scopePolicy": "scripts/policy/beta0-scope.json",
+    "aiBetaProofReport": "scripts/reports/out/ai-beta-gate-report.json",
+    "releaseProofReport": "scripts/reports/out/beta-release-gate-report.json",
+    "finalProofReport": "scripts/reports/out/beta0-final-release-check-report.json"
+  },
+  "readinessRule": "Expanded AI-only Beta 0 is blocked unless the final release check validates every blocking report from scripts/reports/blocking-report-manifest.json against the current expanded contract version and current runId.",
+  "legacyContext": {
+    "previousPolicyVersion": "npdev-beta-scope.v1",
+    "note": "The previous simple-crud-workflow-only policy is intentionally invalid for expanded Beta 0 release evidence."
   }
 }

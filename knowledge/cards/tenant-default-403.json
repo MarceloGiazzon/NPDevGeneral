@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "knowledge-card.v1",
+  "id": "tenant-default-403",
+  "type": "gotcha",
+  "title": "tenant id \"default\" is a reserved sentinel that silently 403s all flow auth",
+  "body": "Never register or use the literal tenant id `default`. `DefaultExecutionAuthorizationPolicy` treats `default` as a reserved sentinel and denies every flow authorization for it, regardless of the requester's roles/permissions -- a fully-ADMIN-roled requester under tenant `default` is still denied with HTTP 403. As of the ARCH-15 fix (2026-07-12) `TenantRegistryService.create()` fails fast (HTTP 400) if a tenant id normalizes to `default`, and the policy logs a WARNING pointing at tenant registration. Use any other tenant id (e.g. `tenant-a`, `acme`); pick a real tenant id when seeding test users.",
+  "keywords": ["tenant", "default", "403", "authorization", "flow", "sentinel", "denied", "auth"],
+  "appliesTo": ["flow", "auth", "tenancy"],
+  "sourceRefs": ["ARCH-15", "docs/OPEN_GAPS_AND_ROADMAP.md", "npdev_platform_gaps"],
+  "status": "active"
+}

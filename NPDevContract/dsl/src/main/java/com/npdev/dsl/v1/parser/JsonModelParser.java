@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.ast.*;
 import com.npdev.dsl.v1.validation.JsonModelSchemaValidator;
+import com.npdev.dsl.v1.validation.ValidationDiagnostic;
+import com.npdev.dsl.v1.validation.ValidationLayer;
+import com.npdev.dsl.v1.validation.ValidationSeverity;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -45,7 +48,83 @@ public final class JsonModelParser {
             throw new IOException("model.json not found: " + modelJsonPath);
         }
 
-        JsonNode root = mapper.readTree(Files.readAllBytes(modelJsonPath));
+        // Detect deprecated/legacy authoring shapes on the RAW root before pack/fragment
+        // resolution runs. The resolver rejects unknown top-level keys (e.g. legacy
+        // 'entities') with a generic IOException, which would otherwise mask the helpful
+        // DeprecationException + migration guidance below.
+        JsonNode rawRoot = mapper.readTree(Files.readAllBytes(modelJsonPath));
+        checkDeprecatedAuthoringShape(rawRoot);
+
+        return parse(new ModelSourceResolver().resolve(modelJsonPath));
+    }
+
+    public ModelAst parse(ResolvedModelSource source) throws IOException {
+        if (source == null) {
+            throw new IOException("Resolved model source is required");
+        }
+        return parse(source.resolvedRoot(), source.rootModelPath().toString(), source.warnings().stream()
+                .map(ValidationDiagnostic::getMessage)
+                .toList());
+    }
+
+    public ModelAst parse(JsonNode root) throws IOException {
+        return parse(root, "<resolved-model>", List.of());
+    }
+
+    /**
+     * Rejects deprecated/legacy authoring shapes with a {@link DeprecationException} carrying
+     * migration guidance. Runs both on the raw root (before pack/fragment resolution) and on the
+     * resolved root, so the helpful deprecation message is never masked by the resolver's generic
+     * "unsupported top-level key" IOException.
+     */
+    private void checkDeprecatedAuthoringShape(JsonNode root) throws DeprecationException {
+        if (root == null || !root.isObject()) {
+            return;
+        }
+        String schemaTarget = readText(root, "$schema");
+        if (isDeprecatedSchemaTarget(schemaTarget)) {
+            throw new DeprecationException(new ValidationDiagnostic(
+                    ValidationLayer.STRUCTURAL,
+                    ValidationSeverity.ERROR,
+                    "LEGACY_SCHEMA_TARGET",
+                    "Model references a deprecated schema target. Use model.schema.json with schemaVersion '" + CURRENT_SCHEMA_VERSION + "'.",
+                    "NPDevContract",
+                    "$schema",
+                    null,
+                    null,
+                    "schema",
+                    null,
+                    "Replace the $schema value with NPDevContract/schemas/model.schema.json.",
+                    "legacy-schema-target"
+            ));
+        }
+        if (root.has("entities")) {
+            throw new DeprecationException(new ValidationDiagnostic(
+                    ValidationLayer.STRUCTURAL,
+                    ValidationSeverity.ERROR,
+                    "LEGACY_ENTITIES_ROOT",
+                    "Official DSL models must use root 'concepts'. Root 'entities' is no longer supported.",
+                    "NPDevContract",
+                    "$.entities",
+                    null,
+                    null,
+                    "concepts",
+                    null,
+                    "Rename root 'entities' to 'concepts' or run: npdev migrate legacy-model --input old.json --output new.json.",
+                    "legacy-entities-root"
+            ));
+        }
+    }
+
+    public ModelAst parse(JsonNode root, String sourceLabel) throws IOException {
+        return parse(root, sourceLabel, List.of());
+    }
+
+    private ModelAst parse(JsonNode root, String sourceLabel, List<String> sourceWarnings) throws IOException {
+        if (root == null || !root.isObject()) {
+            throw new IOException("model.json root must be an object");
+        }
+        checkDeprecatedAuthoringShape(root);
         String namespace = firstNonBlank(readText(root, "namespace"), readText(root, "model"));
         if (namespace == null || namespace.isBlank()) {
             throw new IOException("Missing/blank required field: namespace (or alias: model)");
@@ -57,18 +136,12 @@ public final class JsonModelParser {
         if (!SUPPORTED_DSL_VERSION.equals(dslVersion)) {
             throw new IOException("Unsupported dslVersion '" + dslVersion + "'. Supported value: \"" + SUPPORTED_DSL_VERSION + "\".");
         }
+        schemaValidator.validate(root, sourceLabel);
+
         String schemaVersion = readText(root, "schemaVersion");
         if (schemaVersion != null && !schemaVersion.isBlank() && !CURRENT_SCHEMA_VERSION.equals(schemaVersion)) {
             throw new IOException("Unsupported schemaVersion '" + schemaVersion + "'. Supported value: \"" + CURRENT_SCHEMA_VERSION + "\".");
         }
-        String schemaTarget = readText(root, "$schema");
-        if (isDeprecatedSchemaTarget(schemaTarget)) {
-            throw new IOException("Model references deprecated schema target '" + schemaTarget + "'. Use model.schema.json with schemaVersion '" + CURRENT_SCHEMA_VERSION + "'.");
-        }
-        if (root.has("entities")) {
-            throw new DeprecationException("The V1 Contract requires 'concepts'. 'entities' is no longer supported.");
-        }
-        schemaValidator.validate(root, modelJsonPath.toAbsolutePath().normalize().toString());
         String version = requiredText(root, "version");
 
         List<ConceptAst> concepts = new ArrayList<>();
@@ -82,8 +155,12 @@ public final class JsonModelParser {
         List<RuleProfileAst> ruleProfiles = new ArrayList<>();
         List<ProcedureAst> procedures = new ArrayList<>();
         List<PanelAst> panels = new ArrayList<>();
-        List<String> parserWarnings = new ArrayList<>();
-        Map<String, EntityAst> conceptsByLowerName = new LinkedHashMap<>();
+        List<GuidePageAst> guidePages = new ArrayList<>();
+        List<AggregateAst> aggregates = new ArrayList<>();
+        List<AutoPanelAst> autoPanels = new ArrayList<>();
+        List<SelectorAst> selectors = new ArrayList<>();
+        List<String> parserWarnings = new ArrayList<>(sourceWarnings == null ? List.of() : sourceWarnings);
+        Map<String, ConceptAst> conceptsByLowerName = new LinkedHashMap<>();
 
         JsonNode conceptsNode = root.get("concepts");
         JsonNode domainTypesNode = root.get("domainTypes");
@@ -161,11 +238,14 @@ public final class JsonModelParser {
                         )
                 );
                 String domainType = readText(f, "domainType");
+                String connectable = readText(f, "connectable");
+                String renamedFrom = readText(f, "renamedFrom");
                 SchemaAst fieldSchema = parseSchema(f, "concepts[" + name + "].fields[" + fname + "]");
                 PresentationMetadataAst fieldUi = parsePresentationMetadata(
                         f.get("ui"),
                         "concepts[" + name + "].fields[" + fname + "].ui"
                 );
+                FileMetadataAst fileMetadata = parseFileMetadata(f.get("file"));
 
                 fields.add(new FieldAst(
                         fname,
@@ -179,7 +259,10 @@ public final class JsonModelParser {
                         domainType,
                         fieldSchema,
                         enumOptions,
-                        fieldUi
+                        fieldUi,
+                        connectable,
+                        renamedFrom,
+                        fileMetadata
                 ));
             }
 
@@ -228,6 +311,34 @@ public final class JsonModelParser {
                 }
             }
 
+            List<IndexAst> indexes = new ArrayList<>();
+            JsonNode indexesNode = ent.get("indexes");
+            if (indexesNode != null) {
+                if (!indexesNode.isArray()) {
+                    throw new IOException("Concept " + name + " indexes must be an array");
+                }
+                for (JsonNode idx : indexesNode) {
+                    List<String> indexFields = parseTextArray(idx.get("fields"));
+                    if (indexFields == null || indexFields.isEmpty()) {
+                        throw new IOException("Concept " + name + " index must declare a non-empty 'fields' array");
+                    }
+                    String indexName = readText(idx, "name");
+                    boolean indexUnique = idx.has("unique") && idx.get("unique").asBoolean(false);
+                    indexes.add(new IndexAst(indexName, indexFields, indexUnique));
+                }
+            }
+
+            ConceptAccessAst access = null;
+            JsonNode accessNode = ent.get("access");
+            if (accessNode != null) {
+                if (!accessNode.isObject()) {
+                    throw new IOException("Concept " + name + " access must be an object");
+                }
+                String accessRead = readText(accessNode, "read");
+                String accessWrite = readText(accessNode, "write");
+                access = new ConceptAccessAst(accessRead, accessWrite);
+            }
+
             JsonNode conceptEventsNode = ent.get("events");
             if (conceptEventsNode != null) {
                 if (!conceptEventsNode.isArray()) {
@@ -238,13 +349,22 @@ public final class JsonModelParser {
                     List<EventPayloadAst> payload = parseEventPayload(ev.get("payload"));
                     String eventSpecializes = readText(ev, "specializes");
                     String eventVersion = readText(ev, "version");
-                    EventAst eventAst = new EventAst(eventName, name, eventSpecializes, eventVersion, payload);
+                    String eventTriggerMode = readText(ev, "mode");
+                    if (eventTriggerMode != null && !eventTriggerMode.isBlank()
+                            && !List.of("create", "update", "delete").contains(eventTriggerMode.trim().toLowerCase(Locale.ROOT))) {
+                        throw new IOException("Concept " + name + " event " + eventName
+                                + " has invalid mode \"" + eventTriggerMode + "\" (must be create|update|delete)");
+                    }
+                    EventAst eventAst = new EventAst(eventName, name, eventSpecializes, eventVersion, payload, eventTriggerMode);
                     conceptEvents.add(eventAst);
                     events.add(eventAst);
                 }
             }
 
-            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi);
+            TruthLevel truthLevel = TruthLevel.fromStringOrDefault(readText(ent, "truthLevel"));
+            String module = readText(ent, "module");
+            String conceptRenamedFrom = readText(ent, "renamedFrom");
+            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel, module, indexes, access, conceptRenamedFrom);
             concepts.add(concept);
             conceptsByLowerName.put(name.toLowerCase(Locale.ROOT), concept);
         }
@@ -262,6 +382,18 @@ public final class JsonModelParser {
                 List<EventPayloadAst> payload = parseEventPayload(ev.get("payload"));
                 String specializes = readText(ev, "specializes");
                 String eventVersion = readText(ev, "version");
+                // mode only means something on a concept-nested event (it tells generated CRUD
+                // which mutation step to publish from); a top-level event has no concept to bind
+                // that to. Reject it explicitly instead of silently dropping it -- the
+                // concept-nested loop above validates the same field, so a top-level declaration
+                // that happens to include it is far more likely an authoring mistake (declared in
+                // the wrong place) than an intentional no-op.
+                String topLevelMode = readText(ev, "mode");
+                if (topLevelMode != null && !topLevelMode.isBlank()) {
+                    throw new IOException("Top-level event " + name
+                            + " declares \"mode\", which only applies to a concept-nested event "
+                            + "(move it under that concept's \"events\" array).");
+                }
                 events.add(new EventAst(name, null, specializes, eventVersion, payload));
             }
         }
@@ -313,6 +445,8 @@ public final class JsonModelParser {
                 SchemaAst inputSchema = parseSchema(flowNode.get("inputSchema"), "flows[" + flowName + "].inputSchema");
                 SchemaAst outputSchema = parseSchema(flowNode.get("outputSchema"), "flows[" + flowName + "].outputSchema");
                 ActionMetadataAst action = parseActionMetadata(flowNode.get("action"), "flows[" + flowName + "].action");
+                Boolean startEndpoint = readOptionalBoolean(flowNode, "startEndpoint");
+                FlowScheduleAst schedule = parseFlowSchedule(flowNode.get("schedule"), flowName);
                 flows.add(new FlowAst(
                         flowName,
                         concept,
@@ -322,7 +456,9 @@ public final class JsonModelParser {
                         steps,
                         inputSchema,
                         outputSchema,
-                        action
+                        action,
+                        Boolean.TRUE.equals(startEndpoint),
+                        schedule
                 ));
             }
         }
@@ -401,6 +537,10 @@ public final class JsonModelParser {
         ruleProfiles.addAll(parseRuleProfiles(root.get("ruleProfiles")));
         procedures.addAll(parseProcedures(root.get("procedures")));
         panels.addAll(parsePanels(root.get("panels")));
+        guidePages.addAll(parseGuidePages(root.get("guidePages")));
+        aggregates.addAll(parseAggregates(root.get("aggregates")));
+        autoPanels.addAll(parseAutoPanels(root.get("autoPanels")));
+        selectors.addAll(parseSelectors(root.get("selectors")));
 
         return new ModelAst(
                 namespace,
@@ -417,6 +557,10 @@ public final class JsonModelParser {
                 ruleProfiles,
                 procedures,
                 panels,
+                guidePages,
+                aggregates,
+                autoPanels,
+                selectors,
                 parserWarnings
         );
     }
@@ -492,10 +636,31 @@ public final class JsonModelParser {
                     parseTextArray(procedureNode.get("permissionRequirements")),
                     readText(procedureNode, "tracePolicy"),
                     readText(procedureNode, "auditPolicy"),
+                    parseGeneratedActionDescriptor(procedureNode.get("actionDescriptor"), "procedures[" + name + "].actionDescriptor"),
                     parseObjectMap(procedureNode.get("metadata"))
             ));
         }
         return out;
+    }
+
+    private static GeneratedActionDescriptorAst parseGeneratedActionDescriptor(JsonNode node, String fieldPath)
+            throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException(fieldPath + " must be an object");
+        }
+        return new GeneratedActionDescriptorAst(
+                readText(node, "actionName"),
+                parseTextArray(node.get("affectedConcepts")),
+                readText(node, "sideEffectConcept"),
+                readText(node, "eventNameOnSuccess"),
+                readText(node, "auditResourceType"),
+                readText(node, "idempotencyPolicy"),
+                readText(node, "tracePolicy"),
+                readText(node, "correlationPolicy")
+        );
     }
 
     private static List<ProcedureParameterAst> parseProcedureParameters(JsonNode node, String fieldPath)
@@ -607,7 +772,223 @@ public final class JsonModelParser {
                     readText(panelNode, "enabledWhen"),
                     parsePanelActions(panelNode.get("actions"), "panels[" + name + "].actions"),
                     parseObjectMap(panelNode.get("explainability")),
-                    parseObjectMap(panelNode.get("metadata"))
+                    parseObjectMap(panelNode.get("metadata")),
+                    readText(panelNode, "guidePage")
+            ));
+        }
+        return out;
+    }
+
+    private static List<AggregateAst> parseAggregates(JsonNode node) throws IOException {
+        List<AggregateAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("aggregates must be an array");
+        }
+        for (JsonNode aggregateNode : node) {
+            String name = requiredText(aggregateNode, "name");
+            out.add(new AggregateAst(
+                    name,
+                    requiredText(aggregateNode, "root"),
+                    parseAggregateCollections(aggregateNode.get("collections"),
+                            "aggregates[" + name + "].collections"),
+                    parseObjectMap(aggregateNode.get("metadata"))
+            ));
+        }
+        return out;
+    }
+
+    private static List<AggregateCollectionAst> parseAggregateCollections(JsonNode node, String path)
+            throws IOException {
+        List<AggregateCollectionAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException(path + " must be an array");
+        }
+        for (JsonNode collectionNode : node) {
+            String name = requiredText(collectionNode, "name");
+            out.add(new AggregateCollectionAst(
+                    name,
+                    requiredText(collectionNode, "concept"),
+                    readText(collectionNode, "via"),
+                    requiredText(collectionNode, "childField"),
+                    readText(collectionNode, "ownership"),
+                    readText(collectionNode, "orderBy"),
+                    parseAggregateCollections(collectionNode.get("collections"),
+                            path + "[" + name + "].collections"),
+                    parseObjectMap(collectionNode.get("metadata"))
+            ));
+        }
+        return out;
+    }
+
+    private static List<AutoPanelAst> parseAutoPanels(JsonNode node) throws IOException {
+        List<AutoPanelAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("autoPanels must be an array");
+        }
+        for (JsonNode autoPanelNode : node) {
+            out.add(new AutoPanelAst(
+                    readText(autoPanelNode, "name"),
+                    readText(autoPanelNode, "concept"),
+                    readText(autoPanelNode, "aggregate"),
+                    readText(autoPanelNode, "route"),
+                    parseTextArray(autoPanelNode.get("surfaces")),
+                    parseAutoPanelSurface(autoPanelNode.get("selection")),
+                    parseAutoPanelSurface(autoPanelNode.get("detail")),
+                    parseAutoPanelSurface(autoPanelNode.get("transaction")),
+                    parseAutoPanelSurface(autoPanelNode.get("prompt")),
+                    parseObjectMap(autoPanelNode.get("metadata"))
+            ));
+        }
+        return out;
+    }
+
+    private static List<SelectorAst> parseSelectors(JsonNode node) throws IOException {
+        List<SelectorAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("selectors must be an array");
+        }
+        for (JsonNode selectorNode : node) {
+            Boolean multiSelect = readOptionalBoolean(selectorNode, "multiSelect");
+            out.add(new SelectorAst(
+                    requiredText(selectorNode, "name"),
+                    requiredText(selectorNode, "concept"),
+                    multiSelect != null && multiSelect,
+                    parseTextArray(selectorNode.get("filters")),
+                    parseTextArray(selectorNode.get("columns")),
+                    parseObjectMap(selectorNode.get("returnMapping")),
+                    parseObjectMap(selectorNode.get("metadata"))
+            ));
+        }
+        return out;
+    }
+
+    private static AutoPanelSurfaceAst parseAutoPanelSurface(JsonNode node) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        return new AutoPanelSurfaceAst(
+                parseTextArray(node.get("filters")),
+                parseTextArray(node.get("columns")),
+                parseTextArray(node.get("fields")),
+                parseAutoPanelComputed(node.get("computed")),
+                readText(node, "labelField"),
+                parseObjectMap(node.get("metadata"))
+        );
+    }
+
+    private static List<AutoPanelComputedAst> parseAutoPanelComputed(JsonNode node) throws IOException {
+        List<AutoPanelComputedAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("autoPanel surface computed must be an array");
+        }
+        for (JsonNode computedNode : node) {
+            out.add(new AutoPanelComputedAst(
+                    requiredText(computedNode, "col"),
+                    requiredText(computedNode, "expr")
+            ));
+        }
+        return out;
+    }
+
+    private static List<GuidePageAst> parseGuidePages(JsonNode node) throws IOException {
+        List<GuidePageAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("guidePages must be an array");
+        }
+        for (JsonNode pageNode : node) {
+            out.add(new GuidePageAst(
+                    requiredText(pageNode, "name"),
+                    readOptionalBoolean(pageNode, "default") != null && readOptionalBoolean(pageNode, "default"),
+                    parseGuidePageRegions(pageNode.get("regions")),
+                    parseGuidePageTheme(pageNode.get("theme")),
+                    parseGuidePageGadgets(pageNode.get("gadgets"))
+            ));
+        }
+        return out;
+    }
+
+    private static GuidePageRegionsAst parseGuidePageRegions(JsonNode node) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException("guidePages[].regions must be an object");
+        }
+        Boolean top = readOptionalBoolean(node, "top");
+        return new GuidePageRegionsAst(
+                top == null || top,
+                parseGuidePageRegion(node.get("left")),
+                parseGuidePageRegion(node.get("right"))
+        );
+    }
+
+    private static GuidePageRegionAst parseGuidePageRegion(JsonNode node) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException("guidePages[].regions.left/right must be an object");
+        }
+        Boolean enabled = readOptionalBoolean(node, "enabled");
+        Boolean collapsible = readOptionalBoolean(node, "collapsible");
+        Boolean defaultCollapsed = readOptionalBoolean(node, "defaultCollapsed");
+        JsonNode widthNode = node.get("width");
+        int width = widthNode != null && widthNode.isNumber() ? widthNode.asInt() : 0;
+        return new GuidePageRegionAst(
+                enabled == null || enabled,
+                collapsible != null && collapsible,
+                defaultCollapsed != null && defaultCollapsed,
+                width
+        );
+    }
+
+    private static GuidePageThemeAst parseGuidePageTheme(JsonNode node) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException("guidePages[].theme must be an object");
+        }
+        return new GuidePageThemeAst(
+                readText(node, "mode"),
+                readText(node, "accent"),
+                readText(node, "density"),
+                readText(node, "logoText"),
+                readText(node, "logoUrl")
+        );
+    }
+
+    private static List<GuidePageGadgetAst> parseGuidePageGadgets(JsonNode node) throws IOException {
+        List<GuidePageGadgetAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("guidePages[].gadgets must be an array");
+        }
+        for (JsonNode gadgetNode : node) {
+            out.add(new GuidePageGadgetAst(
+                    requiredText(gadgetNode, "name"),
+                    requiredText(gadgetNode, "type"),
+                    readText(gadgetNode, "title")
             ));
         }
         return out;
@@ -627,7 +1008,12 @@ public final class JsonModelParser {
                     readText(dataSourceNode, "concept"),
                     readText(dataSourceNode, "query"),
                     readText(dataSourceNode, "procedure"),
-                    parseObjectMap(dataSourceNode.get("params"))
+                    parseObjectMap(dataSourceNode.get("params")),
+                    readText(dataSourceNode, "parentDataSource"),
+                    readText(dataSourceNode, "parentField"),
+                    readText(dataSourceNode, "childField"),
+                    parseTextArray(dataSourceNode.get("rowOps")),
+                    parseTextArray(dataSourceNode.get("addFormFields"))
             ));
         }
         return out;
@@ -676,7 +1062,8 @@ public final class JsonModelParser {
                     readText(bindingNode, "visibleWhen"),
                     readText(bindingNode, "enabledWhen"),
                     readText(bindingNode, "readonlyWhen"),
-                    parsePresentationMetadata(bindingNode.get("ui"), fieldPath + "[" + field + "].ui")
+                    parsePresentationMetadata(bindingNode.get("ui"), fieldPath + "[" + field + "].ui"),
+                    readBooleanFlag(bindingNode, "editable")
             ));
         }
         return out;
@@ -792,6 +1179,47 @@ public final class JsonModelParser {
         return value.longValue();
     }
 
+    /** LIFT-UPLOAD-P2: parses a field's `file: {contentTypes, maxSizeBytes, multiple}` block. */
+    private static FileMetadataAst parseFileMetadata(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        List<String> contentTypes = parseTextArray(node.get("contentTypes"));
+        JsonNode maxSizeNode = node.get("maxSizeBytes");
+        Long maxSizeBytes = maxSizeNode != null && maxSizeNode.isNumber() ? maxSizeNode.asLong() : null;
+        boolean multiple = node.has("multiple") && node.get("multiple").asBoolean(false);
+        return new FileMetadataAst(contentTypes, maxSizeBytes, multiple);
+    }
+
+    /**
+     * LNCH-12: {@code schedule.tenantScope} accepts either a single tenant id string or an array
+     * of them, mirroring how many other fields in this DSL accept a "one or many" shorthand.
+     */
+    private static FlowScheduleAst parseFlowSchedule(JsonNode scheduleNode, String flowName) throws IOException {
+        if (scheduleNode == null || scheduleNode.isNull()) {
+            return null;
+        }
+        if (!scheduleNode.isObject()) {
+            throw new IOException("Flow " + flowName + " schedule must be an object");
+        }
+        String cron = readText(scheduleNode, "cron");
+        if (cron == null || cron.isBlank()) {
+            throw new IOException("Flow " + flowName + " schedule.cron is required");
+        }
+        JsonNode tenantScopeNode = scheduleNode.get("tenantScope");
+        List<String> tenantScope;
+        if (tenantScopeNode == null || tenantScopeNode.isNull()) {
+            tenantScope = List.of();
+        } else if (tenantScopeNode.isTextual()) {
+            tenantScope = List.of(tenantScopeNode.asText());
+        } else if (tenantScopeNode.isArray()) {
+            tenantScope = parseTextArray(tenantScopeNode);
+        } else {
+            throw new IOException("Flow " + flowName + " schedule.tenantScope must be a string or array of strings");
+        }
+        return new FlowScheduleAst(cron.trim(), tenantScope);
+    }
+
     private static List<String> parseTextArray(JsonNode node) {
         List<String> out = new ArrayList<>();
         if (node == null || node.isNull()) return out;
@@ -872,6 +1300,8 @@ public final class JsonModelParser {
         List<String> pickerColumns = parseTextArray(node.get("pickerColumns"));
         String previewCardTemplate = readText(node, "previewCardTemplate");
         String defaultFilter = firstNonBlank(readText(node, "defaultFilter"), readText(node, "defaultFilterBehavior"));
+        String via = readText(node, "via");
+        String onDelete = readText(node, "onDelete");
         return new ReferenceSemanticsAst(
                 target,
                 multiple,
@@ -882,7 +1312,9 @@ public final class JsonModelParser {
                 displayTemplate,
                 pickerColumns,
                 previewCardTemplate,
-                defaultFilter
+                defaultFilter,
+                via,
+                onDelete
         );
     }
 
@@ -941,6 +1373,7 @@ public final class JsonModelParser {
         List<String> args = parseTextArray(stepNode.get("args"));
         String event = readText(stepNode, "event");
         String payload = firstNonBlank(readText(stepNode, "payload"), readText(stepNode, "from"));
+        String generatedActionName = readText(stepNode, "actionName");
         Map<String, String> data = parseStringMap(stepNode.get("data"));
         String condition = readText(stepNode, "condition");
         String awaitEvent = "await".equals(type)
@@ -979,11 +1412,38 @@ public final class JsonModelParser {
             elseSteps = parseStepList(flowName + "." + stepName + ".else", elseNode);
         }
 
+        // LIFT-LOOP-P1: forEach/loop flow step -- collectionRef/itemKey/loopSteps/maxLoopIterations.
+        String collectionRef = readText(stepNode, "collection");
+        String itemKey = readText(stepNode, "itemKey");
+        List<StepAst> loopSteps = List.of();
+        JsonNode loopStepsNode = stepNode.get("steps");
+        if (loopStepsNode != null && loopStepsNode.isArray()) {
+            loopSteps = parseStepList(flowName + "." + stepName + ".steps", loopStepsNode);
+        }
+        Integer maxLoopIterations = readOptionalInt(stepNode, "maxLoopIterations");
+
+        // LNCH-17: declared compensation steps, run in reverse completion order when a later step
+        // in the same flow terminally fails.
+        List<StepAst> onFailureSteps = List.of();
+        JsonNode onFailureNode = stepNode.get("onFailure");
+        if (onFailureNode != null && onFailureNode.isArray()) {
+            onFailureSteps = parseStepList(flowName + "." + stepName + ".onFailure", onFailureNode);
+        }
+
         if ("invariant".equals(type)) {
             if ((checkpoint == null || checkpoint.isBlank()) && scope != null && !scope.isBlank()) {
                 checkpoint = "pre";
             }
         } else if ("capability".equals(type)) {
+            if ((input == null || input.isBlank()) && !args.isEmpty()) {
+                input = args.get(0);
+            }
+        } else if ("generatedAction".equals(type)) {
+            if (generatedActionName == null || generatedActionName.isBlank()) {
+                throw new IOException("Flow " + flowName + " step " + stepName + " actionName is required for generatedAction");
+            }
+            capability = "generated.action." + generatedActionName.trim();
+            operation = "run";
             if ((input == null || input.isBlank()) && !args.isEmpty()) {
                 input = args.get(0);
             }
@@ -1017,7 +1477,13 @@ public final class JsonModelParser {
                 awaitPayloadMatch,
                 delaySeconds,
                 returnValue,
-                action
+                action,
+                generatedActionName,
+                collectionRef,
+                itemKey,
+                loopSteps,
+                maxLoopIterations,
+                onFailureSteps
         );
     }
 
@@ -1025,7 +1491,7 @@ public final class JsonModelParser {
             JsonNode capabilitiesNode,
             String sourceLabel,
             List<CapabilityAst> target,
-            Map<String, EntityAst> conceptsByLowerName
+            Map<String, ConceptAst> conceptsByLowerName
     ) throws IOException {
         if (capabilitiesNode == null) {
             return target;
@@ -1112,7 +1578,7 @@ public final class JsonModelParser {
     private static SchemaAst parseCapabilityOperationSchema(
             JsonNode schemaNode,
             String fieldPath,
-            Map<String, EntityAst> conceptsByLowerName
+            Map<String, ConceptAst> conceptsByLowerName
     ) throws IOException {
         if (schemaNode == null || schemaNode.isNull()) {
             return null;
@@ -1140,10 +1606,10 @@ public final class JsonModelParser {
 
     private static SchemaAst schemaFromConceptRef(
             String conceptRef,
-            Map<String, EntityAst> conceptsByLowerName,
+            Map<String, ConceptAst> conceptsByLowerName,
             String fieldPath
     ) throws IOException {
-        EntityAst concept = conceptsByLowerName.get(conceptRef.toLowerCase(Locale.ROOT));
+        ConceptAst concept = conceptsByLowerName.get(conceptRef.toLowerCase(Locale.ROOT));
         if (concept == null) {
             throw new IOException(fieldPath + " references unknown concept/schema: " + conceptRef);
         }
@@ -1359,11 +1825,15 @@ public final class JsonModelParser {
                 readText(node, "width"),
                 readOptionalBoolean(node, "summaryCard"),
                 readOptionalBoolean(node, "listColumn"),
+                readOptionalBoolean(node, "showInDefaultWebUi"),
                 readOptionalInt(node, "listColumnOrder"),
                 readOptionalInt(node, "formColumns"),
                 readText(node, "displayMode"),
+                readText(node, "formPresentation"),
                 readText(node, "defaultSort"),
-                readText(node, "defaultGroup")
+                readText(node, "defaultGroup"),
+                readText(node, "imageField"),
+                readText(node, "customWidgetRef")
         );
     }
 
@@ -1577,6 +2047,7 @@ public final class JsonModelParser {
         return switch (normalized) {
             case "validate", "enforceinvariants", "invariant" -> "invariant";
             case "capabilitycall", "callcapability", "capability" -> "capability";
+            case "generatedaction", "generated_action" -> "generatedAction";
             case "createentity", "createconcept", "conceptcreate" -> "createConcept";
             case "updateentity", "updateconcept", "conceptupdate" -> "updateConcept";
             case "emitevent", "event" -> "event";
@@ -1585,6 +2056,7 @@ public final class JsonModelParser {
             case "assign", "map" -> "map";
             case "waitforevent", "awaitevent", "await_event", "await" -> "await";
             case "return" -> "return";
+            case "foreach", "loop" -> "forEach";
             default -> type;
         };
     }
@@ -1688,9 +2160,11 @@ public final class JsonModelParser {
             return false;
         }
         String normalized = schemaTarget.replace('\\', '/').toLowerCase(Locale.ROOT);
-        return normalized.endsWith("/model-1.0.0.schema.json") || normalized.endsWith("model-1.0.0.schema.json");
+        String legacyModelSchemaName = "model-" + "1.0.0" + ".schema.json";
+        return normalized.endsWith("/" + legacyModelSchemaName) || normalized.endsWith(legacyModelSchemaName);
     }
 
     private record ParsedRule(String type, List<String> fields, String expression) {
     }
 }
+

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "ai-verification-report.v1",
+  "scenarioId": "verification-external-curl",
+  "baseUrlVariable": "NPDEV_GENERATED_APP_BASE_URL",
+  "checks": [
+    {
+      "id": "external-curl",
+      "type": "http",
+      "method": "GET",
+      "path": "https://example.com",
+      "expectedStatus": 200
+    }
+  ]
+}

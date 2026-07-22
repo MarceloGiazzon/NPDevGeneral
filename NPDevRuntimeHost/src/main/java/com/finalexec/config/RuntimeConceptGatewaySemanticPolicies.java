@@ -1,6 +1,7 @@
 package com.finalexec.config;
 
 import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledConceptAccess;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledInvariant;
 import com.npdev.dsl.v1.compiled.CompiledLifecycle;
@@ -44,8 +45,16 @@ public final class RuntimeConceptGatewaySemanticPolicies {
                 fields,
                 invariants(concept),
                 lifecycle(concept.getLifecycle()),
-                hiddenFields(fields)
+                hiddenFields(fields),
+                accessRules(concept.getAccess())
         );
+    }
+
+    private static ConfiguredConceptGatewaySemanticPolicy.AccessRules accessRules(CompiledConceptAccess access) {
+        if (access == null) {
+            return null;
+        }
+        return new ConfiguredConceptGatewaySemanticPolicy.AccessRules(access.getRead(), access.getWrite());
     }
 
     private static ConfiguredConceptGatewaySemanticPolicy.FieldDefinition toFieldDefinition(CompiledField field) {

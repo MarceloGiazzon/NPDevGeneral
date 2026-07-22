@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "knowledge-card.v1",
+  "id": "hash-guarded-npdev-generated",
+  "type": "constraint",
+  "title": "Never hand-edit files under an app's npdev-generated/ -- it is hash-verified",
+  "body": "The `npdev-generated/` tree inside a generated FinalApp is hash-verified: any post-generation edit to a file there will be detected/rejected (or silently overwritten on the next regeneration). Do not patch generated output in place to \"fix\" something. Change the source instead -- the model, the generator template/emitter, or the app-owned static assets that live OUTSIDE npdev-generated/ (e.g. web/ overrides). If an app is served via a static-locations flag, note the jar copy of a static asset can be stale relative to the on-disk file; regenerate rather than editing the guarded copy.",
+  "keywords": ["npdev-generated", "hash", "guarded", "regenerate", "generated", "static", "do-not-edit"],
+  "appliesTo": ["build-ops", "generator"],
+  "sourceRefs": ["workspace_menu_shell_platform_default", "wmsoffice_visualizacao_oficial_map"],
+  "status": "active"
+}

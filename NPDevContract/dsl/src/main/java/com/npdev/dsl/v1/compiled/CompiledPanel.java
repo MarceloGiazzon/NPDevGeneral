@@ -14,7 +14,8 @@ public record CompiledPanel(
         String enabledWhen,
         List<CompiledPanelAction> actions,
         Map<String, Object> explainability,
-        Map<String, Object> metadata
+        Map<String, Object> metadata,
+        String guidePage
 ) {
     public CompiledPanel {
         dataSources = dataSources == null ? List.of() : List.copyOf(dataSources);

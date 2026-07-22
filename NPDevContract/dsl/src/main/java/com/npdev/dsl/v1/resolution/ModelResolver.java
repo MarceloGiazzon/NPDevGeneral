@@ -1,18 +1,22 @@
 package com.npdev.dsl.v1.resolution;
 
+import com.npdev.dsl.v1.ast.AggregateAst;
+import com.npdev.dsl.v1.ast.AutoPanelAst;
 import com.npdev.dsl.v1.ast.CapabilityAst;
 import com.npdev.dsl.v1.ast.CapabilityBindingAst;
+import com.npdev.dsl.v1.ast.ConceptAccessAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.ActionMetadataAst;
 import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.DomainTypeAst;
 import com.npdev.dsl.v1.ast.DomainTypeUiAst;
-import com.npdev.dsl.v1.ast.EntityAst;
 import com.npdev.dsl.v1.ast.EventAst;
 import com.npdev.dsl.v1.ast.EventPayloadAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.FlowHookAst;
+import com.npdev.dsl.v1.ast.FlowScheduleAst;
+import com.npdev.dsl.v1.ast.IndexAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.ModelAst;
@@ -21,6 +25,7 @@ import com.npdev.dsl.v1.ast.OrchestrationAst;
 import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.PresentationMetadataAst;
 import com.npdev.dsl.v1.ast.PanelAst;
+import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.ast.ProcedureAst;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.RuleProfileAst;
@@ -70,6 +75,8 @@ public final class ModelResolver {
         resolvedProcedures.sort(Comparator.comparing(procedure -> normalize(procedure.name())));
         List<PanelAst> resolvedPanels = new ArrayList<>(source.getPanels());
         resolvedPanels.sort(Comparator.comparing(panel -> normalize(panel.name())));
+        List<GuidePageAst> resolvedGuidePages = new ArrayList<>(source.getGuidePages());
+        resolvedGuidePages.sort(Comparator.comparing(page -> normalize(page.name())));
         List<CapabilityBindingAst> resolvedBindings = new ArrayList<>(source.getBindings());
         resolvedBindings.sort(Comparator
                 .comparing((CapabilityBindingAst binding) -> normalize(binding.getCapability()))
@@ -90,6 +97,10 @@ public final class ModelResolver {
                 resolvedRuleProfiles,
                 resolvedProcedures,
                 resolvedPanels,
+                resolvedGuidePages,
+                source.getAggregates(),
+                source.getAutoPanels(),
+                source.getSelectors(),
                 source.getParserWarnings()
         );
         return ResolvedModel.from(resolvedAst);
@@ -181,7 +192,12 @@ public final class ModelResolver {
                 invariants,
                 events,
                 sanitizeLifecycle(concept.getLifecycle()),
-                copyPresentationMetadata(concept.getUi())
+                copyPresentationMetadata(concept.getUi()),
+                concept.getTruthLevel(),
+                concept.getModule(),
+                concept.getIndexes(),
+                concept.getAccess(),
+                concept.getRenamedFrom()
         );
     }
 
@@ -228,6 +244,19 @@ public final class ModelResolver {
                 ? sanitizeLifecycle(specialization.getLifecycle())
                 : sanitizeLifecycle(base.getLifecycle());
 
+        List<IndexAst> mergedIndexes = new ArrayList<>(base.getIndexes());
+        mergedIndexes.addAll(specialization.getIndexes());
+
+        // LNCH-13: specialization's own access rule wins if declared (same "specialization wins,
+        // else fall back to base" pattern as module, just above); a specialization narrowing or
+        // changing row-level scoping doesn't merge with the base rule -- it replaces it, since
+        // ANDing an unrelated base rule in by default could silently over-restrict, and ORing it
+        // in could silently under-restrict (a security-relevant default either way, so this picks
+        // the least-surprising one: explicit replacement).
+        ConceptAccessAst mergedAccess = specialization.getAccess() != null
+                ? specialization.getAccess()
+                : base.getAccess();
+
         return new ConceptAst(
                 specialization.getName(),
                 null,
@@ -236,7 +265,12 @@ public final class ModelResolver {
                 mergedInvariants,
                 mergedEvents,
                 mergedLifecycle,
-                mergePresentationMetadata(base.getUi(), specialization.getUi())
+                mergePresentationMetadata(base.getUi(), specialization.getUi()),
+                specialization.getTruthLevel(),
+                firstNonBlank(specialization.getModule(), base.getModule()),
+                mergedIndexes,
+                mergedAccess,
+                specialization.getRenamedFrom()
         );
     }
 
@@ -280,11 +314,15 @@ public final class ModelResolver {
                 firstNonBlank(override.getWidth(), base.getWidth()),
                 override.getSummaryCard() != null ? override.getSummaryCard() : base.getSummaryCard(),
                 override.getListColumn() != null ? override.getListColumn() : base.getListColumn(),
+                override.getShowInDefaultWebUi() != null ? override.getShowInDefaultWebUi() : base.getShowInDefaultWebUi(),
                 override.getListColumnOrder() != null ? override.getListColumnOrder() : base.getListColumnOrder(),
                 override.getFormColumns() != null ? override.getFormColumns() : base.getFormColumns(),
                 firstNonBlank(override.getDisplayMode(), base.getDisplayMode()),
+                firstNonBlank(override.getFormPresentation(), base.getFormPresentation()),
                 firstNonBlank(override.getDefaultSort(), base.getDefaultSort()),
-                firstNonBlank(override.getDefaultGroup(), base.getDefaultGroup())
+                firstNonBlank(override.getDefaultGroup(), base.getDefaultGroup()),
+                firstNonBlank(override.getImageField(), base.getImageField()),
+                firstNonBlank(override.getCustomWidgetRef(), base.getCustomWidgetRef())
         );
     }
 
@@ -319,11 +357,15 @@ public final class ModelResolver {
                 metadata.getWidth(),
                 metadata.getSummaryCard(),
                 metadata.getListColumn(),
+                metadata.getShowInDefaultWebUi(),
                 metadata.getListColumnOrder(),
                 metadata.getFormColumns(),
                 metadata.getDisplayMode(),
+                metadata.getFormPresentation(),
                 metadata.getDefaultSort(),
-                metadata.getDefaultGroup()
+                metadata.getDefaultGroup(),
+                metadata.getImageField(),
+                metadata.getCustomWidgetRef()
         );
     }
 
@@ -601,7 +643,8 @@ public final class ModelResolver {
                 event.getConceptName(),
                 null,
                 event.getVersion(),
-                payload
+                payload,
+                event.getTriggerMode()
         );
     }
 
@@ -632,13 +675,16 @@ public final class ModelResolver {
         }
         List<EventPayloadAst> resolvedPayload = localPayload.isEmpty() ? basePayload : localPayload;
         String resolvedVersion = !localVersion.isBlank() ? specialization.getVersion() : base.getVersion();
+        String localTriggerMode = safe(specialization.getTriggerMode());
+        String resolvedTriggerMode = !localTriggerMode.isBlank() ? specialization.getTriggerMode() : base.getTriggerMode();
 
         return new EventAst(
                 specialization.getName(),
                 resolvedConcept,
                 null,
                 resolvedVersion,
-                resolvedPayload
+                resolvedPayload,
+                resolvedTriggerMode
         );
     }
 
@@ -773,7 +819,9 @@ public final class ModelResolver {
                 steps,
                 flow.getInputSchema(),
                 flow.getOutputSchema(),
-                cloneActionMetadata(flow.getAction())
+                cloneActionMetadata(flow.getAction()),
+                flow.isStartEndpoint(),
+                flow.getSchedule()
         );
     }
 
@@ -812,6 +860,11 @@ public final class ModelResolver {
         List<StepAst> mergedSteps = applyHooks(base.getSteps(), specialization.getHooks(), specialization.getName());
         validateStepNameUniqueness(mergedSteps, specialization.getName());
 
+        // LNCH-12: same "specialization wins, else base" rationale as LNCH-13's access field --
+        // a specialization narrowing/changing the schedule replaces it rather than merging, since
+        // there's no sensible way to combine two cron expressions.
+        FlowScheduleAst mergedSchedule = specialization.getSchedule() != null
+                ? specialization.getSchedule() : base.getSchedule();
         return new FlowAst(
                 specialization.getName(),
                 base.getConcept(),
@@ -821,7 +874,9 @@ public final class ModelResolver {
                 mergedSteps,
                 base.getInputSchema(),
                 base.getOutputSchema(),
-                firstNonNullAction(specialization.getAction(), base.getAction())
+                firstNonNullAction(specialization.getAction(), base.getAction()),
+                specialization.isStartEndpoint() || base.isStartEndpoint(),
+                mergedSchedule
         );
     }
 
@@ -929,7 +984,13 @@ public final class ModelResolver {
                 step.getAwaitPayloadMatch(),
                 step.getDelaySeconds(),
                 step.getReturnValue(),
-                cloneActionMetadata(step.getAction())
+                cloneActionMetadata(step.getAction()),
+                step.getGeneratedActionName(),
+                step.getCollectionRef(),
+                step.getItemKey(),
+                cloneSteps(step.getLoopSteps()),
+                step.getMaxLoopIterations(),
+                cloneSteps(step.getOnFailureSteps())
         );
     }
 

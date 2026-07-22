@@ -1,0 +1,184 @@
+{
+  "schemaVersion": "ai-verification-report.v1",
+  "scenarioId": "tenant-workflow-ops",
+  "baseUrlVariable": "NPDEV_GENERATED_APP_BASE_URL",
+  "requiredSurfaceCoverage": [
+    "custom-ui-panels",
+    "custom-procedures",
+    "multi-tenancy",
+    "authentication",
+    "roles",
+    "workflow-engine",
+    "rest-smoke"
+  ],
+  "checks": [
+    {
+      "id": "health-ok",
+      "type": "http",
+      "method": "GET",
+      "path": "/actuator/health",
+      "expectedStatus": 200,
+      "expectedJsonContains": {
+        "status": "UP"
+      },
+      "coversSurfaces": [
+        "rest-smoke"
+      ]
+    },
+    {
+      "id": "missing-auth-rejected",
+      "type": "http",
+      "method": "GET",
+      "path": "/api/admin/runtime/metadata",
+      "expectedStatus": 401,
+      "expectedJsonContains": {
+        "error": "missing_api_key"
+      },
+      "coversSurfaces": [
+        "authentication"
+      ]
+    },
+    {
+      "id": "invalid-auth-rejected",
+      "type": "http",
+      "method": "GET",
+      "path": "/api/admin/runtime/metadata",
+      "headers": {
+        "X-Api-Key": "not-a-valid-key"
+      },
+      "expectedStatus": 401,
+      "expectedJsonContains": {
+        "error": "invalid_api_key"
+      },
+      "coversSurfaces": [
+        "authentication"
+      ]
+    },
+    {
+      "id": "scenario-authenticated-create-ticket",
+      "type": "http",
+      "method": "POST",
+      "path": "/api/tickets",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Api-Key": "ai-tenant-workflow-ops-agent-a"
+      },
+      "body": {
+        "tenantId": "tenant-a",
+        "title": "Beta workflow request",
+        "status": "open"
+      },
+      "expectedStatus": 201,
+      "expectedJsonContains": {
+        "tenantId": "tenant-a",
+        "title": "Beta workflow request"
+      },
+      "coversSurfaces": [
+        "authentication",
+        "multi-tenancy"
+      ]
+    },
+    {
+      "id": "cross-tenant-panel-action-rejected",
+      "type": "http",
+      "method": "POST",
+      "path": "/api/execute/panel-action",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Api-Key": "ai-tenant-workflow-ops-agent-a"
+      },
+      "body": {
+        "tenantId": "tenant-b",
+        "panelName": "ticket-workflow-panel",
+        "actionName": "advance-ticket",
+        "input": {
+          "ticketId": "22222222-2222-2222-2222-222222222222"
+        }
+      },
+      "expectedStatus": 403,
+      "coversSurfaces": [
+        "multi-tenancy"
+      ]
+    },
+    {
+      "id": "scenario-role-not-admin",
+      "type": "http",
+      "method": "GET",
+      "path": "/api/admin/runtime/metadata",
+      "headers": {
+        "X-Api-Key": "ai-tenant-workflow-ops-agent-a"
+      },
+      "expectedStatus": 403,
+      "coversSurfaces": [
+        "roles"
+      ]
+    },
+    {
+      "id": "workflow-lifecycle-metadata",
+      "type": "http",
+      "method": "GET",
+      "path": "/api/admin/runtime/metadata/concepts/Ticket",
+      "headers": {
+        "X-Api-Key": "dev-key"
+      },
+      "expectedStatus": 200,
+      "expectedJsonContains": {
+        "concept": {
+          "name": "Ticket",
+          "lifecycleStatusField": "status",
+          "initialState": "open",
+          "transitionCount": 2
+        }
+      },
+      "coversSurfaces": [
+        "workflow-engine"
+      ]
+    },
+    {
+      "id": "custom-panel-load",
+      "type": "http",
+      "method": "GET",
+      "path": "/api/runtime/metadata/ui/panels/ticket-workflow-panel",
+      "headers": {
+        "X-Api-Key": "ai-tenant-workflow-ops-agent-a"
+      },
+      "expectedStatus": 200,
+      "expectedJsonContains": {
+        "surfaceType": "panel-runtime",
+        "operation": "loadPanel",
+        "panelName": "ticket-workflow-panel",
+        "tenantId": "tenant-a"
+      },
+      "coversSurfaces": [
+        "custom-ui-panels",
+        "multi-tenancy"
+      ]
+    },
+    {
+      "id": "custom-procedure-panel-action",
+      "type": "http",
+      "method": "POST",
+      "path": "/api/runtime/metadata/ui/panels/ticket-workflow-panel/actions/advance-ticket",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Api-Key": "ai-tenant-workflow-ops-agent-a"
+      },
+      "body": {
+        "ticketId": "11111111-1111-1111-1111-111111111111"
+      },
+      "expectedStatus": 200,
+      "expectedJsonContains": {
+        "surfaceType": "panel-runtime",
+        "operation": "executeAction",
+        "panelName": "ticket-workflow-panel",
+        "actionName": "advance-ticket",
+        "status": "OK",
+        "tenantId": "tenant-a"
+      },
+      "coversSurfaces": [
+        "custom-procedures",
+        "custom-ui-panels"
+      ]
+    }
+  ]
+}

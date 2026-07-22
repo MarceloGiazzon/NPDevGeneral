@@ -2,7 +2,27 @@ plugins {
     id 'base'
 }
 
+def resolveNpdevBuildRoot = {
+    def configured = System.getenv('NPDEV_BUILD_ROOT')
+    if (configured != null && !configured.trim().isEmpty()) {
+        return file(configured)
+    }
+    def sourceRoot = rootDir
+    while (sourceRoot != null && sourceRoot.name != 'NPDev_General') {
+        sourceRoot = sourceRoot.parentFile
+    }
+    if (sourceRoot != null && sourceRoot.parentFile != null) {
+        return new File(sourceRoot.parentFile, 'Build')
+    }
+    return new File(rootDir.parentFile, 'Build')
+}
+
+def npdevExternalBuildRoot = resolveNpdevBuildRoot()
+
 allprojects {
+    def safeProjectPath = project.path == ':' ? 'root' : project.path.substring(1).replace(':', '/')
+    layout.buildDirectory.set(new File(npdevExternalBuildRoot, "gradle/${rootProject.name}/${safeProjectPath}"))
+
     group = 'com.npdev'
     version = '0.1.0'
 
@@ -31,6 +51,19 @@ subprojects {
 
     tasks.withType(Test).configureEach {
         useJUnitPlatform()
+        // Perf: forked test JVMs default to 512m and ignore org.gradle.jvmargs.
+        // maxParallelForks is held at 2 (not 4) on purpose: these suites drive
+        // Testcontainers over the Docker npipe below, and concurrent forks
+        // contend on shared containers/ports.
+        maxHeapSize = '2g'
+        maxParallelForks = 2
+        jvmArgs '-XX:+UseParallelGC'
+        if (System.getProperty('os.name', '').toLowerCase().contains('win')
+                && System.getenv('DOCKER_HOST') == null) {
+            environment 'DOCKER_HOST', 'npipe:////./pipe/dockerDesktopLinuxEngine'
+            systemProperty 'docker.host', 'npipe:////./pipe/dockerDesktopLinuxEngine'
+            systemProperty 'docker.client.strategy', 'org.testcontainers.dockerclient.NpipeSocketClientProviderStrategy'
+        }
     }
 }
 

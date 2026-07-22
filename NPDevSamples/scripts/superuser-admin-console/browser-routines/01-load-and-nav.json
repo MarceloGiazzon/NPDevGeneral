@@ -1,0 +1,24 @@
+{
+  "scenarioName": "superuser-console-load-and-nav",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl", "label": "Open the generated business UI" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible", "label": "Shell rendered" },
+    { "action": "fill", "selector": "#apiKey", "value": "api-dev", "label": "Enter the dev super-user API key" },
+    { "action": "reload", "label": "Reload so the persisted key authenticates on bootstrap" },
+    { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-__store__\"]", "state": "visible", "label": "Super-user nav rendered" },
+    { "action": "assertTextContains", "selector": "#sideNav", "text": "Project", "label": "Ordinary business concept nav present" },
+    { "action": "assertTextContains", "selector": "#sideNav", "text": "Note", "label": "Ordinary business concept nav present" },
+    { "action": "assertTextContains", "selector": "#sideNav", "text": "My Preferences", "label": "Workspace Preferences panel link present" },
+    { "action": "assertVisible", "selector": "#sideNav a[href=\"#concept-identity--User\"]", "label": "Identity Users nav (composed pack) present" },
+    { "action": "assertVisible", "selector": "#sideNav a[href=\"#concept-identity--Role\"]", "label": "Identity Roles nav (composed pack) present" },
+    { "action": "assertVisible", "selector": "#sideNav a[href=\"#concept-identity--UserRole\"]", "label": "Identity UserRoles nav (composed pack) present" },
+    { "action": "assertVisible", "selector": "#sideNav a[href=\"#concept-workspace--Menu\"]", "label": "Workspace Menus nav (composed pack) present" },
+    { "action": "assertVisible", "selector": "#sideNav a[href=\"#concept-__store__\"]", "label": "Store surface present (super-user only)" },
+    { "action": "assertVisible", "selector": "#sideNav a[href=\"#concept-__boxview__\"]", "label": "Box View surface present (super-user only)" },
+    { "action": "assertTextContains", "selector": "#sideNav", "text": "ADMIN", "label": "Admin nav group header present (CSS-uppercased, so innerText is ADMIN)" },
+    { "action": "screenshot", "name": "superuser_nav", "label": "Capture the authenticated super-user shell with identity+workspace+store+boxview" },
+    { "action": "collect", "what": ["domText", "url"] }
+  ]
+}

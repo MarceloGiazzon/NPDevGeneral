@@ -1,0 +1,173 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "app": {
+    "name": "Tenant Approval Portal",
+    "kind": "expanded-beta-application"
+  },
+  "entities": [
+    {
+      "name": "Request",
+      "tenantScoped": true,
+      "fields": [
+        {
+          "name": "title",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "integer",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "CreateRequest",
+      "entity": "Request",
+      "operation": "create",
+      "requiredRole": "requester",
+      "tenantScoped": true
+    }
+  ],
+  "panels": [
+    {
+      "panelId": "approval-dashboard",
+      "type": "dashboard-summary",
+      "route": "/requests/dashboard",
+      "dataSource": {
+        "kind": "procedure",
+        "name": "approval-summary"
+      },
+      "components": [
+        "table",
+        "workflow-status-badge",
+        "procedure-result-block"
+      ],
+      "actions": [
+        "approval-summary"
+      ],
+      "requiredRole": "approver",
+      "tenantScoped": true
+    }
+  ],
+  "procedures": [
+    {
+      "procedureId": "approval-summary",
+      "type": "computed-summary",
+      "inputs": [
+        {
+          "name": "tenantId",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "pendingCount",
+          "type": "integer"
+        }
+      ],
+      "sideEffectType": "none",
+      "requiredRole": "approver",
+      "tenantScoped": true,
+      "allowedEntities": [
+        "Request"
+      ],
+      "maxAffectedRows": 0,
+      "steps": [
+        {
+          "type": "return",
+          "value": "pending"
+        }
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "workflowId": "request-approval",
+      "entity": "Request",
+      "states": [
+        "draft",
+        "submitted",
+        "approved",
+        "rejected"
+      ],
+      "startState": "draft",
+      "terminalStates": [
+        "approved",
+        "rejected"
+      ],
+      "transitions": [
+        {
+          "name": "submit",
+          "from": "draft",
+          "to": "submitted",
+          "requiredRole": "requester"
+        },
+        {
+          "name": "approve",
+          "from": "submitted",
+          "to": "approved",
+          "requiredRole": "approver"
+        },
+        {
+          "name": "reject",
+          "from": "submitted",
+          "to": "rejected",
+          "requiredRole": "approver"
+        }
+      ],
+      "tenantScoped": true
+    }
+  ],
+  "tenancy": {
+    "mode": "shared-app-tenant-scoped-data",
+    "tenantIdField": "tenantId",
+    "testTenants": [
+      "tenant-a",
+      "tenant-b"
+    ]
+  },
+  "auth": {
+    "mode": "generated-test-token",
+    "principalFields": [
+      "userId",
+      "tenantId",
+      "roles"
+    ],
+    "testUsers": [
+      {
+        "userId": "requester-a",
+        "tenantId": "tenant-a",
+        "roles": [
+          "requester"
+        ]
+      },
+      {
+        "userId": "approver-b",
+        "tenantId": "tenant-b",
+        "roles": [
+          "approver"
+        ]
+      }
+    ]
+  },
+  "roles": [
+    {
+      "roleId": "requester",
+      "permissions": [
+        "request:create",
+        "workflow:transition"
+      ]
+    },
+    {
+      "roleId": "approver",
+      "permissions": [
+        "request:read",
+        "workflow:transition"
+      ]
+    }
+  ]
+}

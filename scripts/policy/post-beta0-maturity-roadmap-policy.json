@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "npdev-post-beta0-maturity-roadmap-policy.v1",
+  "roadmapName": "NPDev Post-Beta0 Maturity Hardening Roadmap",
+  "beta0TagImmutable": true,
+  "requiresHumanApprovalForNewCheckpoint": true,
+  "checkpoints": [
+    "anti-horizon-controls",
+    "kernel-postgres-adapter-fidelity",
+    "runtimehost-postgres-profile-fidelity",
+    "true-e2e-runtime-fidelity",
+    "golden-scenario-truth",
+    "boundary-lock-pack",
+    "ai-to-dsl-mapping-contract",
+    "ci-closure-and-human-action-register"
+  ],
+  "allowedNewFindingClassifications": [
+    "current-roadmap-blocker",
+    "known-risk",
+    "post-roadmap-backlog",
+    "human-decision-required",
+    "invalid-or-duplicate"
+  ]
+}

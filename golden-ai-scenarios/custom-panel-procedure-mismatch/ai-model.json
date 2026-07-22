@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "app": {
+    "name": "Custom Panel Procedure Mismatch",
+    "kind": "custom-procedure-panel"
+  },
+  "entities": [
+    {
+      "name": "Learner",
+      "fields": [
+        {
+          "name": "status",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "CreateLearner",
+      "entity": "Learner",
+      "operation": "create"
+    }
+  ]
+}

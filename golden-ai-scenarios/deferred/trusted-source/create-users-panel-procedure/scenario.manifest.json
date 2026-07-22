@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "ai-scenario-manifest.v1",
+  "scenarioId": "create-users-panel-procedure",
+  "kind": "negative",
+  "expectedOutcome": "fail",
+  "expectedFailureStage": "ai-model-schema",
+  "files": {
+    "aiModel": "ai-model.json",
+    "aiConfig": "ai-config.json",
+    "verification": "ai-verification-report.json",
+    "expectedBehavior": "expected-behavior.json",
+    "model": "model.json",
+    "config": "config.json",
+    "customPanel": "custom-panel.json",
+    "customProcedure": "custom-procedure.json",
+    "expectedPanelBehavior": "expected-panel-behavior.json",
+    "expectedProcedureBehavior": "expected-procedure-behavior.json"
+  }
+}

@@ -4,8 +4,13 @@ import com.npdev.kernel.ports.EventStore;
 import com.npdev.kernel.ports.FlowInstanceStore;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.core.env.Environment;
+import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.ResourceLoader;
 
 import javax.sql.DataSource;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -31,6 +36,8 @@ public final class StartupValidator implements InitializingBean {
     private final String jwtIssuer;
     private final String jwtAudience;
     private final String jwtPublicKeyPath;
+    private final String jwtPrivateKeyPath;
+    private final ResourceLoader resourceLoader;
 
     public StartupValidator(
             RuntimeSettings settings,
@@ -42,7 +49,28 @@ public final class StartupValidator implements InitializingBean {
             String apiKeyMappings,
             String jwtIssuer,
             String jwtAudience,
-            String jwtPublicKeyPath
+            String jwtPublicKeyPath,
+            String jwtPrivateKeyPath
+    ) {
+        this(settings, dataSource, eventStore, flowInstanceStore, environment, authMode, apiKeyMappings,
+                jwtIssuer, jwtAudience, jwtPublicKeyPath, jwtPrivateKeyPath, new DefaultResourceLoader());
+    }
+
+    // Package-visible for tests: lets a test inject a ResourceLoader (and thus point key paths at
+    // fixtures) without touching the real classpath/filesystem.
+    StartupValidator(
+            RuntimeSettings settings,
+            DataSource dataSource,
+            EventStore eventStore,
+            FlowInstanceStore flowInstanceStore,
+            Environment environment,
+            String authMode,
+            String apiKeyMappings,
+            String jwtIssuer,
+            String jwtAudience,
+            String jwtPublicKeyPath,
+            String jwtPrivateKeyPath,
+            ResourceLoader resourceLoader
     ) {
         this.settings = Objects.requireNonNull(settings, "settings");
         this.dataSource = dataSource;
@@ -54,6 +82,8 @@ public final class StartupValidator implements InitializingBean {
         this.jwtIssuer = jwtIssuer;
         this.jwtAudience = jwtAudience;
         this.jwtPublicKeyPath = jwtPublicKeyPath;
+        this.jwtPrivateKeyPath = jwtPrivateKeyPath;
+        this.resourceLoader = resourceLoader == null ? new DefaultResourceLoader() : resourceLoader;
     }
 
     @Override
@@ -161,6 +191,42 @@ public final class StartupValidator implements InitializingBean {
         validateJwtSetting("npdev.auth.jwt.issuer", jwtIssuer);
         validateJwtSetting("npdev.auth.jwt.audience", jwtAudience);
         validateJwtSetting("npdev.auth.jwt.public-key-path", jwtPublicKeyPath);
+        // The public key is always required in jwt mode (both full and verify-only deployments
+        // validate tokens with it), so confirm it actually resolves - a wrong path otherwise fails
+        // per-request inside JwtBearerAuthFilter with an opaque jwt_public_key_not_found instead of
+        // at startup. The private key is OPTIONAL: a blank path is a legitimate verify-only
+        // deployment (REG-9) where this instance only validates externally-issued tokens; but a
+        // path that IS set must resolve, or LoginController would otherwise crash the whole context
+        // at bean creation with a raw NoSuchFileException the operator has to decode.
+        validateJwtKeyReadable("npdev.auth.jwt.public-key-path", jwtPublicKeyPath, true);
+        validateJwtKeyReadable("npdev.auth.jwt.private-key-path", jwtPrivateKeyPath, false);
+    }
+
+    private void validateJwtKeyReadable(String propertyName, String path, boolean required) {
+        String normalized = normalize(path);
+        if (normalized == null) {
+            if (required) {
+                throw configError(propertyName + " is required when npdev.auth.mode=jwt", AUTH_ANCHOR);
+            }
+            // Optional (verify-only) key intentionally omitted - nothing to check.
+            return;
+        }
+        boolean readable;
+        try {
+            if (normalized.startsWith("classpath:")) {
+                Resource resource = resourceLoader.getResource(normalized);
+                readable = resource.exists() && resource.isReadable();
+            } else {
+                String bare = normalized.startsWith("file:") ? normalized.substring("file:".length()) : normalized;
+                Path keyPath = Path.of(bare);
+                readable = Files.exists(keyPath) && Files.isReadable(keyPath);
+            }
+        } catch (Exception ex) {
+            throw configError(propertyName + " could not be resolved: " + ex.getMessage(), AUTH_ANCHOR, ex);
+        }
+        if (!readable) {
+            throw configError(propertyName + "='" + normalized + "' does not point at a readable key file", AUTH_ANCHOR);
+        }
     }
 
     private void validateJwtSetting(String propertyName, String propertyValue) {

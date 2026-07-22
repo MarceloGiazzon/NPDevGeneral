@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "app": {
+    "name": "Learner Readiness Registry",
+    "kind": "simple-crud-workflow"
+  },
+  "entities": [
+    {
+      "name": "Learner",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "CreateLearner",
+      "entity": "Learner",
+      "operation": "create"
+    }
+  ]
+}

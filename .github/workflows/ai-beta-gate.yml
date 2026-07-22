@@ -1,0 +1,99 @@
+name: AI Beta Gate
+
+# Manual-only: this heavy gate (Docker/Linux proof + AI Beta 0 proof) runs on
+# demand via the "Run workflow" button, not on every PR/push. Re-add the
+# pull_request/push triggers below to restore automatic runs.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ai-beta-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-linux-proof:
+    name: Docker/Linux blocking proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Docker/Linux proof
+        timeout-minutes: 85
+        run: pwsh ./scripts/quality/run-docker-linux-proof.ps1
+
+      - name: Upload Docker/Linux evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-linux-proof-reports
+          path: |
+            scripts/reports/out/docker-linux-parity-report.json
+            scripts/reports/out/docker-linux-proof
+            scripts/reports/out/docker-linux-ai-beta-gate-report.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  ai-beta-gate:
+    name: AI-only Beta 0 proof
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    defaults:
+      run:
+        shell: pwsh
+
+    env:
+      CI: true
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ai-beta-gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ai-beta-gradle-${{ runner.os }}-
+
+      - name: Traceable Beta 0 release check
+        run: pwsh ./scripts/quality/run-traceable-local-release.ps1 -WorkspaceRoot .
+
+      - name: Roadmap closure check
+        if: always()
+        run: pwsh ./scripts/quality/run-roadmap-closure-check.ps1 -WorkspaceRoot .
+
+      - name: Upload AI beta reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-beta-gate-reports
+          path: scripts/reports/out
+          if-no-files-found: warn
+          retention-days: 14

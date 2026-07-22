@@ -1,5 +1,7 @@
 import React from "react";
 import type { AuthoringPanel, AuthoringPanelAction } from "../modelDocumentTypes";
+import PanelActionEditor from "./PanelActionEditor";
+import PanelDataSourcesEditor from "./PanelDataSourcesEditor";
 
 type PanelsEditorSectionProps = {
   panels: AuthoringPanel[];
@@ -202,183 +204,28 @@ export default function PanelsEditorSection({
                 </label>
               </div>
 
+              <PanelDataSourcesEditor
+                panel={panel}
+                panels={panels}
+                panelIndex={panelIndex}
+                conceptNames={conceptNames}
+                onChange={onChange}
+              />
+
               <div className="authoring-editor-stack">
                 {(panel.actions ?? []).map((action, actionIndex) => (
-                  <article key={`${action.name}-${actionIndex}`} className="authoring-subcard">
-                    <div className="authoring-preview-card__header">
-                      <strong>{action.name || `Action ${actionIndex + 1}`}</strong>
-                      <button
-                        type="button"
-                        className="authoring-ghost-button"
-                        onClick={() =>
-                          onChange(
-                            panels.map((entry, index) =>
-                              index === panelIndex
-                                ? {
-                                    ...entry,
-                                    actions: (entry.actions ?? []).filter((_, nestedIndex) => nestedIndex !== actionIndex)
-                                  }
-                                : entry
-                            )
-                          )
-                        }
-                      >
-                        Remove action
-                      </button>
-                    </div>
-
-                    <div className="authoring-form-grid">
-                      <label>
-                        Name
-                        <input
-                          value={action.name}
-                          onChange={(event) =>
-                            onChange(
-                              panels.map((entry, index) =>
-                                index === panelIndex
-                                  ? {
-                                      ...entry,
-                                      actions: (entry.actions ?? []).map((actionEntry, nestedIndex) =>
-                                        nestedIndex === actionIndex
-                                          ? {
-                                              ...actionEntry,
-                                              name: event.target.value
-                                            }
-                                          : actionEntry
-                                      )
-                                    }
-                                  : entry
-                              )
-                            )
-                          }
-                        />
-                      </label>
-
-                      <label>
-                        Binding
-                        <select
-                          value={action.binding ?? "procedure"}
-                          onChange={(event) =>
-                            onChange(
-                              panels.map((entry, index) =>
-                                index === panelIndex
-                                  ? {
-                                      ...entry,
-                                      actions: (entry.actions ?? []).map((actionEntry, nestedIndex) =>
-                                        nestedIndex === actionIndex
-                                          ? {
-                                              ...actionEntry,
-                                              binding: event.target.value
-                                            }
-                                          : actionEntry
-                                      )
-                                    }
-                                  : entry
-                              )
-                            )
-                          }
-                        >
-                          {PANEL_ACTION_BINDINGS.map((binding) => (
-                            <option key={binding} value={binding}>
-                              {binding}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label>
-                        Label
-                        <input
-                          value={action.label ?? ""}
-                          onChange={(event) =>
-                            onChange(
-                              panels.map((entry, index) =>
-                                index === panelIndex
-                                  ? {
-                                      ...entry,
-                                      actions: (entry.actions ?? []).map((actionEntry, nestedIndex) =>
-                                        nestedIndex === actionIndex
-                                          ? {
-                                              ...actionEntry,
-                                              label: event.target.value || undefined
-                                            }
-                                          : actionEntry
-                                      )
-                                    }
-                                  : entry
-                              )
-                            )
-                          }
-                        />
-                      </label>
-
-                      <label>
-                        Procedure
-                        <select
-                          value={action.procedure ?? ""}
-                          onChange={(event) =>
-                            onChange(
-                              panels.map((entry, index) =>
-                                index === panelIndex
-                                  ? {
-                                      ...entry,
-                                      actions: (entry.actions ?? []).map((actionEntry, nestedIndex) =>
-                                        nestedIndex === actionIndex
-                                          ? {
-                                              ...actionEntry,
-                                              procedure: event.target.value || undefined
-                                            }
-                                          : actionEntry
-                                      )
-                                    }
-                                  : entry
-                              )
-                            )
-                          }
-                        >
-                          <option value="">None</option>
-                          {procedureNames.map((procedureName) => (
-                            <option key={procedureName} value={procedureName}>
-                              {procedureName}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label>
-                        Flow
-                        <select
-                          value={action.flow ?? ""}
-                          onChange={(event) =>
-                            onChange(
-                              panels.map((entry, index) =>
-                                index === panelIndex
-                                  ? {
-                                      ...entry,
-                                      actions: (entry.actions ?? []).map((actionEntry, nestedIndex) =>
-                                        nestedIndex === actionIndex
-                                          ? {
-                                              ...actionEntry,
-                                              flow: event.target.value || undefined
-                                            }
-                                          : actionEntry
-                                      )
-                                    }
-                                  : entry
-                              )
-                            )
-                          }
-                        >
-                          <option value="">None</option>
-                          {flowNames.map((flowName) => (
-                            <option key={flowName} value={flowName}>
-                              {flowName}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-                  </article>
+                  <PanelActionEditor
+                    key={`${action.name}-${actionIndex}`}
+                    panel={panel}
+                    panels={panels}
+                    panelIndex={panelIndex}
+                    action={action}
+                    actionIndex={actionIndex}
+                    procedureNames={procedureNames}
+                    flowNames={flowNames}
+                    actionBindings={PANEL_ACTION_BINDINGS}
+                    onChange={onChange}
+                  />
                 ))}
               </div>
 

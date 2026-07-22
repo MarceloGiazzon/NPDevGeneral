@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "npdev-ai-expected-behavior.v1",
+  "scenarioId": "ai-authoring",
+  "assertions": [
+    "The AI-authored model normalizes into official NPDev model/config files.",
+    "The generated app exposes a healthy actuator endpoint.",
+    "The generated user API accepts a valid user create request with deterministic development auth."
+  ]
+}

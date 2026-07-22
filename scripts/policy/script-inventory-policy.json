@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "npdev-script-inventory-policy.v1",
+  "inventoryRoot": "scripts",
+  "scriptExtensions": [
+    ".ps1",
+    ".psm1",
+    ".mjs",
+    ".js",
+    ".sh",
+    ".bat",
+    ".cmd"
+  ],
+  "allowedClassifications": [
+    "canonical",
+    "helper",
+    "deprecated",
+    "one-time-repair",
+    "outside-repo-only"
+  ],
+  "classificationRules": [
+    {
+      "classification": "outside-repo-only",
+      "pattern": "^scripts/reports/"
+    },
+    {
+      "classification": "one-time-repair",
+      "pattern": "^scripts/quality/fix-statezip-visible-timestamps\\.ps1$"
+    },
+    {
+      "classification": "helper",
+      "pattern": "^scripts/(npdev-common|statezip-common)\\.ps1$"
+    },
+    {
+      "classification": "helper",
+      "pattern": "^scripts/quality/(bucket2-report-common\\.ps1|runtimehost-automation-contract-helper\\.psm1|json-schema-validator/validate-json-schema\\.mjs)$"
+    },
+    {
+      "classification": "helper",
+      "pattern": "^scripts/tests/"
+    },
+    {
+      "classification": "canonical",
+      "pattern": "^scripts/(ai|evidence|hygiene|quality|release|runtimehost|samples|security)/"
+    },
+    {
+      "classification": "canonical",
+      "pattern": "^scripts/statezip-npdev-[a-z-]+\\.ps1$"
+    }
+  ],
+  "releaseCriticalPatterns": [
+    "^scripts/quality/run-.*\\.ps1$",
+    "^scripts/quality/validate-report-schemas\\.ps1$",
+    "^scripts/quality/generate-final-evidence-bundle\\.ps1$",
+    "^scripts/quality/write-ai-beta-reproducibility-report\\.ps1$",
+    "^scripts/hygiene/Test-WorkspaceSlimness\\.ps1$",
+    "^scripts/hygiene/clean-rebuildable-artifacts\\.ps1$",
+    "^scripts/ai/",
+    "^scripts/samples/",
+    "^scripts/security/"
+  ],
+  "releaseCriticalAllowedClassifications": [
+    "canonical",
+    "helper"
+  ]
+}

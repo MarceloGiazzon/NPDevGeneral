@@ -1,0 +1,50 @@
+{
+  "scenarioName": "superuser-console-nested-shipping-object",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "variables": { "shippingProjectName": "EVO-SHIP-PLACEHOLDER" },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "value": "api-dev" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-Project\"]", "state": "visible" },
+
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-Project\"]", "label": "Open the Project concept" },
+    { "action": "waitForSelector", "selector": "#concept-Project", "state": "visible" },
+    { "action": "click", "selector": "#concept-Project .panel-actions button:has-text(\"New\")", "label": "Open the Project create form" },
+    { "action": "waitForSelector", "selector": "#concept-Project form", "state": "visible" },
+    { "action": "fill", "selector": "#concept-Project [name=\"name\"]", "valueFromVariable": "shippingProjectName" },
+    { "action": "selectOption", "selector": "#concept-Project [name=\"status\"]", "value": "Active" },
+
+    { "action": "fill", "selector": "#concept-Project [data-prop=\"carrier\"]", "value": "UI-Test-Carrier", "label": "Level 1 (shipping.carrier)" },
+    { "action": "fill", "selector": "#concept-Project [data-prop=\"street\"]", "value": "123 UI Test Street", "label": "Level 2 (shipping.address.street)" },
+    { "action": "fill", "selector": "#concept-Project [data-prop=\"lat\"]", "value": "40.7128", "label": "Level 3 (shipping.address.geo.lat) -- the proof of 3-level recursion" },
+    { "action": "fill", "selector": "#concept-Project [data-prop=\"lng\"]", "value": "-74.0060", "label": "Level 3 (shipping.address.geo.lng)" },
+    { "action": "screenshot", "name": "shipping_form_filled_3_levels" },
+
+    { "action": "click", "selector": "#concept-Project button:has-text(\"Create\")", "label": "Submit -- proves submitForm's recursive syncHidden() serializes all 3 levels into one JSON value" },
+    { "action": "waitForSelector", "selector": "#concept-Project form", "state": "detached", "label": "Modal closes only on a successful create" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "fill", "selector": "#concept-Project .filters input[type=\"search\"]", "valueFromVariable": "shippingProjectName", "label": "Filter the grid to just this run's unique row (the table accumulates rows across reruns)" },
+    { "action": "click", "selector": "#concept-Project .filters button:has-text(\"Search\")" },
+    { "action": "waitForTimeout", "timeoutMs": 500 },
+    { "action": "assertCount", "selector": "#concept-Project tbody tr", "operator": "=", "count": 1, "label": "Exactly one Project matches the unique filter -- proves the new row is visible in the grid" },
+
+    { "action": "click", "selector": "#concept-Project tbody tr button:has-text(\"Edit\")", "label": "Re-open the SAME record's edit form" },
+    { "action": "waitForSelector", "selector": "#concept-Project form", "state": "visible" },
+    { "action": "assertVisible", "selector": "#concept-Project [data-prop=\"carrier\"]", "label": "Level 1 nested editor renders again on edit, not just create" },
+    { "action": "assertVisible", "selector": "#concept-Project [data-prop=\"street\"]", "label": "Level 2 nested editor renders again on edit" },
+    { "action": "assertVisible", "selector": "#concept-Project [data-prop=\"lat\"]", "label": "Level 3 nested editor renders again on edit -- the structure round-trips, not just the create-time DOM" },
+    { "action": "screenshot", "name": "shipping_form_reopened_round_trip" },
+    { "action": "click", "selector": "#concept-Project button:has-text(\"Cancel\")" },
+
+    { "action": "click", "selector": "#concept-Project tbody tr button:has-text(\"View\")", "label": "Open the read-only detail view too -- the grid is still filtered to this run's one row" },
+    { "action": "waitForTimeout", "timeoutMs": 400 },
+    { "action": "assertTextContains", "selector": "#concept-Project", "text": "UI-Test-Carrier", "label": "Level 1 value (shipping.carrier) genuinely round-tripped, not just the input element re-rendering empty" },
+    { "action": "assertTextContains", "selector": "#concept-Project", "text": "123 UI Test Street", "label": "Level 2 value (shipping.address.street) genuinely round-tripped" },
+    { "action": "assertTextContains", "selector": "#concept-Project", "text": "40.7128", "label": "Level 3 value lat genuinely round-tripped (formatValue JSON.stringify fix)" },
+    { "action": "assertTextContains", "selector": "#concept-Project", "text": "-74.0060", "label": "Level 3 value lng genuinely round-tripped (asserting all 4 entered leaf values, not just one, closes the prior audit's 'visibility only, not value' gap)" },
+    { "action": "collect", "what": ["domText", "url"] }
+  ]
+}

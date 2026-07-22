@@ -88,6 +88,16 @@ public final class SandboxedPluginExecutionEngine implements AutoCloseable {
 
         long startedAt = System.nanoTime();
         logStart(contribution, realizationSummary, call);
+        // REG-4 (2026-07-21): a stray interrupt already pending on the CALLING thread -- e.g. left by
+        // an unrelated prior task on the same worker thread under a parallel test/execution run --
+        // makes future.get(timeout) throw InterruptedException IMMEDIATELY, before the timeout can
+        // fire, turning a genuine timeout into a spurious PLUGIN_EXECUTION_INTERRUPTED (confirmed:
+        // executionDurationMs=1 with the caller pre-interrupted). This bounded execution's timeout
+        // semantics must not depend on unrelated interrupt state. Clear it for the duration
+        // (Thread.interrupted() reads-and-clears) and re-assert it in the finally, so a real pending
+        // cancellation is deferred by at most timeoutMs but never swallowed. A NEW interrupt arriving
+        // DURING get() still takes the InterruptedException path below, unchanged.
+        boolean callerWasInterrupted = Thread.interrupted();
         Future<CapabilityResult> future = executorService.submit(() -> invokeHandler(call, contextState, handler));
         try {
             CapabilityResult result = future.get(timeoutMs, TimeUnit.MILLISECONDS);
@@ -189,6 +199,12 @@ public final class SandboxedPluginExecutionEngine implements AutoCloseable {
             record(executionResult);
             logFinish(executionResult);
             return executionResult;
+        } finally {
+            // REG-4: re-assert a stray caller interrupt that was cleared above, so genuine
+            // cancellation is delivered to the caller after this bounded execution rather than lost.
+            if (callerWasInterrupted) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 
@@ -218,6 +234,23 @@ public final class SandboxedPluginExecutionEngine implements AutoCloseable {
         try {
             if (handler instanceof CapabilityAdapter capabilityAdapter) {
                 CapabilityResult result = capabilityAdapter.invoke(effectiveCall, contextState);
+                if (result == null) {
+                    return CapabilityResult.failure(
+                            "PLUGIN_EXECUTION_NULL_RESULT",
+                            "Sandboxed plugin returned null CapabilityResult",
+                            CapabilityErrorKind.PERMANENT,
+                            Map.of(
+                                    "capability", call.capability(),
+                                    "operation", call.operation(),
+                                    "adapterId", call.adapterId()
+                            )
+                    );
+                }
+                return result;
+            }
+
+            if (handler instanceof DynamicCapabilityHandler dynamicCapabilityHandler) {
+                CapabilityResult result = dynamicCapabilityHandler.invoke(effectiveCall, contextState);
                 if (result == null) {
                     return CapabilityResult.failure(
                             "PLUGIN_EXECUTION_NULL_RESULT",
@@ -422,14 +455,34 @@ public final class SandboxedPluginExecutionEngine implements AutoCloseable {
     }
 
     private static CapabilityErrorKind classifyInvocationError(Throwable throwable) {
-        if (throwable instanceof IllegalArgumentException
-                || throwable instanceof ClassCastException
-                || throwable instanceof UnsupportedOperationException) {
+        // Unwrap reflective/async wrappers (an adapter invoked via reflection inside a Future arrives
+        // as InvocationTargetException/ExecutionException wrapping the real cause). Without this, a
+        // contract failure thrown by an adapter — e.g. IllegalArgumentException for a FK/unique
+        // integrity violation — would be read as the generic wrapper and fall through to PERMANENT
+        // (system_exception) instead of CONTRACT (capability_contract).
+        Throwable root = throwable;
+        int guard = 0;
+        while (root != null
+                && (root instanceof java.lang.reflect.InvocationTargetException
+                        || root instanceof java.util.concurrent.ExecutionException
+                        || root instanceof java.util.concurrent.CompletionException)
+                && root.getCause() != null
+                && root.getCause() != root
+                && guard++ < 16) {
+            root = root.getCause();
+        }
+        if (root == null) {
+            root = throwable;
+        }
+
+        if (root instanceof IllegalArgumentException
+                || root instanceof ClassCastException
+                || root instanceof UnsupportedOperationException) {
             return CapabilityErrorKind.CONTRACT;
         }
 
-        String typeName = throwable.getClass().getName().toLowerCase();
-        String message = throwable.getMessage() == null ? "" : throwable.getMessage().toLowerCase();
+        String typeName = root.getClass().getName().toLowerCase();
+        String message = root.getMessage() == null ? "" : root.getMessage().toLowerCase();
         if (typeName.contains("auth")
                 || typeName.contains("forbidden")
                 || message.contains("unauthorized")

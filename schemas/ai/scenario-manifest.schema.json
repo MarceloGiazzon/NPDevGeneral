@@ -3,15 +3,22 @@
   "$id": "https://npdev.local/schemas/ai/scenario-manifest.schema.json",
   "title": "NPDev AI Scenario Manifest",
   "type": "object",
-  "required": ["schemaVersion", "scenarioId", "kind", "files", "runtime", "expectedOutcome"],
+  "required": ["schemaVersion", "scenarioId", "kind", "expectedOutcome", "files"],
   "properties": {
-    "schemaVersion": { "const": "ai-scenario.v1" },
+    "schemaVersion": {
+      "enum": ["ai-scenario-manifest.v1", "ai-scenario.v1"]
+    },
     "scenarioId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
-    "kind": { "type": "string" },
+    "kind": {
+      "enum": ["positive", "negative", "ai-only-functional-beta", "ai-custom-procedure-panel-functional-beta", "ai-custom-panel-functional-beta", "ai-custom-procedure-functional-beta"]
+    },
     "files": {
       "type": "object",
-      "required": ["model", "config", "expectedBehavior"],
       "properties": {
+        "aiModel": { "type": "string" },
+        "aiConfig": { "type": "string" },
+        "verification": { "type": "string" },
+        "commandRequest": { "type": "string" },
         "model": { "type": "string" },
         "config": { "type": "string" },
         "expectedBehavior": { "type": "string" },
@@ -42,14 +49,13 @@
       "default": []
     },
     "expectedOutcome": {
-      "type": "object",
-      "required": ["class"],
-      "properties": {
-        "class": { "type": "string" },
-        "mustPass": { "type": "boolean", "default": true }
-      },
-      "additionalProperties": true
-    }
+      "enum": ["pass", "fail"]
+    },
+    "expectedFailureStage": {
+      "enum": ["ai-model-schema", "ai-config-schema", "verification-schema", "scope-policy", "command-policy", "smoke-verification"]
+    },
+    "expectedErrorCode": { "type": "string" },
+    "legacyExpectedOutcome": { "type": "object" }
   },
   "additionalProperties": true
 }

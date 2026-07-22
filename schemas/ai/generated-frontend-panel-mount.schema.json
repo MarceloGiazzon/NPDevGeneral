@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/generated-frontend-panel-mount.schema.json",
+  "title": "NPDev Generated Frontend Panel Mount",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "frontendMountId",
+    "applicationId",
+    "mode",
+    "enabledByDefault",
+    "generatedBy",
+    "generatedAppRoot",
+    "frontendRoot",
+    "route",
+    "panelId",
+    "procedureId",
+    "bridgeClient",
+    "generatedPanelResources",
+    "backendDependency",
+    "smoke",
+    "executionPolicy",
+    "truthPolicy",
+    "releaseGatePolicy",
+    "evidencePolicy",
+    "nonGoals"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0" },
+    "frontendMountId": { "type": "string", "const": "salesflow.generated-frontend-panel-mount" },
+    "applicationId": { "type": "string", "const": "app.salesflow" },
+    "mode": { "type": "string", "const": "GeneratedLocalPrototype" },
+    "enabledByDefault": { "type": "boolean", "const": false },
+    "generatedBy": { "type": "string", "const": "scripts/box-object/run-box-object-generator-adapter.ps1" },
+    "generatedAppRoot": { "type": "string", "const": "build/box-object/real-generator-adapter/generated-app" },
+    "frontendRoot": { "type": "string", "const": "build/box-object/real-generator-adapter/generated-app/frontend" },
+    "route": { "type": "string", "const": "/billing/invoices/approval" },
+    "panelId": { "type": "string", "const": "panel.invoice-approval" },
+    "procedureId": { "type": "string", "const": "procedure.generate-monthly-invoices" },
+    "bridgeClient": { "type": "string", "minLength": 1 },
+    "generatedPanelResources": { "type": "array", "minItems": 3, "items": { "type": "string" } },
+    "backendDependency": { "type": "string", "const": "generated-backend-procedure-endpoint" },
+    "smoke": {
+      "type": "object",
+      "required": ["script", "result"],
+      "properties": {
+        "script": { "type": "string", "minLength": 1 },
+        "result": { "type": "string", "minLength": 1 }
+      }
+    },
+    "executionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requiresAuth", "requiresTenant", "allowedRoles", "aiExecution"],
+      "properties": {
+        "requiresAuth": { "type": "boolean", "const": true },
+        "requiresTenant": { "type": "boolean", "const": true },
+        "allowedRoles": { "type": "array", "contains": { "const": "BillingManager" }, "items": { "type": "string" } },
+        "aiExecution": { "type": "string", "const": "RequiresHumanApproval" }
+      }
+    },
+    "truthPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxTruthClaim", "noAutoPromotion", "noT5", "noT6"],
+      "properties": {
+        "maxTruthClaim": { "type": "string", "enum": ["LocalPrototype", "T3"] },
+        "noAutoPromotion": { "type": "boolean", "const": true },
+        "noT5": { "type": "boolean", "const": true },
+        "noT6": { "type": "boolean", "const": true }
+      }
+    },
+    "releaseGatePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["impact"],
+      "properties": { "impact": { "type": "string", "const": "NoImpact" } }
+    },
+    "evidencePolicy": { "type": "object" },
+    "nonGoals": { "type": "array", "items": { "type": "string" } }
+  }
+}

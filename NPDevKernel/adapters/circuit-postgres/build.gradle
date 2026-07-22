@@ -1,6 +1,5 @@
 dependencies {
     implementation project(':kernel')
-    implementation 'org.postgresql:postgresql:42.7.4'
 
-    testImplementation 'com.h2database:h2:2.2.224'
+    testImplementation project(':adapters:postgres-test-support')
 }

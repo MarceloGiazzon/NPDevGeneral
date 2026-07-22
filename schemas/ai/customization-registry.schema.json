@@ -1,0 +1,297 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/customization-registry.schema.json",
+  "title": "NPDev Customization Registry",
+  "description": "Registry of human/AI customizations, including code-bearing Panel and Procedure resources that must be preserved across regeneration.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "registryVersion",
+    "applicationId",
+    "generatedAt",
+    "entries"
+  ],
+  "properties": {
+    "registryVersion": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "applicationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/customizationEntry"
+      }
+    }
+  },
+  "$defs": {
+    "customizationType": {
+      "type": "string",
+      "enum": [
+        "FrontendHtml",
+        "FrontendCss",
+        "FrontendJavaScript",
+        "FrontendAsset",
+        "BackendJavaCode",
+        "BackendJavaTest",
+        "UIBehavior",
+        "UILayout",
+        "ProcedureLogic",
+        "IntegrationMapping",
+        "ValidationHook",
+        "GeneratedTemplateOverride",
+        "ManualCodeExtension",
+        "ReportCustomization",
+        "SecurityPolicyOverride",
+        "EvidencePolicyOverride",
+        "ReleaseScopeOverride"
+      ]
+    },
+    "customizationEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "customizationId",
+        "targetKind",
+        "targetId",
+        "ownerBoxId",
+        "customizationType",
+        "title",
+        "description",
+        "createdBy",
+        "assistedByAI",
+        "createdAt",
+        "location",
+        "resources",
+        "preserveOnRegeneration",
+        "regenerationConflictPolicy",
+        "truthImpact",
+        "releaseImpact",
+        "status"
+      ],
+      "properties": {
+        "customizationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetKind": {
+          "type": "string",
+          "enum": [
+            "Box",
+            "PanelObject",
+            "ProcedureObject",
+            "RuleBox",
+            "IntegrationBox",
+            "EvidenceBox",
+            "ReleaseBox"
+          ]
+        },
+        "targetId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerBoxId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "customizationType": {
+          "$ref": "#/$defs/customizationType"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "createdBy": {
+          "type": "string",
+          "enum": [
+            "Human",
+            "AI",
+            "AIWithHumanReview",
+            "Import",
+            "Generator"
+          ]
+        },
+        "assistedByAI": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "location": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "customizationPointId",
+            "files",
+            "manifestPath"
+          ],
+          "properties": {
+            "customizationPointId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "manifestPath": {
+              "type": "string"
+            }
+          }
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "resourceKind",
+              "protected",
+              "hash"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "resourceKind": {
+                "type": "string",
+                "enum": [
+                  "Html",
+                  "Css",
+                  "JavaScript",
+                  "Asset",
+                  "JavaSource",
+                  "JavaTest",
+                  "Json",
+                  "Markdown",
+                  "Other"
+                ]
+              },
+              "protected": {
+                "type": "boolean"
+              },
+              "hash": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "reason": {
+          "type": "string"
+        },
+        "preserveOnRegeneration": {
+          "type": "boolean"
+        },
+        "regenerationConflictPolicy": {
+          "type": "string",
+          "enum": [
+            "NeverOverwriteWithoutHumanApproval",
+            "AskUser",
+            "KeepCustom",
+            "Block",
+            "ReplaceGeneratedOnly"
+          ]
+        },
+        "truthImpact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requiresRetest",
+            "affectedTruthAreas",
+            "currentTruthLevel",
+            "minimumTruthLevelForRelease"
+          ],
+          "properties": {
+            "requiresRetest": {
+              "type": "boolean"
+            },
+            "affectedTruthAreas": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "currentTruthLevel": {
+              "type": "string",
+              "enum": [
+                "T0",
+                "T1",
+                "T2",
+                "T3",
+                "T4",
+                "T5",
+                "T6"
+              ]
+            },
+            "minimumTruthLevelForRelease": {
+              "type": "string",
+              "enum": [
+                "T0",
+                "T1",
+                "T2",
+                "T3",
+                "T4",
+                "T5",
+                "T6"
+              ]
+            }
+          }
+        },
+        "releaseImpact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "canBlockRelease",
+            "blocksIfBroken",
+            "notes"
+          ],
+          "properties": {
+            "canBlockRelease": {
+              "type": "boolean"
+            },
+            "blocksIfBroken": {
+              "type": "boolean"
+            },
+            "notes": {
+              "type": "string"
+            }
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "Active",
+            "Superseded",
+            "Deprecated",
+            "Removed"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "app": {
+    "name": "Custom Procedure Invalid",
+    "kind": "custom-procedure"
+  },
+  "entities": [
+    {
+      "name": "Learner",
+      "fields": [
+        {
+          "name": "status",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "CreateLearner",
+      "entity": "Learner",
+      "operation": "create"
+    }
+  ]
+}

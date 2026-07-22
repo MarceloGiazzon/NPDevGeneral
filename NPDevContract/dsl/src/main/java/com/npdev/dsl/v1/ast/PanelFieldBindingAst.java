@@ -6,6 +6,7 @@ public record PanelFieldBindingAst(
         String visibleWhen,
         String enabledWhen,
         String readonlyWhen,
-        PresentationMetadataAst ui
+        PresentationMetadataAst ui,
+        boolean editable
 ) {
 }

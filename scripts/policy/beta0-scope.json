@@ -1,0 +1,181 @@
+{
+  "schemaVersion": "npdev-beta0-scope.v2",
+  "release": "ai-only-beta-0",
+  "expandedBeta0ContractVersion": "expanded-beta0.2026-05-05",
+  "officialEvidencePlatform": "windows-ci+docker-linux-ci",
+  "dockerLinuxEvidence": "blocking-release-evidence",
+  "dockerRequiredForBeta0": true,
+  "scopePolicySingleSource": true,
+  "requiredSurfaces": [
+    "model-config",
+    "custom-ui-panels",
+    "custom-procedures",
+    "multi-tenancy",
+    "authentication",
+    "roles",
+    "workflow-engine",
+    "structured-verification",
+    "structured-command-execution",
+    "generated-app-build",
+    "generated-app-boot",
+    "rest-smoke",
+    "panel-smoke",
+    "procedure-smoke",
+    "workflow-smoke",
+    "tenant-auth-role-smoke",
+    "release-evidence",
+    "beta0-tag-gate"
+  ],
+  "requiredPositiveScenarios": [
+    "tenant-workflow-ops",
+    "tenant-service-desk",
+    "tenant-approval-portal"
+  ],
+  "requiredNegativeScenarios": [
+    "panel-arbitrary-javascript",
+    "panel-unknown-entity",
+    "procedure-raw-shell",
+    "procedure-unbounded-bulk",
+    "workflow-invalid-transition",
+    "workflow-no-terminal-state",
+    "role-tenant-bypass",
+    "auth-disabled-protected-endpoint",
+    "command-policy-external-curl",
+    "command-policy-malicious-rm",
+    "command-policy-path-traversal",
+    "command-policy-direct-pwsh",
+    "command-policy-direct-node",
+    "verification-external-curl",
+    "unknown-ai-schema-property"
+  ],
+  "requiredScenarios": [
+    "tenant-workflow-ops",
+    "tenant-service-desk",
+    "tenant-approval-portal",
+    "panel-arbitrary-javascript",
+    "panel-unknown-entity",
+    "procedure-raw-shell",
+    "procedure-unbounded-bulk",
+    "workflow-invalid-transition",
+    "workflow-no-terminal-state",
+    "role-tenant-bypass",
+    "auth-disabled-protected-endpoint",
+    "command-policy-external-curl",
+    "command-policy-malicious-rm",
+    "command-policy-path-traversal",
+    "command-policy-direct-pwsh",
+    "command-policy-direct-node",
+    "verification-external-curl",
+    "unknown-ai-schema-property"
+  ],
+  "deferredScenarios": {
+    "trustedSource": [
+      "create-users-panel-procedure",
+      "trusted-source-path-traversal"
+    ],
+    "deferredRoot": "golden-ai-scenarios/deferred/trusted-source",
+    "decision": "CP3 Path B: trusted-source scenarios are excluded from active Beta0 evidence until full current proofs are active and fresh."
+  },
+  "aiMayGenerate": {
+    "aiModel": true,
+    "aiConfig": true,
+    "customPanelContract": true,
+    "customProcedureContract": true,
+    "workflowContract": true,
+    "tenancyContract": true,
+    "authContract": true,
+    "rolePermissionContract": true,
+    "verificationPlan": true,
+    "structuredCommandRequest": true,
+    "trustedSourceEntrypointReference": false,
+    "arbitraryShellCommands": false,
+    "inlineCustomHtml": false,
+    "inlineCustomJavaScript": false,
+    "inlineCustomJava": false,
+    "externalNetworkCalls": false,
+    "unboundedSql": false
+  },
+  "trustedSourcePolicy": {
+    "enabled": false,
+    "activeEvidenceStatus": "deferred-by-cp3-path-b",
+    "allowedPanelLanguages": [
+      "html+javascript",
+      "html",
+      "javascript"
+    ],
+    "allowedProcedureLanguages": [
+      "java"
+    ],
+    "entrypointMustBeRelative": true,
+    "entrypointMustBeTracked": true,
+    "entrypointHashRequired": true,
+    "inlineSourceRejected": true,
+    "externalDependencyGraphRejected": true,
+    "shellExecutionRejected": true
+  },
+  "supportedRuntime": {
+    "aiFacingDatabaseModes": [
+      "embedded-test",
+      "docker-postgres"
+    ],
+    "databaseProviders": [
+      "docker-postgres",
+      "postgres"
+    ],
+    "defaultBeta0Provider": "docker-postgres",
+    "authMode": "generated-test-token",
+    "tenantMode": "shared-app-tenant-scoped-data"
+  },
+  "blockingReports": [
+    "json-schema-validator-tests-report.json",
+    "ai-beta-gate-report.json",
+    "scope-policy-report.json",
+    "ai-command-policy-report.json",
+    "trusted-source-beta0-proof-report.json",
+    "schema-validation-report.json",
+    "normalization-report.json",
+    "custom-panel-validation-report.json",
+    "custom-procedure-validation-report.json",
+    "tenant-auth-role-validation-report.json",
+    "workflow-validation-report.json",
+    "generated-app-build-report.json",
+    "generated-app-boot-report.json",
+    "rest-smoke-report.json",
+    "ui-panel-smoke-report.json",
+    "procedure-smoke-report.json",
+    "workflow-smoke-report.json",
+    "tenant-isolation-smoke-report.json",
+    "auth-role-smoke-report.json",
+    "provenance-report.json",
+    "stale-report-check-report.json",
+    "workspace-cleanliness-report.json",
+  "report-schema-validation-report.json",
+  "direct-evidence-hardening-tests-report.json",
+  "final-regression-coverage-audit-report.json",
+  "doc-entrypoint-validation-report.json",
+    "frontend-gate-report.json",
+    "ai-schema-validation-report.json",
+    "controlled-command-runner-tests-report.json",
+    "ai-contract-normalizer-tests-report.json",
+    "ai-rest-smoke-verifier-tests-report.json",
+    "sample-matrix-report.json",
+    "ai-beta-reproducibility-report.json",
+    "runtime-null-context-tests-report.json",
+    "runtimehost-staged-jar-preflight-report.json",
+    "docker-linux-parity-report.json"
+  ],
+  "advisoryReports": [
+    "frontend-polish-report.json",
+    "visual-editor-usability-report.json",
+    "performance-benchmark-report.json",
+    "dependency-minimization-report.json"
+  ],
+  "releaseRules": {
+    "dirtyWorkspaceBlocksOfficialRelease": true,
+    "staleReportsBlockOfficialRelease": true,
+    "missingReportBlocksOfficialRelease": true,
+    "manualReportOverrideAllowed": false,
+    "expandedSurfacesMustBeBlocking": true,
+    "oldNarrowScopeReportsRejected": true
+  }
+}

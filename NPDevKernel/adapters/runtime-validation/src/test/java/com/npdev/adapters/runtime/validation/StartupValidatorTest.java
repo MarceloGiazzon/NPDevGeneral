@@ -49,6 +49,7 @@ class StartupValidatorTest {
                 "dev-key=tenant:actor:USER",
                 null,
                 null,
+                null,
                 null
         );
 
@@ -82,6 +83,7 @@ class StartupValidatorTest {
                 new MockEnvironment(),
                 "apikey",
                 "",
+                null,
                 null,
                 null,
                 null
@@ -122,6 +124,7 @@ class StartupValidatorTest {
                 "dev-key=tenant:actor:USER",
                 null,
                 null,
+                null,
                 null
         );
 
@@ -158,6 +161,7 @@ class StartupValidatorTest {
                 environment,
                 "apikey",
                 "admin-key=tenant:actor:ADMIN",
+                null,
                 null,
                 null,
                 null
@@ -215,6 +219,7 @@ class StartupValidatorTest {
                 "dev-key=tenant:actor:ADMIN",
                 null,
                 null,
+                null,
                 null
         );
 
@@ -251,7 +256,8 @@ class StartupValidatorTest {
                 "",
                 "",
                 "",
-                ""
+                "",
+                null
         );
 
         assertThrows(IllegalStateException.class, validator::validate);
@@ -287,7 +293,8 @@ class StartupValidatorTest {
                 "",
                 "https://your-auth-provider.example.com",
                 "npdev-runtime",
-                "classpath:npdev/security/test-jwt-public.pem"
+                "classpath:npdev/security/test-jwt-public.pem",
+                null
         );
 
         assertThrows(IllegalStateException.class, validator::validate);
@@ -323,10 +330,118 @@ class StartupValidatorTest {
                 "",
                 "https://issuer.npdev.test",
                 "npdev-runtime",
-                "classpath:npdev/security/test-jwt-public.pem"
+                "classpath:npdev/security/test-jwt-public.pem",
+                null
         );
 
         assertDoesNotThrow(validator::validate);
+    }
+
+    @Test
+    void shouldAllowVerifyOnlyJwtWithNoPrivateKey() {
+        // REG-9: a verify-only deployment (external-beta) validates externally-issued tokens with
+        // the public key and never mints its own, so a blank private-key-path is legitimate and
+        // must not fail startup.
+        StartupValidator validator = new StartupValidator(
+                jwtSettings(),
+                null,
+                eventStore(),
+                flowInstanceStore(),
+                new MockEnvironment(),
+                "jwt",
+                "",
+                "https://issuer.npdev.test",
+                "npdev-runtime",
+                "classpath:npdev/security/test-jwt-public.pem",
+                ""
+        );
+
+        assertDoesNotThrow(validator::validate);
+    }
+
+    @Test
+    void shouldAllowFullJwtWithReadablePrivateKey() {
+        StartupValidator validator = new StartupValidator(
+                jwtSettings(),
+                null,
+                eventStore(),
+                flowInstanceStore(),
+                new MockEnvironment(),
+                "jwt",
+                "",
+                "https://issuer.npdev.test",
+                "npdev-runtime",
+                "classpath:npdev/security/test-jwt-public.pem",
+                "classpath:npdev/security/test-jwt-private.pem"
+        );
+
+        assertDoesNotThrow(validator::validate);
+    }
+
+    @Test
+    void shouldFailWhenJwtPublicKeyPathIsUnreadable() {
+        StartupValidator validator = new StartupValidator(
+                jwtSettings(),
+                null,
+                eventStore(),
+                flowInstanceStore(),
+                new MockEnvironment(),
+                "jwt",
+                "",
+                "https://issuer.npdev.test",
+                "npdev-runtime",
+                "classpath:npdev/security/does-not-exist.pem",
+                ""
+        );
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, validator::validate);
+        assertTrue(ex.getMessage() != null && ex.getMessage().contains("public-key-path"),
+                "Expected the message to name the unreadable public-key-path");
+        assertTrue(ex.getMessage().contains("CONFIGURATION.md#authentication"),
+                "Expected the message to link the authentication config doc");
+    }
+
+    @Test
+    void shouldFailWhenJwtPrivateKeyPathIsSetButUnreadable() {
+        // A set-but-broken signing key must fail fast at startup with a clear message, not deep in
+        // LoginController's bean creation with a raw NoSuchFileException.
+        StartupValidator validator = new StartupValidator(
+                jwtSettings(),
+                null,
+                eventStore(),
+                flowInstanceStore(),
+                new MockEnvironment(),
+                "jwt",
+                "",
+                "https://issuer.npdev.test",
+                "npdev-runtime",
+                "classpath:npdev/security/test-jwt-public.pem",
+                "classpath:npdev/security/does-not-exist.pem"
+        );
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, validator::validate);
+        assertTrue(ex.getMessage() != null && ex.getMessage().contains("private-key-path"),
+                "Expected the message to name the unreadable private-key-path");
+    }
+
+    private static RuntimeSettings jwtSettings() {
+        return new RuntimeSettings(
+                "inproc",
+                false,
+                100,
+                2000,
+                true,
+                1024,
+                64,
+                null,
+                null,
+                null,
+                5,
+                30,
+                10,
+                4096,
+                null
+        );
     }
 
     private static EventStore eventStore() {

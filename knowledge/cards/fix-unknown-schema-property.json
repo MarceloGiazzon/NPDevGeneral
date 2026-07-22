@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "knowledge-card.v1",
+  "id": "fix-unknown-schema-property",
+  "type": "error-fix",
+  "title": "Unknown / unsupported property key rejected by the schema",
+  "body": "The model (or a fragment) contains a top-level key or object property the schema doesn't declare, and the schema is closed (`additionalProperties: false`). Common causes: a guessed field name, a typo, or a construct from a different schema version. Fix: fetch the exact grammar with `npdev_get_schema` for the object type and rename/remove the offending key to a declared one. Do not invent fields -- the schema is the authority for what is authorable.",
+  "keywords": ["unknown", "unsupported", "property", "key", "additionalProperties", "schema", "typo", "invalid"],
+  "appliesTo": ["model", "schema"],
+  "signature": "unsupported model top-level key <id>",
+  "fix": "Fetch the object type's schema via npdev_get_schema and rename/remove the key to a declared field; never invent fields.",
+  "sourceRefs": ["golden-ai-scenarios/unknown-ai-schema-property", "NPDevCli/npdev_cli.py"],
+  "status": "active"
+}

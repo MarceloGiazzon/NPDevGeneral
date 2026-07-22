@@ -5,6 +5,7 @@ import com.finalexec.config.CorsConfig;
 import com.finalexec.config.DevCorsPreflightFilterConfig;
 import com.finalexec.config.RequestResponseLoggingFilter;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -15,6 +16,7 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.nio.charset.StandardCharsets;
@@ -33,22 +35,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
-                "npdev.runtime.mode=inproc",
                 "npdev.scheduler.enabled=false",
-                "spring.datasource.url=jdbc:h2:mem:jwt_external_beta;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE",
-                "spring.datasource.username=sa",
-                "spring.datasource.password=",
-                "spring.datasource.driver-class-name=org.h2.Driver",
-                "spring.jpa.database-platform=org.hibernate.dialect.H2Dialect",
-                "spring.jpa.hibernate.ddl-auto=create-drop",
                 "spring.jpa.open-in-view=false",
-                "spring.flyway.enabled=false",
+                "npdev.auth.enabled=true",
+                "npdev.auth.mode=jwt",
                 "npdev.auth.jwt.issuer=https://issuer.npdev.test",
                 "npdev.auth.jwt.audience=npdev-runtime-beta",
                 "npdev.auth.jwt.public-key-path=classpath:npdev/security/test-jwt-public.pem"
         }
 )
-@ActiveProfiles("external-beta")
+@ActiveProfiles({"test", "postgres", "external-beta"})
+@Tag("integration")
 class JwtAuthExternalBetaIT {
     // valid token
     // expired token
@@ -68,6 +65,9 @@ class JwtAuthExternalBetaIT {
 
     @Autowired
     private ApplicationContext applicationContext;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @BeforeAll
     static void loadPrivateKey() throws Exception {
@@ -161,6 +161,26 @@ class JwtAuthExternalBetaIT {
         assertThat(applicationContext.getBeansOfType(CorsConfig.class)).isEmpty();
         assertThat(applicationContext.getBeansOfType(DevCorsPreflightFilterConfig.class)).isEmpty();
         assertThat(applicationContext.getBeansOfType(RequestResponseLoggingFilter.class)).isEmpty();
+    }
+
+    @Test
+    void external_beta_postgres_profile_applies_flyway_migrations() {
+        Integer appliedMigrations = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE success = true",
+                Integer.class
+        );
+        Integer publicationExecutionTables = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_name = 'npdev_publication_execution'
+                """,
+                Integer.class
+        );
+
+        assertThat(appliedMigrations).isNotNull().isGreaterThan(0);
+        assertThat(publicationExecutionTables).isEqualTo(1);
     }
 
     @Test

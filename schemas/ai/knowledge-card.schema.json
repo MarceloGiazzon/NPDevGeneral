@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/knowledge-card.schema.json",
+  "title": "NPDev Knowledge Card",
+  "description": "One durable platform finding (gotcha, gap, constraint, error->fix pair, or recipe), promoted from maintainer session knowledge into a machine-readable form that the AI-authoring corpus builders fan out into the RAG index, the failure-signature index, and the capability projection.",
+  "type": "object",
+  "required": ["schemaVersion", "id", "type", "title", "body", "status"],
+  "properties": {
+    "schemaVersion": { "const": "knowledge-card.v1" },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "description": "Stable kebab-case slug. Cite it in cards that supersede it."
+    },
+    "type": {
+      "enum": ["gotcha", "gap", "constraint", "error-fix", "recipe"],
+      "description": "gotcha=a trap that wastes a cycle; gap=schema accepts it but runtime doesn't honor it; constraint=a hard rule authors must obey; error-fix=a validator diagnostic paired with its resolution; recipe=a known-good how-to."
+    },
+    "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "body": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000,
+      "description": "Markdown. Kept <=4000 chars to match the RAG chunk cap so it indexes whole."
+    },
+    "keywords": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "appliesTo": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Object types / subsystems this applies to, e.g. panel, flow, bond, build-ops, browser-verification."
+    },
+    "signature": {
+      "type": ["string", "null"],
+      "default": null,
+      "description": "For type:error-fix only -- the NORMALIZED diagnostic template (identifiers replaced with <C>/<F>/<ID>) that scripts/ai/failure_signatures.normalize() also produces from a live message, so lookups match."
+    },
+    "fix": {
+      "type": ["string", "null"],
+      "default": null,
+      "description": "For type:error-fix only -- the resolution text/snippet."
+    },
+    "sourceRefs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Provenance: ledger IDs (ARCH-15), memory slugs, file paths, or commit hashes."
+    },
+    "status": {
+      "enum": ["active", "superseded"],
+      "default": "active"
+    },
+    "supersededBy": {
+      "type": ["string", "null"],
+      "default": null,
+      "description": "id of the card that replaces this one, when status is superseded."
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "error-fix" } } },
+      "then": { "required": ["signature", "fix"] }
+    },
+    {
+      "if": { "properties": { "status": { "const": "superseded" } } },
+      "then": { "required": ["supersededBy"] }
+    }
+  ],
+  "additionalProperties": false
+}

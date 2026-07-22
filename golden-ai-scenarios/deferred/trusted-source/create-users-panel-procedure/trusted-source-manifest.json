@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "npdev-trusted-source-manifest.v1",
+  "scenarioId": "create-users-panel-procedure",
+  "policyVersion": "trusted-source-beta0.2026-05-07",
+  "expectedOutcome": "pass",
+  "entries": [
+    {
+      "entryId": "procedure-create-users",
+      "kind": "procedure",
+      "relativePath": "procedure/CreateUsersProcedure.java",
+      "language": "java",
+      "sha256": "b018fd106a9c7fc6db1283afc8f9c39888e65577d33637d58fa0603ed3f0e913",
+      "runtimeBinding": "procedure:create-users",
+      "className": "CreateUsersProcedure",
+      "method": "execute",
+      "requiredRole": "admin",
+      "tenantScoped": true
+    },
+    {
+      "entryId": "panel-user-admin",
+      "kind": "panel",
+      "relativePath": "panel/user-admin-panel.html",
+      "language": "html+javascript",
+      "sha256": "33a51929893ed508b1f63314b8ec163891e6d8c1408b489fc726ee5bda9cf537",
+      "runtimeBinding": "panel:/users",
+      "requiredRole": "admin",
+      "tenantScoped": true
+    }
+  ]
+}

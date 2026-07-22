@@ -1,0 +1,138 @@
+package com.npdev.generator.provenance;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.generator.output.GeneratedSourceWriter;
+import com.npdev.generator.strategy.RegenerationPolicy;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Path;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * Runs from the real generator module working directory, so it exercises the real
+ * {@code NPDevContract/packs} discovery the same way {@code BuiltinPackComposerTest} does.
+ */
+final class PackCatalogEmitterTest {
+
+    @TempDir
+    Path tempDir;
+
+    @Test
+    void catalogsRealBuiltinPacksAndFlagsIncludedWhenInternalTablesEnabled() throws Exception {
+        GeneratedSourceWriter writer = new GeneratedSourceWriter(tempDir, new RegenerationPolicy());
+        new PackCatalogEmitter().emit(writer, true);
+
+        JsonNode root = new ObjectMapper().readTree(tempDir.resolve(PackCatalogEmitter.RELATIVE_PATH).toFile());
+        assertTrue(root.path("discoverable").asBoolean());
+
+        JsonNode identity = findPack(root.path("packs"), "identity");
+        assertEquals("1.0.0", identity.path("version").asText());
+        assertTrue(identity.path("conceptCount").asInt() >= 3);
+        assertTrue(identity.path("included").asBoolean());
+
+        JsonNode workspace = findPack(root.path("packs"), "workspace");
+        assertTrue(workspace.path("included").asBoolean());
+    }
+
+    @Test
+    void marksPacksNotIncludedWhenInternalTablesDisabled() throws Exception {
+        GeneratedSourceWriter writer = new GeneratedSourceWriter(tempDir, new RegenerationPolicy());
+        new PackCatalogEmitter().emit(writer, false);
+
+        JsonNode root = new ObjectMapper().readTree(tempDir.resolve(PackCatalogEmitter.RELATIVE_PATH).toFile());
+        JsonNode identity = findPack(root.path("packs"), "identity");
+        assertEquals(false, identity.path("included").asBoolean());
+    }
+
+    @Test
+    void exposesReferenceTargetForBondFieldsInConceptDetails() throws Exception {
+        GeneratedSourceWriter writer = new GeneratedSourceWriter(tempDir, new RegenerationPolicy());
+        new PackCatalogEmitter().emit(writer, true);
+
+        JsonNode root = new ObjectMapper().readTree(tempDir.resolve(PackCatalogEmitter.RELATIVE_PATH).toFile());
+        JsonNode identity = findPack(root.path("packs"), "identity");
+        JsonNode userRole = findConcept(identity.path("concepts"), "UserRole");
+
+        JsonNode userIdField = findField(userRole.path("fields"), "userId");
+        assertEquals("User", userIdField.path("referenceTarget").asText());
+
+        JsonNode roleIdField = findField(userRole.path("fields"), "roleId");
+        assertEquals("Role", roleIdField.path("referenceTarget").asText());
+
+        JsonNode idField = findField(findConcept(identity.path("concepts"), "User").path("fields"), "id");
+        assertFalse(idField.has("referenceTarget"));
+    }
+
+    @Test
+    void flagsVersionDriftWhenOriginPackHasMovedOnSinceTheForkWasDeclared() throws Exception {
+        // project-tracker-demo declares forkedFrom identity v0.9.0 (real fixture, see pack.json) --
+        // the real identity pack is at v1.0.0, so this is a genuine, permanent drift case, not a
+        // synthetic/mocked one.
+        GeneratedSourceWriter writer = new GeneratedSourceWriter(tempDir, new RegenerationPolicy());
+        new PackCatalogEmitter().emit(writer, true);
+
+        JsonNode root = new ObjectMapper().readTree(tempDir.resolve(PackCatalogEmitter.RELATIVE_PATH).toFile());
+        JsonNode fork = findPack(root.path("packs"), "project-tracker-demo");
+        assertEquals("identity", fork.path("forkedFrom").path("pack").asText());
+        assertTrue(fork.path("forkedFromExists").asBoolean());
+        assertEquals("1.0.0", fork.path("forkedFromCurrentVersion").asText());
+        assertTrue(fork.path("forkedFromVersionDrift").asBoolean());
+    }
+
+    @Test
+    void noVersionDriftReportedWhenPackDeclaresNoFork() throws Exception {
+        GeneratedSourceWriter writer = new GeneratedSourceWriter(tempDir, new RegenerationPolicy());
+        new PackCatalogEmitter().emit(writer, true);
+
+        JsonNode root = new ObjectMapper().readTree(tempDir.resolve(PackCatalogEmitter.RELATIVE_PATH).toFile());
+        JsonNode identity = findPack(root.path("packs"), "identity");
+        assertTrue(identity.path("forkedFrom").isNull());
+        assertTrue(identity.path("forkedFromVersionDrift").isNull());
+    }
+
+    @Test
+    void marksAnInstalledThirdPartyPackAsIncludedEvenWithoutInternalTables() throws Exception {
+        GeneratedSourceWriter writer = new GeneratedSourceWriter(tempDir, new RegenerationPolicy());
+        new PackCatalogEmitter().emit(writer, false, List.of("identity"));
+
+        JsonNode root = new ObjectMapper().readTree(tempDir.resolve(PackCatalogEmitter.RELATIVE_PATH).toFile());
+        JsonNode identity = findPack(root.path("packs"), "identity");
+        assertTrue(identity.path("included").asBoolean());
+
+        JsonNode workspace = findPack(root.path("packs"), "workspace");
+        assertFalse(workspace.path("included").asBoolean());
+    }
+
+    private static JsonNode findConcept(JsonNode concepts, String name) {
+        for (JsonNode concept : concepts) {
+            if (name.equals(concept.path("name").asText())) {
+                return concept;
+            }
+        }
+        throw new AssertionError("No concept found named " + name);
+    }
+
+    private static JsonNode findField(JsonNode fields, String name) {
+        for (JsonNode field : fields) {
+            if (name.equals(field.path("name").asText())) {
+                return field;
+            }
+        }
+        throw new AssertionError("No field found named " + name);
+    }
+
+    private static JsonNode findPack(JsonNode packs, String alias) {
+        for (JsonNode pack : packs) {
+            if (alias.equals(pack.path("alias").asText())) {
+                return pack;
+            }
+        }
+        throw new AssertionError("No pack found for alias " + alias);
+    }
+}

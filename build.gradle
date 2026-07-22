@@ -1,0 +1,471 @@
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+
+plugins {
+    id 'base'
+}
+
+def resolveNpdevBuildRoot = {
+    def configured = System.getenv('NPDEV_BUILD_ROOT')
+    if (configured != null && !configured.trim().isEmpty()) {
+        return file(configured)
+    }
+    def sourceRoot = rootDir
+    while (sourceRoot != null && sourceRoot.name != 'NPDev_General') {
+        sourceRoot = sourceRoot.parentFile
+    }
+    if (sourceRoot != null && sourceRoot.parentFile != null) {
+        return new File(sourceRoot.parentFile, 'Build')
+    }
+    return new File(rootDir.parentFile, 'Build')
+}
+
+def npdevExternalBuildRoot = resolveNpdevBuildRoot()
+
+allprojects {
+    def safeProjectPath = project.path == ':' ? 'root' : project.path.substring(1).replace(':', '/')
+    layout.buildDirectory.set(new File(npdevExternalBuildRoot, "gradle/${rootProject.name}/${safeProjectPath}"))
+}
+
+def validationState = [
+        checks: [],
+        wrappers: [],
+        failures: []
+]
+
+def reportPath = layout.buildDirectory.file('reports/gradle-native-validation-report.json').get().asFile
+
+def repoPath = { File target ->
+    rootDir.toPath().relativize(target.toPath()).toString().replace(File.separator, '/')
+}
+
+def parseJson = { File target ->
+    new JsonSlurper().parse(target)
+}
+
+def recordCheck = { Map args ->
+    validationState.checks << [
+            name: args.name,
+            implementation: args.implementation ?: 'native-gradle',
+            status: args.passed ? 'passed' : 'failed',
+            passed: args.passed,
+            evidence: args.evidence ?: [:],
+            details: args.details ?: [:]
+    ]
+    if (!args.passed) {
+        validationState.failures << "${args.name}: ${args.reason ?: 'failed'}"
+    }
+}
+
+def validatorRoot = file('scripts/quality/json-schema-validator')
+def validatorScript = file('scripts/quality/json-schema-validator/validate-json-schema.mjs')
+
+def ensureNodeValidator = {
+    if (!validatorScript.isFile()) {
+        throw new GradleException("Missing JSON Schema validator wrapper: ${repoPath(validatorScript)}")
+    }
+    if (!file('scripts/quality/json-schema-validator/node_modules').isDirectory()) {
+        exec {
+            commandLine 'npm', '--prefix', validatorRoot.absolutePath, 'install', '--silent'
+        }
+    }
+}
+
+def runNodeSchemaValidation = { File schema, File instance ->
+    ensureNodeValidator()
+    def stdout = new ByteArrayOutputStream()
+    def stderr = new ByteArrayOutputStream()
+    def result = exec {
+        commandLine 'node', validatorScript.absolutePath, '--schema', schema.absolutePath, '--instance', instance.absolutePath
+        standardOutput = stdout
+        errorOutput = stderr
+        ignoreExitValue = true
+    }
+    def parsed = null
+    if (stdout.size() > 0) {
+        parsed = new JsonSlurper().parseText(stdout.toString('UTF-8'))
+    }
+    return [
+            exitCode: result.exitValue,
+            status: parsed?.status ?: 'failed',
+            errors: parsed?.errors ?: [],
+            stderr: stderr.toString('UTF-8')
+    ]
+}
+
+tasks.register('validateSchemas') {
+    group = 'verification'
+    description = 'Natively parses active JSON schemas and validates representative schema fixtures.'
+
+    doLast {
+        def schemaFiles = []
+        schemaFiles.addAll(fileTree('schemas/ai') { include '**/*.schema.json' }.files)
+        schemaFiles.addAll(fileTree('NPDevContract/schemas') {
+            include '**/*.schema.json'
+            exclude 'archive/**'
+        }.files)
+        schemaFiles = schemaFiles.unique().sort { it.path }
+
+        def failures = []
+        schemaFiles.each { schema ->
+            try {
+                parseJson(schema)
+            } catch (Exception ex) {
+                failures << "${repoPath(schema)}: ${ex.message}"
+            }
+        }
+
+        def modelSchema = file('NPDevContract/schemas/model.schema.json')
+        def canonicalModel = file('NPDevContract/dsl/resources/Models/canonical-demo/model.json')
+        def invalidModel = file('NPDevCli/tests/fixtures/invalid-model.json')
+        def validModelResult = runNodeSchemaValidation(modelSchema, canonicalModel)
+        def invalidModelResult = runNodeSchemaValidation(modelSchema, invalidModel)
+        if (validModelResult.exitCode != 0 || validModelResult.status != 'passed') {
+            failures << 'canonical-demo model did not pass canonical model.schema.json validation'
+        }
+        if (invalidModelResult.exitCode == 0 || invalidModelResult.status != 'failed') {
+            failures << 'invalid model fixture was not rejected by canonical model.schema.json validation'
+        }
+
+        recordCheck(
+                name: 'validateSchemas',
+                implementation: 'native-gradle-node',
+                passed: failures.isEmpty(),
+                reason: failures.join('; '),
+                evidence: [
+                        parsedSchemaCount: schemaFiles.size(),
+                        canonicalModel: repoPath(canonicalModel),
+                        invalidModelFixture: repoPath(invalidModel),
+                        validator: repoPath(validatorScript)
+                ],
+                details: [failures: failures]
+        )
+    }
+}
+
+tasks.register('validateAiScenarios') {
+    group = 'verification'
+    description = 'Natively validates active AI scenario manifests and AI models with the Node JSON Schema validator.'
+
+    doLast {
+        def scenarioRoot = file('golden-ai-scenarios')
+        def activeScenarioDirs = scenarioRoot.listFiles()
+                .findAll { it.directory && it.name != 'deferred' }
+                .sort { it.name }
+        def manifestSchema = file('schemas/ai/scenario-manifest.schema.json')
+        def aiModelSchema = file('schemas/ai/ai-model.schema.json')
+        def failures = []
+        def validatedArtifacts = 0
+
+        activeScenarioDirs.each { scenarioDir ->
+            def manifest = new File(scenarioDir, 'scenario.manifest.json')
+            if (!manifest.isFile()) {
+                failures << "${scenarioDir.name}: missing scenario.manifest.json"
+                return
+            }
+            def manifestResult = runNodeSchemaValidation(manifestSchema, manifest)
+            validatedArtifacts++
+            if (manifestResult.exitCode != 0 || manifestResult.status != 'passed') {
+                failures << "${scenarioDir.name}: manifest schema validation failed"
+            }
+            def manifestJson = parseJson(manifest)
+            def expectedOutcome = manifestJson?.expectedOutcome?.toString()
+            def expectedFailureStage = manifestJson?.expectedFailureStage?.toString()
+            def aiModelPath = manifestJson?.files?.aiModel ?: 'ai-model.json'
+            def aiModel = new File(scenarioDir, aiModelPath.toString())
+            if (aiModel.isFile()) {
+                def aiModelResult = runNodeSchemaValidation(aiModelSchema, aiModel)
+                validatedArtifacts++
+                if (aiModelResult.exitCode != 0 || aiModelResult.status != 'passed') {
+                    def expectedSchemaRejection = expectedOutcome == 'fail' && expectedFailureStage in ['schema', 'ai-model-schema', 'normalization', 'contract', 'admission']
+                    if (!expectedSchemaRejection) {
+                        failures << "${scenarioDir.name}: ai-model schema validation failed"
+                    }
+                }
+            }
+        }
+
+        recordCheck(
+                name: 'validateAiScenarios',
+                implementation: 'native-gradle-node',
+                passed: failures.isEmpty(),
+                reason: failures.join('; '),
+                evidence: [
+                        activeScenarioCount: activeScenarioDirs.size(),
+                        validatedArtifactCount: validatedArtifacts,
+                        deferredRootExcluded: 'golden-ai-scenarios/deferred'
+                ],
+                details: [failures: failures]
+        )
+    }
+}
+
+tasks.register('validateScenarioCoherence') {
+    group = 'verification'
+    description = 'Natively checks active scenario coherence invariants previously enforced by script logic.'
+
+    doLast {
+        def scenarioRoot = file('golden-ai-scenarios')
+        def scenarioDirs = scenarioRoot.listFiles()
+                .findAll { it.directory && it.name != 'deferred' }
+                .sort { it.name }
+        def failures = []
+        scenarioDirs.each { scenarioDir ->
+            def manifestFile = new File(scenarioDir, 'scenario.manifest.json')
+            if (!manifestFile.isFile()) {
+                failures << "${scenarioDir.name}: missing scenario.manifest.json"
+                return
+            }
+            def manifest = parseJson(manifestFile)
+            def scenarioId = manifest.scenarioId?.toString()
+            def expectedOutcome = manifest.expectedOutcome?.toString()
+            def kind = manifest.kind?.toString()
+            def negative = kind == 'negative' || expectedOutcome == 'fail'
+            if (negative && expectedOutcome != 'fail') {
+                failures << "${scenarioDir.name}: negative scenario must declare expectedOutcome=fail"
+            }
+            if (!negative && expectedOutcome != 'pass') {
+                failures << "${scenarioDir.name}: positive scenario must declare expectedOutcome=pass"
+            }
+            if (negative && !manifest.expectedFailureStage?.toString()) {
+                failures << "${scenarioDir.name}: negative scenario missing expectedFailureStage"
+            }
+            def behavior = new File(scenarioDir, manifest.files?.expectedBehavior?.toString() ?: 'expected-behavior.json')
+            if (behavior.isFile()) {
+                def behaviorJson = parseJson(behavior)
+                def behaviorScenarioId = behaviorJson.scenarioId?.toString()
+                if (behaviorScenarioId && behaviorScenarioId != scenarioId) {
+                    failures << "${scenarioDir.name}: expected-behavior scenarioId mismatch"
+                }
+                def expectedClass = behaviorJson.expectedClass?.toString()
+                if (expectedClass) {
+                    if (negative && !(expectedClass.startsWith('FAIL_') || expectedClass.startsWith('NEGATIVE_'))) {
+                        failures << "${scenarioDir.name}: negative expectedClass must start with FAIL_ or NEGATIVE_"
+                    }
+                    if (!negative && !expectedClass.startsWith('PASS_')) {
+                        failures << "${scenarioDir.name}: positive expectedClass must start with PASS_"
+                    }
+                }
+            }
+        }
+
+        recordCheck(
+                name: 'validateScenarioCoherence',
+                implementation: 'native-gradle',
+                passed: failures.isEmpty(),
+                reason: failures.join('; '),
+                evidence: [
+                        activeScenarioCount: scenarioDirs.size(),
+                        expectedActiveScenarioCount: 28,
+                        deferredRootExcluded: 'golden-ai-scenarios/deferred'
+                ],
+                details: [failures: failures]
+        )
+    }
+}
+
+tasks.register('validateBoundaryLocks') {
+    group = 'verification'
+    description = 'Natively checks deprecated schema references, Gradle wrappers, and CP5 path-neutral source scope.'
+
+    doLast {
+        def failures = []
+        def legacyConfigSchemaName = 'config-' + '1.0' + '.schema.json'
+        def legacyModelSchemaName = 'model-' + '1.0.0' + '.schema.json'
+        def deprecatedNames = [legacyConfigSchemaName, legacyModelSchemaName]
+        deprecatedNames.each { name ->
+            if (file("NPDevContract/schemas/${name}").isFile()) {
+                failures << "deprecated schema alias remains active: NPDevContract/schemas/${name}"
+            }
+            if (!file("NPDevContract/schemas/archive/${name}").isFile()) {
+                failures << "deprecated schema alias is not archived: NPDevContract/schemas/archive/${name}"
+            }
+        }
+
+        def excludedSegments = ['.git', '.gradle', 'archive', 'build', 'dist', 'node_modules', 'out', 'target'] as Set
+        def deprecatedPatterns = [
+                'NPDevContract/schemas/' + legacyConfigSchemaName,
+                'NPDevContract\\\\schemas\\\\' + legacyConfigSchemaName,
+                'NPDevContract/schemas/' + legacyModelSchemaName,
+                'NPDevContract\\\\schemas\\\\' + legacyModelSchemaName
+        ]
+        fileTree(rootDir) {
+            include '**/*'
+            exclude '.git/**', '**/.gradle/**', '**/build/**', '**/node_modules/**', '**/target/**', '**/dist/**', 'scripts/reports/tmp/**', 'scripts/reports/out/**'
+        }.files.findAll { it.file }.each { candidate ->
+            def relative = repoPath(candidate)
+            def segments = relative.split('/') as List
+            if (segments.any { excludedSegments.contains(it) }) {
+                return
+            }
+            if (relative in ['build.gradle', 'scripts/quality/run-boundary-lock-check.ps1']) {
+                return
+            }
+            def text = candidate.getText('UTF-8')
+            if (deprecatedPatterns.any { text.contains(it) }) {
+                failures << "active deprecated schema reference outside archive/legacy: ${relative}"
+            }
+        }
+
+        def wrapperRoots = [
+                rootDir,
+                file('NPDevContract/dsl'),
+                file('NPDevGenerator'),
+                file('NPDevKernel'),
+                file('NPDevRuntimeHost')
+        ]
+        wrapperRoots.each { wrapperRoot ->
+            ['gradlew', 'gradlew.bat', 'gradle/wrapper/gradle-wrapper.jar', 'gradle/wrapper/gradle-wrapper.properties'].each { relative ->
+                if (!new File(wrapperRoot, relative).isFile()) {
+                    failures << "missing Gradle wrapper artifact: ${repoPath(new File(wrapperRoot, relative))}"
+                }
+            }
+        }
+
+        def cp5PathScope = [
+                'README.md',
+                'docs/GETTING_STARTED.md',
+                '.github/workflows/npdev-ci-validation.yml',
+                'NPDevContract/examples/valid/simple-config.json',
+                'npdev',
+                'npdev.bat'
+        ]
+        def driveMatches = []
+        cp5PathScope.each { relative ->
+            def target = file(relative)
+            if (target.isFile()) {
+                def matcher = target.getText('UTF-8') =~ /(?<![A-Za-z])[A-Za-z]:[\\\/]/
+                if (matcher.find()) {
+                    driveMatches << relative
+                }
+            }
+        }
+        if (!driveMatches.isEmpty()) {
+            failures << "hardcoded drive-letter paths in CP5 active source scope: ${driveMatches}"
+        }
+
+        recordCheck(
+                name: 'validateBoundaryLocks',
+                implementation: 'native-gradle',
+                passed: failures.isEmpty(),
+                reason: failures.join('; '),
+                evidence: [
+                        deprecatedSchemaAliasesChecked: deprecatedNames,
+                        gradleWrapperRootCount: wrapperRoots.size(),
+                        hardcodedPathScopeCount: cp5PathScope.size()
+                ],
+                details: [failures: failures]
+        )
+    }
+}
+
+tasks.register('validateReports') {
+    group = 'verification'
+    description = 'Natively validates existing report JSON files against their registered schemas using Node AJV.'
+
+    doLast {
+        def reportPairs = [
+                ['portable-tooling', 'schemas/ai/portable-tooling-report.schema.json', 'scripts/reports/out/portable-tooling-report.json'],
+                ['report-bootstrap-and-regeneration', 'schemas/ai/report-bootstrap-and-regeneration-report.schema.json', 'scripts/reports/out/report-bootstrap-and-regeneration-report.json'],
+                ['scenario-scope-reconciliation', 'schemas/ai/scenario-scope-reconciliation-report.schema.json', 'scripts/reports/out/scenario-scope-reconciliation-report.json'],
+                ['runtimehost-integration-infrastructure', 'schemas/ai/runtimehost-integration-infrastructure-report.schema.json', 'scripts/reports/out/runtimehost-integration-infrastructure-report.json'],
+                ['phase2-residual-fidelity', 'schemas/ai/phase2-residual-fidelity-report.schema.json', 'scripts/reports/out/phase2-residual-fidelity-report.json'],
+                ['maturity-score', 'schemas/ai/maturity-score-report.schema.json', 'scripts/reports/out/maturity-score-report.json'],
+                ['script-inventory', 'schemas/ai/script-inventory-report.schema.json', 'scripts/reports/out/script-inventory-report.json']
+        ]
+        def failures = []
+        def validated = []
+        reportPairs.each { pair ->
+            def schema = file(pair[1])
+            def report = file(pair[2])
+            if (!schema.isFile() || !report.isFile()) {
+                failures << "${pair[0]}: missing schema or report"
+                return
+            }
+            def result = runNodeSchemaValidation(schema, report)
+            validated << pair[0]
+            if (result.exitCode != 0 || result.status != 'passed') {
+                failures << "${pair[0]}: schema validation failed"
+            }
+            def reportJson = parseJson(report)
+            def status = reportJson.overallStatus ?: reportJson.status
+            if (status != 'passed') {
+                failures << "${pair[0]}: report status is ${status}"
+            }
+        }
+
+        recordCheck(
+                name: 'validateReports',
+                implementation: 'native-gradle-node',
+                passed: failures.isEmpty(),
+                reason: failures.join('; '),
+                evidence: [validatedReports: validated],
+                details: [failures: failures]
+        )
+    }
+}
+
+tasks.register('writeGradleNativeValidationReport') {
+    group = 'verification'
+    description = 'Writes the CP6 Gradle-native validation migration report.'
+    dependsOn 'validateSchemas', 'validateAiScenarios', 'validateScenarioCoherence', 'validateBoundaryLocks', 'validateReports'
+
+    doLast {
+        def nativeChecks = validationState.checks.findAll { it.implementation?.toString()?.startsWith('native-') }
+        def wrapperChecks = validationState.checks.findAll { it.implementation == 'wrapper' }
+        def wrapperInventory = [
+                [
+                        name: 'PowerShell compatibility report producers',
+                        reason: 'Accepted CP5 risk; full migration away from compatibility wrappers belongs to CP6 continuation and later checkpoints.',
+                        owner: 'NPDev maturity roadmap',
+                        removalPath: 'Replace remaining report producer wrappers with Gradle/Java/Node tasks as each checkpoint migrates the owned validation.'
+                ]
+        ]
+        def overallStatus = validationState.failures.isEmpty() ? 'passed' : 'failed'
+        def report = [
+                schemaVersion: 'npdev-gradle-native-validation-report.v1',
+                runId: "gradle-native-validation-${new Date().format('yyyyMMdd-HHmmssSSS', TimeZone.getTimeZone('UTC'))}",
+                generatedAt: new Date().format("yyyy-MM-dd'T'HH:mm:ss.SSSX", TimeZone.getTimeZone('UTC')),
+                scriptPath: 'build.gradle',
+                workspaceRoot: rootDir.absolutePath,
+                overallStatus: overallStatus,
+                gradleTaskExists: tasks.findByName('postBeta0MaturityCheck') != null,
+                nativeCheckCount: nativeChecks.size(),
+                wrapperCheckCount: 'allowed-during-transition',
+                wrapperCheckCountMustDecreaseOrBeJustified: true,
+                postBeta0MaturityCheckPassed: overallStatus == 'passed',
+                legacyScriptsPreservedAsCompatibility: true,
+                nativeChecks: nativeChecks,
+                wrapperChecks: wrapperChecks,
+                remainingWrappers: wrapperInventory,
+                checks: validationState.checks,
+                failures: validationState.failures,
+                findings: [
+                        [
+                                id: 'CP6-POWERSHELL-COMPATIBILITY-WRAPPERS-REMAIN',
+                                classification: 'known-risk-accepted',
+                                status: 'accepted',
+                                description: 'Wrappers are allowed during CP6 transition and are inventoried with reason, owner, and removal path.'
+                        ]
+                ],
+                doesNotSolve: [
+                        'Does not delete every legacy script.',
+                        'Does not require all CI to run only Gradle yet.',
+                        'Does not force wrapperCheckCount=0 during the CP6 transition.',
+                        'Does not proceed to Checkpoint 7.'
+                ]
+        ]
+        reportPath.parentFile.mkdirs()
+        reportPath.setText(JsonOutput.prettyPrint(JsonOutput.toJson(report)) + System.lineSeparator(), 'UTF-8')
+        if (overallStatus != 'passed') {
+            throw new GradleException("Gradle-native validation failed: ${validationState.failures}")
+        }
+        println "Gradle-native validation report written: ${repoPath(reportPath)}"
+    }
+}
+
+tasks.register('postBeta0MaturityCheck') {
+    group = 'verification'
+    description = 'Runs the CP6 Gradle-native maturity validation orchestration.'
+    dependsOn 'writeGradleNativeValidationReport'
+}
