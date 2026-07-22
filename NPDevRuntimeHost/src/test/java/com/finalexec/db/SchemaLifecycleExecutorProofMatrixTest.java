@@ -1790,6 +1790,51 @@ class SchemaLifecycleExecutorProofMatrixTest {
         // test (SchemaRealizationEmitterTest, T2) -- rather than being faked here.
     }
 
+    // ---- REG-8 (P4): Trigger C -- database migrated past this build --------------------------------
+
+    @Test
+    @DisplayName("Scenario 30 (REG-8 Trigger C): pure column drop + rollback refuses instead of "
+            + "silently re-adding the dropped column empty -- the register's own practical example")
+    void scenario30_databaseMigratedPastThisBuildRefusesOnRollback() throws SQLException {
+        // Trigger A/B (scenario 21) only runs on a fingerprint-MATCH boot and detects an UNEXPLAINED
+        // EXTRA live column (a rename's signature). A PURE drop leaves neither: the live shape here is
+        // indistinguishable from "nickname never existed", and the stored fingerprint does NOT match
+        // this (old) build either -- this is a MISMATCH boot, which is exactly the blind spot REG-8
+        // names. Full detail (including the mark-done short-circuit, D4) lives in the dedicated
+        // SchemaLifecycleExecutorDatabaseMigratedPastBuildTest; this scenario proves the same fix
+        // through the matrix's own production-sequencing harness.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+            statement.execute("INSERT INTO widgets (id, name) VALUES (1, 'alpha')");
+        }
+        // History: this (old) build's own fingerprint was reached at T1; a REAL, later migration
+        // (build N+1, which dropped 'nickname') moved the database to a DIFFERENT fingerprint at T2.
+        seedHistoryRow(dataSource, "sha256:N", "APPLIED", 1_000L);
+        seedHistoryRow(dataSource, "sha256:N+1", "APPLIED", 2_000L);
+        seedStoredFingerprint(dataSource, "sha256:N+1");
+
+        SchemaLifecycleExecutor.SchemaManifest oldBuildManifest = manifest(
+                "sha256:N", List.of("widgets"),
+                Map.of("widgets", List.of("id", "name", "nickname")),
+                Map.of("widgets", List.of("nickname")),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "nickname", "VARCHAR(50)")),
+                Map.of(), Map.of(), true, "", Map.of(), Map.of(), Map.of(), Map.of(), true);
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class,
+                () -> executor.beforeMigrate(dataSource, oldBuildManifest));
+        assertTrue(exception.getMessage().contains("migrated PAST this build"), exception.getMessage());
+        assertTrue(exception.getMessage().contains("sha256:N+1"), exception.getMessage());
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertFalse(hasColumn(metadata, "widgets", "nickname"),
+                    "the refusal must fire BEFORE classify()/the R__ migration ever runs -- 'nickname' "
+                            + "must NOT be silently re-added empty");
+        }
+        HistoryRow row = latestHistoryRow(dataSource);
+        assertEquals("REFUSED", row.outcome());
+    }
+
     /** Two concepts shaped the way the generator really emits them -- the business columns PLUS the
      * platform columns {@code SchemaRealizationEmitter#fullColumnNames} always appends (id/version/
      * row_version/tenant_id) -- so the manifests built on top of them can carry a realistic
@@ -2122,6 +2167,28 @@ class SchemaLifecycleExecutorProofMatrixTest {
                 statement.setString(1, "ownedBusinessTables");
                 statement.setString(2, json);
                 statement.setLong(3, System.currentTimeMillis());
+                statement.executeUpdate();
+            }
+        }
+    }
+
+    /** REG-8 (P4): seeds a raw {@code npdev_schema_history} row with an explicit, caller-controlled
+     * {@code applied_at_utc} -- Trigger C's temporal ordering must be deterministic in a test, not
+     * dependent on wall-clock resolution between two inserts made milliseconds apart. */
+    private static void seedHistoryRow(DataSource dataSource, String toFingerprint, String outcome, long appliedAtUtc) throws SQLException {
+        try (Connection connection = dataSource.getConnection()) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE IF NOT EXISTS npdev_schema_history "
+                        + "(id TEXT PRIMARY KEY, applied_at_utc BIGINT NOT NULL, from_fingerprint TEXT, "
+                        + "to_fingerprint TEXT, classification TEXT, items_json TEXT, ack_token_used TEXT, outcome TEXT NOT NULL)");
+            }
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "INSERT INTO npdev_schema_history (id, applied_at_utc, from_fingerprint, to_fingerprint, "
+                            + "classification, items_json, ack_token_used, outcome) VALUES (?, ?, NULL, ?, NULL, NULL, NULL, ?)")) {
+                statement.setString(1, java.util.UUID.randomUUID().toString());
+                statement.setLong(2, appliedAtUtc);
+                statement.setString(3, toFingerprint);
+                statement.setString(4, outcome);
                 statement.executeUpdate();
             }
         }

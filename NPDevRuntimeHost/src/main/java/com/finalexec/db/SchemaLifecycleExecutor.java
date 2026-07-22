@@ -472,6 +472,29 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // no history row -- once every platform column is strict. Proven by scenarios 28 and 28b.
         tightenPlatformColumns(dataSource, manifest);
 
+        // REG-8 Trigger C (D4): closes the schema-ahead detector's known blind spot -- a newer build
+        // that PURELY dropped a column leaves no live residue for Trigger A/B to see, so an older jar
+        // rolled back onto the migrated database used to classify SAFE_ADDITIVE (the dropped column's
+        // sibling difference is additive-eligible and no unexplained extra column exists to signal a
+        // rename) and silently re-add it empty via the R__ migration -- the register's own practical
+        // example. Runs BEFORE classify() so it guards every resolution (SAFE_ADDITIVE,
+        // RENAME_DETECTED, TYPE_CHANGE_DETECTED, DESTRUCTIVE) uniformly, not just the one case that
+        // motivated it. A MANUALLY_MARKED_DONE mark for this exact fingerprint already short-circuited
+        // above (D4: a mark is checked before this branch is ever reached), so it can never trip this.
+        Optional<HistoryPoint> aheadOfBuild = databaseMigratedPastThisBuild(dataSource, manifest);
+        if (aheadOfBuild.isPresent()) {
+            writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), null, null, null, "REFUSED");
+            throw new IllegalStateException("This database was migrated PAST this build. Schema history shows "
+                    + "fingerprint " + aheadOfBuild.get().toFingerprint() + " was successfully applied at "
+                    + aheadOfBuild.get().appliedAtUtc() + " (epoch ms), newer than this build's own target ("
+                    + manifest.schemaFingerprint() + "). Rolling an older build back onto a database a newer "
+                    + "build already migrated is unsupported and can silently lose data (REG-8) -- roll forward "
+                    + "to the newer build, restore from backup/snapshot, or -- if you deliberately intend this "
+                    + "older build to take over -- mark fingerprint " + aheadOfBuild.get().toFingerprint()
+                    + " done (see docs/SCHEMA_EVOLUTION.md#marking-a-migration-as-done) and redeploy. See "
+                    + "docs/SCHEMA_EVOLUTION.md#refusals-and-rollback.");
+        }
+
         SchemaChangeClassification classification = classify(dataSource, manifest);
         SchemaChangeClassification classificationForFallthrough = classification;
         if (classification == SchemaChangeClassification.SAFE_ADDITIVE) {
@@ -2425,6 +2448,79 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             return List.of();
         }
         return missing;
+    }
+
+    /** REG-8 Trigger C: {@code npdev_schema_history}'s {@code (to_fingerprint, applied_at_utc)} pair
+     * for the most recent row matching a query -- either a specific target fingerprint or the whole
+     * table. */
+    private record HistoryPoint(String toFingerprint, long appliedAtUtc) {
+    }
+
+    /**
+     * REG-8 Trigger C (D4). Returns the history point that proves this database was migrated PAST
+     * this build, or empty if nothing indicates that.
+     *
+     * <p>Deliberately NOT "does history contain a row for {@code stored} newer than THIS build's own
+     * fingerprint" -- every ordinary forward upgrade would trip that (the current {@code stored}
+     * value, by construction, always has a matching history row once any prior boot has gone through
+     * the mismatch branch, INCLUDING a perfectly legitimate upgrade). The actual signal is narrower
+     * and matches the register's own framing ("newer than what this build LAST WROTE"): has THIS
+     * build's OWN target fingerprint ever been reached before (a row with {@code to_fingerprint =
+     * manifest.schemaFingerprint()})? If never, this is a legitimate first-time deploy of this
+     * fingerprint -- nothing to compare against, and Trigger C stays silent. If it HAS been reached
+     * before, but a LATER row exists whose {@code to_fingerprint} differs, some other build has since
+     * moved this exact database past the point this build itself last owned it.
+     */
+    private static Optional<HistoryPoint> databaseMigratedPastThisBuild(DataSource dataSource, SchemaManifest manifest) {
+        Optional<Long> lastReachedByThisBuild = latestOutcomeTimestamp(dataSource, manifest.schemaFingerprint());
+        if (lastReachedByThisBuild.isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<HistoryPoint> latestOverall = latestOutcomeOverall(dataSource);
+        if (latestOverall.isPresent()
+                && latestOverall.get().appliedAtUtc() > lastReachedByThisBuild.get()
+                && !manifest.schemaFingerprint().equals(latestOverall.get().toFingerprint())) {
+            return latestOverall;
+        }
+        return Optional.empty();
+    }
+
+    /** {@code APPLIED}/{@code MANUALLY_MARKED_DONE} are the outcomes that represent a REAL, recorded
+     * advance of this database's schema state -- as opposed to {@code REFUSED}/{@code PARTIAL-CRASH}
+     * (nothing durably changed) or the {@code EXTERNAL_*} outcomes (REG-7.1's read-only ownership
+     * mode, which never writes {@code npdev_schema_metadata} and is not part of this fingerprint-
+     * pointer lifecycle at all). */
+    private static Optional<Long> latestOutcomeTimestamp(DataSource dataSource, String toFingerprint) {
+        try (Connection connection = dataSource.getConnection()) {
+            ensureHistoryTable(connection);
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT applied_at_utc FROM " + HISTORY_TABLE + " WHERE to_fingerprint = ? AND outcome IN ("
+                            + "'APPLIED', 'MANUALLY_MARKED_DONE') ORDER BY applied_at_utc DESC")) {
+                statement.setString(1, toFingerprint);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    return resultSet.next() ? Optional.of(resultSet.getLong(1)) : Optional.empty();
+                }
+            }
+        } catch (SQLException exception) {
+            return Optional.empty();
+        }
+    }
+
+    private static Optional<HistoryPoint> latestOutcomeOverall(DataSource dataSource) {
+        try (Connection connection = dataSource.getConnection()) {
+            ensureHistoryTable(connection);
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT to_fingerprint, applied_at_utc FROM " + HISTORY_TABLE + " WHERE outcome IN ("
+                            + "'APPLIED', 'MANUALLY_MARKED_DONE') ORDER BY applied_at_utc DESC")) {
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    return resultSet.next()
+                            ? Optional.of(new HistoryPoint(resultSet.getString(1), resultSet.getLong(2)))
+                            : Optional.empty();
+                }
+            }
+        } catch (SQLException exception) {
+            return Optional.empty();
+        }
     }
 
     private static Set<String> lowerCased(Collection<String> values) {
