@@ -140,16 +140,24 @@ Linux/macOS, `npdev.bat` on Windows, and point `--output` at a directory **outsi
 
 ## 4. Verify it's real
 
+The reliable cross-shell way (identical in bash and Windows PowerShell — no quoting pitfalls) is to put
+the request body in a file and post that:
+
 ```sh
-curl -s -X POST http://127.0.0.1:8080/api/contact_messages \
-  -H "Content-Type: application/json" -H "X-Api-Key: dev-key" \
-  -d '{"name":"Ada","email":"ada@example.test","message":"Hello","status":"New"}'
+echo '{"name":"Ada","email":"ada@example.test","message":"Hello","status":"New"}' > body.json
+curl -s -X POST http://127.0.0.1:8080/api/contact_messages -H "Content-Type: application/json" -H "X-Api-Key: dev-key" --data "@body.json"
 ```
 
-You should get back the saved record with a generated `id`. Submit one with a blank `name` and you
-should get a `422 Unprocessable Entity` carrying the `NameRequired` invariant's code and message, not
-a stack trace — the same invariant declared in the model above, enforced exactly where the flow said
-to enforce it.
+On bash you can also inline the body with `-d '{…}'`. **On Windows PowerShell do not** — the inline
+single quotes get mangled and the server returns a misleading `400 Bad Request` (a JSON-parse error,
+not a real app failure); use the `--data "@body.json"` form above, or `Invoke-RestMethod -Method Post
+-Uri http://127.0.0.1:8080/api/contact_messages -Headers @{ "X-Api-Key" = "dev-key" } -ContentType
+"application/json" -Body (Get-Content body.json -Raw)`.
+
+You should get back the saved record with a generated `id` (plus platform-managed fields such as
+`version` and `tenantId`). Submit one with a blank `name` and you should get a `422 Unprocessable
+Entity` carrying the `NameRequired` invariant's code and message, not a stack trace — the same
+invariant declared in the model above, enforced exactly where the flow said to enforce it.
 
 ## 5. Change your model later
 
