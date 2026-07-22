@@ -110,6 +110,60 @@ class SchemaLifecycleExecutorDatabaseMigratedPastBuildTest {
     }
 
     @Test
+    @DisplayName("REG-27: a real fresh install records its own fingerprint in npdev_schema_history (not just metadata) so Trigger C can later fire")
+    void freshInstallRecordsItsFingerprintInHistory() throws SQLException {
+        // A genuinely fresh boot: nothing stored beforehand. afterMigrate runs AFTER flyway.migrate()
+        // in production, so recording history here is safe. Drive it directly with storedAtBootStart=null.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE users (id BIGINT PRIMARY KEY, name VARCHAR(50), nickname VARCHAR(50))");
+        }
+        SchemaLifecycleExecutor.SchemaManifest manifestBuildN = manifest(
+                "sha256:N", Map.of("users", List.of("id", "name", "nickname")), Map.of());
+
+        executor.afterMigrate(dataSource, manifestBuildN, null, false);
+
+        // Before REG-27 this wrote ONLY npdev_schema_metadata (the FINGERPRINT_KEY), never a history
+        // row -- so a fresh-installed build's fingerprint was invisible to Trigger C.
+        assertTrue(hasAppliedHistoryRowFor(dataSource, "sha256:N"),
+                "a fresh install must record an APPLIED npdev_schema_history row for its own fingerprint");
+    }
+
+    @Test
+    @DisplayName("REG-27: pure column drop + rollback refuses even when build N was FRESH-INSTALLED (no hand-seeded history row)")
+    void pureColumnDropRollbackRefusesEvenWhenBuildNWasFreshInstalled() throws SQLException {
+        // Build N is installed FRESH -- the register's literal example (N is the original build). Its
+        // history row is written by the real afterMigrate path, NOT hand-seeded. This is the exact case
+        // the headline test above manufactured via seedHistoryRow and therefore did not actually cover.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE users (id BIGINT PRIMARY KEY, name VARCHAR(50), nickname VARCHAR(50))");
+            statement.execute("INSERT INTO users (id, name, nickname) VALUES (1, 'Alpha', 'al')");
+        }
+        SchemaLifecycleExecutor.SchemaManifest manifestBuildN = manifest(
+                "sha256:N", Map.of("users", List.of("id", "name", "nickname")),
+                Map.of("users", List.of("nickname")));
+        // Real fresh install of build N (records N in history via afterMigrate -- the REG-27 fix).
+        executor.afterMigrate(dataSource, manifestBuildN, null, false);
+
+        // Build N+1 then drops nickname (its own real APPLIED row + advances the stored pointer). Seeded
+        // at a timestamp guaranteed to be AFTER N's just-written fresh-install row so it is the latest.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("ALTER TABLE users DROP COLUMN nickname");
+        }
+        seedHistoryRow(dataSource, "sha256:N+1", "APPLIED", System.currentTimeMillis() + 3_600_000L);
+        seedStoredFingerprint(dataSource, "sha256:N+1");
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class,
+                () -> executor.beforeMigrate(dataSource, manifestBuildN));
+        assertTrue(exception.getMessage().contains("migrated PAST this build"), exception.getMessage());
+        assertTrue(exception.getMessage().contains("sha256:N+1"), exception.getMessage());
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertFalse(hasColumn(connection.getMetaData(), "users", "nickname"),
+                    "the refusal must fire BEFORE classify()/the R__ migration -- nickname must NOT be silently re-added");
+        }
+    }
+
+    @Test
     @DisplayName("REG-7.2 interaction (D4): a MANUALLY_MARKED_DONE mark for this fingerprint short-circuits Trigger C entirely")
     void manuallyMarkedDoneFingerprintShortCircuitsTriggerC() throws SQLException {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
@@ -154,17 +208,30 @@ class SchemaLifecycleExecutorDatabaseMigratedPastBuildTest {
     }
 
     private static void seedStoredFingerprint(DataSource dataSource, String fingerprint) throws SQLException {
+        // Upsert (UPDATE-then-INSERT), matching the production upsertMetadata pattern: some tests seed
+        // the fingerprint on a fresh metadata table (INSERT path), while the fresh-install rollback
+        // test calls afterMigrate first -- which already wrote a schemaFingerprint row -- and then needs
+        // to advance the pointer to a later build's fingerprint (UPDATE path). A raw INSERT would
+        // collide on the metadata_key primary key in that case.
         try (Connection connection = dataSource.getConnection()) {
             try (Statement statement = connection.createStatement()) {
                 statement.execute("CREATE TABLE IF NOT EXISTS npdev_schema_metadata "
                         + "(metadata_key TEXT PRIMARY KEY, metadata_value TEXT NOT NULL, updated_at_ms BIGINT NOT NULL)");
             }
+            int updated;
             try (PreparedStatement statement = connection.prepareStatement(
-                    "INSERT INTO npdev_schema_metadata (metadata_key, metadata_value, updated_at_ms) VALUES (?, ?, ?)")) {
-                statement.setString(1, "schemaFingerprint");
-                statement.setString(2, fingerprint);
-                statement.setLong(3, System.currentTimeMillis());
-                statement.executeUpdate();
+                    "UPDATE npdev_schema_metadata SET metadata_value = ?, updated_at_ms = ? WHERE metadata_key = 'schemaFingerprint'")) {
+                statement.setString(1, fingerprint);
+                statement.setLong(2, System.currentTimeMillis());
+                updated = statement.executeUpdate();
+            }
+            if (updated == 0) {
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "INSERT INTO npdev_schema_metadata (metadata_key, metadata_value, updated_at_ms) VALUES ('schemaFingerprint', ?, ?)")) {
+                    statement.setString(1, fingerprint);
+                    statement.setLong(2, System.currentTimeMillis());
+                    statement.executeUpdate();
+                }
             }
         }
     }
@@ -186,6 +253,17 @@ class SchemaLifecycleExecutorDatabaseMigratedPastBuildTest {
             try (ResultSet resultSet = statement.executeQuery()) {
                 assertTrue(resultSet.next(), "expected at least one npdev_schema_history row");
                 return resultSet.getString(1);
+            }
+        }
+    }
+
+    private static boolean hasAppliedHistoryRowFor(DataSource dataSource, String toFingerprint) throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT COUNT(*) FROM npdev_schema_history WHERE to_fingerprint = ? AND outcome = 'APPLIED'")) {
+            statement.setString(1, toFingerprint);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next() && resultSet.getInt(1) > 0;
             }
         }
     }

@@ -2661,6 +2661,26 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed storing schema fingerprint", exception);
         }
+        // REG-27 (fixes REG-8 Trigger C's fresh-install false-negative). A genuinely fresh install
+        // records its fingerprint ONLY in npdev_schema_metadata above -- beforeMigrate's blank-
+        // fingerprint branch returns without writing history, and no other pass runs. That left a
+        // build whose fingerprint was reached by fresh install (rather than by a recorded migration)
+        // invisible to databaseMigratedPastThisBuild (Trigger C), which asks "has THIS build's
+        // fingerprint ever been reached before?" by consulting npdev_schema_history. So the register's
+        // OWN canonical example -- original (fresh-installed) build N, N+1 drops a column, roll back to
+        // N -- was not actually refused, because N had no history row. Record the initial realization
+        // as an APPLIED history point too, so every fingerprint the database has genuinely been at is
+        // visible to Trigger C. Scoped strictly to the fresh-install path (nothing stored before this
+        // boot): every mismatch/destructive path already wrote its own APPLIED row inside beforeMigrate,
+        // and a no-op fingerprint-MATCH boot needs none (the fingerprint was recorded when first
+        // reached). Safe here and ONLY here -- never in beforeMigrate's blank branch -- because this
+        // runs AFTER flyway.migrate(), so self-bootstrapping npdev_schema_history cannot trip Flyway's
+        // "non-empty schema, no history table" baseline check (the REG-7.2/7.3 self-bootstrap-ordering
+        // bug). writeAppliedHistoryRow self-ensures the table and never lets a history-write failure
+        // block the boot.
+        if (storedAtBootStart == null || storedAtBootStart.isBlank()) {
+            writeAppliedHistoryRow(dataSource, null, manifest.schemaFingerprint(), null);
+        }
     }
 
     /** UPDATE-then-INSERT upsert against {@link #METADATA_TABLE} (no engine-specific UPSERT syntax --
