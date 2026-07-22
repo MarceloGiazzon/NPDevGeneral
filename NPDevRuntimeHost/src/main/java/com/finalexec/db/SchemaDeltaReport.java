@@ -96,11 +96,15 @@ final class SchemaDeltaReport {
      * self-bootstrapped by {@code beforeMigrate}'s very first read, ahead of {@code classify()} --
      * and needs the same protection for the same confirmed-live reason (a real boot rehearsal with
      * this omitted turned every destructive-path test into a spurious
-     * {@code DROP_TABLE:npdev_schema_migration_mark}).
+     * {@code DROP_TABLE:npdev_schema_migration_mark}). {@link MigrationClaimStore#TABLE} (REG-7.3) is
+     * claimed at the very top of {@code migrate(Flyway, SchemaManifest)}, before {@code beforeMigrate}
+     * (and therefore this report's own {@code classify()}) ever runs on an upgrade boot, so it needs
+     * the identical protection pre-emptively, learned from the {@code MigrationMarkStore} incident
+     * above rather than re-discovered live.
      */
     private static final Set<String> ALWAYS_EXCLUDED_TABLES =
             Set.of("flyway_schema_history", "npdev_schema_history", "npdev_schema_metadata",
-                    PendingSchemaAcknowledgmentStore.TABLE, MigrationMarkStore.TABLE);
+                    PendingSchemaAcknowledgmentStore.TABLE, MigrationMarkStore.TABLE, MigrationClaimStore.TABLE);
 
     private final List<SchemaDeltaItem> items;
 

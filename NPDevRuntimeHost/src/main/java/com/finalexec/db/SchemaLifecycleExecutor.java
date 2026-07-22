@@ -257,21 +257,39 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // fingerprint (only afterMigrate does, at its very end) and no path drops npdev_schema_metadata,
         // so this read is the true pre-boot value even after a destructive beforeMigrate.
         String storedAtBootStart = readFingerprint(dataSource);
-        boolean fingerprintChanged = storedAtBootStart != null && !storedAtBootStart.isBlank()
-                && !storedAtBootStart.equals(manifest.schemaFingerprint());
-        DestructiveRecreation recreation = beforeMigrate(dataSource, manifest);
-        if (recreation.performed()) {
-            clearSchemaRealizationHistory(dataSource);
-        } else if (recreation.safeAdditive()) {
-            // V1's bootstrap SQL is regenerated from the full current model on every generation pass,
-            // so its content (and checksum) legitimately changes whenever a column is added even though
-            // it must not be re-executed here. repair() reconciles Flyway's recorded checksums with the
-            // newly resolved migration content instead of failing validation or re-running V1's CREATE TABLE.
-            flyway.repair();
-            System.out.println("NPDev schema lifecycle: flyway.repair() reconciled schema-realization checksums for the additive change.");
+        // REG-7.3 (D3): claim the single migration slot for this boot BEFORE any schema work, so a
+        // second instance racing against the same database refuses loudly instead of interleaving
+        // renames/widenings/drops. ONLY attempted when a fingerprint is already stored -- i.e. this is
+        // an upgrade/repeat boot against an already-initialized database, never a genuinely virgin
+        // one. VERIFIED LIVE (the identical mechanism REG-7.2's fix needed): claiming unconditionally
+        // would self-bootstrap npdev_schema_migration_claim before flyway.migrate() ever runs on a
+        // fresh schema, which makes Flyway see a non-empty "public" schema with no history table and
+        // refuse outright. See MigrationClaimStore's class javadoc for the honest scope of what this
+        // does and does not protect.
+        MigrationClaimStore.Claim claim = (storedAtBootStart != null && !storedAtBootStart.isBlank())
+                ? MigrationClaimStore.claim(dataSource)
+                : null;
+        try {
+            boolean fingerprintChanged = storedAtBootStart != null && !storedAtBootStart.isBlank()
+                    && !storedAtBootStart.equals(manifest.schemaFingerprint());
+            DestructiveRecreation recreation = beforeMigrate(dataSource, manifest);
+            if (recreation.performed()) {
+                clearSchemaRealizationHistory(dataSource);
+            } else if (recreation.safeAdditive()) {
+                // V1's bootstrap SQL is regenerated from the full current model on every generation pass,
+                // so its content (and checksum) legitimately changes whenever a column is added even though
+                // it must not be re-executed here. repair() reconciles Flyway's recorded checksums with the
+                // newly resolved migration content instead of failing validation or re-running V1's CREATE TABLE.
+                flyway.repair();
+                System.out.println("NPDev schema lifecycle: flyway.repair() reconciled schema-realization checksums for the additive change.");
+            }
+            flyway.migrate();
+            afterMigrate(dataSource, manifest, storedAtBootStart, fingerprintChanged);
+        } finally {
+            if (claim != null) {
+                MigrationClaimStore.release(dataSource, claim.instanceId());
+            }
         }
-        flyway.migrate();
-        afterMigrate(dataSource, manifest, storedAtBootStart, fingerprintChanged);
     }
 
     /**

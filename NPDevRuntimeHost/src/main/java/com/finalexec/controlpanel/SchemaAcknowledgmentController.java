@@ -1,5 +1,6 @@
 package com.finalexec.controlpanel;
 
+import com.finalexec.db.MigrationClaimStore;
 import com.finalexec.db.MigrationMarkStore;
 import com.finalexec.db.PendingSchemaAcknowledgmentStore;
 import com.npdev.generated.runtime.service.RuntimeContextService;
@@ -19,6 +20,7 @@ import javax.sql.DataSource;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * LNCH-1 Phase 6 (task 6.2a). ControlPanel surface for the pre-authorization flow ratified for the
@@ -153,6 +155,46 @@ public class SchemaAcknowledgmentController {
         body.put("markedBy", row.markedBy());
         body.put("note", row.note());
         return body;
+    }
+
+    // ---- REG-7.3: collision detection -- inspect / manually clear a stale migration claim ----
+
+    /**
+     * REG-7.3 (D3). The claim {@code SchemaLifecycleExecutor} takes at the top of every upgrade boot
+     * to serialize concurrent migrations. Present means another instance is either genuinely mid-
+     * migration right now, or crashed while holding it.
+     */
+    @GetMapping("/claim")
+    public Map<String, Object> claim(HttpServletRequest httpRequest) {
+        requireSuperUser(httpRequest);
+        DataSource dataSource = requireDataSource();
+
+        Optional<MigrationClaimStore.Claim> current = MigrationClaimStore.current(dataSource);
+        if (current.isEmpty()) {
+            return Map.of("held", false);
+        }
+        MigrationClaimStore.Claim claim = current.get();
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("held", true);
+        body.put("instanceId", claim.instanceId());
+        body.put("hostname", claim.hostname());
+        body.put("claimedAtUtc", claim.claimedAtUtc());
+        return body;
+    }
+
+    /**
+     * REG-7.3's manual escape hatch (D3): unconditionally deletes the claim row, regardless of who
+     * holds it -- for the crashed-holder case. Clearing a claim while another instance genuinely
+     * holds it re-introduces the exact race this feature detects; that is an operator decision this
+     * endpoint trusts the (SUPERUSER) caller to make deliberately.
+     */
+    @PostMapping("/clear-claim")
+    public ResponseEntity<Map<String, Object>> clearClaim(HttpServletRequest httpRequest) {
+        requireSuperUser(httpRequest);
+        DataSource dataSource = requireDataSource();
+
+        MigrationClaimStore.clear(dataSource);
+        return ResponseEntity.ok(Map.of("cleared", true));
     }
 
     private DataSource requireDataSource() {
