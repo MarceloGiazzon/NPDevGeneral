@@ -803,16 +803,21 @@ evidence: `D:\WorkSpace\NPDev\Build\scrapforai-artifacts\superuser-admin-console
 after_print_click.png`). Regression routine committed:
 `NPDevSamples/scripts/superuser-admin-console/browser-routines/05-print-mode.json`.
 
-**Latent item found (not fixed, out of scope here):** verifying against the InMemory `simple-contact-
-intake` sample exposed a **pre-existing, unrelated bug** — `renderPromotionPanel()`
-(`business-ui-app.mustache` ~line 1544) calls `loadPromotion()` whenever `!state.promotion.loaded &&
+**Latent item found during Slice 2, now FIXED (2026-07-22, commit `4943b73`):** verifying against the
+InMemory `simple-contact-intake` sample exposed a **pre-existing, unrelated bug** — `renderPromotionPanel()`
+(`business-ui-app.mustache`) calls `loadPromotion()` whenever `!state.promotion.loaded &&
 !state.promotion.loading`, but `/api/admin/promotion` 503s for any InMemory-storage app (no physical
 DB), and a 503 never sets `loaded = true`. Every `render()` that touches the promotion section
-re-triggers `loadPromotion()`, which itself calls `render()` twice — an unbounded retry/re-render loop
+re-triggered `loadPromotion()`, which itself calls `render()` twice — an unbounded retry/re-render loop
 that floods the console with 503s and makes any toolbar button in that render path flaky-to-unclickable
-(elements keep getting detached/rebuilt mid-click). Reproduced live; not fixed (unrelated to REG-12,
-touches promotion-panel error handling, not print). Needs its own bounded fix: stop retrying after a
-failed load until the operator clicks Refresh again.
+(elements keep getting detached/rebuilt mid-click). **Fix:** a `state.promotion.attempted` flag set
+after any completed load (success OR failure); the auto-load guard now also requires `!attempted`, so a
+failed load no longer auto-retries (the Refresh button, which calls `loadPromotion` directly, is
+unaffected) — exactly the "stop retrying until the operator clicks Refresh" bounded fix this item
+prescribed. **Verified live** on a freshly regenerated `simple-user-registry-inmemory` FinalApp
+(InMemory → `/api/admin/promotion` 503; `/api/me` roles=[ADMIN] → super-user): over an 8s dwell on the
+rendered super-user promotion panel, exactly **1** `/api/admin/promotion` call per authenticated render
+(vs. the pre-fix flood), page stable and interactive (real-browser ScrapForAI routine, 10/10 green).
 
 **Why it matters.** Business apps end in paper and spreadsheets. For the GeneXus-migration audience
 specifically — WMS-class apps with pick lists and packing slips — print output is not a nice-to-have,
