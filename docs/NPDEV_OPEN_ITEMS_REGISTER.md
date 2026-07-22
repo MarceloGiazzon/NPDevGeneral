@@ -728,8 +728,8 @@ document — this table is the ledger hook.
 
 | Item | Sev | Finding | Fix sketch (RED-first before fixing) |
 |---|---|---|---|
-| **REG-18** | MED | Login timing side-channel enables username enumeration (`LoginController` skips the PBKDF2 verify on the no/inactive-user path) | Dummy `PasswordHasher.verify` against a fixed decoy hash on that path so both branches take comparable time. **Quick win.** |
-| **REG-19** | MED | `LoginThrottle.windowsByKey` is unbounded → memory-exhaustion DoS via unique-username spray | Evict expired windows / size-cap the map. **Quick win.** |
+| ~~**REG-18**~~ | MED | Login timing side-channel enables username enumeration | **CLOSED (2026-07-21, Tier B, commit `b29bf4d`).** `PasswordHasher.verifyDecoy` runs a real PBKDF2 against a fixed decoy hash on both no-user / no-credential login paths; RED-first `PasswordHasherDecoyTest`. |
+| ~~**REG-19**~~ | MED | `LoginThrottle.windowsByKey` unbounded → memory-exhaustion DoS via unique-username spray | **CLOSED (2026-07-21, Tier B, commit `b29bf4d`).** Hard cap (100k) with expired-first + oldest-live eviction and cutoff tie-break; RED-first `LoginThrottleBoundedTest` (sprays 3× the cap). |
 | **REG-20** | MED | No defense against password-spraying (limiter is per-`(tenant,username)` only; no per-IP/global) | Add a bounded per-IP/global failed-attempt limiter beside the per-username one. |
 | **REG-21** | MED | `password-reset/request` is unthrottled (email-bomb / token-row spam) | Throttle per (tenant,username)+IP (reuse REG-20's limiter); cap live tokens/user. |
 | **REG-22** | MED | Filter-level role gates (`ActuatorAdminGuardFilter`) trust JWT claim-roles without live re-resolution / `tv` check | Gate actuator on the super-key path specifically, or re-resolve roles+`tv` in the filter. |
@@ -738,7 +738,7 @@ document — this table is the ledger hook.
 | **REG-25** | LOW | Tenant match is case-sensitive while other layers lowercase → isolation-bucket fragmentation (not a cross-tenant bypass) | Canonical tenant-id casing at registration + comparison. |
 | **REG-26** | INFO | Granular JWT error codes disclose *why* a token failed | Decide keep-verbose vs. collapse-to-generic. Likely WONTFIX. |
 
-**Recommended Tier-B order if scheduled:** REG-18 + REG-19 (quick, no new infra) → REG-20 + REG-21
+**Recommended Tier-B order if scheduled:** ~~REG-18 + REG-19~~ (**DONE 2026-07-21**) → REG-20 + REG-21
 (shared bounded limiter) → REG-22 → LOW items as capacity allows.
 
 ---
