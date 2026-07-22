@@ -31,6 +31,15 @@ jobs:
 
     env:
       CI: true
+      # REG-10: pin the external build-output root explicitly. Without this, NPDevKernel/NPDevGenerator
+      # build.gradle AND scripts/runtimehost/sync-runtimehost-libs.ps1 each fall back to walking up for a
+      # folder named literally "NPDev_General" (else <workspace-parent>/Build). GitHub checks the repo out
+      # as "NPDevGeneral" (no underscore -- the GitHub repo name), so that name-match fails and the gradle
+      # builds emit jars to one Build dir while the sync script scans a different one -> zero jars found ->
+      # "RuntimeHost libs sync failed" -> the packaged-app-boot proof tests fail. All three honor
+      # NPDEV_BUILD_ROOT when set, so pinning it makes them agree. Sibling-of-repo, mirroring the dev
+      # machine (D:\WorkSpace\NPDev\Build) and the ../NPDev_General__OutsideRepo path this workflow already uses.
+      NPDEV_BUILD_ROOT: ${{ github.workspace }}/../Build
       GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
 
     steps:
