@@ -215,6 +215,18 @@ Per `REGISTER_CLOSURE_PLAN.md` §11.1 R2 triage rules:
 | REG-25 | F8 | LOW | Canonical tenant-id casing at registration + comparison. |
 | REG-26 | F9 | INFO | Decide keep-verbose vs. collapse-to-generic JWT errors. Likely WONTFIX. |
 
+### Tier B outcome (2026-07-21)
+
+Tier B was executed the same day. **All five MEDIUM findings are fixed** (REG-18, REG-19, REG-20,
+REG-21, REG-22 — commits `b29bf4d`, `0182007`), each RED-first with a regression test, verified live
+on the assembled app (auth + config packages green). Of the LOW/INFO: **REG-24** was found already
+comprehensively guarded (every tenant-insert path reserves `default`) so it needed no change;
+**REG-26** is WONTFIX (the JWT error codes name the validation reason, not any secret); **REG-23**
+(tv-less enforcement) and **REG-25** (tenant-casing canonicalisation) are DEFERRED with rationale —
+the former needs a dated cutover and a consistent dual-path flip, the latter a real `tenant_id` data
+migration, both disproportionate to a latent LOW. See the REG-18…26 table in
+`docs/NPDEV_OPEN_ITEMS_REGISTER.md` for per-item status.
+
 ### Recommended Tier-B (R3) order if/when scheduled
 
 1. **REG-18 + REG-19** (quick wins, no new infra): decoy-hash + bounded throttle map. RED-first: a test

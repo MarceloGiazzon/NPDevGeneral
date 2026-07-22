@@ -673,8 +673,7 @@ both enforce `tenant_id`; seed/export route through the enforced gateway; no SUP
 business data; SQL-injection-safe query filters; revocation checked on both claim→context paths). The
 residual is **5 MEDIUM + 3 LOW + 1 INFO**, all login/throttle/actuator hardening, filed as dated
 **REG-18…REG-26** below. Per the plan's triage, with no CRITICAL/HIGH there is no *mandatory* Tier-B
-work; the MEDIUM/LOW remediations are scheduled, not dropped. (Item stays open until the owner decides
-whether to run Tier B / schedule REG-18…REG-22.)
+work; the MEDIUM/LOW remediations are scheduled, not dropped. **TIER B ALSO DONE (2026-07-21):** all 5 MEDIUM findings fixed (REG-18/19/20/21/22), REG-24 verified already-guarded, REG-26 WONTFIX, REG-23/25 deferred with rationale — see the REG-18…26 table below. REG-16 is now fully addressed.
 
 **What.** LNCH-1 has absorbed **five** full review→plan→implement→review rounds. Every other item in
 the ledger — including LNCH-2 (tenant isolation), LNCH-4 (auth), LNCH-13 (row-level authz) — has had
@@ -730,16 +729,17 @@ document — this table is the ledger hook.
 |---|---|---|---|
 | ~~**REG-18**~~ | MED | Login timing side-channel enables username enumeration | **CLOSED (2026-07-21, Tier B, commit `b29bf4d`).** `PasswordHasher.verifyDecoy` runs a real PBKDF2 against a fixed decoy hash on both no-user / no-credential login paths; RED-first `PasswordHasherDecoyTest`. |
 | ~~**REG-19**~~ | MED | `LoginThrottle.windowsByKey` unbounded → memory-exhaustion DoS via unique-username spray | **CLOSED (2026-07-21, Tier B, commit `b29bf4d`).** Hard cap (100k) with expired-first + oldest-live eviction and cutoff tie-break; RED-first `LoginThrottleBoundedTest` (sprays 3× the cap). |
-| **REG-20** | MED | No defense against password-spraying (limiter is per-`(tenant,username)` only; no per-IP/global) | Add a bounded per-IP/global failed-attempt limiter beside the per-username one. |
-| **REG-21** | MED | `password-reset/request` is unthrottled (email-bomb / token-row spam) | Throttle per (tenant,username)+IP (reuse REG-20's limiter); cap live tokens/user. |
-| **REG-22** | MED | Filter-level role gates (`ActuatorAdminGuardFilter`) trust JWT claim-roles without live re-resolution / `tv` check | Gate actuator on the super-key path specifically, or re-resolve roles+`tv` in the filter. |
-| **REG-23** | LOW | `tv`-less tokens are never revocation-checked (backward-compat by design) | Post a dated cutover (≥ max token lifetime), treat missing `tv` as 0 and enforce. |
-| **REG-24** | LOW | `"default"` tenant sentinel collides with a real tenant named `default` (ties to platform gap #15) | Reserve `default` as un-registerable, or change the sentinel. |
-| **REG-25** | LOW | Tenant match is case-sensitive while other layers lowercase → isolation-bucket fragmentation (not a cross-tenant bypass) | Canonical tenant-id casing at registration + comparison. |
-| **REG-26** | INFO | Granular JWT error codes disclose *why* a token failed | Decide keep-verbose vs. collapse-to-generic. Likely WONTFIX. |
+| ~~**REG-20**~~ | MED | No defense against password-spraying (limiter was per-`(tenant,username)` only) | **CLOSED (2026-07-21, Tier B, commit `0182007`).** Added a per-source-IP arm to `LoginThrottle` (default 50/window vs 10/username), wired the client IP through `LoginController`; success clears the username window but not the IP window. RED-first `LoginThrottleIpSprayTest`. |
+| ~~**REG-21**~~ | MED | `password-reset/request` unthrottled (email-bomb / token-row spam) | **CLOSED (2026-07-21, Tier B, commit `0182007`).** `PasswordResetController` reuses the same limiter (5/user, 20/IP); over-limit returns the same generic 200 but sends no email / creates no token. RED-first (6th request sends no email). |
+| ~~**REG-22**~~ | MED | `ActuatorAdminGuardFilter` trusted JWT claim-roles without live re-resolution / `tv` | **CLOSED (2026-07-21, Tier B, commit `0182007`).** `SuperUserCredentialAuthFilter` sets a marker only after a live super-key resolves ACTIVE; the actuator gate now requires that marker, so a JWT-borne (or revoked) SUPERUSER role no longer opens metrics. RED-first (role-only claim now 403). |
+| ~~**REG-24**~~ | LOW | `"default"` sentinel collides with a real tenant named `default` | **CLOSED (2026-07-21) — already comprehensively guarded; verified, no change needed.** All three tenant-insert paths already reserve `default`: `TenantRegistryService.create` rejects it, `IdentityProvisioning.ensureTenantRegistered` skips it, `TenantAutoRegistrationRunner`'s SQL excludes it. No real `default` tenant can be created, so the isolation collision cannot arise. |
+| **REG-23** | LOW | `tv`-less tokens are never revocation-checked (backward-compat by design) | **DEFERRED (2026-07-21) with rationale.** Enforcing it needs a dated cutover (≥ max token lifetime) *and* must flip consistently in BOTH claim→context paths (`IdentityAwareContextResolver` + kernel `GeneratedCrudRuntimeSupport`); a half-applied flag is worse. Risk today is ~zero (every mint stamps `tv`; a fresh beta has no pre-`tv` tokens). Revisit at the cutover. |
+| **REG-25** | LOW | Tenant match is case-sensitive → isolation-bucket fragmentation (NOT a cross-tenant bypass) | **DEFERRED (2026-07-21) with rationale.** Canonicalising casing requires migrating existing `tenant_id` values across the tenant registry AND every business table's `tenant_id` column -- a real data migration, disproportionate to a latent LOW that only bites a misconfigured same-tenant-different-casing setup. Track with the schema-evolution work, not as an inline hardening tweak. |
+| ~~**REG-26**~~ | INFO | Granular JWT error codes disclose *why* a token failed | **WONTFIX (2026-07-21).** Standard practice; the codes name the validation reason (expired / bad issuer / bad signature), not any secret or account state, and materially aid operator/integration debugging. Collapsing to a single generic error would trade real diagnosability for negligible disclosure reduction. |
 
-**Recommended Tier-B order if scheduled:** ~~REG-18 + REG-19~~ (**DONE 2026-07-21**) → REG-20 + REG-21
-(shared bounded limiter) → REG-22 → LOW items as capacity allows.
+**Tier-B status (2026-07-21):** REG-18, REG-19, REG-20, REG-21, REG-22 CLOSED; REG-24 verified
+already-guarded; REG-26 WONTFIX; REG-23 + REG-25 DEFERRED with rationale (cutover / migration). Nothing
+in this set is release-blocking, and all of it is now decided rather than open.
 
 ---
 
