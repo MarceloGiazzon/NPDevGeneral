@@ -222,6 +222,19 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             flyway.migrate();
             return;
         }
+        // REG-7.1 (D5): ExternallyManaged means NPDev does not own this database's schema -- it must
+        // NEVER issue schema DDL against it. Branch here, before any stored-fingerprint read or
+        // flyway.migrate() call: this mode does not register/run the schema-realization migrations at
+        // all (VERIFIED: the only Flyway location this app is configured with is
+        // classpath:db/schema-realization, application.yml's spring.flyway.locations -- so simply
+        // never calling flyway.migrate() means Flyway touches nothing, not even its own bookkeeping
+        // table). Read-only verification only; deliberately placed ahead of the deprecated-posture
+        // NOTICE below since generation-time validation (UserDatabaseDefinitionLoader) already
+        // requires allowDestructiveRecreate=false whenever ownership=ExternallyManaged.
+        if (manifest.externallyManaged()) {
+            verifyExternallyManagedSchemaCompatible(dataSource, manifest);
+            return;
+        }
         // LNCH-1 hardening X4.3: make the deprecated posture visible on EVERY boot, not only on the
         // day it finally destroys something. Deliberately placed here rather than in beforeMigrate:
         // this method runs once per real boot, while beforeMigrate is driven directly by dozens of
@@ -258,6 +271,70 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         }
         flyway.migrate();
         afterMigrate(dataSource, manifest, storedAtBootStart, fingerprintChanged);
+    }
+
+    /**
+     * REG-7.1 (D5): the {@code ownership=ExternallyManaged} boot path. Runs on EVERY boot -- there is
+     * no "stored fingerprint matches, skip" fast path here, because nothing on this path converges
+     * the schema toward the model; there is only ever something to VERIFY, and that check is cheap
+     * (live column introspection, no DDL). Package-private so it is directly unit-testable against a
+     * real H2 {@link DataSource}, following every other destructive/verification pass in this class.
+     */
+    void verifyExternallyManagedSchemaCompatible(DataSource dataSource, SchemaManifest manifest) {
+        List<String> problems = findExternalSchemaIncompatibilities(dataSource, manifest);
+        String fromFingerprint = readFingerprint(dataSource);
+        if (!problems.isEmpty()) {
+            writeHistoryRow(dataSource, fromFingerprint, manifest.schemaFingerprint(), null, null, null, "EXTERNAL_REFUSED");
+            throw new IllegalStateException("This app declares schemaLifecycle.ownership=ExternallyManaged "
+                    + "(NPDev does not own this database's schema and will never issue DDL against it), but the "
+                    + "live schema cannot serve this build's model. Incompatibilities: " + problems + ". Either "
+                    + "alter the external schema by hand to match the model, or fix the model to match the "
+                    + "external schema -- see docs/SCHEMA_EVOLUTION.md#external-unmanaged-database.");
+        }
+        writeHistoryRow(dataSource, fromFingerprint, manifest.schemaFingerprint(), null, null, null, "EXTERNAL_VERIFIED");
+        System.out.println("NPDev schema lifecycle: ownership=ExternallyManaged -- verified the live schema is "
+                + "compatible with this build's model; no schema DDL issued.");
+    }
+
+    /**
+     * REG-7.1 (D5): the read-only compatibility check itself. Reuses {@link #readActualColumns},
+     * {@link #readActualColumnTypes} and {@link #normalizeSqlType} -- the SAME live-introspection and
+     * type-comparison plumbing {@link #classify} and {@link #findSchemaAheadMissingColumns} use
+     * (REG-6: one notion of "does the live schema match", never a second, drifting one). Returns one
+     * itemized, human-readable problem string per missing table, missing column, or incompatible
+     * column type; empty when the live schema fully satisfies this build's model.
+     */
+    private static List<String> findExternalSchemaIncompatibilities(DataSource dataSource, SchemaManifest manifest) {
+        List<String> problems = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            for (Map.Entry<String, List<String>> entry : manifest.businessTableColumns().entrySet()) {
+                String table = entry.getKey();
+                Set<String> live = readActualColumns(metadata, table);
+                if (live.isEmpty()) {
+                    problems.add(table + " (table missing)");
+                    continue;
+                }
+                Map<String, String> expectedTypes = manifest.businessTableColumnTypes().getOrDefault(table, Map.of());
+                Map<String, String> actualTypes = readActualColumnTypes(metadata, table);
+                for (String column : entry.getValue()) {
+                    String normalized = column.toLowerCase(Locale.ROOT);
+                    if (!live.contains(normalized)) {
+                        problems.add(table + "." + column + " (column missing)");
+                        continue;
+                    }
+                    String expectedType = normalizeSqlType(expectedTypes.get(column));
+                    String actualType = normalizeSqlType(actualTypes.get(column));
+                    if (expectedType != null && actualType != null && !expectedType.equals(actualType)) {
+                        problems.add(table + "." + column + " (type mismatch: model expects " + expectedType
+                                + ", live schema has " + actualType + ")");
+                    }
+                }
+            }
+        } catch (SQLException exception) {
+            problems.add("(failed introspecting live schema: " + exception.getMessage() + ")");
+        }
+        return problems;
     }
 
     /** Package-private (not private) so it is directly unit-testable against a real H2
@@ -2827,7 +2904,11 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     // --schemaMigrationPlanOut through). Absent from every manifest emitted before
                     // this phase -- strings() defaults to an empty list, so pre-Phase-6 apps are
                     // unaffected (the agreement-check enrichment below simply has nothing to compare).
-                    strings(root.path("migrationPlanItemStableStrings"))
+                    strings(root.path("migrationPlanItemStableStrings")),
+                    // REG-7.1: absent from every manifest emitted before this field existed --
+                    // asText("NpdevManaged") defaults to today's only behavior, so a pre-existing
+                    // manifest is unaffected (same pattern as destructiveAcknowledgment above).
+                    lifecycle.path("ownership").asText("NpdevManaged")
             );
         } catch (Exception exception) {
             throw new IllegalStateException("Failed loading schema realization manifest", exception);
@@ -2932,14 +3013,20 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             Map<String, List<String>> businessTableExpressionDefaultColumns,
             Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints,
             // LNCH-1 Phase 6 (task 6.3).
-            List<String> planItemStableStrings
+            List<String> planItemStableStrings,
+            // REG-7.1: whether NPDev owns this app's database schema DDL. "NpdevManaged" (the
+            // default, today's only behavior) or "ExternallyManaged" (NPDev issues no DDL, only
+            // verifies compatibility). Raw string (not an enum) to match every other lifecycle field
+            // here, all of which are parsed straight from JSON text.
+            String ownership
     ) {
         /** Backward-compatible convenience constructor matching this record's PRE-Phase-6 20-arg
-         * shape (every field above {@code planItemStableStrings}) -- defaults the new field to an
-         * empty list so the ~20 existing hand-built {@code SchemaManifest} constructions across this
-         * package's test suite (predating task 6.3) keep compiling unchanged. Only
-         * {@link #loadManifest} needs to populate the new field for real, via the canonical
-         * (21-arg) constructor above. */
+         * shape (every field above {@code planItemStableStrings}) -- defaults
+         * {@code planItemStableStrings} to an empty list and {@code ownership} to
+         * {@code "NpdevManaged"} so the ~20 existing hand-built {@code SchemaManifest} constructions
+         * across this package's test suite (predating task 6.3 and REG-7.1 alike) keep compiling
+         * unchanged. Only {@link #loadManifest} needs to populate both new fields for real, via the
+         * canonical (22-arg) constructor above. */
         public SchemaManifest(
                 String engine,
                 String storageMode,
@@ -2967,7 +3054,42 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     businessTableRenamedColumns, businessTableRenames, allowDestructiveRecreate, strategy, scope,
                     destructiveRecreateConfirmation, destructiveAcknowledgment, businessTableRequiredColumns,
                     businessTableColumnDefaultLiterals, businessTableExpressionDefaultColumns,
-                    businessTableUniqueConstraints, List.of());
+                    businessTableUniqueConstraints, List.of(), "NpdevManaged");
+        }
+
+        /** Backward-compatible convenience constructor matching this record's PRE-REG-7.1 21-arg
+         * shape (every field through {@code planItemStableStrings}, LNCH-1 Phase 6) -- defaults
+         * {@code ownership} to {@code "NpdevManaged"} so the existing hand-built test constructions
+         * that already pass {@code planItemStableStrings} explicitly keep compiling unchanged. */
+        public SchemaManifest(
+                String engine,
+                String storageMode,
+                boolean physicalDatabase,
+                String schemaFingerprint,
+                List<String> internalTables,
+                List<String> businessTables,
+                Map<String, List<String>> businessTableColumns,
+                Map<String, List<String>> businessTableAdditiveColumns,
+                Map<String, Map<String, String>> businessTableColumnTypes,
+                Map<String, Map<String, String>> businessTableRenamedColumns,
+                Map<String, String> businessTableRenames,
+                boolean allowDestructiveRecreate,
+                String strategy,
+                String scope,
+                String destructiveRecreateConfirmation,
+                String destructiveAcknowledgment,
+                Map<String, List<String>> businessTableRequiredColumns,
+                Map<String, Map<String, String>> businessTableColumnDefaultLiterals,
+                Map<String, List<String>> businessTableExpressionDefaultColumns,
+                Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints,
+                List<String> planItemStableStrings
+        ) {
+            this(engine, storageMode, physicalDatabase, schemaFingerprint, internalTables, businessTables,
+                    businessTableColumns, businessTableAdditiveColumns, businessTableColumnTypes,
+                    businessTableRenamedColumns, businessTableRenames, allowDestructiveRecreate, strategy, scope,
+                    destructiveRecreateConfirmation, destructiveAcknowledgment, businessTableRequiredColumns,
+                    businessTableColumnDefaultLiterals, businessTableExpressionDefaultColumns,
+                    businessTableUniqueConstraints, planItemStableStrings, "NpdevManaged");
         }
 
         boolean destructiveAllowed() {
@@ -2975,6 +3097,14 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     && allowDestructiveRecreate
                     && "NpdevOwnedTablesOnly".equals(scope)
                     && "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED".equals(destructiveRecreateConfirmation);
+        }
+
+        /** REG-7.1: true when this app declares NPDev does not own the database schema -- the
+         * executor must never issue schema DDL and instead only verifies live compatibility. Blank/
+         * absent (every manifest predating this field) is "NpdevManaged", so this is false by
+         * default. */
+        boolean externallyManaged() {
+            return "ExternallyManaged".equals(ownership);
         }
     }
 

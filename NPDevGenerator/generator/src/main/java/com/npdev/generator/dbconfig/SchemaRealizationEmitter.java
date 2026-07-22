@@ -1184,6 +1184,10 @@ public final class SchemaRealizationEmitter {
         schemaLifecycle.put("allowDestructiveRecreate", plan.schemaLifecycle().allowDestructiveRecreate());
         schemaLifecycle.put("scope", plan.schemaLifecycle().scope());
         schemaLifecycle.put("destructiveRecreateConfirmation", plan.schemaLifecycle().destructiveRecreateConfirmation());
+        // REG-7.1: whether NPDev owns this app's schema DDL. Absent from every manifest emitted
+        // before this field existed -- SchemaLifecycleExecutor#loadManifest defaults a missing key to
+        // "NpdevManaged", today's only behavior, so a pre-existing manifest is unaffected.
+        schemaLifecycle.put("ownership", plan.schemaLifecycle().ownership().externalName());
         manifest.put("schemaLifecycle", schemaLifecycle);
         manifest.put("internalTables", internalTables);
         manifest.put("businessTables", businessTables);
@@ -1243,6 +1247,7 @@ public final class SchemaRealizationEmitter {
         out.append("npdev.schema.lifecycle.scope=").append(plan.schemaLifecycle().scope()).append("\n");
         out.append("npdev.schema.lifecycle.destructive-recreate-confirmation=")
                 .append(plan.schemaLifecycle().destructiveRecreateConfirmation()).append("\n");
+        out.append("npdev.schema.lifecycle.ownership=").append(plan.schemaLifecycle().ownership().externalName()).append("\n");
         if (plan.jdbc()) {
             out.append("spring.datasource.url=").append(plan.jdbcUrl()).append("\n");
             out.append("spring.datasource.driver-class-name=").append(plan.driverClassName()).append("\n");

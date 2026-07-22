@@ -47,7 +47,8 @@ public final class UserDatabaseDefinitionLoader {
                 SchemaLifecycleStrategy.parse(text(lifecycle, "strategy")),
                 bool(lifecycle, "allowDestructiveRecreate", false),
                 text(lifecycle, "destructiveRecreateConfirmation"),
-                text(lifecycle, "scope")
+                text(lifecycle, "scope"),
+                DatabaseOwnership.parse(text(lifecycle, "ownership"))
         );
 
         UserDatabaseDefinition definition = new UserDatabaseDefinition(
@@ -114,6 +115,22 @@ public final class UserDatabaseDefinitionLoader {
         if (definition.schemaLifecycle().strategy() == SchemaLifecycleStrategy.DROP_AND_RECREATE_ON_STRUCTURE_CHANGE
                 && !definition.schemaLifecycle().destructiveConfirmedFor(engine)) {
             throw new IllegalArgumentException("Destructive schema recreation requires exact confirmation and NPDev-owned scope for " + engine.externalName());
+        }
+        // REG-7.1: ExternallyManaged means NPDev issues NO schema DDL against this database -- a
+        // recreate/destructive strategy (which exists only to issue DDL) is therefore nonsensical
+        // and rejected at generation time rather than silently ignored at boot.
+        if (definition.schemaLifecycle().externallyManaged()) {
+            if (definition.schemaLifecycle().strategy() != SchemaLifecycleStrategy.KEEP_EXISTING_IF_COMPATIBLE) {
+                throw new IllegalArgumentException("schemaLifecycle.ownership=ExternallyManaged requires "
+                        + "strategy=KeepExistingIfCompatible (NPDev never issues DDL against a database it does "
+                        + "not own, so a recreate strategy cannot apply): got "
+                        + definition.schemaLifecycle().strategy().externalName());
+            }
+            if (definition.schemaLifecycle().allowDestructiveRecreate()) {
+                throw new IllegalArgumentException("schemaLifecycle.ownership=ExternallyManaged requires "
+                        + "allowDestructiveRecreate=false (NPDev never issues DDL against a database it does "
+                        + "not own).");
+            }
         }
         if (engine == DatabaseEngine.IN_MEMORY) {
             return;

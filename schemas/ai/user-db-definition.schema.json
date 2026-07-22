@@ -54,7 +54,11 @@
         },
         "allowDestructiveRecreate": { "type": "boolean" },
         "destructiveRecreateConfirmation": { "type": "string" },
-        "scope": { "enum": ["NpdevOwnedTablesOnly", "NpdevOwnedLogicalStoresOnly"] }
+        "scope": { "enum": ["NpdevOwnedTablesOnly", "NpdevOwnedLogicalStoresOnly"] },
+        "ownership": {
+          "enum": ["NpdevManaged", "ExternallyManaged"],
+          "description": "REG-7.1. Optional, defaults to NpdevManaged (today's only behavior) when absent. ExternallyManaged means NPDev does not own this database's schema: it never issues DDL, only verifies compatibility at boot."
+        }
       },
       "allOf": [
         {
@@ -67,6 +71,18 @@
               "allowDestructiveRecreate": { "const": true },
               "destructiveRecreateConfirmation": { "const": "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED" },
               "scope": { "const": "NpdevOwnedTablesOnly" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "ownership": { "const": "ExternallyManaged" } },
+            "required": ["ownership"]
+          },
+          "then": {
+            "properties": {
+              "strategy": { "const": "KeepExistingIfCompatible" },
+              "allowDestructiveRecreate": { "const": false }
             }
           }
         }
