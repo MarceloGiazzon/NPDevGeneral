@@ -104,6 +104,16 @@ parts: `NPDev_General__OutsideRepo/{reg12-slice3-evidence,external-tester-eviden
 
 ### 0.2 Register at a glance
 
+> **STATUS CORRECTION (2026-07-22).** The table below predates the 2026-07-21/07-22 closure wave and
+> is kept only for historical shape. Read these as **CLOSED** regardless of how their row renders
+> here: REG-1, REG-2, REG-3, REG-4, REG-5, REG-7, REG-8, REG-9, REG-10, REG-11, REG-12, REG-13,
+> REG-14, REG-18, REG-19, REG-20, REG-21, REG-22, REG-24, REG-27, REG-28, REG-29, REG-30. Still
+> genuinely open or partial: **REG-6** (~40%, structural refactor, deliberately deferred), **REG-15**
+> (release tag DONE, trademark parked), **REG-16** (adversarial review done for LNCH-2/LNCH-4 only),
+> **REG-17** (PARTIAL — 2 of 4 gates reproduced), **REG-23** and **REG-25** (deferred boundaries).
+> The authoritative current state is `docs/LAUNCH_READINESS_GAPS.md` (24 DONE / 0 PARTIAL / 0 OPEN)
+> plus each entry's own **Status** line below, not this summary table.
+
 | ID | Title | Type | Sev | Effort | § |
 |---|---|---|---|---|---|
 | **REG-1** | 9 app definitions remain on the deprecated blanket destructive posture (down from 27) | GAP | MED | S/M | 1.1 |
@@ -1018,6 +1028,12 @@ each row above and `docs/REG28_30_REG12S2_CLOSURE_PLAN.md`.
 ---
 
 ## 4. Suggested order (revised 2026-07-21 after independent code verification)
+
+> **SUPERSEDED (2026-07-22).** The numbered order below was written before REG-2, REG-3, REG-9 and
+> others were closed, so it now lists already-CLOSED items as "next actions." Do **not** action it as
+> written. The current action order lives in
+> `docs/AI_SESSION_DIGEST_2026-07-22_LNCH22_CLOSURE.md` (§9) and `docs/POST_LNCH22_EXECUTION_PLAN.md`.
+> The list below is kept only as a record of the 2026-07-21 reasoning.
 
 1. **REG-3** (`GATE-REL-1`) — near-free now: the design conflict it described was already fixed
    2026-05-14. Close the misdiagnosis and wire up the stale evidence-report orchestration; removes a
