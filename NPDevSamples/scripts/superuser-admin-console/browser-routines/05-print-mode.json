@@ -1,0 +1,29 @@
+{
+  "scenarioName": "superuser-console-print-mode",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "value": "api-dev" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-Project\"]", "state": "visible", "label": "Nav ready" },
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-Project\"]", "label": "Open the Project concept" },
+    { "action": "waitForSelector", "selector": "#concept-Project table.records", "state": "visible", "label": "Grid rendered" },
+    { "action": "assertVisible", "selector": "#concept-Project .panel-actions a", "label": "Export CSV link present (toolbar precedent)" },
+    { "action": "evaluate", "name": "printRootDisplayBefore", "script": "return getComputedStyle(document.getElementById('printRoot')).display" },
+    { "action": "screenshot", "name": "before_print" },
+    { "action": "click", "selector": "#concept-Project button:has-text(\"Print\")", "label": "Click the Print toolbar button" },
+    { "action": "waitForSelector", "selector": "#printRoot .print-document", "state": "attached", "label": "print-document built" },
+    { "action": "evaluate", "name": "printTitle", "script": "return document.querySelector('#printRoot .print-header h1').textContent" },
+    { "action": "evaluate", "name": "printMeta", "script": "return document.querySelector('#printRoot .print-meta').textContent" },
+    { "action": "evaluate", "name": "printColumns", "script": "return Array.from(document.querySelectorAll('#printRoot .print-table thead th')).map(function(th){return th.textContent;})" },
+    { "action": "evaluate", "name": "gridColumns", "script": "return Array.from(document.querySelectorAll('#concept-Project table.records thead th')).map(function(th){return th.textContent;})" },
+    { "action": "evaluate", "name": "printRowCount", "script": "return document.querySelectorAll('#printRoot .print-table tbody tr').length" },
+    { "action": "evaluate", "name": "gridRowCount", "script": "return document.querySelectorAll('#concept-Project table.records tbody tr').length" },
+    { "action": "evaluate", "name": "printFooter", "script": "return document.querySelector('#printRoot .print-footer').textContent" },
+    { "action": "evaluate", "name": "printRootDisplayAfter", "script": "return getComputedStyle(document.getElementById('printRoot')).display" },
+    { "action": "screenshot", "name": "after_print_click" },
+    { "action": "collect", "what": ["domText", "url"] }
+  ]
+}

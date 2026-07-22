@@ -76,6 +76,16 @@ external/unmanaged-database ownership, "mark migration as done," collision detec
 and the REG-8 schema-ahead-of-build Trigger C. See §1.7/§1.8 for what shipped and each feature's
 honestly-named residual limitation.
 
+**2026-07-22 addendum 2:** the bounded remainder from that same verification pass is now also closed,
+per `docs/REG28_30_REG12S2_CLOSURE_PLAN.md`. **REG-29 CLOSED** (test-only: proved a refusal thrown
+while a boot holds its own migration claim still releases it). **REG-28 + REG-30 CLOSED**
+(`MigrationMarkStore` now binds a mark to its `from -> to` transition and rejects a duplicate at
+insert time; verified live against a real `superuser-admin-console` boot). **REG-12 Slice 2 (print)
+DONE** (a "Print" toolbar button + `@media print` stylesheet + self-contained `#printRoot` render
+mode, verified live in a real browser) — **Slice 3 (server-side PDF) is now unblocked**. See §3.4 and
+§2.4 for detail; one new latent item was found (not fixed) during Slice 2's live verification — a
+pre-existing promotion-panel retry-loop bug on InMemory-storage apps, noted in §2.4.
+
 ### 0.2 Register at a glance
 
 | ID | Title | Type | Sev | Effort | § |
@@ -91,7 +101,7 @@ honestly-named residual limitation.
 | **REG-9** | LNCH-4 — auth table stakes: secrets management still open (**rescoped: 2 of 4 already done**) | GAP | **P0** | S/M | 2.1 |
 | ~~**REG-10**~~ | LNCH-19 — Linux CI **now observed GREEN** (run `29899362276`, 2026-07-22) — DONE | GAP | **P1** | S/M | 2.2 |
 | ~~**REG-11**~~ | LNCH-20 — cross-platform build **PROVEN** by the green run; also fixed a real generated-app `D:/`-cache portability bug — DONE | GAP | P2 | S | 2.3 |
-| **REG-12** | LNCH-10 — Excel/PDF/print export beyond CSV | GAP | P1 | L | 2.4 |
+| **REG-12** | LNCH-10 — Excel/PDF/print export beyond CSV (Slices 1+2 DONE; Slice 3 PDF unblocked) | GAP | P1 | L | 2.4 |
 | **REG-13** | LNCH-18 — non-author usability test never run | GAP | P1 | S (blocked on a human) | 2.5 |
 | **REG-14** | LNCH-22 — newcomer documentation test never run | GAP | P2 | S (blocked on a human) | 2.6 |
 | **REG-15** | LNCH-23 — trademark clearance + release tag | PROCESS | P2 | S (blocked on you/counsel) | 2.7 |
@@ -708,10 +718,38 @@ none remain elsewhere. Let CI (REG-10) be the enforcement mechanism rather than 
 
 ### 2.4 REG-12 — LNCH-10: Excel/PDF/print export beyond CSV
 
-**Type:** GAP · **Priority:** P1 · **Effort:** L · **Status:** PARTIAL (CSV DONE, volume-gated at 100k rows)
+**Type:** GAP · **Priority:** P1 · **Effort:** L · **Status:** PARTIAL (CSV + print DONE; Slice 3 PDF not started)
 
-**What.** Slice 1 (streaming CSV export from any grid) is DONE. Slice 2 (print stylesheet / print
-render mode) and Slice 3 (server-side PDF document objects) are not started.
+**What.** Slice 1 (streaming CSV export from any grid) is DONE. **Slice 2 (print stylesheet / print
+render mode) is DONE (2026-07-22).** Slice 3 (server-side PDF document objects) is not started — its
+own plan (`docs/REG12_DOCUMENT_EXPORT_PLAN.md`) is now unblocked.
+
+**Slice 2 — what shipped.** A "Print" button next to "Export CSV" on every declared panel's grid
+toolbar (`business-ui-app.mustache`'s `renderPanel`/new `printPanel()`) builds a self-contained
+`#printRoot` document — title, "Printed <timestamp>" meta, a table mirroring the grid's currently
+loaded (filtered/sorted) page with the same visible columns, and a "Total: X of Y record(s)" footer —
+and calls `window.print()`. A new `@media print` block in `business-ui-style.mustache` hides all app
+chrome (nav/app-bar/panel controls) and shows only `#printRoot` when printing; `#printRoot` itself
+(declared in `business-ui-index.mustache`) is `display:none` outside of print, so it never intrudes on
+the normal screen view. Deliberately self-contained/inlinable markup — the seam Slice 3's server-side
+PDF renderer is designed to reuse verbatim (noted in a code comment pointing at the Slice 3 plan).
+**Verified live**: real browser (ScrapForAI) against `superuser-admin-console`'s `Project` concept, both
+empty and with a real created row — DOM assertions confirmed the print document's title/meta/columns/
+row-count/footer, and that `#printRoot` stays `display:none` before AND after building it (screenshot
+evidence: `D:\WorkSpace\NPDev\Build\scrapforai-artifacts\superuser-admin-console-print2\...\screenshots\
+after_print_click.png`). Regression routine committed:
+`NPDevSamples/scripts/superuser-admin-console/browser-routines/05-print-mode.json`.
+
+**Latent item found (not fixed, out of scope here):** verifying against the InMemory `simple-contact-
+intake` sample exposed a **pre-existing, unrelated bug** — `renderPromotionPanel()`
+(`business-ui-app.mustache` ~line 1544) calls `loadPromotion()` whenever `!state.promotion.loaded &&
+!state.promotion.loading`, but `/api/admin/promotion` 503s for any InMemory-storage app (no physical
+DB), and a 503 never sets `loaded = true`. Every `render()` that touches the promotion section
+re-triggers `loadPromotion()`, which itself calls `render()` twice — an unbounded retry/re-render loop
+that floods the console with 503s and makes any toolbar button in that render path flaky-to-unclickable
+(elements keep getting detached/rebuilt mid-click). Reproduced live; not fixed (unrelated to REG-12,
+touches promotion-panel error handling, not print). Needs its own bounded fix: stop retrying after a
+failed load until the operator clicks Refresh again.
 
 **Why it matters.** Business apps end in paper and spreadsheets. For the GeneXus-migration audience
 specifically — WMS-class apps with pick lists and packing slips — print output is not a nice-to-have,
@@ -719,15 +757,17 @@ and its absence forces hand-authored `web/` pages at exactly the moment an app b
 breaks the low-code promise.
 
 **Where.** `NPDevRuntimeHost/.../api/ConceptQueryController.java` (the CSV precedent),
-`npdev-templates/business-ui-app.mustache` (the grid toolbar).
+`npdev-templates/business-ui-app.mustache` (the grid toolbar, `printPanel()`),
+`npdev-templates/business-ui-style.mustache` (the print stylesheet),
+`npdev-templates/business-ui-index.mustache` (the `#printRoot` mount).
 
-**Practical example.** A warehouse operator needs a printed pick list. Today: export CSV, open in
-Excel, format by hand. The declared panel has no print mode.
+**Practical example.** A warehouse operator needs a printed pick list. Today (Slice 2): "Print" on the
+declared panel shows a clean title + line-items + total-count document ready for the browser's print/
+print-to-PDF dialog. Slice 3 will make the identical HTML renderable server-side without a browser.
 
-**How to fix.** Slice 2 first — a print stylesheet plus a print render mode for declared panels is
-pure frontend and covers most of the need. Slice 3 (a `document` PAGE/procedure kind with a
-server-side renderer as a pluggable adapter pair) deserves its own plan; do not start it inside
-another item.
+**How to fix.** ~~Slice 2 first~~ **DONE.** Slice 3 (a `document` PAGE/procedure kind with a
+server-side renderer as a pluggable adapter pair) has its own plan
+(`docs/REG12_DOCUMENT_EXPORT_PLAN.md`); do not start it inside another item.
 
 ### 2.5 REG-13 — LNCH-18: non-author usability test never run
 
@@ -886,9 +926,8 @@ presence-checks columns that have no declared type in `businessTableColumnTypes(
 type-checking them — fine for typed columns (the mismatch is genuinely flagged), just not total.
 
 **Net:** REG-7's three sub-features and REG-8's refusal are delivered and, with REG-27 fixed, REG-8
-now genuinely refuses its own canonical example. REG-28/29/30 are small, bounded follow-ups (each
-well under a session); none is release-blocking, but REG-28 is the one with real (if narrow) data-
-integrity weight and should be scheduled next.
+now genuinely refuses its own canonical example. **REG-28/29/30 are now CLOSED (2026-07-22)** — see
+each row above and `docs/REG28_30_REG12S2_CLOSURE_PLAN.md`.
 
 ---
 
