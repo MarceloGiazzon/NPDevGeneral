@@ -35,7 +35,7 @@
     preferences: { records: [], loading: false, loaded: false },
     store: { packs: [], discoverable: false, loading: false, loaded: false, filter: "", installedIntents: {} },
     boxView: { boxes: [], note: "", loading: false, loaded: false },
-    promotion: { currentStage: "", history: [], loading: false, loaded: false },
+    promotion: { currentStage: "", history: [], loading: false, loaded: false, attempted: false },
     // Keyed by declared Panel name -- deliberately separate from state.panels (per-CONCEPT grid
     // pagination state, a pre-existing and unrelated use of that name).
     declaredPanels: {}
@@ -1513,6 +1513,11 @@
     } catch (error) {
       setStatus(error.message, true);
     }
+    // A completed attempt (success OR failure) must not auto-retry. On in-memory-storage apps
+    // /api/admin/promotion returns 503 and never sets loaded=true, which previously made
+    // renderPromotionPanel()'s auto-load guard re-trigger loadPromotion() on every render -- an
+    // unbounded loop. The Refresh button (which calls loadPromotion directly) is unaffected.
+    state.promotion.attempted = true;
     state.promotion.loading = false;
     render();
   }
@@ -1557,7 +1562,7 @@
     header.appendChild(actions);
     section.appendChild(header);
 
-    if (!state.promotion.loaded && !state.promotion.loading) {
+    if (!state.promotion.loaded && !state.promotion.loading && !state.promotion.attempted) {
       loadPromotion();
     }
 
