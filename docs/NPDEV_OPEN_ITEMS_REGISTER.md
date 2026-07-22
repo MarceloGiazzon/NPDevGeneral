@@ -469,11 +469,23 @@ store, and the identical class of risk pre-emptively avoided for REG-7.3's claim
 ### 1.8 REG-8 — `LNCH-1-B9`: schema-ahead detector blind to a pure column drop
 
 **Type:** BOUNDARY (closed by refusal, not by full reconstruction) · **Effort:** M · **Status:**
-**CLOSED (2026-07-22, REG-8/P4, `docs/REG7_REG8_EXTERNAL_DB_AND_MIGRATION_MARKING_PLAN.md`).**
+**CLOSED (2026-07-22, REG-8/P4, `docs/REG7_REG8_EXTERNAL_DB_AND_MIGRATION_MARKING_PLAN.md`);
+a fresh-install false-negative was found and fixed 2026-07-22 as REG-27 — see below.**
 Per the owner's decision, this is closed as "a clear refusal exists," not as "every drop is
 reconstructed" — the data a genuine drop destroyed is still gone; what changed is that rolling an
 older build back onto a database a newer build already migrated past now refuses loudly instead of
 silently re-adding the dropped column empty.
+
+> **Correction (2026-07-22).** The original P4 implementation only refused the rollback when the
+> rolled-back-to build's fingerprint had a prior `APPLIED`/`MANUALLY_MARKED_DONE` row in
+> `npdev_schema_history` — which a **fresh-installed** build never had (the blank-fingerprint boot
+> branch writes no history row, and `afterMigrate` wrote only `npdev_schema_metadata`). So the
+> register's own canonical example — *original, fresh-installed* build N, N+1 drops a column, roll
+> back to N — was **not** actually refused, and the headline test only passed because it hand-seeded
+> an `APPLIED` row for N that a real fresh install would never write. Found by independent code
+> verification, filed and fixed as **REG-27** (§3.4): `afterMigrate` now records the initial
+> realization as an `APPLIED` history point too, so Trigger C fires for fresh-installed builds. The
+> claim below ("now refused") is true only **with** the REG-27 fix applied.
 
 **The fix (Trigger C).** `SchemaLifecycleExecutor.databaseMigratedPastThisBuild` consults
 `npdev_schema_history` — exactly the register's own "how to fix (if ever)" note — instead of live
@@ -501,12 +513,13 @@ if that audit table were reset/tampered with independently of the schema it desc
 is lost (the same trust assumption every self-bootstrapped NPDev bookkeeping table makes). This is
 a materially smaller gap than the pre-fix state, where the situation was *unconditionally* invisible.
 
-**Verified:** new `SchemaLifecycleExecutorDatabaseMigratedPastBuildTest` (3/3: the practical example
-refuses and leaves the column un-re-added; a legitimate forward upgrade to a never-before-seen
-fingerprint does not false-positive; a `MANUALLY_MARKED_DONE` mark short-circuits the refusal) +
-a new Scenario 30 added to `SchemaLifecycleExecutorProofMatrixTest` (guardrail: new behavior = new
-scenario, never edit an existing one — full H2 matrix 42/42 with the original 41 scenarios'
-expectations completely unchanged). Full `NPDevRuntimeHost` Gradle suite green.
+**Verified:** `SchemaLifecycleExecutorDatabaseMigratedPastBuildTest` (originally 3 tests; the
+`migrated-to-via-recorded-upgrade` variant, a legitimate-forward-upgrade non-false-positive, and a
+`MANUALLY_MARKED_DONE` short-circuit) + a new Scenario 30 in `SchemaLifecycleExecutorProofMatrixTest`
+(guardrail: new behavior = new scenario, never edit an existing one). **REG-27 (2026-07-22) added two
+more tests to that class** — a direct assertion that a real fresh install records its fingerprint in
+history, and the honest end-to-end (fresh-installed build N, no hand-seeded row, still refuses) —
+which the original 3 did not cover. Full `NPDevRuntimeHost` Gradle suite re-run for the REG-27 fix.
 
 **Where.** `SchemaLifecycleExecutor.findSchemaAheadMissingColumns` (Triggers A/B, unchanged) and
 `SchemaLifecycleExecutor.databaseMigratedPastThisBuild` (Trigger C, new); documented in
@@ -785,6 +798,35 @@ document — this table is the ledger hook.
 **Tier-B status (2026-07-21):** REG-18, REG-19, REG-20, REG-21, REG-22 CLOSED; REG-24 verified
 already-guarded; REG-26 WONTFIX; REG-23 + REG-25 DEFERRED with rationale (cutover / migration). Nothing
 in this set is release-blocking, and all of it is now decided rather than open.
+
+---
+
+## 3.4 REG-27…REG-30 — findings from independent code verification of the REG-7/REG-8 implementation (2026-07-22)
+
+After the REG-7/REG-8 feature work landed (commits `7caf777`…`6879cda`), an independent code-level
+verification pass (two adversarial agents + direct reading of the safety-critical paths) checked the
+implementation against the claims. The work was real and largely sound — the collision claim is
+correctly released in a `finally` (a refusal cannot wedge the DB *in code*), the "dirty schema on
+virgin DB" bugs were genuinely found and fixed, `SchemaDeltaReport.ALWAYS_EXCLUDED_TABLES` correctly
+excludes both new self-bootstrapped tables, and the ExternallyManaged generation-time guard and real
+type comparison both exist. But four items surfaced, one of them a correctness bug in REG-8's own
+headline behaviour.
+
+| Item | Sev | Finding | Status / fix |
+|---|---|---|---|
+| **REG-27** | MED | **REG-8 Trigger C false-negative for a fresh-installed build.** Trigger C (`databaseMigratedPastThisBuild`) only fires if the rolled-back-to build's fingerprint has a prior `APPLIED`/`MANUALLY_MARKED_DONE` row in `npdev_schema_history`. A build whose fingerprint was reached by **fresh install** never had one (the blank-fingerprint boot writes no history row; `afterMigrate` wrote only `npdev_schema_metadata`). So the register's own canonical example — original fresh-installed build N, N+1 drops a column, roll back to N — was **not** refused; the dropped column was still silently re-added empty. The headline test passed only because it hand-seeded an `APPLIED` row for N that a real fresh install never writes. | **CLOSED (2026-07-22).** `afterMigrate` now records the initial realization as an `APPLIED` history point on the fresh-install path (`storedAtBootStart` blank), so every fingerprint the DB has genuinely been at is visible to Trigger C. Safe there (runs after `flyway.migrate()`, so no virgin-DB Flyway trip). RED-first: two new tests in `SchemaLifecycleExecutorDatabaseMigratedPastBuildTest` — a direct fresh-install-records-history assertion and the honest end-to-end (no hand-seeded row). |
+| **REG-28** | LOW–MED | **Stale-mark fast-forward (REG-7.2).** `MigrationMarkStore` records only the *target* fingerprint — no `from`-fingerprint binding and no TTL. A leftover mark for X (a deploy planned then abandoned, so `findMatching` never consumed it) will silently authorize the *first* future boot whose target is X — from whatever the DB is actually at — fast-forwarding with zero migration/classify/Trigger-C passes. Content-hash fingerprints + consume-on-use narrow the real trigger to a re-release of the identical model, but the mechanism has no guard and is untested. | **OPEN.** Fix: bind the mark to a `(from_fingerprint → to_fingerprint)` pair (only honor when `stored` equals the mark's expected `from`), and/or add an expiry. Add the leftover-mark-authorizes-a-later-target test the current suite lacks. |
+| **REG-29** | LOW (bug) / MED (coverage) | **Claim-release-on-refusal is correct but untested.** The production `finally` in `migrate` does release the boot's own claim on a refusal thrown from inside the migration body (Trigger C, destructive-without-token) — verified by reading. But no test proves it: the one "refuses" test in `SchemaLifecycleExecutorMigrationClaimTest` fails at claim *acquisition* (PK collision), where the boot never held a claim. The wedge-risk property that matters most is unverified. | **OPEN (test gap; code correct).** Add a test: hold a claim, make `beforeMigrate` throw a refusal, assert the claim row is gone afterward. |
+| **REG-30** | MINOR | **Duplicate marks each survive one consume.** Two marks for the same fingerprint → `consume` deletes only the matched row; the older duplicate survives to fast-forward a second future boot at that fingerprint. | **OPEN (edge case).** Delete all rows for the fingerprint on consume, or unique-constrain `marked_fingerprint`. Fold into the REG-28 fix. |
+
+Also noted (no ID, worth a one-line code comment): `findExternalSchemaIncompatibilities` (REG-7.1)
+presence-checks columns that have no declared type in `businessTableColumnTypes()` rather than
+type-checking them — fine for typed columns (the mismatch is genuinely flagged), just not total.
+
+**Net:** REG-7's three sub-features and REG-8's refusal are delivered and, with REG-27 fixed, REG-8
+now genuinely refuses its own canonical example. REG-28/29/30 are small, bounded follow-ups (each
+well under a session); none is release-blocking, but REG-28 is the one with real (if narrow) data-
+integrity weight and should be scheduled next.
 
 ---
 
