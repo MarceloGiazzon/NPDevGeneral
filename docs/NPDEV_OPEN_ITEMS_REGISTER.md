@@ -53,6 +53,13 @@ regenerated, booted, and proven to preserve a row through a live additive change
 Severity trend across the five review rounds — **HIGH → CRITICAL → HIGH → MEDIUM → (none above
 MEDIUM)** — is real convergence, not a treadmill.
 
+**2026-07-22 addendum:** REG-7 and REG-8, the two items LNCH-1 carved out as deliberate boundaries
+(§1.7/§1.8), are now **also CLOSED** — the owner decided to convert both into features rather than
+leave them as documented limits (`docs/REG7_REG8_EXTERNAL_DB_AND_MIGRATION_MARKING_PLAN.md`):
+external/unmanaged-database ownership, "mark migration as done," collision detection (REG-7.1–7.3),
+and the REG-8 schema-ahead-of-build Trigger C. See §1.7/§1.8 for what shipped and each feature's
+honestly-named residual limitation.
+
 ### 0.2 Register at a glance
 
 | ID | Title | Type | Sev | Effort | § |
@@ -414,58 +421,96 @@ T-B1 — a live weakening of the tenant-isolation column on every upgrade.
 
 ### 1.7 REG-7 — `LNCH-1-B6`: no migration advisory lock (multi-instance)
 
-**Type:** BOUNDARY · **Effort:** M · **Status:** OPEN, deliberately out of scope
+**Type:** BOUNDARY (converted to feature, not fixed as a bug) · **Effort:** M · **Status:**
+**CLOSED (2026-07-22, REG-7/P1–P3, `docs/REG7_REG8_EXTERNAL_DB_AND_MIGRATION_MARKING_PLAN.md`).**
+The owner's decision (2026-07-21) was explicit: convert this and REG-8 into features with a
+fail-loud + operator-resolves posture, rather than leave them as documented limits. Delivered as
+three sub-features:
 
-**What.** The schema-lifecycle executor assumes exactly one app instance boots against a given
-database at a time. Two instances booting concurrently could interleave renames, widenings and drops
-with no database-level lock.
+1. **External/unmanaged database ownership (REG-7.1).** New `schemaLifecycle.ownership` field
+   (`NpdevManaged` default / `ExternallyManaged`), orthogonal to `strategy`. `ExternallyManaged`
+   apps issue zero schema DDL — `flyway.migrate()` is never called — and instead run a read-only
+   compatibility check every boot, refusing with an itemized message on a mismatch. See
+   `docs/SCHEMA_EVOLUTION.md#external-unmanaged-database`.
+2. **"Mark migration as done" (REG-7.2).** A GeneXus-style ControlPanel operation
+   (`POST /api/admin/schema-migration/mark-done`) that fast-forwards the stored fingerprint with
+   zero migration passes, on the operator's word. See
+   `docs/SCHEMA_EVOLUTION.md#marking-a-migration-as-done`.
+3. **Collision detection (REG-7.3), THIS item's original scope.** A single-row claim
+   (`npdev_schema_migration_claim`, self-bootstrapped, PK-constrained) taken at the top of every
+   upgrade boot and released in a `finally`; a held claim refuses the boot loudly, naming the
+   holder; a crashed holder is cleared via `POST /api/admin/schema-migration/clear-claim`
+   (SUPERUSER). See `docs/SCHEMA_EVOLUTION.md#collision-detection`.
 
-**Why it is a boundary, not a bug.** Single-instance is the platform's stated deployment posture
-(`docs/DEPLOYMENT.md`), and the Docker Compose deployment enforces it in practice. This is recorded
-in `docs/SCHEMA_EVOLUTION.md`'s "Current limitations" — **do not roll out a multi-instance
-deployment of the same app+database until this exists.**
+**Honestly named residual (D3, not silently dropped):** this is detect-and-refuse, **not** a lock —
+a true near-simultaneous-`INSERT` race remains theoretically possible on an engine without strict
+insert serialization, and the claim is only attempted on an upgrade/repeat boot (a genuinely
+virgin database's very first-ever boot is not claim-protected — claiming unconditionally there
+would self-bootstrap the claim table before `flyway.migrate()` ever runs, breaking Flyway's own
+baseline detection, a real bug found and fixed via a live boot rehearsal during implementation).
+If collisions become frequent in practice, the upgrade path is this item's originally-scoped real
+database lock (`pg_advisory_lock` + an H2 lock table) — deliberately not built for v1 per the
+owner's "add guard rails later if needed."
 
-**Where.** `docs/OPEN_GAPS_AND_ROADMAP.md` (`LNCH-1-B6`);
-the lock scope would be `SchemaLifecycleExecutor.migrate(Flyway)`.
+**Verified:** full `NPDevRuntimeHost` Gradle suite green after each of the three sub-phases
+(rebuilt via `Rebuild-And-Restage.ps1`); new dedicated test classes for all three sub-features;
+live boot rehearsals against a real assembled app (`simple-user-registry-h2local`) for the
+self-bootstrap-ordering risk specifically, including two real bugs found and fixed only by
+booting the real app (a Flyway "non-empty schema, no history table" trip from REG-7.2's mark
+store, and the identical class of risk pre-emptively avoided for REG-7.3's claim table).
 
-**Practical example.** Two containers of the same app start simultaneously against one Postgres.
-Both read the same stored fingerprint, both classify the same diff, both attempt
-`ALTER TABLE ... RENAME COLUMN`. The second fails — or worse, both proceed against different halves
-of a multi-step sequence.
-
-**How to fix (when horizontal scaling is on the roadmap).** Wrap `migrate(Flyway)` in a database
-advisory lock: `pg_advisory_lock(<stable app hash>)` on Postgres, an equivalent lock table on H2
-(H2 has no advisory-lock primitive — a `SELECT ... FOR UPDATE` on a dedicated single-row lock table
-is the portable shape). Release in a `finally`. The existing crash-recovery semantics already handle
-a holder dying mid-migration; the lock only prevents concurrent entry.
+**Where.** `docs/OPEN_GAPS_AND_ROADMAP.md` (`LNCH-1-B6`, now closed);
+`NPDevRuntimeHost/src/main/java/com/finalexec/db/{MigrationClaimStore,MigrationMarkStore}.java`;
+`SchemaLifecycleExecutor.migrate`/`verifyExternallyManagedSchemaCompatible`;
+`NPDevGenerator/.../dbconfig/DatabaseOwnership.java`.
 
 ---
 
 ### 1.8 REG-8 — `LNCH-1-B9`: schema-ahead detector blind to a pure column drop
 
-**Type:** BOUNDARY · **Effort:** M · **Status:** OPEN — WONTFIX for v1
+**Type:** BOUNDARY (closed by refusal, not by full reconstruction) · **Effort:** M · **Status:**
+**CLOSED (2026-07-22, REG-8/P4, `docs/REG7_REG8_EXTERNAL_DB_AND_MIGRATION_MARKING_PLAN.md`).**
+Per the owner's decision, this is closed as "a clear refusal exists," not as "every drop is
+reconstructed" — the data a genuine drop destroyed is still gone; what changed is that rolling an
+older build back onto a database a newer build already migrated past now refuses loudly instead of
+silently re-adding the dropped column empty.
 
-**What.** The schema-ahead-of-build detector fires on two triggers: a missing non-additive column
-(Trigger A), or a missing column on a table that also has an *unexplained extra* live column
-(Trigger B — the signature of a rename by a newer build). A newer build that **purely dropped** a
-column leaves no residue, so neither trigger fires.
+**The fix (Trigger C).** `SchemaLifecycleExecutor.databaseMigratedPastThisBuild` consults
+`npdev_schema_history` — exactly the register's own "how to fix (if ever)" note — instead of live
+schema shape: it finds the most recent successfully-applied row for THIS build's own target
+fingerprint (none → legitimate first-time deploy, stays silent); if found, checks whether a LATER
+row exists recording a *different* fingerprint. If so, refuses before `classify()` ever runs,
+guarding every resolution (safe-additive, rename, type-change, destructive) uniformly, not just
+the column-drop case that originally motivated it. Runs on the fingerprint-**MISMATCH** branch
+(the actual shape a rollback-after-a-real-upgrade takes) — Triggers A/B, which this item's original
+"how to fix" section did not distinguish from Trigger C, only ever ran on the fingerprint-MATCH
+branch and could never have caught this practical example regardless.
 
-**Why it is a boundary.** There is genuinely nothing to detect — the absence of a column that the
-old build expects is indistinguishable, from introspection alone, from a column that was never
-added. Closing it would require the executor to consult migration history rather than live schema
-shape, which is a different design.
+**Interaction with REG-7.2 (D4).** A `MANUALLY_MARKED_DONE` fingerprint is exempt by construction:
+the mark-done check already runs earlier in `beforeMigrate`, before the match/mismatch branching
+is even reached, so it always short-circuits ahead of Trigger C with no additional logic needed.
 
-**Where.** `SchemaLifecycleExecutor.findSchemaAheadMissingColumns`;
-documented in `docs/SCHEMA_EVOLUTION.md#refusals-and-rollback`.
+**Practical example (now refused, previously silent).** Build N+1 drops `users.nickname`
+(acknowledged, applied). The operator rolls back to build N, which still expects `nickname`. Before
+this fix, the additive migration silently re-added it as an empty nullable column. After: the boot
+refuses, naming the newer fingerprint and pointing at roll-forward / restore / mark-done as the
+resolution paths — see `docs/SCHEMA_EVOLUTION.md#refusals-and-rollback`.
 
-**Practical example.** Build N+1 drops `users.nickname` (acknowledged, applied). The operator rolls
-back to build N, which still expects `nickname`. The additive migration re-adds it as an empty
-nullable column, and the app runs with a column that silently lost its data — no refusal.
+**Honestly named residual.** Trigger C's signal depends on `npdev_schema_history` staying intact;
+if that audit table were reset/tampered with independently of the schema it describes, the signal
+is lost (the same trust assumption every self-bootstrapped NPDev bookkeeping table makes). This is
+a materially smaller gap than the pre-fix state, where the situation was *unconditionally* invisible.
 
-**How to fix (if ever).** Consult `npdev_schema_history` at boot: if a row exists whose
-`to_fingerprint` is *newer* than this build's fingerprint, the database has been migrated past this
-build regardless of what the live shape looks like. That is a clean signal and the history table
-already exists — the reason it is WONTFIX for v1 is scope, not impossibility.
+**Verified:** new `SchemaLifecycleExecutorDatabaseMigratedPastBuildTest` (3/3: the practical example
+refuses and leaves the column un-re-added; a legitimate forward upgrade to a never-before-seen
+fingerprint does not false-positive; a `MANUALLY_MARKED_DONE` mark short-circuits the refusal) +
+a new Scenario 30 added to `SchemaLifecycleExecutorProofMatrixTest` (guardrail: new behavior = new
+scenario, never edit an existing one — full H2 matrix 42/42 with the original 41 scenarios'
+expectations completely unchanged). Full `NPDevRuntimeHost` Gradle suite green.
+
+**Where.** `SchemaLifecycleExecutor.findSchemaAheadMissingColumns` (Triggers A/B, unchanged) and
+`SchemaLifecycleExecutor.databaseMigratedPastThisBuild` (Trigger C, new); documented in
+`docs/SCHEMA_EVOLUTION.md#refusals-and-rollback`.
 
 ---
 
@@ -769,8 +814,11 @@ in this set is release-blocking, and all of it is now decided rather than open.
 9. **REG-13 / REG-14 / REG-17** — schedule the one external person; three DoDs close together.
 10. **REG-12**, **REG-15** — as the launch date firms up.
 
-**Boundaries (REG-7, REG-8) require no action** — they are deliberate limits with documented
-rationale. Do not let a future round "fix" them without a decision.
+**REG-7 and REG-8, formerly boundaries, are now CLOSED (2026-07-22)** — the owner decided to convert
+both into features rather than leave them as documented limits; see §1.7/§1.8 and
+`docs/REG7_REG8_EXTERNAL_DB_AND_MIGRATION_MARKING_PLAN.md`. Each still names its residual honestly
+(REG-7.3 is detect-and-refuse, not a lock; REG-8 is a refusal, not full reconstruction) — those
+residuals are deliberate limits with documented rationale, not follow-up work to schedule.
 
 ---
 

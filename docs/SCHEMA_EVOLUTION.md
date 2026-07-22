@@ -480,16 +480,17 @@ fingerprint would match the old build, so the executor would otherwise boot "cle
 schema whose columns have been renamed away or dropped, and then fail at runtime with no
 diagnostics.
 
-The executor guards this on every fingerprint-MATCH boot with a **schema-ahead-of-build detector**.
-It is a best-effort safety net, not a complete guarantee — here is exactly what it does and does not
-catch:
+The executor guards this on every fingerprint-MATCH boot with a **schema-ahead-of-build detector**
+(Triggers A/B), plus a **history-based check** (Trigger C, REG-8) that runs on the MISMATCH branch
+instead — together they are a best-effort safety net, not a complete guarantee, but REG-8 closed the
+one gap that used to be silent:
 
 | Situation | Detected? | How |
 |---|---|---|
 | A newer build **renamed an ordinary field** (`name` → `full_name`) | **Yes** | Trigger B |
 | A newer build **renamed or dropped a whole concept's table** | **Yes** | whole-table rule |
 | A **required bond/FK column** is missing | **Yes** | Trigger A |
-| A newer build **purely dropped a column** (nothing left behind) | **No** | see below |
+| A newer build **purely dropped a column** (nothing left behind) | **Yes** | Trigger C |
 
 - **Trigger A — a missing column that is not additive-eligible.** Catches required and
   many-to-many bond columns: things nothing re-adds automatically. It no longer catches `version` —
@@ -503,12 +504,25 @@ catch:
   newer build.
 - **Whole-table rule.** If a declared table has no live columns at all, the refusal says
   `<table> (entire table missing)` rather than listing every column separately.
+- **Trigger C — this database was migrated past this build (REG-8, closed 2026-07-22).** Triggers
+  A/B only run on a fingerprint-**MATCH** boot and only see LIVE SCHEMA SHAPE — a pure column drop
+  leaves no shape residue at all, which is exactly why it used to be invisible. Trigger C instead runs
+  on the fingerprint-**MISMATCH** branch (the actual shape a rollback-after-a-real-upgrade takes) and
+  consults `npdev_schema_history`, not live shape: it finds the most recent successfully-applied row
+  for THIS build's *own* target fingerprint (none — a legitimate first-time deploy of this fingerprint,
+  stays silent) and checks whether a *later* row exists recording a different fingerprint. If so, some
+  other build has moved this exact database past the point this build last owned it, and the boot
+  refuses — before `classify()` ever runs, ahead of every resolution (safe-additive, rename, type
+  change, or destructive) alike, not just the column-drop case that originally motivated it. A
+  [manually-marked-done](#marking-a-migration-as-done) fingerprint is exempt by construction (the mark
+  check runs earlier in the same method and returns before Trigger C's code is ever reached) — an
+  operator's explicit "this older build legitimately takes back over" always wins.
 
-**Known limitation — a pure column drop is invisible.** If a newer build simply *removed* a field,
-it leaves no extra column behind, so neither trigger has anything to see. The old jar will boot, and
-its repeatable additive migration may re-add that column **empty**. Rolling an old jar back onto a
-migrated database is unsupported regardless; this detector reduces the damage, it does not make the
-operation safe. Recover by rolling forward, or by restoring from a snapshot/backup.
+**Residual limitation.** Trigger C's signal depends on `npdev_schema_history` staying intact — if that
+audit table were reset or tampered with independently of the business schema it describes (the same
+trust assumption every self-bootstrapped NPDev bookkeeping table in this system makes), the signal is
+lost. This is a materially smaller gap than the pre-REG-8 state, where a pure column drop was
+*unconditionally* invisible regardless of history.
 
 ## Snapshots (manual recovery only)
 
@@ -555,6 +569,127 @@ Three properties follow, and the platform enforces all of them:
 
 You never declare, migrate, or acknowledge anything for these columns.
 
+## External unmanaged database
+
+**REG-7.1.** Some apps run against a database NPDev does not own — a pre-existing legacy schema, or
+one an operator manages by hand. Declare this in `db.definition.json`:
+
+```json
+{
+  "database": { "engine": "Postgres", "host": "...", "port": 5432, "username": "...", "password": "...",
+                "createInternalTables": true, "createBusinessTables": true },
+  "schemaLifecycle": {
+    "strategy": "KeepExistingIfCompatible",
+    "allowDestructiveRecreate": false,
+    "destructiveRecreateConfirmation": "",
+    "scope": "NpdevOwnedTablesOnly",
+    "ownership": "ExternallyManaged"
+  }
+}
+```
+
+`ownership` is optional and defaults to `NpdevManaged` (today's behavior, unaffected). It is
+**orthogonal to `strategy`**: `strategy` answers *how* NPDev migrates when it owns the schema;
+`ownership` answers *whether it touches schema DDL at all*. Setting `ExternallyManaged` makes
+`strategy`/`allowDestructiveRecreate` inert — there is no DDL left for them to govern — so the
+generator requires `strategy: KeepExistingIfCompatible` and `allowDestructiveRecreate: false`
+alongside it and refuses to generate otherwise (a recreate/destructive strategy is nonsensical when
+NPDev issues no DDL).
+
+**At boot, `ExternallyManaged` mode:**
+
+1. Issues **zero** schema DDL — `flyway.migrate()` is never called at all, so Flyway does not even
+   initialize its own bookkeeping table in this database.
+2. Runs a **read-only compatibility check** every boot (there is no fingerprint-match fast path here —
+   nothing converges the schema, so there is nothing to converge *toward*, only to verify, cheaply,
+   every time): every table/column this build's model declares must exist live with a compatible SQL
+   type.
+3. **Proceeds** if compatible (records an `EXTERNAL_VERIFIED` row in `npdev_schema_history`), or
+   **refuses** with an itemized message naming exactly what is missing or type-mismatched (records
+   `EXTERNAL_REFUSED`):
+
+   ```
+   This app declares schemaLifecycle.ownership=ExternallyManaged (NPDev does not own this database's
+   schema and will never issue DDL against it), but the live schema cannot serve this build's model.
+   Incompatibilities: [orders.total (column missing)]. Either alter the external schema by hand to
+   match the model, or fix the model to match the external schema.
+   ```
+
+Resolve a refusal by altering the external schema by hand (the operator's responsibility in this
+mode), or by changing the model to match what the external schema actually has.
+
+## Marking a migration as done
+
+**REG-7.2**, GeneXus-style: "the schema is already at this fingerprint; stop trying to migrate to it."
+An operational act against a *running database*, independent of any specific build — so unlike the
+destructive-acknowledgment token, there is no generator/CLI round-trip in v1: it is a ControlPanel-only
+endpoint, submitted on the currently running app (SUPERUSER-gated, `X-Super-User-Key` header, same
+pattern as every other ControlPanel endpoint):
+
+```
+POST /api/admin/schema-migration/mark-done
+{ "fingerprint": "sha256:...", "note": "verified by hand, already migrated" }
+```
+
+```
+GET /api/admin/schema-migration/marks
+```
+
+lists every recorded mark. On the **next boot** whose target fingerprint matches a recorded mark, the
+executor:
+
+1. Fast-forwards the stored fingerprint pointer (`npdev_schema_metadata`) straight to that value.
+2. Records a `MANUALLY_MARKED_DONE` row in `npdev_schema_history`.
+3. Consumes the mark (deleted after use — a mark authorizes exactly one boot, not every future one).
+4. Runs **zero** rename/relax/tighten/classify/destructive passes — the operator's claim *is* that the
+   live schema already matches this build's model, so there is nothing for the executor to converge.
+   (Flyway's own idempotent `CREATE TABLE IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` scripts still run
+   afterward as normal — harmless no-ops if the claim holds, a safety net if it does not.)
+
+This is also [Trigger C's](#refusals-and-rollback) escape hatch: if REG-8 refuses because history
+shows a newer fingerprint already applied, and you deliberately intend an older build to take back
+over, mark that older build's fingerprint done and redeploy.
+
+## Collision detection
+
+**REG-7.3.** The platform's deployment posture is single-instance (`docs/DEPLOYMENT.md`) — exactly one
+app instance boots against a given database at a time. This feature makes a violation **loud** instead
+of silently interleaving migrations, without introducing a real lock: a single-row **claim** in a
+self-bootstrapped `npdev_schema_migration_claim` table (`claim_key` fixed at `'schema-migration'`,
+primary-keyed so a second concurrent `INSERT` fails), taken at the top of every upgrade boot and
+released in a `finally`:
+
+- **Held by someone else** → the boot refuses immediately, naming the holder:
+  ```
+  Another NPDev instance is currently migrating this database (instance <uuid> on host <hostname>,
+  claimed at epoch-ms <t>). Concurrent schema migrations are not supported (REG-7.3) -- wait for it to
+  finish and retry, or if it crashed mid-migration, clear the stale claim via POST
+  /api/admin/schema-migration/clear-claim (SUPERUSER)...
+  ```
+- **Crashed holder (stale claim)** — the manual escape hatch, SUPERUSER-gated:
+  ```
+  GET  /api/admin/schema-migration/claim        # inspect: { "held": true/false, ... }
+  POST /api/admin/schema-migration/clear-claim   # unconditionally deletes the row
+  ```
+  Clearing a claim while another instance genuinely holds it **re-introduces the exact race** this
+  feature detects — that is a deliberate operator decision this endpoint trusts the caller to make.
+
+**Honest limitations (D3):**
+- **This is detect-and-refuse, not a lock.** A true TOCTOU race between two near-simultaneous
+  `INSERT`s is possible on an engine without strict insert serialization. If this becomes frequent in
+  practice, the documented upgrade path is a real `pg_advisory_lock` (Postgres) + an H2 lock table —
+  deliberately not built for v1 per the owner's "add guard rails later if needed."
+- **The very first-ever boot of a brand new database is not claim-protected.** The claim is only
+  attempted when a schema fingerprint is already stored (an upgrade/repeat boot). Claiming
+  unconditionally on a genuinely virgin database would self-bootstrap this table *before*
+  `flyway.migrate()` ever runs, which makes Flyway see a non-empty schema with no history table and
+  refuse outright — a real bug this scoping decision avoids (found and fixed via a live boot
+  rehearsal). In practice this narrows the gap to something *smaller* than the register's own
+  practical example (two containers racing against an *already-initialized* database), which — the
+  common real-world case — is fully protected.
+- **`ExternallyManaged` apps never claim.** NPDev issues no DDL against them, so there is nothing to
+  serialize.
+
 ## Current limitations
 
 Deliberately out of scope for this feature (recorded here as known future work, not silently
@@ -568,27 +703,43 @@ missing):
   one-command undo.
 - **No cross-database data migration.** Moving data between database engines (e.g. H2 → Postgres) is
   a different, unrelated feature — not something an app upgrade does.
+- **`ExternallyManaged` compatibility verification is column-shaped only (REG-7.1).** It confirms
+  every declared table/column exists live with a compatible SQL type; it does NOT check nullability,
+  uniqueness constraints, indexes, or foreign keys. A schema that passes this check can still be
+  incompatible in ways the check does not look for.
+- **"Mark migration as done" trusts the operator completely (REG-7.2).** It is not a verification —
+  fast-forwarding the stored fingerprint does not confirm the live schema actually matches the model.
+  If the claim is wrong, nothing in this mechanism catches that; the executor simply stops trying to
+  converge the schema, on the operator's word alone.
 - **InMemory-storage apps have no DDL.** This entire mechanism no-ops cleanly for them (checked via
   `manifest.physicalDatabase()`) — there is nothing to migrate.
 - **Refusals are not side-effect-free.** The safe convergent steps (table/field renames, NOT NULL
   relaxations) apply before the acknowledgment decision, so a refused upgrade has already applied
   them; recovery is roll-forward or restore, never redeploying the old jar (which the schema-ahead
   detector refuses in the cases it can see). See [Refusals and rollback](#refusals-and-rollback).
-- **The schema-ahead detector cannot see a pure column drop.** If a newer build removed a field and
-  was rolled back, nothing is left in the live schema to detect, so the old jar boots and may re-add
-  the column empty. The detector's exact coverage is tabulated under
-  [Refusals and rollback](#refusals-and-rollback).
+- **A pure column drop + rollback is refused, not silently reconstructed (REG-8, closed 2026-07-22).**
+  Trigger C consults `npdev_schema_history` (not live shape) to detect that this exact database was
+  migrated past this build, and refuses instead of letting the old jar boot and silently re-add the
+  dropped column empty. This is a detection-vs-reconstruction distinction, not a full guarantee: the
+  data the drop destroyed is still gone (recoverable only via the pre-drop snapshot or a backup, per
+  [Snapshots](#snapshots-manual-recovery-only)) — REG-8 makes the *situation visible and refused*, it
+  does not reconstruct the lost column. See [Refusals and rollback](#refusals-and-rollback) for
+  Trigger C's exact scope and residual limitation.
 - **Dropping a concept needs one boot of ownership history first (`LNCH-1-B7`).** The executor only
   drops an orphaned table it can *prove* NPDev created — see
   [Dropping a concept](#dropping-a-concept). An app upgraded from a build older than this mechanism
   has no ownership record yet, so its first upgrade will not drop a concept's table; the boot after
   that will. This is deliberate: without ownership evidence, a table someone created by hand in the
   same schema is indistinguishable from a dropped concept, and the executor refuses to guess.
-- **Single-instance migrations.** The schema-lifecycle executor assumes exactly one app instance
-  boots against a given database at a time (the platform's deployment posture — see
-  `docs/DEPLOYMENT.md`). Concurrent boots of two instances are **not** guarded by a database lock; do
-  not roll out multi-instance deployments of the same app+database until a migration lock exists
-  (tracked as `LNCH-1-B6` in `docs/OPEN_GAPS_AND_ROADMAP.md`).
+- **Single-instance migrations: now detected and refused, not silent (REG-7.3, closed 2026-07-22).**
+  The platform's deployment posture is still single-instance (see `docs/DEPLOYMENT.md`), but a
+  concurrent second boot against the same database no longer silently interleaves migrations — it is
+  refused loudly, naming the holder (see [Collision detection](#collision-detection)). This is
+  detect-and-refuse, **not** a lock: a true near-simultaneous-insert race remains possible in theory,
+  and the very first-ever boot of a brand new database is not claim-protected (only
+  upgrade/repeat boots are). Do not roll out multi-instance deployments of the same app+database
+  relying on this as a strict mutex; if collisions become frequent in practice, the documented upgrade
+  path is a real database lock (`pg_advisory_lock` + an H2 lock table), not built for v1.
 
 ## See also
 

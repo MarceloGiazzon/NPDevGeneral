@@ -121,6 +121,23 @@ locally-trusted self-signed certificate, so HTTPS termination is provable withou
 Replace `:443` with a real hostname once you have one; Caddy then obtains a real Let's Encrypt
 certificate automatically, no further config needed.
 
+## Concurrent instances and external databases
+
+The platform's deployment posture is still single-instance: exactly one app instance boots against a
+given database at a time. As of REG-7.3, a second instance booting concurrently against the same
+database is **detected and refused loudly** (naming the holder), instead of silently interleaving
+migrations — but this is a detect-and-refuse claim row, not a lock; see
+`docs/SCHEMA_EVOLUTION.md#collision-detection` for the exact mechanism, the manual escape hatch for a
+crashed holder (`POST /api/admin/schema-migration/clear-claim`), and the honest limitation (a true
+near-simultaneous-insert race remains theoretically possible, and the very first-ever boot of a brand
+new database is not claim-protected). Do not roll out multi-instance deployments of the same
+app+database relying on this as a strict mutex.
+
+If your database schema is managed outside NPDev (a pre-existing legacy system, or an operator running
+the DDL by hand), declare `schemaLifecycle.ownership: "ExternallyManaged"` in `db.definition.json` —
+NPDev then issues zero schema DDL against it and only verifies compatibility at boot. See
+`docs/SCHEMA_EVOLUTION.md#external-unmanaged-database`.
+
 ## Known gaps (deliberately out of scope for LNCH-7)
 
 - **Backup/restore**: not covered here — see LNCH-9.
