@@ -38,21 +38,32 @@ New-Item -ItemType Directory -Force -Path $runtimeHostLibs | Out-Null
 Ensure-NPDevFile $kernelGradleWrapper "Kernel Gradle wrapper"
 Ensure-NPDevFile $generatorGradleWrapper "Generator Gradle wrapper"
 
-# Resolve the external build root BEFORE building, then export it as NPDEV_BUILD_ROOT so the
-# Kernel/Generator gradle builds below (resolveNpdevBuildRoot in their build.gradle) redirect their
-# jar output to exactly the location this script's jar-discovery then scans ($externalGradleBuildRoot).
-# Without this, a git worktree (whose folder is not named 'NPDev_General') makes build.gradle's own
-# fallback root resolve to <projectDir>/../Build (inside the worktree) while this script defaulted to
-# <workspaceRoot>/../Build (beside it) -- so `-BuildLocalJars` built jars into a directory discovery
-# never looked at, yielding a spurious "No RuntimeHost jars were discovered". Exporting one resolved
-# root makes both agree regardless of the workspace folder name. (See knowledge card
-# runtimehost-libs-dir-mismatch.)
-$workspaceItem = Get-Item -LiteralPath $WorkspaceRoot
+# Resolve the external build root by MIRRORING build.gradle's resolveNpdevBuildRoot EXACTLY, so this
+# script's jar-discovery ($externalGradleBuildRoot) scans the very directory the Kernel/Generator
+# gradle builds actually write to -- whether or not -PnpdevBuildRoot / NPDEV_BUILD_ROOT take effect in
+# a given environment. The gradle builds run with rootDir = <workspace>/NPDevKernel (and
+# /NPDevGenerator); their build.gradle walks UP for a directory literally named 'NPDev_General' and,
+# if found, redirects output to <that>/../Build, else to <rootDir>/../Build (= <workspace>/Build).
+# The old <workspace.parent>/Build guess diverged whenever the workspace folder is not named exactly
+# 'NPDev_General' or is nested inside one -- e.g. a `git clone` folder named 'NPDevGeneral', or a git
+# worktree under .../.claude/worktrees -- so the built jars landed where discovery never scanned
+# ("No RuntimeHost jars were discovered"). Precedence matches build.gradle: property/env override,
+# else the NPDev_General walk with the same fallback. (See knowledge card runtimehost-libs-dir-mismatch.)
+$gradleRootDir = Get-Item -LiteralPath $kernelRoot
 $externalBuildRoot = if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_BUILD_ROOT)) {
     Normalize-NPDevPath $env:NPDEV_BUILD_ROOT
 }
 else {
-    Normalize-NPDevPath (Join-Path $workspaceItem.Parent.FullName "Build")
+    $ancestor = $gradleRootDir
+    while ($null -ne $ancestor -and $ancestor.Name -ne 'NPDev_General') {
+        $ancestor = $ancestor.Parent
+    }
+    if ($null -ne $ancestor -and $null -ne $ancestor.Parent) {
+        Normalize-NPDevPath (Join-Path $ancestor.Parent.FullName "Build")
+    }
+    else {
+        Normalize-NPDevPath (Join-Path $gradleRootDir.Parent.FullName "Build")
+    }
 }
 $externalGradleBuildRoot = Join-Path $externalBuildRoot "gradle"
 $env:NPDEV_BUILD_ROOT = $externalBuildRoot
