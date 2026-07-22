@@ -223,6 +223,19 @@
         ]
       }
     },
+    "documents": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/document"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
     "guidePages": {
       "type": "array",
       "items": {
@@ -3239,6 +3252,42 @@
         },
         "explainability": {
           "type": "object"
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "document": {
+      "type": "object",
+      "required": [
+        "name",
+        "concept"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "concept": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pageSize": {
+          "type": "string",
+          "enum": [
+            "A4",
+            "Letter"
+          ]
+        },
+        "marginMm": {
+          "type": "number",
+          "minimum": 0
         },
         "metadata": {
           "type": "object"

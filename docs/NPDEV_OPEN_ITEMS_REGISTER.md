@@ -41,6 +41,23 @@
 
 ## 0. Status summary
 
+### 0.0 Owner decisions executed 2026-07-22 (post CI-green)
+
+After Linux CI went green (REG-10) and the register was closed down to its bounded/human-gated
+remainder, the owner made four calls and they were executed the same day:
+
+- **Merged `beta1-vision-spine` → `main`** (PR #2, merge commit `3e29cca`) — 296 commits: the whole
+  LNCH-1 programme, REG-1..30, REG-7/8 features, REG-27, the CI fixes. Both its CI gates green.
+- **Cut a release tag** — the `beta1` name was already taken by the original milestone, so the current
+  CI-green, register-closed state is tagged **`beta1.1`** (annotated, on the merge commit). Closes the
+  release-tag half of **REG-15**; trademark stays parked (portfolio project, owner's call).
+- **REG-12 Slice 3 (server-side PDF) greenlit, then executed and CLOSED (2026-07-22)** — phased plan
+  `docs/REG12_DOCUMENT_EXPORT_PLAN.md`, executed via `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part A.
+  REG-12 (all 3 slices) is now CLOSED — see §2.4.
+- **External-tester kit prepared** — `docs/EXTERNAL_TESTER_COLDSTART.md` is the cold-start brief to
+  hand a project-blind AI agent for **REG-13/REG-14/REG-17**; the assistant's part is done, the run
+  itself is still the owner's to trigger.
+
 ### 0.1 What just closed
 
 The LNCH-1 schema-evolution programme is **DONE**. Five rounds — original build (P0–P8),
@@ -60,7 +77,42 @@ external/unmanaged-database ownership, "mark migration as done," collision detec
 and the REG-8 schema-ahead-of-build Trigger C. See §1.7/§1.8 for what shipped and each feature's
 honestly-named residual limitation.
 
+**2026-07-22 addendum 2:** the bounded remainder from that same verification pass is now also closed,
+per `docs/REG28_30_REG12S2_CLOSURE_PLAN.md`. **REG-29 CLOSED** (test-only: proved a refusal thrown
+while a boot holds its own migration claim still releases it). **REG-28 + REG-30 CLOSED**
+(`MigrationMarkStore` now binds a mark to its `from -> to` transition and rejects a duplicate at
+insert time; verified live against a real `superuser-admin-console` boot). **REG-12 Slice 2 (print)
+DONE** (a "Print" toolbar button + `@media print` stylesheet + self-contained `#printRoot` render
+mode, verified live in a real browser) — **Slice 3 (server-side PDF) is now unblocked**. See §3.4 and
+§2.4 for detail; one new latent item was found (not fixed) during Slice 2's live verification — a
+pre-existing promotion-panel retry-loop bug on InMemory-storage apps, noted in §2.4.
+
+**2026-07-22 addendum 3 — `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` executed, both parts DONE.**
+**Part A (REG-12 Slice 3, server-side PDF): CLOSED.** New `document` DSL kind + `DocumentRenderContract`
+port/adapter pair (pure-JVM OpenHTMLtoPDF) + `GET /api/documents/{document}/render.pdf` + a
+"Download PDF" toolbar link; verified live (real PDF, real generated app, human + automated
+text-extraction check). Three real bugs found and fixed along the way (two silent field-drop bugs
+in `ModelResolver`/`BuiltinPackComposer`, one silent controller-allowlist exclusion) — see §2.4.
+**Part B (REG-13/REG-14, non-author + newcomer tests): CLOSED.** An independent cold-start tester
+(subagent, fresh context, own worktree, cold brief only, no coaching) passed all three tasks on the
+first cold run — no re-run iteration needed. **REG-17 also advanced** (2/4 gates reproduced and
+triaged by the same independent run; PARTIAL, not fully closed — see §3.2). Every friction point the
+run surfaced is filed as a dated finding in `docs/LAUNCH_READINESS_GAPS.md` ("External-tester
+findings, 2026-07-22"), not silently fixed, per the closure plan's own discipline. Evidence for both
+parts: `NPDev_General__OutsideRepo/{reg12-slice3-evidence,external-tester-evidence/2026-07-22}/`.
+**With this, the launch ledger (`docs/LAUNCH_READINESS_GAPS.md`) reaches 24 DONE · 0 PARTIAL · 0 OPEN.**
+
 ### 0.2 Register at a glance
+
+> **STATUS CORRECTION (2026-07-22).** The table below predates the 2026-07-21/07-22 closure wave and
+> is kept only for historical shape. Read these as **CLOSED** regardless of how their row renders
+> here: REG-1, REG-2, REG-3, REG-4, REG-5, REG-7, REG-8, REG-9, REG-10, REG-11, REG-12, REG-13,
+> REG-14, REG-18, REG-19, REG-20, REG-21, REG-22, REG-24, REG-27, REG-28, REG-29, REG-30. Still
+> genuinely open or partial: **REG-6** (~40%, structural refactor, deliberately deferred), **REG-15**
+> (release tag DONE, trademark parked), **REG-16** (adversarial review done for LNCH-2/LNCH-4 only),
+> **REG-17** (PARTIAL — 2 of 4 gates reproduced), **REG-23** and **REG-25** (deferred boundaries).
+> The authoritative current state is `docs/LAUNCH_READINESS_GAPS.md` (24 DONE / 0 PARTIAL / 0 OPEN)
+> plus each entry's own **Status** line below, not this summary table.
 
 | ID | Title | Type | Sev | Effort | § |
 |---|---|---|---|---|---|
@@ -75,12 +127,12 @@ honestly-named residual limitation.
 | **REG-9** | LNCH-4 — auth table stakes: secrets management still open (**rescoped: 2 of 4 already done**) | GAP | **P0** | S/M | 2.1 |
 | ~~**REG-10**~~ | LNCH-19 — Linux CI **now observed GREEN** (run `29899362276`, 2026-07-22) — DONE | GAP | **P1** | S/M | 2.2 |
 | ~~**REG-11**~~ | LNCH-20 — cross-platform build **PROVEN** by the green run; also fixed a real generated-app `D:/`-cache portability bug — DONE | GAP | P2 | S | 2.3 |
-| **REG-12** | LNCH-10 — Excel/PDF/print export beyond CSV | GAP | P1 | L | 2.4 |
-| **REG-13** | LNCH-18 — non-author usability test never run | GAP | P1 | S (blocked on a human) | 2.5 |
-| **REG-14** | LNCH-22 — newcomer documentation test never run | GAP | P2 | S (blocked on a human) | 2.6 |
+| ~~**REG-12**~~ | LNCH-10 — Excel/PDF/print export beyond CSV — **CLOSED 2026-07-22** (all 3 slices DONE) | GAP | P1 | L | 2.4 |
+| ~~**REG-13**~~ | LNCH-18 — non-author usability test — **CLOSED 2026-07-22** (independent cold-tester run) | GAP | P1 | S | 2.5 |
+| ~~**REG-14**~~ | LNCH-22 — newcomer documentation test — **CLOSED 2026-07-22** (same run) | GAP | P2 | S | 2.6 |
 | **REG-15** | LNCH-23 — trademark clearance + release tag | PROCESS | P2 | S (blocked on you/counsel) | 2.7 |
 | **REG-16** | The other 23 launch items have had zero adversarial review (~23 files/3.4k LOC scoped) | PROCESS | **HIGH** | L | 3.1 |
-| **REG-17** | No third party has ever reproduced any verification | PROCESS | MED | M | 3.2 |
+| **REG-17** | No third party has ever reproduced any verification — **PARTIAL, advanced 2026-07-22** (2/4 gates ran+triaged by an independent tester) | PROCESS | MED | M | 3.2 |
 
 ---
 
@@ -692,57 +744,158 @@ none remain elsewhere. Let CI (REG-10) be the enforcement mechanism rather than 
 
 ### 2.4 REG-12 — LNCH-10: Excel/PDF/print export beyond CSV
 
-**Type:** GAP · **Priority:** P1 · **Effort:** L · **Status:** PARTIAL (CSV DONE, volume-gated at 100k rows)
+**Type:** GAP · **Priority:** P1 · **Effort:** L · **Status:** **CLOSED (2026-07-22) — all 3 slices DONE.**
 
 **What.** Slice 1 (streaming CSV export from any grid) is DONE. Slice 2 (print stylesheet / print
-render mode) and Slice 3 (server-side PDF document objects) are not started.
+render mode) is DONE (2026-07-22). **Slice 3 (server-side PDF document objects) is DONE (2026-07-22).**
+
+**Slice 3 — what shipped.** A new declarative `document` DSL kind (`$defs/document`: `name`,
+`concept`, `title`, `pageSize`, `marginMm`, `metadata` — 4-copy schema mirror + `DocumentAst`/
+`CompiledDocument` threaded through the parser/resolver/compiler/canonical-JSON writer+reader) bound
+to a single concept's query. A new kernel port `DocumentRenderContract` (HTML+options in, PDF bytes
+out) with an adapter pair: `document-render-inproc` (pure-JVM `com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10`,
+no native/display deps — proven headless-safe by a P0 spike) as the default, `document-render-stub`
+(an honest no-op, the pair's second half) as an opt-out. A new static, document-generic
+`DocumentRenderController` (`GET /api/documents/{document}/render.pdf`, mirroring
+`ConceptQueryController#exportCsv`'s exact query/streaming/header-before-body discipline down to
+reusing its `parseConceptQuery`) builds the same print-document HTML shape Slice 2 produces and
+renders it via the adapter. A "Download PDF" toolbar link next to Export CSV/Print, wired per-concept
+via a new `documents` array in the generated UI manifest (`BusinessUiEmitter`).
+**Verified live**: `superuser-admin-console`'s new `ProjectsPdf` document (bound to `Project`) streamed
+a real, valid PDF (`%PDF-1.4` header; PDFBox `PDFTextStripper` extraction confirmed exact title/
+timestamp/row/column/footer content matching two freshly-created records; human-eye-verified).
+Evidence: `NPDev_General__OutsideRepo/reg12-slice3-evidence/`.
+
+**Real bugs found and fixed while wiring this through** (not synthetic — a genuine live rehearsal):
+1. `ModelResolver.resolve()` and `BuiltinPackComposer.merge()` both reconstructed `ModelAst`/
+   `CompiledModel` via truncated/older constructor overloads that silently dropped the new
+   `documents` field before it ever reached the generator — the exact bug class
+   `CanonicalJsonRoundTripCompletenessTest` exists to catch, just at two *different* reconstruction
+   sites that test doesn't cover. `BuiltinPackComposer.merge()`'s truncated constructor was ALSO
+   already silently dropping `guidePages`/`aggregates`/`autoPanels` for any app composing built-in/
+   installed packs (`internal.tables=true` or `packs.included` non-empty) — a pre-existing gap,
+   fixed alongside since it was the same call site with the same fix.
+2. `runtime-supported-controllers.json`'s static `allowedControllers` allowlist silently excluded
+   `DocumentRenderController.java` from compilation entirely (no error — a bare 404, no route ever
+   registered) until added by name.
+3. `NPDevRuntimeHost/build.gradle.template` needed the OpenHTMLtoPDF Maven coordinate declared
+   explicitly (same reason the AWS SDK/Jakarta Mail deps are already declared there — jar-staging
+   only stages this workspace's own project jars, not third-party transitive dependencies); without
+   it, the first real request threw `NoClassDefFoundError`.
+
+**CI (guardrail: Windows-verified is not enough).** Pushed to `beta1-vision-spine` (commit
+`b5c7c88`) and dispatched `npdev-pr-gate.yml` via `scripts/ci/gh-api.sh` — **run `29943008077`,
+conclusion `success`** on a real Linux GitHub Actions runner, packaged-app proof tests included.
+
+**Slice 2 — what shipped.** A "Print" button next to "Export CSV" on every declared panel's grid
+toolbar (`business-ui-app.mustache`'s `renderPanel`/new `printPanel()`) builds a self-contained
+`#printRoot` document — title, "Printed <timestamp>" meta, a table mirroring the grid's currently
+loaded (filtered/sorted) page with the same visible columns, and a "Total: X of Y record(s)" footer —
+and calls `window.print()`. A new `@media print` block in `business-ui-style.mustache` hides all app
+chrome (nav/app-bar/panel controls) and shows only `#printRoot` when printing; `#printRoot` itself
+(declared in `business-ui-index.mustache`) is `display:none` outside of print, so it never intrudes on
+the normal screen view. Deliberately self-contained/inlinable markup — the seam Slice 3's server-side
+PDF renderer is designed to reuse verbatim (noted in a code comment pointing at the Slice 3 plan).
+**Verified live**: real browser (ScrapForAI) against `superuser-admin-console`'s `Project` concept, both
+empty and with a real created row — DOM assertions confirmed the print document's title/meta/columns/
+row-count/footer, and that `#printRoot` stays `display:none` before AND after building it (screenshot
+evidence: `D:\WorkSpace\NPDev\Build\scrapforai-artifacts\superuser-admin-console-print2\...\screenshots\
+after_print_click.png`). Regression routine committed:
+`NPDevSamples/scripts/superuser-admin-console/browser-routines/05-print-mode.json`.
+
+**Latent item found during Slice 2, now FIXED (2026-07-22, commit `4943b73`):** verifying against the
+InMemory `simple-contact-intake` sample exposed a **pre-existing, unrelated bug** — `renderPromotionPanel()`
+(`business-ui-app.mustache`) calls `loadPromotion()` whenever `!state.promotion.loaded &&
+!state.promotion.loading`, but `/api/admin/promotion` 503s for any InMemory-storage app (no physical
+DB), and a 503 never sets `loaded = true`. Every `render()` that touches the promotion section
+re-triggered `loadPromotion()`, which itself calls `render()` twice — an unbounded retry/re-render loop
+that floods the console with 503s and makes any toolbar button in that render path flaky-to-unclickable
+(elements keep getting detached/rebuilt mid-click). **Fix:** a `state.promotion.attempted` flag set
+after any completed load (success OR failure); the auto-load guard now also requires `!attempted`, so a
+failed load no longer auto-retries (the Refresh button, which calls `loadPromotion` directly, is
+unaffected) — exactly the "stop retrying until the operator clicks Refresh" bounded fix this item
+prescribed. **Verified live** on a freshly regenerated `simple-user-registry-inmemory` FinalApp
+(InMemory → `/api/admin/promotion` 503; `/api/me` roles=[ADMIN] → super-user): over an 8s dwell on the
+rendered super-user promotion panel, exactly **1** `/api/admin/promotion` call per authenticated render
+(vs. the pre-fix flood), page stable and interactive (real-browser ScrapForAI routine, 10/10 green).
 
 **Why it matters.** Business apps end in paper and spreadsheets. For the GeneXus-migration audience
 specifically — WMS-class apps with pick lists and packing slips — print output is not a nice-to-have,
 and its absence forces hand-authored `web/` pages at exactly the moment an app becomes real, which
 breaks the low-code promise.
 
-**Where.** `NPDevRuntimeHost/.../api/ConceptQueryController.java` (the CSV precedent),
-`npdev-templates/business-ui-app.mustache` (the grid toolbar).
+**Where.** `NPDevRuntimeHost/.../api/ConceptQueryController.java` (the CSV precedent, and the
+`parseConceptQuery` Slice 3 directly reuses), `NPDevRuntimeHost/.../api/DocumentRenderController.java`
+(Slice 3's endpoint), `NPDevKernel/kernel/.../ports/DocumentRenderContract.java` +
+`NPDevKernel/adapters/document-render-{inproc,stub}` (Slice 3's port/adapter pair),
+`npdev-templates/business-ui-app.mustache` (the grid toolbar, `printPanel()` + the "Download PDF"
+link), `npdev-templates/business-ui-style.mustache` (the print stylesheet),
+`npdev-templates/business-ui-index.mustache` (the `#printRoot` mount).
 
-**Practical example.** A warehouse operator needs a printed pick list. Today: export CSV, open in
-Excel, format by hand. The declared panel has no print mode.
+**Practical example.** A warehouse operator needs a printed pick list. "Print" on the declared panel
+(Slice 2) shows a clean title + line-items + total-count document ready for the browser's print/
+print-to-PDF dialog; "Download PDF" (Slice 3) renders the identical shape server-side, no browser
+needed — e.g. for an automated nightly packing-slip batch.
 
-**How to fix.** Slice 2 first — a print stylesheet plus a print render mode for declared panels is
-pure frontend and covers most of the need. Slice 3 (a `document` PAGE/procedure kind with a
-server-side renderer as a pluggable adapter pair) deserves its own plan; do not start it inside
-another item.
+**How to fix.** ~~Slice 2 first~~ **DONE.** ~~Slice 3~~ **DONE** — see `docs/REG12_DOCUMENT_EXPORT_PLAN.md`
+for the full design and phase-by-phase execution record.
 
 ### 2.5 REG-13 — LNCH-18: non-author usability test never run
 
-**Type:** GAP · **Priority:** P1 · **Effort:** S, but **blocked on a human who is not you**
+**Type:** GAP · **Priority:** P1 · **Effort:** S · **Status:** **CLOSED (2026-07-22).**
 
 **What.** ADR-0006 ratified AI-first authoring. Its own Definition of Done requires a real,
-external, non-author person taking an app from description to running FinalApp. Never done. A
-structured friction-log template exists (`docs/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md`).
+external, non-author person taking an app from description to running FinalApp. A structured
+friction-log template exists (`docs/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md`).
 
 **Why it matters.** Every app this platform has ever produced was built by you or by an AI you were
 supervising. The claim "a non-engineer can author an app" is entirely unvalidated. This is the
 single largest untested assumption in the product thesis.
 
-**How to fix.** Find one person who is not you and has not seen the project. Give them
-`docs/TUTORIAL_FIRST_APP.md` and the MCP toolbox, nothing else. Record friction in the template.
-Do not help them — the friction *is* the result.
+**Closed.** `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part B ran the DoD via a genuinely independent
+tester: a subagent given ONLY `docs/EXTERNAL_TESTER_COLDSTART.md`'s cold brief, a fresh context
+window, and its own isolated git worktree — no access to this project's plans/register/history, no
+coaching mid-run (Part B.1 option 2, explicitly sanctioned by the closure plan as a runnable
+approximation of a separate human/AI-tool session). It authored the brief's issue-tracker app
+(title/description/status/assignee; create/list/edit/close) using the documented CLI validator
+fallback (no NPDev MCP tools were registered in the session) and verified it unaided over REST — all
+four operations confirmed against a real running FinalApp. Pass bar met on the first cold run, no
+re-run iteration needed. Evidence + friction log:
+`NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/friction-log-task-a.md`. Real
+finding filed (not silently fixed): `NPDEV_USER_MANUAL.md`'s own `createConcept`/`updateConcept`
+examples omit the `persistence` capability/binding block, producing a model that validates cleanly
+but 500s at runtime with no diagnostic naming the real cause — see
+`docs/LAUNCH_READINESS_GAPS.md`'s "External-tester findings, 2026-07-22" for the full dated list.
 
 ### 2.6 REG-14 — LNCH-22: newcomer documentation test never run
 
-**Type:** GAP · **Priority:** P2 · **Effort:** S, **blocked on a human** · **Status:** PARTIAL
+**Type:** GAP · **Priority:** P2 · **Effort:** S · **Status:** **CLOSED (2026-07-22).**
 
 **What.** `docs/DSL_REFERENCE.md` (generated from schema, drift-checked in the generator gate),
 `docs/TUTORIAL_FIRST_APP.md` (built on the sample the RuntimeHost gate regenerates, so it cannot rot
 silently), and validator error codes/hints all exist. The DoD — a newcomer building the tutorial app
-from docs alone — has not been exercised.
+from docs alone — has now been exercised.
 
-**How to fix.** Combine with REG-13: the same person, same session, two DoDs closed at once.
+**Closed.** The same 2026-07-22 independent-tester run that closed REG-13 (see that entry) built
+`NPDevSamples/simple-contact-intake` from `docs/TUTORIAL_FIRST_APP.md` alone — docs only, no MCP
+tools or CLI validator used to fill gaps — and verified it booted and worked (both the tutorial's
+create example and its invariant-failure example). Pass bar met on the first cold run. Evidence:
+`NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/friction-log-task-b.md`. Real,
+dated findings (docs improve even on a pass): the tutorial's own literal `gradlew.bat bootJar`
+command fails on an undocumented RuntimeHost-libs staging prerequisite whose own suggested fix also
+fails standalone in a fresh worktree; the doc's claimed `400` status for an invariant violation is
+actually `422`. Full list: `docs/LAUNCH_READINESS_GAPS.md`'s "External-tester findings, 2026-07-22".
 
 ### 2.7 REG-15 — LNCH-23: trademark clearance and release tag
 
-**Type:** PROCESS · **Priority:** P2 · **Blocked on you / counsel** · **Status:** PARTIAL
+**Type:** PROCESS · **Priority:** P2 · **Status:** **PARTIAL — release tag DONE, trademark parked.**
+The **release tag was cut 2026-07-22** (`beta1.1`, annotated, on the `beta1-vision-spine → main` merge
+commit `3e29cca`) — the CI-green, register-closed milestone. `run-release-checklist-gate.ps1` no
+longer lacks a tag to work from. **Trademark clearance is deliberately parked**: the owner confirmed
+this is an individual portfolio project with no mark to defend, so a professional clearance can wait
+indefinitely without blocking anything. The two preliminary findings on file ("NP DEV Soluções em
+T.I.", NPDEV LIMITED UK #14176093) remain recorded for if the posture ever changes. What follows is
+the original PARTIAL framing:
 
 **What.** LICENSE (Apache-2.0, ratified to Marcelo Giazzon), ADR-0007 (self-hosted/source-first, no
 telemetry at launch), `docs/RELEASE_PROCESS.md`, `CHANGELOG.md` and
@@ -798,7 +951,7 @@ verification ledger, and never let a summary claim more than its evidence file.
 
 ### 3.2 REG-17 — No third party has ever reproduced any verification
 
-**Type:** PROCESS · **Severity:** MEDIUM · **Effort:** M
+**Type:** PROCESS · **Severity:** MEDIUM · **Effort:** M · **Status:** **PARTIAL (advanced 2026-07-22).**
 
 **What.** Every green suite, live rehearsal and gate run in this project's history was produced on
 one machine, by you or an AI session you supervised. The verification ledger is honest and detailed
@@ -811,9 +964,20 @@ strangers will run these gates on hardware you have never seen.
 **Where.** Blocked on REG-10 (CI green) and REG-11 (cross-platform scripts) — those two are the
 mechanism by which a third party becomes *able* to reproduce anything.
 
-**How to fix.** REG-10 → REG-11 → then have one external person clone, build, and run the gates on
-Linux from `docs/` alone, recording every point where they had to ask a question. That is the same
-shape as REG-13/REG-14 and can be the same session.
+**Advanced (2026-07-22), bonus of the REG-13/14 closure run (Part B, Task C).** The same
+independent tester (fresh context, own worktree, cold brief, no coaching) ran
+`run-generator-gate.ps1` (completed: FAILED, 3/172 tests — a real pre-existing suite finding, not a
+tooling gap, filed separately) and `run-runtimehost-gate.ps1` (completed: FAILED, hit the same
+RuntimeHost-libs staging gap Task B found). Every question it had to ask along the way is logged.
+**Not fully closed**: `run-frontend-gate.ps1`/`run-beta-release-gate.ps1` were not attempted
+(time budget; the latter is an explicitly long-running multi-script evidence orchestration, not a
+quick reproduction), and this ran inside the same sandbox/OS as the driving session rather than on
+genuinely unknown hardware (a real limitation of the subagent-as-tester approximation, honestly
+noted). Evidence: `NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/friction-log-task-c.md`.
+
+**How to fix (what remains).** A real external person (or a fresh session on hardware this project
+has never touched — a different OS/machine, ideally Linux) clones, builds, and runs the remaining
+two gates from `docs/` alone.
 
 ## 3.3 REG-18…REG-26 — findings filed by REG-16's Tier-A adversarial review (2026-07-21)
 
@@ -854,22 +1018,27 @@ headline behaviour.
 | Item | Sev | Finding | Status / fix |
 |---|---|---|---|
 | **REG-27** | MED | **REG-8 Trigger C false-negative for a fresh-installed build.** Trigger C (`databaseMigratedPastThisBuild`) only fires if the rolled-back-to build's fingerprint has a prior `APPLIED`/`MANUALLY_MARKED_DONE` row in `npdev_schema_history`. A build whose fingerprint was reached by **fresh install** never had one (the blank-fingerprint boot writes no history row; `afterMigrate` wrote only `npdev_schema_metadata`). So the register's own canonical example — original fresh-installed build N, N+1 drops a column, roll back to N — was **not** refused; the dropped column was still silently re-added empty. The headline test passed only because it hand-seeded an `APPLIED` row for N that a real fresh install never writes. | **CLOSED (2026-07-22).** `afterMigrate` now records the initial realization as an `APPLIED` history point on the fresh-install path (`storedAtBootStart` blank), so every fingerprint the DB has genuinely been at is visible to Trigger C. Safe there (runs after `flyway.migrate()`, so no virgin-DB Flyway trip). RED-first: two new tests in `SchemaLifecycleExecutorDatabaseMigratedPastBuildTest` — a direct fresh-install-records-history assertion and the honest end-to-end (no hand-seeded row). |
-| **REG-28** | LOW–MED | **Stale-mark fast-forward (REG-7.2).** `MigrationMarkStore` records only the *target* fingerprint — no `from`-fingerprint binding and no TTL. A leftover mark for X (a deploy planned then abandoned, so `findMatching` never consumed it) will silently authorize the *first* future boot whose target is X — from whatever the DB is actually at — fast-forwarding with zero migration/classify/Trigger-C passes. Content-hash fingerprints + consume-on-use narrow the real trigger to a re-release of the identical model, but the mechanism has no guard and is untested. | **OPEN.** Fix: bind the mark to a `(from_fingerprint → to_fingerprint)` pair (only honor when `stored` equals the mark's expected `from`), and/or add an expiry. Add the leftover-mark-authorizes-a-later-target test the current suite lacks. |
-| **REG-29** | LOW (bug) / MED (coverage) | **Claim-release-on-refusal is correct but untested.** The production `finally` in `migrate` does release the boot's own claim on a refusal thrown from inside the migration body (Trigger C, destructive-without-token) — verified by reading. But no test proves it: the one "refuses" test in `SchemaLifecycleExecutorMigrationClaimTest` fails at claim *acquisition* (PK collision), where the boot never held a claim. The wedge-risk property that matters most is unverified. | **OPEN (test gap; code correct).** Add a test: hold a claim, make `beforeMigrate` throw a refusal, assert the claim row is gone afterward. |
-| **REG-30** | MINOR | **Duplicate marks each survive one consume.** Two marks for the same fingerprint → `consume` deletes only the matched row; the older duplicate survives to fast-forward a second future boot at that fingerprint. | **OPEN (edge case).** Delete all rows for the fingerprint on consume, or unique-constrain `marked_fingerprint`. Fold into the REG-28 fix. |
+| **REG-28** | LOW–MED | **Stale-mark fast-forward (REG-7.2).** `MigrationMarkStore` records only the *target* fingerprint — no `from`-fingerprint binding and no TTL. A leftover mark for X (a deploy planned then abandoned, so `findMatching` never consumed it) will silently authorize the *first* future boot whose target is X — from whatever the DB is actually at — fast-forwarding with zero migration/classify/Trigger-C passes. Content-hash fingerprints + consume-on-use narrow the real trigger to a re-release of the identical model, but the mechanism has no guard and is untested. | **CLOSED (2026-07-22).** `MigrationMarkStore` now binds every mark to a `(from_fingerprint, marked_fingerprint)` pair; `findMatching(dataSource, fromFingerprint, toFingerprint)` only returns a mark when the boot's OWN live stored fingerprint equals the recorded `from`. `SchemaAcknowledgmentController#markDone` takes `fromFingerprint`/`toFingerprint` (was `fingerprint`); `SchemaLifecycleExecutor.beforeMigrate` passes `stored` as `from`. Pre-fix (unbound, `from IS NULL`) rows are never matched again — ordinary SQL null semantics on `WHERE from_fingerprint = ?`, no special-case code needed; the table upgrades in place via a guarded `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` for a genuinely pre-existing deployment (new installs declare the column directly in `CREATE TABLE`). RED-first (`SchemaLifecycleExecutorMigrationMarkTest`): a new test proves a mark recorded for `from=A` does not fire when live-stored is `Z`, and does fire when live-stored is `A`; existing scenarios updated as fixture changes only. **Verified live**: real boot rehearsal against `superuser-admin-console` (H2Local, real jar, real ControlPanel API) — a mark inserted for a `from` that didn't match the live stored fingerprint was correctly left unconsumed (ordinary classify() ran instead); the same mark fired once the stored fingerprint was made to match. Evidence: `NPDev_General__OutsideRepo/reg28-30-evidence/`. `docs/SCHEMA_EVOLUTION.md`'s "marking a migration as done" section updated to the from→to form. |
+| **REG-29** | LOW (bug) / MED (coverage) | **Claim-release-on-refusal is correct but untested.** The production `finally` in `migrate` does release the boot's own claim on a refusal thrown from inside the migration body (Trigger C, destructive-without-token) — verified by reading. But no test proves it: the one "refuses" test in `SchemaLifecycleExecutorMigrationClaimTest` fails at claim *acquisition* (PK collision), where the boot never held a claim. The wedge-risk property that matters most is unverified. | **CLOSED (2026-07-22).** Added `refusalWhileHoldingOwnClaimStillReleasesIt` to `SchemaLifecycleExecutorMigrationClaimTest`: seeds Trigger C's canonical shape (REG-8) so `beforeMigrate` throws from inside `migrate`'s try block, *after* this boot's own claim was acquired; asserts the throw and that `MigrationClaimStore.current` is empty afterward. RED-first: verified the test fails (claim left behind) when the `finally`'s release is neutralized, then confirmed it passes with the real code. No production change — test-only, as the finding says the code is already correct. |
+| **REG-30** | MINOR | **Duplicate marks each survive one consume.** Two marks for the same fingerprint → `consume` deletes only the matched row; the older duplicate survives to fast-forward a second future boot at that fingerprint. | **CLOSED (2026-07-22).** Folded into the REG-28 fix: a unique index on `(from_fingerprint, marked_fingerprint)` rejects a duplicate mark for the identical transition at insert time (`IllegalStateException`), so there is never a second row to survive a consume. Verified live against `superuser-admin-console`: re-`POST`ing an identical `(from, to)` pair via the real ControlPanel API returned `500` and `GET /marks` still showed exactly one row. Unit coverage: `duplicateMarkForTheSameTransitionIsRejected` in `SchemaLifecycleExecutorMigrationMarkTest`. |
 
 Also noted (no ID, worth a one-line code comment): `findExternalSchemaIncompatibilities` (REG-7.1)
 presence-checks columns that have no declared type in `businessTableColumnTypes()` rather than
 type-checking them — fine for typed columns (the mismatch is genuinely flagged), just not total.
 
 **Net:** REG-7's three sub-features and REG-8's refusal are delivered and, with REG-27 fixed, REG-8
-now genuinely refuses its own canonical example. REG-28/29/30 are small, bounded follow-ups (each
-well under a session); none is release-blocking, but REG-28 is the one with real (if narrow) data-
-integrity weight and should be scheduled next.
+now genuinely refuses its own canonical example. **REG-28/29/30 are now CLOSED (2026-07-22)** — see
+each row above and `docs/REG28_30_REG12S2_CLOSURE_PLAN.md`.
 
 ---
 
 ## 4. Suggested order (revised 2026-07-21 after independent code verification)
+
+> **SUPERSEDED (2026-07-22).** The numbered order below was written before REG-2, REG-3, REG-9 and
+> others were closed, so it now lists already-CLOSED items as "next actions." Do **not** action it as
+> written. The current action order lives in
+> `docs/AI_SESSION_DIGEST_2026-07-22_LNCH22_CLOSURE.md` (§9) and `docs/POST_LNCH22_EXECUTION_PLAN.md`.
+> The list below is kept only as a record of the 2026-07-21 reasoning.
 
 1. **REG-3** (`GATE-REL-1`) — near-free now: the design conflict it described was already fixed
    2026-05-14. Close the misdiagnosis and wire up the stale evidence-report orchestration; removes a

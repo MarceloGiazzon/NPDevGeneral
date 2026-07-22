@@ -38,12 +38,42 @@ New-Item -ItemType Directory -Force -Path $runtimeHostLibs | Out-Null
 Ensure-NPDevFile $kernelGradleWrapper "Kernel Gradle wrapper"
 Ensure-NPDevFile $generatorGradleWrapper "Generator Gradle wrapper"
 
+# Resolve the external build root by MIRRORING build.gradle's resolveNpdevBuildRoot EXACTLY, so this
+# script's jar-discovery ($externalGradleBuildRoot) scans the very directory the Kernel/Generator
+# gradle builds actually write to -- whether or not -PnpdevBuildRoot / NPDEV_BUILD_ROOT take effect in
+# a given environment. The gradle builds run with rootDir = <workspace>/NPDevKernel (and
+# /NPDevGenerator); their build.gradle walks UP for a directory literally named 'NPDev_General' and,
+# if found, redirects output to <that>/../Build, else to <rootDir>/../Build (= <workspace>/Build).
+# The old <workspace.parent>/Build guess diverged whenever the workspace folder is not named exactly
+# 'NPDev_General' or is nested inside one -- e.g. a `git clone` folder named 'NPDevGeneral', or a git
+# worktree under .../.claude/worktrees -- so the built jars landed where discovery never scanned
+# ("No RuntimeHost jars were discovered"). Precedence matches build.gradle: property/env override,
+# else the NPDev_General walk with the same fallback. (See knowledge card runtimehost-libs-dir-mismatch.)
+$gradleRootDir = Get-Item -LiteralPath $kernelRoot
+$externalBuildRoot = if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_BUILD_ROOT)) {
+    Normalize-NPDevPath $env:NPDEV_BUILD_ROOT
+}
+else {
+    $ancestor = $gradleRootDir
+    while ($null -ne $ancestor -and $ancestor.Name -ne 'NPDev_General') {
+        $ancestor = $ancestor.Parent
+    }
+    if ($null -ne $ancestor -and $null -ne $ancestor.Parent) {
+        Normalize-NPDevPath (Join-Path $ancestor.Parent.FullName "Build")
+    }
+    else {
+        Normalize-NPDevPath (Join-Path $gradleRootDir.Parent.FullName "Build")
+    }
+}
+$externalGradleBuildRoot = Join-Path $externalBuildRoot "gradle"
+$env:NPDEV_BUILD_ROOT = $externalBuildRoot
+
 if ($BuildLocalJars) {
-    Write-NPDevInfo "Building local Kernel/Contract runtime jars for RuntimeHost staging"
-    Invoke-NPDevCommandStreaming -WorkingDirectory $kernelRoot -Executable $kernelGradleWrapper -Arguments @("jar", "--no-daemon", "--console=plain")
+    Write-NPDevInfo "Building local Kernel/Contract runtime jars for RuntimeHost staging (npdevBuildRoot=$externalBuildRoot)"
+    Invoke-NPDevCommandStreaming -WorkingDirectory $kernelRoot -Executable $kernelGradleWrapper -Arguments @("jar", "-PnpdevBuildRoot=$externalBuildRoot", "--no-daemon", "--console=plain")
 
     Write-NPDevInfo "Building local Generator and CLI jars for RuntimeHost staging"
-    Invoke-NPDevCommandStreaming -WorkingDirectory $generatorRoot -Executable $generatorGradleWrapper -Arguments @(":generator:jar", ":tools:npdev-cli:jar", "--no-daemon", "--console=plain")
+    Invoke-NPDevCommandStreaming -WorkingDirectory $generatorRoot -Executable $generatorGradleWrapper -Arguments @(":generator:jar", ":tools:npdev-cli:jar", "-PnpdevBuildRoot=$externalBuildRoot", "--no-daemon", "--console=plain")
 }
 
 $sourceRoots = @(
@@ -51,14 +81,6 @@ $sourceRoots = @(
     (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevGenerator"),
     (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevKernel")
 )
-$workspaceItem = Get-Item -LiteralPath $WorkspaceRoot
-$externalBuildRoot = if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_BUILD_ROOT)) {
-    Normalize-NPDevPath $env:NPDEV_BUILD_ROOT
-}
-else {
-    Normalize-NPDevPath (Join-Path $workspaceItem.Parent.FullName "Build")
-}
-$externalGradleBuildRoot = Join-Path $externalBuildRoot "gradle"
 
 $sourceByName = @{}
 foreach ($sourceRoot in $sourceRoots) {

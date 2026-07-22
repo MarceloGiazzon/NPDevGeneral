@@ -948,3 +948,89 @@ textarea {
 .object-preview-row {
   font-size: 13px;
 }
+
+/* LNCH-10 slice 2 (REG-12): print stylesheet. #printRoot is built by printPanel() in app.js and is
+   the ONLY thing visible when printing -- every other element (app-bar, side-nav, the panel itself,
+   modals) is force-hidden inside the @media print block below. Kept deliberately self-contained and
+   inlinable (no external assets, no @media(screen) dependency for its own layout) so the Slice 3
+   server-side PDF renderer (docs/REG12_DOCUMENT_EXPORT_PLAN.md) can render this identical markup. */
+.print-root {
+  display: none;
+}
+
+.print-document {
+  font-family: var(--np-font, Inter, Segoe UI, Roboto, Arial, sans-serif);
+  color: #18202a;
+}
+
+.print-header {
+  margin-bottom: 16px;
+  border-bottom: 2px solid #18202a;
+  padding-bottom: 8px;
+}
+
+.print-header h1 {
+  margin: 0 0 4px 0;
+  font-size: 20px;
+}
+
+.print-meta {
+  font-size: 12px;
+  color: #4a5568;
+}
+
+.print-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.print-table th,
+.print-table td {
+  border: 1px solid #18202a;
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 12px;
+}
+
+.print-table th {
+  background: #eef1f5;
+}
+
+.print-table td.empty {
+  text-align: center;
+  color: #4a5568;
+}
+
+.print-footer {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #4a5568;
+  text-align: right;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-root,
+  .print-root * {
+    visibility: visible;
+  }
+  .print-root {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
+  .print-table {
+    page-break-inside: auto;
+  }
+  .print-table tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+  .print-table thead {
+    display: table-header-group;
+  }
+}

@@ -106,13 +106,20 @@ Java stack trace or an internal class name.
 
 ## 3. Generate + build + run
 
-```sh
-./npdev generate app --model NPDevSamples/simple-contact-intake/Input/model.json \
-  --config NPDevSamples/simple-contact-intake/Input/config.json \
-  --output build/npdev-tutorial-output
+**One-time setup — do this first in a fresh clone or worktree.** A generated FinalApp compiles
+against the platform's RuntimeHost/kernel jars, which have to be built and staged once. Run this from
+the repo root *before* your first build — it builds those jars and stages them where every generated
+app looks for them:
+
+```powershell
+pwsh -File scripts\runtimehost\sync-runtimehost-libs.ps1 -BuildLocalJars
 ```
 
-Or, for the full assembled-and-buildable FinalApp (what the gate actually does):
+You only repeat it after you change kernel/adapter/generator Java. If a later build fails with
+`Missing NPDev RuntimeHost libs manifest in …\runtimehost-libs`, this is the step that was skipped.
+
+Then generate, build, and run. The PowerShell path below assembles the exact FinalApp layout the CI
+gate builds:
 
 ```powershell
 .\NPDevSamples\scripts\generate-sample-app.ps1 -SampleId simple-contact-intake -NPDevRoot .
@@ -121,18 +128,36 @@ cd NPDevSamples\simple-contact-intake\Output\App
 java -jar build\libs\FinalExec-0.1.0.jar --server.port=8080
 ```
 
-## 4. Verify it's real
+The cross-platform CLI equivalent produces the same buildable app tree — use `./npdev` on
+Linux/macOS, `npdev.bat` on Windows, and point `--output` at a directory **outside the repo** (per
+`docs/BUILD_OUTPUT_LOCATION_POLICY.md`):
 
 ```sh
-curl -s -X POST http://127.0.0.1:8080/api/contact_messages \
-  -H "Content-Type: application/json" -H "X-Api-Key: dev-key" \
-  -d '{"name":"Ada","email":"ada@example.test","message":"Hello","status":"New"}'
+./npdev generate app --model NPDevSamples/simple-contact-intake/Input/model.json \
+  --config NPDevSamples/simple-contact-intake/Input/config.json \
+  --output ../npdev-tutorial-output
 ```
 
-You should get back the saved record with a generated `id`. Submit one with a blank `name` and you
-should get a `400` carrying the `NameRequired` invariant's code and message, not a stack trace —
-the same invariant declared in the model above, enforced exactly where the flow said to enforce
-it.
+## 4. Verify it's real
+
+The reliable cross-shell way (identical in bash and Windows PowerShell — no quoting pitfalls) is to put
+the request body in a file and post that:
+
+```sh
+echo '{"name":"Ada","email":"ada@example.test","message":"Hello","status":"New"}' > body.json
+curl -s -X POST http://127.0.0.1:8080/api/contact_messages -H "Content-Type: application/json" -H "X-Api-Key: dev-key" --data "@body.json"
+```
+
+On bash you can also inline the body with `-d '{…}'`. **On Windows PowerShell do not** — the inline
+single quotes get mangled and the server returns a misleading `400 Bad Request` (a JSON-parse error,
+not a real app failure); use the `--data "@body.json"` form above, or `Invoke-RestMethod -Method Post
+-Uri http://127.0.0.1:8080/api/contact_messages -Headers @{ "X-Api-Key" = "dev-key" } -ContentType
+"application/json" -Body (Get-Content body.json -Raw)`.
+
+You should get back the saved record with a generated `id` (plus platform-managed fields such as
+`version` and `tenantId`). Submit one with a blank `name` and you should get a `422 Unprocessable
+Entity` carrying the `NameRequired` invariant's code and message, not a stack trace — the same
+invariant declared in the model above, enforced exactly where the flow said to enforce it.
 
 ## 5. Change your model later
 

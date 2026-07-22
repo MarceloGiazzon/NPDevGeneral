@@ -1,0 +1,5 @@
+dependencies {
+    implementation project(':kernel')
+    implementation project(':core')
+    implementation 'com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10'
+}

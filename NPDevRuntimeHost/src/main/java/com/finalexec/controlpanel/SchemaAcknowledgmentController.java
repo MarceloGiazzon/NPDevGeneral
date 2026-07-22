@@ -107,15 +107,18 @@ public class SchemaAcknowledgmentController {
 
     // ---- REG-7.2: "mark migration as done" (D2 -- ControlPanel-only v1, no generator/CLI round-trip) ----
 
-    public record MarkDoneRequest(String fingerprint, String note) {
+    public record MarkDoneRequest(String fromFingerprint, String toFingerprint, String note) {
     }
 
     /**
      * REG-7.2. GeneXus-style "the schema is already at this fingerprint; stop trying to migrate to
      * it." Submitted on the CURRENTLY RUNNING app (same reasoning as {@link #acknowledge}: the boot
      * this authorizes has no server of its own to accept the mark on). {@code SchemaLifecycleExecutor}
-     * (via {@link MigrationMarkStore}) consumes it on the next boot targeting that exact fingerprint,
-     * fast-forwarding the stored fingerprint pointer with NO migration passes run.
+     * (via {@link MigrationMarkStore}) consumes it on the next boot whose OWN live stored fingerprint
+     * still equals {@code fromFingerprint} and whose target equals {@code toFingerprint} (REG-28: bound
+     * to that exact transition, not just the target, so a leftover/abandoned mark can never fast-
+     * forward an unrelated boot). The operator reads both values off the SAME migration plan printed by
+     * {@code Build-NpdevApp.ps1 -PlanOnly}/{@code -Upgrade} -- it already prints the pair.
      */
     @PostMapping("/mark-done")
     public ResponseEntity<Map<String, Object>> markDone(
@@ -124,15 +127,16 @@ public class SchemaAcknowledgmentController {
         requireSuperUser(httpRequest);
         DataSource dataSource = requireDataSource();
 
-        String fingerprint = request.fingerprint() == null ? null : request.fingerprint().trim();
-        if (fingerprint == null || fingerprint.isBlank()) {
+        String fromFingerprint = request.fromFingerprint() == null ? null : request.fromFingerprint().trim();
+        String toFingerprint = request.toFingerprint() == null ? null : request.toFingerprint().trim();
+        if (fromFingerprint == null || fromFingerprint.isBlank() || toFingerprint == null || toFingerprint.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "missing_required_field",
-                    "detail", "fingerprint is required"));
+                    "detail", "both fromFingerprint and toFingerprint are required"));
         }
 
         ExecutionContext context = runtimeContextService.currentContext(httpRequest);
         MigrationMarkStore.Mark inserted = MigrationMarkStore.insert(
-                dataSource, fingerprint, context.actorId(), request.note());
+                dataSource, fromFingerprint, toFingerprint, context.actorId(), request.note());
 
         return ResponseEntity.status(201).body(toResponseBody(inserted));
     }
@@ -150,6 +154,7 @@ public class SchemaAcknowledgmentController {
     private static Map<String, Object> toResponseBody(MigrationMarkStore.Mark row) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("id", row.id());
+        body.put("fromFingerprint", row.fromFingerprint());
         body.put("markedFingerprint", row.markedFingerprint());
         body.put("markedAtUtc", row.markedAtUtc());
         body.put("markedBy", row.markedBy());
