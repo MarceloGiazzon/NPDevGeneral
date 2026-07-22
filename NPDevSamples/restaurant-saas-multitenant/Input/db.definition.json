@@ -8,9 +8,9 @@
     "createBusinessTables": true
   },
   "schemaLifecycle": {
-    "strategy": "DropAndRecreateOnStructureChange",
-    "allowDestructiveRecreate": true,
-    "destructiveRecreateConfirmation": "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED",
+    "strategy": "KeepExistingIfCompatible",
+    "allowDestructiveRecreate": false,
+    "destructiveRecreateConfirmation": "",
     "scope": "NpdevOwnedTablesOnly"
   }
 }

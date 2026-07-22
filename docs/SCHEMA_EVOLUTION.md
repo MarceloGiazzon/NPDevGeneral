@@ -426,15 +426,23 @@ with `allowDestructiveRecreate: false`, which makes the itemized token the only 
 The flag exists for backward compatibility with apps generated before this feature; existing apps
 keep working unchanged.
 
-> **Where the shipped corpus actually stands (as of LNCH-1 T4, 2026-07-21).** The recommended posture
-> is the *documented* default, but most shipped definitions predate it and still carry the blanket
-> one — this is backward compatibility, not an endorsement. Counting the JDBC-backed
-> `db.definition.json` files under `AppGen\apps` and `NPDevSamples`: **6** are on the recommended
-> posture (`simple-user-registry-h2local`, `simple-product-h2local`, `simple-consumer-h2server`,
-> `simple-user-registry-postgres`, `NPDevSamples\12works\gift-idea-tracker`, and
-> `npdev_split_model_sample_app`) and **27** still carry the blanket posture; a further **5**
-> `InMemory`/`RecreateOnAppStart` definitions are non-persistent, so this posture does not apply to
-> them. Recount with:
+> **Where the shipped corpus actually stands (as of REG-1, 2026-07-21).** The recommended posture is
+> the documented default, and after the REG-1 flip batch the corpus now agrees with it. Counting all
+> **20** `db.definition.json` files under `AppGen\apps` and `NPDevSamples`:
+> - **13 on the recommended posture** (`KeepExistingIfCompatible` + `allowDestructiveRecreate: false`):
+>   the four `_official` apps `WmsOffice`/`WordLab`/`AuxScreen`/`Pigmentampa`, plus `invoice-bonds-demo`,
+>   `restaurant-saas-multitenant`, `superuser-admin-console` (all flipped in REG-1), plus the six
+>   already on it — `simple-user-registry-h2local`, `simple-product-h2local`, `simple-consumer-h2server`,
+>   `simple-user-registry-postgres`, `NPDevSamples\12works\gift-idea-tracker`, `npdev_split_model_sample_app`
+>   (the last is `InMemory`, so the posture is moot, but its strategy is the recommended one).
+> - **2 still on the blanket posture, both DELIBERATELY** — `lnch1-rehearsal` (exists to rehearse
+>   upgrades on a shipped-shaped definition) and `simple-user-registry-h2local-freshdb` (the cited
+>   "freshdb" CI pattern). Flipping either would defeat the scenario it exists to test.
+> - **5 `InMemory` + `RecreateOnAppStart`** (`_official\Claude`, `pack-sample`, `simple-user-registry-inmemory`,
+>   `canonical-demo`, `simple-contact-intake`) — non-persistent, so the posture does not apply.
+>
+> Every remaining blanket-posture definition is now blanket **for a documented reason**, not by
+> default — that is REG-1's "done" state. Recount with:
 > `grep -rl '"strategy": "KeepExistingIfCompatible"'` vs
 > `grep -rl '"strategy": "DropAndRecreateOnStructureChange"'` across those two trees.
 

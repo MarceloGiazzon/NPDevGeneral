@@ -81,7 +81,7 @@ MEDIUM)** — is real convergence, not a treadmill.
 
 ### 1.1 REG-1 — 9 app definitions remain on the deprecated blanket destructive posture (down from 27)
 
-**Type:** GAP · **Severity:** MEDIUM · **Effort:** S/M (was M) · **Status:** PARTIAL (6 of 15 flippable flipped)
+**Type:** GAP · **Severity:** MEDIUM · **Effort:** S/M (was M) · **Status:** **CLOSED (2026-07-21, REG-1/P8).** All 7 flip-worthy apps flipped to `KeepExistingIfCompatible` + `allowDestructiveRecreate: false` + `destructiveRecreateConfirmation: ""`: the four `_official` apps (WmsOffice, WordLab, AuxScreen, Pigmentampa), `invoice-bonds-demo` (AppGen), and `restaurant-saas-multitenant` + `superuser-admin-console` (NPDevSamples). Verified per app: all 7 regenerate cleanly and their generated `schema-realization-manifest.json` carries `lifecycle=KeepExistingIfCompatible`. Live end-to-end additive-change proof on `superuser-admin-console` (H2Local): boot 1 created the schema (fingerprint `179a631`), added a field → regen (`a19e31c`) → boot 2 logged *"every difference is a new non-bond column ... skipping destructive recreation"* and started clean. Corpus rebuilt (`build_knowledge.py`); `docs/SCHEMA_EVOLUTION.md` recount updated to **13 recommended / 2 blanket / 5 InMemory-N/A of 20** — the 2 remaining blanket apps (`lnch1-rehearsal`, `simple-user-registry-h2local-freshdb`) are blanket by documented design. The 5 AppGen flips are layer-2 (outside this git repo); the 2 NPDevSamples flips are committed here.
 
 **What.** `docs/SCHEMA_EVOLUTION.md` recommends `strategy: KeepExistingIfCompatible` +
 `allowDestructiveRecreate: false`. **Re-verified 2026-07-21, after the sample-app cleanup below**
