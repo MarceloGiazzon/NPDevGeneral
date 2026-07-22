@@ -90,10 +90,18 @@ is actually done today.
 > green on a real GitHub Actions runner** (REG-10), which retroactively *proves* several items that
 > were "done but only on one Windows machine."
 >
-> **2026-07-22 addendum — `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` executed, both parts DONE.**
-> LNCH-18 and LNCH-22 closed via an independent cold-tester run (see the crosswalk row above);
-> LNCH-10 Slice 3 (server-side PDF) closed against `docs/REG12_DOCUMENT_EXPORT_PLAN.md`, verified
-> live. **Final tally: 24 DONE · 0 PARTIAL · 0 OPEN — the launch ledger is fully closed.**
+> **2026-07-22 addendum — `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` executed; LNCH-10 + LNCH-18 DONE,
+> LNCH-22 held PARTIAL on verification.** LNCH-10 Slice 3 (server-side PDF) closed against
+> `docs/REG12_DOCUMENT_EXPORT_PLAN.md`, verified live + **CI-green** (run `29943008077`, SHA
+> `b5c7c88`). LNCH-18 (authoring) closed via an independent cold-tester run. **LNCH-22 did NOT clear
+> its "builds from docs alone" bar:** that same run's own friction log shows the tutorial's `bootJar`
+> step failed on an unstated `runtimehost-libs` staging prerequisite and was escaped only by reading
+> the generated `build.gradle` + a pre-populated libs dir a fresh clone would not have (finding #1,
+> end of this tier); a second independent cold run hit the identical wall. Root-caused to a
+> git-worktree build-root divergence in `sync-runtimehost-libs.ps1` (**now fixed**) + an undocumented
+> one-time setup step (**now added** to `docs/TUTORIAL_FIRST_APP.md`); **re-validation from a
+> genuinely fresh worktree is pending before LNCH-22 flips to DONE.** **Honest tally: 23 DONE ·
+> 1 PARTIAL (LNCH-22) · 0 OPEN.**
 >
 > **LNCH ↔ REG crosswalk (where an LNCH's remaining slice lived as a register item):**
 >
@@ -104,7 +112,7 @@ is actually done today.
 > | LNCH-18 (authoring test) | REG-13 | PARTIAL | **DONE** | Independent cold-tester run 2026-07-22 (subagent, fresh context, own worktree, cold brief only — see `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part B.1 option 2) authored an issue tracker via the CLI validator fallback (no MCP tools registered) and verified create/list/edit/close over REST, unaided. Evidence + friction log: `NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/` |
 > | LNCH-19 (Linux CI) | REG-10 | PARTIAL | **DONE** | `npdev-pr-gate.yml` observed **green** on ubuntu-latest (run `29899362276`); six root-caused first-contact-with-Linux fixes |
 > | LNCH-20 (cross-platform) | REG-11 | OPEN | **DONE** | Cross-platform build **proven** by the green run; also fixed a real generated-app `D:/`-cache portability bug |
-> | LNCH-22 (docs test) | REG-14 | PARTIAL | **DONE** | Same 2026-07-22 independent run built the tutorial app from `docs/TUTORIAL_FIRST_APP.md` alone (docs only, no tool gap-filling), verified booted and working. Evidence + friction log: `NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/` |
+> | LNCH-22 (docs test) | REG-14 | PARTIAL | **PARTIAL** | Verification (2026-07-22) reverted the DONE: two independent cold runs could NOT build the tutorial *from docs alone* — both hit an unstated `runtimehost-libs` staging wall, escaped only by reading generated `build.gradle` + a leftover libs dir. Fix landed (`sync-runtimehost-libs.ps1` worktree build-root + a tutorial one-time-setup step); flips to DONE after a fresh-worktree docs-only re-run passes. Evidence: `NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/` |
 > | LNCH-23 (launch checklist) | REG-15 | PARTIAL | **DONE** | Release tag cut (`beta1.1`, on the `beta1→main` merge); license/ADR/release-process already done; trademark parked (portfolio project, owner's decision) |
 >
 > **Register-native items (findings that are NOT LNCH gaps — do not look for them here).** The register
@@ -116,9 +124,10 @@ is actually done today.
 > **promotion-panel retry-loop** bug (register §2.4) still open. The register is now the live, granular
 > tracker; this table is the launch-lifecycle roll-up.
 >
-> **All three previously-remaining launch items are now closed** (2026-07-22): LNCH-10 Slice 3
-> (server-side PDF), LNCH-18, and LNCH-22 (the external-tester run) — see the crosswalk row above.
-> The launch ledger reads **24 DONE · 0 PARTIAL · 0 OPEN**.
+> **Two of the three previously-remaining launch items closed** (2026-07-22): LNCH-10 Slice 3
+> (server-side PDF) and LNCH-18 (authoring). **LNCH-22 stays PARTIAL** pending a fresh-worktree
+> docs-only re-run (the `runtimehost-libs` fix + tutorial one-time-setup step are in; see the
+> addendum above). The launch ledger reads **23 DONE · 1 PARTIAL · 0 OPEN**.
 
 | ID | Title | Verb | Status | Priority | Effort |
 |---|---|---|---|---|---|
@@ -143,7 +152,7 @@ is actually done today.
 | LNCH-19 | Linux CI running the quality gates + sample harness | Distribute | DONE | P1 | M |
 | LNCH-20 | Cross-platform build scripts (drop the Windows-only assumption) | Distribute | DONE | P2 | M |
 | LNCH-21 | Generated-app upgrade contract & compatibility policy | Distribute | DONE | P2 | M |
-| LNCH-22 | User-facing documentation & error-message quality | Distribute | DONE | P2 | L |
+| LNCH-22 | User-facing documentation & error-message quality | Distribute | PARTIAL | P2 | L |
 | LNCH-23 | Launch checklist: license, packaging, telemetry, release process | Distribute | DONE | P2 | M |
 | LNCH-24 | Commit hygiene: land the current uncommitted working tree | Distribute | DONE | P1 | S |
 
@@ -1062,7 +1071,8 @@ version N upgrades to N+1 with local `web/` customizations intact, proven in the
 
 ### LNCH-22 — User-facing documentation & error-message quality
 
-**Status:** DONE (2026-07-22) · **Priority:** P2 · **Effort:** L (incremental)
+**Status:** PARTIAL (2026-07-22 — DONE reverted on verification; fix landed, re-validation pending) ·
+**Priority:** P2 · **Effort:** L (incremental)
 
 **Update (2026-07-19).** `docs/DSL_REFERENCE.md` (generated, `--check`-mode drift detection),
 `docs/CONFIGURATION.md` (startup-validator refusal anchors), `docs/TUTORIAL_FIRST_APP.md`, and now
@@ -1070,17 +1080,20 @@ version N upgrades to N+1 with local `web/` customizations intact, proven in the
 pattern. `ValidationDiagnostic`/`ValidationDiagnosticNormalizer` (code/suggestedFix/helpKey) already
 existed; the LNCH-1 knowledge cards extend `npdev_search_fix` coverage to schema-evolution refusals.
 
-**Update (2026-07-22) — closed.** The same independent cold-tester run that closed LNCH-18 (see
-that entry) built `NPDevSamples/simple-contact-intake` from `docs/TUTORIAL_FIRST_APP.md` alone —
-docs only, no MCP tools or CLI validator used to patch gaps — and verified it booted and worked
-(both the tutorial's create example and its invariant-failure example). Task B pass bar met on the
-first cold run. Friction log:
-`NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/friction-log-task-b.md`. Real,
-dated findings from the run (docs improve even on a pass — see "External-tester findings,
-2026-07-22" at the end of this tier): the tutorial's own literal `gradlew.bat bootJar` command fails
-on an unstated RuntimeHost-libs staging prerequisite whose own suggested fix
-(`sync-runtimehost-libs.ps1 -BuildLocalJars`) also fails standalone in a fresh worktree; and the
-doc's claimed `400` status for an invariant violation is actually `422`.
+**Update (2026-07-22) — PARTIAL (verification reverted the DONE; fix in progress).** The independent
+cold-tester run built `NPDevSamples/simple-contact-intake` and reached a booting app — but **not
+*from docs alone***, which is this item's actual bar. The tutorial's literal `gradlew.bat bootJar`
+failed on an unstated RuntimeHost-libs staging prerequisite, whose own suggested fix
+(`sync-runtimehost-libs.ps1 -BuildLocalJars`) also failed standalone in the fresh worktree; the run
+only got unstuck by reading the generated `build.gradle` for an undocumented env override and pointing
+it at a pre-populated libs dir a fresh clone would not have. A second independent cold run hit the
+identical wall — strong evidence it is systemic, not a one-off. **Fixes landed:**
+`sync-runtimehost-libs.ps1` now exports a single resolved `NPDEV_BUILD_ROOT` so the local jar build
+and its jar-discovery agree even in a git worktree (the build-root divergence that was the root
+cause), and `docs/TUTORIAL_FIRST_APP.md` now carries an explicit one-time libs-staging step (plus the
+`400`→`422` correction). **Flips to DONE only after** a genuinely fresh-worktree, docs-only re-run
+builds the tutorial app with no leftover libs and no source-reading. Friction logs:
+`NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/friction-log-task-{a,b,c}.md`.
 
 **Why.** The existing docs are excellent *internal* docs — written for the platform's
 builders. A stranger has: no "first app in 30 minutes" tutorial, no DSL reference manual
