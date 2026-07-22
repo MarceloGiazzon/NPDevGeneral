@@ -664,7 +664,17 @@ REG-3 currently blocks the larger release gate independently.
 
 ### 3.1 REG-16 — The other 23 launch items have had zero adversarial review
 
-**Type:** PROCESS · **Severity:** **HIGH** · **Effort:** L
+**Type:** PROCESS · **Severity:** **HIGH** · **Effort:** L · **Status:** **TIER A COMPLETE (2026-07-21).**
+The independent, attack-first review of the LNCH-2 (tenant isolation) + LNCH-4 (auth) surface has now
+happened — REG-16's actual problem statement ("zero adversarial review") is resolved. Findings +
+triaged remediation plan: `docs/REG16_TENANT_AUTH_ADVERSARIAL_REVIEW.md`. **Headline: no CRITICAL or
+HIGH finding** — the tenant-isolation core is genuinely defense-in-depth (gateway *and* JDBC store
+both enforce `tenant_id`; seed/export route through the enforced gateway; no SUPERUSER bypass of
+business data; SQL-injection-safe query filters; revocation checked on both claim→context paths). The
+residual is **5 MEDIUM + 3 LOW + 1 INFO**, all login/throttle/actuator hardening, filed as dated
+**REG-18…REG-26** below. Per the plan's triage, with no CRITICAL/HIGH there is no *mandatory* Tier-B
+work; the MEDIUM/LOW remediations are scheduled, not dropped. (Item stays open until the owner decides
+whether to run Tier B / schedule REG-18…REG-22.)
 
 **What.** LNCH-1 has absorbed **five** full review→plan→implement→review rounds. Every other item in
 the ledger — including LNCH-2 (tenant isolation), LNCH-4 (auth), LNCH-13 (row-level authz) — has had
@@ -708,6 +718,28 @@ mechanism by which a third party becomes *able* to reproduce anything.
 **How to fix.** REG-10 → REG-11 → then have one external person clone, build, and run the gates on
 Linux from `docs/` alone, recording every point where they had to ask a question. That is the same
 shape as REG-13/REG-14 and can be the same session.
+
+## 3.3 REG-18…REG-26 — findings filed by REG-16's Tier-A adversarial review (2026-07-21)
+
+These are the MEDIUM/LOW/INFO findings from `docs/REG16_TENANT_AUTH_ADVERSARIAL_REVIEW.md` (R1), filed
+as dated items per the closure plan's triage rule so none is silently dropped. **None is a data-breach
+or auth-bypass; there was no CRITICAL/HIGH.** Full failure scenarios + fix sketches are in that
+document — this table is the ledger hook.
+
+| Item | Sev | Finding | Fix sketch (RED-first before fixing) |
+|---|---|---|---|
+| **REG-18** | MED | Login timing side-channel enables username enumeration (`LoginController` skips the PBKDF2 verify on the no/inactive-user path) | Dummy `PasswordHasher.verify` against a fixed decoy hash on that path so both branches take comparable time. **Quick win.** |
+| **REG-19** | MED | `LoginThrottle.windowsByKey` is unbounded → memory-exhaustion DoS via unique-username spray | Evict expired windows / size-cap the map. **Quick win.** |
+| **REG-20** | MED | No defense against password-spraying (limiter is per-`(tenant,username)` only; no per-IP/global) | Add a bounded per-IP/global failed-attempt limiter beside the per-username one. |
+| **REG-21** | MED | `password-reset/request` is unthrottled (email-bomb / token-row spam) | Throttle per (tenant,username)+IP (reuse REG-20's limiter); cap live tokens/user. |
+| **REG-22** | MED | Filter-level role gates (`ActuatorAdminGuardFilter`) trust JWT claim-roles without live re-resolution / `tv` check | Gate actuator on the super-key path specifically, or re-resolve roles+`tv` in the filter. |
+| **REG-23** | LOW | `tv`-less tokens are never revocation-checked (backward-compat by design) | Post a dated cutover (≥ max token lifetime), treat missing `tv` as 0 and enforce. |
+| **REG-24** | LOW | `"default"` tenant sentinel collides with a real tenant named `default` (ties to platform gap #15) | Reserve `default` as un-registerable, or change the sentinel. |
+| **REG-25** | LOW | Tenant match is case-sensitive while other layers lowercase → isolation-bucket fragmentation (not a cross-tenant bypass) | Canonical tenant-id casing at registration + comparison. |
+| **REG-26** | INFO | Granular JWT error codes disclose *why* a token failed | Decide keep-verbose vs. collapse-to-generic. Likely WONTFIX. |
+
+**Recommended Tier-B order if scheduled:** REG-18 + REG-19 (quick, no new infra) → REG-20 + REG-21
+(shared bounded limiter) → REG-22 → LOW items as capacity allows.
 
 ---
 
