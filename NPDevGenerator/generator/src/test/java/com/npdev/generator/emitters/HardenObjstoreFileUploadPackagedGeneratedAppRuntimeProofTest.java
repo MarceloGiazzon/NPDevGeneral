@@ -366,7 +366,14 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
         Path report = evidenceRoot.resolve("runtimehost-libs-sync-report.json");
         CommandResult result = runCommand(
                 List.of(
-                        "C:\\Program Files (x86)\\PowerShell\\7\\pwsh.exe",
+                        // REG-10/LNCH-20: resolve PowerShell 7 via PATH ("pwsh"), not a hardcoded
+                        // Windows install path. The absolute "C:\Program Files (x86)\PowerShell\7\pwsh.exe"
+                        // does not exist on a Linux CI runner, so ProcessBuilder.start() threw
+                        // java.io.IOException (No such file or directory) -- the first-ever GitHub Actions
+                        // run caught exactly this. "pwsh" is on PATH on both Windows (confirmed 7.x) and the
+                        // GitHub ubuntu-latest runner (PowerShell 7 preinstalled); -ExecutionPolicy is a
+                        // harmless no-op on Linux.
+                        "pwsh",
                         "-NoProfile",
                         "-ExecutionPolicy",
                         "Bypass",
