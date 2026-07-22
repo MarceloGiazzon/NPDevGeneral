@@ -27,6 +27,7 @@ Schema version: `1.0.0`. DSL version: `1.0.0`.
 | `ruleProfiles` | `array<ruleProfile | localModelRef>` |  |  |
 | `procedures` | `array<procedure | localModelRef>` |  |  |
 | `panels` | `array<panel | localModelRef>` |  |  |
+| `documents` | `array<document | localModelRef>` |  |  |
 | `guidePages` | `array<guidePage | localModelRef>` |  |  |
 | `aggregates` | `array<aggregate | localModelRef>` |  |  |
 | `autoPanels` | `array<autoPanel | localModelRef>` |  |  |
@@ -227,6 +228,17 @@ LNCH-12: recurring execution for a flow (cron expression + tenant scope). The ru
 | `explainability` | `object` |  |  |
 | `metadata` | `object` |  |  |
 | `guidePage` | `string` |  |  |
+
+## Document (LNCH-10 Slice 3 -- server-rendered PDF) (`#/$defs/document`)
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | `string` | yes |  |
+| `concept` | `string` | yes |  |
+| `title` | `string` |  |  |
+| `pageSize` | `"A4" | "Letter"` |  |  |
+| `marginMm` | `number` |  |  |
+| `metadata` | `object` |  |  |
 
 ## Field widgets
 

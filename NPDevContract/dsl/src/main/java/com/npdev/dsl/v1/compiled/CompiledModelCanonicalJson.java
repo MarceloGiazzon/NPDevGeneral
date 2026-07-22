@@ -61,7 +61,29 @@ public final class CompiledModelCanonicalJson {
         root.set("guidePages", toGuidePages(model));
         root.set("aggregates", toAggregates(model));
         root.set("autoPanels", toAutoPanels(model));
+        root.set("documents", toDocuments(model));
         return root;
+    }
+
+    private static ArrayNode toDocuments(CompiledModel model) {
+        ArrayNode documents = JsonNodeFactory.instance.arrayNode();
+        List<CompiledDocument> sorted = new ArrayList<>(model.getDocuments());
+        sorted.sort(Comparator.comparing(document -> normalize(document.name())));
+        for (CompiledDocument document : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(document.name()));
+            node.put("concept", safe(document.concept()));
+            node.put("title", safe(document.title()));
+            node.put("pageSize", safe(document.pageSize()));
+            if (document.marginMm() == null) {
+                node.putNull("marginMm");
+            } else {
+                node.put("marginMm", document.marginMm());
+            }
+            node.set("metadata", toObjectMap(document.metadata()));
+            documents.add(node);
+        }
+        return documents;
     }
 
     private static ArrayNode toAutoPanels(CompiledModel model) {

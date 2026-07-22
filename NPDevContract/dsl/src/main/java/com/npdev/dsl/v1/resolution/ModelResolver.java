@@ -8,6 +8,7 @@ import com.npdev.dsl.v1.ast.ConceptAccessAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.ActionMetadataAst;
 import com.npdev.dsl.v1.ast.ConceptAst;
+import com.npdev.dsl.v1.ast.DocumentAst;
 import com.npdev.dsl.v1.ast.DomainTypeAst;
 import com.npdev.dsl.v1.ast.DomainTypeUiAst;
 import com.npdev.dsl.v1.ast.EventAst;
@@ -81,6 +82,8 @@ public final class ModelResolver {
         resolvedBindings.sort(Comparator
                 .comparing((CapabilityBindingAst binding) -> normalize(binding.getCapability()))
                 .thenComparing(binding -> normalize(binding.getAdapter())));
+        List<DocumentAst> resolvedDocuments = new ArrayList<>(source.getDocuments());
+        resolvedDocuments.sort(Comparator.comparing(document -> normalize(document.name())));
 
         ModelAst resolvedAst = new ModelAst(
                 source.getNamespace(),
@@ -101,6 +104,7 @@ public final class ModelResolver {
                 source.getAggregates(),
                 source.getAutoPanels(),
                 source.getSelectors(),
+                resolvedDocuments,
                 source.getParserWarnings()
         );
         return ResolvedModel.from(resolvedAst);

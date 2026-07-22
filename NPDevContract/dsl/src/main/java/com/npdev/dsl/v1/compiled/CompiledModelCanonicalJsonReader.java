@@ -98,6 +98,11 @@ public final class CompiledModelCanonicalJsonReader {
             autoPanels.add(toAutoPanel(node));
         }
 
+        List<CompiledDocument> documents = new ArrayList<>();
+        for (JsonNode node : array(root, "documents")) {
+            documents.add(toDocument(node));
+        }
+
         return new CompiledModel(
                 namespace,
                 dslVersion,
@@ -115,7 +120,19 @@ public final class CompiledModelCanonicalJsonReader {
                 panels,
                 guidePages,
                 aggregates,
-                autoPanels
+                autoPanels,
+                documents
+        );
+    }
+
+    private static CompiledDocument toDocument(JsonNode node) {
+        return new CompiledDocument(
+                text(node, "name"),
+                text(node, "concept"),
+                optionalText(node, "title"),
+                optionalText(node, "pageSize"),
+                optionalDoubleObject(node.get("marginMm")),
+                toObjectMap(node.get("metadata"))
         );
     }
 

@@ -42,6 +42,7 @@ FEATURED_DEFS = [
     ("stateTransition", "Lifecycle state transition"),
     ("event", "Event"),
     ("panel", "Panel"),
+    ("document", "Document (LNCH-10 Slice 3 -- server-rendered PDF)"),
 ]
 
 

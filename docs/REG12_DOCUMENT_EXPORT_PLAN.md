@@ -1,6 +1,9 @@
 # REG-12 Slice 3 — Server-Side Document / PDF Export — Phased Plan
 
-> **Status:** APPROVED PLAN — not started. Greenlit by the owner (Marcelo) 2026-07-22 ("in scope now").
+> **Status:** DONE (2026-07-22) — executed via `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part A. See
+> `docs/NPDEV_OPEN_ITEMS_REGISTER.md` §2.4 and `NPDev_General__OutsideRepo/reg12-slice3-evidence/`
+> for what shipped and the live verification record.
+> **Was:** APPROVED PLAN — not started. Greenlit by the owner (Marcelo) 2026-07-22 ("in scope now").
 > **Written:** 2026-07-22, against `main` at the `beta1.1` tag.
 > **Origin.** `docs/NPDEV_OPEN_ITEMS_REGISTER.md` §2.4 (REG-12 / LNCH-10). Slice 1 (streaming CSV
 > export) is DONE; Slice 2 (print stylesheet / print render mode) is a separate small frontend item.

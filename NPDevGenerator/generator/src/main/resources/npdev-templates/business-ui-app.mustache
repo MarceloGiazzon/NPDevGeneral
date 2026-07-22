@@ -1828,6 +1828,17 @@
     // LNCH-10 slice 2 (REG-12): prints exactly the currently loaded page -- the same filtered/sorted
     // rows on screen, not a full-table export (Export CSV already owns "every matching row").
     actions.appendChild(button("Print", "", function () { printPanel(concept); }));
+    // LNCH-10 slice 3 (REG-12): a declared `document` bound to this concept -- a server-rendered PDF
+    // of every matching row (mirrors Export CSV's data path, not the on-screen page). Usually 0 or 1
+    // per concept; render one link per document if more than one is declared.
+    (concept.documents || []).forEach(function (doc) {
+      const pdfLink = document.createElement("a");
+      pdfLink.href = "/api/documents/" + encodeURIComponent(doc.name) + "/render.pdf";
+      pdfLink.textContent = "Download PDF";
+      pdfLink.target = "_blank";
+      pdfLink.rel = "noopener";
+      actions.appendChild(pdfLink);
+    });
     header.appendChild(actions);
     section.appendChild(header);
 
