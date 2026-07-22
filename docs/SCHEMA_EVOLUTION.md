@@ -628,17 +628,26 @@ pattern as every other ControlPanel endpoint):
 
 ```
 POST /api/admin/schema-migration/mark-done
-{ "fingerprint": "sha256:...", "note": "verified by hand, already migrated" }
+{ "fromFingerprint": "sha256:...", "toFingerprint": "sha256:...", "note": "verified by hand, already migrated" }
 ```
 
 ```
 GET /api/admin/schema-migration/marks
 ```
 
-lists every recorded mark. On the **next boot** whose target fingerprint matches a recorded mark, the
-executor:
+lists every recorded mark. **REG-28**: the mark is bound to that exact `fromFingerprint -> toFingerprint`
+transition, not just the target — it only fires on a boot whose OWN live stored fingerprint still equals
+`fromFingerprint`. Read both values off the SAME migration plan printed by
+`Build-NpdevApp.ps1 -PlanOnly`/`-Upgrade` (it already prints the pair) or from the currently running
+app's own stored fingerprint. A leftover/abandoned mark can no longer fast-forward an unrelated boot
+just because its target happens to match. **REG-30**: a duplicate mark for the identical transition is
+rejected outright (unique constraint) instead of leaving a second copy that could fast-forward a later
+boot a second time.
 
-1. Fast-forwards the stored fingerprint pointer (`npdev_schema_metadata`) straight to that value.
+On the **next boot** whose OWN live stored fingerprint equals the mark's `fromFingerprint` and whose
+target equals `toFingerprint`, the executor:
+
+1. Fast-forwards the stored fingerprint pointer (`npdev_schema_metadata`) straight to `toFingerprint`.
 2. Records a `MANUALLY_MARKED_DONE` row in `npdev_schema_history`.
 3. Consumes the mark (deleted after use — a mark authorizes exactly one boot, not every future one).
 4. Runs **zero** rename/relax/tighten/classify/destructive passes — the operator's claim *is* that the

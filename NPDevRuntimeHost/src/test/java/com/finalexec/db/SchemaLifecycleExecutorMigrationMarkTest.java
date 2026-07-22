@@ -17,10 +17,12 @@ import java.sql.Statement;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -59,7 +61,7 @@ class SchemaLifecycleExecutorMigrationMarkTest {
             statement.execute("INSERT INTO widgets (id, legacy_flag) VALUES (1, TRUE)");
         }
         seedStoredFingerprint(dataSource, "sha256:old");
-        MigrationMarkStore.insert(dataSource, "sha256:new", "super-user-1", "verified by hand, already migrated");
+        MigrationMarkStore.insert(dataSource, "sha256:old", "sha256:new", "super-user-1", "verified by hand, already migrated");
 
         SchemaLifecycleExecutor.SchemaManifest manifest = manifestIdOnly("sha256:new");
         SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, manifest);
@@ -82,7 +84,7 @@ class SchemaLifecycleExecutorMigrationMarkTest {
             statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY)");
         }
         seedStoredFingerprint(dataSource, "sha256:old");
-        MigrationMarkStore.insert(dataSource, "sha256:new", "super-user-1", null);
+        MigrationMarkStore.insert(dataSource, "sha256:old", "sha256:new", "super-user-1", null);
 
         SchemaLifecycleExecutor.SchemaManifest manifest = manifestIdOnly("sha256:new");
         executor.beforeMigrate(dataSource, manifest);
@@ -103,7 +105,7 @@ class SchemaLifecycleExecutorMigrationMarkTest {
         }
         seedStoredFingerprint(dataSource, "sha256:old");
         // Stale mark for some earlier plan's target -- must not authorize THIS boot's fingerprint.
-        MigrationMarkStore.insert(dataSource, "sha256:some-other-target", "super-user-1", null);
+        MigrationMarkStore.insert(dataSource, "sha256:old", "sha256:some-other-target", "super-user-1", null);
 
         SchemaLifecycleExecutor.SchemaManifest manifest = manifest("sha256:new",
                 Map.of("widgets", List.of("id", "name", "notes")),
@@ -114,6 +116,92 @@ class SchemaLifecycleExecutorMigrationMarkTest {
         assertTrue(result.safeAdditive(), "with no matching mark, ordinary classification must run (here: a plain additive column)");
         assertEquals(1, MigrationMarkStore.listAll(dataSource).size(), "the non-matching mark must be left untouched, not consumed");
         assertFalse(latestOutcome(dataSource).equals("MANUALLY_MARKED_DONE"));
+    }
+
+    @Test
+    @DisplayName("REG-28: a mark's from->to binding means findMatching only fires against the from it was actually recorded for")
+    void findMatchingOnlyFiresForTheRecordedFrom() {
+        // A deploy planned then abandoned: the operator observed the database at A and recorded a
+        // mark for A -> X, but a DIFFERENT transition happened since -- the live database is now at Z
+        // (some other build's migration, unrelated to this mark). Before REG-28, findMatching only
+        // looked at the target (X), so this leftover mark would silently fast-forward the first future
+        // boot whose target was X, no matter what the database was actually at.
+        MigrationMarkStore.insert(dataSource, "sha256:A", "sha256:X", "super-user-1", "planned then abandoned");
+
+        assertTrue(MigrationMarkStore.findMatching(dataSource, "sha256:Z", "sha256:X").isEmpty(),
+                "a mark recorded for from=A must not authorize a boot whose live stored fingerprint is Z");
+        assertTrue(MigrationMarkStore.findMatching(dataSource, "sha256:A", "sha256:X").isPresent(),
+                "the same mark must still match a boot whose live stored fingerprint genuinely is A");
+    }
+
+    @Test
+    @DisplayName("REG-28 end-to-end: beforeMigrate leaves a stale from-bound mark untouched when the live stored fingerprint does not match its recorded from")
+    void staleMarkForAnUnrelatedFromDoesNotFastForwardTheBoot() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+        }
+        // Live database is actually at Z; the leftover mark was recorded for a completely different
+        // from (A), so REG-28's binding must refuse to honor it here.
+        seedStoredFingerprint(dataSource, "sha256:Z");
+        MigrationMarkStore.insert(dataSource, "sha256:A", "sha256:new", "super-user-1", "planned then abandoned");
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifest("sha256:new",
+                Map.of("widgets", List.of("id", "name", "notes")),
+                Map.of("widgets", List.of("notes")));
+
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, manifest);
+
+        assertTrue(result.safeAdditive(), "with the mark correctly rejected, ordinary classification must run (here: a plain additive column)");
+        assertEquals(1, MigrationMarkStore.listAll(dataSource).size(), "the from-mismatched mark must be left untouched, not consumed");
+        assertFalse(latestOutcome(dataSource).equals("MANUALLY_MARKED_DONE"));
+    }
+
+    @Test
+    @DisplayName("REG-28 backward-compat: a table that predates the from-binding upgrades in place via ALTER, and its legacy unbound mark is never honored again")
+    void preFixTableUpgradesInPlaceAndItsUnboundMarkIsNeverHonoredAgain() throws SQLException {
+        // Simulate a real pre-fix deployment: the OLD (pre-REG-28) shape, no from_fingerprint column,
+        // with a legacy mark row recorded the old way (target-only).
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE " + MigrationMarkStore.TABLE
+                    + " (id TEXT PRIMARY KEY, marked_fingerprint TEXT NOT NULL, marked_at_utc BIGINT NOT NULL, "
+                    + "marked_by TEXT, note TEXT)");
+            statement.execute("INSERT INTO " + MigrationMarkStore.TABLE
+                    + " (id, marked_fingerprint, marked_at_utc, marked_by, note) VALUES "
+                    + "('legacy-1', 'sha256:new', 1000, 'super-user-1', 'pre-fix mark, no from binding')");
+        }
+
+        // The next boot's findMatching call (via ensureTable) must upgrade the table in place...
+        Optional<MigrationMarkStore.Mark> matched = MigrationMarkStore.findMatching(dataSource, "sha256:old", "sha256:new");
+
+        // ...and the legacy row's from_fingerprint is NULL, so it must NOT match ANY from -- not even
+        // the boot whose live stored fingerprint the operator would have expected it to fire from.
+        assertTrue(matched.isEmpty(), "a legacy (unbound) mark must never be honored again after the upgrade");
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            boolean columnNowExists = false;
+            for (String candidate : List.of(MigrationMarkStore.TABLE.toLowerCase(Locale.ROOT), MigrationMarkStore.TABLE.toUpperCase(Locale.ROOT))) {
+                try (ResultSet resultSet = metadata.getColumns(null, null, candidate, null)) {
+                    while (resultSet.next()) {
+                        if ("from_fingerprint".equalsIgnoreCase(resultSet.getString("COLUMN_NAME"))) {
+                            columnNowExists = true;
+                        }
+                    }
+                }
+            }
+            assertTrue(columnNowExists, "the pre-fix table must have been upgraded in place with the new column");
+        }
+    }
+
+    @Test
+    @DisplayName("REG-30: inserting the same from->to transition twice is rejected -- no duplicate mark can survive to fast-forward a second boot")
+    void duplicateMarkForTheSameTransitionIsRejected() {
+        MigrationMarkStore.insert(dataSource, "sha256:A", "sha256:X", "super-user-1", "first");
+
+        assertThrows(IllegalStateException.class,
+                () -> MigrationMarkStore.insert(dataSource, "sha256:A", "sha256:X", "super-user-1", "duplicate"),
+                "a second mark for the identical (from, to) transition must be rejected by the unique constraint");
+
+        assertEquals(1, MigrationMarkStore.listAll(dataSource).size(), "the duplicate insert must not have created a second row");
     }
 
     private static void seedStoredFingerprint(DataSource dataSource, String fingerprint) throws SQLException {
