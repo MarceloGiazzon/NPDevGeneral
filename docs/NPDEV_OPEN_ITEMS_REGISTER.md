@@ -41,6 +41,22 @@
 
 ## 0. Status summary
 
+### 0.0 Owner decisions executed 2026-07-22 (post CI-green)
+
+After Linux CI went green (REG-10) and the register was closed down to its bounded/human-gated
+remainder, the owner made four calls and they were executed the same day:
+
+- **Merged `beta1-vision-spine` → `main`** (PR #2, merge commit `3e29cca`) — 296 commits: the whole
+  LNCH-1 programme, REG-1..30, REG-7/8 features, REG-27, the CI fixes. Both its CI gates green.
+- **Cut a release tag** — the `beta1` name was already taken by the original milestone, so the current
+  CI-green, register-closed state is tagged **`beta1.1`** (annotated, on the merge commit). Closes the
+  release-tag half of **REG-15**; trademark stays parked (portfolio project, owner's call).
+- **REG-12 Slice 3 (server-side PDF) greenlit** — phased plan written:
+  `docs/REG12_DOCUMENT_EXPORT_PLAN.md`. REG-12 stays PARTIAL until Slices 2/3 are implemented.
+- **External-tester kit prepared** — `docs/EXTERNAL_TESTER_COLDSTART.md` is the cold-start brief to
+  hand a project-blind AI agent for **REG-13/REG-14/REG-17**; the assistant's part is done, the run
+  itself is still the owner's to trigger.
+
 ### 0.1 What just closed
 
 The LNCH-1 schema-evolution programme is **DONE**. Five rounds — original build (P0–P8),
@@ -742,7 +758,14 @@ from docs alone — has not been exercised.
 
 ### 2.7 REG-15 — LNCH-23: trademark clearance and release tag
 
-**Type:** PROCESS · **Priority:** P2 · **Blocked on you / counsel** · **Status:** PARTIAL
+**Type:** PROCESS · **Priority:** P2 · **Status:** **PARTIAL — release tag DONE, trademark parked.**
+The **release tag was cut 2026-07-22** (`beta1.1`, annotated, on the `beta1-vision-spine → main` merge
+commit `3e29cca`) — the CI-green, register-closed milestone. `run-release-checklist-gate.ps1` no
+longer lacks a tag to work from. **Trademark clearance is deliberately parked**: the owner confirmed
+this is an individual portfolio project with no mark to defend, so a professional clearance can wait
+indefinitely without blocking anything. The two preliminary findings on file ("NP DEV Soluções em
+T.I.", NPDEV LIMITED UK #14176093) remain recorded for if the posture ever changes. What follows is
+the original PARTIAL framing:
 
 **What.** LICENSE (Apache-2.0, ratified to Marcelo Giazzon), ADR-0007 (self-hosted/source-first, no
 telemetry at launch), `docs/RELEASE_PROCESS.md`, `CHANGELOG.md` and
