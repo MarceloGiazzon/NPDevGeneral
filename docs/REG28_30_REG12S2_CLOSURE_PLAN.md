@@ -1,6 +1,7 @@
 # Closure Plan — REG-28 / REG-29 / REG-30 + REG-12 Slice 2 (unblocking the PDF plan)
 
-> **Status:** APPROVED PLAN — not started.
+> **Status:** EXECUTED (2026-07-22) — P1/P2/P3 all DONE, verified live, committed. See
+> `docs/NPDEV_OPEN_ITEMS_REGISTER.md` §0.1 addendum 2 and §3.4/§2.4 for the closure record.
 > **Written:** 2026-07-22, against `main` at `beta1.1` (dev on `beta1-vision-spine`).
 > **Scope.** The bounded engineering remainder that needs no owner decision: the three
 > schema-migration loose ends found by this session's verification (**REG-28/29/30**), and **REG-12
