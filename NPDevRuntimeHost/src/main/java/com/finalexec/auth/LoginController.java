@@ -2,6 +2,7 @@ package com.finalexec.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.runtime.support.IdentityRoleLookup;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.Resource;
@@ -86,10 +87,13 @@ public class LoginController {
     }
 
     @PostMapping("/api/auth/login")
-    public ResponseEntity<Map<String, Object>> login(@RequestBody LoginRequest request) {
+    public ResponseEntity<Map<String, Object>> login(@RequestBody LoginRequest request, HttpServletRequest httpRequest) {
         String tenantId = (request.tenantId() == null || request.tenantId().isBlank()) ? "dev" : request.tenantId().trim();
         String username = request.username() == null ? null : request.username().trim();
         String password = request.password();
+        // REG-20: the source IP is the second throttle dimension -- one password sprayed across many
+        // usernames never trips a per-username counter, but it does trip the per-IP one.
+        String clientIp = clientIp(httpRequest);
 
         // REG-9: verify-only deployment (no signing key). This instance validates
         // externally-issued tokens but cannot mint its own, so token issuance is unavailable
@@ -103,15 +107,15 @@ public class LoginController {
         }
 
         if (username == null || username.isBlank() || password == null || password.isBlank()) {
-            return unauthorized(tenantId, username);
+            return unauthorized(tenantId, username, clientIp);
         }
 
         // LNCH-4: checked BEFORE any credential lookup, and uniformly for every rejection reason
         // below (unknown user, inactive, wrong password) -- a locked-out window rejects every
         // attempt without distinguishing right-shaped guesses from wrong ones, and without leaking
         // via timing/response differences which specific check would otherwise have failed.
-        if (throttle.isLocked(tenantId, username)) {
-            return tooManyAttempts(tenantId, username);
+        if (throttle.isLocked(tenantId, username, clientIp)) {
+            return tooManyAttempts(tenantId, username, clientIp);
         }
 
         try (Connection connection = dataSource.getConnection()) {
@@ -126,7 +130,7 @@ public class LoginController {
                         // REG-18: spend the same PBKDF2 work as the wrong-password path so an unknown
                         // (or inactive) username is not distinguishable by response latency.
                         PasswordHasher.verifyDecoy(password);
-                        return unauthorized(tenantId, username);
+                        return unauthorized(tenantId, username, clientIp);
                     }
                     userId = rs.getString("id");
                     tokenVersion = rs.getInt("token_version");
@@ -147,14 +151,14 @@ public class LoginController {
                         // REG-18: same-work decoy verify for a user that exists but has no credential
                         // row, so this path is latency-indistinguishable from a wrong password.
                         PasswordHasher.verifyDecoy(password);
-                        return unauthorized(tenantId, username);
+                        return unauthorized(tenantId, username, clientIp);
                     }
                     storedHash = rs.getString(1);
                 }
             }
 
             if (!PasswordHasher.verify(password, storedHash)) {
-                return unauthorized(tenantId, username);
+                return unauthorized(tenantId, username, clientIp);
             }
 
             throttle.recordSuccess(tenantId, username);
@@ -169,22 +173,39 @@ public class LoginController {
             body.put("roles", roles);
             return ResponseEntity.ok(body);
         } catch (Exception exception) {
-            return unauthorized(tenantId, username);
+            return unauthorized(tenantId, username, clientIp);
         }
     }
 
-    private ResponseEntity<Map<String, Object>> unauthorized(String tenantId, String username) {
-        if (username != null && !username.isBlank()) {
-            throttle.recordFailure(tenantId, username);
-        }
+    private ResponseEntity<Map<String, Object>> unauthorized(String tenantId, String username, String clientIp) {
+        // REG-20: record against BOTH the per-username and per-IP windows. The IP arm is recorded even
+        // for a blank/unknown username (a spray with junk usernames still counts toward the IP ceiling).
+        throttle.recordFailure(tenantId, username == null ? "" : username, clientIp);
         return ResponseEntity.status(401).body(Map.of("error", "invalid_credentials"));
     }
 
-    private ResponseEntity<Map<String, Object>> tooManyAttempts(String tenantId, String username) {
-        long retryAfterSeconds = throttle.retryAfterSeconds(tenantId, username);
+    private ResponseEntity<Map<String, Object>> tooManyAttempts(String tenantId, String username, String clientIp) {
+        long retryAfterSeconds = throttle.retryAfterSeconds(tenantId, username, clientIp);
         return ResponseEntity.status(429)
                 .header("Retry-After", String.valueOf(retryAfterSeconds))
                 .body(Map.of("error", "too_many_attempts", "retryAfterSeconds", retryAfterSeconds));
+    }
+
+    /**
+     * REG-20: best-effort client IP for rate limiting. Honours the first hop of {@code
+     * X-Forwarded-For} when present (the app sits behind the generated Caddy/compose proxy), else the
+     * socket peer. Never throws; a null/blank result disables the per-IP arm for that request.
+     */
+    private static String clientIp(HttpServletRequest request) {
+        if (request == null) {
+            return null;
+        }
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            int comma = forwarded.indexOf(',');
+            return (comma >= 0 ? forwarded.substring(0, comma) : forwarded).trim();
+        }
+        return request.getRemoteAddr();
     }
 
     private static String readKeyFile(ResourceLoader resourceLoader, String path) throws Exception {

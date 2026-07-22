@@ -1,5 +1,6 @@
 package com.finalexec.config;
 
+import com.finalexec.controlpanel.SuperUserCredentialAuthFilter;
 import com.npdev.generated.runtime.config.RuntimeApiKeyAuthFilter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -32,8 +33,15 @@ public class ActuatorAdminGuardFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain
     ) throws ServletException, IOException {
+        // REG-22: require the LIVE super-key path, not merely a SUPERUSER role in the claims. The
+        // super-key filter (SuperUserCredentialAuthFilter) resolves X-Super-User-Key against the
+        // credential store on every request (ACTIVE-only) and sets this marker; a business JWT that
+        // carries a SUPERUSER role -- or a token whose role was since revoked -- never sets it, so it
+        // can no longer read internal metrics/tenant tags. The role check stays as defense in depth.
+        boolean viaSuperKey = Boolean.TRUE.equals(request.getAttribute(
+                SuperUserCredentialAuthFilter.SUPER_USER_AUTHENTICATED_ATTRIBUTE));
         Object claims = request.getAttribute(RuntimeApiKeyAuthFilter.CLAIMS_ATTRIBUTE);
-        if (!(claims instanceof Map<?, ?> claimsMap) || !hasSuperuserRole(claimsMap.get("roles"))) {
+        if (!viaSuperKey || !(claims instanceof Map<?, ?> claimsMap) || !hasSuperuserRole(claimsMap.get("roles"))) {
             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
             response.setContentType("application/json");
             response.getWriter().write("{\"error\":\"actuator_metrics_requires_super_user_key\"}");

@@ -26,6 +26,9 @@ class ActuatorAdminGuardFilterTest {
     // contains that package prefix (those run under `integrationTest` instead, off a hardcoded
     // per-app allowlist this generic filter test isn't on).
     private static final String CLAIMS_ATTRIBUTE = "npdev.auth.claims";
+    // Literal copy of SuperUserCredentialAuthFilter.SUPER_USER_AUTHENTICATED_ATTRIBUTE -- the marker
+    // that filter sets only after a live X-Super-User-Key resolves to an ACTIVE SUPERUSER credential.
+    private static final String SUPER_USER_AUTHENTICATED_ATTRIBUTE = "npdev.auth.superuser.authenticated";
 
     @Test
     void rejectsWhenNoClaimsAttributePresent() throws Exception {
@@ -55,14 +58,38 @@ class ActuatorAdminGuardFilterTest {
         assertEquals(403, response.getStatus());
     }
 
+    /**
+     * REG-22: a SUPERUSER role carried in the JWT claims but NOT arrived via the live super-key path
+     * must NOT open actuator. Before the fix this returned 200 (any claims with the role passed); now
+     * the gate requires the super-key marker, so this is rejected -- a revoked/stale-role token or a
+     * business JWT that happens to carry SUPERUSER can no longer read internal metrics.
+     */
     @Test
-    void allowsWhenSuperuserRolePresent() throws Exception {
+    void rejectsSuperuserRoleWithoutTheSuperKeyMarker() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/actuator/prometheus");
         request.setAttribute(CLAIMS_ATTRIBUTE, Map.of(
                 "tenant_id", "default",
                 "actor_id", "root",
                 "roles", List.of("SUPERUSER")
         ));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        new ActuatorAdminGuardFilter().doFilter(request, response, chain);
+
+        assertEquals(403, response.getStatus());
+        assertFalse(chain.getRequest() == request, "Chain must not continue for a role-only claim");
+    }
+
+    @Test
+    void allowsWhenSuperKeyMarkerIsPresent() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/actuator/prometheus");
+        request.setAttribute(CLAIMS_ATTRIBUTE, Map.of(
+                "tenant_id", "default",
+                "actor_id", "root",
+                "roles", List.of("SUPERUSER")
+        ));
+        request.setAttribute(SUPER_USER_AUTHENTICATED_ATTRIBUTE, Boolean.TRUE);
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain chain = new MockFilterChain();
 

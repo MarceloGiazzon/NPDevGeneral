@@ -48,6 +48,11 @@ public class PasswordResetController {
     private static final long TOKEN_EXPIRY_MINUTES = 30;
     private static final int TOKEN_BYTES = 32;
     private static final int MIN_PASSWORD_LENGTH = 8;
+    /** REG-21 (REG-16 finding F4): reset requests per (tenant,username) per window before further ones
+     * are silently no-op'd -- low, because a real user needs one, and it caps email-bombing. */
+    private static final int RESET_MAX_PER_USER = 5;
+    /** REG-21: reset requests per source IP per window -- higher (shared IPs) but still spray-catching. */
+    private static final int RESET_MAX_PER_IP = 20;
     private static final Map<String, Object> GENERIC_REQUEST_RESPONSE =
             Map.of("ok", true, "message", "If that account exists, a password reset email has been sent.");
 
@@ -58,6 +63,9 @@ public class PasswordResetController {
     private final String credentialUserIdColumn;
     private final String credentialPasswordColumn;
     private final String resetLinkBaseUrl;
+    /** REG-21: the same bounded sliding-window limiter login uses, tuned lower for reset requests. */
+    private final LoginThrottle resetThrottle = new LoginThrottle(
+            java.time.Clock.systemUTC(), RESET_MAX_PER_USER, RESET_MAX_PER_IP);
 
     public PasswordResetController(
             DataSource dataSource,
@@ -84,13 +92,23 @@ public class PasswordResetController {
     }
 
     @PostMapping("/api/auth/password-reset/request")
-    public ResponseEntity<Map<String, Object>> requestReset(@RequestBody RequestResetRequest request) {
+    public ResponseEntity<Map<String, Object>> requestReset(
+            @RequestBody RequestResetRequest request, jakarta.servlet.http.HttpServletRequest httpRequest) {
         String tenantId = normalizeTenant(request == null ? null : request.tenantId());
         String username = request == null || request.username() == null ? null : request.username().trim();
 
         if (username == null || username.isBlank() || !capabilityRegistry.has("mail")) {
             return ResponseEntity.ok(GENERIC_REQUEST_RESPONSE);
         }
+
+        // REG-21: rate-limit reset requests per (tenant,username) and per source IP so a known account
+        // cannot be email-bombed and so token rows cannot be spammed. When over the limit we return
+        // the SAME generic response (never revealing the throttle) but skip the email + token entirely.
+        String clientIp = clientIp(httpRequest);
+        if (resetThrottle.isLocked(tenantId, username, clientIp)) {
+            return ResponseEntity.ok(GENERIC_REQUEST_RESPONSE);
+        }
+        resetThrottle.recordFailure(tenantId, username, clientIp);
 
         try (Connection connection = dataSource.getConnection()) {
             UserLookup user = findActiveUserWithEmail(connection, tenantId, username);
@@ -252,6 +270,19 @@ public class PasswordResetController {
 
     private static String normalizeTenant(String tenantId) {
         return tenantId == null || tenantId.isBlank() ? "dev" : tenantId.trim();
+    }
+
+    /** REG-21: best-effort client IP for rate limiting (X-Forwarded-For first hop, else socket peer). */
+    private static String clientIp(jakarta.servlet.http.HttpServletRequest request) {
+        if (request == null) {
+            return null;
+        }
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            int comma = forwarded.indexOf(',');
+            return (comma >= 0 ? forwarded.substring(0, comma) : forwarded).trim();
+        }
+        return request.getRemoteAddr();
     }
 
     private static String generateToken() {

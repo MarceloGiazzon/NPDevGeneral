@@ -79,10 +79,27 @@ class PasswordResetControllerTest {
     }
 
     @Test
+    void throttlesRepeatedResetRequestsForOneUser() {
+        // REG-21: after the per-user ceiling, further reset requests are silently no-op'd (no email,
+        // no token) while still returning the same generic 200 -- an account cannot be email-bombed.
+        PasswordResetController controller = controllerWithMailBound();
+
+        for (int i = 0; i < 5; i++) {
+            var resp = controller.requestReset(new PasswordResetController.RequestResetRequest("ada", TENANT), null);
+            assertEquals(200, resp.getStatusCode().value());
+        }
+        assertEquals(5, mailAdapter.deliveries().size(), "first five requests each send one email");
+
+        var sixth = controller.requestReset(new PasswordResetController.RequestResetRequest("ada", TENANT), null);
+        assertEquals(200, sixth.getStatusCode().value(), "the throttled response is still the generic 200");
+        assertEquals(5, mailAdapter.deliveries().size(), "the sixth request must NOT send another email");
+    }
+
+    @Test
     void requestSendsEmailAndConfirmSetsNewPasswordAndBumpsTokenVersion() throws Exception {
         PasswordResetController controller = controllerWithMailBound();
 
-        var requestResp = controller.requestReset(new PasswordResetController.RequestResetRequest("ada", TENANT));
+        var requestResp = controller.requestReset(new PasswordResetController.RequestResetRequest("ada", TENANT), null);
         assertEquals(200, requestResp.getStatusCode().value());
         assertEquals(1, mailAdapter.deliveries().size());
         Map<String, Object> delivery = mailAdapter.deliveries().get(0);
@@ -117,7 +134,7 @@ class PasswordResetControllerTest {
     @Test
     void confirmRejectsAnAlreadyUsedToken() throws Exception {
         PasswordResetController controller = controllerWithMailBound();
-        controller.requestReset(new PasswordResetController.RequestResetRequest("ada", TENANT));
+        controller.requestReset(new PasswordResetController.RequestResetRequest("ada", TENANT), null);
         String token = extractToken((String) mailAdapter.deliveries().get(0).get("body"));
 
         var first = controller.confirmReset(new PasswordResetController.ConfirmResetRequest(token, "first-new-pass", TENANT));
@@ -158,7 +175,7 @@ class PasswordResetControllerTest {
     @Test
     void requestForUnknownUserStaysGenericAndSendsNothing() {
         PasswordResetController controller = controllerWithMailBound();
-        var resp = controller.requestReset(new PasswordResetController.RequestResetRequest("nobody", TENANT));
+        var resp = controller.requestReset(new PasswordResetController.RequestResetRequest("nobody", TENANT), null);
         assertEquals(200, resp.getStatusCode().value());
         assertTrue(mailAdapter.deliveries().isEmpty());
     }
@@ -166,7 +183,7 @@ class PasswordResetControllerTest {
     @Test
     void requestForUserWithNoEmailOnFileStaysGenericAndSendsNothing() {
         PasswordResetController controller = controllerWithMailBound();
-        var resp = controller.requestReset(new PasswordResetController.RequestResetRequest("noemail", TENANT));
+        var resp = controller.requestReset(new PasswordResetController.RequestResetRequest("noemail", TENANT), null);
         assertEquals(200, resp.getStatusCode().value());
         assertTrue(mailAdapter.deliveries().isEmpty());
     }
@@ -174,7 +191,7 @@ class PasswordResetControllerTest {
     @Test
     void requestWithNoMailCapabilityBoundStaysGenericAndSendsNothing() {
         PasswordResetController controller = controllerWithoutMail();
-        var resp = controller.requestReset(new PasswordResetController.RequestResetRequest("ada", TENANT));
+        var resp = controller.requestReset(new PasswordResetController.RequestResetRequest("ada", TENANT), null);
         assertEquals(200, resp.getStatusCode().value());
         assertTrue(mailAdapter.deliveries().isEmpty());
     }

@@ -35,6 +35,14 @@ import java.util.Optional;
 public class SuperUserCredentialAuthFilter extends OncePerRequestFilter {
 
     public static final String HEADER_NAME = "X-Super-User-Key";
+    /**
+     * REG-22: request attribute set ONLY after a presented {@code X-Super-User-Key} resolves live to
+     * an ACTIVE SUPERUSER credential. Downstream role gates that must be reachable exclusively via the
+     * super-key path (e.g. {@code ActuatorAdminGuardFilter}) key on this marker rather than on a
+     * SUPERUSER role in the claims, which a business JWT could also carry and which is not re-checked
+     * for revocation at filter level.
+     */
+    public static final String SUPER_USER_AUTHENTICATED_ATTRIBUTE = "npdev.auth.superuser.authenticated";
     private static final String REQUIRED_ROLE = "SUPERUSER";
 
     private final CredentialRegistryService credentialRegistryService;
@@ -68,6 +76,9 @@ public class SuperUserCredentialAuthFilter extends OncePerRequestFilter {
                 "actor_id", principal.actorId(),
                 "roles", principal.roles()
         ));
+        // REG-22: mark that SUPERUSER on this request came from a live-validated super-key, not a
+        // (possibly stale/revoked) SUPERUSER role carried in some other credential's claims.
+        request.setAttribute(SUPER_USER_AUTHENTICATED_ATTRIBUTE, Boolean.TRUE);
         filterChain.doFilter(request, response);
     }
 
