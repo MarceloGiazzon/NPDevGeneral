@@ -64,7 +64,128 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      */
     private static final Set<String> PLATFORM_MANAGED_COLUMNS =
             Set.of("id", "version", "row_version", "tenant_id");
+
+    /**
+     * The platform-managed columns that carry a FIXED, known default and are therefore repairable by
+     * {@link #tightenPlatformColumns}, in a deterministic order so the log line and the history row
+     * read the same way on every run.
+     *
+     * <p>Deliberately NOT the whole of {@link #PLATFORM_MANAGED_COLUMNS}: {@code id} is excluded
+     * because it has no platform default (it is the primary key, hence already {@code NOT NULL}, and
+     * a concept may declare its own id field). VERIFIED against the emitter's fresh {@code CREATE
+     * TABLE} lines ({@code SchemaRealizationEmitter:370-377}), which emit exactly
+     * {@code version BIGINT NOT NULL DEFAULT 0}, {@code row_version BIGINT NOT NULL DEFAULT 0} and
+     * {@code tenant_id VARCHAR(120) NOT NULL DEFAULT 'default'}. Co-located with (and REG-6-guarded
+     * against) {@link #PLATFORM_MANAGED_COLUMNS} so the two cannot silently drift.
+     */
+    private static final List<String> REPAIRABLE_PLATFORM_COLUMNS =
+            List.of("version", "row_version", "tenant_id");
+
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    /**
+     * REG-6 (2026-07-21): one projection of "what is this column?" that the passes query instead of
+     * each re-deriving the same facts from the manifest maps + the platform-column sets. Computed
+     * once per (table, column) from {@link #columnFactsFor}. This is deliberately a read-only view
+     * over the manifest and the platform-column sets — it introduces NO new source of truth, so
+     * routing a pass through it is behavior-preserving by construction (the proof matrices confirm
+     * it). {@code isBond} in particular was previously re-derived inline in three places as
+     * "required && !additive-eligible"; it lives here now.
+     *
+     * <p>{@code isPrimaryKey} is deliberately NOT here: it is a LIVE-database fact
+     * ({@link #readPrimaryKeyColumns}), not a manifest fact, so it stays a per-connection lookup at
+     * its one call site rather than being faked into a manifest projection.
+     */
+    record ColumnFacts(
+            String column,
+            boolean platformManaged,
+            boolean repairablePlatformColumn,
+            boolean additiveEligible,
+            boolean requiredByModel,
+            String declaredType,
+            String renamedFrom,
+            String literalDefaultJson
+    ) {
+        /**
+         * A required column that is NOT additive-eligible is — after LNCH-1 P5 (5.3) — necessarily a
+         * required bond/FK field (the only remaining reason a required column fails additive
+         * eligibility; a plain required field is always additive-eligible). A bond has no
+         * literal-default backfill in v1, so this is what {@link #refuseIfRequiredBondColumnMissing}
+         * keys on.
+         */
+        boolean bond() {
+            return requiredByModel && !additiveEligible;
+        }
+    }
+
+    /**
+     * REG-6: the repairable platform columns (a fixed default this class knows how to backfill) are a
+     * strict SUBSET of {@link #PLATFORM_MANAGED_COLUMNS} — {@code id} is excluded because it is the
+     * primary key with no platform default. Deriving the membership relationship here (rather than
+     * eyeballing two independently-typed literals) is the concrete fix for REG-6's "two overlapping
+     * platform-column sets with different contents" drift: a change to {@link #PLATFORM_MANAGED_COLUMNS}
+     * that forgot to update {@link #REPAIRABLE_PLATFORM_COLUMNS} (or vice-versa) now trips this
+     * class-load assertion immediately instead of silently mis-classifying a column at runtime. The
+     * ordered {@code REPAIRABLE_PLATFORM_COLUMNS} list is kept (its order is load-line-significant),
+     * but its CONTENT is now guarded against the managed set.
+     */
+    private static void assertPlatformColumnSetsAgree() {
+        Set<String> repairable = new LinkedHashSet<>(REPAIRABLE_PLATFORM_COLUMNS);
+        if (!PLATFORM_MANAGED_COLUMNS.containsAll(repairable)) {
+            throw new IllegalStateException("REG-6 platform-column drift: REPAIRABLE_PLATFORM_COLUMNS "
+                    + repairable + " is not a subset of PLATFORM_MANAGED_COLUMNS " + PLATFORM_MANAGED_COLUMNS);
+        }
+        Set<String> managedMinusId = new LinkedHashSet<>(PLATFORM_MANAGED_COLUMNS);
+        managedMinusId.remove("id");
+        if (!managedMinusId.equals(repairable)) {
+            throw new IllegalStateException("REG-6 platform-column drift: PLATFORM_MANAGED_COLUMNS minus 'id' "
+                    + managedMinusId + " must equal REPAIRABLE_PLATFORM_COLUMNS " + repairable
+                    + " (every non-id platform column carries a fixed default and is repairable)");
+        }
+    }
+
+    static {
+        assertPlatformColumnSetsAgree();
+    }
+
+    static boolean isPlatformManagedColumn(String column) {
+        return column != null && PLATFORM_MANAGED_COLUMNS.contains(column.toLowerCase(Locale.ROOT));
+    }
+
+    /** REG-6: the platform-managed column names, as the single set the passes subtract from live
+     * columns (replaces direct references to {@link #PLATFORM_MANAGED_COLUMNS} at call sites). */
+    static Set<String> platformManagedColumnNames() {
+        return PLATFORM_MANAGED_COLUMNS;
+    }
+
+    /**
+     * REG-6: compute the per-column projection for one table, once, from the manifest + platform
+     * sets. Callers ask this map "what is column X?" instead of re-deriving from four different
+     * manifest maps and two static sets at each use site.
+     */
+    static Map<String, ColumnFacts> columnFactsFor(SchemaManifest manifest, String table) {
+        List<String> allColumns = manifest.businessTableColumns().getOrDefault(table, List.of());
+        Set<String> additive = new LinkedHashSet<>(manifest.businessTableAdditiveColumns().getOrDefault(table, List.of()));
+        Set<String> required = new LinkedHashSet<>(manifest.businessTableRequiredColumns().getOrDefault(table, List.of()));
+        Map<String, String> types = manifest.businessTableColumnTypes().getOrDefault(table, Map.of());
+        Map<String, String> renamed = manifest.businessTableRenamedColumns().getOrDefault(table, Map.of());
+        Map<String, String> defaults = manifest.businessTableColumnDefaultLiterals().getOrDefault(table, Map.of());
+        Map<String, ColumnFacts> facts = new LinkedHashMap<>();
+        for (String column : allColumns) {
+            String lower = column.toLowerCase(Locale.ROOT);
+            facts.put(column, new ColumnFacts(
+                    column,
+                    PLATFORM_MANAGED_COLUMNS.contains(lower),
+                    REPAIRABLE_PLATFORM_COLUMNS.contains(column),
+                    additive.contains(column),
+                    required.contains(column),
+                    types.get(column),
+                    renamed.get(column),
+                    defaults.get(column)
+            ));
+        }
+        return facts;
+    }
 
     /**
      * LNCH-1 Phase 4 (task 4.4). Self-bootstrapped exactly like {@link #METADATA_TABLE} -- a plain
@@ -1309,7 +1430,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     // to every tenant-scoped read) and LNCH-16's compare-and-swap (a NULL row_version).
                     // Proven live: scenario 28. Repaired on existing databases by
                     // tightenPlatformColumns, which runs immediately after this pass.
-                    if (PLATFORM_MANAGED_COLUMNS.contains(column.toLowerCase(Locale.ROOT))) {
+                    if (isPlatformManagedColumn(column)) { // REG-6: via the single ColumnFacts-backed helper
                         continue;
                     }
                     if (!isColumnNotNull(connection, table, column)) {
@@ -1336,21 +1457,6 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             System.out.println("NPDev schema lifecycle: relaxed NOT NULL on no-longer-required column(s): " + relaxed);
         }
     }
-
-    /**
-     * The platform-managed columns that carry a FIXED, known default and are therefore repairable by
-     * {@link #tightenPlatformColumns}, in a deterministic order so the log line and the history row
-     * read the same way on every run.
-     *
-     * <p>Deliberately NOT the whole of {@link #PLATFORM_MANAGED_COLUMNS}: {@code id} is excluded
-     * because it has no platform default (it is the primary key, hence already {@code NOT NULL}, and
-     * a concept may declare its own id field). VERIFIED against the emitter's fresh {@code CREATE
-     * TABLE} lines ({@code SchemaRealizationEmitter:370-377}), which emit exactly
-     * {@code version BIGINT NOT NULL DEFAULT 0}, {@code row_version BIGINT NOT NULL DEFAULT 0} and
-     * {@code tenant_id VARCHAR(120) NOT NULL DEFAULT 'default'}.
-     */
-    private static final List<String> REPAIRABLE_PLATFORM_COLUMNS =
-            List.of("version", "row_version", "tenant_id");
 
     /** The platform default for a {@link #REPAIRABLE_PLATFORM_COLUMNS} entry, as a bound parameter
      * value (never string-concatenated into DDL). */
@@ -1567,8 +1673,6 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     continue; // brand-new table -- nothing missing, nothing to refuse
                 }
                 Set<String> expected = new LinkedHashSet<>(entry.getValue());
-                Set<String> additiveEligible = new LinkedHashSet<>(
-                        manifest.businessTableAdditiveColumns().getOrDefault(table, List.of()));
                 Set<String> extraInDb = new LinkedHashSet<>(actualColumns);
                 extraInDb.removeAll(expected);
                 Set<String> missingInDb = new LinkedHashSet<>(expected);
@@ -1576,10 +1680,14 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 if (missingInDb.isEmpty()) {
                     continue;
                 }
+                // REG-6: "a required column missing AND not additive-eligible is a required bond" is
+                // no longer re-derived inline here — it is ColumnFacts.bond(), computed once per column.
+                Map<String, ColumnFacts> facts = columnFactsFor(manifest, table);
                 Map<String, String> renames = manifest.businessTableRenamedColumns().getOrDefault(table, Map.of());
                 RenameResolution.Result resolution = RenameResolution.resolve(missingInDb, extraInDb, renames);
                 for (String column : resolution.remainingMissing()) {
-                    if (requiredColumns.contains(column) && !additiveEligible.contains(column)) {
+                    ColumnFacts columnFacts = facts.get(column);
+                    if (columnFacts != null && columnFacts.bond()) {
                         violations.add(table + "." + column);
                     }
                 }
@@ -2150,7 +2258,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
 
                 Set<String> unexplainedExtra = new LinkedHashSet<>(live);
                 unexplainedExtra.removeAll(declared);
-                unexplainedExtra.removeAll(PLATFORM_MANAGED_COLUMNS);
+                unexplainedExtra.removeAll(platformManagedColumnNames()); // REG-6: single platform-column source
                 unexplainedExtra.removeAll(renameOldNames);
 
                 for (String column : entry.getValue()) {
