@@ -773,6 +773,10 @@ Evidence: `NPDev_General__OutsideRepo/reg12-slice3-evidence/`.
    only stages this workspace's own project jars, not third-party transitive dependencies); without
    it, the first real request threw `NoClassDefFoundError`.
 
+**CI (guardrail: Windows-verified is not enough).** Pushed to `beta1-vision-spine` (commit
+`b5c7c88`) and dispatched `npdev-pr-gate.yml` via `scripts/ci/gh-api.sh` — **run `29943008077`,
+conclusion `success`** on a real Linux GitHub Actions runner, packaged-app proof tests included.
+
 **Slice 2 — what shipped.** A "Print" button next to "Export CSV" on every declared panel's grid
 toolbar (`business-ui-app.mustache`'s `renderPanel`/new `printPanel()`) builds a self-contained
 `#printRoot` document — title, "Printed <timestamp>" meta, a table mirroring the grid's currently
