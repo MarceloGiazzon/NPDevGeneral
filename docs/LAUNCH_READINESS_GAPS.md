@@ -3,7 +3,8 @@
 > **Purpose.** NPDev's stated goal is to be a low-code platform for building a range of
 > *complete web apps*. This document is a critical, realistic inventory of what is missing or
 > blocking between the platform's current state (originally written 2026-07-14, branch
-> `beta1-vision-spine`; status table last verified against real commits 2026-07-19) and a
+> `beta1-vision-spine`; **status table reconciled with the open-items register and re-verified against
+> real commits + a green CI run 2026-07-22 — see §2's reconciliation banner**) and a
 > state where formalization / launch is honest. It is written so that converting it into an
 > executable roadmap is a mechanical step: every gap states **why** it blocks launch, **where**
 > the problem lives (files/modules), **how** to fix it, a **Definition of Done**, an effort
@@ -54,8 +55,10 @@ apps:
    pre-checks/backfills, a migration-plan preview, a permanent proof matrix. `docs/SCHEMA_EVOLUTION.md`.
 2. **Secure** — tenant isolation has been fixed reactively bug-by-bug, never audited
    adversarially; one known auth-filter flaw remains deferred; the boring auth table stakes
-   (reset, revocation, rate limiting) don't exist. **Mostly closed**: LNCH-2/3 done, LNCH-4's P0
-   slice + password reset done; secrets-via-env-vars remains open.
+   (reset, revocation, rate limiting) don't exist. **Closed** (2026-07-22): LNCH-2/3 done, LNCH-4's P0
+   slice + password reset + secrets-via-env-vars all done (the last via REG-9 — JWT keys env-bound,
+   super-user-key seeding WONTFIX by decision). The REG-16 adversarial tenant/auth review also ran:
+   no CRITICAL/HIGH, 5 MEDIUM findings fixed.
 3. **Scale** — panel/query filtering is in-memory post-filtering; fine at demo size, fatal at
    100k rows; there is no pagination pushed to SQL and no index emission for query fields.
    **Closed**: LNCH-5 (SQL push-down, 100k-row volume-gated) and LNCH-6 (index emission) both done.
@@ -64,10 +67,12 @@ apps:
    health/metrics/backup story, and the *less-exercised* database path (Postgres) is the
    production one. **Closed**: LNCH-7/8/9 all done, live-verified via real `docker compose` runs.
 5. **Distribute** — no CI, Windows-only build scripts, internal-facing docs only, no license,
-   no packaging decision, no upgrade contract for generated apps. **Partially closed**: license,
-   ADRs, upgrade contract, and CI workflows exist (LNCH-21/23 done, LNCH-19 committed+pushed but not
-   independently confirmed green on a real runner); Windows-only build scripts (LNCH-20) remain
-   genuinely untouched.
+   no packaging decision, no upgrade contract for generated apps. **Closed** (2026-07-22): license,
+   ADRs, upgrade contract done (LNCH-21/23); **Linux CI observed green on a real GitHub Actions
+   runner** (LNCH-19 / REG-10 — the first CI-green in the project's history); cross-platform build
+   **proven** by that run (LNCH-20 / REG-11), which also surfaced and fixed a real generated-app
+   `D:/`-cache portability bug; release tag `beta1.1` cut. Only trademark clearance is parked (owner's
+   call — portfolio project).
 
 Every real low-code platform failure mode lived in one of those five verbs. The roadmap that
 falls out of this document is organized around them; §2's table is the source of truth for what
@@ -77,12 +82,45 @@ is actually done today.
 
 ## 2. Priority index (machine-parseable)
 
+> **2026-07-22 reconciliation — the launch ledger unified with the open-items register.**
+> Since the last update (2026-07-19), the still-open *slices* of the LNCH items were tracked at finer
+> grain in `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (the `REG-*` items) and worked to closure. This revision
+> folds those closures back into the table below. **New tally: 21 DONE · 3 PARTIAL · 0 OPEN** (was
+> 17 / 6 / 1). The one structural change worth stating up front: **Linux CI has now been observed
+> green on a real GitHub Actions runner** (REG-10), which retroactively *proves* several items that
+> were "done but only on one Windows machine."
+>
+> **LNCH ↔ REG crosswalk (where an LNCH's remaining slice lived as a register item):**
+>
+> | LNCH | Register item | Old LNCH status | Now | What closed it |
+> |---|---|---|---|---|
+> | LNCH-4 (auth stakes) | REG-9 | PARTIAL | **DONE** | JWT keys via env var + fail-fast validation + verify-only boot; super-user-key seeding WONTFIX by decision |
+> | LNCH-10 (export) | REG-12 | PARTIAL | **PARTIAL** | Slice 2 (print stylesheet/mode) **DONE**; Slice 3 (server-side PDF) greenlit + planned (`docs/REG12_DOCUMENT_EXPORT_PLAN.md`) |
+> | LNCH-18 (authoring test) | REG-13 | PARTIAL | **PARTIAL** | ADR done; the human/AI-tool run is prepared (`docs/EXTERNAL_TESTER_COLDSTART.md`) but not yet run |
+> | LNCH-19 (Linux CI) | REG-10 | PARTIAL | **DONE** | `npdev-pr-gate.yml` observed **green** on ubuntu-latest (run `29899362276`); six root-caused first-contact-with-Linux fixes |
+> | LNCH-20 (cross-platform) | REG-11 | OPEN | **DONE** | Cross-platform build **proven** by the green run; also fixed a real generated-app `D:/`-cache portability bug |
+> | LNCH-22 (docs test) | REG-14 | PARTIAL | **PARTIAL** | Docs exist; newcomer run prepared (same kit as LNCH-18) but not yet run |
+> | LNCH-23 (launch checklist) | REG-15 | PARTIAL | **DONE** | Release tag cut (`beta1.1`, on the `beta1→main` merge); license/ADR/release-process already done; trademark parked (portfolio project, owner's decision) |
+>
+> **Register-native items (findings that are NOT LNCH gaps — do not look for them here).** The register
+> also tracks work with no LNCH equivalent, all closed/decided except where noted: LNCH-1's own
+> five-round residue (REG-1..8: posture flips, `IT-EXTPG-1`, `GATE-REL-1`, the flake, `GATE-OBS-1a`,
+> `ColumnFacts`=**REG-6 ~40%/OPEN**, and REG-7/REG-8 boundaries **converted to features**); the REG-16
+> adversarial tenant/auth review (no CRITICAL/HIGH; 5 MEDIUM fixed) + REG-17 third-party reproduction;
+> and this session's verification findings REG-18..30 (all CLOSED/decided) plus a new pre-existing
+> **promotion-panel retry-loop** bug (register §2.4) still open. The register is now the live, granular
+> tracker; this table is the launch-lifecycle roll-up.
+>
+> **The three genuinely-remaining launch items** are therefore: **LNCH-10 Slice 3** (PDF — planned),
+> and **LNCH-18 / LNCH-22** (the single external-tester run, kit ready). All engineering-only; the
+> tester run is the one human-gated step left.
+
 | ID | Title | Verb | Status | Priority | Effort |
 |---|---|---|---|---|---|
 | LNCH-1 | Model-diff schema evolution for live apps (migrations) | Evolve | DONE | P0 | XL |
 | LNCH-2 | Adversarial tenant-isolation audit + test suite | Secure | DONE | P0 | M |
 | LNCH-3 | Fix `RuntimeApiKeyAuthFilter` clobbering flaw | Secure | DONE | P0 | S |
-| LNCH-4 | Auth table stakes: reset, revocation, lockout, rate limit, CSRF posture | Secure | PARTIAL | P0 | L |
+| LNCH-4 | Auth table stakes: reset, revocation, lockout, rate limit, CSRF posture | Secure | DONE | P0 | L |
 | LNCH-5 | SQL push-down for panel/query filtering + server-side pagination | Scale | DONE | P0 | L |
 | LNCH-6 | Index emission from the model | Scale | DONE | P1 | M |
 | LNCH-7 | Postgres-first Dockerized deployment story | Operate | DONE | P0 | L |
@@ -97,11 +135,11 @@ is actually done today.
 | LNCH-16 | Optimistic locking / concurrent-edit protection | Complete | DONE | P1 | M |
 | LNCH-17 | Transaction-boundary contract for multi-step flows | Complete | DONE | P1 | M |
 | LNCH-18 | Authoring-path decision: editor-complete vs AI-first productization | Distribute | PARTIAL | P1 | L/XL |
-| LNCH-19 | Linux CI running the quality gates + sample harness | Distribute | PARTIAL | P1 | M |
-| LNCH-20 | Cross-platform build scripts (drop the Windows-only assumption) | Distribute | OPEN | P2 | M |
+| LNCH-19 | Linux CI running the quality gates + sample harness | Distribute | DONE | P1 | M |
+| LNCH-20 | Cross-platform build scripts (drop the Windows-only assumption) | Distribute | DONE | P2 | M |
 | LNCH-21 | Generated-app upgrade contract & compatibility policy | Distribute | DONE | P2 | M |
 | LNCH-22 | User-facing documentation & error-message quality | Distribute | PARTIAL | P2 | L |
-| LNCH-23 | Launch checklist: license, packaging, telemetry, release process | Distribute | PARTIAL | P2 | M |
+| LNCH-23 | Launch checklist: license, packaging, telemetry, release process | Distribute | DONE | P2 | M |
 | LNCH-24 | Commit hygiene: land the current uncommitted working tree | Distribute | DONE | P1 | S |
 
 ---
@@ -283,12 +321,16 @@ knowledge card updated to close the deferral note.
 
 ### LNCH-4 — Authentication table stakes
 
-**Status:** PARTIAL (2026-07-14/16) · **Priority:** P0 (subset can be staged) · **Effort:** L
+**Status:** DONE (2026-07-22) · **Priority:** P0 · **Effort:** L
+
+**Update (2026-07-22).** The last open slice — secrets-via-env-vars — is DONE (REG-9): JWT
+signing/verification keys are env-var-supplied with fail-fast startup validation and a verify-only
+boot mode; DB credentials and runtime API keys were already env-bound; super-user-key seeding is
+WONTFIX by decision (issued, not operator-supplied). LNCH-4 now fully DONE.
 
 **Update (2026-07-16).** DONE: P0 slice (token revocation via `tokenVersion`, login throttling,
 CSRF-posture doc + structural guard script) and the P1 self-service password-reset flow (built on
-LNCH-11's mail primitive). Still OPEN: the other named P1 sub-item, secrets-via-env-vars (pairs
-with LNCH-7).
+LNCH-11's mail primitive). Secrets-via-env-vars was the one remaining sub-item — see 2026-07-22 above.
 
 **The gap (why).** Current auth is a working but skeletal patchwork: JWT via the identity
 pack, `X-Super-User-Key` from a key file, runtime API keys. What every deployed business app
@@ -503,7 +545,13 @@ JSON round-trips through the seeder.
 
 ### LNCH-10 — Reporting & export primitives
 
-**Status:** PARTIAL (2026-07-17) · **Priority:** P1 · **Effort:** L
+**Status:** PARTIAL (2026-07-22 — Slices 1+2 DONE, Slice 3 planned) · **Priority:** P1 · **Effort:** L
+
+**Update (2026-07-22).** Slice 2 (print stylesheet + print render mode for declared panels) is DONE
+(REG-12): a "Print" toolbar button, a self-contained `#printRoot` print document, and an `@media print`
+stylesheet, verified live in a real browser (empty and with real row data). Slice 3 (server-side PDF /
+`document` object kind) is greenlit with its own phased plan `docs/REG12_DOCUMENT_EXPORT_PLAN.md` —
+whose core design reuses this same print HTML/CSS as the renderer's input. Only Slice 3 remains.
 
 **Update (2026-07-17).** Slice 1 (CSV) DONE: `GET /api/concepts/{concept}/export.csv`, streamed
 page-by-page through the LNCH-5 push-down contract (never holds more than one page in the JVM),
@@ -812,7 +860,16 @@ commit in small bounded steps per the established discipline (no `git add .`).
 
 ### LNCH-19 — Linux CI running the quality gates + sample harness
 
-**Status:** PARTIAL (2026-07-14) · **Priority:** P1 · **Effort:** M
+**Status:** DONE (2026-07-22) · **Priority:** P1 · **Effort:** M
+
+**Update (2026-07-22, REG-10).** `npdev-pr-gate.yml` ran **green** on ubuntu-latest — run
+`29899362276`, commit `3dcc51e`, every step success (DSL, kernel, all generator tests incl. the 3
+packaged-app boot/HTTP/JDBC proofs, sample generation, RuntimeHost app suite) — and again green on the
+promoted `main` line. The first CI-green in the project's history. It took six root-caused
+first-contact-with-Linux fixes (hardcoded `pwsh.exe` path; `NPDev_General` folder-name build-root
+assumption; a real generated-app `D:/` gradle-cache portability bug; a missing mail-adapter jar in the
+packaged-app test list; CI diagnostics + direct GitHub-API log access; an `..` artifact-path typo).
+LNCH-19 DONE; see the LNCH-20 entry for the cross-platform proof this simultaneously delivered.
 
 **Update (2026-07-14).** `npdev-pr-gate.yml` (fast, `pull_request`-triggered) and a `schedule` trigger
 added to the existing heavy `npdev-ci-validation.yml`, both committed and pushed to
@@ -846,7 +903,16 @@ gate's PR auto-run trigger (commit `b3b1253`) is prior art for the wiring style.
 
 ### LNCH-20 — Cross-platform build scripts
 
-**Status:** OPEN (scoped, not started) · **Priority:** P2 · **Effort:** M
+**Status:** DONE (2026-07-22) · **Priority:** P2 · **Effort:** M
+
+**Update (2026-07-22, REG-11).** PROVEN. The green Linux CI run (LNCH-19) is the proof this item was
+waiting for — the platform's DSL/kernel/generator/RuntimeHost build and a generated FinalApp's own
+`bootJar`/boot all ran on ubuntu-latest, not just the dev machine. The "code side ready, not yet
+proven" flag below is now resolved. Notably, the CI run also **exposed and fixed a genuine
+distribution bug** the code-complete state had missed: every generated FinalApp shipped
+`NPDevRuntimeHost/gradle.properties`'s hardcoded `org.gradle.projectcachedir=D:/WorkSpace/NPDev/Build/…`
+(copied verbatim by `FinalAppAssembler`), so a generated app could not build on any machine without
+that exact `D:` path — removed so generated apps use gradle's portable default cache. LNCH-20 DONE.
 
 **Why.** Windows-only scripts and `D:\`-rooted path assumptions mean a contributor or
 evaluator on macOS/Linux cannot even build the platform, and LNCH-19's Linux CI will trip on
@@ -930,8 +996,10 @@ produced this disposition:
   local-workspace convention (CLAUDE.md mandates `D:\WorkSpace\NPDev\Build`), not execution-blocking
   hardcodes — left as documented convention.
 
-**Still OPEN at the item level:** proof (a green Linux Actions run) still needs REG-10/LNCH-19, which
-is owner-gated (no `gh` CLI in any session). The code is ready; it is not yet *proven* cross-platform.
+**RESOLVED (2026-07-22):** the green Linux Actions run this was waiting on happened (REG-10, run
+`29899362276`) — the code is now *proven* cross-platform, not merely ready. LNCH-20 is DONE. (The
+green run additionally caught the generated-app `D:/` gradle-cache portability bug noted in this item's
+2026-07-22 status update.)
 
 ### LNCH-21 — Generated-app upgrade contract
 
@@ -982,7 +1050,16 @@ builds the tutorial app from docs alone; validator errors carry codes + hints.
 
 ### LNCH-23 — Launch checklist: license, packaging, telemetry, release process
 
-**Status:** PARTIAL (2026-07-17) · **Priority:** P2 · **Effort:** M (mostly decisions)
+**Status:** DONE (2026-07-22) · **Priority:** P2 · **Effort:** M (mostly decisions)
+
+**Update (2026-07-22, REG-15).** The **release tag was cut**: `beta1.1` (annotated, on the
+`beta1-vision-spine → main` merge commit `3e29cca`) — the CI-green, register-closed milestone. `beta1`
+was already taken by the original milestone, hence `beta1.1`. With license (Apache-2.0), the
+distribution ADR (self-hosted / no telemetry), `docs/RELEASE_PROCESS.md`, `CHANGELOG.md`, and the
+release-checklist gate all already in place, and the tag now cut, LNCH-23 is DONE. **Trademark
+clearance is deliberately parked** — the owner confirmed this is an individual portfolio project with
+no mark to defend, so a professional clearance can wait indefinitely without blocking anything (the two
+preliminary findings stay on file for if the posture ever changes).
 
 **Update (2026-07-17).** `LICENSE` (Apache-2.0, ratified copyright holder Marcelo Giazzon),
 `docs/adr/ADR-0007-distribution-model.md` (self-hosted, no telemetry — both ratified),
@@ -1020,8 +1097,9 @@ To keep the roadmap honest, these are recorded as consciously deferred, not forg
   v1 posture; multi-instance requires LNCH-14 (shared file store) and a session/lock review,
   and belongs to a post-launch roadmap.
 - **i18n/l10n and accessibility audits** — real, but not before Tier 1/2; log as post-launch.
-- **PDF documents (LNCH-10 slice 3)** and in-app notifications (LNCH-11 slice 2) — the CSV
-  and email slices are the launch line.
+- **PDF documents (LNCH-10 slice 3)** — no longer on the deferred list: greenlit by the owner
+  2026-07-22 with its own phased plan (`docs/REG12_DOCUMENT_EXPORT_PLAN.md`), unblocked by Slice 2
+  (print). In-app notifications (LNCH-11 slice 2) remain a conscious post-launch deferral.
 - **Merge-conflict UI** for LNCH-16 — 409 + reload is the v1 contract.
 
 ---
@@ -1061,7 +1139,9 @@ word: this document, kept current, is the credibility asset.
 
 ---
 
-*Assessment date: 2026-07-14 · Branch: `beta1-vision-spine` · Companion ledger:
+*Assessment date: 2026-07-14 · Reconciled with the open-items register + green CI: 2026-07-22
+(21 DONE · 3 PARTIAL · 0 OPEN) · Branch: `beta1-vision-spine` (merged to `main`, tagged `beta1.1`) ·
+Companion ledger:
 `docs/OPEN_GAPS_AND_ROADMAP.md` (app-level bugs/lifts, ~all DONE) · Derived projection:
 `knowledge/platform-status.json` (regenerate via `scripts/ai/extract_platform_status.py`
 if this document's items are added to the tracked ledger).*
