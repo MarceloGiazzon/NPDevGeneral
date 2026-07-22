@@ -21,6 +21,8 @@ if ([string]::IsNullOrWhiteSpace($RunId)) {
     $RunId = "sample-generation-" + (Get-Date).ToString("yyyyMMdd-HHmmssfff")
 }
 
+$sampleOutputRoot = Join-Path (Join-Path $samplesRoot $SampleId) "Output"
+New-Item -ItemType Directory -Force -Path $sampleOutputRoot | Out-Null
 $sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId $SampleId
 Ensure-File -PathValue $sample.ModelPath -Label "Sample model.json"
 Ensure-File -PathValue $sample.ConfigPath -Label "Sample config.json"
@@ -34,16 +36,16 @@ else {
 
 $generatorRoot = Join-Path $NPDevRoot "NPDevGenerator"
 $runtimeHostRoot = Join-Path $NPDevRoot "NPDevRuntimeHost"
-$gradlew = Join-Path $generatorRoot "gradlew.bat"
+$gradlew = Get-NPDevGradleWrapperExecutable $generatorRoot
 $artifactRoot = Join-Path $OutputRoot "ArtifactNP"
 $finalAppRoot = Join-Path $OutputRoot "App"
 $reportsRoot = Join-Path $OutputRoot "Reports"
 $generationMarkerPath = Join-Path $reportsRoot "generation-run.json"
-$migrationsRoot = Join-Path $generatorRoot "db-history\src\main\resources\db\migration"
+$dbDefinitionPath = Join-Path $sample.InputRoot "db.definition.json"
 
 Ensure-File -PathValue $gradlew -Label "Generator Gradle wrapper"
 Ensure-Directory -PathValue $runtimeHostRoot -Label "RuntimeHost base template"
-Ensure-Directory -PathValue $migrationsRoot -Label "Generator migrations root"
+Ensure-File -PathValue $dbDefinitionPath -Label "Sample db.definition.json"
 
 Info ("NPDevRoot:    " + $NPDevRoot)
 Info ("SampleId:     " + $sample.SampleId)
@@ -52,12 +54,13 @@ Info ("InputRoot:    " + $sample.InputRoot)
 Info ("OutputRoot:   " + $OutputRoot)
 Info ("ArtifactRoot: " + $artifactRoot)
 Info ("AppRoot:      " + $finalAppRoot)
+Info ("DbDefinition: " + $dbDefinitionPath)
 
 $generatorArgs = @(
     "--config", $sample.ConfigPath,
     "--model", $sample.ModelPath,
     "--out", $artifactRoot,
-    "--migrationsDir", $migrationsRoot,
+    "--dbDefinitionPath", $dbDefinitionPath,
     "--runtimeHostTemplate", $runtimeHostRoot,
     "--finalAppOut", $finalAppRoot,
     "--clean"
@@ -71,8 +74,7 @@ else {
 }
 
 $generatorArgLine = ($generatorArgs | ForEach-Object { Quote-Arg $_ }) -join " "
-$workspaceGradleUserHome = Join-Path $NPDevRoot ".npdev-gradle"
-New-Item -ItemType Directory -Force -Path $workspaceGradleUserHome | Out-Null
+$workspaceGradleUserHome = Get-NPDevGradleUserHome $NPDevRoot
 
 Info "Generating ArtifactNP and assembling the sample app through NPDevGenerator"
 Push-Location $generatorRoot

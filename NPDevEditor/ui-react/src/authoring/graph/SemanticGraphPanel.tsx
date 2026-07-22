@@ -40,6 +40,7 @@ export default function SemanticGraphPanel({
             graph.edges.map((edge, index) => (
               <article key={`${edge.from}-${edge.to}-${index}`} className="authoring-designer-card">
                 <strong>{edge.label}</strong>
+                {edge.warning ? <span className="authoring-status-pill authoring-status-pill--warning">truth edge</span> : null}
                 <p>
                   {edge.from} {"->"} {edge.to}
                 </p>

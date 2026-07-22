@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/schema-consolidation-report.schema.json",
+  "title": "NPDev Schema Consolidation Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "overallStatus",
+    "legacySchemaFilesInActivePaths",
+    "activeDeprecatedSchemaReferences",
+    "deprecatedEntitiesRejected",
+    "migrationToolWorks",
+    "diagnosticsHaveSuggestedFix",
+    "checks",
+    "findings",
+    "doesNotSolve"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "npdev-schema-consolidation-report.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "scriptPath": { "const": "scripts/quality/run-schema-consolidation-check.ps1" },
+    "workspaceRoot": { "type": "string", "minLength": 1 },
+    "overallStatus": { "enum": ["passed", "failed"] },
+    "legacySchemaFilesInActivePaths": { "type": "integer", "minimum": 0 },
+    "activeDeprecatedSchemaReferences": { "type": "integer", "minimum": 0 },
+    "deprecatedEntitiesRejected": { "type": "boolean" },
+    "migrationToolWorks": { "type": "boolean" },
+    "diagnosticsHaveSuggestedFix": { "type": "boolean" },
+    "checks": { "type": "array", "items": { "type": "object" } },
+    "findings": { "type": "array", "items": { "type": "object" } },
+    "doesNotSolve": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "overallStatus": { "const": "passed" } }, "required": ["overallStatus"] },
+      "then": {
+        "properties": {
+          "legacySchemaFilesInActivePaths": { "const": 0 },
+          "activeDeprecatedSchemaReferences": { "const": 0 },
+          "deprecatedEntitiesRejected": { "const": true },
+          "migrationToolWorks": { "const": true },
+          "diagnosticsHaveSuggestedFix": { "const": true }
+        }
+      }
+    }
+  ]
+}

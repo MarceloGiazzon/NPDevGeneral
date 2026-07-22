@@ -89,6 +89,7 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
             CompiledFlowStep step = steps.get(stepIndex);
             String type = normalize(step.getType());
             String name = nonBlank(step.getName(), defaultStepName(type, stepIndex));
+            int builtSizeBefore = out.size();
 
             switch (type) {
                 case "invariant" -> out.add(FlowStepDefinition.invariant(
@@ -97,7 +98,7 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
                         toCheckpoint(step.getCheckpoint()),
                         step.getInvariants()
                 ));
-                case "capability", "createentity", "updateentity", "createconcept", "updateconcept" -> {
+                case "capability", "generatedaction", "createentity", "updateentity", "createconcept", "updateconcept" -> {
                     CompiledCapabilityCall call = step.getCapabilityCall();
                     if (call == null) {
                         throw new IllegalArgumentException("Capability step must contain capability call: " + name);
@@ -119,7 +120,7 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
                         }
                     }
                     String capabilityName = call.getCapabilityName();
-                    String adapterId = adapterIdByCapability.get(normalize(capabilityName));
+                    String adapterId = nonBlank(call.getAdapterId(), adapterIdByCapability.get(normalize(capabilityName)));
                     if (adapterId == null || adapterId.isBlank()) {
                         out.add(FlowStepDefinition.capabilityCall(
                                 name,
@@ -147,7 +148,7 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
                             outputSchema
                     ));
                 }
-                case "event" -> out.add(FlowStepDefinition.emitEvent(
+                case "event", "emitevent" -> out.add(FlowStepDefinition.emitEvent(
                         name,
                         step.getEventName(),
                         step.getPayloadRef(),
@@ -179,9 +180,26 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
                         step.getAwaitPayloadMatch()
                 ));
                 case "return" -> out.add(FlowStepDefinition.returnValue(name, step.getReturnValueRef()));
+                case "foreach" -> out.add(FlowStepDefinition.forEach(
+                        name,
+                        step.getCollectionRef(),
+                        step.getItemKey(),
+                        toFlowSteps(step.getLoopSteps(), flowConcept, adapterIdByCapability, capabilityOperationsByCapability),
+                        step.getMaxLoopIterations()
+                ));
                 default -> throw new IllegalArgumentException(
                         "Unsupported flow step type '" + step.getType() + "' in flow concept " + flowConcept
                 );
+            }
+
+            // LNCH-17: every case above adds exactly one built step -- attach its declared
+            // compensation steps (if any) onto that just-built step rather than threading
+            // onFailureSteps through every FlowStepDefinition factory method individually.
+            if (!step.getOnFailureSteps().isEmpty()) {
+                List<FlowStepDefinition> onFailureSteps = toFlowSteps(
+                        step.getOnFailureSteps(), flowConcept, adapterIdByCapability, capabilityOperationsByCapability
+                );
+                out.set(builtSizeBefore, out.get(builtSizeBefore).withOnFailure(onFailureSteps));
             }
         }
         return out;

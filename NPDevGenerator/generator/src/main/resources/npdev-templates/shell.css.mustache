@@ -1,0 +1,226 @@
+/* NPDev platform-default shared shell (top bar + left nav + right gadget rail), emitted for every
+   app that composes the workspace pack. Injected around a page's own content by shell.js -- see
+   that file for the DOM structure this styles and for how GuidePage regions/theme toggle the
+   classes/variables below. One token set drives both the light corporate default and the dark
+   theme, so a GuidePage only ever needs to flip `data-np-theme` and/or override `--np-accent`. */
+
+:root {
+  --np-bg: #f5f6f8;
+  --np-surface: #ffffff;
+  --np-surface-raised: #ffffff;
+  --np-border: #e3e6ec;
+  --np-text: #1c2333;
+  --np-text-muted: #6b7280;
+  --np-accent: #0b5fff;
+  --np-on-accent: #ffffff;
+  --np-danger: #d64545;
+  --np-radius: 6px;
+  --np-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  --np-pad: 10px;
+  --np-topbar-h: 52px;
+  --np-sidebar-w: 232px;
+  --np-sidebar-w-collapsed: 56px;
+  --np-rightbar-w: 280px;
+  --np-shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .08);
+  --np-focus-ring: 0 0 0 2px color-mix(in srgb, var(--np-accent) 40%, transparent);
+
+  /* Brandable sub-tokens: every one defaults to the base tokens above, so an app-owned
+     /theme.css (injected by shell.js when present) can restyle just the topbar, the data-grid
+     headers, or the semantic colors without touching anything else. */
+  --np-topbar-bg: var(--np-surface);
+  --np-topbar-text: var(--np-text);
+  --np-topbar-muted: var(--np-text-muted);
+  --np-topbar-border: var(--np-border);
+  --np-topbar-logo: var(--np-accent);
+  --np-topbar-hover: var(--np-bg);
+  --np-grid-head-bg: #f9fafc;
+  --np-grid-head-text: #4c5a69;
+  --np-row-stripe: rgba(16, 24, 40, .02);
+  --np-row-hover: rgba(11, 95, 255, .05);
+  --np-positive: #1e7a34;
+  --np-negative: #b42323;
+  --np-warning: #95620a;
+}
+
+:root[data-np-theme="dark"],
+body[data-np-theme="dark"] {
+  --np-bg: #14161a;
+  --np-surface: #1b1e24;
+  --np-surface-raised: #22262e;
+  --np-border: #2c313b;
+  --np-text: #e7e9ee;
+  --np-text-muted: #9aa2b1;
+  --np-accent: #6fa8ff;
+  --np-on-accent: #0b1220;
+  --np-shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 2px 6px rgba(0, 0, 0, .25);
+  --np-grid-head-bg: #22262e;
+  --np-grid-head-text: #9aa2b1;
+  --np-row-stripe: rgba(255, 255, 255, .025);
+  --np-row-hover: rgba(111, 168, 255, .09);
+  --np-positive: #58b96b;
+  --np-negative: #e06c6c;
+  --np-warning: #d9a13c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-np-theme="light"]) {
+    --np-bg: #14161a;
+    --np-surface: #1b1e24;
+    --np-surface-raised: #22262e;
+    --np-border: #2c313b;
+    --np-text: #e7e9ee;
+    --np-text-muted: #9aa2b1;
+    --np-accent: #6fa8ff;
+    --np-on-accent: #0b1220;
+    --np-shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 2px 6px rgba(0, 0, 0, .25);
+    --np-grid-head-bg: #22262e;
+    --np-grid-head-text: #9aa2b1;
+    --np-row-stripe: rgba(255, 255, 255, .025);
+    --np-row-hover: rgba(111, 168, 255, .09);
+    --np-positive: #58b96b;
+    --np-negative: #e06c6c;
+    --np-warning: #d9a13c;
+  }
+}
+
+html, body { height: 100%; }
+body.npdev-shell-active {
+  margin: 0; display: flex; flex-direction: column; min-height: 100vh;
+  background: var(--np-bg); color: var(--np-text); font-family: var(--np-font);
+}
+body.npdev-shell-active a { color: inherit; }
+body.npdev-shell-active *:focus-visible { outline: none; box-shadow: var(--np-focus-ring); }
+
+/* ---- regions: GuidePage toggles these on <body> (npdev-shell-no-top/-left/-right) ---- */
+body.npdev-shell-no-top .npdev-shell-topbar { display: none; }
+body.npdev-shell-no-left .npdev-shell-sidebar { display: none; }
+body.npdev-shell-no-right .npdev-shell-rightbar { display: none; }
+
+/* ---- topbar ---- */
+.npdev-shell-topbar {
+  display: flex; align-items: center; gap: 14px; height: var(--np-topbar-h); padding: 0 16px;
+  background: var(--np-topbar-bg); color: var(--np-topbar-text);
+  border-bottom: 1px solid var(--np-topbar-border); font-size: 13px;
+  flex-shrink: 0; box-shadow: var(--np-shadow); position: relative; z-index: 2;
+}
+.npdev-shell-topbar .npdev-shell-collapse-toggle {
+  background: transparent; border: 1px solid var(--np-topbar-border); border-radius: var(--np-radius);
+  color: var(--np-topbar-muted); width: 28px; height: 28px; cursor: pointer; font-size: 14px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.npdev-shell-topbar .npdev-shell-collapse-toggle { transition: background-color .15s ease, color .15s ease; }
+.npdev-shell-topbar .npdev-shell-collapse-toggle:hover { background: var(--np-topbar-hover); color: var(--np-topbar-text); }
+.npdev-shell-topbar .npdev-shell-logo { font-weight: 700; color: var(--np-topbar-logo); letter-spacing: .2px; font-size: 14px; }
+.npdev-shell-topbar .npdev-shell-breadcrumb { color: var(--np-topbar-muted); font-size: 12px; font-weight: 500; }
+.npdev-shell-topbar .npdev-shell-identity {
+  margin-left: auto; opacity: .9; display: flex; align-items: center; gap: 10px; font-size: 12px;
+  color: var(--np-topbar-muted); white-space: nowrap;
+}
+.npdev-shell-topbar button.npdev-shell-logout {
+  background: var(--np-topbar-hover); color: var(--np-topbar-text); border: 1px solid var(--np-topbar-border);
+  border-radius: var(--np-radius); padding: 5px 12px; cursor: pointer; font-size: 12px;
+  transition: background-color .15s ease;
+}
+.npdev-shell-topbar button.npdev-shell-logout:hover { background: var(--np-topbar-border); }
+.npdev-shell-topbar button.npdev-shell-rightbar-toggle {
+  background: transparent; border: 1px solid var(--np-topbar-border); border-radius: var(--np-radius);
+  color: var(--np-topbar-muted); width: 28px; height: 28px; cursor: pointer; font-size: 13px;
+  transition: background-color .15s ease, color .15s ease;
+}
+.npdev-shell-topbar button.npdev-shell-rightbar-toggle:hover { background: var(--np-topbar-hover); color: var(--np-topbar-text); }
+
+/* ---- body row ---- */
+.npdev-shell-body { display: flex; flex: 1; min-height: 0; }
+
+/* ---- left sidebar (collapsible nav tree) ---- */
+.npdev-shell-sidebar {
+  width: var(--np-sidebar-w); flex-shrink: 0; background: var(--np-surface);
+  border-right: 1px solid var(--np-border); padding: 14px 10px; overflow-y: auto;
+  transition: width .15s ease;
+}
+body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar { width: var(--np-sidebar-w-collapsed); }
+body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar .npdev-shell-nav-label,
+body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar .npdev-shell-nav-section {
+  display: none;
+}
+/* Collapsed mode becomes an icon rail: each link/group-header's first-letter glyph (hidden by
+   default, see .npdev-shell-nav-icon below) is the only thing shown, centered in the narrow rail
+   instead of a column of blank, unlabeled pills. */
+body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar a,
+body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar .npdev-shell-nav-group-header {
+  justify-content: center; padding-left: 0; padding-right: 0;
+}
+body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar .npdev-shell-nav-group-header .npdev-shell-nav-caret {
+  display: none;
+}
+body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar .npdev-shell-nav-children {
+  padding-left: 0; margin-left: 0; border-left: none;
+}
+
+.npdev-shell-nav-icon {
+  display: none; flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--np-border); color: var(--np-text-muted); font-size: 11px; font-weight: 700;
+  align-items: center; justify-content: center; line-height: 1;
+}
+body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar .npdev-shell-nav-icon { display: flex; }
+body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar a.active .npdev-shell-nav-icon {
+  background: var(--np-accent); color: var(--np-on-accent);
+}
+
+.npdev-shell-sidebar .npdev-shell-nav-section {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700;
+  color: var(--np-text-muted); margin: 18px 0 6px 8px;
+}
+.npdev-shell-sidebar .npdev-shell-nav-section:first-child { margin-top: 2px; }
+
+.npdev-shell-nav-group { margin-bottom: 1px; }
+.npdev-shell-nav-group-header {
+  display: flex; align-items: center; gap: 6px; width: 100%; background: transparent; border: 0;
+  text-align: left; padding: 7px 8px; border-radius: var(--np-radius); color: var(--np-text);
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: background-color .15s ease;
+}
+.npdev-shell-nav-group-header:hover { background: var(--np-bg); }
+.npdev-shell-nav-group-header .npdev-shell-nav-caret {
+  display: inline-block; transition: transform .15s ease; color: var(--np-text-muted); font-size: 10px;
+}
+.npdev-shell-nav-group.collapsed > .npdev-shell-nav-group-header .npdev-shell-nav-caret { transform: rotate(-90deg); }
+.npdev-shell-nav-group.collapsed > .npdev-shell-nav-children { display: none; }
+.npdev-shell-nav-children { padding-left: 14px; border-left: 1px solid var(--np-border); margin-left: 10px; }
+
+.npdev-shell-sidebar a {
+  display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: var(--np-radius);
+  color: var(--np-text); text-decoration: none; font-size: 13px; margin-bottom: 1px;
+  transition: background-color .15s ease, color .15s ease;
+}
+.npdev-shell-sidebar a:hover { background: var(--np-bg); }
+.npdev-shell-sidebar a.active {
+  background: color-mix(in srgb, var(--np-accent) 14%, transparent); color: var(--np-accent); font-weight: 600;
+}
+
+/* ---- content ---- */
+.npdev-shell-content { flex: 1; min-width: 0; overflow-y: auto; padding: 0; }
+
+/* ---- right gadget rail ---- */
+.npdev-shell-rightbar {
+  width: var(--np-rightbar-w); flex-shrink: 0; background: var(--np-surface);
+  border-left: 1px solid var(--np-border); overflow-y: auto; padding: 14px;
+  transition: width .15s ease;
+}
+body.npdev-shell-rightbar-collapsed .npdev-shell-rightbar { width: 0; padding: 0; overflow: hidden; border-left: none; }
+
+.npdev-shell-gadget {
+  background: var(--np-surface-raised); border: 1px solid var(--np-border); border-radius: var(--np-radius);
+  padding: 12px; margin-bottom: 12px; box-shadow: var(--np-shadow);
+  transition: box-shadow .15s ease, transform .15s ease;
+}
+.npdev-shell-gadget:hover { box-shadow: 0 2px 6px rgba(16, 24, 40, .1), 0 4px 10px rgba(16, 24, 40, .08); transform: translateY(-1px); }
+.npdev-shell-gadget h4 {
+  margin: 0 0 8px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--np-text-muted); font-weight: 700;
+}
+.npdev-shell-gadget ul { list-style: none; margin: 0; padding: 0; }
+.npdev-shell-gadget li { padding: 5px 0; border-bottom: 1px solid var(--np-border); font-size: 12.5px; }
+.npdev-shell-gadget li:last-child { border-bottom: 0; }
+.npdev-shell-gadget li a { color: var(--np-text); text-decoration: none; transition: color .15s ease; }
+.npdev-shell-gadget li a:hover { color: var(--np-accent); }
+.npdev-shell-gadget .npdev-shell-gadget-empty { color: var(--np-text-muted); font-size: 12px; font-style: italic; }

@@ -1,18 +1,14 @@
 {
-  "$schema": "../../schemas/authoring/model.schema.json",
+  "$schema": "NPDevContract/schemas/model.schema.json",
+  "schemaVersion": "1.0.0",
+  "namespace": "npdev.ai.beta.ai.authoring",
   "dslVersion": "1.0.0",
-  "namespace": "examples.ai.workitems",
-  "version": "1.0.0",
-  "metadata": {
-    "purpose": "Domain-neutral AI authoring bundle with governed concepts, procedures, and panels."
-  },
+  "version": "1.0",
   "concepts": [
     {
-      "name": "WorkItem",
+      "name": "User",
       "ui": {
-        "label": "Work item",
-        "group": "Operations",
-        "order": 10
+        "label": "User"
       },
       "fields": [
         {
@@ -22,170 +18,106 @@
           "required": true
         },
         {
-          "name": "title",
+          "name": "email",
           "type": "string",
-          "required": true,
-          "ui": {
-            "label": "Title",
-            "listColumn": true,
-            "summaryCard": true
-          }
+          "required": true
         },
         {
-          "name": "status",
-          "type": "enum",
-          "enumValues": [
-            "Draft",
-            "Ready",
-            "Done"
-          ],
-          "required": true,
-          "default": "Draft",
-          "ui": {
-            "label": "Status",
-            "listColumn": true
-          }
-        },
-        {
-          "name": "owner",
+          "name": "displayName",
           "type": "string",
-          "required": true,
-          "ui": {
-            "label": "Owner"
-          }
+          "required": true
         }
       ],
       "invariants": [
         {
-          "name": "WorkItemTitleRequired",
-          "expr": "title != null && title != ''"
+          "name": "EmailRequired",
+          "expr": "email != null && email != ''"
+        },
+        {
+          "name": "EmailUnique",
+          "type": "unique",
+          "fields": [
+            "email"
+          ]
+        },
+        {
+          "name": "DisplayNameRequired",
+          "expr": "displayName != null && displayName != ''"
         }
       ]
     }
   ],
   "capabilities": [
     {
-      "name": "notification",
-      "type": "NotificationCapability",
+      "name": "persistence",
+      "type": "PersistenceCapability",
       "operations": [
-        "send"
+        "save",
+        "unique",
+        "findById"
       ]
     }
   ],
   "bindings": [
     {
-      "capability": "notification",
-      "adapter": "notification-inproc"
+      "capability": "persistence",
+      "adapter": "repository"
+    },
+    {
+      "capability": "eventBus",
+      "adapter": "inproc"
     }
   ],
-  "queries": [
+  "events": [
     {
-      "name": "ReadyWorkItems",
-      "concept": "WorkItem",
-      "where": "status == 'Ready'",
-      "orderBy": [
-        "title"
-      ],
-      "tracePolicy": "summary"
-    }
-  ],
-  "ruleProfiles": [
-    {
-      "name": "always",
-      "description": "Shared WorkItem invariant and permission profile for AI-authored bundles.",
-      "appliesTo": [
-        "WorkItem"
-      ],
-      "enabled": true,
-      "metadata": {
-        "invariants": [
-          "WorkItemTitleRequired"
-        ],
-        "permissions": [
-          "concept.read",
-          "concept.write"
-        ]
-      }
-    }
-  ],
-  "procedures": [
-    {
-      "name": "MarkWorkItemReady",
-      "description": "Sets a work item to Ready through governed concept access.",
-      "parameters": [
+      "name": "UserCreated",
+      "payload": [
         {
           "name": "id",
-          "type": "uuid",
-          "required": true
-        }
-      ],
-      "steps": [
-        {
-          "name": "load-work-item",
-          "type": "readConcept",
-          "concept": "WorkItem",
-          "id": "$parameters.id",
-          "target": "workItem"
-        },
-        {
-          "name": "save-ready-work-item",
-          "type": "saveConcept",
-          "concept": "WorkItem",
-          "id": "$parameters.id",
-          "data": {
-            "input": "$workItem"
-          },
-          "target": "savedWorkItem"
-        },
-        {
-          "name": "return-saved-work-item",
-          "type": "return",
-          "value": "$savedWorkItem"
+          "type": "uuid"
         }
       ]
     }
   ],
-  "panels": [
+  "flows": [
     {
-      "name": "WorkItemPanel",
-      "route": "/work-items",
-      "title": "Ready work items",
-      "dataSources": [
-        {
-          "name": "readyItems",
-          "query": "ReadyWorkItems"
-        }
-      ],
-      "layout": {
-        "type": "table",
-        "fields": [
-          "title",
-          "status",
-          "owner"
-        ]
+      "name": "CreateUser",
+      "input": {
+        "concept": "User",
+        "mode": "create"
       },
-      "fieldBindings": [
+      "steps": [
         {
-          "field": "title",
-          "source": "readyItems.title"
+          "name": "enforce-invariants",
+          "type": "enforceInvariants",
+          "scope": "User"
         },
         {
-          "field": "status",
-          "source": "readyItems.status"
+          "name": "save-user",
+          "type": "capabilityCall",
+          "cap": "persistence",
+          "op": "save",
+          "args": [
+            "$input"
+          ],
+          "out": "$saved"
         },
         {
-          "field": "owner",
-          "source": "readyItems.owner"
-        }
-      ],
-      "actions": [
+          "name": "emit-created",
+          "type": "emitEvent",
+          "event": "UserCreated",
+          "from": "$saved"
+        },
         {
-          "name": "MarkReady",
-          "binding": "procedure",
-          "procedure": "MarkWorkItemReady",
-          "label": "Mark ready"
+          "name": "return-result",
+          "type": "return",
+          "value": "$saved"
         }
       ]
     }
-  ]
+  ],
+  "metadata": {
+    "normalizedFrom": "ai-model.v1",
+    "scenarioId": "ai-authoring"
+  }
 }

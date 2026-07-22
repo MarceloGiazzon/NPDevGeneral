@@ -1,0 +1,34 @@
+NO BUILD ARTIFACTS IN THIS SOURCE TREE
+=======================================
+
+This directory tree is SOURCE CODE ONLY.
+Build outputs and artifacts MUST NOT exist anywhere inside NPDev_General.
+
+BUILD OUTPUT LOCATION
+---------------------
+All builds must output to:  D:\WorkSpace\NPDev\Build
+
+FORBIDDEN ARTIFACT TYPES
+-------------------------
+The following directories/files must NEVER appear inside NPDev_General:
+
+  build/          - Gradle build output
+  .gradle/        - Gradle daemon and cache files
+  node_modules/   - Node.js dependency installations
+  *.class         - Java compiled class files (outside source JARs)
+  *.jar           - Generated JARs (unless committed source JARs)
+  out/            - IDE output directories
+  target/         - Maven output directories
+
+ENFORCEMENT
+-----------
+- If you find a build/ or .gradle/ directory here: DELETE IT.
+- If you are about to run a Gradle or Node build command from this tree:
+  STOP — configure the build to output to D:\WorkSpace\NPDev\Build first.
+- AI agents (Claude Code, Cursor, Codex, etc.) must NEVER run
+  ./gradlew, gradle, npm install, or yarn inside this source tree
+  without first verifying that build output is redirected to
+  D:\WorkSpace\NPDev\Build.
+
+This policy exists because build artifacts pollute the source tree,
+confuse AI tooling, bloat state snapshots, and create false git diffs.

@@ -23,6 +23,44 @@ repositories {
     mavenCentral()
 }
 
+def resolveNpdevRuntimeLibsDir = {
+    def configured = providers.gradleProperty('npdevRuntimeHostLibsDir')
+            .orElse(providers.environmentVariable('NPDEV_RUNTIMEHOST_LIBS_DIR'))
+            .orNull
+    if (configured != null && !configured.toString().trim().isEmpty()) {
+        return file(configured.toString().trim())
+    }
+
+    def current = projectDir
+    while (current != null) {
+        if (new File(current, '.npdev-root').isFile()) {
+            return new File(current.parentFile, "${current.name}__OutsideRepo/runtimehost-libs")
+        }
+        current = current.parentFile
+    }
+
+    return file("${rootProject.projectDir.name}__OutsideRepo/runtimehost-libs")
+}
+
+def npdevRuntimeHostLibsDir = resolveNpdevRuntimeLibsDir()
+def javaSourceRoot = file('src/main/java').canonicalFile
+def testJavaSourceRoot = file('src/test/java').canonicalFile
+def generatedRuntimeRequiredFiles = [
+        'npdev-generated/src/main/java/com/npdev/generated/runtime/service/RuntimeContextService.java',
+        'npdev-generated/src/main/java/com/npdev/generated/runtime/service/KernelFacade.java',
+        'npdev-generated/src/main/java/com/npdev/generated/runtime/config/RuntimeApiKeyAuthFilter.java'
+]
+
+def generatedRuntimeMountPresent = {
+    generatedRuntimeRequiredFiles.every { file(it).isFile() }
+}
+
+def relativeJavaSourcePath = { File root, File sourceFile ->
+    sourceFile.canonicalPath
+            .substring(root.path.length() + 1)
+            .replace(File.separator, '/')
+}
+
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
@@ -33,36 +71,104 @@ dependencies {
     implementation 'org.postgresql:postgresql:42.7.4'
 
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    // LNCH-8: the Prometheus registry so /actuator/prometheus actually exposes something --
+    // Actuator alone only gives the generic /actuator/metrics JSON view, not the scrape format.
+    implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation 'com.networknt:json-schema-validator:1.5.6'
+
+    // HARDEN-OBJSTORE-P2: the S3-compatible file-store adapter (file-store-objectstore, staged via
+    // npdevRuntimeHostLibsDir like the other kernel adapters) needs the AWS SDK v2 S3 client on the
+    // runtime classpath -- declared here as a normal Maven dependency since the jar-staging
+    // mechanism only copies this workspace's own project jars, not their third-party dependencies.
+    implementation platform('software.amazon.awssdk:bom:2.28.11')
+    implementation 'software.amazon.awssdk:s3'
+
+    // LNCH-11: the mail-smtp adapter (staged via npdevRuntimeHostLibsDir like the other kernel
+    // adapters) needs Jakarta Mail on the runtime classpath -- same reason as the AWS SDK above:
+    // jar-staging only copies this workspace's own project jars, not their third-party deps.
+    implementation 'org.eclipse.angus:angus-mail:2.0.3'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.3.0'
-    testImplementation 'org.testcontainers:junit-jupiter:1.19.0'
-    testImplementation 'org.testcontainers:postgresql:1.19.0'
+    testImplementation 'org.testcontainers:testcontainers:1.21.4'
+    testImplementation 'org.testcontainers:jdbc:1.21.4'
+    testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
+    testImplementation 'org.testcontainers:postgresql:1.21.4'
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
     testImplementation 'org.awaitility:awaitility:4.2.0'
+    testImplementation 'com.icegreen:greenmail-junit5:2.1.0'
     runtimeOnly 'com.h2database:h2'
     testRuntimeOnly 'com.h2database:h2'
 
-    // Runtime extension jars live in ./libs
-    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    // Runtime extension jars are staged outside the source/evidence workspace.
+    implementation fileTree(dir: npdevRuntimeHostLibsDir, include: ['*.jar'])
+}
+
+configurations.configureEach {
+    resolutionStrategy.force(
+            'org.testcontainers:testcontainers:1.21.4',
+            'org.testcontainers:jdbc:1.21.4',
+            'org.testcontainers:junit-jupiter:1.21.4',
+            'org.testcontainers:postgresql:1.21.4'
+    )
+}
+
+tasks.register('verifyNpdevRuntimeHostLibs') {
+    group = 'verification'
+    description = 'Checks that local RuntimeHost jars were staged outside the workspace before compilation.'
+
+    doLast {
+        def manifestFile = new File(npdevRuntimeHostLibsDir, 'runtimehost-libs-manifest.json')
+        if (!manifestFile.isFile()) {
+            throw new GradleException("Missing NPDev RuntimeHost libs manifest in ${npdevRuntimeHostLibsDir}. Run scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars.")
+        }
+        def manifest = new JsonSlurper().parse(manifestFile)
+        def requiredJars = (manifest.requiredStagedJars ?: []).collect { it.toString().trim() }.findAll { !it.isEmpty() }
+        if (requiredJars.isEmpty()) {
+            throw new GradleException("NPDev RuntimeHost libs manifest did not declare requiredStagedJars: ${manifestFile}.")
+        }
+        def missing = requiredJars.findAll { !new File(npdevRuntimeHostLibsDir, it).isFile() }
+        if (!missing.isEmpty()) {
+            throw new GradleException("Missing NPDev RuntimeHost jars in ${npdevRuntimeHostLibsDir}: ${missing}. Run scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars.")
+        }
+    }
+}
+
+tasks.named('compileJava') {
+    dependsOn tasks.named('verifyNpdevRuntimeHostLibs')
 }
 
 def modelSpecificGeneratedAppTests = [
         'com/finalexec/AsyncWaitResumeE2EIT.java',
         'com/finalexec/CanonicalDemoBusinessE2EIT.java',
         'com/finalexec/InvariantApiIntegrationTest.java',
+        'com/finalexec/JwtAuthExternalBetaIT.java',
         'com/finalexec/ModelSyncStatusControllerIntegrationTest.java',
+        'com/finalexec/ModelSyncStatusControllerStandaloneTest.java',
         'com/finalexec/NonDefaultRuntimeSurfaceProfileIntegrationTest.java',
         'com/finalexec/PermissionAwareUiMetadataServiceTest.java',
+        'com/finalexec/PublicationChainTenantReferenceValidationTest.java',
         'com/finalexec/PublicationRollbackE2EIT.java',
+        'com/finalexec/PluginManifestLoaderTest.java',
+        'com/finalexec/PluginPackageDescriptorLoaderTest.java',
         'com/finalexec/RuntimeMetadataControllerIntegrationTest.java',
+        'com/finalexec/RuntimeMetadataControllerStandaloneTest.java',
         'com/finalexec/RuntimeMetadataServiceTest.java',
         'com/finalexec/RuntimeMetadataValidationControllerIntegrationTest.java',
+        'com/finalexec/RuntimeMetadataValidationControllerStandaloneTest.java',
         'com/finalexec/RuntimePluginFilesystemDiscoveryIntegrationTest.java',
+        'com/finalexec/RuntimePluginStatusControllerIntegrationTest.java',
         'com/finalexec/RuntimePluginPackageRealizationServiceTest.java',
+        'com/finalexec/RuntimePluginAdapterRegistryTest.java',
+        'com/finalexec/RuntimePluginPackageAdmissionEvaluatorTest.java',
+        'com/finalexec/RuntimePluginPackageDiscoveryServiceTest.java',
+        'com/finalexec/RuntimePluginProfileResolverTest.java',
         'com/finalexec/RuntimePluginRuntimeRefResolverTest.java',
         'com/finalexec/RuntimeUiMetadataControllerIntegrationTest.java',
+        'com/finalexec/RuntimeUiMetadataControllerStandaloneTest.java',
+        'com/finalexec/SupportedCoreControllerBlackBoxIntegrationTest.java',
+        'com/finalexec/SupportedRuntimeSurfaceAllowlistIntegrationTest.java',
+        'com/finalexec/SupportedRuntimeSurfacePackagingTest.java',
         'com/finalexec/Stage12UiModelRuntimeIT.java',
         'com/finalexec/Step01MultiConceptIntegrationTest.java',
         'com/finalexec/Step02ReferencesEnumsDomainTypesIntegrationTest.java',
@@ -70,20 +176,42 @@ def modelSpecificGeneratedAppTests = [
         'com/finalexec/Step04InvariantExplainabilityIntegrationTest.java',
         'com/finalexec/Step05ProviderOverlapIntegrationTest.java',
         'com/finalexec/Step06RoomOverlapIntegrationTest.java',
-        'com/finalexec/TenantIsolationIT.java'
+        'com/finalexec/SupportedCoreControllerBlackBoxStandaloneTest.java',
+        'com/finalexec/TenantIsolationE2EIT.java'
+]
+
+def generatedRuntimeIntegrationTestSources = [
+        'com/finalexec/AbstractScenarioIntegrationTest.java',
+        'com/finalexec/JwtAuthExternalBetaIT.java',
+        'com/finalexec/PublicationRollbackE2EIT.java',
+        'com/finalexec/TenantIsolationE2EIT.java',
+        // LNCH-1 Phase 7 (task 7.2): the Postgres Testcontainers twin of the H2 schema-evolution
+        // proof matrix -- Docker-dependent (a real postgres:15-alpine container), so it belongs in
+        // integrationTest (nightly, `-Dspring.profiles.active=test,postgres`), not the plain `test`
+        // task the fast PR gate runs. Excluded from `test`'s sourceSet below for the same reason.
+        'com/finalexec/db/SchemaLifecycleExecutorPostgresProofMatrixTest.java'
 ]
 
 def runtimeSurfaceManifest = new JsonSlurper().parse(file('src/main/resources/npdev/runtime-supported-controllers.json'))
-def supportedCoreControllerNames = (runtimeSurfaceManifest.supportedCoreControllers ?: []).collect { it.toString().trim() }.findAll { !it.isEmpty() }
+def supportedCoreControllerNames = (runtimeSurfaceManifest.allowedControllers ?: []).collect { it.toString().trim() }.findAll { !it.isEmpty() }
 def supportedCoreServiceNames = (runtimeSurfaceManifest.supportedCoreServiceComponents ?: []).collect { it.toString().trim() }.findAll { !it.isEmpty() }
 def supportedCoreServicePatterns = (runtimeSurfaceManifest.supportedCoreServicePatterns ?: []).collect { it.toString().trim() }.findAll { !it.isEmpty() }
 
-def javaSourceRoot = file('src/main/java').canonicalFile
 def toRelativeSourcePath = { File sourceFile ->
-    sourceFile.canonicalPath
-            .substring(javaSourceRoot.path.length() + 1)
-            .replace(File.separator, '/')
+    relativeJavaSourcePath(javaSourceRoot, sourceFile)
 }
+
+def generatedRuntimeDependentMainSources = fileTree('src/main/java') {
+    include '**/*.java'
+}.files.findAll { sourceFile ->
+    sourceFile.text.contains('com.npdev.generated.')
+}.collect(toRelativeSourcePath)
+
+def generatedRuntimeDependentTestSources = fileTree('src/test/java') {
+    include '**/*.java'
+}.files.findAll { sourceFile ->
+    sourceFile.text.contains('com.npdev.generated.')
+}.collect { sourceFile -> relativeJavaSourcePath(testJavaSourceRoot, sourceFile) }
 
 def matchesSupportedPattern = { String simpleName, List<String> patterns ->
     patterns.any { pattern ->
@@ -112,8 +240,8 @@ def unsupportedRuntimeHostServiceSources = fileTree('src/main/java/com/finalexec
 }.files.collect(toRelativeSourcePath)
         .findAll { sourcePath ->
             String simpleName = sourcePath.tokenize('/').last().replace('.java', '')
-            !supportedCoreServiceNames.contains(simpleName)
-                    && !matchesSupportedPattern(simpleName, supportedCoreServicePatterns)
+            !supportedCoreServiceNames.contains(simpleName) &&
+                    !matchesSupportedPattern(simpleName, supportedCoreServicePatterns)
         }
 
 sourceSets {
@@ -124,6 +252,9 @@ sourceSets {
             exclude 'com/finalexec/HelloController.java'
             unsupportedRuntimeHostControllerSources.each { exclude it }
             unsupportedRuntimeHostServiceSources.each { exclude it }
+            if (!generatedRuntimeMountPresent()) {
+                generatedRuntimeDependentMainSources.each { exclude it }
+            }
         }
         resources {
             srcDir 'src/main/resources'
@@ -133,8 +264,30 @@ sourceSets {
     test {
         java {
             modelSpecificGeneratedAppTests.each { exclude it }
+            generatedRuntimeDependentTestSources.each { exclude it }
+            // LNCH-1 Phase 7 (task 7.2): Docker-dependent (Testcontainers Postgres) -- must not run,
+            // or even compile, as part of the plain `test` task (no com.npdev.generated. reference,
+            // so generatedRuntimeDependentTestSources' auto-exclusion would not otherwise catch it;
+            // see generatedRuntimeIntegrationTestSources above for the integrationTest inclusion).
+            exclude 'com/finalexec/db/SchemaLifecycleExecutorPostgresProofMatrixTest.java'
         }
     }
+    integrationTest {
+        java {
+            srcDir 'src/test/java'
+            generatedRuntimeIntegrationTestSources.each { include it }
+        }
+        resources {
+            srcDir 'src/test/resources'
+        }
+        compileClasspath += sourceSets.main.output + sourceSets.test.output + configurations.testRuntimeClasspath
+        runtimeClasspath += output + compileClasspath
+    }
+}
+
+configurations {
+    integrationTestImplementation.extendsFrom testImplementation
+    integrationTestRuntimeOnly.extendsFrom testRuntimeOnly
 }
 
 tasks.register('reportRuntimeSupportedSurface') {
@@ -142,7 +295,7 @@ tasks.register('reportRuntimeSupportedSurface') {
     description = 'Prints the supported-core RuntimeHost source allowlist used for packaging.'
 
     doLast {
-        println "Supported-core controllers: ${supportedCoreControllerNames.sort(false)}"
+        println "Allowed supported-core controllers: ${supportedCoreControllerNames.sort(false)}"
         println "Supported-core service components: ${supportedCoreServiceNames.sort(false)}"
         println "Supported-core service patterns: ${supportedCoreServicePatterns.sort(false)}"
         println "Excluded controller sources: ${unsupportedRuntimeHostControllerSources.sort(false)}"
@@ -154,8 +307,7 @@ tasks.register('reportRuntimeSupportedSurface') {
  * Runtime resource policy:
  * - application.* must come only from src/main/resources
  * - generated resources may provide npdev metadata/static assets/templates
- * - runtime schema-realization SQL comes from src/main/resources/db/migration
- * - generated db/migration content is forbidden
+ * - runtime schema-realization SQL comes from db/schema-realization
  * - schema-realization analysis artifacts must never go into runtime classpath
  * - stateful upgrade management remains unsupported in the generated app
  */
@@ -166,77 +318,147 @@ tasks.named('processResources', Copy) {
         delete(destinationDir)
     }
 
-    // Generated resources first, but NEVER generated runtime schema-realization SQL
+    // Generated resources first, including generated schema-realization artifacts.
     from('npdev-generated/src/main/resources') {
         exclude('**/application.yml')
         exclude('**/application.yaml')
         exclude('**/application.properties')
-        exclude('db/migration/**')
-        exclude('db/migration-plans/**')
         exclude('db/schema-snapshots/**')
     }
 
     // Handwritten resources last and authoritative.
-    // This includes canonical runtime schema-realization SQL.
     from('src/main/resources') {
-        exclude('db/migration-plans/**')
         exclude('db/schema-snapshots/**')
     }
 }
 
-tasks.register('enforceSingleMigrationSource') {
+tasks.register('enforceSingleSchemaRealizationSource') {
     group = 'verification'
-    description = 'Ensures runtime schema-realization SQL comes from src/main/resources/db/migration only.'
+    description = 'Ensures generated apps contain schema-realization artifacts.'
 
     doLast {
-        File generatedMigrationDir = file('npdev-generated/src/main/resources/db/migration')
-        if (generatedMigrationDir.exists()) {
-            def generatedFiles = fileTree(generatedMigrationDir).files
-            if (!generatedFiles.isEmpty()) {
-                throw new GradleException(
-                        "Generated runtime schema-realization SQL detected: ${generatedMigrationDir}. " +
-                        "Canonical runtime source is src/main/resources/db/migration."
-                )
-            }
-        }
-
         def migrationJars = fileTree(dir: 'libs', include: ['npdev-migrations-*.jar']).files
         if (!migrationJars.isEmpty()) {
             throw new GradleException(
                     "Schema-realization helper jar(s) found in libs/: ${migrationJars}. " +
-                        "Canonical runtime source is src/main/resources/db/migration, so stateful upgrade tooling must not be packaged into FinalExec."
+                        "Canonical runtime source is src/main/resources/db/schema-realization, so stateful upgrade tooling must not be packaged into FinalExec."
             )
         }
 
-        File canonicalDir = file('src/main/resources/db/migration')
-        if (!canonicalDir.exists()) {
+        File realizationDir = file('npdev-generated/src/main/resources/db/schema-realization')
+        if (!realizationDir.exists()) {
             throw new GradleException(
-                    "Canonical schema-realization directory not found: ${canonicalDir}"
+                    "Generated schema-realization directory not found: ${realizationDir}"
             )
         }
 
-        def canonicalFiles = fileTree(canonicalDir).matching {
+        def realizationFiles = fileTree(realizationDir).matching {
             include('**/*.sql')
+            include('**/*.json')
         }.files
 
-        if (canonicalFiles.isEmpty()) {
+        if (realizationFiles.isEmpty()) {
             throw new GradleException(
-                    "No canonical schema-realization SQL files found in ${canonicalDir}"
+                    "No generated schema-realization artifacts found in ${realizationDir}"
             )
         }
 
-        println "Canonical schema-realization source: src/main/resources/db/migration"
-        println "Canonical schema-realization SQL files found: ${canonicalFiles.size()}"
+        println "Generated schema-realization source: npdev-generated/src/main/resources/db/schema-realization"
+        println "Generated schema-realization artifacts found: ${realizationFiles.size()}"
     }
 }
 
 tasks.named('bootRun') {
-    dependsOn 'enforceSingleMigrationSource'
+    dependsOn 'enforceSingleSchemaRealizationSource'
 }
 
 tasks.named('test') {
-    dependsOn 'enforceSingleMigrationSource'
+    dependsOn 'enforceSingleSchemaRealizationSource'
     useJUnitPlatform()
+    // Perf: forked test JVMs default to 512m and do NOT inherit org.gradle.jvmargs.
+    // Deliberately no maxParallelForks here: these are Spring Boot slices sharing a
+    // context and (under the postgres profile) Testcontainers DB state, so concurrent
+    // forks would contend. Heap + parallel GC are the safe wins.
+    maxHeapSize = '2g'
+    jvmArgs '-XX:+UseParallelGC'
+    def activeProfiles = providers.gradleProperty('spring.profiles.active')
+            .orElse(providers.environmentVariable('SPRING_PROFILES_ACTIVE'))
+            .orNull
+    if (activeProfiles != null && !activeProfiles.toString().trim().isEmpty()) {
+        systemProperty 'spring.profiles.active', activeProfiles.toString().trim()
+    }
+    if (System.getProperty('os.name', '').toLowerCase().contains('win')
+            && System.getenv('DOCKER_HOST') == null) {
+        environment 'DOCKER_HOST', 'npipe:////./pipe/dockerDesktopLinuxEngine'
+        systemProperty 'docker.host', 'npipe:////./pipe/dockerDesktopLinuxEngine'
+        systemProperty 'docker.client.strategy', 'org.testcontainers.dockerclient.NpipeSocketClientProviderStrategy'
+    }
+}
+
+tasks.register('verifyGeneratedRuntimeMount') {
+    group = 'verification'
+    description = 'Fails clearly when the generated runtime mount required by integrationTest is missing.'
+
+    doLast {
+        def missing = generatedRuntimeRequiredFiles.findAll { !file(it).isFile() }
+        if (!missing.isEmpty()) {
+            throw new GradleException(
+                    "generated-runtime-mount missing: integrationTest requires generated runtime sources under npdev-generated. " +
+                            "Missing required file(s): ${missing}. Generate a final app with NPDevGenerator, then run ./gradlew integrationTest from the generated app root."
+            )
+        }
+    }
+}
+
+tasks.register('integrationTest', Test) {
+    group = 'verification'
+    description = 'Runs generated-runtime-dependent RuntimeHost integration tests.'
+    testClassesDirs = sourceSets.integrationTest.output.classesDirs
+    classpath = sourceSets.integrationTest.runtimeClasspath
+    shouldRunAfter tasks.named('test')
+    dependsOn tasks.named('verifyGeneratedRuntimeMount')
+    useJUnitPlatform {
+        includeTags 'integration'
+    }
+    def activeProfiles = providers.gradleProperty('spring.profiles.active')
+            .orElse(providers.environmentVariable('SPRING_PROFILES_ACTIVE'))
+            .orElse('test,postgres')
+            .get()
+    systemProperty 'spring.profiles.active', activeProfiles.toString().trim()
+    if (System.getProperty('os.name', '').toLowerCase().contains('win')
+            && System.getenv('DOCKER_HOST') == null) {
+        environment 'DOCKER_HOST', 'npipe:////./pipe/dockerDesktopLinuxEngine'
+        systemProperty 'docker.host', 'npipe:////./pipe/dockerDesktopLinuxEngine'
+        systemProperty 'docker.client.strategy', 'org.testcontainers.dockerclient.NpipeSocketClientProviderStrategy'
+    }
+}
+
+tasks.named('compileIntegrationTestJava') {
+    dependsOn tasks.named('verifyGeneratedRuntimeMount')
+}
+
+tasks.register('runtimeSchemaRealizationPreflight') {
+    group = 'verification'
+    description = 'Preflights schema-realization SQL assets before runtime startup.'
+
+    doLast {
+        def realizationDir = file('npdev-generated/src/main/resources/db/schema-realization')
+        if (!realizationDir.isDirectory()) {
+            throw new GradleException("Missing schema-realization directory: ${realizationDir}")
+        }
+        def sqlFiles = fileTree(realizationDir) { include '*.sql' }.files.sort { it.name }
+        if (sqlFiles.isEmpty()) {
+            throw new GradleException("No schema-realization SQL files found in ${realizationDir}")
+        }
+        def destructivePattern = ~/(?i)\b(drop|truncate|delete\s+from|alter\s+table\s+\S+\s+drop)\b/
+        def destructiveHits = sqlFiles.findAll { file ->
+            file.getText('UTF-8') =~ destructivePattern
+        }
+        if (!destructiveHits.isEmpty()) {
+            throw new GradleException("Runtime schema-realization preflight rejected destructive SQL: ${destructiveHits*.name}")
+        }
+        println "Runtime schema-realization preflight OK. SQL files checked: ${sqlFiles.size()}"
+    }
 }
 
 flyway {

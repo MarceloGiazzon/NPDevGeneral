@@ -1,9 +1,16 @@
 package com.finalexec.npdev.service;
 
+import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.ExecutionContext;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
+import javax.sql.DataSource;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -20,9 +27,17 @@ public class SupportDiagnosticsService {
     private static final Path ROLLBACK_EXECUTION_ROOT = Path.of("runtime-data", "rollback-executions");
 
     private final PublicationChainReferenceResolver referenceResolver;
+    private final DataSource dataSource;
+    private final CompiledModel compiledModel;
 
-    public SupportDiagnosticsService(PublicationChainReferenceResolver referenceResolver) {
+    public SupportDiagnosticsService(
+            PublicationChainReferenceResolver referenceResolver,
+            ObjectProvider<DataSource> dataSourceProvider,
+            ObjectProvider<CompiledModel> compiledModelProvider
+    ) {
         this.referenceResolver = referenceResolver;
+        this.dataSource = dataSourceProvider == null ? null : dataSourceProvider.getIfAvailable();
+        this.compiledModel = compiledModelProvider == null ? null : compiledModelProvider.getIfAvailable();
     }
 
     public Map<String, Object> diagnostics(ExecutionContext requesterContext) {
@@ -158,6 +173,92 @@ public class SupportDiagnosticsService {
         response.put("count", items.size());
         response.put("items", items);
         return response;
+    }
+
+    public Map<String, Object> businessPersistenceEvidence(ExecutionContext requesterContext) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("surfaceName", "Business Persistence Evidence v1");
+        response.put("requesterTenantId", requesterContext == null ? "" : requesterContext.tenantId());
+        if (dataSource == null) {
+            response.put("status", "datasource_unavailable");
+            return response;
+        }
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metaData = connection.getMetaData();
+            response.put("status", "ok");
+            response.put("jdbcUrl", metaData == null ? "" : firstNonBlank(metaData.getURL()));
+            response.put("flywayRuntimeMigrationsApplied", flywayScripts(connection, "V%__%"));
+            response.put("businessMigrationsApplied", flywayScripts(connection, "R__npdev_business_%"));
+
+            List<Map<String, Object>> tables = new ArrayList<>();
+            for (CompiledConcept concept : compiledModel == null ? List.<CompiledConcept>of() : compiledModel.getConcepts()) {
+                String tableName = concept.getTableName() == null || concept.getTableName().isBlank()
+                        ? concept.getName().toLowerCase() + "s"
+                        : concept.getTableName().trim().toLowerCase();
+                boolean exists = tableExists(metaData, tableName);
+                Map<String, Object> table = new LinkedHashMap<>();
+                table.put("concept", concept.getName());
+                table.put("tableName", tableName);
+                table.put("exists", exists);
+                table.put("rowCount", exists ? rowCount(connection, tableName) : null);
+                tables.add(table);
+            }
+            response.put("businessTables", tables);
+            return response;
+        } catch (Exception exception) {
+            response.put("status", "failed");
+            response.put("error", exception.getMessage() == null ? exception.getClass().getName() : exception.getMessage());
+            return response;
+        }
+    }
+
+    private static List<Map<String, Object>> flywayScripts(Connection connection, String scriptLikePattern) {
+        if (connection == null) {
+            return List.of();
+        }
+        String sql = "SELECT version, description, script, success FROM flyway_schema_history "
+                + "WHERE script LIKE ? AND success = TRUE ORDER BY installed_rank";
+        try (var statement = connection.prepareStatement(sql)) {
+            statement.setString(1, scriptLikePattern);
+            try (ResultSet rows = statement.executeQuery()) {
+                List<Map<String, Object>> scripts = new ArrayList<>();
+                while (rows.next()) {
+                    Map<String, Object> script = new LinkedHashMap<>();
+                    script.put("version", rows.getString("version"));
+                    script.put("description", rows.getString("description"));
+                    script.put("script", rows.getString("script"));
+                    script.put("success", rows.getBoolean("success"));
+                    scripts.add(script);
+                }
+                return scripts;
+            }
+        } catch (Exception ignored) {
+            return List.of();
+        }
+    }
+
+    private static boolean tableExists(DatabaseMetaData metaData, String tableName) {
+        if (metaData == null || tableName == null || tableName.isBlank()) {
+            return false;
+        }
+        for (String candidate : List.of(tableName, tableName.toLowerCase(), tableName.toUpperCase())) {
+            try (ResultSet rows = metaData.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                if (rows.next()) {
+                    return true;
+                }
+            } catch (Exception ignored) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private static long rowCount(Connection connection, String tableName) throws Exception {
+        try (var statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("SELECT COUNT(*) FROM " + tableName)) {
+            return rows.next() ? rows.getLong(1) : 0L;
+        }
     }
 
     private Map<String, Object> issueFromDirectExecution(Map<String, Object> record, String status) {

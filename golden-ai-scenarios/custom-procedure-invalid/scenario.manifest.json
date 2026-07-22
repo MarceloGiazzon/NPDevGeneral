@@ -1,27 +1,15 @@
 {
-  "schemaVersion": "ai-scenario.v1",
+  "schemaVersion": "ai-scenario-manifest.v1",
   "scenarioId": "custom-procedure-invalid",
-  "kind": "ai-custom-procedure-functional-beta",
+  "kind": "negative",
+  "expectedOutcome": "fail",
+  "expectedFailureStage": "ai-model-schema",
   "files": {
-    "model": "model.json",
-    "config": "config.json",
+    "aiModel": "ai-model.json",
+    "aiConfig": "ai-config.json",
+    "verification": "ai-verification-report.json",
     "expectedBehavior": "expected-behavior.json",
-    "customProcedure": "custom-procedure.json",
-    "expectedProcedureBehavior": "expected-procedure-behavior.json"
-  },
-  "runtime": {
-    "strictExecution": true,
-    "surfaceProfile": "supported-core"
-  },
-  "requestedSurfaces": ["supported-core"],
-  "operations": [
-    {
-      "type": "customProcedure",
-      "procedureId": "promote-learner"
-    }
-  ],
-  "expectedOutcome": {
-    "class": "FAIL_PROCEDURE_CONTRACT",
-    "mustPass": false
+    "model": "model.json",
+    "config": "config.json"
   }
 }

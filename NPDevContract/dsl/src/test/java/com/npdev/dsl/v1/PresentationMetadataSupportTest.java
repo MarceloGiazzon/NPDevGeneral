@@ -79,9 +79,9 @@ class PresentationMetadataSupportTest {
                 """);
 
         ModelAst ast = new JsonModelParser().parse(modelPath);
-        assertNotNull(ast.getEntities().get(0).getUi());
-        assertEquals("Patient", ast.getEntities().get(0).getUi().getLabel());
-        assertEquals("First", ast.getEntities().get(0).getFields().get(1).getUi().getShortLabel());
+        assertNotNull(ast.getConcepts().get(0).getUi());
+        assertEquals("Patient", ast.getConcepts().get(0).getUi().getLabel());
+        assertEquals("First", ast.getConcepts().get(0).getFields().get(1).getUi().getShortLabel());
 
         ValidationResult validation = new SemanticValidator().validateWithWarnings(ast);
         assertTrue(validation.getErrors().isEmpty(), "Expected no semantic errors, got: " + validation.getErrors());
@@ -89,8 +89,8 @@ class PresentationMetadataSupportTest {
                 "Expected no UX metadata warnings for a fully-labeled specimen.");
 
         CompiledModel compiled = new ModelCompiler().compile(ast);
-        assertEquals("Patient", compiled.findEntity("Patient").orElseThrow().getUi().getLabel());
-        CompiledField firstName = compiled.findEntity("Patient")
+        assertEquals("Patient", compiled.findConcept("Patient").orElseThrow().getUi().getLabel());
+        CompiledField firstName = compiled.findConcept("Patient")
                 .orElseThrow()
                 .getFields()
                 .stream()

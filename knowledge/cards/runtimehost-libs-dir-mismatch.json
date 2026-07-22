@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "knowledge-card.v1",
+  "id": "runtimehost-libs-dir-mismatch",
+  "type": "gotcha",
+  "title": "sync-runtimehost-libs and Build-NpdevApp have different default -RuntimeHostLibsDir -- pass it explicitly to both",
+  "body": "After changing any kernel/adapter Java, you must restage jars before regenerating an app:\n\n```powershell\nscripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars -RuntimeHostLibsDir D:\\WorkSpace\\NPDev\\Build\\runtimehost-libs\n```\n\nThe catch: `sync-runtimehost-libs.ps1`'s default libs dir does NOT match `Build-NpdevApp.ps1`'s default. If you let each use its own default, the sync writes fresh jars to one directory and the build reads stale jars from another -- the running app keeps the old jar and your change appears to have no effect. Always pass the SAME `-RuntimeHostLibsDir` to both. The `scripts/appgen/Rebuild-And-Restage.ps1` wrapper threads one shared dir through both and is the safe path.",
+  "keywords": ["stale", "jar", "restage", "sync-runtimehost-libs", "RuntimeHostLibsDir", "build", "kernel", "adapter", "build-ops"],
+  "appliesTo": ["build-ops"],
+  "sourceRefs": ["CLAUDE.md", "docs/OPEN_GAPS_AND_ROADMAP.md#0", "appgen_finalapp_recipe"],
+  "status": "active"
+}

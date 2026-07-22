@@ -14,7 +14,7 @@ type ModelRegistryEntry = {
 };
 
 const CANONICAL_REFERENCE_MODEL = buildStarterTemplateModel(DEFAULT_STARTER_TEMPLATE_ID);
-const MODEL_SCHEMA_ID = "https://npdev.local/schema/npdev-model-1.0.0.schema.json";
+const MODEL_SCHEMA_ID = "https://npdev.local/schema/npdev-model.schema.json";
 
 function getOfficialSampleRegistryEntry(sampleId: string): ModelRegistryEntry {
   const entry = getCanonicalSampleEntry(sampleId);

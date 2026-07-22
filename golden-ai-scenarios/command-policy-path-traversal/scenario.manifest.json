@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "ai-scenario-manifest.v1",
+  "scenarioId": "command-policy-path-traversal",
+  "kind": "negative",
+  "expectedOutcome": "fail",
+  "expectedFailureStage": "command-policy",
+  "expectedErrorCode": "NPDEV_COMMAND_WORKDIR_OUTSIDE_SANDBOX",
+  "requestedSurfaces": [
+    "command-policy"
+  ],
+  "files": {
+    "commandRequest": "command-request.json"
+  }
+}

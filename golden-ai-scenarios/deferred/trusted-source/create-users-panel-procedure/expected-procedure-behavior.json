@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "ai-expected-procedure-behavior.v1",
+  "procedureId": "create-users",
+  "expectedClass": "NEGATIVE_NOT_REACHED",
+  "assertions": [
+    {
+      "path": "actual.observations.customProcedure.procedureId",
+      "equals": "create-users"
+    },
+    {
+      "path": "actual.observations.customProcedure.createdRecordCount",
+      "equals": 3
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "knowledge-card.v1",
+  "id": "scrapforai-localhost-127",
+  "type": "gotcha",
+  "title": "ScrapForAI browser verification: use 127.0.0.1 not localhost, and mind the SSRF allowlist",
+  "body": "When driving a generated app through the ScrapForAI real-browser harness:\n\n- Navigate to `http://127.0.0.1:<port>` -- NOT `http://localhost:<port>`. The harness's SSRF allowlist and the browser context resolve `127.0.0.1`; `localhost` is rejected/flaky.\n- Fill the `#apiKey` field and reload BEFORE asserting authenticated content -- the first unauthenticated page load emits benign `401`s that are not failures.\n- `Assert-RoutineGreen` treats any `console.error` as a failure, but a `theme.css` 404 (apps without a custom theme get this by design) and pre-auth `401`s are benign -- expect and ignore those two.\n- Use strict/scoped locators (e.g. `#concept-<Name> form`); the shell nav container id is `#sideNav`. Search inputs are debounced -- wait after typing before asserting filtered rows.",
+  "keywords": ["scrapforai", "browser", "127.0.0.1", "localhost", "ssrf", "allowlist", "apiKey", "console.error", "theme.css", "401", "verification", "playwright"],
+  "appliesTo": ["browser-verification"],
+  "sourceRefs": ["scrapforai_browser_testing", "sample_browser_verification", "BUG-14"],
+  "status": "active"
+}

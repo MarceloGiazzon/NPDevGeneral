@@ -3,7 +3,8 @@ package com.npdev.dsl.v1.validation;
 public enum ValidationLayer {
     STRUCTURAL("structural"),
     SEMANTIC("semantic"),
-    UX_METADATA("ux-metadata");
+    UX_METADATA("ux-metadata"),
+    RELEASE_GATE("release-gate");
 
     private final String externalName;
 

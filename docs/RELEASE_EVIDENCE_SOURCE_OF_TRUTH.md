@@ -1,9 +1,17 @@
 # Release Evidence Source Of Truth
 
-NPDev release readiness is decided by one aggregate report:
+This document describes the aggregate release evidence model. For AI-only Beta 0, the aggregate gate must include the current AI beta proof from `scripts\reports\out\ai-beta-gate-report.json`. Historical packaged evidence is diagnostic only and is not current AI-only Beta 0 proof.
+
+NPDev release candidate readiness is decided by the aggregate report:
 
 ```text
 scripts\reports\out\beta-release-gate-report.json
+```
+
+Beta 0 tagging is decided by the final closure report:
+
+```text
+scripts\reports\out\beta0-final-closure-report.json
 ```
 
 Focused reports under `scripts\reports\out` are evidence only. They are useful for diagnosing a failed lane, but they must not be combined manually to override the aggregate beta release gate status.
@@ -12,7 +20,10 @@ Focused reports under `scripts\reports\out` are evidence only. They are useful f
 
 ```powershell
 pwsh -File scripts\quality\run-beta-release-gate.ps1
+pwsh -File scripts\quality\run-beta0-final-closure-gate.ps1
 ```
+
+If either command is missing, or if it does not include the AI-only Beta 0 evidence gates, no current AI-only Beta 0 release claim may be made.
 
 The gate creates a timestamped release evidence bundle under:
 
@@ -47,7 +58,7 @@ Every child gate report used by the aggregate decision must include:
 - `workspaceRoot`
 - `overallStatus`
 
-The aggregate gate accepts a child report only when `runId` matches the current aggregate run. This prevents a stale focused report from making the aggregate pass or fail incorrectly.
+The aggregate gate accepts child reports only when every required child report has the same non-empty `runId` and that value matches the aggregate run. This prevents a stale focused report from making the aggregate pass or fail incorrectly.
 
 ## Required Fields
 

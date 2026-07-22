@@ -1,14 +1,37 @@
 {
-    "resourceId":  "npdev-source-mutation-audit/source-mutation-audit-rules",
-    "resourceType":  "rules",
-    "templateOwned":  true,
-    "version":  "1.0.0",
-    "status":  "seeded",
-    "generatedAt":  "2026-04-23T00:00:00Z",
-    "items":  [
-
-              ],
-    "notes":  [
-                  "Seeded template resource to satisfy runtime template completeness and allow future specialization."
-              ]
+  "resourceId": "npdev-source-mutation-audit/source-mutation-audit-rules",
+  "resourceType": "rules",
+  "templateOwned": true,
+  "version": "1.0.0",
+  "status": "seeded",
+  "generatedAt": "2026-04-23T00:00:00Z",
+  "mode": "source-mutation-audit-record-v1",
+  "surfaceName": "Source Mutation Audit Record",
+  "supportedAuditEventTypes": [
+    "APPROVAL_RECORDED",
+    "ROLLBACK_ANCHOR_RECORDED",
+    "PUBLICATION_EXECUTION_RECORDED",
+    "PUBLICATION_ROLLBACK_RECORDED"
+  ],
+  "supportedDecisions": [
+    "APPROVED",
+    "REVIEW_REQUIRED",
+    "REJECTED"
+  ],
+  "supportedScopeCategories": [
+    {
+      "mutationScope": "structural-source-mutation",
+      "category": "structural",
+      "requiresApproval": true
+    },
+    {
+      "mutationScope": "semantic-source-mutation",
+      "category": "semantic",
+      "requiresApproval": true
+    }
+  ],
+  "items": [],
+  "notes": [
+    "Seeded template resource to satisfy runtime template completeness and allow future specialization."
+  ]
 }

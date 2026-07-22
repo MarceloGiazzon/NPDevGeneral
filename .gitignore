@@ -11,6 +11,7 @@
 # Build and package outputs
 **/.gradle/
 **/build/
+**/bin/
 **/target/
 **/dist/
 **/coverage/
@@ -48,13 +49,15 @@ scripts/reports/releases/
 scripts/reports/tmp/
 scripts/reports/cache/
 NPDev_General__OutsideRepo/
+ai-times-workbench/
 # Required Gradle wrapper artifacts for CI
 !**/gradle/wrapper/gradle-wrapper.jar
 !**/gradlew
 !**/gradlew.bat
 # Local rebuildable caches and generated sample outputs
 /.npdev-gradle/
-/NPDevSamples/*/Output/
+/.npdev-cache/
+/NPDevSamples/**/Output/
 
 
 # Do not ignore Java source packages named output
@@ -69,6 +72,12 @@ NPDev_General__OutsideRepo/
 
 # Generated evidence and local script caches
 /scripts/reports/
+
+# Local Claude Code session state (auto-accumulated permission log, not shared config).
+# Ignore everything under .claude/ EXCEPT shared, tracked project skills.
+.claude/*
+!.claude/skills/
+**/__pycache__/
 
 
 

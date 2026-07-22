@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -27,6 +28,7 @@ public final class FinalAppAssembler {
             ".idea",
             ".git",
             "build",
+            "libs",
             "out",
             "target",
             "node_modules",
@@ -41,11 +43,9 @@ public final class FinalAppAssembler {
     );
     private static final List<String> UNSUPPORTED_RUNTIME_HOST_CONTROLLER_SOURCES = List.of(
             "com/finalexec/HelloController.java",
-            "com/finalexec/api/internal/*.java",
             "com/finalexec/api/experimental/*.java"
     );
     private static final List<String> UNSUPPORTED_RUNTIME_HOST_SERVICE_SOURCES = List.of(
-            "com/finalexec/npdev/service/internal/*.java",
             "com/finalexec/npdev/service/experimental/*.java"
     );
 
@@ -77,17 +77,16 @@ public final class FinalAppAssembler {
                 normalized
         );
 
-        int migrationCount = copyGeneratedMigrations(normalized);
-        boolean modelDiffBaselineInstalled = copyModelDiffBaseline(normalized);
-        writeSchemaRealizationManifest(normalized, migrationCount, modelDiffBaselineInstalled);
+        int schemaRealizationCount = countSchemaRealizationArtifacts(generatedMount);
+        writeAiBetaLocalProfile(normalized, generatedMount);
+        writeSchemaRealizationManifest(normalized, schemaRealizationCount);
 
         return new AssemblyResult(
                 normalized.finalAppRoot(),
                 generatedMount,
                 hostStats.filesCopied(),
                 generatedStats.filesCopied(),
-                migrationCount,
-                modelDiffBaselineInstalled
+                schemaRealizationCount
         );
     }
 
@@ -144,12 +143,25 @@ public final class FinalAppAssembler {
     }
 
     private static void deleteTree(Path root) throws IOException {
-        try (var stream = Files.walk(root)) {
-            var paths = stream.sorted((left, right) -> right.compareTo(left)).toList();
-            for (Path path : paths) {
-                deletePathWithRetry(path);
+        IOException lastFailure = null;
+        for (int attempt = 1; attempt <= DELETE_RETRY_ATTEMPTS; attempt++) {
+            try (var stream = Files.walk(root)) {
+                var paths = stream.sorted((left, right) -> right.compareTo(left)).toList();
+                for (Path path : paths) {
+                    deletePathWithRetry(path);
+                }
+            }
+            if (!Files.exists(root)) {
+                return;
+            }
+
+            lastFailure = new IOException("Delete target still exists after attempt " + attempt + ": " + root);
+            if (attempt < DELETE_RETRY_ATTEMPTS) {
+                sleepBeforeRetry(root, attempt, lastFailure);
             }
         }
+
+        throw lastFailure;
     }
 
     private static void deletePathWithRetry(Path path) throws IOException {
@@ -319,69 +331,120 @@ public final class FinalAppAssembler {
         Files.copy(source, destinationRoot.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
     }
 
-    private static int copyGeneratedMigrations(Options options) throws IOException {
-        Path sourceDir = options.canonicalMigrationsDir();
-        if (sourceDir == null || !Files.isDirectory(sourceDir)) {
-            return 0;
-        }
-
-        Path destinationDir = options.finalAppRoot()
+    private static int countSchemaRealizationArtifacts(Path generatedMount) throws IOException {
+        Path realizationDir = generatedMount
                 .resolve("src")
                 .resolve("main")
                 .resolve("resources")
                 .resolve("db")
-                .resolve("migration");
-        Files.createDirectories(destinationDir);
-
-        int copied = 0;
-        try (var stream = Files.list(sourceDir)) {
-            for (Path source : stream
-                    .filter(Files::isRegularFile)
-                    .filter(path -> path.getFileName().toString().startsWith("R__"))
-                    .filter(path -> path.getFileName().toString().endsWith(".sql"))
-                    .toList()) {
-                Files.copy(
-                        source,
-                        destinationDir.resolve(source.getFileName().toString()),
-                        StandardCopyOption.REPLACE_EXISTING
-                );
-                copied++;
-            }
+                .resolve("schema-realization");
+        if (!Files.isDirectory(realizationDir)) {
+            return 0;
         }
-        return copied;
+        try (var stream = Files.walk(realizationDir)) {
+            return (int) stream
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().endsWith(".sql")
+                            || path.getFileName().toString().endsWith(".json"))
+                    .count();
+        }
     }
 
-    private static boolean copyModelDiffBaseline(Options options) throws IOException {
-        Path migrationsDir = options.canonicalMigrationsDir();
-        if (migrationsDir == null) {
-            return false;
+    private static void writeAiBetaLocalProfile(Options options, Path generatedMount) throws IOException {
+        Path generatedModel = generatedMount
+                .resolve("src")
+                .resolve("main")
+                .resolve("resources")
+                .resolve("npdev")
+                .resolve("model.json");
+        if (!Files.isRegularFile(generatedModel)) {
+            return;
         }
 
-        Path dbRoot = migrationsDir.getParent();
-        if (dbRoot == null) {
-            return false;
+        var root = OBJECT_MAPPER.readTree(generatedModel.toFile());
+        var metadata = root.path("metadata");
+        String scenarioId = text(metadata, "scenarioId");
+        List<ApiKeyMapping> mappings = new ArrayList<>();
+        mappings.add(new ApiKeyMapping("api-dev", "dev", "developer", List.of("admin")));
+        mappings.add(new ApiKeyMapping("dev-key", "dev", "developer", List.of("admin")));
+
+        for (var userNode : metadata.path("auth").path("testUsers")) {
+            String userId = text(userNode, "userId");
+            String tenantId = text(userNode, "tenantId");
+            if (userId.isBlank() || tenantId.isBlank()) {
+                continue;
+            }
+            List<String> roles = new ArrayList<>();
+            for (var roleNode : userNode.path("roles")) {
+                String role = roleNode.asText("").trim();
+                if (!role.isBlank()) {
+                    roles.add(role);
+                }
+            }
+            if (!roles.isEmpty()) {
+                String apiKey = "ai-" + slug(scenarioId) + "-" + slug(userId);
+                mappings.add(new ApiKeyMapping(apiKey, tenantId, userId, List.copyOf(roles)));
+            }
+        }
+        if (mappings.size() <= 2) {
+            return;
         }
 
-        Path source = dbRoot.resolve("schema-snapshots").resolve("latest-storage-schema.json");
-        if (!Files.isRegularFile(source)) {
-            return false;
+        String encodedMappings = encodeMappings(mappings);
+        StringBuilder yaml = new StringBuilder();
+        yaml.append("# Generated by NPDevGenerator for expanded Beta 0 local smoke evidence.\n");
+        yaml.append("npdev:\n");
+        yaml.append("  auth:\n");
+        yaml.append("    mode: apikey\n");
+        yaml.append("    api-keys: \"").append(escapeYamlDoubleQuoted(encodedMappings)).append("\"\n");
+        yaml.append("  security:\n");
+        yaml.append("    apiKey:\n");
+        yaml.append("      required: true\n");
+        yaml.append("    encodedMappings: \"").append(escapeYamlDoubleQuoted(encodedMappings)).append("\"\n");
+        yaml.append("    apiKeys:\n");
+        for (ApiKeyMapping mapping : mappings) {
+            yaml.append("      ").append(mapping.apiKey()).append(":\n");
+            yaml.append("        actor: ").append(mapping.actorId()).append("\n");
+            yaml.append("        tenant: ").append(mapping.tenantId()).append("\n");
+            yaml.append("        roles: [").append(String.join(", ", mapping.roles())).append("]\n");
         }
 
         Path destination = options.finalAppRoot()
                 .resolve("src")
                 .resolve("main")
                 .resolve("resources")
-                .resolve("npdev")
-                .resolve("model-diff-baseline.json");
+                .resolve("application-ai-beta-local.yml");
         Files.createDirectories(destination.getParent());
-        Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING);
-        return true;
+        Files.writeString(destination, yaml.toString());
+    }
+
+    private static String encodeMappings(List<ApiKeyMapping> mappings) {
+        List<String> encoded = new ArrayList<>();
+        for (ApiKeyMapping mapping : mappings) {
+            encoded.add(mapping.apiKey() + "=" + mapping.tenantId() + ":" + mapping.actorId() + ":"
+                    + String.join("|", mapping.roles()));
+        }
+        return String.join(";", encoded);
+    }
+
+    private static String text(com.fasterxml.jackson.databind.JsonNode node, String fieldName) {
+        var value = node == null ? null : node.get(fieldName);
+        return value == null || value.isNull() ? "" : value.asText("").trim();
+    }
+
+    private static String slug(String value) {
+        String normalized = value == null ? "" : value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-");
+        normalized = normalized.replaceAll("^-+|-+$", "");
+        return normalized.isBlank() ? "user" : normalized;
+    }
+
+    private static String escapeYamlDoubleQuoted(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     private static void writeSchemaRealizationManifest(
             Options options,
-            int schemaRealizationSqlCount,
-            boolean modelDiffBaselineInstalled
+            int schemaRealizationSqlCount
     ) throws IOException {
         Path destination = schemaRealizationManifestPath(options);
         Files.createDirectories(destination.getParent());
@@ -396,15 +459,20 @@ public final class FinalAppAssembler {
         manifest.put("schemaRealizationEnabled", true);
         manifest.put("upgradeManagementSupported", false);
         manifest.put("upgradeManagementStatus", "unsupported");
-        manifest.put("canonicalRuntimeSchemaSqlPath", "src/main/resources/db/migration");
-        manifest.put("schemaRealizationSqlFilePattern", "R__*.sql");
+        manifest.put("canonicalRuntimeSchemaSqlPath", "src/main/resources/db/schema-realization");
+        manifest.put("businessSchemaRealizationSqlFilePattern", "V*__npdev_schema_realization.sql");
         manifest.put("schemaRealizationSqlCount", schemaRealizationSqlCount);
+        manifest.put("runtimeSchemaSqlPattern", "V*.sql");
+        // Insertion-ordered, not Map.of(...): java.util.Map.of produces an ImmutableCollections.MapN
+        // whose iteration order is randomized per-JVM by ImmutableCollections.SALT. Jackson serializes
+        // maps in iteration order, so a Map.of here made this manifest's two storageBoundary keys emit
+        // in a run-to-run varying order -- the sole source of GATE-DET-1's byte-nondeterminism.
+        Map<String, Object> storageBoundary = new LinkedHashMap<>();
+        storageBoundary.put("runtimeTables", "NPDev execution, audit, trace, scheduling, and reliability data");
+        storageBoundary.put("businessTables", "Generated model concept data");
+        manifest.put("storageBoundary", storageBoundary);
         manifest.put("generatedArtifactMount", options.generatedFolderName());
-        manifest.put(
-                "modelDiffBaselinePath",
-                modelDiffBaselineInstalled ? "src/main/resources/npdev/model-diff-baseline.json" : ""
-        );
-        manifest.put("internalAnalysisArtifacts", List.of("db/migration-plans", "db/schema-snapshots"));
+        manifest.put("internalAnalysisArtifacts", List.of());
         manifest.put(
                 "notes",
                 List.of(
@@ -429,6 +497,12 @@ public final class FinalAppAssembler {
     private enum CopyMode {
         RUNTIME_HOST_BASE,
         GENERATED_ARTIFACT
+    }
+
+    private record ApiKeyMapping(String apiKey, String tenantId, String actorId, List<String> roles) {
+        ApiKeyMapping {
+            roles = roles == null ? List.of() : List.copyOf(roles);
+        }
     }
 
     private static final class CopyStats {
@@ -484,8 +558,7 @@ public final class FinalAppAssembler {
             Path generatedMount,
             int runtimeHostFilesCopied,
             int generatedFilesCopied,
-            int generatedMigrationsCopied,
-            boolean modelDiffBaselineInstalled
+            int schemaRealizationArtifactsCopied
     ) {
     }
 }

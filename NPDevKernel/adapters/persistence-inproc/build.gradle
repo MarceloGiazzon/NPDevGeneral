@@ -1,4 +1,5 @@
 dependencies {
     implementation project(':kernel')
     implementation project(':core')
+    implementation project(':dsl')
 }

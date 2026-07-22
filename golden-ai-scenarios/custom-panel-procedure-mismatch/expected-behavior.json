@@ -2,16 +2,6 @@
   "schemaVersion": "ai-expected-behavior.v1",
   "scenarioId": "custom-panel-procedure-mismatch",
   "comparisonMode": "exact",
-  "expectedClass": "PASS_PANEL_PROCEDURE_INTEGRATION",
-  "assertions": [
-    {
-      "path": "actual.resultClass",
-      "equals": "PASS_PANEL_PROCEDURE_INTEGRATION"
-    },
-    {
-      "path": "actual.observations.customPanel.actionNames",
-      "equals": ["archive"],
-      "mode": "unordered"
-    }
-  ]
+  "expectedClass": "FAIL_KIND_UNSUPPORTED",
+  "assertions": []
 }

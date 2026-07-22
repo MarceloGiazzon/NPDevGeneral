@@ -89,7 +89,7 @@ class DslGrammarEvolutionTest {
         assertEquals(2, compiled.getBindings().size());
         assertEquals(1, compiled.getEvents().size());
         assertEquals(1, compiled.getFlows().size());
-        assertEquals(1, compiled.findEntity("User").orElseThrow().getExpressionInvariants().size());
+        assertEquals(1, compiled.findConcept("User").orElseThrow().getExpressionInvariants().size());
     }
 
     @Test
@@ -143,7 +143,7 @@ class DslGrammarEvolutionTest {
         assertTrue(errors.isEmpty(), "Expected nested model to validate, got: " + errors);
 
         CompiledModel compiled = new ModelCompiler().compile(ast);
-        var patient = compiled.findEntity("Patient").orElseThrow();
+        var patient = compiled.findConcept("Patient").orElseThrow();
         var emergencyContact = patient.getFields().stream()
                 .filter(field -> "emergencyContact".equals(field.getName()))
                 .findFirst()
@@ -192,7 +192,7 @@ class DslGrammarEvolutionTest {
         assertTrue(errors.isEmpty(), "Expected datetime model to validate, got: " + errors);
 
         CompiledModel compiled = new ModelCompiler().compile(ast);
-        var appointment = compiled.findEntity("Appointment").orElseThrow();
+        var appointment = compiled.findConcept("Appointment").orElseThrow();
         var checkInTime = appointment.getFields().stream()
                 .filter(field -> "checkInTime".equals(field.getName()))
                 .findFirst()

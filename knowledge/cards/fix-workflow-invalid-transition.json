@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "knowledge-card.v1",
+  "id": "fix-workflow-invalid-transition",
+  "type": "error-fix",
+  "title": "Workflow transition targets a state not listed in the workflow's states",
+  "body": "A workflow transition's `to` (or `from`) references a state that isn't in the workflow's `states` array. Fix: either add the target state to `states` (and to `terminalStates` if it's an end state), or change the transition's `to`/`from` to one of the declared states. Every state named by any transition must appear in `states`; `startState` and each of `terminalStates` must too.",
+  "keywords": ["workflow", "transition", "invalid", "state", "to", "from", "terminal", "startState", "unknown"],
+  "appliesTo": ["workflow", "flow"],
+  "signature": "workflow transition <id> references unknown state <id>",
+  "fix": "Add the target state to states[] (and terminalStates[] if terminal), or point the transition's to/from at an already-declared state.",
+  "sourceRefs": ["golden-ai-scenarios/workflow-invalid-transition"],
+  "status": "active"
+}

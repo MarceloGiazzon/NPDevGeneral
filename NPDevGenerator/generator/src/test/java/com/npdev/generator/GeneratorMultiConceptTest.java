@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GeneratorMultiConceptTest {
@@ -82,21 +83,30 @@ class GeneratorMultiConceptTest {
         Path patientController = out.resolve("src/main/java/com/npdev/generated/controllers/PatientController.java");
 
         assertTrue(Files.exists(patientEntity), "Expected Patient entity generation");
-        assertTrue(Files.exists(patientRepository), "Expected Patient repository generation");
+        assertTrue(Files.notExists(patientRepository),
+                "Generated concept persistence should use runtime ConceptStore/PersistenceCapability, not direct Spring repositories");
         assertTrue(Files.exists(patientService), "Expected Patient service generation");
         assertTrue(Files.exists(patientController), "Expected Patient controller generation");
-
-        String patientRepositoryContent = Files.readString(patientRepository);
-        assertTrue(patientRepositoryContent.contains("existsByMrnIgnoreCase"),
-                "Expected unique mrn checks in Patient repository");
 
         String patientServiceContent = Files.readString(patientService);
         assertTrue(patientServiceContent.contains("enforceWithKernel(\"Patient\""),
                 "Expected Patient service to delegate invariants to runtime kernel");
-        assertTrue(patientServiceContent.contains("runtimeSupport.buildCreateInvariantPayload(\"Patient\", dto)"),
-                "Expected Patient service to build invariant payloads through shared runtime support");
-        assertTrue(patientServiceContent.contains("runtimeSupport.applyCreateFields(\"Patient\", dto, e)"),
-                "Expected Patient service to apply create field mappings through shared runtime support");
+        assertTrue(patientServiceContent.contains("GeneratedCrudRuntimeSupport"),
+                "Expected Patient service to delegate reusable CRUD runtime support");
+        assertTrue(patientServiceContent.contains("runtimeSupport"),
+                "Expected Patient service to use shared runtime support entrypoint");
+        assertTrue(patientServiceContent.contains("runtimeSupport.resolveCurrentCrudContext"),
+                "Expected Patient service to resolve real ExecutionContext via runtime support");
+        assertTrue(patientServiceContent.contains("runtimeSupport.checkCrudPermission"),
+                "Expected Patient service to check permissions via runtime support");
+        assertTrue(patientServiceContent.contains("runtimeSupport.auditCrudMutation"),
+                "Expected Patient service to emit audit records via runtime support");
+        assertTrue(patientServiceContent.contains("runtimeSupport.checkCrudIdempotency"),
+                "Expected Patient service to check idempotency via runtime support");
+        assertTrue(patientServiceContent.contains("runtimeSupport.recordCrudIdempotencySuccess"),
+                "Expected Patient service to record idempotency success via runtime support");
+        assertFalse(patientServiceContent.contains("ExecutionContext.anonymous().withTag(\"executionMode\", \"headless\")"),
+                "Expected Patient service to use real context, not hardcoded anonymous headless context");
 
         String patientControllerContent = Files.readString(patientController);
         assertTrue(patientControllerContent.contains("@RequestMapping(\"/api/patients\")"),
@@ -165,6 +175,12 @@ class GeneratorMultiConceptTest {
         try (var stream = Files.walk(root)) {
             return stream
                     .filter(Files::isRegularFile)
+                    .filter(path -> {
+                        String relative = root.relativize(path).toString().replace('\\', '/');
+                        return !relative.equals("src/main/resources/npdev/db/schema-realization-manifest.json")
+                                && !relative.equals("src/main/resources/npdev/support/generated-folder.signature.properties")
+                                && !relative.equals("src/main/resources/npdev/store/pack-catalog.json");
+                    })
                     .sorted()
                     .map(path -> {
                         try {

@@ -24,7 +24,6 @@ public final class RegistryCapabilityDispatcher implements CapabilityDispatcher 
 
     public RegistryCapabilityDispatcher(CapabilityRegistry registry) {
         this.registry = Objects.requireNonNull(registry, "registry");
-        LOG.info("NPDEV-UPGRADE-MARKER 2026-03-03 :: RegistryCapabilityDispatcher loaded");
     }
 
     @Override
@@ -246,10 +245,32 @@ public final class RegistryCapabilityDispatcher implements CapabilityDispatcher 
     }
 
     private static CapabilityErrorKind classifyInvocationError(Throwable throwable) {
-        if (throwable instanceof IllegalArgumentException
-                || throwable instanceof ClassCastException
-                || throwable instanceof UnsupportedOperationException) {
-            return CapabilityErrorKind.CONTRACT;
+        // Walk the cause chain: an adapter contract failure (e.g. IllegalArgumentException for a
+        // FK/unique integrity violation) is wrapped by reflective/async machinery before it reaches
+        // here, and inspecting only the top-level throwable would misread it as PERMANENT
+        // (system_exception). Classify by the most specific cause — a thrown integrity violation is a
+        // caller CONTRACT failure, not a system error.
+        Throwable current = throwable;
+        for (int guard = 0; current != null && guard < 16; guard++) {
+            if (current instanceof IllegalArgumentException
+                    || current instanceof ClassCastException
+                    || current instanceof UnsupportedOperationException) {
+                return CapabilityErrorKind.CONTRACT;
+            }
+            String causeMessage = current.getMessage() == null
+                    ? ""
+                    : current.getMessage().toLowerCase(java.util.Locale.ROOT);
+            if (causeMessage.contains("referential integrity")
+                    || causeMessage.contains("integrity constraint")
+                    || causeMessage.contains("foreign key")
+                    || causeMessage.contains("unique index or primary key")
+                    || causeMessage.contains("unique constraint")) {
+                return CapabilityErrorKind.CONTRACT;
+            }
+            if (current.getCause() == current) {
+                break;
+            }
+            current = current.getCause();
         }
 
         String typeName = throwable.getClass().getName().toLowerCase();

@@ -2,7 +2,7 @@ package com.npdev.dsl.v1;
 
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.compiler.ModelCompiler;
-import com.npdev.dsl.v1.compiled.CompiledEntity;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.parser.JsonModelParser;
 import com.npdev.dsl.v1.validation.SemanticValidator;
@@ -53,9 +53,9 @@ class DslSpecializationTest {
         List<String> errors = new SemanticValidator().validate(ast);
         assertTrue(errors.isEmpty(), "Expected no semantic errors, got: " + errors);
 
-        CompiledEntity compiled = new ModelCompiler()
+        CompiledConcept compiled = new ModelCompiler()
                 .compile(ast)
-                .findEntity("MedicalInvoice")
+                .findConcept("MedicalInvoice")
                 .orElseThrow();
 
         assertEquals(4, compiled.getFields().size());

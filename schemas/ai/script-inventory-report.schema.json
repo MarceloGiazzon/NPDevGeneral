@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/script-inventory-report.schema.json",
+  "title": "NPDev Script Inventory Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "overallStatus",
+    "policyPath",
+    "scriptCount",
+    "classificationCounts",
+    "unknownScripts",
+    "releaseCriticalViolations",
+    "scripts"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-script-inventory-report.v1"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scriptPath": {
+      "const": "scripts/quality/run-script-inventory-check.ps1"
+    },
+    "workspaceRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "overallStatus": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "policyPath": {
+      "const": "scripts/policy/script-inventory-policy.json"
+    },
+    "scriptCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "classificationCounts": {
+      "type": "object"
+    },
+    "unknownScripts": {
+      "type": "array"
+    },
+    "releaseCriticalViolations": {
+      "type": "array"
+    },
+    "scripts": {
+      "type": "array"
+    }
+  }
+}

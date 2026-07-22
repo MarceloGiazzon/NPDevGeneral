@@ -1,5 +1,8 @@
 package com.npdev.adapters.persistence.inproc;
 
+import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.ports.PersistenceCapabilityContract;
 
 import java.util.ArrayList;
@@ -16,6 +19,20 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class InMemoryPersistenceCapabilityAdapter implements PersistenceCapabilityContract {
     private final Map<String, Map<Object, Map<String, Object>>> storeByConcept = new ConcurrentHashMap<>();
+    private final CompiledModel compiledModel;
+
+    public InMemoryPersistenceCapabilityAdapter() {
+        this(null);
+    }
+
+    // See PostgresPersistenceCapabilityAdapter's constructor note: flow-compiled createConcept/
+    // updateConcept steps dispatch straight to save(), bypassing the ConceptGatewaySemanticPolicy
+    // defaults pass generic CRUD create goes through. Without compiledModel, a flow create under
+    // InMemory storage that omits a field with a declared default persisted it as null/missing
+    // (ARCH-8b).
+    public InMemoryPersistenceCapabilityAdapter(CompiledModel compiledModel) {
+        this.compiledModel = compiledModel;
+    }
 
     @Override
     public Object save(Object entity) {
@@ -25,12 +42,21 @@ public final class InMemoryPersistenceCapabilityAdapter implements PersistenceCa
     public Object save(Object concept, Object entity) {
         String conceptKey = normalizeConcept(concept);
         Map<String, Object> record = mutableRecord(entity);
+        applyFieldDefaults(concept, record);
+        String conceptIdField = inferredRuntimeIdField(concept);
 
         Object id = record.get("id");
+        if (id == null && conceptIdField != null) {
+            id = record.get(conceptIdField);
+        }
         if (id == null) {
             id = UUID.randomUUID().toString();
-            record.put("id", id);
         }
+        // The in-memory store is keyed on the canonical "id" field. Always expose it
+        // so callers, findById, and delete all agree on the same key. Any concept-specific
+        // id field the record arrived with (e.g. "userId") is read above but never used to
+        // hide the canonical id.
+        record.put("id", id);
 
         storeByConcept
                 .computeIfAbsent(conceptKey, k -> new ConcurrentHashMap<>())
@@ -103,9 +129,45 @@ public final class InMemoryPersistenceCapabilityAdapter implements PersistenceCa
         return !exists;
     }
 
+    // Scoped to literal defaultValue only, matching PostgresPersistenceCapabilityAdapter's pass --
+    // defaultExpression (computed from other fields) is not evaluated here.
+    private void applyFieldDefaults(Object concept, Map<String, Object> record) {
+        if (compiledModel == null) {
+            return;
+        }
+        String name = normalizeConcept(concept);
+        CompiledConcept compiledConcept = null;
+        for (CompiledConcept candidate : compiledModel.getConcepts()) {
+            if (candidate.getName().equalsIgnoreCase(name)) {
+                compiledConcept = candidate;
+                break;
+            }
+        }
+        if (compiledConcept == null) {
+            return;
+        }
+        for (CompiledField field : compiledConcept.getFields()) {
+            if (field.getSchema() == null || field.getSchema().getDefaultValue() == null) {
+                continue;
+            }
+            Object existing = record.get(field.getName());
+            if (existing == null || (existing instanceof String text && text.isBlank())) {
+                record.put(field.getName(), field.getSchema().getDefaultValue());
+            }
+        }
+    }
+
     private static String normalizeConcept(Object concept) {
         String value = Objects.toString(concept, "default").trim().toLowerCase();
         return value.isBlank() ? "default" : value;
+    }
+
+    private static String inferredRuntimeIdField(Object concept) {
+        String raw = Objects.toString(concept, "default").trim();
+        if (raw.isBlank() || "default".equalsIgnoreCase(raw)) {
+            return "id";
+        }
+        return raw.substring(0, 1).toLowerCase() + raw.substring(1) + "Id";
     }
 
     private static Map<String, Object> mutableRecord(Object entity) {

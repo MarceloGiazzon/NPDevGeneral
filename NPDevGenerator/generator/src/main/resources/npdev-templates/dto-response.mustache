@@ -10,6 +10,7 @@ public class {{entityName}}Response {
     private {{javaType}} {{name}};
 {{/id}}
 {{/fields}}
+    private Long version;
 
     public UUID getId() {
         return this.id;
@@ -31,4 +32,11 @@ public class {{entityName}}Response {
 
 {{/id}}
 {{/fields}}
+    public Long getVersion() {
+        return this.version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
+    }
 }

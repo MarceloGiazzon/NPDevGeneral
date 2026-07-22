@@ -1,5 +1,6 @@
 package com.npdev.kernel.events;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -30,7 +31,20 @@ public record EventEnvelope(
         }
         tenantId = normalizeOptional(tenantId);
         actorId = normalizeOptional(actorId);
-        payload = payload == null ? Map.of() : Map.copyOf(new LinkedHashMap<>(payload));
+        payload = normalizePayload(payload);
+    }
+
+    private static Map<String, Object> normalizePayload(Map<String, Object> payload) {
+        if (payload == null || payload.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> sanitized = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : payload.entrySet()) {
+            if (entry.getValue() != null) {
+                sanitized.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return Collections.unmodifiableMap(sanitized);
     }
 
     public EventEnvelope(

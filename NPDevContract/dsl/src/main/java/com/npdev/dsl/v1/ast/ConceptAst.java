@@ -2,13 +2,19 @@ package com.npdev.dsl.v1.ast;
 
 import java.util.List;
 
+@SuppressWarnings("deprecation")
 public final class ConceptAst extends EntityAst {
+    private final String module;
+    private final List<IndexAst> indexes;
+    private final ConceptAccessAst access;
+    private final String renamedFrom;
+
     public ConceptAst(String name, List<FieldAst> fields, List<InvariantAst> invariants) {
-        super(name, fields, invariants);
+        this(name, null, null, fields, invariants, List.of(), null, null, null, null, List.of());
     }
 
     public ConceptAst(String name, String extendsName, List<FieldAst> fields, List<InvariantAst> invariants) {
-        super(name, extendsName, fields, invariants);
+        this(name, extendsName, null, fields, invariants, List.of(), null, null, null, null, List.of());
     }
 
     public ConceptAst(
@@ -18,7 +24,7 @@ public final class ConceptAst extends EntityAst {
             List<InvariantAst> invariants,
             List<EventAst> events
     ) {
-        super(name, extendsName, fields, invariants, events);
+        this(name, extendsName, null, fields, invariants, events, null, null, null, null, List.of());
     }
 
     public ConceptAst(
@@ -29,7 +35,7 @@ public final class ConceptAst extends EntityAst {
             List<InvariantAst> invariants,
             List<EventAst> events
     ) {
-        super(name, extendsName, specializesName, fields, invariants, events);
+        this(name, extendsName, specializesName, fields, invariants, events, null, null, null, null, List.of());
     }
 
     public ConceptAst(
@@ -41,7 +47,7 @@ public final class ConceptAst extends EntityAst {
             List<EventAst> events,
             LifecycleAst lifecycle
     ) {
-        super(name, extendsName, specializesName, fields, invariants, events, lifecycle);
+        this(name, extendsName, specializesName, fields, invariants, events, lifecycle, null, null, null, List.of());
     }
 
     public ConceptAst(
@@ -54,7 +60,112 @@ public final class ConceptAst extends EntityAst {
             LifecycleAst lifecycle,
             PresentationMetadataAst ui
     ) {
-        super(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui);
+        this(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, null, null, List.of());
+    }
+
+    public ConceptAst(
+            String name,
+            String extendsName,
+            String specializesName,
+            List<FieldAst> fields,
+            List<InvariantAst> invariants,
+            List<EventAst> events,
+            LifecycleAst lifecycle,
+            PresentationMetadataAst ui,
+            TruthLevel truthLevel
+    ) {
+        this(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel, null, List.of());
+    }
+
+    public ConceptAst(
+            String name,
+            String extendsName,
+            String specializesName,
+            List<FieldAst> fields,
+            List<InvariantAst> invariants,
+            List<EventAst> events,
+            LifecycleAst lifecycle,
+            PresentationMetadataAst ui,
+            TruthLevel truthLevel,
+            String module
+    ) {
+        this(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel, module, List.of());
+    }
+
+    public ConceptAst(
+            String name,
+            String extendsName,
+            String specializesName,
+            List<FieldAst> fields,
+            List<InvariantAst> invariants,
+            List<EventAst> events,
+            LifecycleAst lifecycle,
+            PresentationMetadataAst ui,
+            TruthLevel truthLevel,
+            String module,
+            List<IndexAst> indexes
+    ) {
+        this(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel, module, indexes, null);
+    }
+
+    public ConceptAst(
+            String name,
+            String extendsName,
+            String specializesName,
+            List<FieldAst> fields,
+            List<InvariantAst> invariants,
+            List<EventAst> events,
+            LifecycleAst lifecycle,
+            PresentationMetadataAst ui,
+            TruthLevel truthLevel,
+            String module,
+            List<IndexAst> indexes,
+            ConceptAccessAst access
+    ) {
+        this(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel, module, indexes, access, null);
+    }
+
+    /** Declares this concept is a rename of a previously-existing concept, not a brand-new one (see getRenamedFrom). */
+    public ConceptAst(
+            String name,
+            String extendsName,
+            String specializesName,
+            List<FieldAst> fields,
+            List<InvariantAst> invariants,
+            List<EventAst> events,
+            LifecycleAst lifecycle,
+            PresentationMetadataAst ui,
+            TruthLevel truthLevel,
+            String module,
+            List<IndexAst> indexes,
+            ConceptAccessAst access,
+            String renamedFrom
+    ) {
+        super(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel);
+        this.module = (module == null || module.isBlank()) ? null : module;
+        this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
+        this.access = access;
+        this.renamedFrom = renamedFrom;
+    }
+
+    /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */
+    public String getModule() {
+        return module;
+    }
+
+    /** LNCH-6: author-declared secondary indexes (indexes:[]); empty if the concept declares none. */
+    public List<IndexAst> getIndexes() {
+        return indexes;
+    }
+
+    /** LNCH-13: author-declared row-level authorization (access: {read, write}); null if the concept declares none. */
+    public ConceptAccessAst getAccess() {
+        return access;
+    }
+
+    /** The previous concept name this concept was renamed from, or null if this is not a declared rename. */
+    public String getRenamedFrom() {
+        return renamedFrom;
     }
 
     public static ConceptAst fromLegacyEntity(EntityAst legacy) {
@@ -69,7 +180,8 @@ public final class ConceptAst extends EntityAst {
                 legacy.getInvariants(),
                 legacy.getEvents(),
                 legacy.getLifecycle(),
-                legacy.getUi()
+                legacy.getUi(),
+                legacy.getTruthLevel()
         );
     }
 }

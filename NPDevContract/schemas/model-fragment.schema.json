@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/npdev-model-fragment.schema.json",
+  "title": "NPDev local model fragment",
+  "type": "object",
+  "description": "Partial NPDev model file referenced from top-level fragments. This is NPDev-local include syntax, not JSON Schema remote $ref.",
+  "properties": {
+    "fragments": {
+      "type": "array",
+      "items": {
+        "$ref": "model.schema.json#/$defs/localModelRef"
+      }
+    },
+    "domainTypes": { "type": "array" },
+    "capabilities": { "type": "array" },
+    "customCapabilities": { "type": "array" },
+    "bindings": { "type": "array" },
+    "events": { "type": "array" },
+    "flows": { "type": "array" },
+    "orchestrationRules": { "type": "array" },
+    "orchestrations": { "type": "array" },
+    "queries": { "type": "array" },
+    "ruleProfiles": { "type": "array" },
+    "procedures": { "type": "array" },
+    "panels": { "type": "array" },
+    "metadata": { "type": "object" }
+  },
+  "additionalProperties": false
+}

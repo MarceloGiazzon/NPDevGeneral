@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/ai-beta-gate-report.schema.json",
+  "title": "NPDev AI Beta Gate Report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "runId",
+    "overallStatus",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "scenarioRoot",
+    "scenarioCount",
+    "sourceOfTruth",
+    "workspaceCleanliness",
+    "scenarioCoverage",
+    "batchCoverage",
+    "scenarios"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-ai-beta-gate-report.v1"
+    },
+    "overallStatus": {
+      "enum": ["passed", "failed", "warning"]
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string"
+    },
+    "scriptPath": {
+      "type": "string"
+    },
+    "workspaceRoot": {
+      "type": "string"
+    },
+    "scenarioRoot": {
+      "type": "string"
+    },
+    "scenarioCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["scenarioId", "status", "expectedOutcome", "stages", "failureReasons"],
+        "properties": {
+          "scenarioId": { "type": "string" },
+          "kind": { "type": "string" },
+          "expectedOutcome": { "enum": ["pass", "fail"] },
+          "expectedFailureStage": { "type": ["string", "null"] },
+          "expectedFailureMatched": { "type": "boolean" },
+          "status": { "enum": ["passed", "failed", "pending"] },
+          "stages": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["name", "status", "message"],
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "status": { "enum": ["passed", "failed", "skipped", "pending"] },
+                "message": { "type": "string" },
+                "evidence": {}
+              },
+              "additionalProperties": true
+            }
+          },
+          "failureReasons": { "type": "array" }
+        },
+        "if": {
+          "properties": {
+            "expectedOutcome": { "const": "fail" }
+          },
+          "required": ["expectedOutcome"]
+        },
+        "then": {
+          "required": ["expectedFailureStage", "expectedFailureMatched"],
+          "properties": {
+            "expectedFailureMatched": { "const": true }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "scenarioCoverage": {
+      "type": "object",
+      "required": ["requiredScenarios", "discoveredScenarios", "missingRequiredScenarios", "requiredScenarioCoveragePassed"],
+      "properties": {
+        "requiredScenarios": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "discoveredScenarios": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "missingRequiredScenarios": { "type": "array", "items": { "type": "string" } },
+        "requiredScenarioCoveragePassed": { "type": "boolean" }
+      },
+      "if": {
+        "properties": { "requiredScenarioCoveragePassed": { "const": true } },
+        "required": ["requiredScenarioCoveragePassed"]
+      },
+      "then": {
+        "properties": { "missingRequiredScenarios": { "maxItems": 0 } }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

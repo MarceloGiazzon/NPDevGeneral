@@ -36,15 +36,15 @@ if ([string]::IsNullOrWhiteSpace($Profiles)) {
     $Profiles = Get-ConfigString -Config $config -Path @("runtime", "springProfile") -Fallback "dev,step0,trial"
 }
 
-$gradlew = Join-Path $AppRoot "gradlew.bat"
-Ensure-File -PathValue $gradlew -Label "Generated app gradlew.bat"
+$gradlew = Get-NPDevGradleWrapperExecutable $AppRoot
+Ensure-File -PathValue $gradlew -Label "Generated app Gradle wrapper"
 
 Info ("Starting sample app from: " + $AppRoot)
 Info ("URL after boot: http://localhost:" + $Port)
 
 Push-Location $AppRoot
 try {
-    & .\gradlew.bat --no-daemon bootRun "--args=--spring.profiles.active=$Profiles --server.port=$Port"
+    & $gradlew --no-daemon bootRun "--args=--spring.profiles.active=$Profiles --server.port=$Port"
     if ($LASTEXITCODE -ne 0) {
         Fail ("Generated app exited with code " + $LASTEXITCODE)
     }

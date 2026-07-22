@@ -12,6 +12,8 @@ public final class CompiledFlow {
     private final CompiledSchema inputSchema;
     private final CompiledSchema outputSchema;
     private final CompiledActionMetadata action;
+    private final boolean startEndpoint;
+    private final CompiledFlowSchedule schedule;
 
     public CompiledFlow(String name, String concept, List<CompiledFlowStep> steps) {
         this(name, concept, null, steps, null, null, null);
@@ -41,6 +43,33 @@ public final class CompiledFlow {
             CompiledSchema outputSchema,
             CompiledActionMetadata action
     ) {
+        this(name, concept, mode, steps, inputSchema, outputSchema, action, false);
+    }
+
+    public CompiledFlow(
+            String name,
+            String concept,
+            String mode,
+            List<CompiledFlowStep> steps,
+            CompiledSchema inputSchema,
+            CompiledSchema outputSchema,
+            CompiledActionMetadata action,
+            boolean startEndpoint
+    ) {
+        this(name, concept, mode, steps, inputSchema, outputSchema, action, startEndpoint, null);
+    }
+
+    public CompiledFlow(
+            String name,
+            String concept,
+            String mode,
+            List<CompiledFlowStep> steps,
+            CompiledSchema inputSchema,
+            CompiledSchema outputSchema,
+            CompiledActionMetadata action,
+            boolean startEndpoint,
+            CompiledFlowSchedule schedule
+    ) {
         this.name = name;
         this.concept = concept;
         this.mode = mode;
@@ -48,6 +77,8 @@ public final class CompiledFlow {
         this.inputSchema = inputSchema;
         this.outputSchema = outputSchema;
         this.action = action;
+        this.startEndpoint = startEndpoint;
+        this.schedule = schedule;
     }
 
     public String getName() { return name; }
@@ -70,5 +101,13 @@ public final class CompiledFlow {
 
     public CompiledActionMetadata getAction() {
         return action;
+    }
+
+    public boolean isStartEndpoint() {
+        return startEndpoint;
+    }
+
+    public CompiledFlowSchedule getSchedule() {
+        return schedule;
     }
 }

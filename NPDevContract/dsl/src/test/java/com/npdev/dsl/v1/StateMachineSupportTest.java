@@ -81,7 +81,7 @@ class StateMachineSupportTest {
         assertTrue(errors.isEmpty(), "Expected explicit state machine metadata to validate, got: " + errors);
 
         CompiledModel compiled = new ModelCompiler().compile(ast);
-        CompiledLifecycle lifecycle = compiled.findEntity("Appointment").orElseThrow().getLifecycle();
+        CompiledLifecycle lifecycle = compiled.findConcept("Appointment").orElseThrow().getLifecycle();
         assertEquals(4, lifecycle.getStates().size());
         CompiledStateMachineState scheduled = lifecycle.getStates().get(0);
         assertEquals("Scheduled", scheduled.getValue());

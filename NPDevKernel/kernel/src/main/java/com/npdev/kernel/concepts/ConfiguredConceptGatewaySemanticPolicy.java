@@ -1,5 +1,8 @@
 package com.npdev.kernel.concepts;
 
+import com.npdev.dsl.v1.expr.ComputedExpression;
+import com.npdev.kernel.ExecutionContext;
+
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -190,18 +193,13 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         for (InvariantDefinition invariant : concept.invariants()) {
             String expression = invariant.expression();
             if (!isSupportedBooleanExpression(expression)) {
-                rulesEvaluated.add(ruleDetail(invariant, "unsupported", false));
-                return ConceptSemanticDecision.deny(
-                        "CONCEPT_RULE_UNSUPPORTED_EXPRESSION",
-                        "Concept invariant uses unsupported expression syntax: " + invariant.name(),
-                        Map.of(
-                                "concept", request.conceptName(),
-                                "invariant", invariant.name(),
-                                "expression", expression,
-                                "operation", request.operation().name(),
-                                "rulesEvaluated", rulesEvaluated
-                        )
-                ).withRuleProfiles(ruleProfiles);
+                // This policy only understands a small comparison/uniqueBy grammar; richer
+                // invariants (e.g. conflict-detection functions like overlapsProvider(...))
+                // are already fully validated by the kernel's CEL invariant engine before this
+                // gateway-side check runs (see GeneratedCrudRuntimeSupport.enforceWithKernel),
+                // so we skip rather than deny instead of double-rejecting on syntax we can't parse.
+                rulesEvaluated.add(ruleDetail(invariant, "skippedUnsupportedExpression", true));
+                continue;
             }
             boolean passed = evaluateBooleanExpression(expression, facts);
             rulesEvaluated.add(ruleDetail(invariant, passed ? "passed" : "failed", passed));
@@ -233,6 +231,48 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
             visible.remove(hiddenField);
         }
         return new ConceptRecord(record.conceptName(), record.id(), record.tenantId(), visible);
+    }
+
+    @Override
+    public boolean isRowReadable(ConceptRecord record, ConceptGatewayRequestContext request) {
+        ConceptDefinition concept = concept(request);
+        if (concept == null || concept.access() == null || !hasText(concept.access().read())) {
+            return true;
+        }
+        return evaluateAccessRule(concept.access().read(), record.data(), request.executionContext());
+    }
+
+    @Override
+    public boolean isRowWritable(ConceptGatewayRequestContext request) {
+        ConceptDefinition concept = concept(request);
+        if (concept == null || concept.access() == null || !hasText(concept.access().write())) {
+            return true;
+        }
+        // The previous record (update/delete) if present, else the incoming data (create) --
+        // see the interface javadoc for why: a caller must not be able to modify/delete a row
+        // outside their own scope, NOR create one claiming ownership outside their own scope.
+        Map<String, Object> subject = request.previousRecord()
+                .map(ConceptRecord::data)
+                .orElse(request.data());
+        return evaluateAccessRule(concept.access().write(), subject, request.executionContext());
+    }
+
+    private static boolean evaluateAccessRule(String expression, Map<String, Object> recordData, ExecutionContext context) {
+        Map<String, Object> scope = new LinkedHashMap<>(recordData == null ? Map.of() : recordData);
+        ExecutionContext effectiveContext = context == null ? ExecutionContext.anonymous() : context;
+        scope.put("$user.id", effectiveContext.actorId());
+        scope.put("$user.actorId", effectiveContext.actorId());
+        scope.put("$user.tenantId", effectiveContext.tenantId());
+        scope.put("$user.roles", effectiveContext.roles());
+        try {
+            return ComputedExpression.evaluateBoolean(expression, scope);
+        } catch (ComputedExpression.ExpressionException malformed) {
+            // Fail closed: a row-level access rule that doesn't evaluate cleanly must never
+            // silently grant access -- SemanticValidator already rejects this at model-compile
+            // time, so reaching this at runtime means something bypassed validation (e.g. a
+            // hand-edited compiled model); denying is the only safe default.
+            return false;
+        }
     }
 
     private static boolean canApplyDefault(ConceptDefinition concept, FieldDefinition field) {
@@ -278,10 +318,17 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         }
     }
 
+    private static final Pattern UNIQUE_BY_PATTERN =
+            Pattern.compile("^([A-Za-z_][A-Za-z0-9_]*)\\.uniqueBy\\(([A-Za-z_][A-Za-z0-9_]*)\\)$");
+
     private static boolean evaluateBooleanExpression(String expression, Map<String, Object> facts) {
         String text = expression == null ? "" : expression.trim();
         if (text.isEmpty()) {
             return true;
+        }
+        Matcher uniqueByMatcher = UNIQUE_BY_PATTERN.matcher(text);
+        if (uniqueByMatcher.matches()) {
+            return evaluateUniqueBy(uniqueByMatcher.group(1), uniqueByMatcher.group(2), facts);
         }
         for (String disjunct : text.split("\\s+\\|\\|\\s+")) {
             boolean all = true;
@@ -293,6 +340,27 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
             }
         }
         return false;
+    }
+
+    private static boolean evaluateUniqueBy(String fieldName, String subfield, Map<String, Object> facts) {
+        Object value = facts.get(fieldName);
+        if (!(value instanceof List<?> list)) {
+            return true;
+        }
+        Set<Object> seen = new LinkedHashSet<>();
+        for (Object element : list) {
+            if (!(element instanceof Map<?, ?> elementMap)) {
+                continue;
+            }
+            Object subValue = elementMap.get(subfield);
+            if (subValue == null) {
+                continue;
+            }
+            if (!seen.add(normalizeComparable(subValue))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean evaluateComparison(String expression, Map<String, Object> facts) {
@@ -318,6 +386,9 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
     private static boolean isSupportedBooleanExpression(String expression) {
         String text = expression == null ? "" : expression.trim();
         if (text.isEmpty()) {
+            return true;
+        }
+        if (UNIQUE_BY_PATTERN.matcher(text).matches()) {
             return true;
         }
         for (String disjunct : text.split("\\s+\\|\\|\\s+")) {
@@ -433,13 +504,24 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
             Map<String, FieldDefinition> fields,
             List<InvariantDefinition> invariants,
             LifecycleDefinition lifecycle,
-            Set<String> hiddenFields
+            Set<String> hiddenFields,
+            AccessRules access
     ) {
         public ConceptDefinition {
             name = Objects.requireNonNull(name, "name");
             fields = fields == null ? Map.of() : Map.copyOf(fields);
             invariants = invariants == null ? List.of() : List.copyOf(invariants);
             hiddenFields = hiddenFields == null ? Set.of() : Set.copyOf(hiddenFields);
+        }
+
+        public ConceptDefinition(
+                String name,
+                Map<String, FieldDefinition> fields,
+                List<InvariantDefinition> invariants,
+                LifecycleDefinition lifecycle,
+                Set<String> hiddenFields
+        ) {
+            this(name, fields, invariants, lifecycle, hiddenFields, null);
         }
 
         public static ConceptDefinition of(
@@ -525,6 +607,14 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         public StateTransition {
             from = from == null ? "" : from.trim();
             to = to == null ? "" : to.trim();
+        }
+    }
+
+    /** LNCH-13: a concept's declarative row-level authorization rule (access: {read, write}). */
+    public record AccessRules(String read, String write) {
+        public AccessRules {
+            read = (read == null || read.isBlank()) ? null : read.trim();
+            write = (write == null || write.isBlank()) ? null : write.trim();
         }
     }
 }

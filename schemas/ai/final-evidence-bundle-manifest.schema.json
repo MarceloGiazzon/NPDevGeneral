@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/final-evidence-bundle-manifest.schema.json",
+  "title": "NPDev Final Evidence Bundle Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "overallStatus",
+    "bundleRoot",
+    "requiredReportCount",
+    "missingReportCount",
+    "failedReportCount",
+    "schemaInvalidReportCount",
+    "schemaValidationReportPath",
+    "artifacts"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "npdev-final-evidence-bundle-manifest.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "scriptPath": { "const": "scripts/quality/generate-final-evidence-bundle.ps1" },
+    "workspaceRoot": { "type": "string", "minLength": 1 },
+    "overallStatus": { "enum": ["passed", "failed"] },
+    "bundleRoot": { "type": "string", "minLength": 1 },
+    "requiredReportCount": { "const": 21 },
+    "missingReportCount": { "type": "integer", "minimum": 0 },
+    "failedReportCount": { "type": "integer", "minimum": 0 },
+    "schemaInvalidReportCount": { "type": "integer", "minimum": 0 },
+    "schemaValidationReportPath": { "type": "string", "minLength": 1 },
+    "artifacts": {
+      "type": "array",
+      "minItems": 21,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "reportPath",
+          "bundledPath",
+          "schemaPath",
+          "schemaVersion",
+          "overallStatus",
+          "bytes",
+          "sha256"
+        ],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "reportPath": { "type": "string", "minLength": 1 },
+          "bundledPath": { "type": "string", "minLength": 1 },
+          "schemaPath": { "type": "string", "minLength": 1 },
+          "schemaVersion": { "type": "string", "minLength": 1 },
+          "overallStatus": { "enum": ["passed", "failed"] },
+          "bytes": { "type": "integer", "minimum": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "overallStatus": { "const": "passed" } }, "required": ["overallStatus"] },
+      "then": {
+        "properties": {
+          "missingReportCount": { "const": 0 },
+          "failedReportCount": { "const": 0 },
+          "schemaInvalidReportCount": { "const": 0 }
+        }
+      }
+    }
+  ]
+}

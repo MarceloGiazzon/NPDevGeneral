@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/ai-smoke-plan.schema.json",
+  "title": "NPDev AI Smoke Plan",
+  "description": "Compatibility alias for ai-verification-report.v1. The canonical schema is ai-verification-report.schema.json.",
+  "$ref": "ai-verification-report.schema.json"
+}

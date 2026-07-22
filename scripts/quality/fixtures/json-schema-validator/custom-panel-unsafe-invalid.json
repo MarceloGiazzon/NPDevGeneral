@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "ai-custom-panel.v1",
+  "panelId": "bad-panel",
+  "route": "/bad",
+  "dataSources": [],
+  "visibleFields": [],
+  "actions": [],
+  "layout": {
+    "type": "table"
+  },
+  "customHtml": "<script>alert(1)</script>"
+}

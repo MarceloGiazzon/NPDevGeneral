@@ -83,10 +83,13 @@ public class GeneratorTestModelLoaderTest {
         Path generatedBuildInfo = out.resolve("src/main/resources/npdev-build-info.properties");
         Path generatedStamp = out.resolve("src/main/resources/generated-stamp.properties");
         Path generatedBuildInfoJava = out.resolve("src/main/java/com/npdev/generated/meta/GeneratedBuildInfo.java");
-        Path flyway = migrations.resolve("R__npdev_schema.sql");
+        Path legacyRepeatableSchemaSql = migrations.resolve("R__npdev_schema.sql");
+        Path generatedSchemaRealizationSql = migrations.resolve("V1__npdev_schema_realization.sql");
+        Path packagedSchemaRealizationSql = out.resolve("src/main/resources/db/schema-realization/V1__npdev_schema_realization.sql");
 
         assertTrue(Files.exists(entity), "Expected generated entity: " + entity);
-        assertTrue(Files.exists(repo), "Expected generated repo: " + repo);
+        assertTrue(Files.notExists(repo),
+                "Generated runtime should not emit direct Spring repositories when persistence is routed through ConceptStore/PersistenceCapability: " + repo);
         assertTrue(Files.exists(service), "Expected generated service: " + service);
         assertTrue(Files.exists(flowController), "Expected generated flow controller: " + flowController);
         assertTrue(Files.exists(eventController), "Expected generated event ingestion controller: " + eventController);
@@ -134,9 +137,18 @@ public class GeneratorTestModelLoaderTest {
         assertFalse(Files.exists(generatedBuildInfoJava),
                 "Generated runtime must not leak timestamped metadata source into the deterministic artifact root: "
                         + generatedBuildInfoJava);
-        assertTrue(Files.exists(flyway), "Expected generated migration: " + flyway);
+        assertFalse(Files.exists(legacyRepeatableSchemaSql),
+                "Generator test-model output must not recreate legacy repeatable schema SQL authority: " + legacyRepeatableSchemaSql);
+        assertFalse(Files.exists(generatedSchemaRealizationSql),
+                "Generator test-model output must not create standalone schema SQL outside the source-of-truth pipeline: " + generatedSchemaRealizationSql);
+        assertFalse(Files.exists(packagedSchemaRealizationSql),
+                "Generator test-model output must not create packaged schema SQL outside the source-of-truth pipeline: " + packagedSchemaRealizationSql);
 
         String serviceContent = Files.readString(service);
+        assertTrue(serviceContent.contains("runtimeSupport"),
+                "Expected generated service to use the shared runtime support entrypoint for generated CRUD behavior");
+        assertTrue(serviceContent.contains("GeneratedCrudRuntimeSupport"),
+                "Expected generated service to keep CRUD behavior delegated through reusable runtime support");
         assertTrue(serviceContent.contains("GeneratedCrudRuntimeSupport"),
                 "Expected generated service to delegate runtime concerns");
         assertTrue(serviceContent.contains("publishMutationEvent(\"created\""),
@@ -150,12 +162,7 @@ public class GeneratorTestModelLoaderTest {
         assertTrue(serviceContent.contains("PersistenceCapability<User, UUID>"),
                 "Expected generated service to depend on persistence capability contract");
         assertTrue(serviceContent.contains("GeneratedCrudRuntimeSupport.persistenceCapability("),
-                "Expected generated service to isolate repo usage behind reusable capability factory");
-        assertTrue(serviceContent.contains("runtimeSupport.buildCreateInvariantPayload(\"User\", dto)"),
-                "Expected generated service to build create payloads through shared runtime support");
-        assertTrue(serviceContent.contains("runtimeSupport.applyUpdateFields(\"User\", dto, existing)"),
-                "Expected generated service to apply updates through shared runtime support");
-
+                "Expected generated service to isolate persistence behind reusable capability factory");
         String runtimeConfigContent = Files.readString(runtimeConfig);
         String generatedSignatureContent = Files.readString(generatedSignature);
         assertTrue(runtimeConfigContent.contains("@Configuration"),

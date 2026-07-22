@@ -2,14 +2,13 @@ package com.npdev.adapters.eventstore.postgres;
 
 import com.npdev.kernel.events.EventEnvelope;
 import com.npdev.kernel.events.EventMetaSummary;
-import org.h2.jdbcx.JdbcDataSource;
+import com.npdev.test.postgres.PostgresTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import javax.sql.DataSource;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -42,12 +41,9 @@ class PostgresEventStoreTest {
 
     @BeforeEach
     void setUp() {
-        JdbcDataSource jdbcDataSource = new JdbcDataSource();
-        jdbcDataSource.setURL("jdbc:h2:mem:eventstore_" + UUID.randomUUID() + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1");
-        jdbcDataSource.setUser("sa");
-        jdbcDataSource.setPassword("sa");
-        dataSource = jdbcDataSource;
-        executeSchema(dataSource, SCHEMA_SQL);
+        dataSource = PostgresTestSupport.dataSource();
+        PostgresTestSupport.execute(dataSource, SCHEMA_SQL);
+        PostgresTestSupport.truncate(dataSource, "npdev_event_store");
         store = new PostgresEventStore(dataSource);
     }
 
@@ -280,18 +276,4 @@ class PostgresEventStoreTest {
         assertTrue(summaries.stream().allMatch(summary -> "tenant-a".equals(summary.tenantId())));
     }
 
-    private static void executeSchema(DataSource dataSource, String[] statements) {
-        try (var connection = dataSource.getConnection();
-             var statement = connection.createStatement()) {
-            for (String raw : statements) {
-                String sql = raw.trim();
-                if (sql.isEmpty()) {
-                    continue;
-                }
-                statement.execute(sql);
-            }
-        } catch (Exception exception) {
-            throw new IllegalStateException("Failed preparing event store schema", exception);
-        }
-    }
 }

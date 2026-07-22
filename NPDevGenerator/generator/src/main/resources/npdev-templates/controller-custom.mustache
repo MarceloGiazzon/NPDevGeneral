@@ -26,6 +26,13 @@ public class {{entityName}}Controller extends {{entityName}}ControllerBase {
         return listBase();
     }
 
+{{#referenceFinders}}
+    @GetMapping("/by/{{name}}/{value}")
+    public Object listBy{{capName}}(@PathVariable String value) {
+        return service.listBy{{capName}}(value);
+    }
+
+{{/referenceFinders}}
     @PostMapping
     public Object create(@RequestBody {{entityName}}CreateRequest request) {
         return createBase(request);
@@ -40,4 +47,30 @@ public class {{entityName}}Controller extends {{entityName}}ControllerBase {
     public Object delete(@PathVariable UUID id) {
         return deleteBase(id);
     }
+
+{{#manyToManyBonds}}
+    @GetMapping("/{id}/{{name}}")
+    public Object list{{capName}}Members(@PathVariable UUID id) {
+        return service.list{{capName}}Members(id);
+    }
+
+    @PostMapping("/{id}/{{name}}/{targetAnchor}")
+    public Object add{{capName}}Member(@PathVariable UUID id, @PathVariable String targetAnchor) {
+        service.add{{capName}}Member(id, targetAnchor);
+        return list{{capName}}Members(id);
+    }
+
+    @DeleteMapping("/{id}/{{name}}/{targetAnchor}")
+    public Object remove{{capName}}Member(@PathVariable UUID id, @PathVariable String targetAnchor) {
+        service.remove{{capName}}Member(id, targetAnchor);
+        return list{{capName}}Members(id);
+    }
+
+    @PutMapping("/{id}/{{name}}")
+    public Object replace{{capName}}Members(@PathVariable UUID id, @RequestBody java.util.List<Object> targetAnchors) {
+        service.replace{{capName}}Members(id, targetAnchors);
+        return list{{capName}}Members(id);
+    }
+
+{{/manyToManyBonds}}
 }

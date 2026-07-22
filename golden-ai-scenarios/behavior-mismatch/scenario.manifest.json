@@ -1,25 +1,15 @@
 {
-  "schemaVersion": "ai-scenario.v1",
+  "schemaVersion": "ai-scenario-manifest.v1",
   "scenarioId": "behavior-mismatch",
-  "kind": "ai-only-functional-beta",
+  "kind": "negative",
+  "expectedOutcome": "fail",
+  "expectedFailureStage": "smoke-verification",
   "files": {
+    "aiModel": "ai-model.json",
+    "aiConfig": "ai-config.json",
+    "verification": "ai-verification-report.json",
+    "expectedBehavior": "expected-behavior.json",
     "model": "model.json",
-    "config": "config.json",
-    "expectedBehavior": "expected-behavior.json"
-  },
-  "runtime": {
-    "strictExecution": true,
-    "surfaceProfile": "supported-core"
-  },
-  "requestedSurfaces": ["supported-core"],
-  "operations": [
-    {
-      "type": "run",
-      "mode": "deterministic"
-    }
-  ],
-  "expectedOutcome": {
-    "class": "FAIL_BEHAVIOR_MISMATCH",
-    "mustPass": false
+    "config": "config.json"
   }
 }

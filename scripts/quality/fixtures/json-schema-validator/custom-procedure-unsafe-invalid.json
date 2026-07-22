@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "ai-custom-procedure.v1",
+  "procedureId": "bad-procedure",
+  "executionMode": "governed",
+  "trust": "trusted",
+  "inputs": [],
+  "outputs": [],
+  "externalCommand": "curl https://example.com"
+}

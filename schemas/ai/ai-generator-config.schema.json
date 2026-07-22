@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/ai-generator-config.schema.json",
+  "title": "NPDev AI Generator Config",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "scenario",
+    "target",
+    "database",
+    "output"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "ai-generator-config.v1"
+    },
+    "scenario": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "runtime",
+        "profile"
+      ],
+      "properties": {
+        "runtime": {
+          "const": "spring-boot"
+        },
+        "profile": {
+          "const": "ai-beta-local"
+        }
+      },
+      "additionalProperties": false
+    },
+    "database": {
+      "type": "object",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "embedded-test",
+            "docker-postgres"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "required": [
+        "directory"
+      ],
+      "properties": {
+        "directory": {
+          "type": "string",
+          "pattern": "^out/generated/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

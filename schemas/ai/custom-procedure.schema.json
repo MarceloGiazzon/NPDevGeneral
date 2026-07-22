@@ -3,35 +3,228 @@
   "$id": "https://npdev.local/schemas/ai/custom-procedure.schema.json",
   "title": "NPDev AI Custom Procedure",
   "type": "object",
-  "required": ["schemaVersion", "procedureId", "executionMode", "trust", "inputs", "outputs"],
+  "required": [
+    "schemaVersion",
+    "procedureId",
+    "executionMode",
+    "trust",
+    "inputs",
+    "outputs",
+    "sideEffectType",
+    "requiredRole",
+    "tenantScoped",
+    "maxAffectedRows"
+  ],
   "properties": {
-    "schemaVersion": { "const": "ai-custom-procedure.v1" },
-    "procedureId": { "type": "string" },
-    "executionMode": { "const": "governed" },
-    "trust": { "enum": ["trusted", "inproc"] },
-    "inputs": { "type": "array" },
-    "outputs": { "type": "array" },
-    "sideEffects": { "type": "array", "default": [] },
-    "steps": { "type": "array", "default": [] },
+    "schemaVersion": {
+      "const": "ai-custom-procedure.v1"
+    },
+    "procedureId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9-]*$"
+    },
+    "executionMode": {
+      "const": "governed"
+    },
+    "trust": {
+      "enum": [
+        "trusted",
+        "inproc"
+      ]
+    },
+    "type": {
+      "enum": [
+        "read-only-query",
+        "single-entity-command",
+        "bulk-command",
+        "workflow-action",
+        "computed-summary"
+      ],
+      "default": "single-entity-command"
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/typedField"
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/typedField"
+      }
+    },
+    "sideEffects": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(none|concept:[A-Z][A-Za-z0-9]*|workflow:[A-Za-z][A-Za-z0-9-]*)$"
+      },
+      "default": []
+    },
+    "sideEffectType": {
+      "enum": [
+        "none",
+        "single-entity",
+        "bulk",
+        "workflow"
+      ]
+    },
+    "requiredRole": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9-]*$"
+    },
+    "tenantScoped": {
+      "type": "boolean"
+    },
+    "allowedEntities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Za-z0-9]*$"
+      },
+      "default": []
+    },
+    "maxAffectedRows": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000
+    },
+    "idempotency": {
+      "enum": [
+        "required",
+        "not-required"
+      ],
+      "default": "required"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "readConcept",
+              "listConcepts",
+              "runQuery",
+              "saveConcept",
+              "callProcedure",
+              "return"
+            ]
+          },
+          "concept": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Za-z0-9]*$"
+          },
+          "query": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9]*$"
+          },
+          "procedure": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9-]*$"
+          },
+          "value": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "default": []
+    },
     "implementation": {
       "type": "object",
-      "required": ["mode", "language", "entrypoint", "className"],
+      "required": [
+        "mode",
+        "language",
+        "entrypoint",
+        "className"
+      ],
       "properties": {
-        "mode": { "enum": ["trustedSource"] },
-        "language": { "enum": ["java"] },
-        "entrypoint": { "type": "string" },
-        "className": { "type": "string" },
-        "method": { "type": "string", "default": "execute" }
+        "mode": {
+          "const": "trustedSource"
+        },
+        "language": {
+          "const": "java"
+        },
+        "entrypoint": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_./-]+\\.java$",
+          "not": {
+            "pattern": "(^/|^[A-Za-z]:|\\.\\.)"
+          }
+        },
+        "className": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Za-z0-9]*$"
+        },
+        "method": {
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9]*$",
+          "default": "execute"
+        }
       },
-      "additionalProperties": true
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "typedField": {
+      "type": "object",
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9]*$"
+        },
+        "type": {
+          "enum": [
+            "string",
+            "text",
+            "email",
+            "integer",
+            "boolean",
+            "date",
+            "datetime",
+            "uuid"
+          ]
+        },
+        "required": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
     }
   },
   "not": {
     "anyOf": [
-      { "required": ["script"] },
-      { "required": ["externalCommand"] },
-      { "required": ["customHtml"] }
+      {
+        "required": [
+          "script"
+        ]
+      },
+      {
+        "required": [
+          "externalCommand"
+        ]
+      },
+      {
+        "required": [
+          "customHtml"
+        ]
+      }
     ]
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

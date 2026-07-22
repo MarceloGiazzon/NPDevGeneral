@@ -18,6 +18,7 @@ public class CompiledEntity {
     private final List<CompiledInvariant> invariants;
     private final CompiledLifecycle lifecycle;
     private final CompiledPresentationMetadata ui;
+    private final String truthLevel;
 
     public CompiledEntity(String name, String className, String tableName, List<CompiledField> fields) {
         this(name, className, tableName, fields, List.of(), List.of(), null, null);
@@ -66,6 +67,20 @@ public class CompiledEntity {
             CompiledLifecycle lifecycle,
             CompiledPresentationMetadata ui
     ) {
+        this(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, "T1");
+    }
+
+    public CompiledEntity(
+            String name,
+            String className,
+            String tableName,
+            List<CompiledField> fields,
+            List<String> expressionInvariants,
+            List<CompiledInvariant> invariants,
+            CompiledLifecycle lifecycle,
+            CompiledPresentationMetadata ui,
+            String truthLevel
+    ) {
         this.name = name;
         this.className = className;
         this.tableName = tableName;
@@ -74,6 +89,7 @@ public class CompiledEntity {
         this.invariants = new ArrayList<>(invariants);
         this.lifecycle = lifecycle;
         this.ui = ui;
+        this.truthLevel = (truthLevel == null || truthLevel.isBlank()) ? "T1" : truthLevel;
     }
 
     public String getName() { return name; }
@@ -98,5 +114,10 @@ public class CompiledEntity {
 
     public CompiledPresentationMetadata getUi() {
         return ui;
+    }
+
+    /** Concept truth classification code (T0..T6); defaults to T1 (Declared). */
+    public String getTruthLevel() {
+        return truthLevel;
     }
 }

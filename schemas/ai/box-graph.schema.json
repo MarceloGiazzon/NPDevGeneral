@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/box-graph.schema.json",
+  "title": "NPDev Box Graph",
+  "description": "Resolved graph of NPDev Boxes, Objects, resources, truth, customization, promotion, and release relationships.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "graphVersion",
+    "applicationId",
+    "generatedAt",
+    "nodes",
+    "edges",
+    "ownership",
+    "truthSummary",
+    "customizationSummary",
+    "promotionSummary",
+    "validationFindings"
+  ],
+  "properties": {
+    "graphVersion": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "applicationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
+    },
+    "ownership": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
+    },
+    "truthSummary": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "customizationSummary": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "promotionSummary": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "validationFindings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    }
+  },
+  "$defs": {
+    "nodeKind": {
+      "type": "string",
+      "enum": [
+        "Box",
+        "Object",
+        "Resource",
+        "Rule",
+        "Evidence",
+        "Release"
+      ]
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "kind",
+        "type",
+        "name",
+        "parentId",
+        "path",
+        "truthLevel",
+        "promotionStage",
+        "resourceSummary",
+        "customizationSummary",
+        "evidenceSummary",
+        "releaseEligibility"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "$ref": "#/$defs/nodeKind"
+        },
+        "type": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "parentId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "truthLevel": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "T0",
+            "T1",
+            "T2",
+            "T3",
+            "T4",
+            "T5",
+            "T6",
+            null
+          ]
+        },
+        "promotionStage": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resourceSummary": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "customizationSummary": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "evidenceSummary": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "releaseEligibility": {
+          "type": "string",
+          "enum": [
+            "NotApplicable",
+            "NotYetEligible",
+            "Eligible",
+            "Approved",
+            "Blocked",
+            "Unknown"
+          ]
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "from",
+        "to",
+        "relationship"
+      ],
+      "properties": {
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relationship": {
+          "type": "string",
+          "enum": [
+            "owns",
+            "contains",
+            "appliesTo",
+            "uses",
+            "reads",
+            "writes",
+            "calls",
+            "validates",
+            "proves",
+            "releases",
+            "customizes",
+            "overrides",
+            "requires",
+            "protects",
+            "integrates"
+          ]
+        }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "level",
+        "code",
+        "message",
+        "targetId",
+        "path"
+      ],
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": [
+            "Error",
+            "Warning",
+            "Info"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "targetId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

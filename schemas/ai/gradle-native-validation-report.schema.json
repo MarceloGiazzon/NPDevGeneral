@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/gradle-native-validation-report.schema.json",
+  "title": "NPDev Gradle Native Validation Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "overallStatus",
+    "gradleTaskExists",
+    "nativeCheckCount",
+    "wrapperCheckCount",
+    "wrapperCheckCountMustDecreaseOrBeJustified",
+    "postBeta0MaturityCheckPassed",
+    "legacyScriptsPreservedAsCompatibility",
+    "nativeChecks",
+    "remainingWrappers",
+    "checks",
+    "failures",
+    "findings",
+    "doesNotSolve"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "npdev-gradle-native-validation-report.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "scriptPath": { "const": "build.gradle" },
+    "workspaceRoot": { "type": "string", "minLength": 1 },
+    "overallStatus": { "enum": ["passed", "failed"] },
+    "gradleTaskExists": { "type": "boolean" },
+    "nativeCheckCount": { "type": "integer", "minimum": 0 },
+    "wrapperCheckCount": { "enum": ["allowed-during-transition"] },
+    "wrapperCheckCountMustDecreaseOrBeJustified": { "type": "boolean" },
+    "postBeta0MaturityCheckPassed": { "type": "boolean" },
+    "legacyScriptsPreservedAsCompatibility": { "type": "boolean" },
+    "nativeChecks": { "type": "array", "items": { "type": "object" } },
+    "remainingWrappers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "reason", "owner", "removalPath"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 },
+          "owner": { "type": "string", "minLength": 1 },
+          "removalPath": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "checks": { "type": "array", "items": { "type": "object" } },
+    "failures": { "type": "array", "items": { "type": "string" } },
+    "findings": { "type": "array", "items": { "type": "object" } },
+    "doesNotSolve": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "overallStatus": { "const": "passed" } }, "required": ["overallStatus"] },
+      "then": {
+        "properties": {
+          "gradleTaskExists": { "const": true },
+          "nativeCheckCount": { "minimum": 3 },
+          "wrapperCheckCount": { "const": "allowed-during-transition" },
+          "wrapperCheckCountMustDecreaseOrBeJustified": { "const": true },
+          "postBeta0MaturityCheckPassed": { "const": true },
+          "legacyScriptsPreservedAsCompatibility": { "const": true },
+          "failures": { "maxItems": 0 }
+        }
+      }
+    }
+  ]
+}

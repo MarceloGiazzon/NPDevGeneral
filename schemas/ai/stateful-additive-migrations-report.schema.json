@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/stateful-additive-migrations-report.schema.json",
+  "title": "NPDev Stateful Additive Migrations Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "overallStatus",
+    "migrationModeAdditiveOnlySupported",
+    "migrationPlanOnlySupported",
+    "versionedFlywayMigrationGenerated",
+    "safeAdditiveChangesAllowed",
+    "destructiveChangesRejected",
+    "runtimeMigrationPreflightPassed",
+    "runtimeMigrationStaticPreflightPassed",
+    "flywayPostgresMigrationProofPassed",
+    "flywayValidateOrMigrateProofPassed",
+    "flywaySchemaHistoryVerified",
+    "dryRunSqlAttached",
+    "riskThresholdConfigurable",
+    "checks",
+    "findings",
+    "doesNotSolve"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "npdev-stateful-additive-migrations-report.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "scriptPath": { "const": "scripts/quality/run-stateful-additive-migrations-check.ps1" },
+    "workspaceRoot": { "type": "string", "minLength": 1 },
+    "overallStatus": { "enum": ["passed", "failed"] },
+    "migrationModeAdditiveOnlySupported": { "type": "boolean" },
+    "migrationPlanOnlySupported": { "type": "boolean" },
+    "versionedFlywayMigrationGenerated": { "type": "boolean" },
+    "safeAdditiveChangesAllowed": { "type": "boolean" },
+    "destructiveChangesRejected": { "type": "boolean" },
+    "runtimeMigrationPreflightPassed": { "type": "boolean" },
+    "runtimeMigrationStaticPreflightPassed": { "type": "boolean" },
+    "flywayPostgresMigrationProofPassed": { "type": "boolean" },
+    "flywayValidateOrMigrateProofPassed": { "type": "boolean" },
+    "flywaySchemaHistoryVerified": { "type": "boolean" },
+    "dryRunSqlAttached": { "type": "boolean" },
+    "riskThresholdConfigurable": { "type": "boolean" },
+    "checks": { "type": "array", "items": { "type": "object" } },
+    "findings": { "type": "array", "items": { "type": "object" } },
+    "doesNotSolve": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "overallStatus": { "const": "passed" } }, "required": ["overallStatus"] },
+      "then": {
+        "properties": {
+          "migrationModeAdditiveOnlySupported": { "const": true },
+          "migrationPlanOnlySupported": { "const": true },
+          "versionedFlywayMigrationGenerated": { "const": true },
+          "safeAdditiveChangesAllowed": { "const": true },
+          "destructiveChangesRejected": { "const": true },
+          "runtimeMigrationPreflightPassed": { "const": true },
+          "runtimeMigrationStaticPreflightPassed": { "const": true },
+          "flywayPostgresMigrationProofPassed": { "const": true },
+          "flywayValidateOrMigrateProofPassed": { "const": true },
+          "flywaySchemaHistoryVerified": { "const": true },
+          "dryRunSqlAttached": { "const": true },
+          "riskThresholdConfigurable": { "const": true }
+        }
+      }
+    }
+  ]
+}

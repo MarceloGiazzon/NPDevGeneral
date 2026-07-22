@@ -1,14 +1,32 @@
 {
-    "resourceId":  "npdev-source-mutation-approval/source-mutation-approval-rules",
-    "resourceType":  "rules",
-    "templateOwned":  true,
-    "version":  "1.0.0",
-    "status":  "seeded",
-    "generatedAt":  "2026-04-23T00:00:00Z",
-    "items":  [
-
-              ],
-    "notes":  [
-                  "Seeded template resource to satisfy runtime template completeness and allow future specialization."
-              ]
+  "resourceId": "npdev-source-mutation-approval/source-mutation-approval-rules",
+  "resourceType": "rules",
+  "templateOwned": true,
+  "version": "1.0.0",
+  "status": "seeded",
+  "generatedAt": "2026-04-23T00:00:00Z",
+  "mode": "source-mutation-approval-gate-v1",
+  "surfaceName": "Source Mutation Approval Gate",
+  "defaultApprovalStates": [
+    "APPROVED",
+    "REVIEW_REQUIRED",
+    "REJECTED"
+  ],
+  "unsupportedScopeDefaultApprovalState": "REVIEW_REQUIRED",
+  "scopePolicies": [
+    {
+      "mutationScope": "structural-source-mutation",
+      "defaultApprovalState": "REVIEW_REQUIRED",
+      "requiresRationale": true
+    },
+    {
+      "mutationScope": "semantic-source-mutation",
+      "defaultApprovalState": "REVIEW_REQUIRED",
+      "requiresRationale": true
+    }
+  ],
+  "items": [],
+  "notes": [
+    "Seeded template resource to satisfy runtime template completeness and allow future specialization."
+  ]
 }

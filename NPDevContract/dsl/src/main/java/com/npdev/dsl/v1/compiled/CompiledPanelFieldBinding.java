@@ -6,6 +6,7 @@ public record CompiledPanelFieldBinding(
         String visibleWhen,
         String enabledWhen,
         String readonlyWhen,
-        CompiledPresentationMetadata ui
+        CompiledPresentationMetadata ui,
+        boolean editable
 ) {
 }

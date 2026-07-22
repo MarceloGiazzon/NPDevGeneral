@@ -17,6 +17,7 @@ import com.npdev.kernel.execution.FlowInstance;
 import com.npdev.kernel.ports.AuditLogStore;
 import com.npdev.kernel.ports.AuditQuery;
 import com.npdev.kernel.ports.CircuitBreakerStateStore;
+import com.npdev.kernel.ports.CorrelationOwnershipStore;
 import com.npdev.kernel.ports.EventMetaStore;
 import com.npdev.kernel.ports.EventRedactionPolicy;
 import com.npdev.kernel.ports.EventStore;
@@ -31,6 +32,9 @@ import com.npdev.kernel.ports.TraceRedactionPolicy;
 import com.npdev.kernel.ports.TraceSummaryStore;
 import com.npdev.kernel.ports.TraceStore;
 import com.npdev.kernel.trace.FlowTrace;
+import com.npdev.kernel.trace.FlowTraceMeta;
+import com.npdev.kernel.trace.StepOutcome;
+import com.npdev.kernel.trace.StepTrace;
 import com.npdev.kernel.trace.TraceSummary;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -64,6 +68,7 @@ public class KernelFacade {
     private final AuditLogStore auditLogStore;
     private final CircuitBreakerStateStore circuitBreakerStateStore;
     private final IdempotencyStore idempotencyStore;
+    private final CorrelationOwnershipStore correlationOwnershipStore;
     private final MetricsSink metricsSink;
     private final CompiledModel compiledModel;
 
@@ -82,6 +87,7 @@ public class KernelFacade {
             AuditLogStore auditLogStore,
             CircuitBreakerStateStore circuitBreakerStateStore,
             IdempotencyStore idempotencyStore,
+            CorrelationOwnershipStore correlationOwnershipStore,
             MetricsSink metricsSink,
             CompiledModel compiledModel
     ) {
@@ -107,6 +113,9 @@ public class KernelFacade {
                 ? CircuitBreakerStateStore.noop()
                 : circuitBreakerStateStore;
         this.idempotencyStore = idempotencyStore == null ? IdempotencyStore.noop() : idempotencyStore;
+        this.correlationOwnershipStore = correlationOwnershipStore == null
+                ? CorrelationOwnershipStore.noop()
+                : correlationOwnershipStore;
         this.metricsSink = metricsSink == null ? MetricsSink.noop() : metricsSink;
         this.compiledModel = compiledModel;
     }
@@ -192,7 +201,7 @@ public class KernelFacade {
             throw forbidden();
         }
         try {
-            ExecutionResult result = kernelRunner.resumeExecution(executionId);
+            ExecutionResult result = kernelRunner.resumeExecution(executionId, ctx);
             audit(
                     ctx,
                     "RESUME_EXECUTION",
@@ -1181,6 +1190,530 @@ public class KernelFacade {
         return rows;
     }
 
+    public Map<String, Object> generatedActionEvidenceByExecution(
+            String executionId,
+            ExecutionContext requesterContext
+    ) {
+        ExecutionContext requester = normalizeContext(requesterContext);
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<String> warnings = new java.util.ArrayList<>();
+        String safeExecutionId = safe(executionId);
+        out.put("executionId", safeExecutionId);
+        out.put("lookupMode", "executionId");
+        if (executionId == null || executionId.isBlank()) {
+            warnings.add("executionId is blank; use /generated/actions/correlations/{correlationId} when available");
+            return emptyGeneratedActionEvidence(out, warnings, "not_found", "missing_execution_id");
+        }
+
+        Optional<FlowTrace> trace = findTrace(executionId, requester);
+        String correlationId = trace
+                .map(FlowTrace::meta)
+                .map(FlowTraceMeta::correlationId)
+                .filter(value -> value != null && !value.isBlank())
+                .orElse("");
+        List<AuditRecord> executionAudits = searchAudit(
+                new AuditQuery(requester.tenantId(), null, null, null, executionId, null, null, 100, 0),
+                requester
+        ).stream()
+                .filter(row -> row.action() != null && row.action().startsWith("GENERATED_ACTION_"))
+                .toList();
+        if (correlationId.isBlank()) {
+            correlationId = executionAudits.stream()
+                    .map(AuditRecord::meta)
+                    .map(meta -> meta.get("correlationId"))
+                    .filter(value -> value != null && !value.isBlank())
+                    .findFirst()
+                    .orElse("");
+        }
+        if (correlationId.isBlank()) {
+            warnings.add("executionId lookup could not resolve correlationId from trace or generated-action audit evidence");
+            warnings.add("Use /generated/actions/correlations/{correlationId} if the action response contains correlationId");
+            out.put("audits", executionAudits.stream().map(this::auditSummary).toList());
+            out.put("auditCount", executionAudits.size());
+            return emptyGeneratedActionEvidence(out, warnings, executionAudits.isEmpty() ? "not_found" : "partial", "correlation_unresolved");
+        }
+
+        Map<String, Object> evidence = generatedActionEvidenceByCorrelation(correlationId, requester);
+        out.putAll(evidence);
+        out.put("lookupMode", "executionId");
+        out.put("executionId", safeExecutionId);
+        List<String> mergedWarnings = new java.util.ArrayList<>(warnings);
+        Object existingWarnings = evidence.get("warnings");
+        if (existingWarnings instanceof List<?> rows) {
+            for (Object row : rows) {
+                mergedWarnings.add(String.valueOf(row));
+            }
+        }
+        out.put("warnings", List.copyOf(mergedWarnings));
+        return Map.copyOf(out);
+    }
+
+    public Map<String, Object> generatedActionEvidenceByCorrelation(
+            String correlationId,
+            ExecutionContext requesterContext
+    ) {
+        ExecutionContext requester = normalizeContext(requesterContext);
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<String> warnings = new java.util.ArrayList<>();
+        String safeCorrelationId = safe(correlationId);
+        out.put("correlationId", safeCorrelationId);
+        out.put("lookupMode", "correlationId");
+        if (correlationId == null || correlationId.isBlank()) {
+            warnings.add("correlationId is blank");
+            return emptyGeneratedActionEvidence(out, warnings, "not_found", "missing_correlation_id");
+        }
+
+        List<EventEnvelope> events = listEventsByCorrelation(correlationId, 100, 0, requester);
+        List<FlowTrace> traces = searchTraces(new TraceQuery(correlationId, null, null, null, null, 100, 0), requester);
+        List<AuditRecord> audits = searchAudit(AuditQuery.emptyForTenant(requester.tenantId()), requester).stream()
+                .filter(row -> correlationId.equals(row.meta().get("correlationId")))
+                .limit(100)
+                .toList();
+        Optional<String> owner = correlationOwnershipStore.findTenantByCorrelationId(correlationId);
+        List<Map<String, Object>> correlationOwners = owner
+                .filter(value -> value.equals(requester.tenantId()))
+                .map(value -> List.of(Map.<String, Object>of("correlationId", safeCorrelationId, "tenantId", value)))
+                .orElseGet(List::of);
+        if (owner.isPresent() && !owner.get().equals(requester.tenantId())) {
+            warnings.add("correlation owner exists for another tenant and was not returned");
+        }
+
+        String actionName = firstNonBlank(
+                firstAuditMeta(audits, "actionName"),
+                firstTraceTag(traces, "actionName"),
+                firstEventPayloadValue(events, "actionName")
+        );
+        String procedureName = firstNonBlank(firstEventPayloadValue(events, "procedureName"), actionName);
+        String executionId = firstNonBlank(
+                traces.stream().map(FlowTrace::meta).map(FlowTraceMeta::executionId).findFirst().orElse(""),
+                firstEventPayloadValue(events, "executionId"),
+                audits.stream().map(AuditRecord::resourceId).filter(value -> value != null && !value.isBlank()).findFirst().orElse("")
+        );
+        String capabilityId = actionName.isBlank() ? "" : generatedActionCapabilityName(actionName);
+
+        List<IdempotencyRecord> idempotencyRecords = generatedActionIdempotencyEvidence(
+                actionName,
+                audits,
+                requester,
+                warnings
+        );
+
+        out.put("executionId", safe(executionId));
+        out.put("correlationId", safeCorrelationId);
+        out.put("actionName", safe(actionName));
+        out.put("procedureName", safe(procedureName));
+        out.put("capabilityId", safe(capabilityId));
+        out.put("status", evidenceStatus(events, traces, audits, idempotencyRecords, correlationOwners));
+        out.put("evidenceStatus", evidenceStatus(events, traces, audits, idempotencyRecords, correlationOwners));
+        out.put("eventCount", events.size());
+        out.put("traceCount", traces.size());
+        out.put("auditCount", audits.size());
+        out.put("idempotencyCount", idempotencyRecords.size());
+        out.put("correlationOwnerCount", correlationOwners.size());
+        out.put("events", events.stream().map(this::eventSummary).toList());
+        out.put("traces", traces.stream().map(this::traceSummary).toList());
+        out.put("audits", audits.stream().map(this::auditSummary).toList());
+        out.put("idempotencyRecords", idempotencyRecords.stream().map(this::idempotencySummary).toList());
+        out.put("correlationOwners", correlationOwners);
+        if (events.isEmpty()) {
+            warnings.add("No event evidence found for correlationId");
+        }
+        if (traces.isEmpty()) {
+            warnings.add("No trace evidence found for correlationId");
+        }
+        if (audits.isEmpty()) {
+            warnings.add("No audit evidence found for correlationId");
+        }
+        if (idempotencyRecords.isEmpty()) {
+            warnings.add("No idempotency evidence could be safely correlated from existing audit/action metadata");
+        }
+        if (correlationOwners.isEmpty()) {
+            warnings.add("No correlation ownership evidence found for requester tenant");
+        }
+        out.put("warnings", List.copyOf(warnings));
+        return Map.copyOf(out);
+    }
+
+    private Map<String, Object> emptyGeneratedActionEvidence(
+            Map<String, Object> out,
+            List<String> warnings,
+            String status,
+            String evidenceStatus
+    ) {
+        out.putIfAbsent("actionName", "");
+        out.putIfAbsent("procedureName", "");
+        out.putIfAbsent("capabilityId", "");
+        out.put("status", status);
+        out.put("evidenceStatus", evidenceStatus);
+        out.putIfAbsent("eventCount", 0);
+        out.putIfAbsent("traceCount", 0);
+        out.putIfAbsent("auditCount", 0);
+        out.put("idempotencyCount", 0);
+        out.put("correlationOwnerCount", 0);
+        out.putIfAbsent("events", List.of());
+        out.putIfAbsent("traces", List.of());
+        out.putIfAbsent("audits", List.of());
+        out.put("idempotencyRecords", List.of());
+        out.put("correlationOwners", List.of());
+        out.put("warnings", List.copyOf(warnings));
+        return Map.copyOf(out);
+    }
+
+    private List<IdempotencyRecord> generatedActionIdempotencyEvidence(
+            String actionName,
+            List<AuditRecord> audits,
+            ExecutionContext requester,
+            List<String> warnings
+    ) {
+        if (actionName == null || actionName.isBlank()) {
+            warnings.add("Idempotency lookup skipped because actionName could not be derived from existing evidence");
+            return List.of();
+        }
+        String idempotencyKey = audits.stream()
+                .map(AuditRecord::tags)
+                .map(tags -> tags.get("idempotencyKey"))
+                .filter(value -> value != null && !value.isBlank())
+                .findFirst()
+                .orElse("");
+        if (idempotencyKey.isBlank()) {
+            warnings.add("Idempotency lookup skipped because no idempotencyKey was present in existing audit tags");
+            return List.of();
+        }
+        try {
+            return idempotencyStore.find(
+                    requester.tenantId(),
+                    generatedActionCapabilityName(actionName),
+                    generatedActionOperationName(actionName, requester),
+                    idempotencyKey
+            ).map(List::of).orElseGet(List::of);
+        } catch (RuntimeException exception) {
+            warnings.add("Idempotency lookup failed: " + errorReason(exception));
+            return List.of();
+        }
+    }
+
+    private Map<String, Object> eventSummary(EventEnvelope event) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("eventId", safe(event.eventId()));
+        out.put("eventName", safe(event.eventName()));
+        out.put("timestampMs", event.timestampEpochMs());
+        out.put("correlationId", safe(event.correlationId()));
+        out.put("causationId", safe(event.causationId()));
+        out.put("flowName", safe(event.flowName()));
+        out.put("stepIndex", event.stepIndex());
+        out.put("tenantId", safe(event.tenantId()));
+        out.put("actorId", safe(event.actorId()));
+        out.put("payloadSummary", safePayloadSummary(event.payload()));
+        return Map.copyOf(out);
+    }
+
+    private Map<String, Object> traceSummary(FlowTrace trace) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("executionId", safe(trace.meta().executionId()));
+        out.put("correlationId", safe(trace.meta().correlationId()));
+        out.put("flowName", safe(trace.meta().flowName()));
+        out.put("tenantId", safe(trace.meta().tenantId()));
+        out.put("actorId", safe(trace.meta().actorId()));
+        out.put("outcome", trace.outcome().name());
+        out.put("startedAtMs", trace.startedAtEpochMs());
+        out.put("endedAtMs", trace.endedAtEpochMs());
+        out.put("stepCount", trace.steps().size());
+        out.put("tags", safeObjectMap(trace.meta().tags()));
+        return Map.copyOf(out);
+    }
+
+    private Map<String, Object> auditSummary(AuditRecord audit) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("auditId", safe(audit.auditId()));
+        out.put("timestampMs", audit.timestampMs());
+        out.put("tenantId", safe(audit.tenantId()));
+        out.put("actorId", safe(audit.actorId()));
+        out.put("action", safe(audit.action()));
+        out.put("resourceType", safe(audit.resourceType()));
+        out.put("resourceId", safe(audit.resourceId()));
+        out.put("outcome", safe(audit.outcome()));
+        out.put("reasonCode", safe(audit.reasonCode()));
+        out.put("tags", audit.tags());
+        out.put("meta", audit.meta());
+        return Map.copyOf(out);
+    }
+
+    private Map<String, Object> idempotencySummary(IdempotencyRecord record) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("tenantId", safe(record.tenantId()));
+        out.put("idempotencyKey", safe(record.idempotencyKey()));
+        out.put("capability", safe(record.capabilityName()));
+        out.put("operation", safe(record.operationName()));
+        out.put("createdAtMs", record.createdAtMs());
+        out.put("status", safe(record.status()));
+        out.put("errorCode", safe(record.errorCode()));
+        out.put("resultAvailable", record.resultJsonRedacted() != null && !record.resultJsonRedacted().isBlank());
+        return Map.copyOf(out);
+    }
+
+    private static String evidenceStatus(
+            List<?> events,
+            List<?> traces,
+            List<?> audits,
+            List<?> idempotencyRecords,
+            List<?> correlationOwners
+    ) {
+        return events.isEmpty() && traces.isEmpty() && audits.isEmpty() && idempotencyRecords.isEmpty() && correlationOwners.isEmpty()
+                ? "not_found"
+                : events.isEmpty() || traces.isEmpty() || audits.isEmpty() || idempotencyRecords.isEmpty() || correlationOwners.isEmpty()
+                        ? "partial"
+                        : "complete";
+    }
+
+    private static String firstAuditMeta(List<AuditRecord> audits, String key) {
+        return audits.stream()
+                .map(AuditRecord::meta)
+                .map(meta -> meta.get(key))
+                .filter(value -> value != null && !value.isBlank())
+                .findFirst()
+                .orElse("");
+    }
+
+    private static String firstTraceTag(List<FlowTrace> traces, String key) {
+        return traces.stream()
+                .map(FlowTrace::meta)
+                .map(FlowTraceMeta::tags)
+                .map(tags -> tags.get(key))
+                .filter(value -> value != null && !String.valueOf(value).isBlank())
+                .map(String::valueOf)
+                .findFirst()
+                .orElse("");
+    }
+
+    private static String firstEventPayloadValue(List<EventEnvelope> events, String key) {
+        return events.stream()
+                .map(EventEnvelope::payload)
+                .map(payload -> payload.get(key))
+                .filter(value -> value != null && !String.valueOf(value).isBlank())
+                .map(String::valueOf)
+                .findFirst()
+                .orElse("");
+    }
+
+    private static Map<String, Object> safePayloadSummary(Map<String, Object> payload) {
+        if (payload == null || payload.isEmpty()) {
+            return Map.of("redacted", true, "fieldCount", 0);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("redacted", true);
+        out.put("fieldCount", payload.size());
+        for (String key : List.of("actionName", "procedureName", "executionId", "correlationId", "status", "createdCount")) {
+            if (payload.containsKey(key)) {
+                out.put(key, safe(String.valueOf(payload.get(key))));
+            }
+        }
+        return Map.copyOf(out);
+    }
+
+    private static Map<String, Object> safeObjectMap(Map<String, Object> values) {
+        if (values == null || values.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : values.entrySet()) {
+            out.put(safe(entry.getKey()), safe(String.valueOf(entry.getValue())));
+        }
+        return Map.copyOf(out);
+    }
+
+    public String claimGeneratedActionCorrelation(String correlationId, ExecutionContext executionContext) {
+        ExecutionContext ctx = normalizeContext(executionContext);
+        try {
+            correlationOwnershipStore.claimCorrelation(correlationId, ctx.tenantId());
+            Optional<String> owner = correlationOwnershipStore.findTenantByCorrelationId(correlationId);
+            if (owner.isPresent() && owner.get().equals(ctx.tenantId())) {
+                return "owned: correlationId=" + safe(correlationId);
+            }
+            return "failed: correlation owner readback missing";
+        } catch (RuntimeException exception) {
+            return "failed: " + errorReason(exception);
+        }
+    }
+
+    public Optional<IdempotencyRecord> findGeneratedActionIdempotency(
+            String actionName,
+            String idempotencyKey,
+            ExecutionContext executionContext
+    ) {
+        ExecutionContext ctx = normalizeContext(executionContext);
+        if (actionName == null || actionName.isBlank() || idempotencyKey == null || idempotencyKey.isBlank()) {
+            return Optional.empty();
+        }
+        return idempotencyStore.find(
+                ctx.tenantId(),
+                generatedActionCapabilityName(actionName),
+                generatedActionOperationName(actionName, ctx),
+                idempotencyKey
+        );
+    }
+
+    public String recordGeneratedActionIdempotencySuccess(
+            String actionName,
+            String idempotencyKey,
+            String resultJsonRedacted,
+            ExecutionContext executionContext
+    ) {
+        ExecutionContext ctx = normalizeContext(executionContext);
+        if (actionName == null || actionName.isBlank() || idempotencyKey == null || idempotencyKey.isBlank()) {
+            return "disabled: no idempotencyKey supplied";
+        }
+        try {
+            idempotencyStore.saveSuccess(
+                    ctx.tenantId(),
+                    generatedActionCapabilityName(actionName),
+                    generatedActionOperationName(actionName, ctx),
+                    idempotencyKey,
+                    resultJsonRedacted == null ? "{}" : resultJsonRedacted,
+                    System.currentTimeMillis()
+            );
+            Optional<IdempotencyRecord> row = findGeneratedActionIdempotency(actionName, idempotencyKey, ctx);
+            if (row.isPresent() && row.get().success()) {
+                return "recorded: idempotencyKey=" + safe(idempotencyKey);
+            }
+            return "failed: idempotency readback missing";
+        } catch (RuntimeException exception) {
+            return "failed: " + errorReason(exception);
+        }
+    }
+
+    public String recordGeneratedActionIdempotencyFailure(
+            String actionName,
+            String idempotencyKey,
+            String errorCode,
+            ExecutionContext executionContext
+    ) {
+        ExecutionContext ctx = normalizeContext(executionContext);
+        if (actionName == null || actionName.isBlank() || idempotencyKey == null || idempotencyKey.isBlank()) {
+            return "disabled: no idempotencyKey supplied";
+        }
+        try {
+            idempotencyStore.saveFailure(
+                    ctx.tenantId(),
+                    generatedActionCapabilityName(actionName),
+                    generatedActionOperationName(actionName, ctx),
+                    idempotencyKey,
+                    safe(errorCode),
+                    System.currentTimeMillis()
+            );
+            Optional<IdempotencyRecord> row = findGeneratedActionIdempotency(actionName, idempotencyKey, ctx);
+            if (row.isPresent() && IdempotencyRecord.STATUS_FAILED.equals(row.get().status())) {
+                return "recorded: idempotencyKey=" + safe(idempotencyKey);
+            }
+            return "failed: idempotency failure readback missing";
+        } catch (RuntimeException exception) {
+            return "failed: " + errorReason(exception);
+        }
+    }
+
+    public String recordGeneratedActionAudit(
+            String actionName,
+            String auditResourceType,
+            String executionId,
+            String correlationId,
+            String outcome,
+            String reasonCode,
+            ExecutionContext executionContext
+    ) {
+        ExecutionContext ctx = normalizeContext(executionContext);
+        String action = "GENERATED_ACTION_" + safe(outcome).toUpperCase().replace('-', '_');
+        AuditRecord record = AuditRecord.create(
+                ctx.tenantId(),
+                ctx.actorId(),
+                ctx.roles(),
+                action,
+                auditResourceType == null || auditResourceType.isBlank() ? "GENERATED_ACTION" : auditResourceType,
+                executionId,
+                safe(outcome),
+                safe(reasonCode),
+                safeTags(ctx.tags()),
+                safeMeta(Map.of("actionName", safe(actionName), "correlationId", safe(correlationId)))
+        );
+        try {
+            auditLogStore.append(record);
+            List<AuditRecord> rows = auditLogStore.search(new AuditQuery(
+                    ctx.tenantId(),
+                    ctx.actorId(),
+                    action,
+                    record.resourceType(),
+                    executionId,
+                    null,
+                    null,
+                    10,
+                    0
+            ));
+            boolean found = rows.stream().anyMatch(row -> record.auditId().equals(row.auditId()));
+            return found ? "written: auditId=" + record.auditId() : "failed: audit readback missing";
+        } catch (RuntimeException exception) {
+            return "failed: " + errorReason(exception);
+        }
+    }
+
+    public String writeGeneratedActionTrace(
+            String actionName,
+            String executionId,
+            String correlationId,
+            String outcome,
+            long startedAtEpochMs,
+            long endedAtEpochMs,
+            int sideEffectCountBefore,
+            int sideEffectCountAfter,
+            ExecutionContext executionContext
+    ) {
+        ExecutionContext ctx = normalizeContext(executionContext);
+        long started = startedAtEpochMs <= 0L ? System.currentTimeMillis() : startedAtEpochMs;
+        long ended = Math.max(started, endedAtEpochMs <= 0L ? System.currentTimeMillis() : endedAtEpochMs);
+        StepOutcome stepOutcome = "ok".equalsIgnoreCase(outcome) ? StepOutcome.OK : StepOutcome.FAILED;
+        FlowTraceMeta meta = new FlowTraceMeta(
+                executionId,
+                correlationId,
+                "generated.action." + safe(actionName),
+                ctx.tenantId(),
+                ctx.actorId(),
+                Map.of("actionName", safe(actionName))
+        );
+        StepTrace step = new StepTrace(
+                0,
+                safe(actionName),
+                "trusted-procedure",
+                started,
+                ended,
+                stepOutcome,
+                Map.of(
+                        "sideEffectCountBefore", sideEffectCountBefore,
+                        "sideEffectCountAfter", sideEffectCountAfter
+                ),
+                List.of(),
+                null
+        );
+        FlowTrace trace = new FlowTrace(meta, started, ended, stepOutcome, List.of(step));
+        try {
+            traceStore.save(trace);
+            return traceStore.findByExecutionId(executionId).isPresent()
+                    ? "written: executionId=" + safe(executionId)
+                    : "failed: trace readback missing";
+        } catch (RuntimeException exception) {
+            return "failed: " + errorReason(exception);
+        }
+    }
+
+    public String verifyGeneratedActionEvent(String eventName, String correlationId, String eventId, ExecutionContext executionContext) {
+        ExecutionContext ctx = normalizeContext(executionContext);
+        try {
+            Optional<EventEnvelope> row = eventStore.findFirst(eventName, correlationId, ctx.tenantId());
+            if (row.isPresent() && (eventId == null || eventId.isBlank() || eventId.equals(row.get().eventId()))) {
+                return "written: eventId=" + row.get().eventId();
+            }
+            return "failed: event readback missing";
+        } catch (RuntimeException exception) {
+            return "failed: " + errorReason(exception);
+        }
+    }
+
     private static ExecutionContext normalizeContext(ExecutionContext context) {
         return context == null ? ExecutionContext.anonymous() : context;
     }
@@ -1383,6 +1916,27 @@ public class KernelFacade {
         return "exception:" + throwable.getClass().getSimpleName();
     }
 
+    private static String generatedActionCapabilityName(String actionName) {
+        return "generated.action." + safe(actionName);
+    }
+
+    private static String generatedActionOperationName(String actionName, ExecutionContext context) {
+        ExecutionContext safeContext = normalizeContext(context);
+        return safe(actionName) + ":" + safe(safeContext.actorId());
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return "";
+    }
+
     private static String safe(String value) {
         if (value == null) {
             return "<none>";
@@ -1458,3 +2012,4 @@ public class KernelFacade {
     ) {
     }
 }
+

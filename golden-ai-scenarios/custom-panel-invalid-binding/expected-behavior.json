@@ -2,6 +2,6 @@
   "schemaVersion": "ai-expected-behavior.v1",
   "scenarioId": "custom-panel-invalid-binding",
   "comparisonMode": "exact",
-  "expectedClass": "PASS_PANEL",
+  "expectedClass": "FAIL_CUSTOM_PANEL_INVALID_BINDING",
   "assertions": []
 }

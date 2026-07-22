@@ -13,8 +13,36 @@ public record CompiledProcedure(
         List<String> permissionRequirements,
         String tracePolicy,
         String auditPolicy,
+        CompiledGeneratedActionDescriptorSpec actionDescriptor,
         Map<String, Object> metadata
 ) {
+    public CompiledProcedure(
+            String name,
+            String description,
+            List<CompiledProcedureParameter> parameters,
+            List<CompiledProcedureVariable> variables,
+            List<CompiledProcedureStep> steps,
+            CompiledSchema returns,
+            List<String> permissionRequirements,
+            String tracePolicy,
+            String auditPolicy,
+            Map<String, Object> metadata
+    ) {
+        this(
+                name,
+                description,
+                parameters,
+                variables,
+                steps,
+                returns,
+                permissionRequirements,
+                tracePolicy,
+                auditPolicy,
+                null,
+                metadata
+        );
+    }
+
     public CompiledProcedure {
         parameters = parameters == null ? List.of() : List.copyOf(parameters);
         variables = variables == null ? List.of() : List.copyOf(variables);

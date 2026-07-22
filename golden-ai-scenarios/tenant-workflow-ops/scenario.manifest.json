@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "ai-scenario-manifest.v1",
+  "scenarioId": "tenant-workflow-ops",
+  "kind": "positive",
+  "expectedOutcome": "pass",
+  "requestedSurfaces": [
+    "custom-ui-panels",
+    "custom-procedures",
+    "multi-tenancy",
+    "authentication",
+    "roles",
+    "workflow-engine"
+  ],
+  "files": {
+    "aiModel": "ai-model.json",
+    "aiConfig": "ai-config.json",
+    "verification": "ai-verification-report.json",
+    "expectedBehavior": "expected-behavior.json"
+  }
+}

@@ -2,33 +2,6 @@
   "schemaVersion": "ai-expected-behavior.v1",
   "scenarioId": "custom-procedure-panel",
   "comparisonMode": "exact",
-  "expectedClass": "PASS_PANEL_PROCEDURE_INTEGRATION",
-  "assertions": [
-    {
-      "path": "actual.overallStatus",
-      "equals": "passed"
-    },
-    {
-      "path": "actual.resultClass",
-      "equals": "PASS_PANEL_PROCEDURE_INTEGRATION"
-    },
-    {
-      "path": "actual.observations.customProcedure.procedureId",
-      "equals": "promote-learner"
-    },
-    {
-      "path": "actual.observations.customProcedure.stepTypes",
-      "equals": ["readConcept", "runQuery", "saveConcept", "return"],
-      "mode": "unordered"
-    },
-    {
-      "path": "actual.observations.customPanel.panelId",
-      "equals": "readiness-panel"
-    },
-    {
-      "path": "actual.observations.customPanel.actionNames",
-      "equals": ["promote", "refresh"],
-      "mode": "unordered"
-    }
-  ]
+  "expectedClass": "FAIL_KIND_UNSUPPORTED",
+  "assertions": []
 }

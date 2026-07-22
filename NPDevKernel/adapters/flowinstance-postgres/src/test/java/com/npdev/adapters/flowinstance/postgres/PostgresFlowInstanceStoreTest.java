@@ -3,14 +3,13 @@ package com.npdev.adapters.flowinstance.postgres;
 import com.npdev.kernel.exec.ExecutionSummary;
 import com.npdev.kernel.execution.FlowInstance;
 import com.npdev.kernel.execution.FlowInstanceStatus;
-import org.h2.jdbcx.JdbcDataSource;
+import com.npdev.test.postgres.PostgresTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import javax.sql.DataSource;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -53,11 +52,9 @@ class PostgresFlowInstanceStoreTest {
 
     @BeforeEach
     void setUp() {
-        JdbcDataSource dataSource = new JdbcDataSource();
-        dataSource.setURL("jdbc:h2:mem:flowinstance_" + UUID.randomUUID() + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1");
-        dataSource.setUser("sa");
-        dataSource.setPassword("sa");
-        executeSchema(dataSource, SCHEMA_SQL);
+        DataSource dataSource = PostgresTestSupport.dataSource();
+        PostgresTestSupport.execute(dataSource, SCHEMA_SQL);
+        PostgresTestSupport.truncate(dataSource, "npdev_flow_instance");
         store = new PostgresFlowInstanceStore(dataSource);
     }
 
@@ -440,18 +437,4 @@ class PostgresFlowInstanceStoreTest {
         assertEquals(List.of(), stuck.stream().map(ExecutionSummary::executionId).toList());
     }
 
-    private static void executeSchema(DataSource dataSource, String[] statements) {
-        try (var connection = dataSource.getConnection();
-             var statement = connection.createStatement()) {
-            for (String raw : statements) {
-                String sql = raw.trim();
-                if (sql.isEmpty()) {
-                    continue;
-                }
-                statement.execute(sql);
-            }
-        } catch (Exception exception) {
-            throw new IllegalStateException("Failed preparing flow instance schema", exception);
-        }
-    }
 }

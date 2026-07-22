@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/ai-command-request.schema.json",
+  "title": "NPDev AI Command Request",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "type"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-ai-command-request.v1"
+    },
+    "type": {
+      "enum": [
+        "gradle-task",
+        "schema-validation",
+        "rest-smoke",
+        "raw-command"
+      ]
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "script": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 180,
+      "$ref": "#/$defs/safeRelativePath"
+    },
+    "args": {
+      "type": "object"
+    },
+    "projectRoot": {
+      "type": "string",
+      "$ref": "#/$defs/safeRelativePath"
+    },
+    "task": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "^[A-Za-z0-9:_-]+$",
+      "not": {
+        "pattern": "^-"
+      }
+    },
+    "schemaPath": {
+      "type": "string",
+      "$ref": "#/$defs/safeRelativePath"
+    },
+    "instancePath": {
+      "type": "string",
+      "$ref": "#/$defs/safeRelativePath"
+    },
+    "verificationPath": {
+      "type": "string",
+      "$ref": "#/$defs/safeRelativePath"
+    },
+    "baseUrl": {
+      "type": "string",
+      "pattern": "^https?://(localhost|127\\.0\\.0\\.1|\\[::1\\])(?::[0-9]+)?(/.*)?$"
+    },
+    "expectedPort": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "executable": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[A-Za-z0-9_.-]+$",
+      "not": {
+        "pattern": "^(curl|wget|ssh|scp|rm|del|rmdir)(\\.exe)?$"
+      }
+    },
+    "arguments": {
+      "type": "array",
+      "maxItems": 30,
+      "items": {
+        "$ref": "#/$defs/safeCommandArgument"
+      }
+    },
+    "workingDirectory": {
+      "type": "string",
+      "$ref": "#/$defs/safeRelativePath"
+    },
+    "timeoutSeconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 600
+    },
+    "expectedErrorCode": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "safeRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240,
+      "not": {
+        "anyOf": [
+          { "pattern": "(^/|^[A-Za-z]:|\\\\\\\\|\\.\\.)" },
+          { "pattern": "https?://" }
+        ]
+      }
+    },
+    "safeCommandArgument": {
+      "type": "string",
+      "maxLength": 240,
+      "not": {
+        "anyOf": [
+          { "pattern": "https?://(?!localhost(?::|/|$)|127\\.0\\.0\\.1(?::|/|$)|\\[::1\\](?::|/|$))" },
+          { "pattern": "(^/|^[A-Za-z]:|\\\\\\\\|\\.\\.)" },
+          { "pattern": "(Remove-Item|Invoke-WebRequest|Invoke-RestMethod|\\birm\\b|\\biwr\\b|\\bcurl\\b|\\bwget\\b|\\bssh\\b|\\bscp\\b|\\brm\\b|--delete|format-volume)" },
+          { "pattern": "(;|&&|\\|\\||`|\\$\\(|<\\(|>\\()" },
+          { "pattern": "^(-Command|-EncodedCommand|/c)$" }
+        ]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "gradle-task"
+          }
+        },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["projectRoot", "task"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "schema-validation"
+          }
+        },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["schemaPath", "instancePath"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "rest-smoke"
+          }
+        },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["verificationPath", "baseUrl"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "raw-command"
+          }
+        },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["executable", "arguments", "workingDirectory"]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/editor-decomplexification-report.schema.json",
+  "title": "NPDev Editor Decomplexification Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "overallStatus",
+    "checkpoint",
+    "activeComponentScope",
+    "lineCountMethod",
+    "deferredComponentsExcludedByBoundary",
+    "componentLineThreshold",
+    "largestComponentLines",
+    "largestComponentPhysicalLineCount",
+    "largestComponentNormalizedLineCount",
+    "largestComponentPath",
+    "activeComponentCount",
+    "thresholdViolationCount",
+    "storeCount",
+    "storeFiles",
+    "authoringStateSplit",
+    "componentSplitEvidence",
+    "formBasedModelEditorSplit",
+    "customJsonSyncIsolatedOrRemoved",
+    "unusedPanelRemovalCount",
+    "removedDeferredRoutes",
+    "uiBoundaryDeferredPanelsNotRouted",
+    "frontendBuildPassed",
+    "frontendTestsPassed",
+    "preRefactorFrontendBuildPassed",
+    "preRefactorFrontendTestsPassed",
+    "validationCommands",
+    "lineCounts",
+    "topLineCountFiles",
+    "findings",
+    "failures",
+    "doesNotSolve"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "npdev-editor-decomplexification-report.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "scriptPath": { "const": "scripts/quality/run-editor-complexity-check.ps1" },
+    "workspaceRoot": { "type": "string", "minLength": 1 },
+    "overallStatus": { "enum": [ "passed", "failed" ] },
+    "checkpoint": { "const": "CP13" },
+    "activeComponentScope": { "type": "string", "minLength": 1 },
+    "lineCountMethod": { "type": "string", "minLength": 1 },
+    "deferredComponentsExcludedByBoundary": { "type": "boolean" },
+    "componentLineThreshold": { "const": 300 },
+    "largestComponentLines": { "type": "integer", "minimum": 1, "maximum": 300 },
+    "largestComponentPhysicalLineCount": { "type": "integer", "minimum": 1, "maximum": 300 },
+    "largestComponentNormalizedLineCount": { "type": "integer", "minimum": 1 },
+    "largestComponentPath": { "type": "string", "minLength": 1 },
+    "activeComponentCount": { "type": "integer", "minimum": 1 },
+    "thresholdViolationCount": { "type": "integer", "minimum": 0 },
+    "storeCount": { "type": "integer", "minimum": 3 },
+    "storeFiles": { "type": "array", "minItems": 3, "items": { "type": "string", "minLength": 1 } },
+    "authoringStateSplit": { "type": "boolean" },
+    "componentSplitEvidence": {
+      "type": "array",
+      "minItems": 8,
+      "items": {
+        "type": "object",
+        "required": [ "path", "exists" ],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "exists": { "type": "boolean" }
+        }
+      }
+    },
+    "formBasedModelEditorSplit": { "type": "boolean" },
+    "customJsonSyncIsolatedOrRemoved": { "type": "boolean" },
+    "unusedPanelRemovalCount": { "type": "integer", "minimum": 1 },
+    "removedDeferredRoutes": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "uiBoundaryDeferredPanelsNotRouted": { "type": "boolean" },
+    "frontendBuildPassed": { "type": "boolean" },
+    "frontendTestsPassed": { "type": "boolean" },
+    "preRefactorFrontendBuildPassed": { "type": "boolean" },
+    "preRefactorFrontendTestsPassed": { "type": "boolean" },
+    "validationCommands": { "type": "array", "minItems": 2 },
+    "lineCounts": { "type": "array", "minItems": 1 },
+    "topLineCountFiles": { "type": "array", "minItems": 3 },
+    "findings": { "type": "array" },
+    "failures": { "type": "array" },
+    "doesNotSolve": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "overallStatus": { "const": "passed" } },
+        "required": [ "overallStatus" ]
+      },
+      "then": {
+        "properties": {
+          "thresholdViolationCount": { "const": 0 },
+          "authoringStateSplit": { "const": true },
+          "formBasedModelEditorSplit": { "const": true },
+          "customJsonSyncIsolatedOrRemoved": { "const": true },
+          "uiBoundaryDeferredPanelsNotRouted": { "const": true },
+          "frontendBuildPassed": { "const": true },
+          "frontendTestsPassed": { "const": true },
+          "preRefactorFrontendBuildPassed": { "const": true },
+          "preRefactorFrontendTestsPassed": { "const": true },
+          "failures": { "maxItems": 0 }
+        }
+      }
+    }
+  ]
+}

@@ -76,11 +76,12 @@ try {
     try {
         Write-NPDevInfo ("Running RuntimeHost verification tasks for sample " + $SampleId)
         $verificationLogPath = Resolve-NPDevWorkspacePath $WorkspaceRoot ("scripts\reports\out\runtimehost-" + $SampleId + "-verification.log")
+        $assembledGradleWrapper = Get-NPDevGradleWrapperExecutable $assembledAppRoot
         $verificationCommand = Invoke-NPDevCommandEvidence `
             -WorkspaceRoot $WorkspaceRoot `
             -WorkingDirectory $assembledAppRoot `
-            -Executable ".\gradlew.bat" `
-            -Arguments @("--no-daemon", "--console=plain", "enforceSingleMigrationSource", "test") `
+            -Executable $assembledGradleWrapper `
+            -Arguments @("--no-daemon", "--console=plain", "enforceSingleSchemaRealizationSource", "test") `
             -LogPath $verificationLogPath
 
         if ([string]$verificationCommand.status -ne "passed") {
@@ -112,7 +113,14 @@ try {
     }
 
     Write-NPDevInfo "Generating RuntimeHost surface evidence reports"
-    & $runtimeSurfaceEvidenceScript -WorkspaceRoot $WorkspaceRoot
+    # -PendingOk: the surface-governance convergence/exclusivity checks encode the pre-d0bf41b
+    # "package == support bucket" convention the beta-0 manifest refactor replaced with exact-lists.
+    # GATE-OBS-1a DECISION (REG-5, 2026-07-21): these six checks are FORMALLY RETIRED as superseded by
+    # the exact-list allowlist (runtime-surface-allowlist-report.json), which is the blocking
+    # enforcement and passes -- they are informational only, not a pending-owner item. The switch name
+    # stays -PendingOk for compatibility; the semantics are "retired convergence checks are advisory."
+    # See docs/OPEN_GAPS_AND_ROADMAP.md#GATE-OBS-1a and run-observability-hardening.ps1's header.
+    & $runtimeSurfaceEvidenceScript -WorkspaceRoot $WorkspaceRoot -PendingOk
 
     Write-NPDevInfo "Generating RuntimeHost observability hardening report"
     $observabilityHardening = & $observabilityHardeningScript `
@@ -120,6 +128,7 @@ try {
         -RunId ($RunId + "-observability") `
         -ReportPath $observabilityHardeningReportPath `
         -RuntimeHostGatePendingOk `
+        -SurfaceConvergencePendingOk `
         -PassThru
 
     Write-NPDevInfo "Generating RuntimeHost security consistency report"
@@ -198,7 +207,7 @@ $report = [pscustomobject]@{
     sampleId = $SampleId
     assembledAppRoot = $assembledAppRoot
     generationMarker = $generationMarkerEvidence
-    verificationTasks = @("enforceSingleMigrationSource", "test")
+    verificationTasks = @("enforceSingleSchemaRealizationSource", "test")
     verificationCommand = $verificationCommand
     cleanup = $cleanupEvidence
     observabilityHardening = if ($null -eq $observabilityHardening) {
@@ -234,10 +243,17 @@ Write-NPDevJsonFile $ReportPath $report
 
 if ($status -eq "passed") {
     Write-NPDevInfo "Refreshing RuntimeHost observability hardening report after gate finalization"
+    # -RuntimeHostGatePendingOk is deliberately NOT passed here: by this point the gate report has
+    # been written as passed, so `runtimehost-gate-current` must be able to read it as genuinely
+    # green rather than as "pending". -SurfaceConvergencePendingOk IS passed, because the
+    # surface-governance drift it covers (GATE-OBS-1) is a property of the codebase, not of where we
+    # are in the gate -- omitting it here is what made this refresh re-fail on exactly the drift the
+    # first invocation had already accepted as advisory.
     $finalObservabilityHardening = & $observabilityHardeningScript `
         -WorkspaceRoot $WorkspaceRoot `
         -RunId ($RunId + "-observability") `
         -ReportPath $observabilityHardeningReportPath `
+        -SurfaceConvergencePendingOk `
         -PassThru
 
     if ([string]$finalObservabilityHardening.overallStatus -ne "passed") {

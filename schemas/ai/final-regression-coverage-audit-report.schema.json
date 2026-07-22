@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/final-regression-coverage-audit-report.schema.json",
+  "title": "NPDev Final Regression Coverage Audit Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "overallStatus",
+    "coverageStatus",
+    "releaseReadinessStatus",
+    "coverageManifestPath",
+    "coverageItems",
+    "checks",
+    "releaseBlockers",
+    "failures"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-final-regression-coverage-audit-report.v1"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scriptPath": {
+      "const": "scripts/quality/run-final-regression-coverage-audit.ps1"
+    },
+    "workspaceRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "overallStatus": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "coverageStatus": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "releaseReadinessStatus": {
+      "type": "string",
+      "enum": [
+        "eligible",
+        "blocked"
+      ]
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "passed",
+          "releaseBlocking",
+          "reason",
+          "evidence"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "releaseBlocking": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "coverageManifestPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "coverageItems": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "description",
+          "passed",
+          "evidence",
+          "failures"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "passed": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "releaseBlockers": {
+      "type": "array"
+    },
+    "failures": {
+      "type": "array"
+    }
+  }
+}

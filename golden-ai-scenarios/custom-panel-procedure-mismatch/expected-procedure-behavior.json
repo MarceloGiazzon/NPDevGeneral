@@ -1,6 +1,0 @@
-{
-  "schemaVersion": "ai-expected-procedure-behavior.v1",
-  "procedureId": "promote-learner",
-  "expectedClass": "PASS_PROCEDURE",
-  "assertions": []
-}

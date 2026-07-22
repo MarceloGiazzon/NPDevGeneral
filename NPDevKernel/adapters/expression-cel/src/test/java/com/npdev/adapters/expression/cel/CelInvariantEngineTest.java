@@ -1,6 +1,6 @@
 package com.npdev.adapters.expression.cel;
 
-import com.npdev.dsl.v1.compiled.CompiledEntity;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import org.junit.jupiter.api.Test;
@@ -295,6 +295,47 @@ class CelInvariantEngineTest {
     }
 
     @Test
+    void logicalOrComparisonPassesWhenOneBranchMatches() {
+        Map<String, CelInvariantEngine.EntityRules> rules = new LinkedHashMap<>();
+        rules.put("Appointment", new CelInvariantEngine.EntityRules(
+                java.util.Set.of(),
+                java.util.Set.of(),
+                List.of("durationMinutes == null || durationMinutes > 0")
+        ));
+        CelInvariantEngine engine = new CelInvariantEngine(rules);
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("durationMinutes", 30);
+
+        List<String> violations = engine.evaluate("Appointment", payload);
+        assertTrue(violations.isEmpty());
+    }
+
+    @Test
+    void overlapsProviderAliasDelegatesToConflictChecker() {
+        Map<String, CelInvariantEngine.EntityRules> rules = new LinkedHashMap<>();
+        rules.put("Appointment", new CelInvariantEngine.EntityRules(
+                java.util.Set.of(),
+                java.util.Set.of(),
+                List.of("!overlapsProvider(providerId, scheduledAt, durationMinutes, id)")
+        ));
+        CelInvariantEngine engine = new CelInvariantEngine(
+                rules,
+                (entity, field, value, payload) -> false,
+                (resourceField, resourceId, scheduledAtField, scheduledAt, durationField, durationMinutes, excludeId, payload) -> false
+        );
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", "a-2");
+        payload.put("providerId", "p-1");
+        payload.put("scheduledAt", "2026-03-10T11:15:00");
+        payload.put("durationMinutes", 30);
+
+        List<String> violations = engine.evaluate("Appointment", payload);
+        assertTrue(violations.isEmpty());
+    }
+
+    @Test
     void evaluatesOverlapsRoomExpressionWithNegation() {
         Map<String, CelInvariantEngine.EntityRules> rules = new LinkedHashMap<>();
         rules.put("Appointment", new CelInvariantEngine.EntityRules(
@@ -558,8 +599,8 @@ class CelInvariantEngineTest {
                 new CompiledField("email", "string", "String", false, true, true)
         );
 
-        CompiledEntity user = new CompiledEntity("User", "User", "users", fields);
-        Map<String, CompiledEntity> entities = new LinkedHashMap<>();
+        CompiledConcept user = new CompiledConcept("User", "User", "users", fields);
+        Map<String, CompiledConcept> entities = new LinkedHashMap<>();
         entities.put("User", user);
 
         return new CompiledModel("demo", "v1", entities);

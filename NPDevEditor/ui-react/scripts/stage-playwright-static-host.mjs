@@ -4,8 +4,16 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(scriptDir, "..");
-const distDir = path.join(projectRoot, "dist");
-const hostRoot = path.join(projectRoot, "playwright-static");
+const workspaceRoot = path.resolve(projectRoot, "..", "..");
+const npdevBuildRoot = process.env.NPDEV_BUILD_ROOT
+  ? path.resolve(process.env.NPDEV_BUILD_ROOT)
+  : path.resolve(workspaceRoot, "..", "Build");
+const distDir = process.env.NPDEV_UI_DIST_DIR
+  ? path.resolve(process.env.NPDEV_UI_DIST_DIR)
+  : path.join(npdevBuildRoot, "ui", "npdev-editor-ui-react", "dist");
+const hostRoot = process.env.NPDEV_UI_PLAYWRIGHT_STATIC_DIR
+  ? path.resolve(process.env.NPDEV_UI_PLAYWRIGHT_STATIC_DIR)
+  : path.join(npdevBuildRoot, "ui", "npdev-editor-ui-react", "playwright-static");
 const appRoot = path.join(hostRoot, "npdev-ui-react");
 
 await rm(hostRoot, { recursive: true, force: true });

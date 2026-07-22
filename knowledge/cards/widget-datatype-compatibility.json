@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "knowledge-card.v1",
+  "id": "widget-datatype-compatibility",
+  "type": "constraint",
+  "title": "Field widgets are validated against datatype -- pick a compatible widget for the field type",
+  "body": "The platform validates field `widget` against the field's datatype; an incompatible pairing is rejected at authoring time. Use a widget the type supports: text/textarea for string, number/slider for integer, checkbox/toggle for boolean, date/datetime pickers for date types, select/enum for closed-enum fields, `lookup` for reference (FK) fields (gives an automatic browse dialog), plus catalog widgets like color, image-select, and array multiselect for closed-enum arrays. A `custom` trusted-source widget is available for bespoke UI. When in doubt, check the field's type first, then choose from the widgets that type allows.",
+  "keywords": ["widget", "datatype", "field", "compatibility", "lookup", "select", "enum", "color", "multiselect", "trusted-source"],
+  "appliesTo": ["field", "panel", "form"],
+  "sourceRefs": ["widget_input_type_system"],
+  "status": "active"
+}

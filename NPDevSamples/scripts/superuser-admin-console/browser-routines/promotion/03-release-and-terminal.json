@@ -1,0 +1,38 @@
+{
+  "scenarioName": "promotion-release-and-terminal",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "value": "api-dev" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-__promotion__\"]", "state": "visible" },
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-__promotion__\"]" },
+    { "action": "waitForSelector", "selector": "#concept-__promotion__", "state": "visible" },
+    { "action": "assertTextContains", "selector": "#concept-__promotion__", "text": "Current stage: S6_EVIDENCE_BACKED", "label": "Continuity from 02-evidence-backed; the orchestrator's non-admin missing_role attempt in between did not move the stage" },
+    { "action": "assertTextContains", "selector": "#concept-__promotion__", "text": "missing_role", "label": "The orchestrator's HTTP-level non-admin attempt is already visible in this real rendered history table" },
+
+    { "action": "selectOption", "selector": "#concept-__promotion__ select", "value": "S7_RELEASE_APPROVED", "label": "S7 additionally requires the ADMIN role -- api-dev's trial principal has it" },
+    { "action": "fill", "selector": "#concept-__promotion__ input[placeholder^=\"Evidence\"]", "value": "Release approved for this demo." },
+    { "action": "click", "selector": "#concept-__promotion__ button:has-text(\"Advance\")" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "assertTextContains", "selector": "#concept-__promotion__", "text": "Current stage: S7_RELEASE_APPROVED" },
+
+    { "action": "selectOption", "selector": "#concept-__promotion__ select", "value": "S8_RELEASED" },
+    { "action": "fill", "selector": "#concept-__promotion__ input[placeholder^=\"Evidence\"]", "value": "Released." },
+    { "action": "click", "selector": "#concept-__promotion__ button:has-text(\"Advance\")" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "assertTextContains", "selector": "#concept-__promotion__", "text": "Current stage: S8_RELEASED", "label": "Terminal stage reached" },
+
+    { "action": "selectOption", "selector": "#concept-__promotion__ select", "value": "S8_RELEASED", "label": "Re-attempt the terminal stage -- ordinal math makes this a stage_skip too (no further advance possible)" },
+    { "action": "click", "selector": "#concept-__promotion__ button:has-text(\"Advance\")" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "assertTextContains", "selector": "#concept-__promotion__", "text": "Current stage: S8_RELEASED", "label": "Still terminal -- the second attempt did not move it" },
+
+    { "action": "assertTextContains", "selector": "#concept-__promotion__", "text": "ACCEPTED", "label": "The audit table mixes accepted..." },
+    { "action": "assertTextContains", "selector": "#concept-__promotion__", "text": "REJECTED", "label": "...and rejected events -- the full permanent history, not a single mutable flag" },
+    { "action": "screenshot", "name": "promotion_terminal_with_full_history" },
+    { "action": "collect", "what": ["domText", "url"] }
+  ]
+}

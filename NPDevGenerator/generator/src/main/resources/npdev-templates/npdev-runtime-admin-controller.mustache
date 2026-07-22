@@ -11,14 +11,6 @@ import {{dtoPackage}}.FlowExecutionResponse;
 import {{servicePackage}}.KernelFacade;
 import {{servicePackage}}.RuntimeContextService;
 import com.npdev.generated.runtime.model.NPDevModelProvider;
-import com.finalexec.npdev.migration.MigrationRiskAssessment;
-import com.finalexec.npdev.migration.MigrationRiskAssessmentBuilder;
-import com.finalexec.npdev.migration.ModelDiffPreview;
-import com.finalexec.npdev.migration.ModelDiffPreviewBuilder;
-import com.finalexec.npdev.migration.StorageSchemaFromCompiledModel;
-import com.finalexec.npdev.migration.StorageSchemaSnapshot;
-import com.finalexec.npdev.migration.RuntimeModelCompatibilityReport;
-import com.finalexec.npdev.migration.RuntimeModelCompatibilityReportBuilder;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.ExecutionResult;
 import com.npdev.kernel.ExecutionStatus;
@@ -171,29 +163,8 @@ public class AdminController {
         }
     }
 
-    @GetMapping(value = {"/model/diff", "/model/diff/preview"}, produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ModelDiffPreview> previewModelDiff(HttpServletRequest request) {
-        requireAdminContext(request);
-        StorageSchemaSnapshot baseline = loadBaselineSnapshot();
-        StorageSchemaSnapshot current = new StorageSchemaFromCompiledModel().from(modelProvider.compiledModel());
-        return ResponseEntity.ok(new ModelDiffPreviewBuilder().build(baseline, current));
-    }
 
-    @GetMapping(value = {"/model/migration/plan", "/model/migration/risk"}, produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<MigrationRiskAssessment> previewMigrationRisk(HttpServletRequest request) {
-        requireAdminContext(request);
-        StorageSchemaSnapshot baseline = loadBaselineSnapshot();
-        StorageSchemaSnapshot current = new StorageSchemaFromCompiledModel().from(modelProvider.compiledModel());
-        return ResponseEntity.ok(new MigrationRiskAssessmentBuilder().build(baseline, current));
-    }
 
-    @GetMapping(value = {"/model/compatibility"}, produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<RuntimeModelCompatibilityReport> previewModelCompatibility(HttpServletRequest request) {
-        requireAdminContext(request);
-        StorageSchemaSnapshot baseline = loadBaselineSnapshot();
-        StorageSchemaSnapshot current = new StorageSchemaFromCompiledModel().from(modelProvider.compiledModel());
-        return ResponseEntity.ok(new RuntimeModelCompatibilityReportBuilder().build(baseline, current, loadBuildInfo()));
-    }
 
     @GetMapping(value = {"/model/editor/draft"}, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> getModelEditorDraft(HttpServletRequest request) {
@@ -381,22 +352,6 @@ public class AdminController {
         return value;
     }
 
-    private static StorageSchemaSnapshot loadBaselineSnapshot() {
-        ClassPathResource resource = new ClassPathResource("npdev/model-diff-baseline.json");
-        if (!resource.exists()) {
-            return new StorageSchemaSnapshot("none", List.of());
-        }
-        try (InputStream inputStream = resource.getInputStream()) {
-            String body = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
-            StorageSchemaSnapshot snapshot = UI_MODEL_MAPPER.readValue(body, StorageSchemaSnapshot.class);
-            if (snapshot == null) {
-                return new StorageSchemaSnapshot("none", List.of());
-            }
-            return snapshot.normalized();
-        } catch (IOException exception) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "model_diff_baseline_load_failed", exception);
-        }
-    }
 
     private static Properties loadBuildInfo() {
         Properties properties = new Properties();
@@ -450,3 +405,4 @@ public class AdminController {
         };
     }
 }
+

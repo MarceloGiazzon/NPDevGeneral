@@ -2,6 +2,6 @@
   "schemaVersion": "ai-expected-behavior.v1",
   "scenarioId": "unsupported-surface",
   "comparisonMode": "exact",
-  "expectedClass": "PASS_EXACT",
+  "expectedClass": "FAIL_AI_CONFIG_SCHEMA",
   "assertions": []
 }

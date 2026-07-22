@@ -1,6 +1,7 @@
 import React from "react";
 import type { AuthoringFlow, AuthoringFlowStep } from "../modelDocumentTypes";
 import ExplainabilityTooltip from "../../help/ExplainabilityTooltip";
+import FlowStepsTable from "./FlowStepsTable";
 
 type FlowsEditorSectionProps = {
   flows: AuthoringFlow[];
@@ -171,139 +172,7 @@ export default function FlowsEditorSection({
               </div>
             </div>
 
-            <table className="grid-table compact">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Type</th>
-                  <th>Scope</th>
-                  <th>Signal</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {(flow.steps ?? []).map((step, stepIndex) => (
-                  <tr key={`${step.name}-${stepIndex}`}>
-                    <td>
-                      <input
-                        value={step.name}
-                        onChange={(event) =>
-                          onChange(
-                            flows.map((entry, entryIndex) =>
-                              entryIndex === flowIndex
-                                ? {
-                                    ...entry,
-                                    steps: (entry.steps ?? []).map((stepEntry, currentStepIndex) =>
-                                      currentStepIndex === stepIndex
-                                        ? {
-                                            ...stepEntry,
-                                            name: event.target.value
-                                          }
-                                        : stepEntry
-                                    )
-                                  }
-                                : entry
-                            )
-                          )
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={step.type}
-                        onChange={(event) =>
-                          onChange(
-                            flows.map((entry, entryIndex) =>
-                              entryIndex === flowIndex
-                                ? {
-                                    ...entry,
-                                    steps: (entry.steps ?? []).map((stepEntry, currentStepIndex) =>
-                                      currentStepIndex === stepIndex
-                                        ? {
-                                            ...stepEntry,
-                                            type: event.target.value
-                                          }
-                                        : stepEntry
-                                    )
-                                  }
-                                : entry
-                            )
-                          )
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={step.scope ?? ""}
-                        onChange={(event) =>
-                          onChange(
-                            flows.map((entry, entryIndex) =>
-                              entryIndex === flowIndex
-                                ? {
-                                    ...entry,
-                                    steps: (entry.steps ?? []).map((stepEntry, currentStepIndex) =>
-                                      currentStepIndex === stepIndex
-                                        ? {
-                                            ...stepEntry,
-                                            scope: event.target.value
-                                          }
-                                        : stepEntry
-                                    )
-                                  }
-                                : entry
-                            )
-                          )
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={step.value ?? step.event ?? step.condition ?? ""}
-                        onChange={(event) =>
-                          onChange(
-                            flows.map((entry, entryIndex) =>
-                              entryIndex === flowIndex
-                                ? {
-                                    ...entry,
-                                    steps: (entry.steps ?? []).map((stepEntry, currentStepIndex) =>
-                                      currentStepIndex === stepIndex
-                                        ? {
-                                            ...stepEntry,
-                                            value: event.target.value
-                                          }
-                                        : stepEntry
-                                    )
-                                  }
-                                : entry
-                            )
-                          )
-                        }
-                      />
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="authoring-ghost-button"
-                        onClick={() =>
-                          onChange(
-                            flows.map((entry, entryIndex) =>
-                              entryIndex === flowIndex
-                                ? {
-                                    ...entry,
-                                    steps: (entry.steps ?? []).filter((_, currentStepIndex) => currentStepIndex !== stepIndex)
-                                  }
-                                : entry
-                            )
-                          )
-                        }
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <FlowStepsTable flows={flows} flowIndex={flowIndex} flow={flow} onChange={onChange} />
           </article>
         ))}
       </div>

@@ -1,14 +1,16 @@
 package com.npdev.adapters.expression.cel;
 
-import com.npdev.dsl.v1.compiled.CompiledEntity;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledInvariant;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.kernel.ports.InvariantEngine;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -55,6 +57,15 @@ public final class CelInvariantEngine implements InvariantEngine {
         boolean exists(String entityName, String fieldName, Object value, Object payload);
     }
 
+    /** LIFT-UNIQUE-P3: existence check for a compound (multi-field) unique invariant. */
+    @FunctionalInterface
+    public interface CompoundUniqueValueChecker {
+        /**
+         * @return true when a row already matches every (field, value) pair and violates uniqueness.
+         */
+        boolean exists(String entityName, List<String> fields, List<Object> values, Object payload);
+    }
+
     @FunctionalInterface
     public interface ConflictChecker {
         boolean conflicts(
@@ -84,6 +95,8 @@ public final class CelInvariantEngine implements InvariantEngine {
     }
 
     private static final UniqueValueChecker NO_UNIQUE_CHECKER = (entity, field, value, payload) -> false;
+    private static final CompoundUniqueValueChecker NO_COMPOUND_UNIQUE_CHECKER =
+            (entity, fields, values, payload) -> false;
     private static final ConflictChecker NO_CONFLICT_CHECKER =
             (resourceField, resourceId, startsAtField, startsAt, durationField, durationMinutes, excludeId, payload) -> false;
     private static final ScopeChecker NO_SCOPE_CHECKER =
@@ -91,6 +104,7 @@ public final class CelInvariantEngine implements InvariantEngine {
 
     private final Map<String, EntityRules> rulesByEntity;
     private final UniqueValueChecker uniqueValueChecker;
+    private final CompoundUniqueValueChecker compoundUniqueValueChecker;
     private final ConflictChecker conflictChecker;
     private final ScopeChecker scopeChecker;
 
@@ -120,10 +134,21 @@ public final class CelInvariantEngine implements InvariantEngine {
             ConflictChecker conflictChecker,
             ScopeChecker scopeChecker
     ) {
+        this(rulesByEntity, uniqueValueChecker, conflictChecker, scopeChecker, NO_COMPOUND_UNIQUE_CHECKER);
+    }
+
+    public CelInvariantEngine(
+            Map<String, EntityRules> rulesByEntity,
+            UniqueValueChecker uniqueValueChecker,
+            ConflictChecker conflictChecker,
+            ScopeChecker scopeChecker,
+            CompoundUniqueValueChecker compoundUniqueValueChecker
+    ) {
         Objects.requireNonNull(rulesByEntity, "rulesByEntity");
         this.uniqueValueChecker = uniqueValueChecker == null ? NO_UNIQUE_CHECKER : uniqueValueChecker;
         this.conflictChecker = conflictChecker == null ? NO_CONFLICT_CHECKER : conflictChecker;
         this.scopeChecker = scopeChecker == null ? NO_SCOPE_CHECKER : scopeChecker;
+        this.compoundUniqueValueChecker = compoundUniqueValueChecker == null ? NO_COMPOUND_UNIQUE_CHECKER : compoundUniqueValueChecker;
 
         Map<String, EntityRules> normalized = new LinkedHashMap<>();
         for (Map.Entry<String, EntityRules> e : rulesByEntity.entrySet()) {
@@ -157,14 +182,24 @@ public final class CelInvariantEngine implements InvariantEngine {
             ConflictChecker conflictChecker,
             ScopeChecker scopeChecker
     ) {
+        return fromCompiledModel(model, uniqueValueChecker, conflictChecker, scopeChecker, NO_COMPOUND_UNIQUE_CHECKER);
+    }
+
+    public static CelInvariantEngine fromCompiledModel(
+            CompiledModel model,
+            UniqueValueChecker uniqueValueChecker,
+            ConflictChecker conflictChecker,
+            ScopeChecker scopeChecker,
+            CompoundUniqueValueChecker compoundUniqueValueChecker
+    ) {
         Objects.requireNonNull(model, "model");
 
         Map<String, EntityRules> rules = new LinkedHashMap<>();
-        for (CompiledEntity entity : model.getEntities()) {
-            rules.put(entity.getName(), EntityRules.fromCompiledEntity(entity));
+        for (CompiledConcept entity : model.getConcepts()) {
+            rules.put(entity.getName(), EntityRules.fromCompiledConcept(entity));
         }
 
-        return new CelInvariantEngine(rules, uniqueValueChecker, conflictChecker, scopeChecker);
+        return new CelInvariantEngine(rules, uniqueValueChecker, conflictChecker, scopeChecker, compoundUniqueValueChecker);
     }
 
     @Override
@@ -284,7 +319,7 @@ public final class CelInvariantEngine implements InvariantEngine {
             orderedRefs = orderedRefs == null ? List.copyOf(rulesByRef.keySet()) : List.copyOf(orderedRefs);
         }
 
-        public static EntityRules fromCompiledEntity(CompiledEntity entity) {
+        public static EntityRules fromCompiledConcept(CompiledConcept entity) {
             Map<String, InvariantRule> compiledRules = new LinkedHashMap<>();
             List<String> orderedRefs = new ArrayList<>();
             Set<String> requiredFields = new LinkedHashSet<>();
@@ -298,13 +333,18 @@ public final class CelInvariantEngine implements InvariantEngine {
                     }
                     String type = invariant.getType() == null ? "" : invariant.getType().trim().toLowerCase(Locale.ROOT);
                     String normalizedRef = normalize(invariant.getRef());
-                    compiledRules.put(normalizedRef, new InvariantRule(type, invariant.getField(), invariant.getExpression()));
+                    compiledRules.put(normalizedRef,
+                            new InvariantRule(type, invariant.getField(), invariant.getExpression(), invariant.getFields()));
                     orderedRefs.add(invariant.getRef());
 
                     if ("required".equals(type) && invariant.getField() != null && !invariant.getField().isBlank()) {
                         requiredFields.add(invariant.getField());
-                    } else if ("unique".equals(type) && invariant.getField() != null && !invariant.getField().isBlank()) {
-                        uniqueFields.add(invariant.getField());
+                    } else if ("unique".equals(type)
+                            && invariant.getFields() != null
+                            && invariant.getFields().size() == 1) {
+                        // LIFT-UNIQUE-P3: compound (2+ field) unique invariants stay out of this
+                        // single-field set and are enforced via evaluateCompoundUniqueRule instead.
+                        uniqueFields.add(invariant.getFields().get(0));
                     } else if ("expression".equals(type)
                             && invariant.getExpression() != null
                             && !invariant.getExpression().isBlank()) {
@@ -423,7 +463,9 @@ public final class CelInvariantEngine implements InvariantEngine {
 
         return switch (rule.type()) {
             case "required" -> evaluateRequiredRule(entityName, payload, invariantRef, rule.field());
-            case "unique" -> evaluateUniqueRule(entityName, payload, invariantRef, rule.field());
+            case "unique" -> rule.fields().size() > 1
+                    ? evaluateCompoundUniqueRule(entityName, payload, invariantRef, rule.fields())
+                    : evaluateUniqueRule(entityName, payload, invariantRef, rule.field());
             case "expression" -> evaluateExpressionRule(entityName, payload, invariantRef, rule.expression(), state);
             default -> RuleEvaluationResult.fail(
                     "INVARIANT_UNKNOWN_REF",
@@ -478,6 +520,41 @@ public final class CelInvariantEngine implements InvariantEngine {
                         "field", field,
                         "fieldPath", field,
                         "value", value,
+                        "invariantRef", invariantRef,
+                        "violationKind", "unique"
+                )
+        );
+    }
+
+    /** LIFT-UNIQUE-P3: compound (2+ field) unique invariant. Mirrors evaluateUniqueRule's
+     * "missing value -> success" leniency: if any field in the group is absent, the group can't
+     * collide yet, so the check is skipped (consistent with the single-field behavior above). */
+    private RuleEvaluationResult evaluateCompoundUniqueRule(
+            String entityName,
+            Object payload,
+            String invariantRef,
+            List<String> fields
+    ) {
+        List<Object> values = new ArrayList<>(fields.size());
+        for (String field : fields) {
+            Object value = readFieldValue(payload, field);
+            if (isMissing(value)) {
+                return RuleEvaluationResult.success();
+            }
+            values.add(value);
+        }
+        if (!compoundUniqueValueChecker.exists(entityName, fields, values, payload)) {
+            return RuleEvaluationResult.success();
+        }
+        String fieldList = String.join(", ", fields);
+        return RuleEvaluationResult.fail(
+                "INVARIANT_FAIL",
+                "Entity " + entityName + ": unique constraint violated for fields (" + fieldList
+                        + ") (ref=" + invariantRef + ")",
+                Map.of(
+                        "fields", fields,
+                        "fieldPath", fieldList,
+                        "values", values,
                         "invariantRef", invariantRef,
                         "violationKind", "unique"
                 )
@@ -684,9 +761,258 @@ public final class CelInvariantEngine implements InvariantEngine {
         }
     }
 
+    /**
+     * Adapts an arbitrary payload (Map or POJO) to the {@code Map<String,Object>} scope
+     * {@link ComputedExpression} expects, resolving every lookup through {@link #readFieldValue}
+     * so dotted/case-insensitive/reflection field resolution stays identical to the legacy
+     * matcher's behavior. Only {@code get}/{@code containsKey} are exercised by ComputedExpression.
+     */
+    private static final class FieldPathScope extends AbstractMap<String, Object> {
+        private final Object payload;
+
+        FieldPathScope(Object payload) {
+            this.payload = payload;
+        }
+
+        @Override
+        public Object get(Object key) {
+            return key instanceof String fieldPath ? readFieldValue(payload, fieldPath) : null;
+        }
+
+        @Override
+        public boolean containsKey(Object key) {
+            return true;
+        }
+
+        @Override
+        public Set<Entry<String, Object>> entrySet() {
+            return Collections.emptySet();
+        }
+    }
+
+    /** LNCH-15: a function's own natural failure detail, recorded so it survives being wrapped
+     * by {@code !}/{@code &&}/{@code ||} on the way back up to {@link #evaluateExpression} --
+     * see {@link #buildFunctionRegistry}. */
+    private record FailureHint(String details, String fieldPath) {
+    }
+
+    /**
+     * LNCH-15: the {@code matches}/{@code uniqueBy}/{@code all}/{@code exists}/{@code conflicts}/
+     * {@code overlapsProvider}/{@code scope.exists} forms as {@link ComputedExpression.ExprFunction}s,
+     * reusing this class's existing field-resolution/collection helpers so evaluation semantics
+     * (dotted paths, case-insensitive/reflection field lookup, {@code [*]}-style fieldPath
+     * reporting) stay identical to the legacy regex matcher they replace. Each function returns
+     * its ordinary boolean result (so {@code !}/{@code &&}/{@code ||} compose correctly) and,
+     * only on the branch where IT would explain an overall {@code false}, records a
+     * {@link FailureHint} into {@code hintRef} -- {@link #evaluateExpression} consults it after
+     * a false top-level result instead of falling back to the generic message.
+     */
+    private ComputedExpression.FunctionRegistry buildFunctionRegistry(
+            Object payload,
+            Map<String, Object> state,
+            java.util.concurrent.atomic.AtomicReference<FailureHint> hintRef
+    ) {
+        Map<String, ComputedExpression.ExprFunction> functions = new LinkedHashMap<>();
+
+        functions.put("matches", (args, vars) -> {
+            String fieldPath = args.get(0).describeFieldPath();
+            Object value = args.get(0).eval(vars);
+            String regex = String.valueOf(args.get(1).eval(vars));
+            if (!(value instanceof String strVal)) {
+                hintRef.set(new FailureHint("field '" + fieldPath + "' is not a string", fieldPath));
+                return false;
+            }
+            if (regex == null || regex.isBlank()) {
+                hintRef.set(new FailureHint("regex is blank", fieldPath));
+                return false;
+            }
+            boolean ok = strVal.matches(regex);
+            if (!ok) {
+                hintRef.set(new FailureHint("regex mismatch on field '" + fieldPath + "'", fieldPath));
+            }
+            return ok;
+        });
+
+        functions.put("uniqueBy", (args, vars) -> {
+            String collectionFieldPath = args.get(0).describeFieldPath();
+            Object collectionValue = args.get(0).eval(vars);
+            if (collectionValue == null) {
+                return true;
+            }
+            String keyFieldName = args.get(1).describeFieldPath();
+            if (keyFieldName == null) {
+                keyFieldName = String.valueOf(args.get(1).eval(vars));
+            }
+            Iterable<?> iterable = toIterable(collectionValue);
+            if (iterable == null) {
+                hintRef.set(new FailureHint(
+                        "field '" + collectionFieldPath + "' is not an array/collection", collectionFieldPath));
+                return false;
+            }
+            Set<String> seen = new LinkedHashSet<>();
+            for (Object item : iterable) {
+                Object rawKey = readFieldValue(item, keyFieldName);
+                if (rawKey == null) {
+                    continue;
+                }
+                String normalizedKey = String.valueOf(rawKey).trim().toLowerCase(Locale.ROOT);
+                if (normalizedKey.isBlank()) {
+                    continue;
+                }
+                if (!seen.add(normalizedKey)) {
+                    hintRef.set(new FailureHint(
+                            "duplicate '" + keyFieldName + "' value '" + rawKey + "'",
+                            collectionItemPath(collectionFieldPath, keyFieldName)));
+                    return false;
+                }
+            }
+            return true;
+        });
+
+        functions.put("all", (args, vars) -> evaluateQuantifier(args, vars, hintRef, true));
+        functions.put("exists", (args, vars) -> evaluateQuantifier(args, vars, hintRef, false));
+
+        ComputedExpression.ExprFunction conflictsFn = (args, vars) -> {
+            String resourceFieldPath = args.get(0).describeFieldPath();
+            Object subjectId = args.get(0).eval(vars);
+            Object scheduledAt = args.get(1).eval(vars);
+            Object durationMinutes = args.get(2).eval(vars);
+            Object excludeId = args.size() > 3 ? args.get(3).eval(vars) : null;
+            boolean hasConflict = conflictChecker.conflicts(
+                    resourceFieldPath, subjectId,
+                    args.get(1).describeFieldPath(), scheduledAt,
+                    args.get(2).describeFieldPath(), durationMinutes,
+                    excludeId, payload
+            );
+            if (hasConflict) {
+                hintRef.set(new FailureHint("Resource is already reserved during this time", resourceFieldPath));
+            }
+            return hasConflict;
+        };
+        functions.put("conflicts", conflictsFn);
+        functions.put("overlapsProvider", conflictsFn);
+
+        functions.put("scope.exists", (args, vars) -> {
+            String conceptName = String.valueOf(args.get(0).eval(vars));
+            String fieldPath = String.valueOf(args.get(1).eval(vars));
+            String valuePath = args.get(2).describeFieldPath();
+            Object expectedValue = args.get(2).eval(vars);
+            boolean exists = scopeChecker.exists(
+                    conceptName, fieldPath, expectedValue, state == null ? Map.of() : state, payload);
+            if (!exists) {
+                String hintFieldPath = valuePath == null || valuePath.isBlank() ? fieldPath : valuePath;
+                hintRef.set(new FailureHint("scope.exists did not find a matching entity", hintFieldPath));
+            }
+            return exists;
+        });
+
+        return ComputedExpression.FunctionRegistry.of(functions);
+    }
+
+    /**
+     * {@code collection.all(alias => predicate)} / {@code collection.exists(alias => predicate)}.
+     * {@code all} over a null/missing collection is vacuously true (matches the legacy matcher);
+     * {@code exists} requires a non-empty collection to ever succeed.
+     */
+    private static Object evaluateQuantifier(
+            List<ComputedExpression.Node> args,
+            Map<String, Object> vars,
+            java.util.concurrent.atomic.AtomicReference<FailureHint> hintRef,
+            boolean isAll
+    ) {
+        String collectionFieldPath = args.get(0).describeFieldPath();
+        Object collectionValue = args.get(0).eval(vars);
+        ComputedExpression.Node lambda = args.get(1);
+        if (collectionValue == null) {
+            if (isAll) {
+                return true;
+            }
+            hintRef.set(new FailureHint(
+                    "exists predicate requires a non-empty collection", collectionItemPath(collectionFieldPath, null)));
+            return false;
+        }
+        Iterable<?> iterable = toIterable(collectionValue);
+        if (iterable == null) {
+            hintRef.set(new FailureHint(
+                    "field '" + collectionFieldPath + "' is not an array/collection", collectionFieldPath));
+            return false;
+        }
+        int count = 0;
+        for (Object item : iterable) {
+            count++;
+            boolean itemPasses = Boolean.TRUE.equals(lambda.invokeLambda(item, vars));
+            if (isAll && !itemPasses) {
+                hintRef.set(new FailureHint(
+                        "predicate failed for a collection item", collectionItemPath(collectionFieldPath, null)));
+                return false;
+            }
+            if (!isAll && itemPasses) {
+                return true;
+            }
+        }
+        if (isAll) {
+            return true;
+        }
+        String message = count == 0
+                ? "exists predicate requires a non-empty collection"
+                : "no collection item satisfied predicate";
+        hintRef.set(new FailureHint(message, collectionItemPath(collectionFieldPath, null)));
+        return false;
+    }
+
     private ExpressionResult evaluateExpression(Object payload, String expression, Map<String, Object> state) {
         if (expression == null || expression.isBlank()) {
             return ExpressionResult.failure("blank expression");
+        }
+
+        // LIFT-EXPR-P2/LNCH-15: try the unified ComputedExpression grammar (now extended with
+        // function-call/lambda syntax, see buildFunctionRegistry) first. Only genuinely
+        // unrecognized syntax falls through to the legacy matcher below, which stays in place as
+        // a defensive safety net rather than being deleted outright.
+        java.util.concurrent.atomic.AtomicReference<FailureHint> hintRef = new java.util.concurrent.atomic.AtomicReference<>();
+        try {
+            boolean ok = ComputedExpression.evaluateBoolean(
+                    expression, new FieldPathScope(payload), buildFunctionRegistry(payload, state, hintRef));
+            if (ok) {
+                return ExpressionResult.success();
+            }
+            FailureHint hint = hintRef.get();
+            if (hint != null) {
+                return ExpressionResult.failure(hint.details(), hint.fieldPath());
+            }
+            // Best-effort fieldPath so simple "field op value" failures still attribute to a
+            // field for UI highlighting, matching the legacy matcher's behavior for that shape.
+            // Compound (&&/||/paren/!) expressions are new capability with no prior fieldPath
+            // to preserve, so they report the expression with no single fieldPath.
+            Matcher simpleComparison = COMPARISON_PATTERN.matcher(expression);
+            String fieldPath = simpleComparison.matches() ? simpleComparison.group(1) : null;
+            return ExpressionResult.failure("expression evaluated to false", fieldPath);
+        } catch (ComputedExpression.ExpressionException legacySyntax) {
+            // fall through
+        }
+
+        List<String> disjuncts = splitLogicalExpression(expression, "||");
+        if (disjuncts.size() > 1) {
+            ExpressionResult lastFailure = null;
+            for (String disjunct : disjuncts) {
+                ExpressionResult result = evaluateExpression(payload, disjunct, state);
+                if (result.ok()) {
+                    return ExpressionResult.success();
+                }
+                lastFailure = result;
+            }
+            return lastFailure == null ? ExpressionResult.failure("expected at least one expression to pass") : lastFailure;
+        }
+
+        List<String> conjuncts = splitLogicalExpression(expression, "&&");
+        if (conjuncts.size() > 1) {
+            for (String conjunct : conjuncts) {
+                ExpressionResult result = evaluateExpression(payload, conjunct, state);
+                if (!result.ok()) {
+                    return result;
+                }
+            }
+            return ExpressionResult.success();
         }
 
         ConflictInvocation conflictInvocation = parseConflictInvocation(expression);
@@ -961,6 +1287,9 @@ public final class CelInvariantEngine implements InvariantEngine {
         }
 
         String functionPrefix = "conflicts(";
+        if (trimmed.startsWith("overlapsProvider(")) {
+            functionPrefix = "overlapsProvider(";
+        }
         if (!trimmed.startsWith(functionPrefix) || !trimmed.endsWith(")")) {
             return null;
         }
@@ -985,6 +1314,53 @@ public final class CelInvariantEngine implements InvariantEngine {
 
         String exclude = args.size() == 4 ? args.get(3) : null;
         return new ConflictInvocation(negated, args.get(0), args.get(1), args.get(2), exclude);
+    }
+
+    private static List<String> splitLogicalExpression(String expression, String operator) {
+        if (expression == null || expression.isBlank()) {
+            return List.of();
+        }
+        List<String> parts = new ArrayList<>();
+        int start = 0;
+        int depth = 0;
+        char quote = 0;
+        for (int i = 0; i <= expression.length() - operator.length(); i++) {
+            char ch = expression.charAt(i);
+            if (quote != 0) {
+                if (ch == quote) {
+                    quote = 0;
+                }
+                continue;
+            }
+            if (ch == '"' || ch == '\'') {
+                quote = ch;
+                continue;
+            }
+            if (ch == '(') {
+                depth++;
+                continue;
+            }
+            if (ch == ')' && depth > 0) {
+                depth--;
+                continue;
+            }
+            if (depth == 0 && expression.startsWith(operator, i)) {
+                String part = expression.substring(start, i).trim();
+                if (!part.isEmpty()) {
+                    parts.add(part);
+                }
+                i += operator.length() - 1;
+                start = i + 1;
+            }
+        }
+        if (parts.isEmpty()) {
+            return List.of(expression.trim());
+        }
+        String tail = expression.substring(start).trim();
+        if (!tail.isEmpty()) {
+            parts.add(tail);
+        }
+        return parts;
     }
 
     private static ScopeExistsInvocation parseScopeExistsInvocation(String expression) {
@@ -1318,6 +1694,15 @@ public final class CelInvariantEngine implements InvariantEngine {
     ) {
     }
 
-    private record InvariantRule(String type, String field, String expression) {
+    private record InvariantRule(String type, String field, String expression, List<String> fields) {
+        private InvariantRule {
+            fields = (fields == null || fields.isEmpty())
+                    ? (field == null ? List.of() : List.of(field))
+                    : List.copyOf(fields);
+        }
+
+        InvariantRule(String type, String field, String expression) {
+            this(type, field, expression, null);
+        }
     }
 }

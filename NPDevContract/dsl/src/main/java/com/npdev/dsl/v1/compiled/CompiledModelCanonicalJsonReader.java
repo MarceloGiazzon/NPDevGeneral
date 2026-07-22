@@ -83,6 +83,21 @@ public final class CompiledModelCanonicalJsonReader {
             panels.add(toPanel(node));
         }
 
+        List<CompiledGuidePage> guidePages = new ArrayList<>();
+        for (JsonNode node : array(root, "guidePages")) {
+            guidePages.add(toGuidePage(node));
+        }
+
+        List<CompiledAggregate> aggregates = new ArrayList<>();
+        for (JsonNode node : array(root, "aggregates")) {
+            aggregates.add(toAggregate(node));
+        }
+
+        List<CompiledAutoPanel> autoPanels = new ArrayList<>();
+        for (JsonNode node : array(root, "autoPanels")) {
+            autoPanels.add(toAutoPanel(node));
+        }
+
         return new CompiledModel(
                 namespace,
                 dslVersion,
@@ -97,8 +112,76 @@ public final class CompiledModelCanonicalJsonReader {
                 queries,
                 ruleProfiles,
                 procedures,
-                panels
+                panels,
+                guidePages,
+                aggregates,
+                autoPanels
         );
+    }
+
+    private static CompiledAutoPanel toAutoPanel(JsonNode node) {
+        return new CompiledAutoPanel(
+                optionalText(node, "name"),
+                optionalText(node, "concept"),
+                optionalText(node, "aggregate"),
+                optionalText(node, "route"),
+                toStringList(node.get("surfaces")),
+                toAutoPanelSurface(node.get("selection")),
+                toAutoPanelSurface(node.get("detail")),
+                toAutoPanelSurface(node.get("transaction")),
+                toAutoPanelSurface(node.get("prompt")),
+                toObjectMap(node.get("metadata"))
+        );
+    }
+
+    private static CompiledAutoPanelSurface toAutoPanelSurface(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        List<CompiledAutoPanelComputed> computed = new ArrayList<>();
+        JsonNode computedNode = node.get("computed");
+        if (computedNode != null && computedNode.isArray()) {
+            for (JsonNode c : computedNode) {
+                computed.add(new CompiledAutoPanelComputed(optionalText(c, "col"), optionalText(c, "expr")));
+            }
+        }
+        return new CompiledAutoPanelSurface(
+                toStringList(node.get("filters")),
+                toStringList(node.get("columns")),
+                toStringList(node.get("fields")),
+                computed,
+                optionalText(node, "labelField"),
+                toObjectMap(node.get("metadata"))
+        );
+    }
+
+    private static CompiledAggregate toAggregate(JsonNode node) {
+        return new CompiledAggregate(
+                text(node, "name"),
+                text(node, "root"),
+                toAggregateCollections(node.get("collections")),
+                toObjectMap(node.get("metadata"))
+        );
+    }
+
+    private static List<CompiledAggregateCollection> toAggregateCollections(JsonNode node) {
+        List<CompiledAggregateCollection> out = new ArrayList<>();
+        if (node == null || !node.isArray()) {
+            return out;
+        }
+        for (JsonNode collectionNode : node) {
+            out.add(new CompiledAggregateCollection(
+                    text(collectionNode, "name"),
+                    text(collectionNode, "concept"),
+                    optionalText(collectionNode, "via"),
+                    text(collectionNode, "childField"),
+                    optionalText(collectionNode, "ownership"),
+                    optionalText(collectionNode, "orderBy"),
+                    toAggregateCollections(collectionNode.get("collections")),
+                    toObjectMap(collectionNode.get("metadata"))
+            ));
+        }
+        return out;
     }
 
     private static CompiledDomainType toDomainType(JsonNode node) {
@@ -124,11 +207,15 @@ public final class CompiledModelCanonicalJsonReader {
 
         List<CompiledInvariant> invariants = new ArrayList<>();
         for (JsonNode invariantNode : array(node, "invariants")) {
+            List<String> invariantFields = toStringList(invariantNode.get("fields"));
             invariants.add(new CompiledInvariant(
                     optionalText(invariantNode, "ref"),
                     optionalText(invariantNode, "type"),
                     optionalText(invariantNode, "field"),
-                    optionalText(invariantNode, "expression")
+                    optionalText(invariantNode, "expression"),
+                    invariantFields.isEmpty() && optionalText(invariantNode, "field") != null
+                            ? List.of(optionalText(invariantNode, "field"))
+                            : invariantFields
             ));
         }
 
@@ -140,8 +227,42 @@ public final class CompiledModelCanonicalJsonReader {
                 expressionInvariants,
                 invariants,
                 toLifecycle(node.get("lifecycle")),
-                toPresentationMetadata(node.get("ui"))
+                toPresentationMetadata(node.get("ui")),
+                optionalText(node, "truthLevel"),
+                optionalText(node, "module"),
+                toIndexes(node.get("indexes")),
+                toConceptAccess(node.get("access")),
+                optionalText(node, "renamedFrom")
         );
+    }
+
+    /**
+     * LNCH-1 P0.2 (found by the reflective CanonicalJsonRoundTripCompletenessTest ratchet): this
+     * reader previously passed {@code List.of()} for every concept's indexes unconditionally (the
+     * writer never emitted the key either), so a concept's author-declared secondary indexes
+     * (LNCH-6) never survived the compiled-model.json round trip.
+     */
+    private static List<CompiledIndex> toIndexes(JsonNode node) {
+        List<CompiledIndex> out = new ArrayList<>();
+        if (node == null || !node.isArray()) {
+            return out;
+        }
+        for (JsonNode indexNode : node) {
+            out.add(new CompiledIndex(
+                    optionalText(indexNode, "name"),
+                    toStringList(indexNode.get("fields")),
+                    booleanValue(indexNode, "unique")
+            ));
+        }
+        return out;
+    }
+
+    /** LNCH-13: row-level authorization rule (access: {read, write}). */
+    private static CompiledConceptAccess toConceptAccess(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        return new CompiledConceptAccess(optionalText(node, "read"), optionalText(node, "write"));
     }
 
     private static CompiledField toField(JsonNode node) {
@@ -158,7 +279,28 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "domainType"),
                 toSchema(node.get("schema")),
                 toEnumOptions(node.get("enumOptions")),
-                toPresentationMetadata(node.get("ui"))
+                toPresentationMetadata(node.get("ui")),
+                optionalText(node, "connectable"),
+                optionalText(node, "renamedFrom"),
+                toFileMetadata(node.get("file"))
+        );
+    }
+
+    /**
+     * HARDEN-OBJSTORE: this reader previously fell back to the 15-arg {@link CompiledField}
+     * constructor (which always sets {@code file} to null), so a file field's
+     * contentTypes/maxSizeBytes/multiple constraints never survived the compiled-model.json
+     * round-trip -- silently defeating {@code FileUploadController}'s upload-time validation in
+     * every generated app.
+     */
+    private static CompiledFileMetadata toFileMetadata(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return null;
+        }
+        return new CompiledFileMetadata(
+                toStringList(node.get("contentTypes")),
+                optionalLongObject(node.get("maxSizeBytes")),
+                booleanValue(node, "multiple")
         );
     }
 
@@ -193,11 +335,15 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "width"),
                 optionalBooleanObject(node.get("summaryCard")),
                 optionalBooleanObject(node.get("listColumn")),
+                optionalBooleanObject(node.get("showInDefaultWebUi")),
                 optionalIntegerObject(node.get("listColumnOrder")),
                 optionalIntegerObject(node.get("formColumns")),
                 optionalText(node, "displayMode"),
+                optionalText(node, "formPresentation"),
                 optionalText(node, "defaultSort"),
-                optionalText(node, "defaultGroup")
+                optionalText(node, "defaultGroup"),
+                optionalText(node, "imageField"),
+                optionalText(node, "customWidgetRef")
         );
     }
 
@@ -239,7 +385,9 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "displayTemplate"),
                 toStringList(node.get("pickerColumns")),
                 optionalText(node, "previewCardTemplate"),
-                firstNonBlank(optionalText(node, "defaultFilter"), optionalText(node, "defaultFilterBehavior"))
+                firstNonBlank(optionalText(node, "defaultFilter"), optionalText(node, "defaultFilterBehavior")),
+                optionalText(node, "via"),
+                optionalText(node, "onDelete")
         );
     }
 
@@ -309,7 +457,7 @@ public final class CompiledModelCanonicalJsonReader {
         for (JsonNode payloadNode : array(node, "payload")) {
             payload.add(new CompiledEventField(text(payloadNode, "name"), text(payloadNode, "type")));
         }
-        return new CompiledEvent(text(node, "name"), optionalText(node, "conceptName"), payload);
+        return new CompiledEvent(text(node, "name"), optionalText(node, "conceptName"), payload, optionalText(node, "triggerMode"));
     }
 
     private static CompiledFlow toFlow(JsonNode node) {
@@ -324,8 +472,17 @@ public final class CompiledModelCanonicalJsonReader {
                 steps,
                 toSchema(node.get("inputSchema")),
                 toSchema(node.get("outputSchema")),
-                toActionMetadata(node.get("action"))
+                toActionMetadata(node.get("action")),
+                booleanValue(node, "startEndpoint"),
+                toFlowSchedule(node.get("schedule"))
         );
+    }
+
+    private static CompiledFlowSchedule toFlowSchedule(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return null;
+        }
+        return new CompiledFlowSchedule(text(node, "cron"), toStringList(node.get("tenantScope")));
     }
 
     private static CompiledFlowStep toFlowStep(JsonNode node) {
@@ -337,6 +494,18 @@ public final class CompiledModelCanonicalJsonReader {
         List<CompiledFlowStep> elseSteps = new ArrayList<>();
         for (JsonNode stepNode : array(node, "elseSteps")) {
             elseSteps.add(toFlowStep(stepNode));
+        }
+
+        // LNCH-17 (found while adding onFailureSteps): loopSteps was never read here either,
+        // matching the writer-side gap fixed in CompiledModelCanonicalJson -- see that fix's
+        // comment for the bug-class context.
+        List<CompiledFlowStep> loopSteps = new ArrayList<>();
+        for (JsonNode stepNode : array(node, "loopSteps")) {
+            loopSteps.add(toFlowStep(stepNode));
+        }
+        List<CompiledFlowStep> onFailureSteps = new ArrayList<>();
+        for (JsonNode stepNode : array(node, "onFailureSteps")) {
+            onFailureSteps.add(toFlowStep(stepNode));
         }
 
         return new CompiledFlowStep(
@@ -360,7 +529,13 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "mapToRef"),
                 optionalText(node, "returnValueRef"),
                 toCapabilityCall(node.get("capabilityCall")),
-                toActionMetadata(node.get("action"))
+                toActionMetadata(node.get("action")),
+                optionalText(node, "generatedActionName"),
+                optionalText(node, "collectionRef"),
+                optionalText(node, "itemKey"),
+                loopSteps,
+                optionalIntegerObject(node.get("maxLoopIterations")),
+                onFailureSteps
         );
     }
 
@@ -371,6 +546,7 @@ public final class CompiledModelCanonicalJsonReader {
         return new CompiledCapabilityCall(
                 optionalText(node, "capabilityName"),
                 optionalText(node, "capabilityType"),
+                optionalText(node, "adapterId"),
                 optionalText(node, "operation"),
                 toStringList(node.get("argsRefs")),
                 optionalText(node, "inputRef"),
@@ -493,7 +669,25 @@ public final class CompiledModelCanonicalJsonReader {
                 toStringList(node.get("permissionRequirements")),
                 optionalText(node, "tracePolicy"),
                 optionalText(node, "auditPolicy"),
+                toGeneratedActionDescriptor(node.get("actionDescriptor")),
                 toObjectMap(node.get("metadata"))
+        );
+    }
+
+    private static CompiledGeneratedActionDescriptorSpec toGeneratedActionDescriptor(JsonNode node) {
+        if (node == null || node.isNull() || !node.isObject() || node.isEmpty()) {
+            return null;
+        }
+        return new CompiledGeneratedActionDescriptorSpec(
+                optionalText(node, "actionName"),
+                toStringList(node.get("affectedConcepts")),
+                optionalText(node, "sideEffectConcept"),
+                optionalText(node, "eventNameOnSuccess"),
+                optionalText(node, "auditResourceType"),
+                optionalText(node, "idempotencyPolicy"),
+                optionalText(node, "tracePolicy"),
+                optionalText(node, "correlationPolicy"),
+                booleanValue(node, "explicit")
         );
     }
 
@@ -577,8 +771,70 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "enabledWhen"),
                 toPanelActions(node.get("actions")),
                 toObjectMap(node.get("explainability")),
-                toObjectMap(node.get("metadata"))
+                toObjectMap(node.get("metadata")),
+                optionalText(node, "guidePage")
         );
+    }
+
+    private static CompiledGuidePage toGuidePage(JsonNode node) {
+        return new CompiledGuidePage(
+                text(node, "name"),
+                booleanValue(node, "default"),
+                toGuidePageRegions(node.get("regions")),
+                toGuidePageTheme(node.get("theme")),
+                toGuidePageGadgets(node.get("gadgets"))
+        );
+    }
+
+    private static CompiledGuidePageRegions toGuidePageRegions(JsonNode node) {
+        if (node == null || node.isNull() || !node.isObject()) {
+            return null;
+        }
+        return new CompiledGuidePageRegions(
+                booleanValue(node, "top"),
+                toGuidePageRegion(node.get("left")),
+                toGuidePageRegion(node.get("right"))
+        );
+    }
+
+    private static CompiledGuidePageRegion toGuidePageRegion(JsonNode node) {
+        if (node == null || node.isNull() || !node.isObject()) {
+            return null;
+        }
+        return new CompiledGuidePageRegion(
+                booleanValue(node, "enabled"),
+                booleanValue(node, "collapsible"),
+                booleanValue(node, "defaultCollapsed"),
+                intValue(node, "width", 0)
+        );
+    }
+
+    private static CompiledGuidePageTheme toGuidePageTheme(JsonNode node) {
+        if (node == null || node.isNull() || !node.isObject()) {
+            return null;
+        }
+        return new CompiledGuidePageTheme(
+                optionalText(node, "mode"),
+                optionalText(node, "accent"),
+                optionalText(node, "density"),
+                optionalText(node, "logoText"),
+                optionalText(node, "logoUrl")
+        );
+    }
+
+    private static List<CompiledGuidePageGadget> toGuidePageGadgets(JsonNode node) {
+        List<CompiledGuidePageGadget> out = new ArrayList<>();
+        if (node == null || !node.isArray()) {
+            return out;
+        }
+        for (JsonNode gadgetNode : node) {
+            out.add(new CompiledGuidePageGadget(
+                    text(gadgetNode, "name"),
+                    text(gadgetNode, "type"),
+                    optionalText(gadgetNode, "title")
+            ));
+        }
+        return out;
     }
 
     private static List<CompiledPanelDataSource> toPanelDataSources(JsonNode node) {
@@ -592,7 +848,12 @@ public final class CompiledModelCanonicalJsonReader {
                     optionalText(dataSourceNode, "concept"),
                     optionalText(dataSourceNode, "query"),
                     optionalText(dataSourceNode, "procedure"),
-                    toObjectMap(dataSourceNode.get("params"))
+                    toObjectMap(dataSourceNode.get("params")),
+                    optionalText(dataSourceNode, "parentDataSource"),
+                    optionalText(dataSourceNode, "parentField"),
+                    optionalText(dataSourceNode, "childField"),
+                    toStringList(dataSourceNode.get("rowOps")),
+                    toStringList(dataSourceNode.get("addFormFields"))
             ));
         }
         return out;
@@ -629,7 +890,8 @@ public final class CompiledModelCanonicalJsonReader {
                     optionalText(bindingNode, "visibleWhen"),
                     optionalText(bindingNode, "enabledWhen"),
                     optionalText(bindingNode, "readonlyWhen"),
-                    toPresentationMetadata(bindingNode.get("ui"))
+                    toPresentationMetadata(bindingNode.get("ui")),
+                    booleanValue(bindingNode, "editable")
             ));
         }
         return out;

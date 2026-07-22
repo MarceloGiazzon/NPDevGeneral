@@ -13,6 +13,7 @@ public record ProcedureAst(
         List<String> permissionRequirements,
         String tracePolicy,
         String auditPolicy,
+        GeneratedActionDescriptorAst actionDescriptor,
         Map<String, Object> metadata
 ) {
     public ProcedureAst {

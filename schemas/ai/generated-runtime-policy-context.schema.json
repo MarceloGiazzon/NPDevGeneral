@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/generated-runtime-policy-context.schema.json",
+  "title": "NPDev Generated Runtime Policy Context",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "policyContextId",
+    "applicationId",
+    "mode",
+    "enabledByDefault",
+    "generatedBy",
+    "generatedAppRoot",
+    "policyRoot",
+    "users",
+    "tenants",
+    "rolePolicies",
+    "approvalPolicies",
+    "procedureId",
+    "panelId",
+    "requestSamples",
+    "responseSamples",
+    "executionPolicy",
+    "truthPolicy",
+    "releaseGatePolicy",
+    "evidencePolicy",
+    "nonGoals"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "npdev.generated-runtime-policy-context.v1" },
+    "policyContextId": { "type": "string" },
+    "applicationId": { "const": "app.salesflow" },
+    "mode": { "const": "GeneratedLocalPolicyPrototype" },
+    "enabledByDefault": { "const": false },
+    "generatedBy": { "const": "scripts/box-object/run-box-object-generator-adapter.ps1" },
+    "generatedAppRoot": { "type": "string" },
+    "policyRoot": { "type": "string" },
+    "users": { "type": "array", "items": { "type": "string" }, "contains": { "const": "user.billing.manager" } },
+    "tenants": { "type": "array", "items": { "type": "string" }, "contains": { "const": "tenant.salesflow.default" } },
+    "rolePolicies": { "type": "array" },
+    "approvalPolicies": { "type": "array" },
+    "procedureId": { "const": "procedure.generate-monthly-invoices" },
+    "panelId": { "const": "panel.invoice-approval" },
+    "requestSamples": { "type": "array" },
+    "responseSamples": { "type": "array" },
+    "executionPolicy": {
+      "type": "object",
+      "required": ["requiresAuth", "requiresTenant", "allowedRoles", "aiExecution"],
+      "properties": {
+        "requiresAuth": { "const": true },
+        "requiresTenant": { "const": true },
+        "allowedRoles": { "type": "array", "contains": { "const": "BillingManager" } },
+        "aiExecution": { "const": "RequiresHumanApproval" }
+      }
+    },
+    "truthPolicy": {
+      "type": "object",
+      "required": ["maxTruthClaim", "noAutoPromotion", "noT5", "noT6"],
+      "properties": {
+        "maxTruthClaim": { "enum": ["LocalPrototype", "T3"] },
+        "noAutoPromotion": { "const": true },
+        "noT5": { "const": true },
+        "noT6": { "const": true }
+      }
+    },
+    "releaseGatePolicy": {
+      "type": "object",
+      "required": ["impact"],
+      "properties": { "impact": { "const": "NoImpact" } }
+    },
+    "evidencePolicy": { "type": "object" },
+    "nonGoals": {
+      "type": "array",
+      "items": { "type": "string" },
+      "contains": { "const": "no production auth provider" }
+    }
+  }
+}

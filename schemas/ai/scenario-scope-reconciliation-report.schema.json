@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/scenario-scope-reconciliation-report.schema.json",
+  "title": "NPDev Scenario Scope Reconciliation Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "overallStatus",
+    "currentMaturity",
+    "targetMaturity",
+    "trustedSourceActivePathStatus",
+    "trustedSourceDecision",
+    "deferredTrustedSourceScenariosExcluded",
+    "customScenarioDecision",
+    "customScenarioDecisionDetail",
+    "activeScenarioCoherencePassed",
+    "mappingPolicyReconciled",
+    "negativeScenarioSemanticsPassed",
+    "aiContractNormalizerPassed",
+    "aiBetaGatePassed",
+    "activeScenarioCount",
+    "deferredTrustedSourceScenarios",
+    "activeCustomScenarioIds",
+    "checks",
+    "findings",
+    "doesNotSolve",
+    "failures"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "npdev-scenario-scope-reconciliation-report.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "scriptPath": { "const": "scripts/quality/run-scenario-scope-reconciliation-check.ps1" },
+    "workspaceRoot": { "type": "string", "minLength": 1 },
+    "overallStatus": { "enum": ["passed", "failed"] },
+    "currentMaturity": { "const": "7.8/10 (~78%)" },
+    "targetMaturity": { "const": "9.2–9.5/10 (~92–95%)" },
+    "trustedSourceActivePathStatus": { "const": "supported-or-deferred" },
+    "trustedSourceDecision": { "enum": ["path-a-supported", "path-b-deferred"] },
+    "deferredTrustedSourceScenariosExcluded": { "type": "boolean" },
+    "customScenarioDecision": { "const": "supported-or-rejected" },
+    "customScenarioDecisionDetail": { "enum": ["path-a-supported", "path-b-reject-unsupported-kinds"] },
+    "activeScenarioCoherencePassed": { "type": "boolean" },
+    "mappingPolicyReconciled": { "type": "boolean" },
+    "negativeScenarioSemanticsPassed": { "type": "boolean" },
+    "aiContractNormalizerPassed": { "type": "boolean" },
+    "aiBetaGatePassed": { "type": "boolean" },
+    "activeScenarioCount": { "type": "integer", "minimum": 1 },
+    "deferredTrustedSourceScenarios": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 },
+    "activeCustomScenarioIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 },
+    "checks": { "type": "array", "items": { "$ref": "#/$defs/check" }, "minItems": 1 },
+    "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "doesNotSolve": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 },
+    "failures": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "passed", "reason", "evidence"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "passed": { "type": "boolean" },
+        "reason": { "type": "string", "minLength": 1 },
+        "evidence": {}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "classification", "status", "summary"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "classification": {
+          "enum": [
+            "current-checkpoint-blocker",
+            "current-roadmap-blocker",
+            "known-risk-accepted",
+            "post-roadmap-backlog",
+            "human-decision-required",
+            "invalid-or-duplicate"
+          ]
+        },
+        "status": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

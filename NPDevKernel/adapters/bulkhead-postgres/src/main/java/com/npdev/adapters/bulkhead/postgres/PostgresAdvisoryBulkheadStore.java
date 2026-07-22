@@ -15,7 +15,7 @@ import java.util.Objects;
 
 public final class PostgresAdvisoryBulkheadStore implements BulkheadStore {
     private final DataSource dataSource;
-    private final ThreadLocal<Map<CapabilityOpKey, ArrayDeque<Long>>> heldLocks = ThreadLocal.withInitial(HashMap::new);
+    private final ThreadLocal<Map<CapabilityOpKey, ArrayDeque<HeldLock>>> heldLocks = ThreadLocal.withInitial(HashMap::new);
 
     public PostgresAdvisoryBulkheadStore(DataSource dataSource) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
@@ -27,10 +27,11 @@ public final class PostgresAdvisoryBulkheadStore implements BulkheadStore {
         int safeMax = maxConcurrent <= 0 ? 1 : maxConcurrent;
         for (int slot = 0; slot < safeMax; slot++) {
             long lockId = lockId(key, slot);
-            if (tryAcquireLock(lockId)) {
+            Connection connection = tryAcquireLock(lockId);
+            if (connection != null) {
                 heldLocks.get()
                         .computeIfAbsent(key, ignored -> new ArrayDeque<>())
-                        .push(lockId);
+                        .push(new HeldLock(lockId, connection));
                 return true;
             }
         }
@@ -42,39 +43,48 @@ public final class PostgresAdvisoryBulkheadStore implements BulkheadStore {
         if (key == null) {
             return;
         }
-        Map<CapabilityOpKey, ArrayDeque<Long>> local = heldLocks.get();
-        ArrayDeque<Long> stack = local.get(key);
+        Map<CapabilityOpKey, ArrayDeque<HeldLock>> local = heldLocks.get();
+        ArrayDeque<HeldLock> stack = local.get(key);
         if (stack == null || stack.isEmpty()) {
             return;
         }
-        Long lockId = stack.pop();
+        HeldLock heldLock = stack.pop();
         if (stack.isEmpty()) {
             local.remove(key);
         }
         if (local.isEmpty()) {
             heldLocks.remove();
         }
-        unlock(lockId);
+        unlock(heldLock);
     }
 
-    private boolean tryAcquireLock(long lockId) {
+    private Connection tryAcquireLock(long lockId) {
         String sql = "SELECT pg_try_advisory_lock(?)";
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setLong(1, lockId);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                return resultSet.next() && resultSet.getBoolean(1);
+        Connection connection = null;
+        try {
+            connection = dataSource.getConnection();
+            PreparedStatement statement = connection.prepareStatement(sql);
+            try (statement) {
+                statement.setLong(1, lockId);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    if (resultSet.next() && resultSet.getBoolean(1)) {
+                        return connection;
+                    }
+                    connection.close();
+                    return null;
+                }
             }
         } catch (SQLException exception) {
+            closeQuietly(connection);
             throw new IllegalStateException("Failed to acquire advisory bulkhead lock", exception);
         }
     }
 
-    private void unlock(long lockId) {
+    private void unlock(HeldLock heldLock) {
         String sql = "SELECT pg_advisory_unlock(?)";
-        try (Connection connection = dataSource.getConnection();
+        try (Connection connection = heldLock.connection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setLong(1, lockId);
+            statement.setLong(1, heldLock.lockId());
             statement.executeQuery();
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed to release advisory bulkhead lock", exception);
@@ -93,5 +103,19 @@ public final class PostgresAdvisoryBulkheadStore implements BulkheadStore {
             hash *= 0x100000001b3L;
         }
         return hash;
+    }
+
+    private static void closeQuietly(Connection connection) {
+        if (connection == null) {
+            return;
+        }
+        try {
+            connection.close();
+        } catch (SQLException ignored) {
+            // Preserve the original acquisition failure.
+        }
+    }
+
+    private record HeldLock(long lockId, Connection connection) {
     }
 }

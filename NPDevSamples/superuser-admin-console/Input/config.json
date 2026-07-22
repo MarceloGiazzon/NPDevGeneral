@@ -1,0 +1,73 @@
+{
+  "$schema": "..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "superuser-admin-console",
+    "description": "Permanent sample proving the super-user admin console (identity + workspace built-in packs, Store, Box View) alongside ordinary business CRUD, browser-verified end to end.",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": {
+    "root": "..\\..\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\Output\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\Output\\App",
+    "deleteBeforeMount": true
+  },
+  "database": {
+    "provider": "docker-postgres",
+    "host": "localhost",
+    "port": 5432,
+    "database": "superuser_admin_console",
+    "username": "finalexec",
+    "password": "finalexec",
+    "adminDatabase": "postgres",
+    "resetMode": "reset",
+    "containerName": "npdev-superuser-admin-console"
+  },
+  "runtime": {
+    "springProfile": "dev,trial",
+    "serverPort": 8094,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "defaults": {
+    "internal.tables": true
+  },
+  "overrides": {
+    "concept:Note": {
+      "persistence.adapter": "audited",
+      "ui.frame.mode": "minimal"
+    },
+    "field:Note.projectRef": {
+      "field.widget": "select"
+    }
+  },
+  "trialDefaults": {
+    "apiKey": "api-dev",
+    "recommendedProfiles": "dev,trial",
+    "runtimeUrl": "http://localhost:8094/",
+    "databaseMode": "h2-local",
+    "notes": [
+      "internal.tables=true (config.json defaults) composes the built-in identity (User/Role/UserRole) and workspace (Menu/Preference) packs into this app as real internal tables, in addition to the app-modeled Project/Note business concepts.",
+      "The 'api-dev' key (config.json trialDefaults.apiKey) resolves to the dev/ADMIN principal when auth.mode is left at its default (apiKey) with no real auth wired -- it is also the manifest's auth.devKeyHint, so the business UI auto-fills it and authenticates as super-user on load.",
+      "Use 'dev,trial' (not 'dev,step0,trial') to boot against the real H2Local database in Input/db.definition.json -- step0 would override it with an ephemeral in-memory store.",
+      "Super-user-only surfaces once booted: an 'Admin' nav group (identity/workspace concepts), 'Store' (GET /api/admin/packs), and 'Box View' (GET /api/admin/box, the only place truth level is bumped to T3_RUNS_LOCALLY).",
+      "Note is overridden to ui.frame.mode=minimal: opening it hides the header/sidenav chrome, leaving only its own content plus a '← Back to app' escape-hatch link (the only way back short of a full page reload, since the SPA has no hash-router)."
+    ]
+  }
+}

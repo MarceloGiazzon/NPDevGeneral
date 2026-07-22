@@ -5,7 +5,28 @@ plugins {
 group = 'com.npdev'
 version = '0.1.0'
 
+def resolveNpdevBuildRoot = {
+    def configured = System.getenv('NPDEV_BUILD_ROOT')
+    if (configured != null && !configured.trim().isEmpty()) {
+        return file(configured)
+    }
+    def sourceRoot = rootDir
+    while (sourceRoot != null && sourceRoot.name != 'NPDev_General') {
+        sourceRoot = sourceRoot.parentFile
+    }
+    if (sourceRoot != null && sourceRoot.parentFile != null) {
+        return new File(sourceRoot.parentFile, 'Build')
+    }
+    return new File(rootDir.parentFile, 'Build')
+}
+
+def npdevExternalBuildRoot = resolveNpdevBuildRoot()
+def safeProjectPath = project.path == ':' ? 'root' : project.path.substring(1).replace(':', '/')
+layout.buildDirectory.set(new File(npdevExternalBuildRoot, "gradle/${rootProject.name}/${safeProjectPath}"))
+
 def uiDir = file('ui-react')
+def uiDistDir = file(System.getenv('NPDEV_UI_DIST_DIR') ?: new File(npdevExternalBuildRoot, 'ui/npdev-editor-ui-react/dist').absolutePath)
+def uiPlaywrightStaticDir = file(System.getenv('NPDEV_UI_PLAYWRIGHT_STATIC_DIR') ?: new File(npdevExternalBuildRoot, 'ui/npdev-editor-ui-react/playwright-static').absolutePath)
 def npmExecutable = System.getProperty('os.name')
         .toLowerCase(java.util.Locale.ROOT)
         .contains('windows') ? 'npm.cmd' : 'npm'
@@ -26,8 +47,12 @@ def uiGeneratedDirectories = [
         '.vite',
         '.vitest'
 ].collect { file("${uiDir}/${it}") }
+uiGeneratedDirectories += [uiDistDir, uiPlaywrightStaticDir]
 
 def configureUiExecEnvironment = { Exec task ->
+    task.environment 'NPDEV_BUILD_ROOT', npdevExternalBuildRoot.absolutePath
+    task.environment 'NPDEV_UI_DIST_DIR', uiDistDir.absolutePath
+    task.environment 'NPDEV_UI_PLAYWRIGHT_STATIC_DIR', uiPlaywrightStaticDir.absolutePath
     task.environment 'npm_config_cache', npmCacheDir.get().asFile.absolutePath
     task.environment 'NPM_CONFIG_CACHE', npmCacheDir.get().asFile.absolutePath
     task.environment 'npm_config_audit', 'false'
@@ -89,7 +114,7 @@ tasks.register('npmBuild', Exec) {
     inputs.file file("${uiDir}/index.html")
     inputs.file file("${uiDir}/package.json")
     inputs.file file("${uiDir}/package-lock.json")
-    outputs.dir file("${uiDir}/dist")
+    outputs.dir uiDistDir
 }
 
 tasks.register('npmE2e', Exec) {
@@ -103,8 +128,8 @@ tasks.register('npmE2e', Exec) {
     inputs.dir file("${uiDir}/e2e")
     inputs.file file("${uiDir}/playwright.config.ts")
     inputs.dir file("${uiDir}/scripts")
-    inputs.dir file("${uiDir}/dist")
-    outputs.dir file("${uiDir}/playwright-static")
+    inputs.dir uiDistDir
+    outputs.dir uiPlaywrightStaticDir
 }
 
 tasks.register('cleanUiReactGenerated', Delete) {
@@ -128,7 +153,7 @@ tasks.named('check') {
 tasks.named('jar') {
     archiveBaseName = 'npdev-editor-ui'
     dependsOn tasks.named('npmBuild')
-    from(file("${uiDir}/dist")) {
+    from(uiDistDir) {
         into 'META-INF/resources/npdev-ui-react'
     }
     manifest {

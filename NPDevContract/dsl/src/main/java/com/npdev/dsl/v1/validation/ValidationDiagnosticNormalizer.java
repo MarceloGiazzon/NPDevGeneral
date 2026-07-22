@@ -300,7 +300,7 @@ final class ValidationDiagnosticNormalizer {
     }
 
     static ValidationDiagnostic structuralDiagnostic(ValidationMessage message, String sourceLabel) {
-        String instancePath = message.getInstanceLocation() == null ? "$" : message.getInstanceLocation().toString();
+        String instancePath = normalizeInstancePath(message.getInstanceLocation() == null ? "$" : message.getInstanceLocation().toString());
         String section = inferStructuralSection(instancePath);
         String concept = inferNamedNode(message, "name");
         String field = inferFieldName(message, instancePath);
@@ -343,6 +343,34 @@ final class ValidationDiagnosticNormalizer {
         }
         String value = message.getInstanceNode().get(propertyName).asText();
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static String normalizeInstancePath(String value) {
+        if (value == null || value.isBlank() || "$".equals(value)) {
+            return "$";
+        }
+        if (value.startsWith("$")) {
+            return value;
+        }
+        if (!value.startsWith("/")) {
+            return "$." + value;
+        }
+
+        StringBuilder builder = new StringBuilder("$");
+        for (String segment : value.split("/")) {
+            if (segment.isBlank()) {
+                continue;
+            }
+            String decoded = segment.replace("~1", "/").replace("~0", "~");
+            if (decoded.matches("\\d+")) {
+                builder.append('[').append(decoded).append(']');
+            } else if (decoded.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+                builder.append('.').append(decoded);
+            } else {
+                builder.append("['").append(decoded.replace("'", "\\'")).append("']");
+            }
+        }
+        return builder.toString();
     }
 
     private static String inferFieldName(ValidationMessage message, String instancePath) {

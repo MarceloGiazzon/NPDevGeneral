@@ -30,6 +30,21 @@ class DefaultExecutionAuthorizationPolicyTest {
     }
 
     @Test
+    void deniesTenantIdDefaultEvenWithFullRolesAndPermissions(){
+        // ARCH-15: "default" is a reserved sentinel meaning "no tenant registered" -- denial must
+        // come from the tenantId itself, not merely from missing roles. A fully-privileged
+        // requester registered under the literal tenantId "default" must still be denied.
+        ExecutionContext requester = ExecutionContext.of("default", "actor-a").withRoles(Set.of("ADMIN"));
+        assertFalse(policy.canExecuteFlow(requester, "CreateUser"));
+        assertFalse(policy.canPublishEvent(requester, "UserCreated", "corr-1"));
+        assertFalse(policy.canReadFailures(requester));
+        assertFalse(policy.canReadAdminOps(requester));
+
+        ExecutionContext caseInsensitive = ExecutionContext.of("DEFAULT", "actor-a").withRoles(Set.of("ADMIN"));
+        assertFalse(policy.canExecuteFlow(caseInsensitive, "CreateUser"));
+    }
+
+    @Test
     void enforcesTenantIsolationAcrossTraceResumeAndSearch() {
         ExecutionContext requester = ExecutionContext.of("tenant-a", "actor-a").withRoles(Set.of("OPERATOR"));
         ExecutionContext otherTenant = ExecutionContext.of("tenant-b", "actor-b");

@@ -1,0 +1,18 @@
+{
+  "scenarioName": "restaurant-business-list-render",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "value": "api-dev" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-__store__\"]", "state": "visible", "label": "Super-user nav ready" },
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-StaffMember\"]", "label": "Open the Staff member business concept" },
+    { "action": "waitForSelector", "selector": "#concept-StaffMember", "state": "visible", "label": "Staff member panel rendered" },
+    { "action": "assertVisible", "selector": "#concept-StaffMember table.records", "label": "Business list grid renders" },
+    { "action": "assertVisible", "selector": "#concept-StaffMember .panel-header h2", "label": "Panel header rendered (concept display name; case-independent of CSS transform)" },
+    { "action": "screenshot", "name": "staff_list" },
+    { "action": "collect", "what": ["domText", "url"] }
+  ]
+}

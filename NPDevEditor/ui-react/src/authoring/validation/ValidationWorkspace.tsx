@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import type { ValidationDiagnostic, ValidationSeverity } from "../../types";
+import type { ValidationDiagnostic } from "../../types";
 import type { AuthoringConfigSession } from "../config/configDocumentTypes";
 import type { AuthoringDocumentSession } from "../editors/modelDocumentTypes";
 import DiagnosticLinkPanel from "../diagnostics/DiagnosticLinkPanel";
@@ -15,14 +15,13 @@ import SemanticGraphPanel from "../graph/SemanticGraphPanel";
 import { buildSemanticGraph } from "../graph/semanticGraph";
 import { buildDiagnosticNavigationTarget } from "../navigation/authoringStep48Ux";
 import { buildConfigValidationDiagnostics, buildModelValidationDiagnostics } from "./authoringValidation";
+import ValidationFilters, { type ScopeFilter, type SeverityFilter } from "./ValidationFilters";
 
 type ValidationWorkspaceProps = {
   documentSession: AuthoringDocumentSession | null;
   configSession: AuthoringConfigSession | null;
   selectedConceptName: string | null;
 };
-
-type SeverityFilter = "all" | ValidationSeverity;
 
 function diagnosticScope(entry: ValidationDiagnostic): "model" | "config" {
   return entry.sourceModule.includes("config") ? "config" : "model";
@@ -34,7 +33,7 @@ export default function ValidationWorkspace({
   selectedConceptName
 }: ValidationWorkspaceProps): JSX.Element {
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
-  const [scopeFilter, setScopeFilter] = useState<"all" | "model" | "config">("all");
+  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
 
   const modelDiagnostics = useMemo(
     () => (documentSession ? buildModelValidationDiagnostics(documentSession.document) : []),
@@ -132,38 +131,12 @@ export default function ValidationWorkspace({
         </article>
       </section>
 
-      <section className="authoring-editor-section">
-        <div className="authoring-editor-section__header">
-          <div>
-            <h3>Filters</h3>
-            <p>Switch between severity and scope views to find where a problem lives and what kind it is.</p>
-          </div>
-        </div>
-        <div className="authoring-inline-actions">
-          {(["all", "error", "warning", "info"] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              className={`authoring-secondary-inline ${severityFilter === value ? "is-selected" : ""}`}
-              onClick={() => setSeverityFilter(value)}
-            >
-              {value === "all" ? "All severities" : value}
-            </button>
-          ))}
-        </div>
-        <div className="authoring-inline-actions">
-          {(["all", "model", "config"] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              className={`authoring-secondary-inline ${scopeFilter === value ? "is-selected" : ""}`}
-              onClick={() => setScopeFilter(value)}
-            >
-              {value === "all" ? "All scopes" : value}
-            </button>
-          ))}
-        </div>
-      </section>
+      <ValidationFilters
+        severityFilter={severityFilter}
+        scopeFilter={scopeFilter}
+        onSetSeverityFilter={setSeverityFilter}
+        onSetScopeFilter={setScopeFilter}
+      />
 
       <section className="authoring-editor-section">
         <div className="authoring-editor-section__header">

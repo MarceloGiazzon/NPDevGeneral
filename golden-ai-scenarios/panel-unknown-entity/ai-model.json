@@ -1,0 +1,114 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "app": {
+    "name": "Unknown Entity Panel",
+    "kind": "expanded-beta-application"
+  },
+  "entities": [
+    {
+      "name": "Ticket",
+      "fields": [
+        {
+          "name": "title",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "CreateTicket",
+      "entity": "Ticket",
+      "operation": "create"
+    }
+  ],
+  "panels": [
+    {
+      "panelId": "ghost-panel",
+      "type": "entity-list",
+      "route": "/ghost",
+      "dataSource": {
+        "kind": "entity",
+        "name": "Ghost"
+      },
+      "requiredRole": "agent",
+      "tenantScoped": true
+    }
+  ],
+  "procedures": [
+    {
+      "procedureId": "noop",
+      "type": "read-only-query",
+      "inputs": [],
+      "outputs": [],
+      "sideEffectType": "none",
+      "requiredRole": "agent",
+      "tenantScoped": true,
+      "maxAffectedRows": 0
+    }
+  ],
+  "workflows": [
+    {
+      "workflowId": "ticket-flow",
+      "entity": "Ticket",
+      "states": [
+        "open",
+        "closed"
+      ],
+      "startState": "open",
+      "terminalStates": [
+        "closed"
+      ],
+      "transitions": [
+        {
+          "name": "close",
+          "from": "open",
+          "to": "closed",
+          "requiredRole": "agent"
+        }
+      ],
+      "tenantScoped": true
+    }
+  ],
+  "tenancy": {
+    "mode": "shared-app-tenant-scoped-data",
+    "tenantIdField": "tenantId",
+    "testTenants": [
+      "tenant-a",
+      "tenant-b"
+    ]
+  },
+  "auth": {
+    "mode": "generated-test-token",
+    "principalFields": [
+      "userId",
+      "tenantId",
+      "roles"
+    ],
+    "testUsers": [
+      {
+        "userId": "agent-a",
+        "tenantId": "tenant-a",
+        "roles": [
+          "agent"
+        ]
+      },
+      {
+        "userId": "agent-b",
+        "tenantId": "tenant-b",
+        "roles": [
+          "agent"
+        ]
+      }
+    ]
+  },
+  "roles": [
+    {
+      "roleId": "agent",
+      "permissions": [
+        "ticket:read"
+      ]
+    }
+  ]
+}

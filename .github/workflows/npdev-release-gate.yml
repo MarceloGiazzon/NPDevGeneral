@@ -9,18 +9,47 @@ concurrency:
 
 jobs:
   release-gate:
-    name: NPDev manual release gate
+    name: AI-only Beta 0 release eligibility
     runs-on: windows-latest
-    timeout-minutes: 240
+    timeout-minutes: 150
 
     defaults:
       run:
         shell: pwsh
 
+    env:
+      CI: true
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+
     steps:
-      - name: Manual release gate disabled for CI hardening
-        run: |
-          Write-Host "The monolithic beta release gate is intentionally manual-only."
-          Write-Host "Use NPDev CI Validation for automatic push/PR validation."
-          Write-Host "Local official release baseline remains valid and traceable."
-          Write-Host "Re-enable this workflow only after each beta-gate lane is CI-safe as an isolated step."
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run traceable Beta 0 release check
+        run: pwsh ./scripts/quality/run-traceable-local-release.ps1 -WorkspaceRoot .
+
+      - name: Run roadmap closure check
+        if: always()
+        run: pwsh ./scripts/quality/run-roadmap-closure-check.ps1 -WorkspaceRoot .
+
+      - name: Upload release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npdev-release-gate-evidence
+          path: scripts/reports/out
+          if-no-files-found: warn
+          retention-days: 30

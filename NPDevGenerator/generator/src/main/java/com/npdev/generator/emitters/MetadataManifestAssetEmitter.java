@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.npdev.dsl.v1.compiled.CompiledMetadataCanonicalJson;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.parser.ResolvedModelSource;
 import com.npdev.generator.output.GeneratedSourceWriter;
 
 import java.nio.file.Path;
@@ -33,7 +34,13 @@ public final class MetadataManifestAssetEmitter {
     }
 
     public void emit(CompiledModel model, Path modelSourcePath) throws Exception {
-        JsonNode metadataRoot = objectMapper.readTree(CompiledMetadataCanonicalJson.toJson(modelSourcePath, model));
+        emit(model, null, modelSourcePath);
+    }
+
+    public void emit(CompiledModel model, ResolvedModelSource resolvedModelSource, Path modelSourcePath) throws Exception {
+        JsonNode metadataRoot = objectMapper.readTree(resolvedModelSource == null
+                ? CompiledMetadataCanonicalJson.toJson(modelSourcePath, model)
+                : CompiledMetadataCanonicalJson.toJson(resolvedModelSource.resolvedRoot(), model));
         JsonNode catalogsNode = metadataRoot.path("catalogs");
         String metadataVersion = metadataRoot.path("metadataVersion").asText("1.0.0");
 

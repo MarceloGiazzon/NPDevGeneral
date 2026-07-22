@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/scenario-coherence-report.schema.json",
+  "title": "NPDev Scenario Coherence Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "scenarioRoot",
+    "overallStatus",
+    "scenarioCount",
+    "violationCount",
+    "negativeScenarioPositiveClassCount",
+    "domainMismatchCount",
+    "scenarios",
+    "violations"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-scenario-coherence-report.v1"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "scriptPath": {
+      "const": "scripts/quality/validate-scenario-coherence.ps1"
+    },
+    "workspaceRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scenarioRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "overallStatus": {
+      "enum": ["passed", "failed"]
+    },
+    "scenarioCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "violationCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "negativeScenarioPositiveClassCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "domainMismatchCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/scenario"
+      }
+    },
+    "violations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/violation"
+      }
+    }
+  },
+  "$defs": {
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenarioId",
+        "status",
+        "kind",
+        "expectedOutcome",
+        "expectedFailureStage",
+        "expectedClass",
+        "negativeScenario",
+        "domainMismatch",
+        "violations"
+      ],
+      "properties": {
+        "scenarioId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": ["passed", "failed"]
+        },
+        "kind": {
+          "type": "string"
+        },
+        "expectedOutcome": {
+          "type": "string"
+        },
+        "expectedFailureStage": {
+          "type": "string"
+        },
+        "expectedClass": {
+          "type": ["string", "null"]
+        },
+        "negativeScenario": {
+          "type": "boolean"
+        },
+        "domainMismatch": {
+          "type": "boolean"
+        },
+        "violations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/violation"
+          }
+        }
+      }
+    },
+    "violation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarioId", "code", "classification", "message"],
+      "properties": {
+        "scenarioId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "classification": {
+          "enum": [
+            "current-roadmap-blocker",
+            "known-risk",
+            "post-roadmap-backlog",
+            "human-decision-required",
+            "invalid-or-duplicate"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

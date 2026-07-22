@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from "react";
 import AuditTimelinePanel from "../AuditTimelinePanel";
-import BusinessWorkspacePanel from "../BusinessWorkspacePanel";
 import ModelEditorPanel from "../ModelEditorPanel";
 import OperatorConsolePanel from "../OperatorConsolePanel";
 import OrchestrationEditorPanel from "../OrchestrationEditorPanel";
@@ -8,10 +7,8 @@ import PluginProvenancePanel from "../PluginProvenancePanel";
 import PluginRepositoryPanel from "../PluginRepositoryPanel";
 import PromptHistoryPanel from "../PromptHistoryPanel";
 import RuleEditorPanel from "../RuleEditorPanel";
-import RuntimeRefreshPanel from "../RuntimeRefreshPanel";
 
 type TabId =
-  | "workspace"
   | "model-editor"
   | "rule-editor"
   | "orchestration-editor"
@@ -19,8 +16,7 @@ type TabId =
   | "audit-timeline"
   | "prompt-history"
   | "plugin-provenance"
-  | "plugin-repository"
-  | "runtime-refresh";
+  | "plugin-repository";
 
 type TabDef = {
   id: TabId;
@@ -28,7 +24,6 @@ type TabDef = {
 };
 
 const TABS: TabDef[] = [
-  { id: "workspace", label: "Business Workspace" },
   { id: "model-editor", label: "Model Editor" },
   { id: "rule-editor", label: "Rule Editor" },
   { id: "orchestration-editor", label: "Orchestration Editor" },
@@ -36,14 +31,11 @@ const TABS: TabDef[] = [
   { id: "audit-timeline", label: "Audit + Timeline" },
   { id: "prompt-history", label: "Prompt History" },
   { id: "plugin-provenance", label: "Plugin Provenance" },
-  { id: "plugin-repository", label: "Plugin Repository" },
-  { id: "runtime-refresh", label: "Runtime Refresh" }
+  { id: "plugin-repository", label: "Plugin Repository" }
 ];
 
 function renderPanel(activeTab: TabId): JSX.Element {
   switch (activeTab) {
-    case "workspace":
-      return <BusinessWorkspacePanel />;
     case "model-editor":
       return <ModelEditorPanel />;
     case "rule-editor":
@@ -60,10 +52,8 @@ function renderPanel(activeTab: TabId): JSX.Element {
       return <PluginProvenancePanel />;
     case "plugin-repository":
       return <PluginRepositoryPanel />;
-    case "runtime-refresh":
-      return <RuntimeRefreshPanel />;
     default:
-      return <BusinessWorkspacePanel />;
+      return <ModelEditorPanel />;
   }
 }
 
@@ -74,10 +64,10 @@ type ReactWorkbenchAppProps = {
 export default function ReactWorkbenchApp({
   onOpenAuthoringStudio
 }: ReactWorkbenchAppProps): JSX.Element {
-  const [activeTab, setActiveTab] = useState<TabId>("workspace");
+  const [activeTab, setActiveTab] = useState<TabId>("model-editor");
 
   const activeTabLabel = useMemo(() => {
-    return TABS.find((tab) => tab.id === activeTab)?.label ?? "Business Workspace";
+    return TABS.find((tab) => tab.id === activeTab)?.label ?? "Model Editor";
   }, [activeTab]);
 
   return (

@@ -1,0 +1,32 @@
+{
+  "modelVersion" : "compiled-model",
+  "tables" : [ {
+    "name" : "users",
+    "columns" : [ {
+      "name" : "active",
+      "sqlType" : "BOOLEAN",
+      "required" : true,
+      "unique" : false
+    }, {
+      "name" : "email",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : false
+    }, {
+      "name" : "id",
+      "sqlType" : "UUID",
+      "required" : true,
+      "unique" : true
+    }, {
+      "name" : "name",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : false
+    }, {
+      "name" : "tenant_id",
+      "sqlType" : "VARCHAR",
+      "required" : true,
+      "unique" : false
+    } ]
+  } ]
+}

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+@SuppressWarnings("deprecation")
 public final class ModelAst {
     public static final String DEFAULT_DSL_VERSION = "1.0.0";
 
@@ -21,6 +22,10 @@ public final class ModelAst {
     private final List<RuleProfileAst> ruleProfiles;
     private final List<ProcedureAst> procedures;
     private final List<PanelAst> panels;
+    private final List<GuidePageAst> guidePages;
+    private final List<AggregateAst> aggregates;
+    private final List<AutoPanelAst> autoPanels;
+    private final List<SelectorAst> selectors;
     private final List<String> parserWarnings;
 
     public ModelAst(String namespace, String version, List<? extends EntityAst> entities) {
@@ -122,6 +127,102 @@ public final class ModelAst {
             List<PanelAst> panels,
             List<String> parserWarnings
     ) {
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, List.of(), List.of(), parserWarnings);
+    }
+
+    public ModelAst(
+            String namespace,
+            String dslVersion,
+            String version,
+            List<? extends EntityAst> entities,
+            List<DomainTypeAst> domainTypes,
+            List<CapabilityAst> capabilities,
+            List<CapabilityBindingAst> bindings,
+            List<EventAst> events,
+            List<FlowAst> flows,
+            List<OrchestrationAst> orchestrationRules,
+            List<QueryAst> queries,
+            List<RuleProfileAst> ruleProfiles,
+            List<ProcedureAst> procedures,
+            List<PanelAst> panels,
+            List<GuidePageAst> guidePages,
+            List<String> parserWarnings
+    ) {
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, List.of(), parserWarnings);
+    }
+
+    public ModelAst(
+            String namespace,
+            String dslVersion,
+            String version,
+            List<? extends EntityAst> entities,
+            List<DomainTypeAst> domainTypes,
+            List<CapabilityAst> capabilities,
+            List<CapabilityBindingAst> bindings,
+            List<EventAst> events,
+            List<FlowAst> flows,
+            List<OrchestrationAst> orchestrationRules,
+            List<QueryAst> queries,
+            List<RuleProfileAst> ruleProfiles,
+            List<ProcedureAst> procedures,
+            List<PanelAst> panels,
+            List<GuidePageAst> guidePages,
+            List<AggregateAst> aggregates,
+            List<String> parserWarnings
+    ) {
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates,
+                List.of(), parserWarnings);
+    }
+
+    public ModelAst(
+            String namespace,
+            String dslVersion,
+            String version,
+            List<? extends EntityAst> entities,
+            List<DomainTypeAst> domainTypes,
+            List<CapabilityAst> capabilities,
+            List<CapabilityBindingAst> bindings,
+            List<EventAst> events,
+            List<FlowAst> flows,
+            List<OrchestrationAst> orchestrationRules,
+            List<QueryAst> queries,
+            List<RuleProfileAst> ruleProfiles,
+            List<ProcedureAst> procedures,
+            List<PanelAst> panels,
+            List<GuidePageAst> guidePages,
+            List<AggregateAst> aggregates,
+            List<AutoPanelAst> autoPanels,
+            List<String> parserWarnings
+    ) {
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates,
+                autoPanels, List.of(), parserWarnings);
+    }
+
+    public ModelAst(
+            String namespace,
+            String dslVersion,
+            String version,
+            List<? extends EntityAst> entities,
+            List<DomainTypeAst> domainTypes,
+            List<CapabilityAst> capabilities,
+            List<CapabilityBindingAst> bindings,
+            List<EventAst> events,
+            List<FlowAst> flows,
+            List<OrchestrationAst> orchestrationRules,
+            List<QueryAst> queries,
+            List<RuleProfileAst> ruleProfiles,
+            List<ProcedureAst> procedures,
+            List<PanelAst> panels,
+            List<GuidePageAst> guidePages,
+            List<AggregateAst> aggregates,
+            List<AutoPanelAst> autoPanels,
+            List<SelectorAst> selectors,
+            List<String> parserWarnings
+    ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
         this.version = version;
@@ -136,6 +237,10 @@ public final class ModelAst {
         this.ruleProfiles = new ArrayList<>(ruleProfiles);
         this.procedures = new ArrayList<>(procedures);
         this.panels = new ArrayList<>(panels);
+        this.guidePages = new ArrayList<>(guidePages);
+        this.aggregates = new ArrayList<>(aggregates);
+        this.autoPanels = new ArrayList<>(autoPanels);
+        this.selectors = new ArrayList<>(selectors);
         this.parserWarnings = new ArrayList<>(parserWarnings);
     }
 
@@ -193,6 +298,22 @@ public final class ModelAst {
 
     public List<PanelAst> getPanels() {
         return Collections.unmodifiableList(panels);
+    }
+
+    public List<GuidePageAst> getGuidePages() {
+        return Collections.unmodifiableList(guidePages);
+    }
+
+    public List<AggregateAst> getAggregates() {
+        return Collections.unmodifiableList(aggregates);
+    }
+
+    public List<AutoPanelAst> getAutoPanels() {
+        return Collections.unmodifiableList(autoPanels);
+    }
+
+    public List<SelectorAst> getSelectors() {
+        return Collections.unmodifiableList(selectors);
     }
 
     public List<String> getParserWarnings() {

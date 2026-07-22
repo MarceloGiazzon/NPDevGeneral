@@ -1,5 +1,9 @@
 package com.npdev.generator.emitters;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledMetadataCanonicalJson;
 import com.npdev.dsl.v1.compiled.CompiledModelCanonicalJson;
@@ -9,7 +13,12 @@ import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowStep;
 import com.npdev.dsl.v1.compiled.CompiledOrchestration;
 import com.npdev.dsl.v1.compiled.CompiledOrchestrationAction;
+import com.npdev.dsl.v1.compiled.CompiledPanel;
+import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
+import com.npdev.dsl.v1.compiled.CompiledProcedure;
+import com.npdev.dsl.v1.parser.ResolvedModelSource;
+import com.npdev.generator.packs.BuiltinPackComposer;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.templates.TemplateEngine;
 
@@ -20,7 +29,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedHashSet;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -28,12 +41,26 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public final class RuntimeApiEmitter extends AbstractEmitter {
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     public RuntimeApiEmitter(TemplateEngine templates, GeneratedSourceWriter writer) {
         super(templates, writer);
     }
 
     public void emit(CompiledModel model, Path modelSourcePath) {
+        emit(model, null, modelSourcePath);
+    }
+
+    public void emit(CompiledModel model, ResolvedModelSource resolvedModelSource, Path modelSourcePath) {
+        emit(model, resolvedModelSource, modelSourcePath, "ADMIN");
+    }
+
+    public void emit(
+            CompiledModel model,
+            ResolvedModelSource resolvedModelSource,
+            Path modelSourcePath,
+            String superUserRole
+    ) {
         writer.deleteRelativeIfExists("src/main/java/com/npdev/generated/runtime/adapters/InProcEventStoreAdapter.java");
 
         Map<String, Object> ctx = new HashMap<>();
@@ -202,29 +229,36 @@ writer.writeRelative(
                 templates.render("npdev-runtime-actuator-properties.mustache", ctx)
         );
 
-        if (modelSourcePath != null && Files.exists(modelSourcePath)) {
+        if (resolvedModelSource != null) {
+            writer.writeRelative("src/main/resources/npdev/model.json", resolvedModelSource.resolvedModelJson());
+            writer.writeRelative("src/main/resources/npdev/model-source-manifest.json", emitModelSourceManifest(resolvedModelSource));
+        } else if (modelSourcePath != null && Files.exists(modelSourcePath)) {
             writer.writeRelative("src/main/resources/npdev/model.json", readModelSource(modelSourcePath));
         }
+        GeneratedPluginMountPlan pluginMountPlan = GeneratedPluginMountPlan.fromModelSource(resolvedModelSource, modelSourcePath);
+
         writer.writeRelative(
                 "src/main/resources/npdev/compiled-model.json",
                 CompiledModelCanonicalJson.toJson(model)
         );
         writer.writeRelative(
                 "src/main/resources/npdev/compiled-metadata.json",
-                CompiledMetadataCanonicalJson.toJson(modelSourcePath, model)
+                resolvedModelSource == null
+                        ? CompiledMetadataCanonicalJson.toJson(modelSourcePath, model)
+                        : CompiledMetadataCanonicalJson.toJson(resolvedModelSource.resolvedRoot(), model)
         );
 
         writer.writeRelative(
                 "src/main/resources/npdev/bindings/dev.bindings.json",
-                readBindingManifest("dev.bindings.json")
+                emitBindingManifest("dev.bindings.json", pluginMountPlan)
         );
         writer.writeRelative(
                 "src/main/resources/npdev/bindings/alt.bindings.json",
-                readBindingManifest("alt.bindings.json")
+                emitBindingManifest("alt.bindings.json", pluginMountPlan)
         );
         writer.writeRelative(
                 "src/main/resources/npdev/security/dev.permissions.json",
-                generatePermissionManifest(model)
+                generatePermissionManifest(model, resolvedModelSource, modelSourcePath, superUserRole)
         );
         writer.writeRelative(
                 "src/main/resources/npdev/security/dev.ui-metadata-policy.json",
@@ -236,11 +270,15 @@ writer.writeRelative(
         );
         writer.writeRelative(
                 "src/main/resources/npdev/plugins/default.plugin-manifest.json",
-                readPluginManifest("default.plugin-manifest.json")
+                emitPluginManifest("default.plugin-manifest.json", pluginMountPlan)
+        );
+        writer.writeRelative(
+                "src/main/resources/npdev/plugins/dev.plugin-manifest.json",
+                emitPluginManifest("dev.plugin-manifest.json", pluginMountPlan)
         );
         writer.writeRelative(
                 "src/main/resources/npdev/plugins/warning.plugin-manifest.json",
-                readPluginManifest("warning.plugin-manifest.json")
+                emitPluginManifest("warning.plugin-manifest.json", pluginMountPlan)
         );
         for (String fileName : listPluginPackageDescriptorFiles()) {
             writer.writeRelative(
@@ -248,10 +286,18 @@ writer.writeRelative(
                     readPluginPackageDescriptor(fileName)
             );
         }
+        for (GeneratedPluginMountPlan.PackageGroup packageGroup : pluginMountPlan.packageGroups()) {
+            GeneratedPluginMountPlan.Mount representative = packageGroup.representative();
+            writer.writeRelative(
+                    "src/main/resources/npdev/plugin-packages/" + representative.packageFileName(),
+                    emitGeneratedPluginPackageDescriptor(packageGroup)
+            );
+        }
         writer.writeRelative(
                 "src/main/resources/npdev/plugin-packages/index.json",
-                readPluginPackageIndex()
+                readPluginPackageIndex(pluginMountPlan)
         );
+        emitJavaSourceMounts(pluginMountPlan);
     }
 
     private static String readModelSource(Path modelSourcePath) {
@@ -260,6 +306,27 @@ writer.writeRelative(
         } catch (IOException e) {
             throw new RuntimeException("Failed reading model source: " + modelSourcePath, e);
         }
+    }
+
+    private static String emitModelSourceManifest(ResolvedModelSource source) {
+        String included = source.includedFiles().stream()
+                .sorted(Comparator.comparing(path -> path.toString().toLowerCase(Locale.ROOT)))
+                .map(path -> "    \"" + jsonEscape(path.toString().replace('\\', '/')) + "\"")
+                .collect(Collectors.joining("," + System.lineSeparator()));
+        return """
+{
+  "manifestVersion": "1.0.0",
+  "rootModel": "%s",
+  "canonicalRootDirectory": "%s",
+  "includedFiles": [
+%s
+  ]
+}
+""".formatted(
+                jsonEscape(source.rootModelPath().toString().replace('\\', '/')),
+                jsonEscape(source.canonicalRootDirectory().toString().replace('\\', '/')),
+                included
+        );
     }
 
     private static String readCanonicalUiSelectionJson() {
@@ -312,11 +379,112 @@ writer.writeRelative(
         }
     }
 
-    private static String generatePermissionManifest(CompiledModel model) {
+    private static String emitBindingManifest(String fileName, GeneratedPluginMountPlan pluginMountPlan) {
+        String source = readBindingManifest(fileName);
+        if (pluginMountPlan.isEmpty()) {
+            return source;
+        }
+        try {
+            ObjectNode root = (ObjectNode) OBJECT_MAPPER.readTree(stripJsonBom(source));
+            ArrayNode bindings = root.withArray("bindings");
+            Set<String> existing = new LinkedHashSet<>();
+            for (JsonNode binding : bindings) {
+                existing.add(bindingKey(
+                        binding.path("capability").asText(),
+                        binding.path("adapterId").asText()
+                ));
+            }
+            for (GeneratedPluginMountPlan.Mount mount : pluginMountPlan.mounts()) {
+                String key = bindingKey(mount.capability(), mount.adapterId());
+                if (existing.contains(key)) {
+                    continue;
+                }
+                ObjectNode binding = OBJECT_MAPPER.createObjectNode();
+                binding.put("capability", mount.capability());
+                binding.put("capabilityType", mount.capabilityType());
+                binding.put("adapterId", mount.adapterId());
+                binding.put("adapterClass", "");
+                binding.put("environment", "");
+                binding.put("tenantId", "");
+                bindings.add(binding);
+                existing.add(key);
+            }
+            return prettyJson(root);
+        } catch (IOException exception) {
+            throw new RuntimeException("Failed emitting generated binding manifest: " + fileName, exception);
+        }
+    }
+
+    private static String generatePermissionManifest(
+            CompiledModel model,
+            ResolvedModelSource resolvedModelSource,
+            Path modelSourcePath,
+            String superUserRole
+    ) {
+        String superUserRoleKey = (superUserRole == null || superUserRole.isBlank())
+                ? "admin" : superUserRole.trim().toLowerCase(Locale.ROOT);
+
         Set<String> permissions = new LinkedHashSet<>();
         permissions.add("flow.execute");
         permissions.add("capability.invoke");
         permissions.add("event.publish");
+
+        List<PermissionGrantSpec> grants = new ArrayList<>();
+
+        // Generated CRUD controllers require an explicit grant per persisted concept and
+        // operation (see GeneratedCrudRuntimeSupport.checkCrudPermission, which checks
+        // "<operation>:<conceptName>" lowercased). Without these the generated Business UI
+        // and CRUD API cannot read or write at all under kernel-controlled CRUD.
+        // Concepts contributed by built-in platform packs (identity/workspace) are reserved
+        // to the configured super-user role; ordinary business concepts are also opened to
+        // the generic "user" role so regular authenticated users can use the app.
+        for (CompiledConcept concept : model.getConcepts()) {
+            if (concept == null || concept.getName() == null || concept.getName().isBlank()) {
+                continue;
+            }
+            if (concept.getTableName() == null || concept.getTableName().isBlank()) {
+                continue;
+            }
+            String conceptKey = concept.getName().toLowerCase(Locale.ROOT);
+            boolean adminOnly = isAdminConcept(concept.getName());
+            // workspace::Menu is a platform-default navigation source read by every logged-in
+            // user's own shell/UI, not an admin surface -- unlike every other admin-pack concept,
+            // withholding its read/list operations from ordinary users isn't a security boundary,
+            // it just breaks navigation entirely for anyone who isn't a super-user. Its own
+            // create/update/delete stay admin-only, same as every other identity::*/workspace::*
+            // concept -- only list/read are opened here.
+            boolean publiclyReadableMenu = "workspace::menu".equals(conceptKey);
+            for (String operation : List.of("create", "update", "delete", "read", "list")) {
+                String permission = operation + ":" + conceptKey;
+                // Blank tenantId is a wildcard match in PermissionGrant.matches() -- these grants are
+                // role-based capability checks ("can an admin/user create this concept type at all"),
+                // not data access, so they apply to every platform tenant. Row-level data isolation is
+                // a separate, already-enforced concern (tenant_id scoping in JdbcBusinessConceptStore /
+                // InMemoryConceptStore). Without this, a tenant created at runtime via
+                // /api/admin/tenants authenticates fine but gets 403 on every generated CRUD call,
+                // because the old hardcoded tenantId="dev" only ever matched the one tenant the
+                // generator itself knows about at generation time.
+                grants.add(new PermissionGrantSpec(permission, "", "", superUserRoleKey));
+                boolean openMenuRead = publiclyReadableMenu && ("read".equals(operation) || "list".equals(operation));
+                if (openMenuRead && !"user".equals(superUserRoleKey)) {
+                    grants.add(new PermissionGrantSpec(permission, "", "", "user"));
+                }
+                if (!adminOnly && !"user".equals(superUserRoleKey)) {
+                    grants.add(new PermissionGrantSpec(permission, "", "", "user"));
+                    // If this CRUD operation's mutation is delegated to a declared Flow (the
+                    // Flow-CRUD wrapper), a "user" granted the CRUD permission above must also be
+                    // granted flow.execute, or the wrapper's kernelRunner.execute() call throws
+                    // PERMISSION_DENIED even though the CRUD-level check just passed -- these are
+                    // two separate gates on the same request. superUserRoleKey already gets
+                    // flow.execute unconditionally (every collected permission is granted to it
+                    // below), so only the "user" role needs this alignment.
+                    if (("create".equals(operation) || "update".equals(operation) || "delete".equals(operation))
+                            && model.findFlow(concept.getName(), operation).isPresent()) {
+                        grants.add(new PermissionGrantSpec("flow.execute", "", "", "user"));
+                    }
+                }
+            }
+        }
 
         for (CompiledFlow flow : model.getFlows()) {
             addIfPresent(permissions, flow.getAction() == null ? null : flow.getAction().getPermissionHint());
@@ -327,15 +495,75 @@ writer.writeRelative(
                 addIfPresent(permissions, action.getAction() == null ? null : action.getAction().getPermissionHint());
             }
         }
+        for (CompiledProcedure procedure : model.getProcedures()) {
+            for (String requirement : procedure.permissionRequirements()) {
+                addIfPresent(permissions, requirement);
+            }
+        }
+        for (CompiledPanel panel : model.getPanels()) {
+            addRoleVisibilityPermission(permissions, panel.visibility());
+            for (CompiledPanelAction action : panel.actions()) {
+                for (String requirement : action.permissionRequirements()) {
+                    addIfPresent(permissions, requirement);
+                }
+            }
+        }
 
-        String grants = permissions.stream()
-                .map(permission -> """
+        AiBetaSecurityMetadata aiSecurity = readAiBetaSecurityMetadata(resolvedModelSource, modelSourcePath);
+        permissions.addAll(aiSecurity.allDeclaredPermissions());
+
+        for (String permission : permissions) {
+            grants.add(new PermissionGrantSpec(permission, "", "", superUserRoleKey));
+        }
+        // event.publish backs the mutation-event side effect of every CRUD write (see
+        // GeneratedCrudRuntimeSupport.publishMutationEvent), which a business "user" role
+        // must already have cleared a per-concept create/update/delete grant to reach. Without
+        // this, every business-concept write under kernel-controlled CRUD throws after the
+        // permission check passes, because the event-publish step is unconditionally
+        // admin-only.
+        if (!"user".equals(superUserRoleKey)) {
+            grants.add(new PermissionGrantSpec("event.publish", "", "", "user"));
+        }
+        for (AiBetaUser user : aiSecurity.testUsers()) {
+            Set<String> userPermissions = new LinkedHashSet<>(List.of(
+                    "flow.execute",
+                    "capability.invoke",
+                    "event.publish"
+            ));
+            for (String role : user.roles()) {
+                addIfPresent(userPermissions, role);
+                userPermissions.addAll(aiSecurity.permissionsForRole(role));
+            }
+            for (String permission : userPermissions) {
+                grants.add(new PermissionGrantSpec(permission, user.tenantId(), user.userId(), ""));
+                for (String role : user.roles()) {
+                    grants.add(new PermissionGrantSpec(permission, user.tenantId(), "", role));
+                }
+            }
+        }
+
+        String grantsJson = grants.stream()
+                // A concept with multiple Flow-delegated CRUD modes (e.g. create AND update both
+                // declared Flows) previously added the same flow.execute/user grant once per mode,
+                // producing duplicate entries in the manifest -- harmless (a duplicate grant is a
+                // no-op) but pure noise. distinct() relies on the record's generated equals/hashCode.
+                .distinct()
+                .sorted(Comparator.comparing(PermissionGrantSpec::permission)
+                        .thenComparing(PermissionGrantSpec::tenantId)
+                        .thenComparing(PermissionGrantSpec::actorId)
+                        .thenComparing(PermissionGrantSpec::role))
+                .map(grant -> """
     {
       "permission": "%s",
-      "tenantId": "dev",
-      "actorId": "",
-      "role": "admin"
-    }""".formatted(jsonEscape(permission)))
+      "tenantId": "%s",
+      "actorId": "%s",
+      "role": "%s"
+    }""".formatted(
+                        jsonEscape(grant.permission()),
+                        jsonEscape(grant.tenantId()),
+                        jsonEscape(grant.actorId()),
+                        jsonEscape(grant.role())
+                ))
                 .collect(Collectors.joining("," + System.lineSeparator()));
 
         return """
@@ -344,7 +572,19 @@ writer.writeRelative(
 %s
   ]
 }
-""".formatted(grants);
+""".formatted(grantsJson);
+    }
+
+    /** True for concepts contributed by a built-in platform pack (the internal NPDev tables). */
+    private static boolean isAdminConcept(String conceptName) {
+        if (conceptName == null) {
+            return false;
+        }
+        int sep = conceptName.indexOf("::");
+        if (sep < 0) {
+            return false;
+        }
+        return BuiltinPackComposer.BUILTIN_PACK_ALIASES.contains(conceptName.substring(0, sep));
     }
 
     private static void collectStepPermissionHints(Iterable<CompiledFlowStep> steps, Set<String> permissions) {
@@ -359,6 +599,79 @@ writer.writeRelative(
             collectStepPermissionHints(step.getThenSteps(), permissions);
             collectStepPermissionHints(step.getElseSteps(), permissions);
         }
+    }
+
+    private static void addRoleVisibilityPermission(Set<String> permissions, String visibility) {
+        if (visibility == null) {
+            return;
+        }
+        String trimmed = visibility.trim();
+        if (trimmed.regionMatches(true, 0, "role:", 0, 5) && trimmed.length() > 5) {
+            addIfPresent(permissions, trimmed.substring(5));
+        }
+    }
+
+    private static AiBetaSecurityMetadata readAiBetaSecurityMetadata(ResolvedModelSource resolvedModelSource, Path modelSourcePath) {
+        if (resolvedModelSource != null) {
+            return readAiBetaSecurityMetadata(resolvedModelSource.resolvedRoot(), "resolved model source");
+        }
+        if (modelSourcePath == null || !Files.isRegularFile(modelSourcePath)) {
+            return AiBetaSecurityMetadata.empty();
+        }
+        try {
+            return readAiBetaSecurityMetadata(OBJECT_MAPPER.readTree(modelSourcePath.toFile()), modelSourcePath.toString());
+        } catch (IOException exception) {
+            throw new RuntimeException("Failed reading AI beta security metadata from " + modelSourcePath, exception);
+        }
+    }
+
+    private static AiBetaSecurityMetadata readAiBetaSecurityMetadata(JsonNode root, String sourceLabel) {
+        if (root == null) {
+            return AiBetaSecurityMetadata.empty();
+        }
+        try {
+            JsonNode metadata = root.path("metadata");
+            Map<String, Set<String>> permissionsByRole = new HashMap<>();
+            for (JsonNode roleNode : metadata.path("roles")) {
+                String roleId = text(roleNode, "roleId");
+                if (roleId.isBlank()) {
+                    continue;
+                }
+                Set<String> rolePermissions = new LinkedHashSet<>();
+                rolePermissions.add(roleId);
+                for (JsonNode permissionNode : roleNode.path("permissions")) {
+                    addIfPresent(rolePermissions, permissionNode.asText(""));
+                }
+                permissionsByRole.put(roleId.toLowerCase(Locale.ROOT), rolePermissions);
+            }
+
+            List<AiBetaUser> users = new ArrayList<>();
+            for (JsonNode userNode : metadata.path("auth").path("testUsers")) {
+                String userId = text(userNode, "userId");
+                String tenantId = text(userNode, "tenantId");
+                if (userId.isBlank() || tenantId.isBlank()) {
+                    continue;
+                }
+                List<String> roles = new ArrayList<>();
+                for (JsonNode roleNode : userNode.path("roles")) {
+                    String role = roleNode.asText("").trim();
+                    if (!role.isBlank()) {
+                        roles.add(role);
+                    }
+                }
+                if (!roles.isEmpty()) {
+                    users.add(new AiBetaUser(userId, tenantId, List.copyOf(roles)));
+                }
+            }
+            return new AiBetaSecurityMetadata(Map.copyOf(permissionsByRole), List.copyOf(users));
+        } catch (RuntimeException exception) {
+            throw new RuntimeException("Failed reading AI beta security metadata from " + sourceLabel, exception);
+        }
+    }
+
+    private static String text(JsonNode node, String fieldName) {
+        JsonNode value = node == null ? null : node.get(fieldName);
+        return value == null || value.isNull() ? "" : value.asText("").trim();
     }
 
     private static String generateUiMetadataPolicyManifest(CompiledModel model) {
@@ -476,6 +789,47 @@ writer.writeRelative(
                 .replace("\n", "\\n");
     }
 
+    private record PermissionGrantSpec(String permission, String tenantId, String actorId, String role) {
+        PermissionGrantSpec {
+            permission = permission == null ? "" : permission.trim();
+            tenantId = tenantId == null ? "" : tenantId.trim();
+            actorId = actorId == null ? "" : actorId.trim();
+            role = role == null ? "" : role.trim();
+        }
+    }
+
+    private record AiBetaUser(String userId, String tenantId, List<String> roles) {
+        AiBetaUser {
+            roles = roles == null ? List.of() : List.copyOf(roles);
+        }
+    }
+
+    private record AiBetaSecurityMetadata(Map<String, Set<String>> permissionsByRole, List<AiBetaUser> testUsers) {
+        AiBetaSecurityMetadata {
+            permissionsByRole = permissionsByRole == null ? Map.of() : Map.copyOf(permissionsByRole);
+            testUsers = testUsers == null ? List.of() : List.copyOf(testUsers);
+        }
+
+        static AiBetaSecurityMetadata empty() {
+            return new AiBetaSecurityMetadata(Map.of(), List.of());
+        }
+
+        Set<String> permissionsForRole(String role) {
+            if (role == null) {
+                return Set.of();
+            }
+            return permissionsByRole.getOrDefault(role.trim().toLowerCase(Locale.ROOT), Set.of());
+        }
+
+        Set<String> allDeclaredPermissions() {
+            Set<String> out = new LinkedHashSet<>();
+            for (Map.Entry<String, Set<String>> entry : permissionsByRole.entrySet()) {
+                addIfPresent(out, entry.getKey());
+                out.addAll(entry.getValue());
+            }
+            return Set.copyOf(out);
+        }
+    }
 
     private static String readDefaultRuntimeManifest() {
         Path manifestPath = Paths.get("resources", "runtime", "dev.runtime.json");
@@ -507,6 +861,61 @@ writer.writeRelative(
         }
     }
 
+    private static String emitPluginManifest(String fileName, GeneratedPluginMountPlan pluginMountPlan) {
+        String source = readPluginManifest(fileName);
+        if (pluginMountPlan.isEmpty()) {
+            return source;
+        }
+        try {
+            ObjectNode root = (ObjectNode) OBJECT_MAPPER.readTree(stripJsonBom(source));
+            ArrayNode plugins = root.withArray("plugins");
+            Set<String> existingAdapters = new LinkedHashSet<>();
+            for (JsonNode plugin : plugins) {
+                for (JsonNode adapter : plugin.path("adapters")) {
+                    existingAdapters.add(adapterContributionKey(
+                            adapter.path("capability").asText(),
+                            adapter.path("operation").asText(),
+                            adapter.path("adapterId").asText()
+                    ));
+                }
+            }
+            for (GeneratedPluginMountPlan.PackageGroup packageGroup : pluginMountPlan.packageGroups()) {
+                ArrayNode adapters = OBJECT_MAPPER.createArrayNode();
+                for (GeneratedPluginMountPlan.Mount mount : packageGroup.mounts()) {
+                    String key = adapterContributionKey(mount.capability(), mount.operation(), mount.adapterId());
+                    if (existingAdapters.contains(key)) {
+                        continue;
+                    }
+                    ObjectNode adapter = OBJECT_MAPPER.createObjectNode();
+                    adapter.put("capability", mount.capability());
+                    adapter.put("operation", mount.operation());
+                    adapter.put("adapterId", mount.adapterId());
+                    adapter.put("bindingKey", mount.bindingKey());
+                    ObjectNode implementation = OBJECT_MAPPER.createObjectNode();
+                    implementation.put("kind", "runtimeRef");
+                    implementation.put("ref", mount.runtimeRef());
+                    adapter.set("implementation", implementation);
+                    adapters.add(adapter);
+                    existingAdapters.add(key);
+                }
+                if (adapters.isEmpty()) {
+                    continue;
+                }
+                GeneratedPluginMountPlan.Mount representative = packageGroup.representative();
+                ObjectNode plugin = OBJECT_MAPPER.createObjectNode();
+                plugin.put("pluginId", representative.pluginId());
+                plugin.put("displayName", representative.displayName());
+                plugin.put("version", representative.version());
+                plugin.put("enabled", true);
+                plugin.set("adapters", adapters);
+                plugins.add(plugin);
+            }
+            return prettyJson(root);
+        } catch (IOException exception) {
+            throw new RuntimeException("Failed emitting generated plugin manifest: " + fileName, exception);
+        }
+    }
+
     private static String readPluginPackageDescriptor(String fileName) {
         Path descriptorPath = resolveProjectResourcePath("PluginPackages", fileName);
         if (descriptorPath == null) {
@@ -519,8 +928,16 @@ writer.writeRelative(
         }
     }
 
-    private static String readPluginPackageIndex() {
-        String resources = listPluginPackageDescriptorFiles().stream()
+    private static String readPluginPackageIndex(GeneratedPluginMountPlan pluginMountPlan) {
+        List<String> packageFiles = new ArrayList<>(listPluginPackageDescriptorFiles());
+        for (GeneratedPluginMountPlan.PackageGroup packageGroup : pluginMountPlan.packageGroups()) {
+            packageFiles.add(packageGroup.representative().packageFileName());
+        }
+        packageFiles = packageFiles.stream()
+                .distinct()
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList();
+        String resources = packageFiles.stream()
                 .map(fileName -> "    \"npdev/plugin-packages/" + fileName + "\"")
                 .collect(java.util.stream.Collectors.joining("," + System.lineSeparator()));
         return """
@@ -531,6 +948,254 @@ writer.writeRelative(
   ]
 }
 """.formatted(resources);
+    }
+
+    private static String emitGeneratedPluginPackageDescriptor(GeneratedPluginMountPlan.PackageGroup packageGroup) {
+        GeneratedPluginMountPlan.Mount representative = packageGroup.representative();
+        if (representative.mountKind() == GeneratedPluginMountPlan.MountKind.JAVA_SOURCE) {
+            return emitJavaSourcePluginPackageDescriptor(packageGroup);
+        }
+        ObjectNode root = OBJECT_MAPPER.createObjectNode();
+        root.put("packageFormatVersion", "1.0");
+        root.put("packageId", representative.packageId());
+        root.put("displayName", "Generated " + representative.capability() + " capability package");
+        root.put("version", "1.0.0");
+        root.put("description", "Generated package descriptor for model-defined capability " + representative.capability() + ".");
+        root.put("provider", "NPDev Generator");
+
+        ObjectNode compatibility = OBJECT_MAPPER.createObjectNode();
+        compatibility.put("npdevRuntimeApiVersion", "1.0");
+        compatibility.put("minBootstrapVersion", "1.0.0");
+        root.set("compatibility", compatibility);
+
+        ObjectNode trust = OBJECT_MAPPER.createObjectNode();
+        trust.put("mode", "internal");
+        trust.put("source", "generated-model");
+        trust.put("level", "trusted");
+        root.set("trust", trust);
+
+        ObjectNode signature = OBJECT_MAPPER.createObjectNode();
+        signature.put("algorithm", "sha256");
+        signature.put("digest", "generated-model-deterministic-placeholder");
+        signature.put("status", "generated");
+        signature.put("verifiedBy", "npdev-generator");
+        root.set("signature", signature);
+
+        ObjectNode provenance = OBJECT_MAPPER.createObjectNode();
+        provenance.put("sourceType", "model.json");
+        provenance.put("sourceLocation", "model.json");
+        provenance.put("attestation", "generated-from-model-customCapabilities");
+        root.set("provenance", provenance);
+
+        ArrayNode artifacts = OBJECT_MAPPER.createArrayNode();
+        ObjectNode artifact = OBJECT_MAPPER.createObjectNode();
+        artifact.put("kind", "runtimeRefBundle");
+        artifact.put("path", "built-in://generic-mounted-capability");
+        artifacts.add(artifact);
+        root.set("artifacts", artifacts);
+
+        ArrayNode capabilities = OBJECT_MAPPER.createArrayNode();
+        for (GeneratedPluginMountPlan.Mount mount : packageGroup.mounts()) {
+            ObjectNode capability = OBJECT_MAPPER.createObjectNode();
+            capability.put("capability", mount.capability());
+            capability.put("operation", mount.operation());
+            capability.put("adapterId", mount.adapterId());
+            capabilities.add(capability);
+        }
+        root.set("capabilities", capabilities);
+
+        ObjectNode pluginManifest = OBJECT_MAPPER.createObjectNode();
+        pluginManifest.put("path", "npdev/plugins/default.plugin-manifest.json");
+        root.set("pluginManifest", pluginManifest);
+
+        return prettyJson(root);
+    }
+
+    private static String emitJavaSourcePluginPackageDescriptor(GeneratedPluginMountPlan.PackageGroup packageGroup) {
+        GeneratedPluginMountPlan.Mount representative = packageGroup.representative();
+        GeneratedPluginMountPlan.JavaSourceDescriptor descriptor = representative.javaSource();
+        ObjectNode root = OBJECT_MAPPER.createObjectNode();
+        root.put("packageFormatVersion", "1.0");
+        root.put("packageId", descriptor.packageId());
+        root.put("displayName", descriptor.displayName());
+        root.put("version", descriptor.version());
+        root.put("description", "Artifact-local Java source package for model-defined capability " + representative.capability() + ".");
+        root.put("provider", "External artifact bundle");
+
+        ObjectNode compatibility = OBJECT_MAPPER.createObjectNode();
+        compatibility.put("npdevRuntimeApiVersion", "1.0");
+        compatibility.put("minBootstrapVersion", "1.0.0");
+        root.set("compatibility", compatibility);
+
+        ObjectNode trust = OBJECT_MAPPER.createObjectNode();
+        trust.put("mode", "local-dev");
+        trust.put("source", "external-artifact-bundle");
+        trust.put("level", "developer-supplied");
+        root.set("trust", trust);
+
+        ObjectNode signature = OBJECT_MAPPER.createObjectNode();
+        signature.put("algorithm", "sha256");
+        signature.put("digest", "artifact-local-java-source");
+        signature.put("status", "generated");
+        signature.put("verifiedBy", "npdev-generator");
+        root.set("signature", signature);
+
+        ObjectNode provenance = OBJECT_MAPPER.createObjectNode();
+        provenance.put("sourceType", "capability.plugin.json");
+        provenance.put("sourceLocation", descriptor.artifactRoot().relativize(descriptor.descriptorPath()).toString().replace('\\', '/'));
+        provenance.put("attestation", "generated-from-artifact-local-java-source");
+        root.set("provenance", provenance);
+
+        ArrayNode artifacts = OBJECT_MAPPER.createArrayNode();
+        ObjectNode artifact = OBJECT_MAPPER.createObjectNode();
+        artifact.put("kind", "javaSource");
+        artifact.put("path", descriptor.sourceRoot());
+        artifacts.add(artifact);
+        root.set("artifacts", artifacts);
+
+        ArrayNode capabilities = OBJECT_MAPPER.createArrayNode();
+        for (GeneratedPluginMountPlan.Mount mount : packageGroup.mounts()) {
+            ObjectNode capability = OBJECT_MAPPER.createObjectNode();
+            capability.put("capability", mount.capability());
+            capability.put("operation", mount.operation());
+            capability.put("adapterId", mount.adapterId());
+            capabilities.add(capability);
+        }
+        root.set("capabilities", capabilities);
+
+        ObjectNode pluginManifest = OBJECT_MAPPER.createObjectNode();
+        pluginManifest.put("path", "npdev/plugins/default.plugin-manifest.json");
+        root.set("pluginManifest", pluginManifest);
+
+        return prettyJson(root);
+    }
+
+    private void emitJavaSourceMounts(GeneratedPluginMountPlan pluginMountPlan) {
+        List<GeneratedPluginMountPlan.JavaSourcePackageGroup> javaSourceGroups = pluginMountPlan.javaSourcePackageGroups();
+        if (javaSourceGroups.isEmpty()) {
+            return;
+        }
+        emitJavaSourceFiles(javaSourceGroups);
+        writer.writeRelative(
+                "src/main/java/com/npdev/generated/runtime/config/GeneratedJavaSourceCapabilityProviders.java",
+                javaSourceProvidersSource(javaSourceGroups)
+        );
+    }
+
+    private void emitJavaSourceFiles(List<GeneratedPluginMountPlan.JavaSourcePackageGroup> javaSourceGroups) {
+        Set<String> emitted = new LinkedHashSet<>();
+        for (GeneratedPluginMountPlan.JavaSourcePackageGroup group : javaSourceGroups) {
+            GeneratedPluginMountPlan.JavaSourceDescriptor descriptor = group.descriptor();
+            try (java.util.stream.Stream<Path> stream = Files.walk(descriptor.resolvedSourceRoot())) {
+                List<Path> sources = stream
+                        .filter(path -> Files.isRegularFile(path) && path.toString().endsWith(".java"))
+                        .sorted(Comparator.comparing(path -> descriptor.resolvedSourceRoot().relativize(path).toString(), String.CASE_INSENSITIVE_ORDER))
+                        .toList();
+                for (Path source : sources) {
+                    Path relative = descriptor.resolvedSourceRoot().relativize(source);
+                    String destination = "src/main/java/" + relative.toString().replace('\\', '/');
+                    if (!emitted.add(destination.toLowerCase(Locale.ROOT))) {
+                        throw new IllegalStateException("Duplicate artifact-local Java source destination: " + destination);
+                    }
+                    writer.writeRelative(destination, Files.readString(source, StandardCharsets.UTF_8));
+                }
+            } catch (IOException exception) {
+                throw new RuntimeException("Failed emitting artifact-local Java source for " + descriptor.capability(), exception);
+            }
+        }
+    }
+
+    private static String javaSourceProvidersSource(List<GeneratedPluginMountPlan.JavaSourcePackageGroup> javaSourceGroups) {
+        StringBuilder source = new StringBuilder();
+        source.append("""
+                package com.npdev.generated.runtime.config;
+
+                import com.finalexec.npdev.service.ArtifactLocalJavaSourceCapabilityHandler;
+                import com.finalexec.npdev.service.RuntimePluginRealizationProvider;
+                import org.springframework.context.annotation.Bean;
+                import org.springframework.context.annotation.Configuration;
+
+                import java.util.Map;
+
+                @Configuration
+                public class GeneratedJavaSourceCapabilityProviders {
+
+                """);
+        Set<String> methodNames = new LinkedHashSet<>();
+        for (GeneratedPluginMountPlan.JavaSourcePackageGroup group : javaSourceGroups) {
+            GeneratedPluginMountPlan.JavaSourceDescriptor descriptor = group.descriptor();
+            String methodName = uniqueMethodName(methodNames, javaIdentifierPart(descriptor.runtimeRef()) + "Provider");
+            source.append("    @Bean\n");
+            source.append("    public RuntimePluginRealizationProvider ").append(methodName).append("() {\n");
+            source.append("        return new RuntimePluginRealizationProvider() {\n");
+            source.append("            @Override\n");
+            source.append("            public String runtimeRef() {\n");
+            source.append("                return \"").append(javaEscape(descriptor.runtimeRef())).append("\";\n");
+            source.append("            }\n\n");
+            source.append("            @Override\n");
+            source.append("            public Object realize() {\n");
+            source.append("                return new ArtifactLocalJavaSourceCapabilityHandler(\n");
+            source.append("                        new ").append(descriptor.mainClass()).append("(),\n");
+            source.append("                        Map.ofEntries(");
+            List<Map.Entry<String, String>> entries = descriptor.methodByOperation().entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey(String.CASE_INSENSITIVE_ORDER))
+                    .toList();
+            for (int index = 0; index < entries.size(); index++) {
+                Map.Entry<String, String> entry = entries.get(index);
+                if (index > 0) {
+                    source.append(", ");
+                }
+                source.append("Map.entry(\"")
+                        .append(javaEscape(entry.getKey()))
+                        .append("\", \"")
+                        .append(javaEscape(entry.getValue()))
+                        .append("\")");
+            }
+            source.append(")\n");
+            source.append("                );\n");
+            source.append("            }\n");
+            source.append("        };\n");
+            source.append("    }\n\n");
+        }
+        source.append("}\n");
+        return source.toString();
+    }
+
+    private static String uniqueMethodName(Set<String> used, String base) {
+        String candidate = base;
+        int suffix = 2;
+        while (!used.add(candidate.toLowerCase(Locale.ROOT))) {
+            candidate = base + suffix;
+            suffix++;
+        }
+        return candidate;
+    }
+
+    private static String javaIdentifierPart(String value) {
+        String normalized = value == null ? "" : value.trim();
+        StringBuilder builder = new StringBuilder();
+        boolean capitalizeNext = false;
+        for (int index = 0; index < normalized.length(); index++) {
+            char ch = normalized.charAt(index);
+            if (Character.isLetterOrDigit(ch) || ch == '_') {
+                if (builder.length() == 0 && Character.isDigit(ch)) {
+                    builder.append('_');
+                }
+                builder.append(capitalizeNext ? Character.toUpperCase(ch) : ch);
+                capitalizeNext = false;
+            } else {
+                capitalizeNext = builder.length() > 0;
+            }
+        }
+        return builder.length() == 0 ? "javaSourceRuntimeRef" : builder.toString();
+    }
+
+    private static String javaEscape(String value) {
+        return value == null ? "" : value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\r", "\\r")
+                .replace("\n", "\\n");
     }
 
     private static java.util.List<String> listPluginPackageDescriptorFiles() {
@@ -547,6 +1212,33 @@ writer.writeRelative(
                     .toList();
         } catch (IOException exception) {
             throw new RuntimeException("Failed listing plugin package descriptors: " + pluginPackagesDirectory, exception);
+        }
+    }
+
+    private static String adapterContributionKey(String capability, String operation, String adapterId) {
+        return normalizeKey(capability) + "|" + normalizeKey(operation) + "|" + normalizeKey(adapterId);
+    }
+
+    private static String bindingKey(String capability, String adapterId) {
+        return normalizeKey(capability) + "|" + normalizeKey(adapterId);
+    }
+
+    private static String normalizeKey(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static String stripJsonBom(String json) {
+        if (json != null && !json.isEmpty() && json.charAt(0) == '\uFEFF') {
+            return json.substring(1);
+        }
+        return json;
+    }
+
+    private static String prettyJson(JsonNode node) {
+        try {
+            return OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(node) + System.lineSeparator();
+        } catch (IOException exception) {
+            throw new RuntimeException("Failed writing generated JSON", exception);
         }
     }
 

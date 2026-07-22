@@ -1,0 +1,385 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/runtime-bridge-contract.schema.json",
+  "title": "NPDev Runtime Bridge Contract",
+  "description": "Contract for advisory Panel Object to Procedure Object runtime bridge planning.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractId",
+    "applicationId",
+    "mode",
+    "enabledByDefault",
+    "bridge",
+    "requestEnvelope",
+    "responseEnvelope",
+    "errorEnvelope",
+    "procedureBindings",
+    "panelBindings",
+    "securityPolicy",
+    "truthPolicy",
+    "evidencePolicy",
+    "releaseGatePolicy",
+    "diagnostics",
+    "nonGoals"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "contractId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "applicationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "Advisory",
+        "Staged",
+        "Active"
+      ]
+    },
+    "enabledByDefault": {
+      "type": "boolean"
+    },
+    "bridge": {
+      "$ref": "#/$defs/bridge"
+    },
+    "requestEnvelope": {
+      "$ref": "#/$defs/envelope"
+    },
+    "responseEnvelope": {
+      "$ref": "#/$defs/envelope"
+    },
+    "errorEnvelope": {
+      "$ref": "#/$defs/errorEnvelope"
+    },
+    "procedureBindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/procedureBinding"
+      }
+    },
+    "panelBindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/panelBinding"
+      }
+    },
+    "securityPolicy": {
+      "$ref": "#/$defs/securityPolicy"
+    },
+    "truthPolicy": {
+      "$ref": "#/$defs/truthPolicy"
+    },
+    "evidencePolicy": {
+      "$ref": "#/$defs/evidencePolicy"
+    },
+    "releaseGatePolicy": {
+      "$ref": "#/$defs/releaseGatePolicy"
+    },
+    "diagnostics": {
+      "$ref": "#/$defs/diagnostics"
+    },
+    "nonGoals": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "$defs": {
+    "bridge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "frontendApi",
+        "releaseGateImpact"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "StubOnly",
+            "ContractOnly",
+            "RuntimePending",
+            "Active"
+          ]
+        },
+        "frontendApi": {
+          "type": "string",
+          "minLength": 1
+        },
+        "releaseGateImpact": {
+          "type": "string",
+          "enum": [
+            "None",
+            "NoImpact",
+            "AdvisoryOnly",
+            "ReleaseBlocking"
+          ]
+        }
+      }
+    },
+    "envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fields"
+      ],
+      "properties": {
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "errorEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "statuses"
+      ],
+      "properties": {
+        "statuses": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "SUCCESS",
+              "VALIDATION_ERROR",
+              "AUTH_REQUIRED",
+              "TENANT_REQUIRED",
+              "ROLE_DENIED",
+              "APPROVAL_REQUIRED",
+              "PROCEDURE_NOT_FOUND",
+              "EXECUTION_FAILED",
+              "BRIDGE_UNAVAILABLE",
+              "STUB_ONLY",
+              "UNSUPPORTED_IN_ADVISORY_MODE"
+            ]
+          }
+        }
+      }
+    },
+    "procedureBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "procedureId",
+        "mainClass",
+        "invocationMode",
+        "endpointPath",
+        "requiresAuth",
+        "requiresTenant",
+        "allowedRoles",
+        "aiExecution"
+      ],
+      "properties": {
+        "procedureId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mainClass": {
+          "type": "string",
+          "minLength": 1
+        },
+        "invocationMode": {
+          "type": "string",
+          "enum": [
+            "ContractOnly",
+            "StubOnly",
+            "HttpEndpointPending",
+            "LocalAdapterPending",
+            "Active"
+          ]
+        },
+        "endpointPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requiresAuth": {
+          "type": "boolean"
+        },
+        "requiresTenant": {
+          "type": "boolean"
+        },
+        "allowedRoles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "aiExecution": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "panelBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "panelObjectId",
+        "callsProcedures",
+        "frontendApi"
+      ],
+      "properties": {
+        "panelObjectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "callsProcedures": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "frontendApi": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "securityPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "auth",
+        "tenant",
+        "roles",
+        "approval",
+        "aiExecution",
+        "inputValidation",
+        "auditEvidence"
+      ],
+      "properties": {
+        "auth": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenant": {
+          "type": "string",
+          "minLength": 1
+        },
+        "roles": {
+          "type": "string",
+          "minLength": 1
+        },
+        "approval": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aiExecution": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputValidation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "auditEvidence": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "truthPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policies",
+        "noT6WithoutReleaseEvidence"
+      ],
+      "properties": {
+        "policies": {
+          "type": "array",
+          "contains": {
+            "const": "NoAutoPromotion"
+          },
+          "items": {
+            "type": "string",
+            "enum": [
+              "NoAutoPromotion",
+              "EvidenceRequired",
+              "RuntimeEvidenceOnly",
+              "AdvisoryOnly"
+            ]
+          }
+        },
+        "noT6WithoutReleaseEvidence": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "evidencePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capturePlanned",
+        "evidenceRefsRequiredForTruthPromotion"
+      ],
+      "properties": {
+        "capturePlanned": {
+          "type": "boolean"
+        },
+        "evidenceRefsRequiredForTruthPromotion": {
+          "type": "boolean"
+        }
+      }
+    },
+    "releaseGatePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "releaseGatesChanged"
+      ],
+      "properties": {
+        "policy": {
+          "type": "string",
+          "enum": [
+            "NoImpact",
+            "AdvisoryOnly",
+            "CandidateBlocking",
+            "ReleaseBlocking"
+          ]
+        },
+        "releaseGatesChanged": {
+          "type": "boolean",
+          "const": false
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reportPath"
+      ],
+      "properties": {
+        "reportPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

@@ -3,6 +3,10 @@ package com.npdev.generator.emitters;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
+import com.npdev.generator.bonds.BondModelSupport;
+import com.npdev.generator.bonds.BondModelSupport.Bond;
+import com.npdev.generator.bonds.BondModelSupport.Cardinality;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.templates.TemplateEngine;
 
@@ -10,6 +14,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public final class EntityEmitter extends AbstractEmitter {
 
@@ -18,6 +23,7 @@ public final class EntityEmitter extends AbstractEmitter {
     }
 
     public void emit(CompiledModel model) {
+        Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
         for (CompiledConcept entity : model.getConcepts()) {
             Map<String, Object> ctx = new HashMap<>();
             ctx.put("packageName", "com.npdev.generated.entities");
@@ -26,13 +32,23 @@ public final class EntityEmitter extends AbstractEmitter {
 
             List<Map<String, Object>> fields = new ArrayList<>();
             boolean hasJsonFields = false;
+            CompiledField idField = idField(entity);
+            ctx.put("idFieldName", idField.getName());
+            ctx.put("idFieldCapName", cap(idField.getName()));
+            ctx.put("idFieldIsNamedId", "id".equals(idField.getName()));
+            ctx.put("idJavaType", idField.getJavaType());
 
             for (CompiledField f : entity.getFields()) {
+                Optional<Bond> bond = BondModelSupport.resolveBond(entity, f, conceptsByName);
+                if (bond.map(value -> value.cardinality() == Cardinality.MANY_TO_MANY).orElse(false)) {
+                    continue;
+                }
                 Map<String, Object> fm = new HashMap<>();
                 fm.put("name", f.getName());
                 fm.put("capName", cap(f.getName()));
-                fm.put("javaType", f.getJavaType());
-                fm.put("id", "id".equalsIgnoreCase(f.getName()));
+                fm.put("columnName", SqlIdentifierSupport.columnName(f));
+                fm.put("javaType", bond.map(Bond::effectiveJavaType).orElse(f.getJavaType()));
+                fm.put("id", f.isId());
                 boolean jsonField = isJsonField(f.getDslType());
                 fm.put("jsonField", jsonField);
                 hasJsonFields = hasJsonFields || jsonField;
@@ -52,6 +68,23 @@ public final class EntityEmitter extends AbstractEmitter {
                     templates.render("entity.mustache", ctx)
             );
         }
+    }
+
+    private static CompiledField idField(CompiledConcept entity) {
+        CompiledField found = null;
+        for (CompiledField field : entity.getFields()) {
+            if (field == null || !field.isId()) {
+                continue;
+            }
+            if (found != null) {
+                throw new IllegalStateException("Concept " + entity.getName() + " must have exactly one id field.");
+            }
+            found = field;
+        }
+        if (found == null) {
+            throw new IllegalStateException("Concept " + entity.getName() + " must have exactly one id field.");
+        }
+        return found;
     }
 
     private String cap(String s) {

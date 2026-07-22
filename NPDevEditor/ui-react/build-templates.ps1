@@ -31,7 +31,17 @@ function Remove-DirectoryWithRetry {
 
 $uiRoot = [System.IO.Path]::GetFullPath($PSScriptRoot)
 $gptRoot = Split-Path $uiRoot -Parent
-$distDir = Join-Path $uiRoot "dist"
+$sourceRoot = Split-Path $gptRoot -Parent
+$buildRoot = if ([string]::IsNullOrWhiteSpace($env:NPDEV_BUILD_ROOT)) {
+  Join-Path (Split-Path $sourceRoot -Parent) "Build"
+} else {
+  $env:NPDEV_BUILD_ROOT
+}
+$distDir = if ([string]::IsNullOrWhiteSpace($env:NPDEV_UI_DIST_DIR)) {
+  Join-Path $buildRoot "ui\npdev-editor-ui-react\dist"
+} else {
+  $env:NPDEV_UI_DIST_DIR
+}
 $nodeModulesDir = Join-Path $uiRoot "node_modules"
 $templateDir = Join-Path $gptRoot "generator\src\main\resources\npdev-templates\static-react"
 
@@ -52,6 +62,8 @@ try {
   }
 
   Write-Host "[react-templates] npm run build"
+  $env:NPDEV_BUILD_ROOT = $buildRoot
+  $env:NPDEV_UI_DIST_DIR = $distDir
   & npm run build
   if ($LASTEXITCODE -ne 0) {
     throw "npm run build failed with exit code $LASTEXITCODE"

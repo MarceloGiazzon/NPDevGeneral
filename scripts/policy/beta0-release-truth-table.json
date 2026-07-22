@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "npdev-beta0-release-truth-table.v1",
+  "candidateReady": {
+    "requires": [
+      "aiBetaGatePassed",
+      "sampleMatrixPassed",
+      "normalizerTestsPassed",
+      "restSmokeVerifierTestsPassed"
+    ]
+  },
+  "releaseReady": {
+    "requires": [
+      "candidateReady",
+      "controlledCommandRunnerTestsPassed",
+      "schemaValidatorTestsPassed",
+      "reportSchemaValidationPassed"
+    ]
+  },
+  "provenanceReady": {
+    "requires": [
+      "workspaceClean",
+      "commitIdentityAvailable",
+      "reportsFresh",
+      "approvedEvidencePlatform",
+      "noStaleContradictoryReports"
+    ]
+  },
+  "officialReleaseEligible": {
+    "requires": [
+      "releaseReady",
+      "provenanceReady"
+    ]
+  },
+  "beta0TagAllowed": {
+    "requires": [
+      "officialReleaseEligible",
+      "finalClosureGatePassed"
+    ]
+  }
+}

@@ -18,7 +18,11 @@ public final class FlowStepDefinition {
         BRANCH,
         AWAIT_EVENT,
         MAP,
-        RETURN
+        RETURN,
+        /** LIFT-LOOP-P1: bounded iteration over a collection ref, mirroring Procedures'
+         * forEach shape (collectionRef/itemKey/nested steps) -- but, unlike Procedures' plain
+         * in-memory loop, durably checkpoints progress per iteration (see KernelRunner). */
+        FOR_EACH
     }
 
     public enum InvariantCheckpoint {
@@ -55,6 +59,11 @@ public final class FlowStepDefinition {
     private final String mapFromRef;
     private final String mapToRef;
     private final String returnRef;
+    private final String collectionRef;
+    private final String itemKey;
+    private final List<FlowStepDefinition> loopSteps;
+    private final Integer maxLoopIterations;
+    private final List<FlowStepDefinition> onFailureSteps;
 
     private FlowStepDefinition(
             String name,
@@ -149,6 +158,52 @@ public final class FlowStepDefinition {
             String mapToRef,
             String returnRef
     ) {
+        this(
+                name, type, checkpoint, invariantScope, invariants, capability, capabilityType,
+                capabilityAdapterId, capabilityExecutionPolicy, capabilityInputSchema, capabilityOutputSchema,
+                operation, inputRef, argsRefs, outputRef, eventName, payloadRef, eventDataRefs, condition,
+                thenSteps, elseSteps, awaitEventName, awaitRef, awaitMatchCorrelation, awaitPayloadMatchRefs,
+                delaySeconds, mapFromRef, mapToRef, returnRef, null, null, List.of(), null
+        );
+    }
+
+    /** LIFT-LOOP-P1: canonical constructor, adding {@code collectionRef}/{@code itemKey}/
+     * {@code loopSteps}/{@code maxLoopIterations} for {@link Type#FOR_EACH}. */
+    private FlowStepDefinition(
+            String name,
+            Type type,
+            InvariantCheckpoint checkpoint,
+            String invariantScope,
+            List<String> invariants,
+            String capability,
+            String capabilityType,
+            String capabilityAdapterId,
+            CapabilityExecutionPolicy capabilityExecutionPolicy,
+            SchemaObject capabilityInputSchema,
+            SchemaObject capabilityOutputSchema,
+            String operation,
+            String inputRef,
+            List<String> argsRefs,
+            String outputRef,
+            String eventName,
+            String payloadRef,
+            Map<String, String> eventDataRefs,
+            String condition,
+            List<FlowStepDefinition> thenSteps,
+            List<FlowStepDefinition> elseSteps,
+            String awaitEventName,
+            String awaitRef,
+            boolean awaitMatchCorrelation,
+            Map<String, String> awaitPayloadMatchRefs,
+            Long delaySeconds,
+            String mapFromRef,
+            String mapToRef,
+            String returnRef,
+            String collectionRef,
+            String itemKey,
+            List<FlowStepDefinition> loopSteps,
+            Integer maxLoopIterations
+    ) {
         this.name = requireNonBlank(name, "name");
         this.type = type;
         this.checkpoint = checkpoint;
@@ -190,6 +245,66 @@ public final class FlowStepDefinition {
         this.mapFromRef = mapFromRef;
         this.mapToRef = mapToRef;
         this.returnRef = returnRef;
+        this.collectionRef = collectionRef;
+        this.itemKey = itemKey;
+        this.loopSteps = loopSteps == null
+                ? List.of()
+                : Collections.unmodifiableList(new ArrayList<>(loopSteps));
+        this.maxLoopIterations = maxLoopIterations;
+        this.onFailureSteps = List.of();
+    }
+
+    /**
+     * LNCH-17: copy constructor used only by {@link #withOnFailure}, since {@code onFailureSteps}
+     * is attachable to any step type/factory method rather than threaded through every one of
+     * them individually.
+     */
+    private FlowStepDefinition(FlowStepDefinition source, List<FlowStepDefinition> onFailureSteps) {
+        this.name = source.name;
+        this.type = source.type;
+        this.checkpoint = source.checkpoint;
+        this.invariantScope = source.invariantScope;
+        this.invariants = source.invariants;
+        this.capability = source.capability;
+        this.capabilityType = source.capabilityType;
+        this.capabilityAdapterId = source.capabilityAdapterId;
+        this.capabilityExecutionPolicy = source.capabilityExecutionPolicy;
+        this.capabilityInputSchema = source.capabilityInputSchema;
+        this.capabilityOutputSchema = source.capabilityOutputSchema;
+        this.operation = source.operation;
+        this.inputRef = source.inputRef;
+        this.argsRefs = source.argsRefs;
+        this.outputRef = source.outputRef;
+        this.eventName = source.eventName;
+        this.payloadRef = source.payloadRef;
+        this.eventDataRefs = source.eventDataRefs;
+        this.condition = source.condition;
+        this.thenSteps = source.thenSteps;
+        this.elseSteps = source.elseSteps;
+        this.awaitEventName = source.awaitEventName;
+        this.awaitRef = source.awaitRef;
+        this.awaitMatchCorrelation = source.awaitMatchCorrelation;
+        this.awaitPayloadMatchRefs = source.awaitPayloadMatchRefs;
+        this.delaySeconds = source.delaySeconds;
+        this.mapFromRef = source.mapFromRef;
+        this.mapToRef = source.mapToRef;
+        this.returnRef = source.returnRef;
+        this.collectionRef = source.collectionRef;
+        this.itemKey = source.itemKey;
+        this.loopSteps = source.loopSteps;
+        this.maxLoopIterations = source.maxLoopIterations;
+        this.onFailureSteps = onFailureSteps == null
+                ? List.of()
+                : Collections.unmodifiableList(new ArrayList<>(onFailureSteps));
+    }
+
+    /** LNCH-17: attaches declared compensation steps to an already-built step. */
+    public FlowStepDefinition withOnFailure(List<FlowStepDefinition> onFailureSteps) {
+        return new FlowStepDefinition(this, onFailureSteps);
+    }
+
+    public List<FlowStepDefinition> getOnFailureSteps() {
+        return onFailureSteps;
     }
 
     public static FlowStepDefinition invariant(String name, InvariantCheckpoint checkpoint, List<String> invariants) {
@@ -589,6 +704,53 @@ public final class FlowStepDefinition {
         );
     }
 
+    public static FlowStepDefinition forEach(
+            String name,
+            String collectionRef,
+            String itemKey,
+            List<FlowStepDefinition> loopSteps,
+            Integer maxLoopIterations
+    ) {
+        if (loopSteps == null || loopSteps.isEmpty()) {
+            throw new IllegalArgumentException("forEach requires at least one loop step");
+        }
+        return new FlowStepDefinition(
+                name,
+                Type.FOR_EACH,
+                null,
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                Map.of(),
+                null,
+                List.of(),
+                List.of(),
+                null,
+                null,
+                true,
+                Map.of(),
+                null,
+                null,
+                null,
+                null,
+                requireNonBlank(collectionRef, "collectionRef"),
+                requireNonBlank(itemKey, "itemKey"),
+                loopSteps,
+                maxLoopIterations
+        );
+    }
+
     public static FlowStepDefinition returnValue(String name, String returnRef) {
         return new FlowStepDefinition(
                 name,
@@ -735,6 +897,22 @@ public final class FlowStepDefinition {
 
     public String getReturnRef() {
         return returnRef;
+    }
+
+    public String getCollectionRef() {
+        return collectionRef;
+    }
+
+    public String getItemKey() {
+        return itemKey;
+    }
+
+    public List<FlowStepDefinition> getLoopSteps() {
+        return loopSteps;
+    }
+
+    public Integer getMaxLoopIterations() {
+        return maxLoopIterations;
     }
 
     private static String requireNonBlank(String value, String field) {

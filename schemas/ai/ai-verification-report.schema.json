@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/ai-verification-report.schema.json",
+  "title": "NPDev AI Verification Report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "scenarioId",
+    "baseUrlVariable",
+    "checks"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "ai-verification-report.v1"
+    },
+    "scenarioId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "baseUrlVariable": {
+      "const": "NPDEV_GENERATED_APP_BASE_URL"
+    },
+    "requiredSurfaceCoverage": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/beta0Surface"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "method",
+          "path",
+          "expectedStatus"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "type": {
+            "const": "http"
+          },
+          "method": {
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "allOf": [
+              {
+                "not": {
+                  "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://(?!(localhost|127\\.0\\.0\\.1|\\[::1\\])(?::[0-9]+)?(/|$))"
+                }
+              },
+              {
+                "anyOf": [
+                  {
+                    "pattern": "^/[^\\s]*$"
+                  },
+                  {
+                    "pattern": "^https?://(localhost|127\\.0\\.0\\.1|\\[::1\\])(?::[0-9]+)?/[^\\s]*$"
+                  }
+                ]
+              }
+            ]
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "body": {
+            "type": "object"
+          },
+          "expectedStatus": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 599
+          },
+          "expectedJson": {
+            "type": "object"
+          },
+          "expectedJsonContains": {
+            "type": "object"
+          },
+          "coversSurfaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/beta0Surface"
+            },
+            "uniqueItems": true,
+            "default": []
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "$defs": {
+    "beta0Surface": {
+      "enum": [
+        "custom-ui-panels",
+        "custom-procedures",
+        "multi-tenancy",
+        "authentication",
+        "roles",
+        "workflow-engine",
+        "generated-app-build",
+        "generated-app-boot",
+        "rest-smoke"
+      ]
+    }
+  },
+  "additionalProperties": false
+}

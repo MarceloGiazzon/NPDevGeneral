@@ -31,6 +31,17 @@ public record ExecutionContext(
         return new ExecutionContext(tenantId, actorId, Map.of(), Set.of(DEFAULT_ROLE));
     }
 
+    /**
+     * LNCH-12: the principal a background trigger (currently: the cron scheduler) runs a flow
+     * under -- goes through the SAME role/permission checks a human actor would (role "ADMIN",
+     * broad enough to run any flow a trusted internal job needs), deliberately NOT a bypass like
+     * the ControlPanel superuser key. The distinct actorId lets an event/audit trail tell a
+     * scheduled run apart from one a real admin triggered by hand.
+     */
+    public static ExecutionContext system(String tenantId) {
+        return new ExecutionContext(tenantId, "system:scheduler", Map.of("trigger", "schedule"), Set.of("ADMIN"));
+    }
+
     public ExecutionContext withTag(String key, String value) {
         String normalizedKey = normalize(key);
         if (normalizedKey == null) {

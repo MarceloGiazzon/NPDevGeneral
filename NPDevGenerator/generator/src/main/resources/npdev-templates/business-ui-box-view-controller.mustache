@@ -1,0 +1,72 @@
+package {{controllerPackage}};
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.generated.runtime.service.RuntimeContextService;
+import com.npdev.kernel.ExecutionContext;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import com.fasterxml.jackson.core.type.TypeReference;
+
+/**
+ * Read-only "Box View": one Entity Box per persisted concept, per the Box/Object/Truth model.
+ * Truth level is generation-time T2 (Generated) in the manifest; this controller honestly upgrades
+ * it to T3 (RunsLocally) at response time, since successfully serving this request IS the evidence
+ * that the app is running locally. T4+ (Tested, EvidenceBacked, ReleaseApproved) require external
+ * evidence this runtime cannot observe, so they are never claimed here. Super-user only.
+ */
+@RestController
+public class GeneratedBoxViewController {
+
+    private static final String SUPER_USER_ROLE = "{{superUserRole}}";
+    private static final String BOX_MANIFEST_RESOURCE = "npdev/box/box-manifest.json";
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    private final RuntimeContextService runtimeContextService;
+
+    public GeneratedBoxViewController(RuntimeContextService runtimeContextService) {
+        this.runtimeContextService = runtimeContextService;
+    }
+
+    @GetMapping("/api/admin/box")
+    public Map<String, Object> boxView(HttpServletRequest request) {
+        ExecutionContext context = runtimeContextService.currentContext(request);
+        if (!context.roles().contains(SUPER_USER_ROLE)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Super-user role required");
+        }
+        return readBoxes();
+    }
+
+    private Map<String, Object> readBoxes() {
+        try (InputStream in = new ClassPathResource(BOX_MANIFEST_RESOURCE).getInputStream()) {
+            JsonNode root = OBJECT_MAPPER.readTree(in);
+            List<Map<String, Object>> boxes = new ArrayList<>();
+            for (JsonNode boxNode : root.path("boxes")) {
+                Map<String, Object> box = OBJECT_MAPPER.convertValue(boxNode, new TypeReference<Map<String, Object>>() { });
+                box.put("truthLevel", "T3_RUNS_LOCALLY");
+                boxes.add(box);
+            }
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("boxes", boxes);
+            body.put("truthLevelNote",
+                    "T2 Generated and T3 RunsLocally are observed directly. T4 Tested, T5 EvidenceBacked, "
+                            + "and T6 ReleaseApproved require external evidence this runtime does not yet track.");
+            return body;
+        } catch (Exception exception) {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("boxes", List.of());
+            body.put("truthLevelNote", "Box manifest unavailable.");
+            return body;
+        }
+    }
+}

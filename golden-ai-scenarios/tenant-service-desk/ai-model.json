@@ -1,0 +1,164 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "app": {
+    "name": "Tenant Service Desk",
+    "kind": "expanded-beta-application"
+  },
+  "entities": [
+    {
+      "name": "Case",
+      "tenantScoped": true,
+      "fields": [
+        {
+          "name": "subject",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "priority",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "CreateCase",
+      "entity": "Case",
+      "operation": "create",
+      "requiredRole": "support",
+      "tenantScoped": true
+    }
+  ],
+  "panels": [
+    {
+      "panelId": "support-case-dashboard",
+      "type": "dashboard-summary",
+      "route": "/cases/dashboard",
+      "dataSource": {
+        "kind": "procedure",
+        "name": "summarize-cases"
+      },
+      "components": [
+        "table",
+        "procedure-result-block"
+      ],
+      "actions": [
+        "summarize-cases"
+      ],
+      "requiredRole": "support",
+      "tenantScoped": true
+    }
+  ],
+  "procedures": [
+    {
+      "procedureId": "summarize-cases",
+      "type": "computed-summary",
+      "inputs": [
+        {
+          "name": "tenantId",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "openCount",
+          "type": "integer"
+        }
+      ],
+      "sideEffectType": "none",
+      "requiredRole": "support",
+      "tenantScoped": true,
+      "allowedEntities": [
+        "Case"
+      ],
+      "maxAffectedRows": 0,
+      "steps": [
+        {
+          "type": "return",
+          "value": "summary"
+        }
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "workflowId": "case-resolution",
+      "entity": "Case",
+      "states": [
+        "new",
+        "assigned",
+        "resolved"
+      ],
+      "startState": "new",
+      "terminalStates": [
+        "resolved"
+      ],
+      "transitions": [
+        {
+          "name": "assign",
+          "from": "new",
+          "to": "assigned",
+          "requiredRole": "support"
+        },
+        {
+          "name": "resolve",
+          "from": "assigned",
+          "to": "resolved",
+          "requiredRole": "lead"
+        }
+      ],
+      "tenantScoped": true
+    }
+  ],
+  "tenancy": {
+    "mode": "shared-app-tenant-scoped-data",
+    "tenantIdField": "tenantId",
+    "testTenants": [
+      "tenant-a",
+      "tenant-b"
+    ]
+  },
+  "auth": {
+    "mode": "generated-test-token",
+    "principalFields": [
+      "userId",
+      "tenantId",
+      "roles"
+    ],
+    "testUsers": [
+      {
+        "userId": "support-a",
+        "tenantId": "tenant-a",
+        "roles": [
+          "support"
+        ]
+      },
+      {
+        "userId": "lead-b",
+        "tenantId": "tenant-b",
+        "roles": [
+          "lead"
+        ]
+      }
+    ]
+  },
+  "roles": [
+    {
+      "roleId": "support",
+      "permissions": [
+        "case:create",
+        "case:read"
+      ]
+    },
+    {
+      "roleId": "lead",
+      "permissions": [
+        "case:read",
+        "workflow:transition"
+      ]
+    }
+  ]
+}

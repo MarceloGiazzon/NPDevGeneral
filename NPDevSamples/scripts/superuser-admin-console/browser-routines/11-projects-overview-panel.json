@@ -1,0 +1,23 @@
+{
+  "scenarioName": "superuser-console-projects-overview-panel",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl", "label": "Open the generated business UI" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible", "label": "Shell rendered" },
+    { "action": "fill", "selector": "#apiKey", "value": "api-dev", "label": "Enter the dev super-user API key" },
+    { "action": "reload", "label": "Reload so the persisted key authenticates on bootstrap" },
+    { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-__panel-ProjectsOverviewPanel__\"]", "state": "visible", "label": "Declared Panel nav entry rendered (under the Panels nav group)" },
+    { "action": "assertTextContains", "selector": "#sideNav", "text": "Panels", "label": "Panels nav group header present" },
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-__panel-ProjectsOverviewPanel__\"]", "label": "Open the declared Panel" },
+    { "action": "waitForSelector", "selector": "#concept-__panel-ProjectsOverviewPanel__ h2", "state": "visible", "label": "Panel section rendered" },
+    { "action": "assertTextContains", "selector": "#concept-__panel-ProjectsOverviewPanel__ h2", "text": "Projects Overview", "label": "Panel title from the manifest rendered" },
+    { "action": "waitForSelector", "selector": "#concept-__panel-ProjectsOverviewPanel__ .declared-panel-datasource", "state": "visible", "label": "Panel's dataSource block loaded from the real PanelRuntime endpoint" },
+    { "action": "assertTextContains", "selector": "#concept-__panel-ProjectsOverviewPanel__ .declared-panel-datasource h4", "text": "projects", "label": "The Project concept's dataSource is labeled by name" },
+    { "action": "screenshot", "name": "panel_loaded", "label": "Capture the declared Panel with its live dataSource" },
+    { "action": "click", "selector": "#concept-__panel-ProjectsOverviewPanel__ button:has-text(\"Recount Projects\")", "label": "Execute the procedure-bound action" },
+    { "action": "waitForSelector", "selector": "#concept-__panel-ProjectsOverviewPanel__ .declared-panel-datasource:has-text(\"Last action result\")", "state": "visible", "label": "Action result rendered after executing the real CountProjects procedure" },
+    { "action": "screenshot", "name": "panel_action_result", "label": "Capture the panel after the procedure-bound action ran" },
+    { "action": "collect", "what": ["domText", "url"] }
+  ]
+}

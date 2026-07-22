@@ -1,0 +1,74 @@
+package com.finalexec.controlpanel;
+
+import com.npdev.kernel.dbschema.NpdevTenantTable;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.stereotype.Component;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.time.Instant;
+
+/**
+ * Self-healing companion to {@code com.finalexec.auth.IdentityProvisioning.ensureTenantRegistered}
+ * (which registers a tenant in real time, the moment its first identity user is provisioned). This
+ * runner instead reconciles on every boot, so any tenant whose data predates that real-time hook --
+ * or was seeded by a path that writes {@code identity_users} rows directly (profile-driven
+ * bootstrap SQL, a seed script, a restored dump) rather than through {@code IdentityProvisioning}
+ * -- still ends up with a {@code npdev_tenant} row and is visible/manageable in the ControlPanel's
+ * workspace list.
+ *
+ * <p>Lives in {@code com.finalexec.controlpanel} (alongside {@link SuperUserBootstrapper}, not
+ * {@code com.finalexec.npdev.service}) deliberately: that latter package is scanned by an
+ * app's {@code build.gradle} against the curated {@code runtime-supported-controllers.json}
+ * allowlist and silently excluded from compilation if not listed there; ControlPanel-package
+ * classes are unrestricted, same as SuperUserBootstrapper.</p>
+ *
+ * <p>Fail-open, best-effort: skipped entirely with no physical database (InMemory mode), and any
+ * SQL failure is logged, never thrown -- this must never block application startup. The reserved
+ * "default" sentinel tenant is deliberately excluded (see {@code TenantRegistryService}).</p>
+ */
+@Component
+public class TenantAutoRegistrationRunner implements ApplicationRunner {
+
+    private final ObjectProvider<DataSource> dataSourceProvider;
+    private final String userTable;
+
+    public TenantAutoRegistrationRunner(
+            ObjectProvider<DataSource> dataSourceProvider,
+            @Value("${npdev.auth.login.user-table:identity_users}") String userTable
+    ) {
+        this.dataSourceProvider = dataSourceProvider;
+        this.userTable = userTable;
+    }
+
+    @Override
+    public void run(ApplicationArguments args) {
+        DataSource dataSource = dataSourceProvider.getIfAvailable();
+        if (dataSource == null) {
+            return;
+        }
+        String sql = "INSERT INTO " + NpdevTenantTable.NAME
+                + " (tenant_id, display_name, status, created_at_ms) "
+                + "SELECT DISTINCT u.tenant_id, u.tenant_id, 'ACTIVE', ? FROM " + userTable + " u "
+                + "WHERE u.tenant_id IS NOT NULL AND LOWER(u.tenant_id) <> 'default' "
+                + "AND NOT EXISTS (SELECT 1 FROM " + NpdevTenantTable.NAME + " t WHERE t.tenant_id = u.tenant_id)";
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, Instant.now().toEpochMilli());
+            int registered = statement.executeUpdate();
+            if (registered > 0) {
+                System.out.println("[TenantAutoRegistrationRunner] Registered " + registered
+                        + " tenant(s) found in " + userTable + " with no existing " + NpdevTenantTable.NAME
+                        + " row (e.g. profile-seeded workspaces created before the ControlPanel registry existed).");
+            }
+        } catch (SQLException exception) {
+            System.out.println("[TenantAutoRegistrationRunner] Skipped: could not reconcile tenant registry ("
+                    + exception.getMessage() + ").");
+        }
+    }
+}

@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/runtimehost-staged-jar-preflight-report.schema.json",
+  "title": "NPDev RuntimeHost Staged Jar Preflight Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "overallStatus",
+    "runtimeHostLibs",
+    "requiredJarSet",
+    "requiredJars",
+    "templateChecks",
+    "commands",
+    "artifacts",
+    "failures"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "npdev-runtimehost-staged-jar-preflight-report.v1"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scriptPath": {
+      "type": "string",
+      "const": "scripts/quality/run-runtimehost-staged-jar-preflight.ps1"
+    },
+    "overallStatus": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "runtimeHostLibs": {
+      "type": "object",
+      "required": [
+        "path",
+        "location",
+        "outsideWorkspace"
+      ]
+    },
+    "requiredJars": {
+      "type": "array",
+      "minItems": 4
+    },
+    "requiredJarSet": {
+      "type": "object",
+      "required": [
+        "source",
+        "count",
+        "names"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 4
+        },
+        "names": {
+          "type": "array",
+          "minItems": 4
+        }
+      },
+      "additionalProperties": true
+    },
+    "templateChecks": {
+      "type": "array",
+      "minItems": 3
+    },
+    "commands": {
+      "type": "array"
+    },
+    "artifacts": {
+      "type": "array"
+    },
+    "failures": {
+      "type": "array"
+    }
+  }
+}

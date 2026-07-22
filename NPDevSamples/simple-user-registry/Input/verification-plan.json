@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "ai-verification-report.v1",
+  "scenarioId": "simple-user-registry",
+  "baseUrlVariable": "NPDEV_GENERATED_APP_BASE_URL",
+  "checks": [
+    {
+      "id": "flows-list",
+      "type": "http",
+      "method": "GET",
+      "path": "/api/flows",
+      "expectedStatus": 200
+    },
+    {
+      "id": "admin-model-export",
+      "type": "http",
+      "method": "GET",
+      "path": "/api/admin/model/export",
+      "expectedStatus": 200
+    }
+  ]
+}

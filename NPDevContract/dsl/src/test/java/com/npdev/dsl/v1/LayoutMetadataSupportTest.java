@@ -75,8 +75,8 @@ class LayoutMetadataSupportTest {
                 """);
 
         ModelAst ast = new JsonModelParser().parse(modelPath);
-        assertEquals(2, ast.getEntities().get(0).getUi().getFormColumns());
-        assertEquals("Overview", ast.getEntities().get(0).getFields().get(2).getUi().getTab());
+        assertEquals(2, ast.getConcepts().get(0).getUi().getFormColumns());
+        assertEquals("Overview", ast.getConcepts().get(0).getFields().get(2).getUi().getTab());
 
         ValidationResult validation = new SemanticValidator().validateWithWarnings(ast);
         assertTrue(validation.getErrors().isEmpty(), "Expected no semantic errors, got: " + validation.getErrors());
@@ -84,8 +84,8 @@ class LayoutMetadataSupportTest {
                 "Expected no UX warnings for valid layout metadata.");
 
         CompiledModel compiled = new ModelCompiler().compile(ast);
-        assertEquals(2, compiled.findEntity("Appointment").orElseThrow().getUi().getFormColumns());
-        CompiledField scheduledAt = compiled.findEntity("Appointment")
+        assertEquals(2, compiled.findConcept("Appointment").orElseThrow().getUi().getFormColumns());
+        CompiledField scheduledAt = compiled.findConcept("Appointment")
                 .orElseThrow()
                 .getFields()
                 .stream()

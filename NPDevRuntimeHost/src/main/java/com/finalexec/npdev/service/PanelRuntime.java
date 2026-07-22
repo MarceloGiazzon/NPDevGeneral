@@ -4,25 +4,20 @@ import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPanelDataSource;
-import com.npdev.dsl.v1.compiled.CompiledProcedure;
-import com.npdev.dsl.v1.compiled.CompiledProcedureStep;
+import com.npdev.dsl.v1.compiled.CompiledPanelFieldBinding;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
+import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.kernel.ExecutionContext;
-import com.npdev.kernel.CapabilityResult;
-import com.npdev.kernel.CapabilityErrorKind;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptGatewayTraceRecord;
 import com.npdev.kernel.concepts.ConceptListRequest;
+import com.npdev.kernel.concepts.ConceptQueryFilterSupport;
 import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptWriteRequest;
 import com.npdev.kernel.ports.CapabilityDispatcher;
 import com.npdev.kernel.ports.EventBus;
-import com.npdev.kernel.procedures.DefaultProcedureExecutor;
-import com.npdev.kernel.procedures.ProcedureDefinition;
 import com.npdev.kernel.procedures.ProcedureExecutionResult;
-import com.npdev.kernel.procedures.ProcedureStep;
-import com.npdev.kernel.procedures.ProcedureStepType;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -47,6 +42,8 @@ public class PanelRuntime {
     private final ConceptGateway conceptGateway;
     private final CapabilityDispatcher capabilityDispatcher;
     private final EventBus eventBus;
+    private final AggregateRuntime aggregateRuntime;
+    private final ProcedureRunner procedureRunner;
 
     public PanelRuntime(
             RuntimeMetadataService runtimeMetadataService,
@@ -56,6 +53,7 @@ public class PanelRuntime {
                 runtimeMetadataService,
                 permissionAwareUiMetadataService,
                 (CompiledModel) null,
+                null,
                 null,
                 null,
                 null
@@ -69,7 +67,8 @@ public class PanelRuntime {
             ObjectProvider<CompiledModel> compiledModel,
             ObjectProvider<ConceptGateway> conceptGateway,
             ObjectProvider<CapabilityDispatcher> capabilityDispatcher,
-            ObjectProvider<EventBus> eventBus
+            ObjectProvider<EventBus> eventBus,
+            ObjectProvider<AggregateRuntime> aggregateRuntime
     ) {
         this(
                 runtimeMetadataService,
@@ -77,7 +76,8 @@ public class PanelRuntime {
                 compiledModel == null ? null : compiledModel.getIfAvailable(),
                 conceptGateway == null ? null : conceptGateway.getIfAvailable(),
                 capabilityDispatcher == null ? null : capabilityDispatcher.getIfAvailable(),
-                eventBus == null ? null : eventBus.getIfAvailable()
+                eventBus == null ? null : eventBus.getIfAvailable(),
+                aggregateRuntime == null ? null : aggregateRuntime.getIfAvailable()
         );
     }
 
@@ -89,12 +89,27 @@ public class PanelRuntime {
             CapabilityDispatcher capabilityDispatcher,
             EventBus eventBus
     ) {
+        this(runtimeMetadataService, permissionAwareUiMetadataService, compiledModel, conceptGateway,
+                capabilityDispatcher, eventBus, null);
+    }
+
+    public PanelRuntime(
+            RuntimeMetadataService runtimeMetadataService,
+            PermissionAwareUiMetadataService permissionAwareUiMetadataService,
+            CompiledModel compiledModel,
+            ConceptGateway conceptGateway,
+            CapabilityDispatcher capabilityDispatcher,
+            EventBus eventBus,
+            AggregateRuntime aggregateRuntime
+    ) {
         this.runtimeMetadataService = runtimeMetadataService;
         this.permissionAwareUiMetadataService = permissionAwareUiMetadataService;
         this.compiledModel = compiledModel;
         this.conceptGateway = conceptGateway;
         this.capabilityDispatcher = capabilityDispatcher;
         this.eventBus = eventBus;
+        this.aggregateRuntime = aggregateRuntime;
+        this.procedureRunner = new ProcedureRunner(compiledModel, conceptGateway, capabilityDispatcher, eventBus);
     }
 
     public Map<String, Object> renderConceptPanel(String conceptName, ExecutionContext context) {
@@ -135,20 +150,68 @@ public class PanelRuntime {
         CompiledPanel panel = requirePanel(panelName);
         ExecutionContext effectiveContext = interactiveContext(context);
         Map<String, Object> safeInput = safeInput(input);
+
+        // Aggregate Workbench (ADR-0005): the Transaction surface of an aggregate-bound AutoPanel.
+        // Its data is the aggregate tree loaded by root id, not flat dataSources.
+        if (panel.metadata() != null && "aggregate".equals(panel.metadata().get("dataVia"))) {
+            return loadWorkbench(panel, safeInput, effectiveContext);
+        }
+
         int traceStart = traceStartIndex();
         Map<String, Object> data = new LinkedHashMap<>();
         List<Map<String, Object>> dataSourceSummaries = new ArrayList<>();
+
+        // Pass 1: every dataSource with no declared parent, exactly as before this method grew nesting support.
         for (CompiledPanelDataSource dataSource : panel.dataSources()) {
-            Object value = loadDataSource(dataSource, safeInput, effectiveContext);
+            if (hasText(dataSource.parentDataSource())) {
+                continue;
+            }
+            Object value = loadDataSource(dataSource, safeInput, effectiveContext, null, null);
             data.put(dataSource.name(), value);
-            dataSourceSummaries.add(Map.of(
-                    "name", safe(dataSource.name()),
-                    "concept", safe(resolveDataSourceConcept(dataSource)),
-                    "query", safe(dataSource.query()),
-                    "procedure", safe(dataSource.procedure()),
-                    "recordCount", value instanceof Collection<?> collection ? collection.size() : 1
-            ));
+            dataSourceSummaries.add(dataSourceSummary(dataSource, value));
         }
+
+        // Pass 2: each declared child dataSource is loaded once per already-loaded parent row, filtered by
+        // childField == that row's parentField value, and nested under the parent record's "__children" map.
+        // The flattened child list is still kept under data[childName] so the existing flat-array contract is
+        // unchanged for any caller that only reads data[name] (backward compatibility for non-nested consumers).
+        for (CompiledPanelDataSource dataSource : panel.dataSources()) {
+            if (!hasText(dataSource.parentDataSource())) {
+                continue;
+            }
+            Object parentValue = data.get(dataSource.parentDataSource());
+            List<Map<String, Object>> flatChildren = new ArrayList<>();
+            if (parentValue instanceof List<?> parentList) {
+                String parentField = firstNonBlank(dataSource.parentField(), "id");
+                for (Object parentItemObj : parentList) {
+                    if (!(parentItemObj instanceof Map<?, ?> rawParentItem)) {
+                        continue;
+                    }
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> parentItem = (Map<String, Object>) rawParentItem;
+                    String parentKeyValue = resolveRecordFieldValue(parentItem, parentField);
+                    Object childValue = loadDataSource(dataSource, safeInput, effectiveContext,
+                            dataSource.childField(), parentKeyValue);
+                    List<Map<String, Object>> childList = List.of();
+                    if (childValue instanceof List<?> list) {
+                        @SuppressWarnings("unchecked")
+                        List<Map<String, Object>> castList = (List<Map<String, Object>>) (List<?>) list;
+                        childList = castList;
+                    }
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> children = (Map<String, Object>) parentItem.computeIfAbsent(
+                            "__children", key -> new LinkedHashMap<String, Object>());
+                    children.put(dataSource.name(), childList);
+                    flatChildren.addAll(childList);
+                }
+            }
+            data.put(dataSource.name(), flatChildren);
+            dataSourceSummaries.add(dataSourceSummary(dataSource, flatChildren));
+        }
+
+        // Tier-A computed columns: evaluate each declared expression per row and fold the value into
+        // the row's data so it renders as a (derived) column. See ADR-0004 §L3 / AutoPanel expansion.
+        applyComputedColumns(panel, data);
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("endpointVersion", ENDPOINT_VERSION);
@@ -164,7 +227,13 @@ public class PanelRuntime {
         response.put("dataSources", dataSourceSummaries);
         response.put("data", data);
         response.put("fields", panelFields(panel));
+        response.put("fieldBindings", panelFieldBindings(panel));
         response.put("actions", panelActions(panel));
+        // AW-P2: echo the compiled panel's own metadata (e.g. a selectors[]-expanded panel's
+        // multiSelect/returnMapping/filters) so a caller referencing this panel as a bandPicker
+        // source can consume the selector's declared pick contract instead of guessing from columns.
+        response.put("metadata", panel.metadata() == null ? Map.of() : panel.metadata());
+        response.put("fallbackUi", dataSourceSummaries.stream().anyMatch(item -> Boolean.TRUE.equals(item.get("fallback"))));
         response.put("layout", panel.layout() == null ? Map.of() : Map.of(
                 "type", safe(panel.layout().type()),
                 "fields", panel.layout().fields()
@@ -236,19 +305,134 @@ public class PanelRuntime {
     private Object loadDataSource(
             CompiledPanelDataSource dataSource,
             Map<String, Object> input,
-            ExecutionContext context
+            ExecutionContext context,
+            String filterField,
+            String filterValue
     ) {
         if (hasText(dataSource.procedure())) {
-            ProcedureExecutionResult result = executeProcedure(dataSource.procedure(), input, context);
-            return result.state().containsKey("return") ? result.state().get("return") : result.state();
+            try {
+                ProcedureExecutionResult result = executeProcedure(dataSource.procedure(), input, context);
+                return result.state().containsKey("return") ? result.state().get("return") : result.state();
+            } catch (IllegalArgumentException | IllegalStateException ex) {
+                return fallbackDataSource(
+                        "PANEL_PROCEDURE_UNAVAILABLE",
+                        "Panel procedure data source is unavailable; rendering fallback metadata instead.",
+                        ex.getMessage()
+                );
+            }
         }
         String conceptName = resolveDataSourceConcept(dataSource);
         if (hasText(conceptName)) {
-            return requireConceptGateway().list(new ConceptListRequest(conceptName, null), context).stream()
+            if (conceptGateway == null) {
+                return fallbackDataSource(
+                        "CONCEPT_GATEWAY_UNAVAILABLE",
+                        "Panel data source is unavailable; rendering fallback metadata instead.",
+                        "ConceptGateway is required for executable panel data."
+                );
+            }
+            List<ConceptRecord> records = requireConceptGateway()
+                    .list(new ConceptListRequest(conceptName, null, filterField, filterValue), context);
+            Optional<CompiledQuery> query = resolveDataSourceQuery(dataSource);
+            // LIFT-QUERY-P1: where/orderBy now come from the shared kernel predicate also used by
+            // DefaultProcedureExecutor's runQuery step, instead of a second copy of this logic.
+            records = ConceptQueryFilterSupport.applyWhere(records, query.map(CompiledQuery::where).orElse(null));
+            records = ConceptQueryFilterSupport.applyOrderBy(records, query.map(CompiledQuery::orderBy).orElse(List.of()));
+            return records.stream()
                     .map(PanelRuntime::toRecordMap)
-                    .toList();
+                    .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
         }
-        return List.of();
+        return fallbackDataSource(
+                "PANEL_DATASOURCE_UNBOUND",
+                "Panel data source has no supported concept, query, or procedure binding.",
+                ""
+        );
+    }
+
+    private Map<String, Object> dataSourceSummary(CompiledPanelDataSource dataSource, Object value) {
+        boolean fallback = isFallbackDataSource(value);
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("name", safe(dataSource.name()));
+        summary.put("concept", safe(resolveDataSourceConcept(dataSource)));
+        summary.put("query", safe(dataSource.query()));
+        summary.put("procedure", safe(dataSource.procedure()));
+        summary.put("parentDataSource", safe(dataSource.parentDataSource()));
+        summary.put("childField", safe(dataSource.childField()));
+        // LIFT-ROWOPS-P2: the client add/delete-row UI is gated entirely off this declared list --
+        // no rowOps means no add/delete control is rendered for this dataSource.
+        summary.put("rowOps", dataSource.rowOps());
+        summary.put("addFormFields", dataSource.addFormFields());
+        summary.put("recordCount", value instanceof Collection<?> collection ? collection.size() : 0);
+        summary.put("fallback", fallback);
+        if (fallback && value instanceof Map<?, ?> fallbackMap) {
+            summary.put("fallbackCode", safe(String.valueOf(fallbackMap.get("code"))));
+        }
+        return summary;
+    }
+
+    // Parent records have the toRecordMap shape {tenantId, concept, id, data}; "id" lives at the top level,
+    // every other field lives one level down under "data".
+    private static String resolveRecordFieldValue(Map<String, Object> record, String field) {
+        Object value = "id".equals(field) ? record.get("id") : dataMap(record).get(field);
+        return value == null ? null : String.valueOf(value);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> dataMap(Map<String, Object> record) {
+        Object data = record.get("data");
+        return data instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+    }
+
+    // Evaluate the panel's declared computed columns (metadata.computed = [{col, expr}]) against each
+    // loaded row and fold the derived values into that row's data. Expressions are parsed once; a per-row
+    // evaluation failure leaves the column absent rather than failing the whole page load.
+    @SuppressWarnings("unchecked")
+    private static void applyComputedColumns(CompiledPanel panel, Map<String, Object> data) {
+        Object computedMeta = panel.metadata() == null ? null : panel.metadata().get("computed");
+        if (!(computedMeta instanceof List<?> computedList) || computedList.isEmpty()) {
+            return;
+        }
+        List<Map.Entry<String, ComputedExpression.Node>> compiled = new ArrayList<>();
+        for (Object item : computedList) {
+            if (!(item instanceof Map<?, ?> entry)) {
+                continue;
+            }
+            Object col = entry.get("col");
+            Object expr = entry.get("expr");
+            if (col == null || expr == null) {
+                continue;
+            }
+            try {
+                compiled.add(Map.entry(col.toString(), ComputedExpression.parse(expr.toString())));
+            } catch (ComputedExpression.ExpressionException ignored) {
+                // invalid expression already surfaced by SemanticValidator; skip at runtime
+            }
+        }
+        if (compiled.isEmpty()) {
+            return;
+        }
+        for (Object value : data.values()) {
+            if (!(value instanceof List<?> rows)) {
+                continue;
+            }
+            for (Object rowObj : rows) {
+                if (!(rowObj instanceof Map<?, ?> rawRow)) {
+                    continue;
+                }
+                Map<String, Object> row = (Map<String, Object>) rawRow;
+                Map<String, Object> fields = dataMap(row);
+                Map<String, Object> vars = new LinkedHashMap<>(fields);
+                vars.put("id", row.get("id"));
+                Map<String, Object> augmented = new LinkedHashMap<>(fields);
+                for (Map.Entry<String, ComputedExpression.Node> c : compiled) {
+                    try {
+                        augmented.put(c.getKey(), c.getValue().eval(vars));
+                    } catch (RuntimeException ignored) {
+                        // leave the computed column absent on evaluation failure
+                    }
+                }
+                row.put("data", augmented);
+            }
+        }
     }
 
     private Object executeConceptMutation(
@@ -276,82 +460,171 @@ public class PanelRuntime {
         return toRecordMap(saved);
     }
 
+    /**
+     * LIFT-ROWOPS-P3: creates a row in a declared Panel dataSource that opted into
+     * {@code rowOps: [add]}. For a nested (child) dataSource, {@code input.parentId} is required
+     * and gets written into the child's FK ({@code childField}) automatically -- the same
+     * parent-binding a Workbench child row gets from {@code AggregateRuntime.commitCollections},
+     * just for a single row instead of a whole draft tree. Tenant scoping is enforced by
+     * {@link ConceptGateway} itself (a null request tenantId falls back to the caller's own
+     * context tenant), the same as every other panel/aggregate write in this class.
+     */
+    public Map<String, Object> createRow(
+            String panelName,
+            String dataSourceName,
+            Map<String, Object> input,
+            ExecutionContext context
+    ) {
+        CompiledPanel panel = requirePanel(panelName);
+        CompiledPanelDataSource dataSource = requireDataSource(panel, dataSourceName);
+        if (!dataSource.supportsAdd()) {
+            throw new IllegalArgumentException(
+                    "Panel " + panel.name() + " dataSource " + dataSource.name() + " does not support add");
+        }
+        String conceptName = resolveDataSourceConcept(dataSource);
+        if (!hasText(conceptName)) {
+            throw new IllegalStateException(
+                    "Panel " + panel.name() + " dataSource " + dataSource.name() + " has no concept to create against");
+        }
+        ExecutionContext effectiveContext = interactiveContext(context);
+        Map<String, Object> safeInput = safeInput(input);
+
+        Map<String, Object> data = castMap(safeInput.get("data"));
+        if (data.isEmpty()) {
+            data = new LinkedHashMap<>(safeInput);
+            data.remove("id");
+            data.remove("parentId");
+        } else {
+            data = new LinkedHashMap<>(data);
+        }
+
+        if (hasText(dataSource.parentDataSource())) {
+            String parentId = stringValue(safeInput.get("parentId"));
+            if (parentId.isBlank()) {
+                throw new IllegalArgumentException(
+                        "Panel " + panel.name() + " dataSource " + dataSource.name()
+                                + " is a child dataSource; parentId is required to create a row");
+            }
+            data.put(dataSource.childField(), parentId);
+        }
+
+        String id = UUID.randomUUID().toString();
+        ConceptRecord saved = requireConceptGateway().save(new ConceptWriteRequest(conceptName, id, null, data), effectiveContext);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("endpointVersion", ENDPOINT_VERSION);
+        response.put("surfaceType", "panel-runtime");
+        response.put("operation", "createRow");
+        response.put("panelName", panel.name());
+        response.put("dataSourceName", dataSource.name());
+        response.put("status", "OK");
+        response.put("result", toRecordMap(saved));
+        return response;
+    }
+
+    /**
+     * LIFT-ROWOPS-P3: deletes a row from a declared Panel dataSource that opted into
+     * {@code rowOps: [delete]}.
+     */
+    public Map<String, Object> deleteRow(
+            String panelName,
+            String dataSourceName,
+            String id,
+            ExecutionContext context
+    ) {
+        CompiledPanel panel = requirePanel(panelName);
+        CompiledPanelDataSource dataSource = requireDataSource(panel, dataSourceName);
+        if (!dataSource.supportsDelete()) {
+            throw new IllegalArgumentException(
+                    "Panel " + panel.name() + " dataSource " + dataSource.name() + " does not support delete");
+        }
+        String conceptName = resolveDataSourceConcept(dataSource);
+        if (!hasText(conceptName)) {
+            throw new IllegalStateException(
+                    "Panel " + panel.name() + " dataSource " + dataSource.name() + " has no concept to delete against");
+        }
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("id must be non-blank");
+        }
+        String rowId = id.trim();
+        ExecutionContext effectiveContext = interactiveContext(context);
+        ConceptGateway gateway = requireConceptGateway();
+        // Confirm the row is visible in the caller's own tenant before deleting. Without this, a
+        // delete for a row owned by another tenant scopes to the caller's (empty) tenant, deletes
+        // nothing, yet still reports deleted:true -- a silent, misleading no-op. Reading first makes
+        // the panel delete tenant-safe and truthful: a row the caller cannot see cannot be deleted,
+        // and the caller is told so explicitly instead of receiving a false success.
+        if (gateway.read(new ConceptReadRequest(conceptName, rowId, null), effectiveContext).isEmpty()) {
+            throw new IllegalArgumentException(
+                    "No " + conceptName + " row '" + rowId + "' is visible to this tenant to delete");
+        }
+        gateway.delete(new ConceptReadRequest(conceptName, rowId, null), effectiveContext);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("endpointVersion", ENDPOINT_VERSION);
+        response.put("surfaceType", "panel-runtime");
+        response.put("operation", "deleteRow");
+        response.put("panelName", panel.name());
+        response.put("dataSourceName", dataSource.name());
+        response.put("status", "OK");
+        response.put("result", Map.of("deleted", true, "concept", conceptName, "id", rowId));
+        return response;
+    }
+
+    private static CompiledPanelDataSource requireDataSource(CompiledPanel panel, String dataSourceName) {
+        if (dataSourceName == null || dataSourceName.isBlank()) {
+            throw new IllegalArgumentException("dataSourceName must be non-blank");
+        }
+        for (CompiledPanelDataSource dataSource : panel.dataSources()) {
+            if (dataSourceName.trim().equalsIgnoreCase(dataSource.name())) {
+                return dataSource;
+            }
+        }
+        throw new IllegalArgumentException("Panel dataSource not found: " + dataSourceName);
+    }
+
     private ProcedureExecutionResult executeProcedure(
             String procedureName,
             Map<String, Object> input,
             ExecutionContext context
     ) {
-        if (!hasText(procedureName)) {
-            throw new IllegalArgumentException("Panel action requires a procedure name.");
-        }
-        Map<String, ProcedureDefinition> procedures = buildProcedureDefinitions();
-        ProcedureDefinition definition = procedures.get(procedureName);
-        if (definition == null) {
-            throw new IllegalArgumentException("Procedure not found for panel action: " + procedureName);
-        }
-        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                requireConceptGateway(),
-                capabilityDispatcher == null ? PanelRuntime::capabilityUnavailable : capabilityDispatcher,
-                eventBus == null ? event -> { } : eventBus,
-                procedures
-        );
-        return executor.execute(definition, input, context);
+        return procedureRunner.execute(procedureName, input, context);
     }
 
-    private Map<String, ProcedureDefinition> buildProcedureDefinitions() {
-        if (compiledModel == null) {
-            return Map.of();
-        }
-        Map<String, ProcedureDefinition> definitions = new LinkedHashMap<>();
-        for (CompiledProcedure procedure : compiledModel.getProcedures()) {
-            definitions.put(procedure.name(), toProcedureDefinition(procedure));
-        }
-        return Map.copyOf(definitions);
-    }
+    // Serve an aggregate Workbench: the metadata.workbench descriptor (header/sections/bands) plus,
+    // when a root id is supplied, the nested aggregate tree loaded via AggregateRuntime (P0). With no
+    // id (e.g. the "new" route) only the descriptor is returned so the client can render an empty shell.
+    private Map<String, Object> loadWorkbench(CompiledPanel panel, Map<String, Object> input, ExecutionContext context) {
+        Map<String, Object> workbench = castMap(panel.metadata().get("workbench"));
+        String aggregate = stringValue(workbench.get("aggregate"));
+        String rootId = stringValue(input.get("id"));
 
-    private static ProcedureDefinition toProcedureDefinition(CompiledProcedure procedure) {
-        return new ProcedureDefinition(
-                procedure.name(),
-                procedure.steps().stream().map(PanelRuntime::toProcedureStep).toList()
-        );
-    }
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("endpointVersion", ENDPOINT_VERSION);
+        response.put("surfaceType", "panel-runtime");
+        response.put("operation", "loadWorkbench");
+        response.put("panelName", panel.name());
+        response.put("route", safe(panel.route()));
+        response.put("title", safe(panel.title()));
+        response.put("tenantId", context.tenantId());
+        response.put("actorId", context.actorId());
+        response.put("aggregate", aggregate);
+        response.put("workbench", workbench);
 
-    private static ProcedureStep toProcedureStep(CompiledProcedureStep step) {
-        ProcedureStepType type = ProcedureStep.parseType(step.type());
-        String target = normalized(step.target());
-        String concept = normalized(step.concept());
-        return switch (type) {
-            case READ_CONCEPT -> ProcedureStep.readConcept(stepName(step), concept, refOf(step.id(), "id"), target);
-            case LIST_CONCEPTS -> ProcedureStep.listConcepts(stepName(step), concept, target);
-            case RUN_QUERY -> ProcedureStep.runQuery(stepName(step), normalized(step.query()), concept, target);
-            case SAVE_CONCEPT -> ProcedureStep.saveConcept(stepName(step), concept, refOf(step.id(), "id"), dataRef(step), target);
-            case DELETE_CONCEPT -> ProcedureStep.deleteConcept(stepName(step), concept, refOf(step.id(), "id"));
-            case CALL_CAPABILITY -> ProcedureStep.callCapability(
-                    stepName(step),
-                    normalized(step.capability()),
-                    "",
-                    "",
-                    normalized(step.operation()),
-                    step.args().values().stream().map(value -> refOf(value, String.valueOf(value))).toList(),
-                    target
-            );
-            case PUBLISH_EVENT -> ProcedureStep.publishEvent(stepName(step), normalized(step.event()), dataRef(step));
-            case CALL_PROCEDURE -> ProcedureStep.callProcedure(stepName(step), normalized(step.procedure()), dataRef(step), target);
-            case IF -> ProcedureStep.ifThenElse(
-                    stepName(step),
-                    refOf(step.condition(), "condition"),
-                    step.thenSteps().stream().map(PanelRuntime::toProcedureStep).toList(),
-                    step.elseSteps().stream().map(PanelRuntime::toProcedureStep).toList()
-            );
-            case FOR_EACH -> ProcedureStep.forEach(
-                    stepName(step),
-                    refOf(step.items(), "items"),
-                    normalized(step.as()) == null ? "item" : normalized(step.as()),
-                    step.steps().stream().map(PanelRuntime::toProcedureStep).toList()
-            );
-            case MAP_VALUE -> ProcedureStep.mapValue(stepName(step), refOf(step.value(), "input"), target);
-            case RETURN -> ProcedureStep.returnValue(stepName(step), refOf(step.value(), target == null ? "input" : target));
-        };
+        if (rootId.isBlank()) {
+            response.put("data", Map.of());
+        } else if (aggregateRuntime == null) {
+            response.put("data", Map.of());
+            response.put("dataError", "Aggregate runtime is not configured.");
+        } else {
+            try {
+                response.put("data", aggregateRuntime.load(aggregate, rootId, context));
+            } catch (IllegalArgumentException ex) {
+                response.put("data", Map.of());
+                response.put("dataError", ex.getMessage());
+            }
+        }
+        return response;
     }
 
     private CompiledPanel requirePanel(String panelName) {
@@ -383,14 +656,18 @@ public class PanelRuntime {
         if (hasText(dataSource.concept())) {
             return dataSource.concept();
         }
+        return resolveDataSourceQuery(dataSource).map(CompiledQuery::concept).orElse("");
+    }
+
+    private Optional<CompiledQuery> resolveDataSourceQuery(CompiledPanelDataSource dataSource) {
         if (compiledModel == null || !hasText(dataSource.query())) {
-            return "";
+            return Optional.empty();
         }
-        Optional<CompiledQuery> query = compiledModel.getQueries().stream()
+        return compiledModel.getQueries().stream()
                 .filter(item -> dataSource.query().equalsIgnoreCase(item.name()))
                 .findFirst();
-        return query.map(CompiledQuery::concept).orElse("");
     }
+
 
     private String primaryPanelConcept(CompiledPanel panel) {
         for (CompiledPanelDataSource dataSource : panel.dataSources()) {
@@ -435,6 +712,25 @@ public class PanelRuntime {
             }
         }
         return List.copyOf(fields);
+    }
+
+    private static List<Map<String, Object>> panelFieldBindings(CompiledPanel panel) {
+        List<Map<String, Object>> bindings = new ArrayList<>();
+        for (CompiledPanelFieldBinding binding : panel.fieldBindings()) {
+            String source = safe(binding.source());
+            int dot = source.indexOf('.');
+            String dataSource = dot > 0 ? source.substring(0, dot) : "";
+            String sourceField = dot > 0 ? source.substring(dot + 1) : (source.isBlank() ? safe(binding.field()) : source);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("field", safe(binding.field()));
+            item.put("dataSource", dataSource);
+            item.put("sourceField", sourceField);
+            item.put("editable", binding.editable());
+            item.put("label", binding.ui() == null ? "" : safe(binding.ui().getLabel()));
+            item.put("order", binding.ui() == null ? null : binding.ui().getOrder());
+            bindings.add(item);
+        }
+        return List.copyOf(bindings);
     }
 
     private static List<Map<String, Object>> panelActions(CompiledPanel panel) {
@@ -493,6 +789,23 @@ public class PanelRuntime {
         return input == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(input));
     }
 
+    private static Map<String, Object> fallbackDataSource(String code, String message, String detail) {
+        Map<String, Object> fallback = new LinkedHashMap<>();
+        fallback.put("fallback", true);
+        fallback.put("status", "UNAVAILABLE");
+        fallback.put("code", safe(code));
+        fallback.put("message", safe(message));
+        fallback.put("detail", safe(detail));
+        return Map.copyOf(fallback);
+    }
+
+    private static boolean isFallbackDataSource(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return false;
+        }
+        return Boolean.TRUE.equals(map.get("fallback"));
+    }
+
     private static ExecutionContext interactiveContext(ExecutionContext context) {
         ExecutionContext effective = context == null ? ExecutionContext.anonymous() : context;
         return effective.withTag("executionMode", "interactive");
@@ -505,45 +818,6 @@ public class PanelRuntime {
         out.put("id", record.id());
         out.put("data", record.data());
         return out;
-    }
-
-    private static CapabilityResult capabilityUnavailable(com.npdev.kernel.CapabilityCall call, Map<String, Object> state) {
-        return CapabilityResult.failure(
-                "CAPABILITY_UNAVAILABLE",
-                "Panel procedure execution has no capability dispatcher for " + (call == null ? "" : call.capability()),
-                CapabilityErrorKind.PERMANENT,
-                Map.of()
-        );
-    }
-
-    private static String dataRef(CompiledProcedureStep step) {
-        if (step.data() != null && !step.data().isEmpty()) {
-            Object input = step.data().get("input");
-            if (input != null) {
-                return refOf(input, "input");
-            }
-            Object payload = step.data().get("payload");
-            if (payload != null) {
-                return refOf(payload, "input");
-            }
-        }
-        return "input";
-    }
-
-    private static String refOf(Object value, String fallback) {
-        if (value == null) {
-            return fallback;
-        }
-        String text = String.valueOf(value).trim();
-        if (text.isBlank()) {
-            return fallback;
-        }
-        return text.startsWith("$") ? text.substring(1) : text;
-    }
-
-    private static String stepName(CompiledProcedureStep step) {
-        String name = normalized(step.name());
-        return name == null ? "panel-procedure-step" : name;
     }
 
     private static String firstNonBlank(String first, String second) {

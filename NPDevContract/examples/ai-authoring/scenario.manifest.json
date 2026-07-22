@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "ai-scenario-manifest.v1",
+  "scenarioId": "ai-authoring",
+  "kind": "positive",
+  "expectedOutcome": "pass",
+  "files": {
+    "aiModel": "ai-model.json",
+    "aiConfig": "ai-config.json",
+    "verification": "ai-verification-report.json",
+    "expectedBehavior": "expected-behavior.json"
+  }
+}

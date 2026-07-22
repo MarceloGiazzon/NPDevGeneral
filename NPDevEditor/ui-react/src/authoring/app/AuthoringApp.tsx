@@ -8,7 +8,6 @@ import ValidationWorkspace from "../validation/ValidationWorkspace";
 import PreviewWorkspace from "../preview/PreviewWorkspace";
 import ImportExportWorkspace from "../io/ImportExportWorkspace";
 import {
-  AUTHORING_ROUTES,
   authoringHashFor,
   findAuthoringRoute,
   parseAuthoringHash,
@@ -17,6 +16,7 @@ import {
 } from "../routes/authoringRoutes";
 import { AuthoringStateProvider, useAuthoringState } from "../state/AuthoringState";
 import { serializeModelDocument } from "../services/modelDocumentService";
+import AuthoringPlaceholder from "./AuthoringPlaceholder";
 
 type AuthoringAppProps = {
   onReturnToWorkbench: () => void;
@@ -271,42 +271,8 @@ function AuthoringRouteOutlet({
         />
       );
     default:
-      return (
-        <AuthoringPlaceholder
-          title="Authoring shell"
-          summary="The route exists and is ready for future steps."
-          checklist={AUTHORING_ROUTES.map((entry) => `${entry.label}: ${entry.summary}`)}
-        />
-      );
+      return <AuthoringPlaceholder />;
   }
-}
-
-function AuthoringPlaceholder({
-  title,
-  summary,
-  checklist
-}: {
-  title: string;
-  summary: string;
-  checklist: string[];
-}): JSX.Element {
-  return (
-    <div className="authoring-route-card">
-      <header className="authoring-route-card__header">
-        <div>
-          <h3>{title}</h3>
-          <p>{summary}</p>
-        </div>
-        <div className="authoring-badge">Step 31 scaffold</div>
-      </header>
-
-      <ul className="authoring-checklist">
-        {checklist.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
-    </div>
-  );
 }
 
 export default function AuthoringApp(props: AuthoringAppProps): JSX.Element {

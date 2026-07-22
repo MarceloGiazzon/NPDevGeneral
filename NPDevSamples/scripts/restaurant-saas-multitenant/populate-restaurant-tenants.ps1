@@ -21,7 +21,12 @@ function As-Array($Value) {
 
 function Invoke-Get([string]$Route) {
     $uri = (Normalize-BaseUrl $BaseUrl) + "/api/" + $Route
-    return Invoke-RestMethod -Method Get -Uri $uri -Headers @{ "X-Api-Key" = $ApiKey }
+    $response = Invoke-RestMethod -Method Get -Uri $uri -Headers @{ "X-Api-Key" = $ApiKey }
+    # Generated list endpoints return a paged wrapper {content:[...], page, size, ...}, not a bare array.
+    if ($null -ne $response -and ($response.PSObject.Properties.Name -contains "content")) {
+        return $response.content
+    }
+    return $response
 }
 
 function Invoke-Post([string]$Route, [hashtable]$Body) {
@@ -110,51 +115,51 @@ $tenantVegan = Get-OrCreate-Tenant @{
     active = $true
 }
 
-$staffPizzaManager = Invoke-Post "staffmembers" @{
-    tenantId = $tenantPizza.id
+$staffPizzaManager = Invoke-Post "staff_members" @{
+    tenantRef = $tenantPizza.id
     fullName = "Maria Pizza"
     email = "maria@pizza-house.example"
     role = "Manager"
     active = $true
 }
 
-$staffPizzaWaiter = Invoke-Post "staffmembers" @{
-    tenantId = $tenantPizza.id
+$staffPizzaWaiter = Invoke-Post "staff_members" @{
+    tenantRef = $tenantPizza.id
     fullName = "Lucas Pizza"
     email = "lucas@pizza-house.example"
     role = "Waiter"
     active = $true
 }
 
-$staffSushiManager = Invoke-Post "staffmembers" @{
-    tenantId = $tenantSushi.id
+$staffSushiManager = Invoke-Post "staff_members" @{
+    tenantRef = $tenantSushi.id
     fullName = "Hana Sushi"
     email = "hana@sushi-bar.example"
     role = "Manager"
     active = $true
 }
 
-$staffVeganManager = Invoke-Post "staffmembers" @{
-    tenantId = $tenantVegan.id
+$staffVeganManager = Invoke-Post "staff_members" @{
+    tenantRef = $tenantVegan.id
     fullName = "Bea Vegan"
     email = "bea@vegan-bistro.example"
     role = "Manager"
     active = $true
 }
 
-$tablePizza = Invoke-Post "diningtables" @{ tenantId = $tenantPizza.id; tableNumber = "P1"; seats = 4; status = "Available" }
-$tableSushi = Invoke-Post "diningtables" @{ tenantId = $tenantSushi.id; tableNumber = "S1"; seats = 2; status = "Reserved" }
-$tableVegan = Invoke-Post "diningtables" @{ tenantId = $tenantVegan.id; tableNumber = "V1"; seats = 6; status = "Available" }
+$tablePizza = Invoke-Post "dining_tables" @{ tenantRef = $tenantPizza.id; tableNumber = "P1"; seats = 4; status = "Available" }
+$tableSushi = Invoke-Post "dining_tables" @{ tenantRef = $tenantSushi.id; tableNumber = "S1"; seats = 2; status = "Reserved" }
+$tableVegan = Invoke-Post "dining_tables" @{ tenantRef = $tenantVegan.id; tableNumber = "V1"; seats = 6; status = "Available" }
 
-$itemPizza = Invoke-Post "menuitems" @{ tenantId = $tenantPizza.id; sku = "PIZZA-MARG"; name = "Margherita Pizza"; category = "Pizza"; priceCents = 4200; available = $true }
-$itemPizzaDrink = Invoke-Post "menuitems" @{ tenantId = $tenantPizza.id; sku = "PIZZA-SODA"; name = "House Soda"; category = "Drink"; priceCents = 900; available = $true }
-$itemSushi = Invoke-Post "menuitems" @{ tenantId = $tenantSushi.id; sku = "SUSHI-COMBO"; name = "Salmon Combo"; category = "Sushi"; priceCents = 5800; available = $true }
-$itemSushiTea = Invoke-Post "menuitems" @{ tenantId = $tenantSushi.id; sku = "SUSHI-TEA"; name = "Green Tea"; category = "Drink"; priceCents = 700; available = $true }
-$itemVegan = Invoke-Post "menuitems" @{ tenantId = $tenantVegan.id; sku = "VEGAN-BOWL"; name = "Garden Bowl"; category = "Vegan"; priceCents = 3600; available = $true }
-$itemVeganDessert = Invoke-Post "menuitems" @{ tenantId = $tenantVegan.id; sku = "VEGAN-CAKE"; name = "Cocoa Cake"; category = "Dessert"; priceCents = 1600; available = $true }
+$itemPizza = Invoke-Post "menu_items" @{ tenantRef = $tenantPizza.id; sku = "PIZZA-MARG"; name = "Margherita Pizza"; category = "Pizza"; priceCents = 4200; available = $true }
+$itemPizzaDrink = Invoke-Post "menu_items" @{ tenantRef = $tenantPizza.id; sku = "PIZZA-SODA"; name = "House Soda"; category = "Drink"; priceCents = 900; available = $true }
+$itemSushi = Invoke-Post "menu_items" @{ tenantRef = $tenantSushi.id; sku = "SUSHI-COMBO"; name = "Salmon Combo"; category = "Sushi"; priceCents = 5800; available = $true }
+$itemSushiTea = Invoke-Post "menu_items" @{ tenantRef = $tenantSushi.id; sku = "SUSHI-TEA"; name = "Green Tea"; category = "Drink"; priceCents = 700; available = $true }
+$itemVegan = Invoke-Post "menu_items" @{ tenantRef = $tenantVegan.id; sku = "VEGAN-BOWL"; name = "Garden Bowl"; category = "Vegan"; priceCents = 3600; available = $true }
+$itemVeganDessert = Invoke-Post "menu_items" @{ tenantRef = $tenantVegan.id; sku = "VEGAN-CAKE"; name = "Cocoa Cake"; category = "Dessert"; priceCents = 1600; available = $true }
 
 $reservationPizza = Invoke-Post "reservations" @{
-    tenantId = $tenantPizza.id
+    tenantRef = $tenantPizza.id
     tableId = $tablePizza.id
     customerName = "Carla Oliveira"
     customerPhone = "+55-11-90000-1001"
@@ -164,7 +169,7 @@ $reservationPizza = Invoke-Post "reservations" @{
 }
 
 $reservationSushi = Invoke-Post "reservations" @{
-    tenantId = $tenantSushi.id
+    tenantRef = $tenantSushi.id
     tableId = $tableSushi.id
     customerName = "Kenji Tanaka"
     customerPhone = "+55-11-90000-2002"
@@ -174,7 +179,7 @@ $reservationSushi = Invoke-Post "reservations" @{
 }
 
 $reservationVegan = Invoke-Post "reservations" @{
-    tenantId = $tenantVegan.id
+    tenantRef = $tenantVegan.id
     tableId = $tableVegan.id
     customerName = "Laura Lima"
     customerPhone = "+55-11-90000-3003"
@@ -183,8 +188,8 @@ $reservationVegan = Invoke-Post "reservations" @{
     status = "Pending"
 }
 
-$orderPizza = Invoke-Post "diningorders" @{
-    tenantId = $tenantPizza.id
+$orderPizza = Invoke-Post "dining_orders" @{
+    tenantRef = $tenantPizza.id
     tableId = $tablePizza.id
     openedByStaffId = $staffPizzaWaiter.id
     openedAt = "2026-04-15T20:05:00-03:00"
@@ -194,8 +199,8 @@ $orderPizza = Invoke-Post "diningorders" @{
     notes = "Pizza House dinner order"
 }
 
-$orderSushi = Invoke-Post "diningorders" @{
-    tenantId = $tenantSushi.id
+$orderSushi = Invoke-Post "dining_orders" @{
+    tenantRef = $tenantSushi.id
     tableId = $tableSushi.id
     openedByStaffId = $staffSushiManager.id
     openedAt = "2026-04-15T19:35:00-03:00"
@@ -204,8 +209,8 @@ $orderSushi = Invoke-Post "diningorders" @{
     notes = "Sushi Bar table order"
 }
 
-$orderVegan = Invoke-Post "diningorders" @{
-    tenantId = $tenantVegan.id
+$orderVegan = Invoke-Post "dining_orders" @{
+    tenantRef = $tenantVegan.id
     tableId = $tableVegan.id
     openedByStaffId = $staffVeganManager.id
     openedAt = "2026-04-16T12:40:00-03:00"
@@ -214,15 +219,15 @@ $orderVegan = Invoke-Post "diningorders" @{
     notes = "Vegan Bistro lunch order"
 }
 
-$linePizza1 = Invoke-Post "orderlines" @{ tenantId = $tenantPizza.id; orderId = $orderPizza.id; menuItemId = $itemPizza.id; quantity = 1; unitPriceCents = 4200; status = "Served" }
-$linePizza2 = Invoke-Post "orderlines" @{ tenantId = $tenantPizza.id; orderId = $orderPizza.id; menuItemId = $itemPizzaDrink.id; quantity = 1; unitPriceCents = 900; status = "Served" }
-$lineSushi1 = Invoke-Post "orderlines" @{ tenantId = $tenantSushi.id; orderId = $orderSushi.id; menuItemId = $itemSushi.id; quantity = 1; unitPriceCents = 5800; status = "Fired" }
-$lineSushi2 = Invoke-Post "orderlines" @{ tenantId = $tenantSushi.id; orderId = $orderSushi.id; menuItemId = $itemSushiTea.id; quantity = 1; unitPriceCents = 700; status = "New" }
-$lineVegan1 = Invoke-Post "orderlines" @{ tenantId = $tenantVegan.id; orderId = $orderVegan.id; menuItemId = $itemVegan.id; quantity = 1; unitPriceCents = 3600; status = "New" }
-$lineVegan2 = Invoke-Post "orderlines" @{ tenantId = $tenantVegan.id; orderId = $orderVegan.id; menuItemId = $itemVeganDessert.id; quantity = 1; unitPriceCents = 1600; status = "New" }
+$linePizza1 = Invoke-Post "order_lines" @{ tenantRef = $tenantPizza.id; orderId = $orderPizza.id; menuItemId = $itemPizza.id; quantity = 1; unitPriceCents = 4200; status = "Served" }
+$linePizza2 = Invoke-Post "order_lines" @{ tenantRef = $tenantPizza.id; orderId = $orderPizza.id; menuItemId = $itemPizzaDrink.id; quantity = 1; unitPriceCents = 900; status = "Served" }
+$lineSushi1 = Invoke-Post "order_lines" @{ tenantRef = $tenantSushi.id; orderId = $orderSushi.id; menuItemId = $itemSushi.id; quantity = 1; unitPriceCents = 5800; status = "Fired" }
+$lineSushi2 = Invoke-Post "order_lines" @{ tenantRef = $tenantSushi.id; orderId = $orderSushi.id; menuItemId = $itemSushiTea.id; quantity = 1; unitPriceCents = 700; status = "New" }
+$lineVegan1 = Invoke-Post "order_lines" @{ tenantRef = $tenantVegan.id; orderId = $orderVegan.id; menuItemId = $itemVegan.id; quantity = 1; unitPriceCents = 3600; status = "New" }
+$lineVegan2 = Invoke-Post "order_lines" @{ tenantRef = $tenantVegan.id; orderId = $orderVegan.id; menuItemId = $itemVeganDessert.id; quantity = 1; unitPriceCents = 1600; status = "New" }
 
-$receiptPizza = Invoke-Post "paymentreceipts" @{
-    tenantId = $tenantPizza.id
+$receiptPizza = Invoke-Post "payment_receipts" @{
+    tenantRef = $tenantPizza.id
     orderId = $orderPizza.id
     amountCents = 5100
     provider = "demo-pos"

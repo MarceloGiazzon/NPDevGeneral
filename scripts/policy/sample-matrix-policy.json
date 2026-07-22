@@ -1,19 +1,45 @@
 {
-  "version": "1.0",
-  "releaseKinds": [
-    "canonical-demo",
-    "official-sample",
-    "tenant-sample"
+  "schemaVersion": "npdev-sample-matrix-policy.v1",
+  "release": "ai-only-beta-0",
+  "semantics": "strict-release-sample",
+  "decision": "Every policy-defined release sample is release-blocking for AI-only Beta0. Fixture-only samples must be reported explicitly but do not count as release coverage or release blockers.",
+  "blockingClassifications": [
+    "release-sample"
   ],
-  "excludedKinds": [
-    "test-model"
+  "nonBlockingClassifications": [
+    "fixture-only"
   ],
-  "requiredReleaseCoveragePercent": 100.0,
-  "minimumReleaseSampleCount": 5,
-  "minimumReleaseSamplesByKind": {
-    "canonical-demo": 1,
-    "official-sample": 3,
-    "tenant-sample": 1
+  "coverage": {
+    "requiredReleaseCoveragePercent": 100.0,
+    "coverageDenominator": "release-sample",
+    "minimumRequiredSamples": 5
   },
-  "partialMatrixRequiresAllowPartialSwitch": true
+  "releaseBlockingSamples": [
+    "canonical-demo",
+    "simple-user-registry",
+    "simple-contact-intake",
+    "medium-expense-approval",
+    "restaurant-saas-multitenant"
+  ],
+  "fixtureOnlySamples": [
+    "user-minimal"
+  ],
+  "aiBetaScenarioLinks": {
+    "simple-user-registry": [
+      "base-ai-loop",
+      "behavior-mismatch"
+    ]
+  },
+  "requiredInputFiles": [
+    "model.json",
+    "config.json",
+    "manifest.json",
+    "expected-behavior.md",
+    "expected-endpoints.md"
+  ],
+  "allowedDatabaseProviders": [
+    "docker-postgres",
+    "postgres",
+    "embedded-test"
+  ]
 }

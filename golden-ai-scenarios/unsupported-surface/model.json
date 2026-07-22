@@ -3,8 +3,8 @@
   "namespace": "npdev.beta.unsupported",
   "concepts": [
     {
-      "name": "Learner",
-      "fields": ["id"]
+      "name": "User",
+      "fields": ["id", "email"]
     }
   ],
   "procedures": [],

@@ -4,7 +4,7 @@ import com.npdev.kernel.capability.CapabilityOpKey;
 import com.npdev.kernel.capability.CircuitBreakerState;
 import com.npdev.kernel.capability.CircuitBreakerStateSummary;
 import com.npdev.kernel.capability.CircuitState;
-import org.h2.jdbcx.JdbcDataSource;
+import com.npdev.test.postgres.PostgresTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -35,11 +35,9 @@ class PostgresCircuitBreakerStateStoreTest {
 
     @BeforeEach
     void setUp() {
-        JdbcDataSource dataSource = new JdbcDataSource();
-        dataSource.setURL("jdbc:h2:mem:circuitstore;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1");
-        dataSource.setUser("sa");
-        dataSource.setPassword("sa");
-        executeSchema(dataSource, SCHEMA_SQL);
+        DataSource dataSource = PostgresTestSupport.dataSource();
+        PostgresTestSupport.execute(dataSource, SCHEMA_SQL);
+        PostgresTestSupport.truncate(dataSource, "npdev_circuit_breaker");
         store = new PostgresCircuitBreakerStateStore(dataSource);
     }
 
@@ -68,18 +66,4 @@ class PostgresCircuitBreakerStateStoreTest {
         assertEquals(CircuitState.CLOSED, store.get(key).state());
     }
 
-    private static void executeSchema(DataSource dataSource, String[] statements) {
-        try (var connection = dataSource.getConnection();
-             var statement = connection.createStatement()) {
-            for (String raw : statements) {
-                String sql = raw.trim();
-                if (sql.isEmpty()) {
-                    continue;
-                }
-                statement.execute(sql);
-            }
-        } catch (Exception exception) {
-            throw new IllegalStateException("Failed preparing circuit breaker schema", exception);
-        }
-    }
 }

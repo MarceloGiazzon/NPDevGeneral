@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["platform"],
+  "properties": {
+    "platform": {
+      "type": "string",
+      "enum": ["windows-ci", "docker-linux"]
+    },
+    "ciRunId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "diagnosticOnly": {
+      "type": "boolean"
+    }
+  },
+  "if": {
+    "properties": {
+      "platform": {
+        "const": "windows-ci"
+      }
+    },
+    "required": ["platform"]
+  },
+  "then": {
+    "required": ["ciRunId"]
+  },
+  "else": {
+    "properties": {
+      "diagnosticOnly": {
+        "const": true
+      }
+    },
+    "required": ["diagnosticOnly"]
+  },
+  "additionalProperties": false
+}

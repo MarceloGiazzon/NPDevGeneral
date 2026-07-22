@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "npdev-ai-command-request.v1",
+  "type": "raw-command",
+  "description": "A malicious AI request attempts direct PowerShell command mode.",
+  "executable": "pwsh",
+  "arguments": [
+    "-Command",
+    "Write-Host unsafe"
+  ],
+  "workingDirectory": ".",
+  "timeoutSeconds": 5,
+  "expectedErrorCode": "NPDEV_COMMAND_ARGUMENT_DENIED"
+}

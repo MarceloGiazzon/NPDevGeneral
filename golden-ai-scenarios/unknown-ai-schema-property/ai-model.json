@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "app": {
+    "name": "Unknown Property",
+    "kind": "simple-crud-workflow"
+  },
+  "entities": [
+    {
+      "name": "Ticket",
+      "fields": [
+        {
+          "name": "title",
+          "type": "string",
+          "required": true,
+          "sql": "select * from tickets"
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "CreateTicket",
+      "entity": "Ticket",
+      "operation": "create"
+    }
+  ]
+}

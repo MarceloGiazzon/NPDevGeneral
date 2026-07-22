@@ -284,11 +284,70 @@ function Test-NPDevGradleExecutable([string]$Executable) {
     return $name -match '^(gradle|gradlew)(\.bat)?$'
 }
 
+function Get-NPDevGradleWrapperExecutable([string]$ProjectRoot) {
+    $windowsWrapper = Join-Path $ProjectRoot "gradlew.bat"
+    $posixWrapper = Join-Path $ProjectRoot "gradlew"
+    if ($IsWindows) {
+        if (Test-Path -LiteralPath $windowsWrapper -PathType Leaf) {
+            return $windowsWrapper
+        }
+        if (Test-Path -LiteralPath $posixWrapper -PathType Leaf) {
+            return $posixWrapper
+        }
+    }
+    else {
+        if (Test-Path -LiteralPath $posixWrapper -PathType Leaf) {
+            return $posixWrapper
+        }
+        if (Test-Path -LiteralPath $windowsWrapper -PathType Leaf) {
+            return $windowsWrapper
+        }
+    }
+
+    throw ("Gradle wrapper not found in " + $ProjectRoot)
+}
+
+function Get-NPDevLocalCacheRoot([string]$WorkspaceRoot) {
+    if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_LOCAL_CACHE_ROOT)) {
+        return Normalize-NPDevPath $env:NPDEV_LOCAL_CACHE_ROOT
+    }
+
+    $localApplicationData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
+    if (-not [string]::IsNullOrWhiteSpace($localApplicationData)) {
+        return Normalize-NPDevPath (Join-Path $localApplicationData "NPDev")
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:XDG_CACHE_HOME)) {
+        return Normalize-NPDevPath (Join-Path $env:XDG_CACHE_HOME "npdev")
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:HOME)) {
+        return Normalize-NPDevPath (Join-Path (Join-Path $env:HOME ".cache") "npdev")
+    }
+
+    return Normalize-NPDevPath (Join-Path $WorkspaceRoot ".npdev-cache")
+}
+
 function Get-NPDevGradleUserHome([string]$WorkingDirectory) {
     $workspaceRoot = Get-NPDevWorkspaceRoot $WorkingDirectory
-    $gradleUserHome = Join-Path $workspaceRoot ".npdev-gradle"
+    $gradleUserHome = if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_GRADLE_USER_HOME)) {
+        Normalize-NPDevPath $env:NPDEV_GRADLE_USER_HOME
+    }
+    else {
+        Join-Path (Get-NPDevLocalCacheRoot $workspaceRoot) "gradle"
+    }
     New-Item -ItemType Directory -Force -Path $gradleUserHome | Out-Null
     return $gradleUserHome
+}
+
+function Get-NPDevRuntimeHostLibsDir([string]$WorkspaceRoot) {
+    if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_RUNTIMEHOST_LIBS_DIR)) {
+        return Normalize-NPDevPath $env:NPDEV_RUNTIMEHOST_LIBS_DIR
+    }
+
+    $workspace = Get-Item -LiteralPath (Normalize-NPDevPath $WorkspaceRoot)
+    $outsideRepoRoot = Join-Path $workspace.Parent.FullName ($workspace.Name + "__OutsideRepo")
+    return Normalize-NPDevPath (Join-Path $outsideRepoRoot "runtimehost-libs")
 }
 
 function Invoke-NPDevCommandStreaming {
@@ -450,11 +509,8 @@ function Get-NPDevOfficialSampleIds([string]$WorkspaceRoot = "") {
 
 function Get-NPDevWorkspaceRelativePath([string]$WorkspaceRoot, [string]$TargetPath) {
     $normalizedRoot = Normalize-NPDevPath $WorkspaceRoot
-    if (-not $normalizedRoot.EndsWith("\")) {
-        $normalizedRoot += "\"
-    }
-    $rootUri = [Uri]$normalizedRoot
-    $targetUri = [Uri](Normalize-NPDevPath $TargetPath)
-    return [Uri]::UnescapeDataString($rootUri.MakeRelativeUri($targetUri).ToString()).Replace("/", "\")
+    $normalizedTarget = Normalize-NPDevPath $TargetPath
+    $relativePath = [System.IO.Path]::GetRelativePath($normalizedRoot, $normalizedTarget)
+    return $relativePath.Replace("/", "\")
 }
 

@@ -8,7 +8,7 @@ import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.compiled.CompiledCapability;
-import com.npdev.dsl.v1.compiled.CompiledEntity;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowStep;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -19,7 +19,6 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -87,9 +86,9 @@ class OfficialSamplesRegressionTest {
             CompiledModel compiled = new ModelCompiler().compile(new JsonModelParser().parse(resolveSampleModel(expectation.id())));
 
             assertEquals(expectation.namespace(), compiled.getNamespace(), "Namespace drift for " + expectation.id());
-            assertEquals(1, compiled.getEntities().size(), "Expected one primary concept for " + expectation.id());
+            assertEquals(1, compiled.getConcepts().size(), "Expected one primary concept for " + expectation.id());
 
-            CompiledEntity entity = compiled.findEntity(expectation.entityName()).orElseThrow();
+            CompiledConcept entity = compiled.findConcept(expectation.entityName()).orElseThrow();
             assertEquals(expectation.entityName(), entity.getName(), "Primary concept drift for " + expectation.id());
 
             CompiledFlow flow = compiled.findFlow(expectation.mainFlow()).orElseThrow();

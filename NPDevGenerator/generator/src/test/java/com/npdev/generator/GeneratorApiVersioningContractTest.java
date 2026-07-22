@@ -67,6 +67,17 @@ class GeneratorApiVersioningContractTest {
         assertTrue(authFilter.contains("api-dev=dev:developer:ADMIN;dev-key=dev:developer:ADMIN"));
         assertTrue(authFilter.contains("parsed.put(\"api-dev\""));
 
+        // LNCH-3: the generated api-key filter must never clobber a request that an earlier filter in
+        // the chain (e.g. the ControlPanel super-user filter) already authenticated -- neither by
+        // overwriting its claims nor by rejecting it over a stray/invalid X-Api-Key. The guard mirrors
+        // JwtBearerAuthFilter and must be emitted into every app, so pin it here in the generator gate.
+        assertTrue(authFilter.contains("if (request.getAttribute(CLAIMS_ATTRIBUTE) != null)"),
+                "RuntimeApiKeyAuthFilter must skip requests already authenticated by an earlier filter (LNCH-3 clobber guard)");
+        int clobberGuardIdx = authFilter.indexOf("getAttribute(CLAIMS_ATTRIBUTE) != null");
+        int apiKeyPresenceIdx = authFilter.indexOf("normalize(request.getHeader(\"X-Api-Key\"))");
+        assertTrue(clobberGuardIdx > 0 && clobberGuardIdx < apiKeyPresenceIdx,
+                "the clobber guard must precede the X-Api-Key presence check in shouldNotFilter");
+
         assertTrue(uiApp.contains("/api/v1/flows/"));
         assertTrue(uiApp.contains("/api/v1/executions/"));
         assertTrue(uiApp.contains("/api/v1/traces/"));

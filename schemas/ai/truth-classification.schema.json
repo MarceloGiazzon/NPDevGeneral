@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/truth-classification.schema.json",
+  "title": "NPDev Truth Classification",
+  "description": "Truth classification for Boxes and Objects. It never blocks creation; it blocks false claims.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "truthLevel",
+    "truthLabel",
+    "freshness",
+    "source",
+    "evidenceType",
+    "confidence",
+    "risk",
+    "releaseImpact",
+    "knownLimitations",
+    "releaseBlockingIssues",
+    "nextTruthStep"
+  ],
+  "properties": {
+    "truthLevel": {
+      "type": "string",
+      "enum": [
+        "T0",
+        "T1",
+        "T2",
+        "T3",
+        "T4",
+        "T5",
+        "T6"
+      ]
+    },
+    "truthLabel": {
+      "type": "string",
+      "enum": [
+        "Idea",
+        "Declared",
+        "Generated",
+        "RunsLocally",
+        "Tested",
+        "EvidenceBacked",
+        "ReleaseApproved"
+      ]
+    },
+    "freshness": {
+      "type": "string",
+      "enum": [
+        "Fresh",
+        "Stale",
+        "Unknown"
+      ]
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "HumanAuthored",
+        "AIGenerated",
+        "AIGeneratedWithHumanReview",
+        "GeneratedFromStandard",
+        "Imported",
+        "ManualOverride",
+        "Mixed"
+      ]
+    },
+    "evidenceType": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "None",
+          "DeclarationOnly",
+          "ShapeValidation",
+          "RuntimeExecution",
+          "AutomatedTests",
+          "EvidenceBundle",
+          "ReleaseGate",
+          "ManualReview"
+        ]
+      },
+      "minItems": 1
+    },
+    "confidence": {
+      "type": "string",
+      "enum": [
+        "Low",
+        "Medium",
+        "High",
+        "ReleaseGrade"
+      ]
+    },
+    "risk": {
+      "type": "string",
+      "enum": [
+        "Low",
+        "Medium",
+        "High",
+        "Critical"
+      ]
+    },
+    "releaseImpact": {
+      "type": "string",
+      "enum": [
+        "NonBlocking",
+        "Advisory",
+        "BlocksCandidate",
+        "BlocksRelease",
+        "BlocksTag",
+        "BlocksReleaseUntilEvidenceBacked"
+      ]
+    },
+    "knownLimitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "releaseBlockingIssues": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "nextTruthStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetLevel",
+        "requiredActions"
+      ],
+      "properties": {
+        "targetLevel": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "T0",
+            "T1",
+            "T2",
+            "T3",
+            "T4",
+            "T5",
+            "T6",
+            null
+          ]
+        },
+        "requiredActions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

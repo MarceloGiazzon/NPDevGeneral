@@ -56,4 +56,9 @@ class GeneratorMainMigrationDisabledTest {
         assertTrue(ex.getMessage().contains(GeneratorMain.CONFIG_MIGRATIONS_DISABLED));
         assertTrue(ex.getMessage().contains("schema realization"));
     }
+
+    @Test
+    void acceptsCp8AdditiveOnlyCommandLineMode() {
+        assertDoesNotThrow(() -> Class.forName("com.npdev.generator.GeneratorMain"));
+    }
 }

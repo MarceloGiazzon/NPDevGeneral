@@ -1,0 +1,10 @@
+dependencies {
+    implementation project(':kernel')
+
+    // LNCH-11: the first mail-sending SDK in a kernel adapter -- deliberately isolated to this
+    // module only (kernel core and the other adapters stay dependency-free on it), same pattern
+    // as file-store-objectstore's isolated AWS SDK dependency.
+    implementation 'org.eclipse.angus:angus-mail:2.0.3'
+
+    testImplementation 'com.icegreen:greenmail-junit5:2.1.0'
+}

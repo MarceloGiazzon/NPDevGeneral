@@ -29,4 +29,18 @@ public interface PersistenceCapability<T, ID> {
      * @return true if uniqueness is violated
      */
     boolean existsUnique(String fieldName, Object value, ID excludeId);
+
+    /**
+     * LIFT-UNIQUE-P3: compound (2+ field) uniqueness check — true only when a row already
+     * matches every (field, value) pair. Defaults to "no compound duplicate" so existing
+     * generated services compile unchanged until a compound-unique invariant needs it.
+     *
+     * @param fieldNames logical model fields, same order as {@code values}
+     * @param values candidate values, same order as {@code fieldNames}
+     * @param excludeId optional current entity id for update checks (null for create)
+     * @return true if uniqueness is violated
+     */
+    default boolean existsUniqueCompound(List<String> fieldNames, List<Object> values, ID excludeId) {
+        return false;
+    }
 }

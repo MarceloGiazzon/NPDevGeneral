@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/beta0-state-truth-report.schema.json",
+  "title": "NPDev Beta0 State Truth Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "overallStatus",
+    "repositoryState",
+    "beta0TagPresent",
+    "beta0PeeledCommit",
+    "beta0RevListCommit",
+    "beta0RetagAllowed",
+    "beta0RetagActionTaken",
+    "closureReportsPassed",
+    "closureCommitMatchesPeeledTag",
+    "dirtyWorktree",
+    "notSolved"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "npdev-beta0-state-truth-report.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "scriptPath": { "const": "scripts/quality/run-maturity-max-roadmap-boundary-check.ps1" },
+    "workspaceRoot": { "type": "string", "minLength": 1 },
+    "overallStatus": { "enum": ["passed", "failed"] },
+    "repositoryState": { "enum": ["pre-release-hardening", "beta0-verified", "beta0-stale-evidence"] },
+    "beta0TagPresent": { "type": "boolean" },
+    "beta0PeeledCommit": { "type": "string" },
+    "beta0RevListCommit": { "type": "string" },
+    "beta0RetagAllowed": { "const": false },
+    "beta0RetagActionTaken": { "const": false },
+    "closureReportsPassed": { "type": "boolean" },
+    "closureCommitMatchesPeeledTag": { "type": "boolean" },
+    "dirtyWorktree": {
+      "type": "object",
+      "required": ["dirty", "dirtyLineCount", "evidenceOnly", "automaticCheckpointBlocker", "beta0RetagAction"],
+      "properties": {
+        "dirty": { "type": "boolean" },
+        "dirtyLineCount": { "type": "integer", "minimum": 0 },
+        "evidenceOnly": { "const": true },
+        "automaticCheckpointBlocker": { "const": false },
+        "beta0RetagAction": { "const": false }
+      },
+      "additionalProperties": true
+    },
+    "notSolved": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "overallStatus": { "const": "passed" } }, "required": ["overallStatus"] },
+      "then": {
+        "properties": {
+          "repositoryState": { "const": "beta0-verified" },
+          "beta0TagPresent": { "const": true },
+          "closureReportsPassed": { "const": true },
+          "closureCommitMatchesPeeledTag": { "const": true }
+        }
+      }
+    }
+  ]
+}

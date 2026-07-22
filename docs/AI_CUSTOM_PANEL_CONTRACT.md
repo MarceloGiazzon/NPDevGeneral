@@ -1,6 +1,6 @@
 # AI Custom Panel Contract
 
-A custom panel beta asset can be declarative metadata or a trusted-source UI file similar in intent to a WebPanel. The beta verifier still requires machine-readable bindings, but the user can provide real panel code.
+CP12 supports the locked Minimal support scope for custom panels. A custom panel is declarative metadata only: it can describe safe labels, bounded layout intent, data bindings, and supported widgets, but it cannot load dynamic components, scripts, remote modules, or arbitrary HTML.
 
 Required fields:
 
@@ -12,7 +12,7 @@ Required fields:
 - `actions`
 - `layout`
 - `validationHints`
-- optional `implementation`
+- optional `metadata`
 
 Supported layout types:
 
@@ -29,10 +29,14 @@ Supported widget types:
 - `action`
 - `table`
 
-Trusted-source panels use an `implementation` block:
+Supported metadata fields:
 
-- `mode`: `trustedSource`
-- `language`: `html+javascript`, `html`, or `javascript`
-- `entrypoint`: local source file inside the scenario directory
+- `displayName`
+- `description`
+- `emptyStateMessage`
+- `icon`: `table`, `form`, `summary`, `workflow`, or `status`
+- `variant`: `default`, `compact`, or `readonly`
 
-Direct inline UI code fields and external URLs still fail. Free panel code must live in tracked source files so NPDev can hash and attach evidence for the exact UI source.
+The Minimal support contract rejects `implementation`, `script`, `customHtml`, `externalUrl`, `dynamicComponent`, `componentUrl`, and equivalent dynamic behavior. Trusted-source panels remain governed by the separate trusted-source admission path and are not enabled broadly by CP12.
+
+Runtime rendering must use the declarative panel contract. If panel data cannot be hydrated, the runtime returns a structured fallback block instead of crashing or attempting dynamic component loading.

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "ai-expected-behavior.v1",
+  "scenarioId": "create-users-panel-procedure",
+  "comparisonMode": "exact",
+  "expectedClass": "FAIL_AI_MODEL_SCHEMA",
+  "assertions": []
+}

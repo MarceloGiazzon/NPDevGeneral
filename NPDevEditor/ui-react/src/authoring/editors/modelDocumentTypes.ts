@@ -54,6 +54,9 @@ export type AuthoringEnumOption = {
 
 export type AuthoringReferenceSemantics = {
   target: string;
+  via?: string;
+  onDelete?: "restrict" | "cascade" | "nullify";
+  multiple?: boolean;
   displayField?: string;
   displayTemplate?: string;
   searchFields?: string[];
@@ -64,11 +67,19 @@ export type AuthoringReferenceSemantics = {
   inlineCreate?: "allow" | "deny";
 };
 
+/** LIFT-UPLOAD-P5: metadata for a `file`-typed field. */
+export type AuthoringFileMetadata = {
+  contentTypes?: string[];
+  maxSizeBytes?: number;
+  multiple?: boolean;
+};
+
 export type AuthoringField = {
   name: string;
   type?: string;
   id?: boolean;
   required?: boolean;
+  unique?: boolean;
   description?: string;
   domainType?: string;
   default?: AuthoringModelPrimitive;
@@ -82,8 +93,10 @@ export type AuthoringField = {
   itemIdentityField?: string;
   duplicationPolicy?: "allow" | "deny";
   enumValues?: Array<string | AuthoringEnumOption>;
+  connectable?: "anchor";
   ui?: UiPresentationMetadata;
   reference?: AuthoringReferenceSemantics;
+  file?: AuthoringFileMetadata;
 };
 
 export type AuthoringInvariant = {
@@ -121,6 +134,7 @@ export type AuthoringLifecycle = {
 
 export type AuthoringEntity = {
   name: string;
+  truthLevel?: "T0" | "T1" | "T2" | "T3" | "T4" | "T5" | "T6";
   ui?: UiPresentationMetadata;
   fields: AuthoringField[];
   invariants?: AuthoringInvariant[];
@@ -188,6 +202,14 @@ export type AuthoringFlowStep = {
   data?: Record<string, string>;
   then?: AuthoringFlowStep[];
   action?: UiActionMetadata;
+  /** LIFT-LOOP: state ref to the collection a forEach step iterates. */
+  collection?: string;
+  /** LIFT-LOOP: state variable name each forEach iteration's item is bound to. */
+  itemKey?: string;
+  /** LIFT-LOOP: the forEach loop body, executed once per item. */
+  steps?: AuthoringFlowStep[];
+  /** LIFT-LOOP: safety cap on forEach iterations. */
+  maxLoopIterations?: number;
 };
 
 export type AuthoringFlow = {
@@ -297,6 +319,15 @@ export type AuthoringPanelDataSource = {
   query?: string;
   procedure?: string;
   params?: Record<string, AuthoringModelPrimitive>;
+  parentDataSource?: string;
+  parentField?: string;
+  childField?: string;
+  /** LIFT-ROWOPS-P1: "add" and/or "delete" -- lets this dataSource create/delete rows through
+   * the generic CRUD gateway instead of read-only display. */
+  rowOps?: string[];
+  /** LIFT-ROWOPS-P2: fields shown in the generated header add-row form; empty falls back to the
+   * declared table columns at generation time. */
+  addFormFields?: string[];
 };
 
 export type AuthoringPanelLayout = {

@@ -65,7 +65,7 @@ class ReferenceSemanticsSupportTest {
                 """);
 
         ModelAst ast = new JsonModelParser().parse(modelPath);
-        FieldAst patientReference = ast.getEntities().get(1).getFields().get(1);
+        FieldAst patientReference = ast.getConcepts().get(1).getFields().get(1);
         assertEquals("Patient", patientReference.getReferenceTarget());
         assertNotNull(patientReference.getReferenceSemantics());
         assertEquals("lastName", patientReference.getReferenceSemantics().getDisplayField());
@@ -77,7 +77,7 @@ class ReferenceSemanticsSupportTest {
         assertTrue(errors.isEmpty(), "Expected semantic validation to accept reference semantics, got: " + errors);
 
         CompiledModel compiled = new ModelCompiler().compile(ast);
-        CompiledField compiledReference = compiled.findEntity("Appointment")
+        CompiledField compiledReference = compiled.findConcept("Appointment")
                 .orElseThrow()
                 .getFields()
                 .stream()

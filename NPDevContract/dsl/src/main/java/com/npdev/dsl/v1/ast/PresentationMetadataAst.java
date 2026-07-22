@@ -31,11 +31,15 @@ public final class PresentationMetadataAst {
     private final String width;
     private final Boolean summaryCard;
     private final Boolean listColumn;
+    private final Boolean showInDefaultWebUi;
     private final Integer listColumnOrder;
     private final Integer formColumns;
     private final String displayMode;
+    private final String formPresentation;
     private final String defaultSort;
     private final String defaultGroup;
+    private final String imageField;
+    private final String customWidgetRef;
 
     public PresentationMetadataAst(
             String label,
@@ -64,11 +68,15 @@ public final class PresentationMetadataAst {
             String width,
             Boolean summaryCard,
             Boolean listColumn,
+            Boolean showInDefaultWebUi,
             Integer listColumnOrder,
             Integer formColumns,
             String displayMode,
+            String formPresentation,
             String defaultSort,
-            String defaultGroup
+            String defaultGroup,
+            String imageField,
+            String customWidgetRef
     ) {
         this.label = label;
         this.shortLabel = shortLabel;
@@ -96,11 +104,15 @@ public final class PresentationMetadataAst {
         this.width = width;
         this.summaryCard = summaryCard;
         this.listColumn = listColumn;
+        this.showInDefaultWebUi = showInDefaultWebUi;
         this.listColumnOrder = listColumnOrder;
         this.formColumns = formColumns;
         this.displayMode = displayMode;
+        this.formPresentation = formPresentation;
         this.defaultSort = defaultSort;
         this.defaultGroup = defaultGroup;
+        this.imageField = imageField;
+        this.customWidgetRef = customWidgetRef;
     }
 
     public String getLabel() {
@@ -207,6 +219,10 @@ public final class PresentationMetadataAst {
         return listColumn;
     }
 
+    public Boolean getShowInDefaultWebUi() {
+        return showInDefaultWebUi;
+    }
+
     public Integer getListColumnOrder() {
         return listColumnOrder;
     }
@@ -219,11 +235,23 @@ public final class PresentationMetadataAst {
         return displayMode;
     }
 
+    public String getFormPresentation() {
+        return formPresentation;
+    }
+
     public String getDefaultSort() {
         return defaultSort;
     }
 
     public String getDefaultGroup() {
         return defaultGroup;
+    }
+
+    public String getImageField() {
+        return imageField;
+    }
+
+    public String getCustomWidgetRef() {
+        return customWidgetRef;
     }
 }

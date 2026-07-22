@@ -1,5 +1,6 @@
 dependencies {
     api project(':core')
+    implementation project(':dsl')
     testImplementation project(':adapters:persistence-postgres')
     testImplementation project(':adapters:events-inproc')
     testImplementation project(':adapters:tracing-inproc')

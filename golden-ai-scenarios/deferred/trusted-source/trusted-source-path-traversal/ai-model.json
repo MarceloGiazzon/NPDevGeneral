@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "app": {
+    "name": "Trusted Source Traversal",
+    "kind": "expanded-beta-application"
+  },
+  "entities": [
+    {
+      "name": "Ticket",
+      "fields": [
+        {
+          "name": "title",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "CreateTicket",
+      "entity": "Ticket",
+      "operation": "create"
+    }
+  ],
+  "panels": [
+    {
+      "panelId": "trusted-panel",
+      "type": "entity-list",
+      "route": "/trusted",
+      "dataSource": {
+        "kind": "entity",
+        "name": "Ticket"
+      },
+      "requiredRole": "agent",
+      "tenantScoped": true,
+      "implementation": {
+        "mode": "trustedSource",
+        "language": "html",
+        "entrypoint": "../outside.html"
+      }
+    }
+  ],
+  "procedures": [],
+  "workflows": [],
+  "roles": [],
+  "tenancy": {
+    "mode": "shared-app-tenant-scoped-data",
+    "tenantIdField": "tenantId",
+    "testTenants": [
+      "tenant-a",
+      "tenant-b"
+    ]
+  },
+  "auth": {
+    "mode": "generated-test-token",
+    "principalFields": [
+      "userId",
+      "tenantId",
+      "roles"
+    ],
+    "testUsers": [
+      {
+        "userId": "agent-a",
+        "tenantId": "tenant-a",
+        "roles": [
+          "agent"
+        ]
+      },
+      {
+        "userId": "agent-b",
+        "tenantId": "tenant-b",
+        "roles": [
+          "agent"
+        ]
+      }
+    ]
+  }
+}

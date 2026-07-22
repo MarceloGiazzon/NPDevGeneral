@@ -7,142 +7,20 @@ import type {
   RuleEditorTransitionRuleDraft,
   RuleEditorOrchestrationRuleDraft
 } from "./types";
+import {
+  emptyEntityRules,
+  emptyInvariant,
+  emptyOrchestrationRule,
+  emptyRuleEditorDraft,
+  emptyTransitionRule,
+  normalizeRuleEditorDraft,
+  normalizeRuleValue
+} from "./ruleEditorDraft";
 
-function emptyDraft(): RuleEditorDraft {
-  return {
-    namespace: "com.npdev.visual.rules",
-    version: "rule-editor-draft",
-    entities: []
-  };
-}
-
-function emptyEntityRules(name: string): RuleEditorEntityRulesDraft {
-  return {
-    entityName: name,
-    invariantPalette: [],
-    stateTransitionRules: [],
-    orchestrationTriggerRules: []
-  };
-}
-
-function emptyInvariant(): RuleEditorInvariantDraft {
-  return {
-    name: "NewInvariant",
-    expression: "true",
-    message: "Rule passes"
-  };
-}
-
-function emptyTransitionRule(): RuleEditorTransitionRuleDraft {
-  return {
-    from: "FromState",
-    to: "ToState",
-    requires: [],
-    message: "Describe the transition requirement"
-  };
-}
-
-function emptyOrchestrationRule(): RuleEditorOrchestrationRuleDraft {
-  return {
-    name: "NewTriggerRule",
-    event: "BusinessEvent",
-    condition: "true",
-    action: "BusinessAction"
-  };
-}
-
-function normalize(value: unknown): string {
-  return value == null ? "" : String(value);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function asArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function asStringArray(value: unknown): string[] {
-  return asArray(value).map((item) => normalize(item)).filter(Boolean);
-}
-
-function normalizeInvariant(value: unknown): RuleEditorInvariantDraft {
-  const source = isRecord(value) ? value : {};
-  const expression = source.expression ?? source.expr ?? source.condition;
-  return {
-    name: normalize(source.name) || "Invariant",
-    expression: normalize(expression) || "true",
-    message: normalize(source.message) || normalize(source.name) || "Rule passes"
-  };
-}
-
-function normalizeTransition(value: unknown): RuleEditorTransitionRuleDraft {
-  const source = isRecord(value) ? value : {};
-  const action = isRecord(source.action) ? source.action as RuleEditorTransitionRuleDraft["action"] : undefined;
-  const metadata = isRecord(source.metadata) ? source.metadata as Record<string, string> : undefined;
-  const from = normalize(source.from) || "From";
-  const to = normalize(source.to) || "To";
-  return {
-    from,
-    to,
-    requires: asStringArray(source.requires ?? source.requiredPayload),
-    guard: normalize(source.guard) || undefined,
-    event: normalize(source.event) || undefined,
-    actionLabel: normalize(source.actionLabel) || undefined,
-    action,
-    metadata,
-    message: normalize(source.message) || normalize(source.actionLabel) || `${from} to ${to}`
-  };
-}
-
-function normalizeOrchestration(value: unknown): RuleEditorOrchestrationRuleDraft {
-  const source = isRecord(value) ? value : {};
-  const trigger = isRecord(source.trigger) ? source.trigger : {};
-  const actions = asArray(source.actions);
-  const firstAction = isRecord(actions[0]) ? actions[0] : {};
-  return {
-    name: normalize(source.name) || "TriggerRule",
-    event: normalize(source.event ?? trigger.event ?? trigger.eventName) || "Event",
-    condition: normalize(source.condition) || "true",
-    action: normalize(source.action ?? firstAction.type ?? firstAction.capability ?? firstAction.operation) || "Action"
-  };
-}
-
-function normalizeEntityRules(value: unknown, fallbackName: string): RuleEditorEntityRulesDraft {
-  const source = isRecord(value) ? value : {};
-  return {
-    entityName: normalize(source.entityName ?? source.name) || fallbackName,
-    invariantPalette: asArray(source.invariantPalette ?? source.invariants).map(normalizeInvariant),
-    stateTransitionRules: asArray(source.stateTransitionRules ?? (isRecord(source.lifecycle) ? source.lifecycle.transitions : undefined)).map(normalizeTransition),
-    orchestrationTriggerRules: asArray(source.orchestrationTriggerRules).map(normalizeOrchestration)
-  };
-}
-
-export function normalizeRuleEditorDraft(value: unknown): RuleEditorDraft {
-  if (!isRecord(value)) {
-    return emptyDraft();
-  }
-
-  const entities = asArray(value.entities).map((entity, index) => normalizeEntityRules(entity, `Entity${index + 1}`));
-  const orchestrationTriggerRules = asArray(value.orchestrationRules).map(normalizeOrchestration);
-  if (orchestrationTriggerRules.length > 0) {
-    const target = entities[0] ?? emptyEntityRules("Orchestration");
-    target.orchestrationTriggerRules = [...target.orchestrationTriggerRules, ...orchestrationTriggerRules];
-    if (entities.length === 0) {
-      entities.push(target);
-    }
-  }
-
-  return {
-    namespace: normalize(value.namespace) || "com.npdev.visual.rules",
-    version: normalize(value.version) || "rule-editor-draft",
-    entities
-  };
-}
+export { normalizeRuleEditorDraft } from "./ruleEditorDraft";
 
 export default function RuleEditorPanel() {
-  const [draft, setDraft] = useState<RuleEditorDraft>(emptyDraft());
+  const [draft, setDraft] = useState<RuleEditorDraft>(emptyRuleEditorDraft());
   const [selectedEntity, setSelectedEntity] = useState<string>("");
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [statusIsError, setStatusIsError] = useState<boolean>(false);
@@ -313,9 +191,9 @@ export default function RuleEditorPanel() {
             <tbody>
               {invariantPalette.map((rule, index) => (
                 <tr key={`${rule.name}-${index}`}>
-                  <td><input value={normalize(rule.name)} onChange={(event) => updateInvariant(index, { name: event.target.value })} /></td>
-                  <td><input value={normalize(rule.expression)} onChange={(event) => updateInvariant(index, { expression: event.target.value })} /></td>
-                  <td><input value={normalize(rule.message)} onChange={(event) => updateInvariant(index, { message: event.target.value })} /></td>
+                  <td><input value={normalizeRuleValue(rule.name)} onChange={(event) => updateInvariant(index, { name: event.target.value })} /></td>
+                  <td><input value={normalizeRuleValue(rule.expression)} onChange={(event) => updateInvariant(index, { expression: event.target.value })} /></td>
+                  <td><input value={normalizeRuleValue(rule.message)} onChange={(event) => updateInvariant(index, { message: event.target.value })} /></td>
                 </tr>
               ))}
             </tbody>
@@ -327,10 +205,10 @@ export default function RuleEditorPanel() {
             <tbody>
               {stateTransitionRules.map((rule, index) => (
                 <tr key={`${rule.from}-${rule.to}-${index}`}>
-                  <td><input value={normalize(rule.from)} onChange={(event) => updateTransition(index, { from: event.target.value })} /></td>
-                  <td><input value={normalize(rule.to)} onChange={(event) => updateTransition(index, { to: event.target.value })} /></td>
+                  <td><input value={normalizeRuleValue(rule.from)} onChange={(event) => updateTransition(index, { from: event.target.value })} /></td>
+                  <td><input value={normalizeRuleValue(rule.to)} onChange={(event) => updateTransition(index, { to: event.target.value })} /></td>
                   <td><input value={rule.requires.join(", ")} onChange={(event) => updateTransition(index, { requires: event.target.value.split(",").map((item) => item.trim()).filter(Boolean) })} /></td>
-                  <td><input value={normalize(rule.message)} onChange={(event) => updateTransition(index, { message: event.target.value })} /></td>
+                  <td><input value={normalizeRuleValue(rule.message)} onChange={(event) => updateTransition(index, { message: event.target.value })} /></td>
                 </tr>
               ))}
             </tbody>
@@ -342,10 +220,10 @@ export default function RuleEditorPanel() {
             <tbody>
               {orchestrationTriggerRules.map((rule, index) => (
                 <tr key={`${rule.name}-${index}`}>
-                  <td><input value={normalize(rule.name)} onChange={(event) => updateOrchestration(index, { name: event.target.value })} /></td>
-                  <td><input value={normalize(rule.event)} onChange={(event) => updateOrchestration(index, { event: event.target.value })} /></td>
-                  <td><input value={normalize(rule.condition)} onChange={(event) => updateOrchestration(index, { condition: event.target.value })} /></td>
-                  <td><input value={normalize(rule.action)} onChange={(event) => updateOrchestration(index, { action: event.target.value })} /></td>
+                  <td><input value={normalizeRuleValue(rule.name)} onChange={(event) => updateOrchestration(index, { name: event.target.value })} /></td>
+                  <td><input value={normalizeRuleValue(rule.event)} onChange={(event) => updateOrchestration(index, { event: event.target.value })} /></td>
+                  <td><input value={normalizeRuleValue(rule.condition)} onChange={(event) => updateOrchestration(index, { condition: event.target.value })} /></td>
+                  <td><input value={normalizeRuleValue(rule.action)} onChange={(event) => updateOrchestration(index, { action: event.target.value })} /></td>
                 </tr>
               ))}
             </tbody>

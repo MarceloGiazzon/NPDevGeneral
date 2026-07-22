@@ -10,8 +10,12 @@ import com.npdev.kernel.ports.TraceQuery;
 import com.npdev.kernel.trace.FlowTrace;
 
 import java.util.Objects;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public final class DefaultExecutionAuthorizationPolicy implements ExecutionAuthorizationPolicy {
+    private static final Logger LOG = Logger.getLogger(DefaultExecutionAuthorizationPolicy.class.getName());
+
     private final TenantIsolationPolicy tenantIsolationPolicy;
 
     public DefaultExecutionAuthorizationPolicy() {
@@ -135,7 +139,13 @@ public final class DefaultExecutionAuthorizationPolicy implements ExecutionAutho
         if (tenantId == null || tenantId.isBlank()) {
             return false;
         }
-        return !"default".equalsIgnoreCase(tenantId);
+        if ("default".equalsIgnoreCase(tenantId)) {
+            LOG.log(Level.WARNING, "Denying flow/event/execution authorization for reserved sentinel "
+                    + "tenantId \"default\" -- \"default\" is not a usable tenant identity; register a "
+                    + "real tenant (POST /api/admin/tenants) and use it instead.");
+            return false;
+        }
+        return true;
     }
 
     private static boolean hasPermission(ExecutionContext requester, Permission permission) {

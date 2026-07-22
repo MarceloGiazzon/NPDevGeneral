@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/docker-linux-parity-report.schema.json",
+  "title": "NPDev Docker/Linux Parity Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "overallStatus",
+    "platform",
+    "ciCompatibility",
+    "timeoutPolicy",
+    "commands",
+    "exitCodes",
+    "durations",
+    "artifacts",
+    "failures"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "npdev-docker-linux-parity-report.v1"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scriptPath": {
+      "type": "string",
+      "const": "scripts/quality/run-docker-linux-proof.ps1"
+    },
+    "overallStatus": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "platform": {
+      "type": "object"
+    },
+    "ciCompatibility": {
+      "type": "object",
+      "required": [
+        "status",
+        "checks"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "passed",
+            "failed"
+          ]
+        },
+        "checks": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": true
+    },
+    "timeoutPolicy": {
+      "type": "object",
+      "required": [
+        "dockerVersionTimeoutSeconds",
+        "dockerBuildTimeoutSeconds",
+        "dockerRunTimeoutSeconds"
+      ]
+    },
+    "commands": {
+      "type": "array"
+    },
+    "exitCodes": {
+      "type": "array"
+    },
+    "durations": {
+      "type": "object"
+    },
+    "artifacts": {
+      "type": "array"
+    },
+    "failures": {
+      "type": "array"
+    }
+  }
+}

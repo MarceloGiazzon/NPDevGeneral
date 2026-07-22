@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "knowledge-card.v1",
+  "id": "fix-schema-evolution-tightened-uniqueness-refusal",
+  "type": "error-fix",
+  "title": "Boot refused: new unique constraint violates existing data",
+  "body": "A model declared a new `unique` (or compound-unique) invariant on a concept whose table already has rows, and at least one existing row collides with another under that constraint. SchemaLifecycleExecutor pre-checks new uniqueness against live data before ever applying the constraint (LNCH-1 Phase 5) -- it refuses the boot and names the violating table/columns plus a sample of colliding tuples (up to 20) rather than letting the ALTER TABLE fail halfway or silently drop rows. Fix: resolve the duplicate rows first (merge, delete, or reassign one of the colliding values), or relax the constraint (make it tenant-scoped if it wasn't, remove a field from a compound unique, or drop the invariant) -- then redeploy. The stored fingerprint is left stale on refusal so a corrected retry re-attempts cleanly, without needing any acknowledgment token (this refusal is about DATA correctness, not an authorization gap). See docs/SCHEMA_EVOLUTION.md#tightened-uniqueness.",
+  "keywords": ["unique", "uniqueness", "constraint", "duplicate", "violat", "schema", "migration", "refused", "boot"],
+  "appliesTo": ["schema-evolution", "invariant", "build-ops"],
+  "signature": "schema change adds new unique constraint(s), but existing data violates them (lnch-1 phase 5). resolve the duplicate row(s) first, or relax the constraint: [table <id> unique constraint on (email) has 2 violating tuple(s), e.g.: [<id>]] -- see docs/schema_evolution.md#tightened-uniqueness",
+  "fix": "Resolve the duplicate/colliding rows named in the refusal message first, or relax the constraint (tenant-scope it, drop a field from a compound unique, or remove the invariant), then redeploy -- no acknowledgment token is needed for this refusal.",
+  "sourceRefs": ["docs/SCHEMA_EVOLUTION.md", "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java"],
+  "status": "active"
+}

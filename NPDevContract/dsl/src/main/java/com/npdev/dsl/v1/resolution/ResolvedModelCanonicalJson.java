@@ -10,7 +10,7 @@ import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.CapabilityPolicyAst;
 import com.npdev.dsl.v1.ast.ActionMetadataAst;
-import com.npdev.dsl.v1.ast.EntityAst;
+import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.EventAst;
 import com.npdev.dsl.v1.ast.EventPayloadAst;
 import com.npdev.dsl.v1.ast.FieldAst;
@@ -43,7 +43,7 @@ public final class ResolvedModelCanonicalJson {
         root.put("dslVersion", safe(modelAst.getDslVersion()));
         root.put("namespace", safe(modelAst.getNamespace()));
         root.put("version", safe(modelAst.getVersion()));
-        root.set("concepts", toEntities(modelAst.getEntities()));
+        root.set("concepts", toEntities(modelAst.getConcepts()));
         root.set("capabilities", toCapabilities(modelAst.getCapabilities()));
         root.set("bindings", toBindings(modelAst.getBindings()));
         root.set("events", toEvents(modelAst.getEvents()));
@@ -56,11 +56,11 @@ public final class ResolvedModelCanonicalJson {
         }
     }
 
-    private static ArrayNode toEntities(List<EntityAst> entities) {
+    private static ArrayNode toEntities(List<ConceptAst> entities) {
         ArrayNode out = JsonNodeFactory.instance.arrayNode();
-        List<EntityAst> sorted = new ArrayList<>(entities);
+        List<ConceptAst> sorted = new ArrayList<>(entities);
         sorted.sort(Comparator.comparing(entity -> normalize(entity.getName())));
-        for (EntityAst entity : sorted) {
+        for (ConceptAst entity : sorted) {
             ObjectNode node = JsonNodeFactory.instance.objectNode();
             node.put("name", safe(entity.getName()));
             ArrayNode fieldsNode = JsonNodeFactory.instance.arrayNode();

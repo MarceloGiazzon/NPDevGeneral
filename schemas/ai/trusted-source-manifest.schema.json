@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/trusted-source-manifest.schema.json",
+  "title": "NPDev Trusted Source Manifest",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "scenarioId",
+    "policyVersion",
+    "expectedOutcome",
+    "entries"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-trusted-source-manifest.v1"
+    },
+    "scenarioId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policyVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expectedOutcome": {
+      "enum": [
+        "pass",
+        "fail"
+      ]
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "entryId",
+          "kind",
+          "relativePath",
+          "language",
+          "sha256",
+          "runtimeBinding",
+          "requiredRole",
+          "tenantScoped"
+        ],
+        "properties": {
+          "entryId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "enum": [
+              "procedure",
+              "panel"
+            ]
+          },
+          "relativePath": {
+            "type": "string",
+            "minLength": 1,
+            "not": {
+              "pattern": "(^/|^[A-Za-z]:|\\\\|\\.\\.|://)"
+            }
+          },
+          "language": {
+            "enum": [
+              "java",
+              "html+javascript",
+              "html",
+              "javascript"
+            ]
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "runtimeBinding": {
+            "type": "string",
+            "minLength": 1
+          },
+          "className": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "requiredRole": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tenantScoped": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

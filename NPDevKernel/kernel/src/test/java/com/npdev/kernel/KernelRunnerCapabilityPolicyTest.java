@@ -131,6 +131,88 @@ class KernelRunnerCapabilityPolicyTest {
     }
 
     @Test
+    void stampsCallerTenantIntoFlowDrivenPersistenceSavePayload() {
+        AtomicReference<Object> seenEntity = new AtomicReference<>();
+        KernelRunner runner = runnerWithCapabilityStep(
+                new CapabilityExecutionPolicy(1, 0, 0, null, null),
+                (call, state) -> {
+                    seenEntity.set(call.args().get(0));
+                    return CapabilityResult.success(Map.of("id", "u-9"));
+                }
+        );
+
+        ExecutionResult result = runner.execute(
+                "CreateUser",
+                Map.of("email", "a@b.com"),
+                ExecutionContext.of("tenant-xyz", "actor-1")
+        );
+
+        assertEquals(ExecutionStatus.OK, result.getStatus());
+        assertTrue(seenEntity.get() instanceof Map, "save entity should be a Map");
+        assertEquals("tenant-xyz", ((Map<?, ?>) seenEntity.get()).get("tenantId"),
+                "flow-driven persistence save must carry the caller's tenant from the execution context");
+    }
+
+    @Test
+    void stampsCallerTenantIntoFlowDrivenPersistenceQueryCriteria() {
+        AtomicReference<Object> seenConcept = new AtomicReference<>();
+        AtomicReference<Object> seenCriteria = new AtomicReference<>();
+        KernelRunner runner = new KernelRunner(
+                event -> {
+                },
+                (entityName, payload) -> List.of(),
+                new InMemoryFlowDefinitionProvider()
+                        .register(new FlowDefinition(
+                                "ListUsers",
+                                "User",
+                                List.of(
+                                        FlowStepDefinition.capabilityCall(
+                                                "query",
+                                                "persistence",
+                                                "PersistenceCapability",
+                                                "inmemory",
+                                                "query",
+                                                List.of("User", "$input"),
+                                                "$found",
+                                                new CapabilityExecutionPolicy(1, 0, 0, null, null)
+                                        ),
+                                        FlowStepDefinition.returnValue("return-found", "$found")
+                                )
+                        )),
+                (call, state) -> {
+                    seenConcept.set(call.args().get(0));
+                    seenCriteria.set(call.args().get(1));
+                    return CapabilityResult.success(List.of());
+                },
+                null,
+                null,
+                FlowInstanceStore.noop(),
+                CorrelationOwnershipStore.noop(),
+                CircuitBreakerStateStore.noop(),
+                BulkheadStore.noop(),
+                IdempotencyStore.noop(),
+                CapabilityPolicyOverrides.empty(),
+                new InMemoryJsonCodec(),
+                null,
+                MetricsSink.noop()
+        );
+
+        ExecutionResult result = runner.execute(
+                "ListUsers",
+                Map.of("status", "active"),
+                ExecutionContext.of("tenant-xyz", "actor-1")
+        );
+
+        assertEquals(ExecutionStatus.OK, result.getStatus());
+        assertEquals("User", seenConcept.get());
+        assertTrue(seenCriteria.get() instanceof Map, "query criteria should be a Map");
+        Map<?, ?> criteria = (Map<?, ?>) seenCriteria.get();
+        assertEquals("active", criteria.get("status"), "the flow author's own criteria must still be present");
+        assertEquals("tenant-xyz", criteria.get("tenantId"),
+                "flow-driven persistence query/list must carry the caller's tenant from the execution context");
+    }
+
+    @Test
     void opensCircuitAfterRepeatedTransientFailuresAndShortCircuitsNextCall() {
         AtomicInteger attempts = new AtomicInteger();
         CircuitBreakerStateStore circuitStore = new InMemoryCircuitBreakerStore();
@@ -222,6 +304,47 @@ class KernelRunnerCapabilityPolicyTest {
                 "Expected circuitState OPEN tag in failure metrics"
         );
         assertEquals(5, attempts.get());
+    }
+
+    @Test
+    void recordsFlowOutcomeMetricForSuccessAndFailure() {
+        RecordingMetricsSink metricsSink = new RecordingMetricsSink();
+        KernelRunner successRunner = runnerWithCapabilityStep(
+                new CapabilityExecutionPolicy(1, 0, 0, null, null),
+                (call, state) -> CapabilityResult.success(Map.of("id", "u-1")),
+                CircuitBreakerStateStore.noop(),
+                BulkheadStore.noop(),
+                IdempotencyStore.noop(),
+                metricsSink
+        );
+        ExecutionResult ok = successRunner.execute("CreateUser", Map.of("email", "a@b.com"));
+        assertEquals(ExecutionStatus.OK, ok.getStatus());
+
+        KernelRunner failureRunner = runnerWithCapabilityStep(
+                new CapabilityExecutionPolicy(1, 0, 0, null, null),
+                (call, state) -> CapabilityResult.failure(
+                        "TRANSIENT_NETWORK",
+                        "temporary outage",
+                        CapabilityErrorKind.TRANSIENT,
+                        Map.of()
+                ),
+                CircuitBreakerStateStore.noop(),
+                BulkheadStore.noop(),
+                IdempotencyStore.noop(),
+                metricsSink
+        );
+        ExecutionResult failed = failureRunner.execute("CreateUser", Map.of("email", "a@b.com"));
+        assertEquals(ExecutionStatus.CAPABILITY_FAILED, failed.getStatus());
+
+        assertTrue(metricsSink.counter("npdev.flow.outcome") >= 2, "Expected a flow.outcome metric per execute() call");
+        assertTrue(
+                metricsSink.anyTagValue("npdev.flow.outcome", "outcome", "success"),
+                "Expected outcome=success tag for the OK run"
+        );
+        assertTrue(
+                metricsSink.anyTagValue("npdev.flow.outcome", "outcome", "failure"),
+                "Expected outcome=failure tag for the CAPABILITY_FAILED run"
+        );
     }
 
     @Test

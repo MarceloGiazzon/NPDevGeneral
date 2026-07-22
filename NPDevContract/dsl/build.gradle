@@ -5,6 +5,28 @@ plugins {
 group = 'com.npdev'
 version = '0.1.0'
 
+def resolveNpdevBuildRoot = {
+    def configured = System.getenv('NPDEV_BUILD_ROOT')
+    if (configured != null && !configured.trim().isEmpty()) {
+        return file(configured)
+    }
+    def sourceRoot = rootDir
+    while (sourceRoot != null && sourceRoot.name != 'NPDev_General') {
+        sourceRoot = sourceRoot.parentFile
+    }
+    if (sourceRoot != null && sourceRoot.parentFile != null) {
+        return new File(sourceRoot.parentFile, 'Build')
+    }
+    return new File(rootDir.parentFile, 'Build')
+}
+
+def npdevExternalBuildRoot = resolveNpdevBuildRoot()
+
+allprojects {
+    def safeProjectPath = project.path == ':' ? 'root' : project.path.substring(1).replace(':', '/')
+    layout.buildDirectory.set(new File(npdevExternalBuildRoot, "gradle/${rootProject.name}/${safeProjectPath}"))
+}
+
 repositories {
     mavenCentral()
 }
@@ -30,6 +52,113 @@ dependencies {
 
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
+    // Perf: forked test JVMs default to 512m and ignore org.gradle.jvmargs.
+    // These suites (ArchUnit/validation) are pure CPU and fork-safe.
+    maxHeapSize = '2g'
+    maxParallelForks = 4
+    jvmArgs '-XX:+UseParallelGC'
+}
+
+// AI-authoring loop: validate a draft model.json (structural + semantic) without generating.
+// Prints a typed JSON diagnostic report (contract npdev-validation-report.v2) and, with
+// -PreportOut=<path>, also writes it to that file (the noise-free channel the CLI/MCP reads).
+// ignoreExitValue lets the report surface even when the model fails validation (exit 2).
+tasks.register('validateModel', JavaExec) {
+    group = 'verification'
+    description = 'Validate a model.json (structural + semantic) and emit a typed JSON diagnostic report.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.npdev.dsl.v1.cli.ModelValidatorMain'
+    ignoreExitValue = true
+    def cliArgs = []
+    if (project.hasProperty('modelPath')) {
+        cliArgs << project.getProperty('modelPath')
+    }
+    if (project.hasProperty('reportOut')) {
+        cliArgs << '--out' << project.getProperty('reportOut')
+    }
+    args cliArgs
+}
+
+tasks.register('checkRuntimeSchemaCopies') {
+    description = 'Ensures active canonical schemas are synchronized into DSL runtime resources.'
+    group = 'verification'
+
+    def schemaPairs = [
+            [canonical: file('../schemas/model.schema.json'), runtime: file('src/main/resources/schema/model.schema.json')],
+            [canonical: file('../schemas/pack.schema.json'), runtime: file('src/main/resources/schema/pack.schema.json')]
+    ]
+
+    inputs.files(schemaPairs.collect { it.canonical })
+    inputs.files(schemaPairs.collect { it.runtime })
+
+    doLast {
+        def failures = []
+        schemaPairs.each { pair ->
+            if (!pair.canonical.isFile()) {
+                failures << "Missing canonical schema: ${pair.canonical}"
+                return
+            }
+            if (!pair.runtime.isFile()) {
+                failures << "Missing runtime schema resource: ${pair.runtime}"
+                return
+            }
+            if (pair.canonical.bytes != pair.runtime.bytes) {
+                failures << "Runtime schema is out of sync with canonical schema: ${pair.runtime}"
+            }
+        }
+        if (!failures.isEmpty()) {
+            throw new GradleException(failures.join(System.lineSeparator()))
+        }
+    }
+}
+
+tasks.register('checkSampleModelCopies') {
+    description = 'Ensures official sample model.json copies stay content-identical across the Contract, Generator, and NPDevSamples trees.'
+    group = 'verification'
+
+    def officialSamples = ['simple-user-registry', 'medium-expense-approval', 'simple-contact-intake']
+    def copyGroups = officialSamples.collect { sample ->
+        [
+                sample: sample,
+                files : [
+                        file("resources/Models/official-samples/${sample}/model.json"),
+                        file("../../NPDevGenerator/resources/Models/official-samples/${sample}/model.json"),
+                        file("../../NPDevSamples/${sample}/Input/model.json")
+                ]
+        ]
+    }
+
+    inputs.files(copyGroups.collectMany { it.files })
+
+    doLast {
+        // Compare content with line endings normalized: a raw byte compare would false-fail on
+        // CRLF/LF drift between the three trees. This still catches real divergence (e.g. a
+        // deprecated top-level schemaVersion left in one copy).
+        def normalize = { File modelFile -> modelFile.getText('UTF-8').replace('\r\n', '\n').replace('\r', '\n') }
+        def failures = []
+        copyGroups.each { group ->
+            def missing = group.files.findAll { !it.isFile() }
+            if (!missing.isEmpty()) {
+                failures << "Official sample '${group.sample}' is missing copies: ${missing.join(', ')}"
+                return
+            }
+            def reference = group.files.first()
+            def referenceText = normalize(reference)
+            group.files.drop(1).each { copy ->
+                if (normalize(copy) != referenceText) {
+                    failures << "Official sample '${group.sample}' copy is out of sync with ${reference}: ${copy}"
+                }
+            }
+        }
+        if (!failures.isEmpty()) {
+            throw new GradleException(failures.join(System.lineSeparator()))
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('checkRuntimeSchemaCopies')
+    dependsOn tasks.named('checkSampleModelCopies')
 }
 
 subprojects {
@@ -60,5 +189,9 @@ subprojects {
 
     tasks.withType(Test).configureEach {
         useJUnitPlatform()
+        // Perf: see note on the root Test config above.
+        maxHeapSize = '2g'
+        maxParallelForks = 4
+        jvmArgs '-XX:+UseParallelGC'
     }
 }

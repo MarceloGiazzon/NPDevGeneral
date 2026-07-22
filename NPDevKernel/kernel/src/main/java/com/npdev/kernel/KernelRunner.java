@@ -30,6 +30,7 @@ import com.npdev.kernel.ports.ExecutionTracer;
 import com.npdev.kernel.ports.SchemaValidator;
 import com.npdev.kernel.ports.EventSchemaProvider;
 import com.npdev.kernel.ports.PermissionEvaluator;
+import com.npdev.kernel.procedures.ProcedureExecutionLimits;
 import com.npdev.kernel.schema.SchemaObject;
 import com.npdev.kernel.trace.FlowTrace;
 import com.npdev.kernel.trace.FlowTraceMeta;
@@ -531,9 +532,6 @@ private final EventBus eventBus;
         this.schemaValidator = schemaValidator == null ? SchemaValidator.noop() : schemaValidator;
         this.metricsSink = metricsSink == null ? MetricsSink.noop() : metricsSink;
         this.idProvider = idProvider == null ? IdProvider.uuid() : idProvider;
-
-        // Marker to verify that exported NP is the one running inside FinalExec
-        LOG.info("NPDEV-UPGRADE-MARKER 2026-03-03 :: KernelRunner loaded");
     }
 
     public KernelRunner(
@@ -696,7 +694,7 @@ private final EventBus eventBus;
             eventStore.append(envelope);
         }
         eventBus.publish(envelope);
-        resumeFlow(effectiveCorrelationId, envelope);
+        resumeWaitingExecutionsFor(envelope, null, effectiveCorrelationId, effectiveContext);
         return envelope;
     }
 
@@ -816,7 +814,7 @@ private final EventBus eventBus;
         );
         flowInstanceStore.save(initialInstance);
 
-        return executeFlowInstance(flow, input, initialInstance, 0, traceId, effectiveContext);
+        return executeFlowInstanceTracked(flow, input, initialInstance, 0, traceId, effectiveContext);
     }
 
     @Override
@@ -845,6 +843,11 @@ private final EventBus eventBus;
     }
 
     public ExecutionResult resumeExecution(String executionId) {
+        return resumeExecution(executionId, ExecutionContext.anonymous());
+    }
+
+    public ExecutionResult resumeExecution(String executionId, ExecutionContext executionContext) {
+        ExecutionContext resumeContext = normalizeExecutionContext(executionContext);
         if (executionId == null || executionId.isBlank()) {
             return ExecutionResult.failed(
                     "<unknown>",
@@ -871,7 +874,12 @@ private final EventBus eventBus;
         }
 
         FlowInstance existing = instanceOpt.get();
-        if (existing.status() != FlowInstanceStatus.WAITING_EVENT) {
+        // WAITING_EVENT is the normal "paused for an external event" case. RUNNING is also
+        // accepted here for crash recovery: the step-level checkpoint written by
+        // StepProgressRecorder (see executeFlowInstance) leaves the last-known-good
+        // currentStepIndex/state in the store even if the process died mid-step (e.g. inside a
+        // forEach loop body, LIFT-LOOP-P2) without ever reaching WAITING_EVENT.
+        if (existing.status() != FlowInstanceStatus.WAITING_EVENT && existing.status() != FlowInstanceStatus.RUNNING) {
             return ExecutionResult.failed(
                     existing.flowName(),
                     List.of(),
@@ -897,13 +905,13 @@ private final EventBus eventBus;
         }
 
         Object input = existing.state().get("input");
-        return executeFlowInstance(
+        return executeFlowInstanceTracked(
                 flowOpt.get(),
                 input,
                 existing,
                 existing.currentStepIndex(),
                 existing.executionId(),
-                ExecutionContext.of(existing.tenantId(), existing.actorId())
+                resumeContext
         );
     }
 
@@ -916,7 +924,7 @@ private final EventBus eventBus;
         if (lookupCorrelationId == null) {
             lookupCorrelationId = eventEnvelope.correlationId();
         }
-        return resumeWaitingExecutionsFor(eventEnvelope, null, lookupCorrelationId);
+        return resumeWaitingExecutionsFor(eventEnvelope, null, lookupCorrelationId, ExecutionContext.anonymous());
     }
 
     public int resumeAllWaitingExecutions() {
@@ -983,7 +991,13 @@ private final EventBus eventBus;
             }
 
             try {
-                ExecutionResult result = resumeExecution(waitingInstance.executionId());
+                // Resume under the waiting instance's own tenant/actor. The awaited event is
+                // tenant-scoped, so resuming with an anonymous context would look it up under the
+                // default tenant and never match a tenant-scoped event, leaving the flow stuck.
+                ExecutionResult result = resumeExecution(
+                        waitingInstance.executionId(),
+                        ExecutionContext.of(waitingInstance.tenantId(), waitingInstance.actorId())
+                );
                 if (result.getStatus() == ExecutionStatus.WAITING_EVENT) {
                     FlowInstance latest = flowInstanceStore.findByExecutionId(waitingInstance.executionId())
                             .orElse(waitingInstance);
@@ -1046,6 +1060,29 @@ private final EventBus eventBus;
         try {
             currentFlowContext.set(flow.getName());
 
+            // LNCH-17: a crash mid-compensation leaves the instance RUNNING (resumeExecution
+            // already accepts that status for crash recovery) with this marker still set --
+            // finish compensating instead of re-running the flow's normal forward step loop.
+            if (Boolean.TRUE.equals(state.get(COMPENSATION_ACTIVE_KEY))) {
+                flowOutcome = StepOutcome.FAILED;
+                Object storedNextIndex = state.get(COMPENSATION_NEXT_INDEX_KEY);
+                int resumeIndex = storedNextIndex instanceof Number number ? number.intValue() : -1;
+                runCompensations(flow, input, state, resumeIndex, traceMeta, stepTraces, executionId, correlationId, currentInstance, executionContext);
+                FlowInstance failed = finalizeCompensatedFailure(currentInstance[0], state, nowEpochMillis());
+                flowInstanceStore.update(failed);
+                currentInstance[0] = failed;
+                emitOperationalFailureEvent(failed);
+                return ExecutionResult.failed(
+                        flow.getName(),
+                        List.of(),
+                        emittedEvents,
+                        failed.lastErrorMessage(),
+                        executionId,
+                        correlationId,
+                        traceId
+                );
+            }
+
             if (safeStartStepIndex >= flow.getSteps().size()) {
                 FlowInstance completed = currentInstance[0].markCompleted(state, nowEpochMillis());
                 flowInstanceStore.update(completed);
@@ -1101,24 +1138,28 @@ private final EventBus eventBus;
                     }
                     int marker = failedIndex == null ? currentInstance[0].currentStepIndex() : Math.max(0, failedIndex);
                     FlowInstance failedMarker = currentInstance[0].markRunning(marker, state, nowEpochMillis());
-                    FlowInstance failed = switch (resolveFailureTerminalStatus(failure)) {
-                        case FAILED_PERMANENT -> failedMarker.markFailedPermanent(
-                                state,
-                                nowEpochMillis(),
-                                failure.getFailureInfo()
-                        );
-                        case STUCK -> failedMarker.markStuck(
-                                state,
-                                nowEpochMillis(),
-                                failure.getFailureInfo()
-                        );
-                        case FAILED -> failedMarker.markFailed(
-                                state,
-                                nowEpochMillis(),
-                                failure.getFailureInfo()
-                        );
-                        default -> failedMarker.markFailed(state, nowEpochMillis(), failure.getFailureInfo());
-                    };
+                    currentInstance[0] = failedMarker;
+
+                    // LNCH-17: compensate steps 0..marker-1 (already completed before this
+                    // failure) in reverse order, before finalizing the terminal status. Routes
+                    // through the same beginCompensation/finalizeCompensatedFailure pair the
+                    // crash-resume path uses, so there is exactly one place that decides the
+                    // terminal FlowInstanceStatus/FailureInfo shape either way.
+                    FlowInstance failed;
+                    if (hasAnyOnFailure(flow)) {
+                        beginCompensation(state, resolveFailureTerminalStatus(failure), failure.getFailureInfo());
+                        runCompensations(flow, input, state, marker - 1, traceMeta, stepTraces, executionId, correlationId, currentInstance, executionContext);
+                        failed = finalizeCompensatedFailure(currentInstance[0], state, nowEpochMillis());
+                    } else {
+                        failed = switch (resolveFailureTerminalStatus(failure)) {
+                            case FAILED_PERMANENT -> currentInstance[0].markFailedPermanent(
+                                    state, nowEpochMillis(), failure.getFailureInfo());
+                            case STUCK -> currentInstance[0].markStuck(
+                                    state, nowEpochMillis(), failure.getFailureInfo());
+                            default -> currentInstance[0].markFailed(
+                                    state, nowEpochMillis(), failure.getFailureInfo());
+                        };
+                    }
                     flowInstanceStore.update(failed);
                     currentInstance[0] = failed;
                     emitOperationalFailureEvent(failed);
@@ -1141,18 +1182,26 @@ private final EventBus eventBus;
             );
         } catch (RuntimeException runtimeException) {
             flowOutcome = StepOutcome.FAILED;
-            FlowInstance failed = currentInstance[0].markFailed(
-                    state,
-                    nowEpochMillis(),
-                    FailureInfo.of(
-                            ErrorKind.SYSTEM,
-                            FailureCodes.SYSTEM_EXCEPTION,
-                            runtimeException.getMessage() == null
-                                    ? "Unhandled kernel execution error"
-                                    : runtimeException.getMessage(),
-                            Map.of("exceptionType", runtimeException.getClass().getSimpleName())
-                    )
+            FailureInfo failureInfo = FailureInfo.of(
+                    ErrorKind.SYSTEM,
+                    FailureCodes.SYSTEM_EXCEPTION,
+                    runtimeException.getMessage() == null
+                            ? "Unhandled kernel execution error"
+                            : runtimeException.getMessage(),
+                    Map.of("exceptionType", runtimeException.getClass().getSimpleName())
             );
+            // LNCH-17: same compensate-then-finalize routing as the modeled-failure branch above;
+            // currentStepIndex() here already reflects the last successfully-checkpointed step
+            // (StepProgressRecorder only advances it after a step completes), so steps
+            // 0..currentStepIndex()-1 are exactly the ones that finished before this exception.
+            FlowInstance failed;
+            if (hasAnyOnFailure(flow)) {
+                beginCompensation(state, FlowInstanceStatus.FAILED, failureInfo);
+                runCompensations(flow, input, state, currentInstance[0].currentStepIndex() - 1, traceMeta, stepTraces, executionId, correlationId, currentInstance, executionContext);
+                failed = finalizeCompensatedFailure(currentInstance[0], state, nowEpochMillis());
+            } else {
+                failed = currentInstance[0].markFailed(state, nowEpochMillis(), failureInfo);
+            }
             flowInstanceStore.update(failed);
             currentInstance[0] = failed;
             emitOperationalFailureEvent(failed);
@@ -1440,6 +1489,12 @@ private final EventBus eventBus;
                                     );
                                 }
                             }
+                            // A database integrity violation (a bond/FK to a missing row, or a unique
+                            // conflict) is a caller CONTRACT failure, not a system error. The persistence
+                            // adapter surfaces it with a stable message signature; recover the CONTRACT
+                            // classification here in case an intermediate sandbox/dispatch wrapper widened
+                            // it to a generic kind (which would otherwise report system_exception).
+                            capabilityError = reclassifyIntegrityViolation(capabilityError);
                             traceFailedStep(
                                     traceMeta,
                                     step,
@@ -1624,7 +1679,7 @@ private final EventBus eventBus;
                             ));
                         }
                         eventBus.publish(envelope);
-                        resumeWaitingExecutionsFor(envelope, executionId, envelope.correlationId());
+                        resumeWaitingExecutionsFor(envelope, executionId, envelope.correlationId(), effectiveContext);
                         emittedEvents.add(envelope);
                         state.put("lastEvent", envelope);
                         state.put("causationId", executionId);
@@ -1744,7 +1799,7 @@ private final EventBus eventBus;
                             ));
                         }
                         eventBus.publish(envelope);
-                        resumeWaitingExecutionsFor(envelope, executionId, envelope.correlationId());
+                        resumeWaitingExecutionsFor(envelope, executionId, envelope.correlationId(), effectiveContext);
                         emittedEvents.add(envelope);
                         state.put("lastEvent", envelope);
                         state.put("causationId", executionId);
@@ -1803,6 +1858,16 @@ private final EventBus eventBus;
                                 progressRecorder.onStepCompleted(traceStepIndex + 1, state);
                                 return nested;
                             }
+                        }
+                    }
+                    case FOR_EACH -> {
+                        StepExecutionOutcome loopFailure = executeForEachStep(
+                                flow, step, input, state, emittedEvents, traceMeta, stepTraces,
+                                executionId, defaultCorrelationId, traceStepIndex, progressRecorder, effectiveContext,
+                                stepStartedAt, stateBefore, stepInfo
+                        );
+                        if (loopFailure != null) {
+                            return loopFailure;
                         }
                     }
                     case AWAIT_EVENT -> {
@@ -1979,10 +2044,264 @@ private final EventBus eventBus;
         return StepExecutionOutcome.continueFlow();
     }
 
+    /**
+     * LIFT-LOOP-P2: durable {@code forEach} execution. The loop occupies exactly one flat
+     * step-trace position (like any other atomic step -- MAP, CAPABILITY_CALL, ...); it does
+     * <b>not</b> extend the flat step-index space the way {@code BRANCH}'s nested then/else steps
+     * do, and deliberately doesn't try to make each nested step within an iteration individually
+     * resumable (nested {@code AWAIT_EVENT} is rejected by {@code SemanticValidator} at compile
+     * time for exactly this reason). Instead, durability is at iteration granularity: after each
+     * iteration's nested steps all succeed, progress (the next iteration index to run) is folded
+     * into {@code state} under a step-scoped key and checkpointed via {@code progressRecorder}
+     * <i>without</i> advancing the outer step index -- so a crash mid-loop resumes by re-entering
+     * this same {@code forEach} step and skipping iterations already recorded as done, rather than
+     * re-running the whole collection from item 0. A capability call inside the loop body still
+     * gets its own existing per-call idempotency (via {@code CapabilityExecutionPolicy
+     * .idempotencyKeyField()}); an author whose key expression varies per item (e.g. references the
+     * loop's {@code itemKey}) gets correct at-most-once behavior even for the iteration that was
+     * mid-flight at crash time and gets partially re-run.
+     *
+     * @return a failed {@link StepExecutionOutcome} to return from the caller's switch, or
+     *         {@code null} if the loop completed and the caller should fall through to the normal
+     *         success bookkeeping at the bottom of {@link #executeSteps}.
+     */
+    private StepExecutionOutcome executeForEachStep(
+            FlowDefinition flow,
+            FlowStepDefinition step,
+            Object input,
+            Map<String, Object> state,
+            List<EventEnvelope> emittedEvents,
+            FlowTraceMeta traceMeta,
+            List<StepTrace> stepTraces,
+            String executionId,
+            String defaultCorrelationId,
+            int traceStepIndex,
+            StepProgressRecorder progressRecorder,
+            ExecutionContext effectiveContext,
+            long stepStartedAt,
+            Map<String, Object> stateBefore,
+            Map<String, Object> stepInfo
+    ) {
+        Object collectionValue = resolveReference(step.getCollectionRef(), state, input);
+        Iterable<?> iterable = toIterable(collectionValue);
+        if (iterable == null) {
+            traceFailedStep(traceMeta, step, traceStepIndex, stepStartedAt, stateBefore, state, stepInfo,
+                    List.of(), null, stepTraces);
+            return StepExecutionOutcome.failed(ExecutionResult.failed(
+                    flow.getName(),
+                    List.of(),
+                    emittedEvents,
+                    "forEach step " + step.getName() + " requires an iterable collection at "
+                            + step.getCollectionRef(),
+                    executionId,
+                    Objects.toString(state.get("correlationId"), defaultCorrelationId),
+                    executionId
+            ));
+        }
+        List<Object> items = new ArrayList<>();
+        for (Object item : iterable) {
+            items.add(item);
+        }
+        int cap = step.getMaxLoopIterations() != null
+                ? step.getMaxLoopIterations()
+                : ProcedureExecutionLimits.DEFAULT_MAX_LOOP_ITERATIONS;
+        if (items.size() > cap) {
+            traceFailedStep(traceMeta, step, traceStepIndex, stepStartedAt, stateBefore, state, stepInfo,
+                    List.of(), null, stepTraces);
+            return StepExecutionOutcome.failed(ExecutionResult.failed(
+                    flow.getName(),
+                    List.of(),
+                    emittedEvents,
+                    "forEach step " + step.getName() + " exceeded maxLoopIterations=" + cap,
+                    executionId,
+                    Objects.toString(state.get("correlationId"), defaultCorrelationId),
+                    executionId
+            ));
+        }
+
+        String progressKey = "__forEachProgress." + step.getName();
+        int startIndex = state.get(progressKey) instanceof Number n ? n.intValue() : 0;
+        String itemKey = step.getItemKey();
+        boolean hadPreviousItemValue = state.containsKey(itemKey);
+        Object previousItemValue = state.get(itemKey);
+
+        try {
+            for (int i = startIndex; i < items.size(); i++) {
+                state.put(itemKey, items.get(i));
+                List<StepTrace> loopIterationTraces = new ArrayList<>();
+                StepExecutionOutcome nested = executeSteps(
+                        flow,
+                        step.getLoopSteps(),
+                        input,
+                        state,
+                        emittedEvents,
+                        traceMeta,
+                        loopIterationTraces,
+                        executionId,
+                        defaultCorrelationId,
+                        0,
+                        NOOP_STEP_PROGRESS_RECORDER,
+                        effectiveContext
+                );
+                stepTraces.addAll(loopIterationTraces);
+                if (nested.failedResult() != null) {
+                    ExecutionResult nestedFailure = nested.failedResult();
+                    traceFailedStep(traceMeta, step, traceStepIndex, stepStartedAt, stateBefore, state, stepInfo,
+                            nestedFailure.getInvariantViolations(), nestedFailure.getCapabilityError(), stepTraces);
+                    return StepExecutionOutcome.failed(ExecutionResult.failed(
+                            flow.getName(),
+                            nestedFailure.getInvariantViolations(),
+                            emittedEvents,
+                            "forEach step " + step.getName() + " failed at iteration " + i + ": "
+                                    + nestedFailure.getError(),
+                            executionId,
+                            Objects.toString(state.get("correlationId"), defaultCorrelationId),
+                            executionId
+                    ));
+                }
+                // Checkpoint at the SAME (not +1) step index -- the loop itself hasn't finished,
+                // so a crash-and-resume here must re-enter this forEach step, not skip past it.
+                state.put(progressKey, i + 1);
+                progressRecorder.onStepCompleted(traceStepIndex, state);
+            }
+        } finally {
+            if (hadPreviousItemValue) {
+                state.put(itemKey, previousItemValue);
+            } else {
+                state.remove(itemKey);
+            }
+            state.remove(progressKey);
+        }
+        stepInfo.put("collectionSize", items.size());
+        return null;
+    }
+
+    private static final StepProgressRecorder NOOP_STEP_PROGRESS_RECORDER = (nextStepIndex, currentState) -> { };
+
+    // LNCH-17: reserved flow-state keys used to durably checkpoint a compensation run in
+    // progress, so a crash mid-compensation resumes (via the same RUNNING-status recovery path
+    // LIFT-LOOP-P2 already uses for forEach) and finishes running the remaining compensations
+    // exactly once, rather than silently leaving some rolled back and some not. Flat strings/
+    // primitives only (no FailureInfo object stored directly) since flow state must survive a
+    // JDBC-backed FlowInstanceStore's JSON round trip.
+    private static final String COMPENSATION_ACTIVE_KEY = "__npdev_compensating__";
+    private static final String COMPENSATION_NEXT_INDEX_KEY = "__npdev_compensationNextIndex__";
+    private static final String COMPENSATION_TERMINAL_STATUS_KEY = "__npdev_compensationTerminalStatus__";
+    private static final String COMPENSATION_ERROR_KIND_KEY = "__npdev_compensationErrorKind__";
+    private static final String COMPENSATION_ERROR_CODE_KEY = "__npdev_compensationErrorCode__";
+    private static final String COMPENSATION_ERROR_MESSAGE_KEY = "__npdev_compensationErrorMessage__";
+
+    /** Whether any top-level step in this flow declares compensation -- lets every failure path
+     * skip compensation entirely (zero extra durable writes, zero behavior change) for the vast
+     * majority of flows that don't use this feature. */
+    private static boolean hasAnyOnFailure(FlowDefinition flow) {
+        for (FlowStepDefinition step : flow.getSteps()) {
+            if (!step.getOnFailureSteps().isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Stamps the flow state with what a compensation run needs to remember to finalize
+     * correctly later, whether that happens in this same call or after a crash-and-resume. */
+    private static void beginCompensation(Map<String, Object> state, FlowInstanceStatus terminalStatus, FailureInfo failureInfo) {
+        state.put(COMPENSATION_ACTIVE_KEY, Boolean.TRUE);
+        state.put(COMPENSATION_TERMINAL_STATUS_KEY, terminalStatus.name());
+        state.put(COMPENSATION_ERROR_KIND_KEY, failureInfo.kind().name());
+        state.put(COMPENSATION_ERROR_CODE_KEY, failureInfo.code());
+        state.put(COMPENSATION_ERROR_MESSAGE_KEY, failureInfo.message());
+    }
+
+    /**
+     * Runs declared {@code onFailure} steps for every top-level step from {@code startIndex} down
+     * to 0 that has them, in reverse completion order (the saga-compensation pattern the spec
+     * doc recommends) -- best-effort: a compensation block that itself throws is logged and
+     * skipped, not allowed to abort compensating earlier steps too. Durably checkpoints after
+     * each top-level step's compensation (mirroring {@code StepProgressRecorder}'s per-step
+     * checkpoint), so a crash here resumes from the next uncompensated step, not from scratch.
+     */
+    private void runCompensations(
+            FlowDefinition flow,
+            Object input,
+            Map<String, Object> state,
+            int startIndex,
+            FlowTraceMeta traceMeta,
+            List<StepTrace> stepTraces,
+            String executionId,
+            String correlationId,
+            FlowInstance[] currentInstance,
+            ExecutionContext executionContext
+    ) {
+        for (int index = startIndex; index >= 0; index--) {
+            FlowStepDefinition step = flow.getSteps().get(index);
+            if (!step.getOnFailureSteps().isEmpty()) {
+                try {
+                    executeSteps(
+                            flow,
+                            step.getOnFailureSteps(),
+                            input,
+                            state,
+                            new ArrayList<>(),
+                            traceMeta,
+                            stepTraces,
+                            executionId,
+                            correlationId,
+                            0,
+                            NOOP_STEP_PROGRESS_RECORDER,
+                            executionContext
+                    );
+                } catch (RuntimeException compensationException) {
+                    LOG.warning(String.format(
+                            "Compensation for step '%s' in flow '%s' (execution %s) failed: %s",
+                            step.getName(), flow.getName(), executionId, compensationException.getMessage()
+                    ));
+                }
+            }
+            state.put(COMPENSATION_NEXT_INDEX_KEY, index - 1);
+            FlowInstance checkpoint = currentInstance[0].markRunning(currentInstance[0].currentStepIndex(), state, nowEpochMillis());
+            flowInstanceStore.update(checkpoint);
+            currentInstance[0] = checkpoint;
+        }
+        state.remove(COMPENSATION_ACTIVE_KEY);
+        state.remove(COMPENSATION_NEXT_INDEX_KEY);
+    }
+
+    /** Reads back what {@link #beginCompensation} stamped, clears it, and applies the terminal
+     * status the original failure would have gotten had compensation not run at all. */
+    private static FlowInstance finalizeCompensatedFailure(FlowInstance instance, Map<String, Object> state, long nowEpochMs) {
+        String terminalStatusName = String.valueOf(state.remove(COMPENSATION_TERMINAL_STATUS_KEY));
+        ErrorKind kind = ErrorKind.valueOf(String.valueOf(state.remove(COMPENSATION_ERROR_KIND_KEY)));
+        String code = String.valueOf(state.remove(COMPENSATION_ERROR_CODE_KEY));
+        String message = String.valueOf(state.remove(COMPENSATION_ERROR_MESSAGE_KEY));
+        FailureInfo failureInfo = FailureInfo.of(kind, code, message);
+        return switch (FlowInstanceStatus.valueOf(terminalStatusName)) {
+            case FAILED_PERMANENT -> instance.markFailedPermanent(state, nowEpochMs, failureInfo);
+            case STUCK -> instance.markStuck(state, nowEpochMs, failureInfo);
+            default -> instance.markFailed(state, nowEpochMs, failureInfo);
+        };
+    }
+
+    private static Iterable<?> toIterable(Object value) {
+        if (value instanceof Iterable<?> iterable) {
+            return iterable;
+        }
+        if (value != null && value.getClass().isArray()) {
+            List<Object> items = new ArrayList<>();
+            int length = java.lang.reflect.Array.getLength(value);
+            for (int index = 0; index < length; index++) {
+                items.add(java.lang.reflect.Array.get(value, index));
+            }
+            return items;
+        }
+        return null;
+    }
+
     private FlowEngine.ResumeOutcome resumeWaitingExecutionsFor(
             EventEnvelope envelope,
             String currentExecutionId,
-            String lookupCorrelationId
+            String lookupCorrelationId,
+            ExecutionContext resumeExecutionContext
     ) {
         if (envelope == null) {
             return FlowEngine.ResumeOutcome.noMatch();
@@ -2011,7 +2330,10 @@ private final EventBus eventBus;
             }
             matchedWaiters++;
             try {
-                ExecutionResult result = resumeExecution(instance.executionId());
+                ExecutionResult result = resumeExecution(
+                        instance.executionId(),
+                        resumeExecutionContext == null ? ExecutionContext.anonymous() : resumeExecutionContext
+                );
                 if (result.getStatus() == ExecutionStatus.WAITING_EVENT) {
                     // Event-driven mismatches must be a no-op. Backoff is only for scheduled scans.
                     continue;
@@ -2517,6 +2839,33 @@ private final EventBus eventBus;
         return Math.min(computed, Math.max(policy.retryBaseDelayMs(), policy.retryMaxDelayMs()));
     }
 
+    private static CapabilityError reclassifyIntegrityViolation(CapabilityError error) {
+        if (error == null
+                || error.kind() == CapabilityErrorKind.CONTRACT
+                || !isIntegrityViolationMessage(error.message())) {
+            return error;
+        }
+        return new CapabilityError(
+                error.code(),
+                error.message(),
+                CapabilityErrorKind.CONTRACT,
+                error.details()
+        );
+    }
+
+    private static boolean isIntegrityViolationMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String normalized = message.toLowerCase(java.util.Locale.ROOT);
+        return normalized.contains("referential integrity")
+                || normalized.contains("integrity constraint")
+                || normalized.contains("referential/constraint violation")
+                || normalized.contains("foreign key")
+                || normalized.contains("unique index or primary key")
+                || normalized.contains("unique constraint");
+    }
+
     private CapabilityResult invokeCapabilityWithPolicy(
             FlowStepDefinition step,
             List<Object> args,
@@ -2856,6 +3205,84 @@ private final EventBus eventBus;
         return new CircuitGate(true, false);
     }
 
+    // LNCH-8: single choke point for both fresh-start (execute) and resumed (resumeExecution)
+    // flow runs, so a flow/procedure OUTCOME metric + a single-line structured log line are
+    // recorded exactly once per terminal-or-waiting return, without touching executeFlowInstance's
+    // large existing body (which already emits its own per-step debug logs).
+    private ExecutionResult executeFlowInstanceTracked(
+            FlowDefinition flow,
+            Object input,
+            FlowInstance initialInstance,
+            int startStepIndex,
+            String traceId,
+            ExecutionContext executionContext
+    ) {
+        long startedAtMs = nowEpochMillis();
+        ExecutionResult result = executeFlowInstance(flow, input, initialInstance, startStepIndex, traceId, executionContext);
+        long durationMs = nowEpochMillis() - startedAtMs;
+        String outcome = flowOutcomeTag(result.getStatus());
+        logFlowOutcome(flow.getName(), result, outcome, durationMs);
+        recordFlowOutcomeMetric(flow.getName(), outcome, durationMs);
+        return result;
+    }
+
+    private void logFlowOutcome(String flowName, ExecutionResult result, String outcome, long durationMs) {
+        LOG.info(String.format(
+                "{\"event\":\"npdev.flow.outcome\",\"flowName\":\"%s\",\"executionId\":\"%s\","
+                        + "\"correlationId\":\"%s\",\"outcome\":\"%s\",\"status\":\"%s\",\"durationMs\":%d}",
+                jsonEscape(flowName),
+                jsonEscape(result.getExecutionId()),
+                jsonEscape(result.getCorrelationId()),
+                jsonEscape(outcome),
+                result.getStatus() == null ? "" : result.getStatus().name(),
+                durationMs
+        ));
+    }
+
+    private void recordFlowOutcomeMetric(String flowName, String outcome, long durationMs) {
+        Map<String, String> tags = new LinkedHashMap<>();
+        tags.put("flowName", safeTag(flowName, "<none>"));
+        tags.put("outcome", outcome);
+        safeMetricInc("npdev.flow.outcome", tags);
+        safeMetricObserveMs("npdev.flow.duration_ms", durationMs, tags);
+    }
+
+    private static String flowOutcomeTag(ExecutionStatus status) {
+        if (status == null) {
+            return "unknown";
+        }
+        return switch (status) {
+            case OK -> "success";
+            case WAITING_EVENT -> "waiting";
+            default -> "failure";
+        };
+    }
+
+    private static String jsonEscape(String value) {
+        if (value == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            switch (c) {
+                case '"' -> sb.append("\\\"");
+                case '\\' -> sb.append("\\\\");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                default -> {
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+                }
+            }
+        }
+        return sb.toString();
+    }
+
     private void safeMetricInc(String name, Map<String, String> tags) {
         try {
             metricsSink.inc(name, tags);
@@ -3131,31 +3558,65 @@ private final EventBus eventBus;
             int attempt
     ) {
         List<Object> effectiveArgs = (args == null) ? new ArrayList<>() : args;
+        List<Object> callArgs = args;
         Object conceptForDebug = null;
 
         if (args != null
-                && args.size() == 1
                 && step != null
                 && step.getCapability() != null
                 && step.getOperation() != null) {
 
             String capName = step.getCapability().trim().toLowerCase();
             String opName = step.getOperation().trim().toLowerCase();
+            boolean isPersistence = "persistence".equals(capName);
 
             // NPDev convention (debug only for now): infer a concept name for persistence.save
             // from invariant scope or runtime entity name.
-            if ("persistence".equals(capName) && "save".equals(opName)) {
+            if (isPersistence && "save".equals(opName) && args.size() == 1) {
                 Object concept = step.getInvariantScope();
                 if (concept == null || String.valueOf(concept).isBlank()) {
                     concept = state == null ? null : state.get("_npdevEntityName");
                 }
                 if (concept != null && !String.valueOf(concept).isBlank()) {
                     conceptForDebug = concept;
-
-                    // NOTE: We intentionally DO NOT change the call arguments here, to preserve the
-                    // PersistenceCapabilityContract signature save(entity) and keep existing tests stable.
-                    // If/when we introduce a concept-aware persistence contract, this is the place to wire it.
                 }
+
+                // Tenant isolation for the FLOW-DRIVEN persistence path: stamp the caller's tenant
+                // (carried in flow state, seeded from the ExecutionContext at execute() time) into the
+                // entity payload so the capability adapter writes the tenant_id column. The tenant is
+                // taken from the execution context, never from caller-supplied data -- mirroring the
+                // generated-CRUD path. Reads via capability findById (by globally-unique UUID) are
+                // unaffected (IDs are globally-unique UUIDs, not enumerable); query()/list reads are
+                // tenant-scoped below, the same way.
+                if (args.get(0) instanceof Map<?, ?> entityMap) {
+                    Map<String, Object> stamped = new LinkedHashMap<>();
+                    for (Map.Entry<?, ?> entry : entityMap.entrySet()) {
+                        stamped.put(String.valueOf(entry.getKey()), entry.getValue());
+                    }
+                    stamped.put("tenantId", flowStateTenantId(state));
+                    callArgs = List.of(stamped);
+                    effectiveArgs = callArgs;
+                }
+            }
+
+            // Tenant isolation for flow-driven persistence READS: query()/list() take
+            // (concept, criteria) -- stamp the caller's tenant into the criteria map the same way
+            // save() stamps it into the entity map, so a flow author gets row-scoped reads for free
+            // instead of having to remember to add a tenantId criterion themselves.
+            if (isPersistence && ("query".equals(opName) || "list".equals(opName)) && args.size() == 2) {
+                Object concept = args.get(0);
+                if (concept != null && !String.valueOf(concept).isBlank()) {
+                    conceptForDebug = concept;
+                }
+                Map<String, Object> stamped = new LinkedHashMap<>();
+                if (args.get(1) instanceof Map<?, ?> criteriaMap) {
+                    for (Map.Entry<?, ?> entry : criteriaMap.entrySet()) {
+                        stamped.put(String.valueOf(entry.getKey()), entry.getValue());
+                    }
+                }
+                stamped.put("tenantId", flowStateTenantId(state));
+                callArgs = List.of(concept, stamped);
+                effectiveArgs = callArgs;
             }
         }
 
@@ -3175,7 +3636,7 @@ CapabilityCall call = new CapabilityCall(
                 step.getCapabilityType(),
                 step.getCapabilityAdapterId(),
                 Objects.requireNonNull(step.getOperation(), "operation is required"),
-                args,
+                callArgs,
                 correlationId,
                 idempotencyKey
         );
@@ -3248,6 +3709,17 @@ CapabilityCall call = new CapabilityCall(
                     )
             );
         }
+    }
+
+    /**
+     * The tenant a flow-driven persistence write is owned by: taken from flow state (seeded from the
+     * caller's ExecutionContext at execute() time), falling back to "default" when no tenant claim is
+     * present (e.g. an unauthenticated trial boot). Mirrors the generated-CRUD currentTenantId().
+     */
+    private static String flowStateTenantId(Map<String, Object> state) {
+        Object tenant = state == null ? null : state.get("tenantId");
+        String tenantId = tenant == null ? null : String.valueOf(tenant).trim();
+        return (tenantId == null || tenantId.isBlank()) ? "default" : tenantId;
     }
 
     private static CapabilityResult normalizeCapabilityFailure(
@@ -3965,3 +4437,10 @@ CapabilityCall call = new CapabilityCall(
         }
     }
 }
+
+
+
+
+
+
+

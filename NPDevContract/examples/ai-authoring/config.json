@@ -1,10 +1,10 @@
 {
-  "$schema": "../../schemas/config.schema.json",
+  "$schema": "NPDevContract/schemas/config.schema.json",
   "configVersion": "1.0",
   "scenario": {
-    "name": "ai-authoring-workitems",
-    "description": "Domain-neutral AI authoring bundle for scripts and CLI clients.",
-    "outputRoot": "./Output"
+    "name": "ai-authoring",
+    "description": "AI-only Beta 0 normalized scenario for AI Authoring User Registry.",
+    "outputRoot": "out/generated/ai-authoring"
   },
   "generator": {
     "failIfModelMissing": true,
@@ -15,23 +15,49 @@
     "emitUiAssets": true
   },
   "bootstrap": {
-    "root": "../../../NPDevRuntimeHost",
+    "root": "NPDevRuntimeHost",
     "mergeStrategy": "clean-copy"
   },
   "artifact": {
-    "root": "./Output/ArtifactNP",
+    "root": "out/generated/ai-authoring/ArtifactNP",
     "generatedFolderName": "npdev-generated",
     "libsFolderName": "libs",
     "metaFolderName": "npdev-meta"
   },
   "finalExec": {
-    "root": "./Output/App",
+    "root": "out/generated/ai-authoring/App",
     "deleteBeforeMount": true
   },
+  "database": {
+    "provider": "docker-postgres",
+    "host": "localhost",
+    "port": 5432,
+    "database": "ai_authoring",
+    "username": "finalexec",
+    "password": "finalexec",
+    "adminDatabase": "postgres",
+    "resetMode": "reset",
+    "containerName": "npdev-ai-authoring"
+  },
   "runtime": {
-    "springProfile": "dev,step0,trial",
-    "serverPort": 8092,
+    "springProfile": "dev,step0,ai-beta-local",
+    "serverPort": 18080,
     "javaArgs": [],
     "gradleTask": "bootRun"
+  },
+  "trialDefaults": {
+    "apiKey": "dev-key",
+    "recommendedProfiles": "dev,step0,ai-beta-local",
+    "runtimeUrl": "http://localhost:18080/",
+    "databaseMode": "step0-h2",
+    "pluginDiscoveryMode": "filesystem-folder",
+    "pluginPackageDirectory": "./npdev-generated/src/main/resources/npdev/plugin-packages",
+    "notes": [
+      "AI-only Beta 0 uses local REST smoke checks and controlled command execution."
+    ]
+  },
+  "metadata": {
+    "normalizedFrom": "ai-generator-config.v1",
+    "runtimeProfile": "ai-beta-local"
   }
 }

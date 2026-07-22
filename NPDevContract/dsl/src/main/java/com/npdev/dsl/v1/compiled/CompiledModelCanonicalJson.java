@@ -58,7 +58,102 @@ public final class CompiledModelCanonicalJson {
         root.set("ruleProfiles", toRuleProfiles(model));
         root.set("procedures", toProcedures(model));
         root.set("panels", toPanels(model));
+        root.set("guidePages", toGuidePages(model));
+        root.set("aggregates", toAggregates(model));
+        root.set("autoPanels", toAutoPanels(model));
         return root;
+    }
+
+    private static ArrayNode toAutoPanels(CompiledModel model) {
+        ArrayNode autoPanels = JsonNodeFactory.instance.arrayNode();
+        List<CompiledAutoPanel> sorted = new ArrayList<>(model.getAutoPanels());
+        sorted.sort(Comparator.comparing(autoPanel -> normalize(autoPanelSortKey(autoPanel))));
+        for (CompiledAutoPanel autoPanel : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(autoPanel.name()));
+            node.put("concept", safe(autoPanel.concept()));
+            node.put("aggregate", safe(autoPanel.aggregate()));
+            node.put("route", safe(autoPanel.route()));
+            ArrayNode surfaces = JsonNodeFactory.instance.arrayNode();
+            autoPanel.surfaces().forEach(surfaces::add);
+            node.set("surfaces", surfaces);
+            node.set("selection", toAutoPanelSurface(autoPanel.selection()));
+            node.set("detail", toAutoPanelSurface(autoPanel.detail()));
+            node.set("transaction", toAutoPanelSurface(autoPanel.transaction()));
+            node.set("prompt", toAutoPanelSurface(autoPanel.prompt()));
+            node.set("metadata", toObjectMap(autoPanel.metadata()));
+            autoPanels.add(node);
+        }
+        return autoPanels;
+    }
+
+    private static String autoPanelSortKey(CompiledAutoPanel autoPanel) {
+        if (autoPanel.name() != null && !autoPanel.name().isBlank()) {
+            return autoPanel.name();
+        }
+        if (autoPanel.concept() != null && !autoPanel.concept().isBlank()) {
+            return autoPanel.concept();
+        }
+        return autoPanel.aggregate() == null ? "" : autoPanel.aggregate();
+    }
+
+    private static JsonNode toAutoPanelSurface(CompiledAutoPanelSurface surface) {
+        if (surface == null) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        ArrayNode filters = JsonNodeFactory.instance.arrayNode();
+        surface.filters().forEach(filters::add);
+        node.set("filters", filters);
+        ArrayNode columns = JsonNodeFactory.instance.arrayNode();
+        surface.columns().forEach(columns::add);
+        node.set("columns", columns);
+        ArrayNode fields = JsonNodeFactory.instance.arrayNode();
+        surface.fields().forEach(fields::add);
+        node.set("fields", fields);
+        ArrayNode computed = JsonNodeFactory.instance.arrayNode();
+        for (CompiledAutoPanelComputed c : surface.computed()) {
+            ObjectNode cn = JsonNodeFactory.instance.objectNode();
+            cn.put("col", safe(c.col()));
+            cn.put("expr", safe(c.expr()));
+            computed.add(cn);
+        }
+        node.set("computed", computed);
+        node.put("labelField", safe(surface.labelField()));
+        node.set("metadata", toObjectMap(surface.metadata()));
+        return node;
+    }
+
+    private static ArrayNode toAggregates(CompiledModel model) {
+        ArrayNode aggregates = JsonNodeFactory.instance.arrayNode();
+        List<CompiledAggregate> sorted = new ArrayList<>(model.getAggregates());
+        sorted.sort(Comparator.comparing(aggregate -> normalize(aggregate.name())));
+        for (CompiledAggregate aggregate : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(aggregate.name()));
+            node.put("root", safe(aggregate.root()));
+            node.set("collections", toAggregateCollections(aggregate.collections()));
+            node.set("metadata", toObjectMap(aggregate.metadata()));
+            aggregates.add(node);
+        }
+        return aggregates;
+    }
+
+    private static ArrayNode toAggregateCollections(List<CompiledAggregateCollection> collections) {
+        ArrayNode array = JsonNodeFactory.instance.arrayNode();
+        for (CompiledAggregateCollection collection : collections) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(collection.name()));
+            node.put("concept", safe(collection.concept()));
+            node.put("via", safe(collection.via()));
+            node.put("childField", safe(collection.childField()));
+            node.put("ownership", safe(collection.ownership()));
+            node.put("orderBy", safe(collection.orderBy()));
+            node.set("collections", toAggregateCollections(collection.collections()));
+            node.set("metadata", toObjectMap(collection.metadata()));
+            array.add(node);
+        }
+        return array;
     }
 
     private static ArrayNode toConcepts(CompiledModel model) {
@@ -70,6 +165,9 @@ public final class CompiledModelCanonicalJson {
             node.put("name", safe(concept.getName()));
             node.put("className", safe(concept.getClassName()));
             node.put("tableName", safe(concept.getTableName()));
+            node.put("truthLevel", safe(concept.getTruthLevel()));
+            node.put("module", safe(concept.getModule()));
+            node.put("renamedFrom", safe(concept.getRenamedFrom()));
             node.set("ui", toPresentationMetadata(concept.getUi()));
 
             List<CompiledField> fields = new ArrayList<>(concept.getFields());
@@ -86,10 +184,13 @@ public final class CompiledModelCanonicalJson {
                 fieldNode.set("enumValues", toStringArray(field.getEnumValues()));
                 fieldNode.set("enumOptions", toEnumOptions(field.getEnumOptions()));
                 fieldNode.put("referenceTarget", safe(field.getReferenceTarget()));
+                fieldNode.put("connectable", safe(field.getConnectable()));
+                fieldNode.put("renamedFrom", safe(field.getRenamedFrom()));
                 fieldNode.set("referenceSemantics", toReferenceSemantics(field.getReferenceSemantics()));
                 fieldNode.put("domainType", safe(field.getDomainType()));
                 fieldNode.set("schema", toSchema(field.getSchema()));
                 fieldNode.set("ui", toPresentationMetadata(field.getUi()));
+                fieldNode.set("file", toFileMetadata(field.getFile()));
                 fieldsNode.add(fieldNode);
             }
             node.set("fields", fieldsNode);
@@ -111,13 +212,41 @@ public final class CompiledModelCanonicalJson {
                 invariantNode.put("type", safe(invariant.getType()));
                 invariantNode.put("field", safe(invariant.getField()));
                 invariantNode.put("expression", safe(invariant.getExpression()));
+                invariantNode.set("fields", toStringArray(invariant.getFields()));
                 invariantsNode.add(invariantNode);
             }
             node.set("invariants", invariantsNode);
             node.set("lifecycle", toLifecycle(concept.getLifecycle()));
+            // LNCH-1 P0.2 (found by the reflective CanonicalJsonRoundTripCompletenessTest ratchet):
+            // indexes was neither written here nor read by CompiledModelCanonicalJsonReader, so a
+            // concept's author-declared secondary indexes (LNCH-6) silently vanished across the
+            // canonical-JSON round trip -- the exact bug class the comments elsewhere in this file
+            // reference "LNCH-6's indexes" as a prior instance of (that prior fix evidently did not
+            // cover this writer/reader pair). Needed by LNCH-1 Phase 6's model-vs-previous-canonical
+            // diffing, which must see index changes, not just DDL emitted at generation time.
+            node.set("indexes", toIndexes(concept.getIndexes()));
+            node.set("access", toConceptAccess(concept.getAccess()));
             concepts.add(node);
         }
         return concepts;
+    }
+
+    private static ArrayNode toIndexes(List<CompiledIndex> indexes) {
+        ArrayNode array = JsonNodeFactory.instance.arrayNode();
+        if (indexes == null) {
+            return array;
+        }
+        for (CompiledIndex index : indexes) {
+            if (index == null) {
+                continue;
+            }
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(index.getName()));
+            node.set("fields", toStringArray(index.getFields()));
+            node.put("unique", index.isUnique());
+            array.add(node);
+        }
+        return array;
     }
 
     private static ArrayNode toDomainTypes(CompiledModel model) {
@@ -214,6 +343,15 @@ public final class CompiledModelCanonicalJson {
         } else {
             node.put("listColumn", metadata.getListColumn());
         }
+        // LNCH-1 P0.2 (found by the reflective CanonicalJsonRoundTripCompletenessTest ratchet):
+        // showInDefaultWebUi was read by CompiledModelCanonicalJsonReader#toPresentationMetadata
+        // but never written here, silently dropping a field/concept's default-web-UI visibility
+        // override across the canonical-JSON round trip -- same bug class as LNCH-6's indexes.
+        if (metadata.getShowInDefaultWebUi() == null) {
+            node.putNull("showInDefaultWebUi");
+        } else {
+            node.put("showInDefaultWebUi", metadata.getShowInDefaultWebUi());
+        }
         if (metadata.getListColumnOrder() == null) {
             node.putNull("listColumnOrder");
         } else {
@@ -225,8 +363,11 @@ public final class CompiledModelCanonicalJson {
             node.put("formColumns", metadata.getFormColumns());
         }
         node.put("displayMode", safe(metadata.getDisplayMode()));
+        node.put("formPresentation", safe(metadata.getFormPresentation()));
         node.put("defaultSort", safe(metadata.getDefaultSort()));
         node.put("defaultGroup", safe(metadata.getDefaultGroup()));
+        node.put("imageField", safe(metadata.getImageField()));
+        node.put("customWidgetRef", safe(metadata.getCustomWidgetRef()));
         return node;
     }
 
@@ -281,6 +422,7 @@ public final class CompiledModelCanonicalJson {
             ObjectNode node = JsonNodeFactory.instance.objectNode();
             node.put("name", safe(event.getName()));
             node.put("conceptName", safe(event.getConceptName()));
+            node.put("triggerMode", safe(event.getTriggerMode()));
 
             List<CompiledEventField> payloadFields = new ArrayList<>(event.getPayloadFields());
             payloadFields.sort(Comparator.comparing(field -> normalize(field.getName())));
@@ -306,13 +448,25 @@ public final class CompiledModelCanonicalJson {
             node.put("name", safe(flow.getName()));
             node.put("concept", safe(flow.getConcept()));
             node.put("mode", safe(flow.getMode()));
+            node.put("startEndpoint", flow.isStartEndpoint());
             node.set("inputSchema", toSchema(flow.getInputSchema()));
             node.set("outputSchema", toSchema(flow.getOutputSchema()));
             node.set("action", toActionMetadata(flow.getAction()));
             node.set("steps", toFlowSteps(flow.getSteps()));
+            node.set("schedule", toFlowSchedule(flow.getSchedule()));
             flows.add(node);
         }
         return flows;
+    }
+
+    private static ObjectNode toFlowSchedule(CompiledFlowSchedule schedule) {
+        if (schedule == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("cron", safe(schedule.getCron()));
+        node.set("tenantScope", toStringArray(schedule.getTenantScope()));
+        return node;
     }
 
     private static ArrayNode toQueries(CompiledModel model) {
@@ -367,10 +521,28 @@ public final class CompiledModelCanonicalJson {
             node.set("permissionRequirements", toStringArray(procedure.permissionRequirements()));
             node.put("tracePolicy", safe(procedure.tracePolicy()));
             node.put("auditPolicy", safe(procedure.auditPolicy()));
+            node.set("actionDescriptor", toGeneratedActionDescriptor(procedure.actionDescriptor()));
             node.set("metadata", toObjectMap(procedure.metadata()));
             procedures.add(node);
         }
         return procedures;
+    }
+
+    private static ObjectNode toGeneratedActionDescriptor(CompiledGeneratedActionDescriptorSpec descriptor) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        if (descriptor == null) {
+            return node;
+        }
+        node.put("actionName", safe(descriptor.actionName()));
+        node.set("affectedConcepts", toStringArray(descriptor.affectedConcepts()));
+        node.put("sideEffectConcept", safe(descriptor.sideEffectConcept()));
+        node.put("eventNameOnSuccess", safe(descriptor.eventNameOnSuccess()));
+        node.put("auditResourceType", safe(descriptor.auditResourceType()));
+        node.put("idempotencyPolicy", safe(descriptor.idempotencyPolicy()));
+        node.put("tracePolicy", safe(descriptor.tracePolicy()));
+        node.put("correlationPolicy", safe(descriptor.correlationPolicy()));
+        node.put("explicit", descriptor.explicit());
+        return node;
     }
 
     private static ArrayNode toProcedureParameters(List<CompiledProcedureParameter> parameters) {
@@ -429,6 +601,12 @@ public final class CompiledModelCanonicalJson {
             node.set("data", toObjectMap(step.data()));
             node.put("id", safe(step.id()));
             node.put("procedure", safe(step.procedure()));
+            // LNCH-1 P0.2 (found by the reflective CanonicalJsonRoundTripCompletenessTest ratchet):
+            // flow was read by CompiledModelCanonicalJsonReader#toProcedureSteps but never written
+            // here, silently dropping a procedure step's flow reference across the canonical-JSON
+            // round trip every generated app's NPDevModelProvider reads at boot -- same bug class
+            // as LNCH-6's indexes/LNCH-13's access/LNCH-12's schedule/LNCH-17's loopSteps.
+            node.put("flow", safe(step.flow()));
             node.put("capability", safe(step.capability()));
             node.put("operation", safe(step.operation()));
             node.put("event", safe(step.event()));
@@ -461,9 +639,79 @@ public final class CompiledModelCanonicalJson {
             node.set("actions", toPanelActions(panel.actions()));
             node.set("explainability", toObjectMap(panel.explainability()));
             node.set("metadata", toObjectMap(panel.metadata()));
+            node.put("guidePage", safe(panel.guidePage()));
             panels.add(node);
         }
         return panels;
+    }
+
+    private static ArrayNode toGuidePages(CompiledModel model) {
+        ArrayNode guidePages = JsonNodeFactory.instance.arrayNode();
+        List<CompiledGuidePage> sorted = new ArrayList<>(model.getGuidePages());
+        sorted.sort(Comparator.comparing(page -> normalize(page.name())));
+        for (CompiledGuidePage page : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(page.name()));
+            node.put("default", page.isDefault());
+            node.set("regions", toGuidePageRegions(page.regions()));
+            node.set("theme", toGuidePageTheme(page.theme()));
+            node.set("gadgets", toGuidePageGadgets(page.gadgets()));
+            guidePages.add(node);
+        }
+        return guidePages;
+    }
+
+    private static JsonNode toGuidePageRegions(CompiledGuidePageRegions regions) {
+        if (regions == null) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("top", regions.top());
+        node.set("left", toGuidePageRegion(regions.left()));
+        node.set("right", toGuidePageRegion(regions.right()));
+        return node;
+    }
+
+    private static JsonNode toGuidePageRegion(CompiledGuidePageRegion region) {
+        if (region == null) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("enabled", region.enabled());
+        node.put("collapsible", region.collapsible());
+        node.put("defaultCollapsed", region.defaultCollapsed());
+        node.put("width", region.width());
+        return node;
+    }
+
+    private static JsonNode toGuidePageTheme(CompiledGuidePageTheme theme) {
+        if (theme == null) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("mode", safe(theme.mode()));
+        node.put("accent", safe(theme.accent()));
+        node.put("density", safe(theme.density()));
+        node.put("logoText", safe(theme.logoText()));
+        node.put("logoUrl", safe(theme.logoUrl()));
+        return node;
+    }
+
+    private static ArrayNode toGuidePageGadgets(List<CompiledGuidePageGadget> gadgets) {
+        ArrayNode out = JsonNodeFactory.instance.arrayNode();
+        if (gadgets == null) {
+            return out;
+        }
+        List<CompiledGuidePageGadget> sorted = new ArrayList<>(gadgets);
+        sorted.sort(Comparator.comparing(gadget -> normalize(gadget.name())));
+        for (CompiledGuidePageGadget gadget : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(gadget.name()));
+            node.put("type", safe(gadget.type()));
+            node.put("title", safe(gadget.title()));
+            out.add(node);
+        }
+        return out;
     }
 
     private static ArrayNode toPanelDataSources(List<CompiledPanelDataSource> dataSources) {
@@ -480,6 +728,11 @@ public final class CompiledModelCanonicalJson {
             node.put("query", safe(dataSource.query()));
             node.put("procedure", safe(dataSource.procedure()));
             node.set("params", toObjectMap(dataSource.params()));
+            node.put("parentDataSource", safe(dataSource.parentDataSource()));
+            node.put("parentField", safe(dataSource.parentField()));
+            node.put("childField", safe(dataSource.childField()));
+            node.set("rowOps", toStringArray(dataSource.rowOps()));
+            node.set("addFormFields", toStringArray(dataSource.addFormFields()));
             out.add(node);
         }
         return out;
@@ -516,6 +769,7 @@ public final class CompiledModelCanonicalJson {
             node.put("enabledWhen", safe(binding.enabledWhen()));
             node.put("readonlyWhen", safe(binding.readonlyWhen()));
             node.set("ui", toPresentationMetadata(binding.ui()));
+            node.put("editable", binding.editable());
             out.add(node);
         }
         return out;
@@ -545,6 +799,17 @@ public final class CompiledModelCanonicalJson {
             out.add(node);
         }
         return out;
+    }
+
+    /** LNCH-13: row-level authorization rule (access: {read, write}). */
+    private static ObjectNode toConceptAccess(CompiledConceptAccess access) {
+        if (access == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("read", safe(access.getRead()));
+        node.put("write", safe(access.getWrite()));
+        return node;
     }
 
     private static ObjectNode toLifecycle(CompiledLifecycle lifecycle) {
@@ -686,7 +951,23 @@ public final class CompiledModelCanonicalJson {
             stepNode.put("mapFromRef", safe(flowStep.getMapFromRef()));
             stepNode.put("mapToRef", safe(flowStep.getMapToRef()));
             stepNode.put("returnValueRef", safe(flowStep.getReturnValueRef()));
+            stepNode.put("generatedActionName", safe(flowStep.getGeneratedActionName()));
             stepNode.set("capabilityCall", toCapabilityCall(flowStep.getCapabilityCall()));
+            // LNCH-17 (found while adding onFailureSteps below): collectionRef/itemKey/loopSteps/
+            // maxLoopIterations (LIFT-LOOP-P1's forEach fields) were never written here, so a
+            // forEach step's loop body silently vanished across the canonical-JSON round trip every
+            // generated app's NPDevModelProvider actually reads at boot -- the same bug class as
+            // LNCH-6's indexes/LNCH-13's access/LNCH-12's schedule, pre-existing and unrelated to
+            // this feature, fixed alongside it since this method needed touching anyway.
+            stepNode.put("collectionRef", safe(flowStep.getCollectionRef()));
+            stepNode.put("itemKey", safe(flowStep.getItemKey()));
+            stepNode.set("loopSteps", toFlowSteps(flowStep.getLoopSteps()));
+            if (flowStep.getMaxLoopIterations() == null) {
+                stepNode.putNull("maxLoopIterations");
+            } else {
+                stepNode.put("maxLoopIterations", flowStep.getMaxLoopIterations());
+            }
+            stepNode.set("onFailureSteps", toFlowSteps(flowStep.getOnFailureSteps()));
             steps.add(stepNode);
         }
         return steps;
@@ -715,6 +996,7 @@ public final class CompiledModelCanonicalJson {
         ObjectNode node = JsonNodeFactory.instance.objectNode();
         node.put("capabilityName", safe(capabilityCall.getCapabilityName()));
         node.put("capabilityType", safe(capabilityCall.getCapabilityType()));
+        node.put("adapterId", safe(capabilityCall.getAdapterId()));
         node.put("operation", safe(capabilityCall.getOperation()));
         node.set("argsRefs", toStringArray(capabilityCall.getArgsRefs()));
         node.put("inputRef", safe(capabilityCall.getInputRef()));
@@ -893,6 +1175,29 @@ public final class CompiledModelCanonicalJson {
         node.set("pickerColumns", toStringArray(referenceSemantics.getPickerColumns()));
         node.put("previewCardTemplate", safe(referenceSemantics.getPreviewCardTemplate()));
         node.put("defaultFilter", safe(referenceSemantics.getDefaultFilter()));
+        node.put("via", safe(referenceSemantics.getVia()));
+        node.put("onDelete", safe(referenceSemantics.getOnDelete()));
+        return node;
+    }
+
+    /**
+     * HARDEN-OBJSTORE: {@code file} was previously dropped by this hand-rolled writer (only the
+     * generic Jackson getter-based serialization picked it up), so every generated app's runtime
+     * {@code CompiledModel} silently lost a file field's contentTypes/maxSizeBytes/multiple
+     * constraints on read-back, defeating {@code FileUploadController}'s upload-time validation.
+     */
+    private static JsonNode toFileMetadata(CompiledFileMetadata file) {
+        if (file == null) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.set("contentTypes", toStringArray(file.contentTypes()));
+        if (file.maxSizeBytes() == null) {
+            node.putNull("maxSizeBytes");
+        } else {
+            node.put("maxSizeBytes", file.maxSizeBytes());
+        }
+        node.put("multiple", file.multiple());
         return node;
     }
 

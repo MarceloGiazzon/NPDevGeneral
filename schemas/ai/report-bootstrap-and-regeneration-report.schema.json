@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/report-bootstrap-and-regeneration-report.schema.json",
+  "title": "NPDev Report Bootstrap And Regeneration Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "overallStatus",
+    "requiredReportCount",
+    "missingReportCount",
+    "failedReportCount",
+    "schemaInvalidReportCount",
+    "finalEvidenceManifestGenerated",
+    "ciUploadsReports",
+    "producers",
+    "requiredReports",
+    "findings",
+    "doesNotSolve"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "npdev-report-bootstrap-and-regeneration-report.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "scriptPath": { "const": "scripts/quality/bootstrap-post-beta0-reports.ps1" },
+    "workspaceRoot": { "type": "string", "minLength": 1 },
+    "overallStatus": { "enum": ["passed", "failed"] },
+    "requiredReportCount": { "const": 21 },
+    "missingReportCount": { "type": "integer", "minimum": 0 },
+    "failedReportCount": { "type": "integer", "minimum": 0 },
+    "schemaInvalidReportCount": { "type": "integer", "minimum": 0 },
+    "finalEvidenceManifestGenerated": { "type": "boolean" },
+    "ciUploadsReports": { "type": "boolean" },
+    "producers": { "type": "array", "items": { "type": "object" } },
+    "requiredReports": { "type": "array", "minItems": 12, "items": { "type": "object" } },
+    "findings": { "type": "array", "items": { "type": "object" } },
+    "doesNotSolve": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "overallStatus": { "const": "passed" } }, "required": ["overallStatus"] },
+      "then": {
+        "properties": {
+          "missingReportCount": { "const": 0 },
+          "failedReportCount": { "const": 0 },
+          "schemaInvalidReportCount": { "const": 0 },
+          "finalEvidenceManifestGenerated": { "const": true },
+          "ciUploadsReports": { "const": true }
+        }
+      }
+    }
+  ]
+}

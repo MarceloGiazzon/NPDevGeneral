@@ -1,6 +1,5 @@
 package com.npdev.dsl.v1.repo;
 
-import com.npdev.dsl.v1.paths.CanonicalModelPaths;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;

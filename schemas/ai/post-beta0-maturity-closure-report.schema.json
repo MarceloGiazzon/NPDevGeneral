@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/post-beta0-maturity-closure-report.schema.json",
+  "title": "NPDev Post-Beta0 Maturity Closure Report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "scriptPath",
+    "workspaceRoot",
+    "overallStatus",
+    "technicalMaturityReady",
+    "requiredReportsPassed",
+    "linuxCiJobPresent",
+    "humanActionRegisterPresent",
+    "humanBlockingActionCount",
+    "postRoadmapBacklogCount",
+    "requiredReports",
+    "ciWorkflow",
+    "humanActions",
+    "findings",
+    "doesNotSolve",
+    "blockers"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "npdev-post-beta0-maturity-closure-report.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "scriptPath": { "const": "scripts/quality/run-post-beta0-maturity-closure-check.ps1" },
+    "workspaceRoot": { "type": "string", "minLength": 1 },
+    "overallStatus": { "enum": [ "passed", "failed" ] },
+    "technicalMaturityReady": { "type": "boolean" },
+    "requiredReportsPassed": { "type": "boolean" },
+    "linuxCiJobPresent": { "type": "boolean" },
+    "humanActionRegisterPresent": { "type": "boolean" },
+    "humanBlockingActionCount": { "type": "integer", "minimum": 0 },
+    "postRoadmapBacklogCount": { "type": "integer", "minimum": 0 },
+    "requiredReports": {
+      "type": "array",
+      "minItems": 7,
+      "items": {
+        "type": "object",
+        "required": [ "name", "path", "exists", "overallStatus", "passed" ],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 },
+          "schemaVersion": { "type": "string" },
+          "exists": { "type": "boolean" },
+          "overallStatus": { "type": "string" },
+          "passed": { "type": "boolean" },
+          "sha256": { "type": [ "string", "null" ] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "ciWorkflow": {
+      "type": "object",
+      "required": [ "path", "windowsJobPresent", "linuxCiJobPresent", "usesUbuntuLatest", "usesJava17", "usesGradleCache", "usesPosixGradlew", "requiredCommandCoverage" ],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "windowsJobPresent": { "type": "boolean" },
+        "linuxCiJobPresent": { "type": "boolean" },
+        "usesUbuntuLatest": { "type": "boolean" },
+        "usesJava17": { "type": "boolean" },
+        "usesGradleCache": { "type": "boolean" },
+        "usesPosixGradlew": { "type": "boolean" },
+        "usesWindowsGradleWrapperInLinuxJob": { "type": "boolean" },
+        "requiredCommandCoverage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [ "name", "present" ],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "present": { "type": "boolean" },
+              "evidence": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "humanActions": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "required": [ "action", "owner", "status", "evidencePath", "blockingStatus", "notes" ],
+        "properties": {
+          "action": { "type": "string", "minLength": 1 },
+          "owner": { "type": "string", "minLength": 1 },
+          "status": { "type": "string", "minLength": 1 },
+          "evidencePath": { "type": "string", "minLength": 1 },
+          "blockingStatus": { "type": "string", "minLength": 1 },
+          "notes": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [ "id", "classification", "status", "summary" ],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "classification": {
+            "enum": [
+              "current-roadmap-blocker",
+              "known-risk",
+              "post-roadmap-backlog",
+              "human-decision-required",
+              "invalid-or-duplicate"
+            ]
+          },
+          "status": { "enum": [ "open", "resolved", "accepted", "registered" ] },
+          "summary": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "doesNotSolve": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "blockers": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "overallStatus": { "const": "passed" } },
+        "required": [ "overallStatus" ]
+      },
+      "then": {
+        "properties": {
+          "technicalMaturityReady": { "const": true },
+          "requiredReportsPassed": { "const": true },
+          "linuxCiJobPresent": { "const": true },
+          "humanActionRegisterPresent": { "const": true },
+          "humanBlockingActionCount": { "const": 0 },
+          "postRoadmapBacklogCount": { "const": 0 },
+          "blockers": { "maxItems": 0 }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,76 @@
+package com.npdev.dsl.v1.parser;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.npdev.dsl.v1.validation.ValidationDiagnostic;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+public final class ResolvedModelSource {
+    private final Path rootModelPath;
+    private final Path canonicalRootDirectory;
+    private final JsonNode resolvedRoot;
+    private final List<Path> includedFiles;
+    private final Map<String, Path> provenanceByJsonPointer;
+    private final List<ValidationDiagnostic> diagnostics;
+    private final List<ValidationDiagnostic> warnings;
+
+    public ResolvedModelSource(
+            Path rootModelPath,
+            Path canonicalRootDirectory,
+            JsonNode resolvedRoot,
+            List<Path> includedFiles,
+            Map<String, Path> provenanceByJsonPointer,
+            List<ValidationDiagnostic> diagnostics,
+            List<ValidationDiagnostic> warnings
+    ) {
+        this.rootModelPath = Objects.requireNonNull(rootModelPath, "rootModelPath");
+        this.canonicalRootDirectory = Objects.requireNonNull(canonicalRootDirectory, "canonicalRootDirectory");
+        this.resolvedRoot = Objects.requireNonNull(resolvedRoot, "resolvedRoot");
+        this.includedFiles = List.copyOf(includedFiles == null ? List.of() : includedFiles);
+        this.provenanceByJsonPointer = Map.copyOf(provenanceByJsonPointer == null ? Map.of() : provenanceByJsonPointer);
+        this.diagnostics = List.copyOf(diagnostics == null ? List.of() : diagnostics);
+        this.warnings = List.copyOf(warnings == null ? List.of() : warnings);
+    }
+
+    public Path rootModelPath() {
+        return rootModelPath;
+    }
+
+    public Path canonicalRootDirectory() {
+        return canonicalRootDirectory;
+    }
+
+    public JsonNode resolvedRoot() {
+        return resolvedRoot;
+    }
+
+    public List<Path> includedFiles() {
+        return includedFiles;
+    }
+
+    public Map<String, Path> provenanceByJsonPointer() {
+        return provenanceByJsonPointer;
+    }
+
+    public List<ValidationDiagnostic> diagnostics() {
+        return diagnostics;
+    }
+
+    public List<ValidationDiagnostic> warnings() {
+        return warnings;
+    }
+
+    public String resolvedModelJson() {
+        return resolvedRoot.toPrettyString() + System.lineSeparator();
+    }
+
+    public Path sourceFor(String jsonPointer) {
+        if (jsonPointer == null) {
+            return null;
+        }
+        return provenanceByJsonPointer.get(jsonPointer);
+    }
+}

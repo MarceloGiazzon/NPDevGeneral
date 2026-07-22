@@ -7,7 +7,7 @@ import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
 import com.npdev.dsl.v1.ast.ModelAst;
-import com.npdev.dsl.v1.compiled.CompiledEntity;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledMetadataCanonicalJson;
@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -53,9 +52,9 @@ class CanonicalDemoRegressionTest {
         CompiledModel compiled = new ModelCompiler().compile(ast);
         assertEquals("canonical.clinicdemo", compiled.getNamespace());
         assertEquals("1.0", compiled.getVersion());
-        assertEquals(4, compiled.getEntities().size());
+        assertEquals(4, compiled.getConcepts().size());
         assertEquals(List.of("Appointment", "InsuranceClaim", "Patient", "Provider"),
-                compiled.getEntities().stream().map(CompiledEntity::getName).sorted().toList());
+                compiled.getConcepts().stream().map(CompiledConcept::getName).sorted().toList());
         assertEquals(List.of("MRN", "NPI"),
                 compiled.getDomainTypes().stream().map(domainType -> domainType.getName()).sorted().toList());
         assertEquals(1, compiled.getFlows().size());
@@ -68,7 +67,7 @@ class CanonicalDemoRegressionTest {
         assertEquals("Create appointment", flow.getAction().getLabel());
         assertEquals("appointments.create", flow.getAction().getPermissionHint());
 
-        CompiledEntity appointment = compiled.findEntity("Appointment").orElseThrow();
+        CompiledConcept appointment = compiled.findConcept("Appointment").orElseThrow();
         assertNotNull(appointment.getLifecycle());
         assertEquals("status", appointment.getLifecycle().getStatusField());
         assertEquals(4, appointment.getLifecycle().getStates().size());
@@ -88,7 +87,7 @@ class CanonicalDemoRegressionTest {
                 .orElseThrow();
         assertEquals("Provider", providerReference.getReferenceTarget());
 
-        CompiledEntity patient = compiled.findEntity("Patient").orElseThrow();
+        CompiledConcept patient = compiled.findConcept("Patient").orElseThrow();
         CompiledField mrn = patient.getFields().stream()
                 .filter(field -> field.getName().equals("mrn"))
                 .findFirst()

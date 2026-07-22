@@ -1,0 +1,50 @@
+{
+  "scenarioName": "promotion-rejections-and-early-stages",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "onFailure", "collectDomOnFailure": true },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "value": "api-dev" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-__promotion__\"]", "state": "visible", "label": "Super-user nav ready" },
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-__promotion__\"]", "label": "Open the Promotion panel" },
+    { "action": "waitForSelector", "selector": "#concept-__promotion__", "state": "visible" },
+    { "action": "assertTextContains", "selector": "#concept-__promotion__", "text": "Current stage: S0_IDEA", "label": "A fresh database starts at S0_IDEA (no accepted events yet)" },
+
+    { "action": "selectOption", "selector": "#concept-__promotion__ select", "value": "S2_GENERATED", "label": "Attempt to skip S1 -- should be rejected" },
+    { "action": "click", "selector": "#concept-__promotion__ button:has-text(\"Advance\")" },
+    { "action": "waitForTimeout", "timeoutMs": 800, "label": "Let the advance call + history reload settle" },
+    { "action": "assertTextContains", "selector": "#concept-__promotion__", "text": "stage_skip", "label": "Stage-skip rejection recorded in the audit history" },
+    { "action": "assertTextContains", "selector": "#concept-__promotion__", "text": "Current stage: S0_IDEA", "label": "Rejected attempt did not move the stage" },
+
+    { "action": "selectOption", "selector": "#concept-__promotion__ select", "value": "S1_DECLARED", "label": "Valid single-step advance" },
+    { "action": "click", "selector": "#concept-__promotion__ button:has-text(\"Advance\")" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "assertTextContains", "selector": "#concept-__promotion__", "text": "Current stage: S1_DECLARED" },
+
+    { "action": "selectOption", "selector": "#concept-__promotion__ select", "value": "S2_GENERATED" },
+    { "action": "click", "selector": "#concept-__promotion__ button:has-text(\"Advance\")" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "assertTextContains", "selector": "#concept-__promotion__", "text": "Current stage: S2_GENERATED" },
+
+    { "action": "selectOption", "selector": "#concept-__promotion__ select", "value": "S3_CUSTOMIZED" },
+    { "action": "click", "selector": "#concept-__promotion__ button:has-text(\"Advance\")" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "assertTextContains", "selector": "#concept-__promotion__", "text": "Current stage: S3_CUSTOMIZED" },
+
+    { "action": "selectOption", "selector": "#concept-__promotion__ select", "value": "S4_RUNNABLE" },
+    { "action": "click", "selector": "#concept-__promotion__ button:has-text(\"Advance\")" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "assertTextContains", "selector": "#concept-__promotion__", "text": "Current stage: S4_RUNNABLE" },
+
+    { "action": "selectOption", "selector": "#concept-__promotion__ select", "value": "S5_TESTED", "label": "Attempt S5 with no evidence -- should be rejected (S5+ requires evidence)" },
+    { "action": "click", "selector": "#concept-__promotion__ button:has-text(\"Advance\")" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "assertTextContains", "selector": "#concept-__promotion__", "text": "missing_evidence", "label": "Missing-evidence rejection recorded" },
+    { "action": "assertTextContains", "selector": "#concept-__promotion__", "text": "Current stage: S4_RUNNABLE", "label": "Rejected attempt did not move the stage" },
+
+    { "action": "screenshot", "name": "promotion_through_s4_with_rejections" },
+    { "action": "collect", "what": ["domText", "url"] }
+  ]
+}

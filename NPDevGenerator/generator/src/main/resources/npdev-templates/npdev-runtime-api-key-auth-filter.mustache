@@ -1,5 +1,6 @@
 package {{configPackage}};
 
+import com.npdev.kernel.ports.ApiKeyCredentialResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -19,9 +20,18 @@ public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
     private static final String DEFAULT_API_KEY_MAPPINGS = "api-dev=dev:developer:ADMIN;dev-key=dev:developer:ADMIN";
 
     private final Map<String, PrincipalClaims> byApiKey;
+    private final ApiKeyCredentialResolver credentialResolver;
 
     public RuntimeApiKeyAuthFilter(String encodedMappings) {
+        this(encodedMappings, ApiKeyCredentialResolver.NONE);
+    }
+
+    // The static mappings (encodedMappings, baked in at generation/startup time) are checked FIRST
+    // and always win; credentialResolver is consulted only as a fallback for a key it doesn't
+    // recognize, so a tenant onboarded at runtime (no regenerate/restart) can still authenticate.
+    public RuntimeApiKeyAuthFilter(String encodedMappings, ApiKeyCredentialResolver credentialResolver) {
         this.byApiKey = parseMappings(encodedMappings);
+        this.credentialResolver = credentialResolver == null ? ApiKeyCredentialResolver.NONE : credentialResolver;
     }
 
     @Override
@@ -29,6 +39,19 @@ public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
         String uri = request == null ? null : request.getRequestURI();
         if (uri == null) {
             return true;
+        }
+        // An earlier filter in the chain (e.g. SuperUserCredentialAuthFilter, order -110) may already
+        // have authenticated this request via a completely independent credential (the ControlPanel's
+        // X-Super-User-Key) and set the claims attribute. This filter must not clobber that
+        // stronger/first identity -- neither by overwriting it with a weaker api-key principal nor by
+        // rejecting the whole request when a stray or invalid X-Api-Key header is also present. Skip
+        // entirely once the request is already authenticated. Mirrors the identical guard in
+        // JwtBearerAuthFilter.
+        if (request.getAttribute(CLAIMS_ATTRIBUTE) != null) {
+            return true;
+        }
+        if (normalize(request.getHeader("X-Api-Key")) != null || normalize(request.getHeader("X-API-Key")) != null) {
+            return false;
         }
         return !(uri.startsWith("/api/") || uri.startsWith("/api/v1/"));
     }
@@ -41,10 +64,16 @@ public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
         String apiKey = normalize(request.getHeader("X-Api-Key"));
         if (apiKey == null) {
+            apiKey = normalize(request.getHeader("X-API-Key"));
+        }
+        if (apiKey == null) {
             unauthorized(response, "missing_api_key");
             return;
         }
         PrincipalClaims claims = byApiKey.get(apiKey);
+        if (claims == null) {
+            claims = credentialResolver.resolve(apiKey).map(PrincipalClaims::fromCredential).orElse(null);
+        }
         if (claims == null) {
             unauthorized(response, "invalid_api_key");
             return;
@@ -120,6 +149,10 @@ public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
                 return null;
             }
             return new PrincipalClaims(tenantId, actorId, Set.copyOf(roles));
+        }
+
+        static PrincipalClaims fromCredential(ApiKeyCredentialResolver.Principal principal) {
+            return new PrincipalClaims(principal.tenantId(), principal.actorId(), principal.roles());
         }
 
         Map<String, Object> toClaimMap() {

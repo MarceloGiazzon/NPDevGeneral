@@ -1,0 +1,719 @@
+// NPDev platform-default unified shell: injects a top bar, a collapsible left nav tree, and a
+// collapsible right gadget rail around whatever a hand-authored page already renders, reading its
+// menu from the same `workspace::Menu` table (GET /api/workspace_menus) and its GuidePage/theme
+// declarations from the generated manifest (GET /npdev-business-ui/generated-ui-manifest.json) --
+// one source of truth for navigation and frame appearance across the platform. A future SPA host
+// mode (`window.NPDevShell.mount(...)`) lets the generic business UI delegate its own chrome to
+// this same script instead of rendering its own (not wired yet -- see business-ui-app.mustache).
+//
+// This only MOVES existing DOM nodes into a wrapper div; it never clones or rebuilds them, so a
+// page's own ids, event listeners, and inline script logic keep working unmodified.
+//
+// Auth is deliberately mode-agnostic: apps can run in apiKey mode (X-Api-Key header) or JWT mode
+// (Authorization: Bearer), and this script has no reliable way to know which from a static asset
+// alone (the generated-ui-manifest.json's own "auth" block only carries the real mode since the
+// Phase 2 fix -- but reading it is itself an async fetch). Pragmatic fix, kept from the original
+// shell: send BOTH headers whenever a token is found; each app's actual auth filter only reads the
+// header it cares about and ignores the other.
+(function () {
+  "use strict";
+
+  var TOKEN_STORAGE_KEYS = ["npdev.shell.token", "npdev.businessUi.apiKey"];
+  var BUSINESS_UI_ROOT = "/npdev-business-ui/index.html";
+  var CACHE_TTL_MS = 60000;
+  var COLLAPSED_GROUPS_KEY = "npdev.shell.collapsedGroups";
+  var SIDEBAR_COLLAPSED_KEY = "npdev.shell.sidebarCollapsed";
+  var RIGHTBAR_COLLAPSED_KEY = "npdev.shell.rightbarCollapsed";
+  var RECENT_ITEMS_KEY = "npdev.shell.recentItems";
+
+  // App-owned theme hook: an app can ship a `theme.css` in its own web/ folder (served at the
+  // static root, next to its hand-authored pages) to override the shell's `--np-*` tokens and any
+  // page styling. Injected here -- after the page's own shell.css <link>, so it wins the cascade --
+  // because every surface (hand-authored pages AND the generated business UI) loads this script,
+  // and npdev-generated/ itself is hash-verified, so post-generation edits there are impossible.
+  // Apps without a theme.css just get a harmless 404 no-op.
+  (function injectAppTheme() {
+    if (document.querySelector('link[data-npdev-app-theme]')) return;
+    var link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "/theme.css";
+    link.setAttribute("data-npdev-app-theme", "true");
+    document.head.appendChild(link);
+  })();
+
+  var el = {};
+  var state = {
+    manifest: null, menuRows: [], roles: [], actorId: "", isSuperUser: false, token: null,
+    hostMode: false, deriveNativeGroups: null
+  };
+  var gadgetRenderers = {};
+  var contextState = { title: "", rows: [] };
+
+  // ---------------------------------------------------------------- auth ----
+
+  function findToken() {
+    for (var i = 0; i < TOKEN_STORAGE_KEYS.length; i++) {
+      var value = localStorage.getItem(TOKEN_STORAGE_KEYS[i]);
+      if (value) return value;
+    }
+    return null;
+  }
+
+  function authHeaders(token) {
+    if (!token) return {};
+    return { "Authorization": "Bearer " + token, "X-Api-Key": token };
+  }
+
+  function fetchJson(path, token) {
+    return fetch(path, { headers: authHeaders(token) }).then(function (res) {
+      if (!res.ok) throw new Error(path + " -> HTTP " + res.status);
+      return res.json();
+    });
+  }
+
+  // ------------------------------------------------------------ storage ----
+
+  function readJsonStorage(storage, key, fallback) {
+    try {
+      var raw = storage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch (error) {
+      return fallback;
+    }
+  }
+
+  function writeJsonStorage(storage, key, value) {
+    try {
+      storage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      // storage full/unavailable -- collapse state and cache are best-effort, never fatal.
+    }
+  }
+
+  // Cheap non-cryptographic hash so the sessionStorage cache key doesn't embed the raw token.
+  function tokenHash(token) {
+    var text = token || "anonymous";
+    var hash = 0;
+    for (var i = 0; i < text.length; i++) {
+      hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+    }
+    return String(hash);
+  }
+
+  function readCache(token) {
+    var cached = readJsonStorage(sessionStorage, "npdev.shell.cache." + tokenHash(token), null);
+    if (!cached || typeof cached.ts !== "number") return null;
+    if (Date.now() - cached.ts > CACHE_TTL_MS) return null;
+    return cached;
+  }
+
+  function writeCache(token, data) {
+    writeJsonStorage(sessionStorage, "npdev.shell.cache." + tokenHash(token), {
+      ts: Date.now(), me: data.me, menuRows: data.menuRows, manifest: data.manifest
+    });
+  }
+
+  // ---------------------------------------------------------- nav helpers ----
+
+  function sectionAnchor(target) {
+    return "concept-" + String(target).replace(/[^a-zA-Z0-9_-]/g, "-");
+  }
+
+  // In host mode (shell running inside the generic business UI itself, via NPDevShell.mount), a
+  // BUSINESS-kind link is a same-page hash -- clicking it never reloads, app.js's own hashchange
+  // listener switches sections instantly. In static-page mode (a hand-authored page), the same
+  // link has to actually navigate to the SPA first, so it's qualified with BUSINESS_UI_ROOT.
+  function businessHref(target) {
+    return (state.hostMode ? "" : BUSINESS_UI_ROOT) + "#" + sectionAnchor(target);
+  }
+
+  // Mirrors business-ui-app.mustache's resolveMenuTarget: PAGE -> a site-root-absolute href (all
+  // companion pages are mounted at the site root); BUSINESS -> a section link, qualified per
+  // businessHref() above; INTERNAL has no generic resolution (only the fixed platform surfaces
+  // rendered by renderNpdevSection know how to target themselves).
+  function resolveHref(item) {
+    if (item.kind === "PAGE") {
+      var href = (item.target || "").trim();
+      return href ? "/" + href.replace(/^\/+/, "") : null;
+    }
+    if (item.kind === "BUSINESS") {
+      return businessHref(item.target);
+    }
+    return null;
+  }
+
+  function currentPath() {
+    return window.location.pathname.split("/").pop();
+  }
+
+  // ------------------------------------------------------------- skeleton ----
+
+  function wrapContent() {
+    var originalChildren = Array.prototype.slice.call(document.body.childNodes);
+    var content = document.createElement("div");
+    content.className = "npdev-shell-content";
+    originalChildren.forEach(function (node) { content.appendChild(node); });
+    return content;
+  }
+
+  function buildTopbar() {
+    var bar = document.createElement("div");
+    bar.className = "npdev-shell-topbar";
+
+    var sidebarToggle = document.createElement("button");
+    sidebarToggle.className = "npdev-shell-collapse-toggle";
+    sidebarToggle.type = "button";
+    sidebarToggle.title = "Recolher/expandir menu";
+    sidebarToggle.textContent = "☰";
+    sidebarToggle.addEventListener("click", function () {
+      var collapsed = !document.body.classList.contains("npdev-shell-sidebar-collapsed");
+      document.body.classList.toggle("npdev-shell-sidebar-collapsed", collapsed);
+      writeJsonStorage(localStorage, SIDEBAR_COLLAPSED_KEY, collapsed);
+    });
+    bar.appendChild(sidebarToggle);
+
+    var logo = document.createElement("span");
+    logo.className = "npdev-shell-logo";
+    logo.textContent = (document.title || "NPDev App").split(" - ")[0];
+    bar.appendChild(logo);
+    el.logo = logo;
+
+    var breadcrumb = document.createElement("span");
+    breadcrumb.className = "npdev-shell-breadcrumb";
+    bar.appendChild(breadcrumb);
+    el.breadcrumb = breadcrumb;
+
+    var identity = document.createElement("span");
+    identity.className = "npdev-shell-identity";
+    identity.textContent = "carregando...";
+    bar.appendChild(identity);
+    el.identity = identity;
+
+    var rightbarToggle = document.createElement("button");
+    rightbarToggle.className = "npdev-shell-rightbar-toggle";
+    rightbarToggle.type = "button";
+    rightbarToggle.title = "Mostrar/ocultar painel lateral";
+    rightbarToggle.textContent = "▤";
+    rightbarToggle.addEventListener("click", function () {
+      var collapsed = !document.body.classList.contains("npdev-shell-rightbar-collapsed");
+      document.body.classList.toggle("npdev-shell-rightbar-collapsed", collapsed);
+      writeJsonStorage(localStorage, RIGHTBAR_COLLAPSED_KEY, collapsed);
+    });
+    bar.appendChild(rightbarToggle);
+    el.rightbarToggle = rightbarToggle;
+
+    return bar;
+  }
+
+  function paintSkeleton() {
+    var content = wrapContent();
+    var sidebar = document.createElement("div");
+    sidebar.id = "sideNav";
+    sidebar.className = "npdev-shell-sidebar";
+    var rightbar = document.createElement("div");
+    rightbar.className = "npdev-shell-rightbar";
+
+    var bodyRow = document.createElement("div");
+    bodyRow.className = "npdev-shell-body";
+    bodyRow.appendChild(sidebar);
+    bodyRow.appendChild(content);
+    bodyRow.appendChild(rightbar);
+
+    document.body.appendChild(buildTopbar());
+    document.body.appendChild(bodyRow);
+    document.body.classList.add("npdev-shell-active");
+
+    el.sidebar = sidebar;
+    el.rightbar = rightbar;
+    el.content = content;
+
+    if (readJsonStorage(localStorage, SIDEBAR_COLLAPSED_KEY, false)) {
+      document.body.classList.add("npdev-shell-sidebar-collapsed");
+    }
+    if (readJsonStorage(localStorage, RIGHTBAR_COLLAPSED_KEY, false)) {
+      document.body.classList.add("npdev-shell-rightbar-collapsed");
+    }
+  }
+
+  // --------------------------------------------------------------- identity ----
+
+  function applyIdentity() {
+    el.identity.innerHTML = "";
+    if (state.token && state.actorId) {
+      var text = document.createElement("span");
+      text.textContent = "logado como " + state.actorId + (state.roles.length ? " (" + state.roles.join(", ") + ")" : "");
+      el.identity.appendChild(text);
+      var logoutBtn = document.createElement("button");
+      logoutBtn.className = "npdev-shell-logout";
+      logoutBtn.type = "button";
+      logoutBtn.textContent = "Sair";
+      logoutBtn.addEventListener("click", function () {
+        TOKEN_STORAGE_KEYS.forEach(function (key) { localStorage.removeItem(key); });
+        sessionStorage.clear();
+        window.location.reload();
+      });
+      el.identity.appendChild(logoutBtn);
+    } else {
+      el.identity.textContent = "nao autenticado";
+    }
+  }
+
+  // ------------------------------------------------------------------ nav ----
+
+  function isCollapsed(groupId) {
+    var collapsed = readJsonStorage(localStorage, COLLAPSED_GROUPS_KEY, []);
+    return collapsed.indexOf(groupId) !== -1;
+  }
+
+  function setCollapsed(groupId, collapsed) {
+    var ids = readJsonStorage(localStorage, COLLAPSED_GROUPS_KEY, []);
+    var idx = ids.indexOf(groupId);
+    if (collapsed && idx === -1) ids.push(groupId);
+    if (!collapsed && idx !== -1) ids.splice(idx, 1);
+    writeJsonStorage(localStorage, COLLAPSED_GROUPS_KEY, ids);
+  }
+
+  function addSectionHeader(container, label) {
+    var header = document.createElement("div");
+    header.className = "npdev-shell-nav-section";
+    header.textContent = label;
+    container.appendChild(header);
+  }
+
+  // First-letter glyph shown only when the sidebar is collapsed (CSS hides it otherwise) -- gives
+  // collapsed mode an actual icon rail instead of a column of blank, unlabeled pills.
+  function buildNavIcon(label) {
+    var icon = document.createElement("span");
+    icon.className = "npdev-shell-nav-icon";
+    icon.textContent = (label || "?").trim().charAt(0).toUpperCase() || "?";
+    return icon;
+  }
+
+  function addLeafLink(container, href, label, path) {
+    var a = document.createElement("a");
+    a.href = href;
+    a.title = label;
+    a.appendChild(buildNavIcon(label));
+    var labelSpan = document.createElement("span");
+    labelSpan.className = "npdev-shell-nav-label";
+    labelSpan.textContent = label;
+    a.appendChild(labelSpan);
+    var isHash = href.indexOf("#") === 0;
+    if (isHash) {
+      if (window.location.hash && window.location.hash === href) a.className = "active";
+    } else {
+      var linkPath = href.indexOf("/") === 0 ? href.split("/").pop() : null;
+      if (linkPath && linkPath === path) a.className = "active";
+    }
+    a.addEventListener("click", function () {
+      // A bare same-page hash only makes sense as a "recent item" from within the SPA itself --
+      // qualify it with the SPA's own root so the recent-items gadget stays a valid link from any
+      // page (a hand-authored page has no element with that hash id at all).
+      recordRecentItem(label, isHash && state.hostMode ? BUSINESS_UI_ROOT + href : href);
+    });
+    container.appendChild(a);
+    return a;
+  }
+
+  // Re-toggles .active on every hash-style sidebar link after a same-page section switch (host
+  // mode) -- cheap, no data refetch, since the switch itself is instant (app.js's own hashchange
+  // listener already did the actual work; this only keeps the nav's own highlight in sync).
+  function refreshActiveLinks() {
+    if (!el.sidebar) return;
+    var hash = window.location.hash;
+    el.sidebar.querySelectorAll("a").forEach(function (a) {
+      var href = a.getAttribute("href") || "";
+      if (href.indexOf("#") === 0) {
+        a.classList.toggle("active", hash === href);
+      }
+    });
+  }
+
+  // Renders one workspace::Menu node (and, recursively, its children via parentMenuId) as either a
+  // collapsible group (GROUP kind, or any kind that has children) or a leaf link.
+  function renderMenuNode(container, node, childrenByParent, path) {
+    var children = childrenByParent[node.id] || [];
+    if (children.length === 0 && node.kind !== "GROUP") {
+      var href = resolveHref(node);
+      if (href) addLeafLink(container, href, node.label, path);
+      return;
+    }
+
+    var groupId = "menu-" + node.id;
+    var group = document.createElement("div");
+    group.className = "npdev-shell-nav-group" + (isCollapsed(groupId) ? " collapsed" : "");
+
+    var header = document.createElement("button");
+    header.type = "button";
+    header.className = "npdev-shell-nav-group-header";
+    header.title = node.label;
+    var caret = document.createElement("span");
+    caret.className = "npdev-shell-nav-caret";
+    caret.textContent = "▼";
+    header.appendChild(caret);
+    header.appendChild(buildNavIcon(node.label));
+    var labelSpan = document.createElement("span");
+    labelSpan.className = "npdev-shell-nav-label";
+    labelSpan.textContent = node.label;
+    header.appendChild(labelSpan);
+    header.addEventListener("click", function () {
+      var collapsed = !group.classList.contains("collapsed");
+      group.classList.toggle("collapsed", collapsed);
+      setCollapsed(groupId, collapsed);
+    });
+    group.appendChild(header);
+
+    var childrenContainer = document.createElement("div");
+    childrenContainer.className = "npdev-shell-nav-children";
+    children.forEach(function (child) { renderMenuNode(childrenContainer, child, childrenByParent, path); });
+    group.appendChild(childrenContainer);
+
+    container.appendChild(group);
+  }
+
+  function renderSystemSection(container, appName, rows) {
+    if (!rows.length) return;
+    addSectionHeader(container, appName || "Sistema");
+    var byId = {};
+    rows.forEach(function (row) { byId[row.id] = row; });
+    var childrenByParent = {};
+    var roots = [];
+    rows.forEach(function (row) {
+      if (row.parentMenuId && byId[row.parentMenuId]) {
+        childrenByParent[row.parentMenuId] = childrenByParent[row.parentMenuId] || [];
+        childrenByParent[row.parentMenuId].push(row);
+      } else {
+        roots.push(row);
+      }
+    });
+    var sortByOrdinal = function (a, b) { return (a.ordinal || 0) - (b.ordinal || 0); };
+    roots.sort(sortByOrdinal);
+    Object.keys(childrenByParent).forEach(function (key) { childrenByParent[key].sort(sortByOrdinal); });
+
+    var path = currentPath();
+    roots.forEach(function (root) { renderMenuNode(container, root, childrenByParent, path); });
+  }
+
+  // Auto-derived, super-user-gated platform section: admin concepts (identity/workspace tables)
+  // plus the fixed INTERNAL surfaces. Never seeded into workspace::Menu -- doing so would
+  // duplicate whatever the generic business UI's own nav already lists natively for these same
+  // targets (the exact trap documented in BusinessUiEmitter.menuSeedJson).
+  function renderNpdevSection(container, manifest) {
+    if (!state.isSuperUser || !manifest) return;
+    var adminConcepts = (manifest.concepts || []).filter(function (c) { return c.admin; });
+    var hasPreferences = (manifest.concepts || []).some(function (c) { return c.conceptName === "workspace::Preference"; });
+    if (!adminConcepts.length && !hasPreferences) return;
+
+    addSectionHeader(container, "NPDev");
+    adminConcepts.forEach(function (concept) {
+      addLeafLink(container, businessHref(concept.conceptName), concept.displayName, null);
+    });
+    if (hasPreferences) {
+      addLeafLink(container, businessHref("__preferences__"), "Preferencias", null);
+    }
+    addLeafLink(container, businessHref("__store__"), "Store", null);
+    addLeafLink(container, businessHref("__boxview__"), "Box View", null);
+    addLeafLink(container, businessHref("__promotion__"), "Promotion", null);
+  }
+
+  // Host-mode-only: business concepts and declared Panels have no natural home in the System tree
+  // (workspace::Menu is an author-curated overlay, not a full concept catalog) or in the NPDev
+  // section (admin-gated). app.js supplies these via NPDevShell.mount({ deriveNativeGroups }) so
+  // an app that has never authored a menu.json/Menu row still gets a working nav for every
+  // concept/Panel, exactly like the SPA's own pre-Phase-4 default nav did.
+  function renderNativeGroup(container, label, items) {
+    if (!items || !items.length) return;
+    addSectionHeader(container, label);
+    items.forEach(function (item) {
+      addLeafLink(container, "#" + item.hash, item.label, null);
+    });
+  }
+
+  function renderSidebar() {
+    el.sidebar.innerHTML = "";
+    renderSystemSection(el.sidebar, state.manifest ? state.manifest.appName : "", state.menuRows);
+    if (state.hostMode && typeof state.deriveNativeGroups === "function") {
+      var native = state.deriveNativeGroups() || {};
+      renderNativeGroup(el.sidebar, "Dados", native.data);
+      renderNativeGroup(el.sidebar, "Paineis", native.panels);
+    }
+    renderNpdevSection(el.sidebar, state.manifest);
+  }
+
+  // -------------------------------------------------------------- gadgets ----
+
+  function recentItems() {
+    return readJsonStorage(localStorage, RECENT_ITEMS_KEY, []);
+  }
+
+  function recordRecentItem(label, href) {
+    if (!label || !href) return;
+    var items = recentItems().filter(function (item) { return item.href !== href; });
+    items.unshift({ label: label, href: href });
+    writeJsonStorage(localStorage, RECENT_ITEMS_KEY, items.slice(0, 10));
+  }
+
+  function renderRecentItemsGadget(container) {
+    var items = recentItems();
+    if (!items.length) {
+      var empty = document.createElement("div");
+      empty.className = "npdev-shell-gadget-empty";
+      empty.textContent = "Nenhum item recente ainda.";
+      container.appendChild(empty);
+      return;
+    }
+    var list = document.createElement("ul");
+    items.forEach(function (item) {
+      var li = document.createElement("li");
+      var a = document.createElement("a");
+      a.href = item.href;
+      a.textContent = item.label;
+      li.appendChild(a);
+      list.appendChild(li);
+    });
+    container.appendChild(list);
+  }
+
+  function renderContextInfoGadget(container) {
+    if (!contextState.rows || !contextState.rows.length) {
+      var empty = document.createElement("div");
+      empty.className = "npdev-shell-gadget-empty";
+      empty.textContent = "Sem contexto no momento.";
+      container.appendChild(empty);
+      return;
+    }
+    var list = document.createElement("ul");
+    contextState.rows.forEach(function (row) {
+      var li = document.createElement("li");
+      li.textContent = row;
+      list.appendChild(li);
+    });
+    container.appendChild(list);
+  }
+
+  function renderPageFragmentGadget(container, config) {
+    var url = config && config.url;
+    if (!url) return;
+    fetch(url).then(function (res) { return res.ok ? res.text() : ""; }).then(function (html) {
+      // Same-origin static HTML fragment only; scripts inside are intentionally not executed
+      // (innerHTML never runs <script> tags) -- this is a display-only gadget, not a mini-app host.
+      var holder = document.createElement("div");
+      holder.innerHTML = html;
+      container.appendChild(holder);
+    }).catch(function () { /* best-effort */ });
+  }
+
+  gadgetRenderers["recent-items"] = function (container) { renderRecentItemsGadget(container); };
+  gadgetRenderers["context-info"] = function (container) { renderContextInfoGadget(container); };
+  gadgetRenderers["page-fragment"] = function (container, config) { renderPageFragmentGadget(container, config); };
+
+  function renderGadgets(gadgets) {
+    el.rightbar.innerHTML = "";
+    (gadgets || []).forEach(function (gadget) {
+      var card = document.createElement("div");
+      card.className = "npdev-shell-gadget";
+      var title = document.createElement("h4");
+      title.textContent = gadget.title || gadget.name;
+      card.appendChild(title);
+      var body = document.createElement("div");
+      card.appendChild(body);
+      var renderer = gadgetRenderers[gadget.type];
+      if (renderer) {
+        renderer(body, gadget);
+      } else {
+        var placeholder = document.createElement("div");
+        placeholder.className = "npdev-shell-gadget-empty";
+        placeholder.textContent = "Tipo de gadget desconhecido: " + gadget.type;
+        body.appendChild(placeholder);
+      }
+      el.rightbar.appendChild(card);
+    });
+  }
+
+  // ---------------------------------------------------------- guide pages ----
+
+  function findGuidePage(manifest, name) {
+    var pages = (manifest && manifest.guidePages) || [];
+    for (var i = 0; i < pages.length; i++) {
+      if (pages[i].name === name) return pages[i];
+    }
+    return pages.length ? pages[0] : null;
+  }
+
+  function currentGuidePageName() {
+    var meta = document.querySelector('meta[name="npdev-guide-page"]');
+    return meta && meta.content ? meta.content.trim() : "";
+  }
+
+  function applyGuidePage(manifest, name) {
+    var page = findGuidePage(manifest, name || (manifest && manifest.defaultGuidePage));
+    if (!page) return;
+    document.body.dataset.guidePage = page.name;
+
+    var regions = page.regions || { top: true, left: { enabled: true }, right: { enabled: false } };
+    document.body.classList.toggle("npdev-shell-no-top", regions.top === false);
+    document.body.classList.toggle("npdev-shell-no-left", !(regions.left && regions.left.enabled));
+    document.body.classList.toggle("npdev-shell-no-right", !(regions.right && regions.right.enabled));
+
+    // Only apply the GuidePage's own default when the user has never explicitly toggled the
+    // rightbar (i.e. nothing at all stored yet) -- `readJsonStorage(..., null) === false` is a
+    // real, explicit "expanded" preference, not "no preference", and must never be silently
+    // overridden back to collapsed on the next page/reload (confirmed live: a plain truthiness
+    // check here made every explicit expand get stomped by the GuidePage default on next paint).
+    if (regions.right && regions.right.enabled && readJsonStorage(localStorage, RIGHTBAR_COLLAPSED_KEY, null) === null) {
+      document.body.classList.toggle("npdev-shell-rightbar-collapsed", Boolean(regions.right.defaultCollapsed));
+    }
+    if (regions.right && regions.right.width) {
+      document.documentElement.style.setProperty("--np-rightbar-w", regions.right.width + "px");
+    }
+
+    var theme = page.theme || {};
+    if (theme.mode) {
+      // Both the body[data-np-theme="dark"] rule AND the prefers-color-scheme:dark media
+      // query's own light-mode escape hatch (":root:not([data-np-theme=\"light\"])") are
+      // selectors shell.css checks -- the escape hatch specifically looks at <html> (:root), not
+      // <body>. Setting only body.dataset here left that escape hatch permanently unmatched
+      // (<html> never got the attribute), so a GuidePage's explicit theme.mode="light" was
+      // silently overridden back to dark colors on any visitor whose OS/browser prefers dark --
+      // confirmed live: business-ui-style.mustache's :root text color inherits --np-text, which
+      // the media query then flips to near-white while the (hardcoded-white) modal/panel
+      // backgrounds stayed light, producing unreadable near-invisible form labels.
+      document.documentElement.dataset.npTheme = theme.mode;
+      document.body.dataset.npTheme = theme.mode;
+    }
+    if (theme.accent) {
+      document.documentElement.style.setProperty("--np-accent", theme.accent);
+    }
+    if (theme.logoText) {
+      el.logo.textContent = theme.logoText;
+    } else if (theme.logoUrl) {
+      el.logo.innerHTML = "";
+      var img = document.createElement("img");
+      img.src = theme.logoUrl;
+      img.alt = document.title || "";
+      img.style.height = "22px";
+      el.logo.appendChild(img);
+    }
+
+    renderGadgets(page.gadgets);
+  }
+
+  // -------------------------------------------------------------- login ----
+
+  // When the app declares auth.loginPath (jwt mode only), an unauthenticated visitor is bounced to
+  // it with ?next=<original path> instead of silently seeing "nao autenticado" chrome around an
+  // API-error-riddled page. apiKey-mode apps keep today's inline notice (dev ergonomics -- there's
+  // no login flow to redirect to). A visitor already on the login page is never redirected (loop
+  // guard), whether or not it happens to include this script.
+  function shouldRedirectToLogin(auth, token) {
+    return Boolean(auth && auth.loginPath && auth.mode === "jwt" && !token);
+  }
+
+  function redirectToLogin(loginPathRaw) {
+    var loginPath = "/" + String(loginPathRaw).replace(/^\/+/, "");
+    if (window.location.pathname === loginPath) return false;
+    var next = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.href = loginPath + "?next=" + next;
+    return true;
+  }
+
+  function maybeRedirectToLogin(manifest) {
+    var auth = manifest && manifest.auth;
+    if (!shouldRedirectToLogin(auth, state.token)) return false;
+    return redirectToLogin(auth.loginPath);
+  }
+
+  // Persisted (not session-scoped) so the very next visit -- not just the next request within the
+  // same tab -- can redirect before paintSkeleton() ever runs, eliminating the brief "carregando..."
+  // flash a fresh manifest fetch would otherwise cause. Only ever written with the real, freshly
+  // fetched auth block, so it can't go stale in a way that would loop or redirect somewhere wrong;
+  // worst case (auth mode changed server-side since the last visit) is one visit's flash while it
+  // re-learns, same as before this optimization existed at all.
+  var AUTH_CONFIG_KEY = "npdev.shell.authConfig";
+
+  function maybeRedirectToLoginSync() {
+    var auth = readJsonStorage(localStorage, AUTH_CONFIG_KEY, null);
+    if (!shouldRedirectToLogin(auth, findToken())) return false;
+    return redirectToLogin(auth.loginPath);
+  }
+
+  // ------------------------------------------------------------- pipeline ----
+
+  function applyData(me, menuRows, manifest, token) {
+    state.token = token;
+    state.roles = Array.isArray(me.roles) ? me.roles : [];
+    state.actorId = me.actorId || "";
+    state.manifest = manifest;
+    state.menuRows = menuRows;
+    var superUserRole = manifest && manifest.superUserRole;
+    state.isSuperUser = Boolean(superUserRole) && state.roles.indexOf(superUserRole) !== -1;
+
+    if (maybeRedirectToLogin(manifest)) return;
+
+    applyIdentity();
+    renderSidebar();
+    applyGuidePage(manifest, currentGuidePageName());
+    recordRecentItem(document.title, window.location.pathname);
+  }
+
+  function init() {
+    if (maybeRedirectToLoginSync()) return;
+
+    paintSkeleton();
+    var token = findToken();
+    var cached = readCache(token);
+    if (cached) {
+      applyData(cached.me, cached.menuRows, cached.manifest, token);
+    }
+
+    Promise.all([
+      fetchJson("/api/me", token).catch(function () { return { roles: [], actorId: "" }; }),
+      fetchJson("/api/workspace_menus?page=0&size=200&sort=ordinal&direction=asc", token).catch(function () { return { content: [] }; }),
+      fetchJson("/npdev-business-ui/generated-ui-manifest.json", token).catch(function () { return { guidePages: [], defaultGuidePage: "Default" }; })
+    ]).then(function (results) {
+      var me = results[0];
+      var rows = Array.isArray(results[1]) ? results[1] : (Array.isArray(results[1].content) ? results[1].content : []);
+      var manifest = results[2];
+      var visible = rows.filter(function (row) {
+        return row.visible !== false && (!row.requiredRole || (Array.isArray(me.roles) && me.roles.indexOf(row.requiredRole) !== -1));
+      });
+      writeJsonStorage(localStorage, AUTH_CONFIG_KEY, manifest && manifest.auth ? manifest.auth : null);
+      writeCache(token, { me: me, menuRows: visible, manifest: manifest });
+      applyData(me, visible, manifest, token);
+    });
+  }
+
+  window.addEventListener("hashchange", function () {
+    if (state.hostMode) refreshActiveLinks();
+  });
+
+  // Public API surface. `mount` puts the shell in SPA host mode: the generic business UI supplies
+  // a `deriveNativeGroups` callback (business concepts + declared Panels, which have no natural
+  // home in the System/NPDev sections) and the shell renders/manages the WHOLE chrome exactly as
+  // it does for a hand-authored page -- app.js itself never builds a header or nav again.
+  window.NPDevShell = {
+    registerGadget: function (type, renderFn) { gadgetRenderers[type] = renderFn; },
+    // `context.title` becomes the topbar breadcrumb (e.g. the active section's display name);
+    // `context.rows` feeds the context-info gadget, if the active GuidePage declares one.
+    setContext: function (context) {
+      contextState = context || { title: "", rows: [] };
+      if (el.breadcrumb) {
+        el.breadcrumb.textContent = contextState.title ? "/ " + contextState.title : "";
+      }
+      if (state.manifest) applyGuidePage(state.manifest, currentGuidePageName());
+    },
+    applyGuidePage: function (name) {
+      if (state.manifest) applyGuidePage(state.manifest, name);
+    },
+    mount: function (options) {
+      state.hostMode = true;
+      state.deriveNativeGroups = options && options.deriveNativeGroups;
+      init();
+    }
+  };
+
+  var hostScript = document.querySelector('script[data-npdev-shell="host"]');
+  if (!hostScript) {
+    init();
+  }
+})();

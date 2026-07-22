@@ -567,7 +567,7 @@ class DslSchemaConformanceTest {
 
     private static Path resolveSchemaPath() {
         List<Path> candidates = List.of(
-                Path.of("resources", "Schemas", "model-1.0.0.schema.json"),
+                Path.of("resources", "Schemas", "model.schema.json"),
                 Path.of("src", "main", "resources", "schema", "model.schema.json"),
                 Path.of("Project", "GPT", "dsl", "src", "main", "resources", "schema", "model.schema.json")
         );

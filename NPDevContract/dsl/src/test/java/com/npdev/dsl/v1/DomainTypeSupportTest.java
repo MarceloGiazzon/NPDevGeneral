@@ -62,7 +62,7 @@ class DomainTypeSupportTest {
         ModelAst ast = new JsonModelParser().parse(modelPath);
         assertEquals(1, ast.getDomainTypes().size(), "Expected one parsed domain type.");
         assertEquals("MRN", ast.getDomainTypes().get(0).getName());
-        assertEquals("MRN", ast.getEntities().get(0).getFields().get(1).getDomainType());
+        assertEquals("MRN", ast.getConcepts().get(0).getFields().get(1).getDomainType());
 
         List<String> errors = new SemanticValidator().validate(ast);
         assertTrue(errors.isEmpty(), "Expected semantic validation to accept domain type usage, got: " + errors);
@@ -76,7 +76,7 @@ class DomainTypeSupportTest {
         assertNotNull(compiledDomainType.getValidationSchema());
         assertEquals("^[A-Z0-9-]+$", compiledDomainType.getValidationSchema().getRegex());
 
-        CompiledField mrnField = compiled.findEntity("Patient")
+        CompiledField mrnField = compiled.findConcept("Patient")
                 .orElseThrow()
                 .getFields()
                 .stream()

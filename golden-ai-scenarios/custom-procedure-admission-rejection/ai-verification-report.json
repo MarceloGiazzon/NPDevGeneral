@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "ai-verification-report.v1",
+  "scenarioId": "custom-procedure-admission-rejection",
+  "baseUrlVariable": "NPDEV_GENERATED_APP_BASE_URL",
+  "checks": [
+    {
+      "id": "health-ok",
+      "type": "http",
+      "method": "GET",
+      "path": "/actuator/health",
+      "expectedStatus": 200
+    },
+    {
+      "id": "create-user",
+      "type": "http",
+      "method": "POST",
+      "path": "/api/users",
+      "body": {
+        "email": "beta0@example.com"
+      },
+      "expectedStatus": 201
+    }
+  ]
+}
