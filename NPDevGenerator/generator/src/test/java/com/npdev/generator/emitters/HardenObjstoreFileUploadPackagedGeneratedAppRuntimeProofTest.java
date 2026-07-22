@@ -347,6 +347,12 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
                         ":adapters:json-jackson:jar",
                         ":adapters:metrics-micrometer:jar",
                         ":adapters:notification-inproc:jar",
+                        // REG-10: the RuntimeHost template's NpdevPluginConfig imports the mail adapters,
+                        // so the generated app cannot compile without their jars. On the dev machine these
+                        // were already present in the libs dir from prior builds (masking the gap); on a
+                        // clean CI runner only explicitly-built adapters exist -> compile error. Build them.
+                        ":adapters:mail-inproc:jar",
+                        ":adapters:mail-smtp:jar",
                         ":adapters:persistence-inproc:jar",
                         ":adapters:persistence-postgres:jar",
                         ":adapters:resume-bootstrap-spring:jar",
