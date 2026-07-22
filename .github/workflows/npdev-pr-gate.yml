@@ -143,16 +143,26 @@ jobs:
           done < <(find "$NPDEV_BUILD_ROOT" -path "*test-results*" -name "*.xml" 2>/dev/null)
           [ "$found" = 1 ] || echo "No failing test-result XMLs found under $NPDEV_BUILD_ROOT"
 
+      # Build output is redirected to $NPDEV_BUILD_ROOT (the sibling Build/), which is OUTSIDE the
+      # workspace -- and actions/upload-artifact forbids '..' in path patterns. Copy the redirected
+      # test reports into an in-workspace dir first so the upload has a legal, non-'..' path.
+      - name: Collect redirected test reports for the evidence artifact
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p ci-evidence
+          if [ -d "$NPDEV_BUILD_ROOT/gradle" ]; then
+            cp -r "$NPDEV_BUILD_ROOT/gradle" ci-evidence/ 2>/dev/null || true
+          fi
+
       - name: Upload PR gate evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: npdev-pr-gate-evidence
-          # Build output is redirected to $NPDEV_BUILD_ROOT (sibling Build/), so the in-source build/ dirs
-          # are empty on CI -- grab the redirected reports/results (relative to the workspace via ../Build).
           path: |
-            ../Build/gradle/**/test-results/test
-            ../Build/gradle/**/reports/tests/test
+            ci-evidence/**/test-results/test
+            ci-evidence/**/reports/tests/test
             NPDevSamples/simple-contact-intake/Output/App/build/test-results/test
           if-no-files-found: warn
           retention-days: 14
