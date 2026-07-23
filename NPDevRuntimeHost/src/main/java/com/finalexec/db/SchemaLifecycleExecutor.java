@@ -37,6 +37,17 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * ColumnFacts directive (REG-6, 2026-07-22): any NEW pass added to this executor MUST answer
+ * per-column questions (platform-managed? additive-eligible? required-by-model? bond? renamed?
+ * literal default?) by reading {@code columnFactsFor(manifest, table)} -- never by re-deriving
+ * them from the raw manifest maps. Every REG-6-class bug (T-B1, T-B2) was one pass re-deriving
+ * column semantics and disagreeing with another pass. The existing set-algebra passes are exempt
+ * by recorded decision (docs/NPDEV_OPEN_ITEMS_REGISTER.md section 1.6): they perform set
+ * operations, not semantic re-derivation, and rewriting them adds risk to the most-fixed
+ * subsystem without closing any gap. Guards: SchemaLifecycleExecutorColumnFactsTest (this
+ * module) + PlatformColumnContractTest (generator module).
+ */
 @Component
 public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     private static final String METADATA_TABLE = "npdev_schema_metadata";
