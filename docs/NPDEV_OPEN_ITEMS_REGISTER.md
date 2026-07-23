@@ -108,8 +108,7 @@ parts: `NPDev_General__OutsideRepo/{reg12-slice3-evidence,external-tester-eviden
 > is kept only for historical shape. Read these as **CLOSED** regardless of how their row renders
 > here: REG-1, REG-2, REG-3, REG-4, REG-5, REG-7, REG-8, REG-9, REG-10, REG-11, REG-12, REG-13,
 > REG-14, REG-18, REG-19, REG-20, REG-21, REG-22, REG-24, REG-27, REG-28, REG-29, REG-30. Still
-> genuinely open or partial: **REG-6** (CLOSED as re-scoped 2026-07-22 — risk-core done, purity deferred; see §1.6), **REG-15**
-> (release tag DONE, trademark parked), **REG-16** (adversarial review done for LNCH-2/LNCH-4 only),
+> genuinely open or partial: **REG-6** (CLOSED as re-scoped 2026-07-22 — risk-core done, purity deferred; see §1.6), **REG-16** (adversarial review done for LNCH-2/LNCH-4 only),
 > **REG-17** (ADVANCED 2026-07-22 — external Linux run 29974176793 executed, findings filed), **REG-23** and **REG-25** (deferred boundaries).
 > The authoritative current state is `docs/LAUNCH_READINESS_GAPS.md` (24 DONE / 0 PARTIAL / 0 OPEN)
 > plus each entry's own **Status** line below, not this summary table.
@@ -130,7 +129,7 @@ parts: `NPDev_General__OutsideRepo/{reg12-slice3-evidence,external-tester-eviden
 | ~~**REG-12**~~ | LNCH-10 — Excel/PDF/print export beyond CSV — **CLOSED 2026-07-22** (all 3 slices DONE) | GAP | P1 | L | 2.4 |
 | ~~**REG-13**~~ | LNCH-18 — non-author usability test — **CLOSED 2026-07-22** (independent cold-tester run) | GAP | P1 | S | 2.5 |
 | ~~**REG-14**~~ | LNCH-22 — newcomer documentation test — **CLOSED 2026-07-22** (same run) | GAP | P2 | S | 2.6 |
-| **REG-15** | LNCH-23 — trademark clearance + release tag | PROCESS | P2 | S (blocked on you/counsel) | 2.7 |
+| ~~**REG-15**~~ | LNCH-23 — release tag DONE + trademark **N/A** (individual hobby project, no mark) — **DONE 2026-07-23** | PROCESS | P2 | S | 2.7 |
 | **REG-16** | The other 23 launch items have had zero adversarial review (~23 files/3.4k LOC scoped) | PROCESS | **HIGH** | L | 3.1 |
 | **REG-17** | No third party has ever reproduced any verification — **PARTIAL, advanced 2026-07-22** (2/4 gates ran+triaged by an independent tester) | PROCESS | MED | M | 3.2 |
 
@@ -898,14 +897,14 @@ actually `422`. Full list: `docs/LAUNCH_READINESS_GAPS.md`'s "External-tester fi
 
 ### 2.7 REG-15 — LNCH-23: trademark clearance and release tag
 
-**Type:** PROCESS · **Priority:** P2 · **Status:** **PARTIAL — release tag DONE, trademark parked.**
-The **release tag was cut 2026-07-22** (`beta1.1`, annotated, on the `beta1-vision-spine → main` merge
-commit `3e29cca`) — the CI-green, register-closed milestone. `run-release-checklist-gate.ps1` no
-longer lacks a tag to work from. **Trademark clearance is deliberately parked**: the owner confirmed
-this is an individual portfolio project with no mark to defend, so a professional clearance can wait
-indefinitely without blocking anything. The two preliminary findings on file ("NP DEV Soluções em
-T.I.", NPDEV LIMITED UK #14176093) remain recorded for if the posture ever changes. What follows is
-the original PARTIAL framing:
+**Type:** PROCESS · **Priority:** P2 · **Status:** **DONE (2026-07-23).** The **release tag was cut
+2026-07-22** (`beta1.1`, annotated, on the `beta1-vision-spine → main` merge commit `3e29cca`);
+`run-release-checklist-gate.ps1` no longer lacks a tag. **Trademark clearance is N/A — owner's final
+decision (2026-07-23):** this is an individual, non-commercial hobby/portfolio project with no mark to
+defend and no trademark sought, so there is nothing to clear and nothing to park — the item is
+complete, not deferred. The two preliminary name-collision findings on file ("NP DEV Soluções em
+T.I.", NPDEV LIMITED UK #14176093) are informational only and block nothing. What follows is the
+original PARTIAL framing, kept for history:
 
 **What.** LICENSE (Apache-2.0, ratified to Marcelo Giazzon), ADR-0007 (self-hosted/source-first, no
 telemetry at launch), `docs/RELEASE_PROCESS.md`, `CHANGELOG.md` and

@@ -342,6 +342,12 @@ be called by another program rather than looked at by a person.
       ]
     }
   ],
+  "capabilities": [
+    { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "findById"] }
+  ],
+  "bindings": [
+    { "capability": "persistence", "adapter": "repository" }
+  ],
   "flows": [
     {
       "name": "CreateNote",
@@ -356,6 +362,17 @@ be called by another program rather than looked at by a person.
   ]
 }
 ```
+
+> **Why the `capabilities` + `bindings` blocks are required.** `createConcept` (and
+> `updateConcept`/`saveConcept`) is shorthand for "persist this via the `persistence` capability", so
+> the model must (1) declare the `persistence` capability and (2) **bind** it to an adapter.
+> `"adapter": "repository"` is the portable abstract name — it resolves to the in-memory store under
+> the `dev,step0,trial` profile and to Postgres in production; you never name a concrete adapter here.
+> **Careful:** omit the `bindings` block and the model still *validates cleanly* (a binding can
+> legitimately be supplied later by a built-in pack, so the validator can't assume it's an error), but
+> at runtime the flow fails with `Capability binding not found for capability 'persistence'` — a
+> message that today appears only in the app's stdout log (`_ops\app.out.log`), not the HTTP response.
+> Every `createConcept`/`updateConcept`/`saveConcept` flow needs a `persistence` binding.
 
 `definition\config.json` sets `"defaults": { "ui.generateBusinessUi": false }` (a top-level
 sibling of `scenario`/`generator`/etc.) to deliberately skip the automatic web UI, since this
@@ -501,6 +518,13 @@ automatic notification created the moment an invoice is issued.
         { "name": "message", "type": "string", "required": true, "maxLength": 280 }
       ]
     }
+  ],
+  "capabilities": [
+    { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "findById"] }
+  ],
+  "bindings": [
+    { "capability": "persistence", "adapter": "repository" },
+    { "capability": "eventBus", "adapter": "inproc" }
   ],
   "events": [ { "name": "InvoiceIssued", "payload": ["id", "invoiceNumber"] } ],
   "queries": [
