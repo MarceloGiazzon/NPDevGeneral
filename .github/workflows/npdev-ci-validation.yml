@@ -125,6 +125,19 @@ jobs:
             -Dspring.profiles.active=test,postgres \
             --no-daemon --console=plain
 
+      # NEW-1 diagnostic (2026-07-23): the compact console truncates the StartupValidator failure
+      # message, so we can't tell WHICH postgres check fired (:260 connectivity / :274 flyway-history
+      # missing / :282 no-successful-migrations). Dump the JUnit XML message= attributes on failure so
+      # the next run pins it exactly. See NPDev_General__OutsideRepo/reg17-linux-validation-2026-07-22/.
+      - name: On failure, surface integration-test error messages (NEW-1)
+        if: failure()
+        working-directory: NPDevSamples/canonical-demo/Output/App
+        run: |
+          for f in build/test-results/integrationTest/*.xml; do
+            echo "----- $f -----"
+            grep -oE 'message="[^"]{0,500}"' "$f" | head -6 || true
+          done
+
       - name: Bootstrap post-Beta0 maturity reports
         timeout-minutes: 60
         run: |
@@ -293,9 +306,15 @@ jobs:
       - name: Runtime surface evidence
         timeout-minutes: 10
         run: |
+          # NEW-2 (2026-07-23): pass -PendingOk so the surface-convergence classification/footprint
+          # checks REG-5 formally RETIRED to advisory (docs/OPEN_GAPS_AND_ROADMAP.md#GATE-OBS-1a) are
+          # recorded as warnings, not a hard throw. run-runtimehost-gate.ps1:123 already invokes this
+          # script WITH -PendingOk; ci-validation was the one call site that omitted it, so the retired
+          # checks (which the real allowlist enforcement makes redundant) failed this job.
           & pwsh -NoProfile -ExecutionPolicy Bypass `
             -File "$env:NPDEV_WORKSPACE\scripts\quality\run-runtime-surface-evidence.ps1" `
-            -WorkspaceRoot "$env:NPDEV_WORKSPACE"
+            -WorkspaceRoot "$env:NPDEV_WORKSPACE" `
+            -PendingOk
 
       - name: DSL contract check
         working-directory: NPDevContract\dsl
