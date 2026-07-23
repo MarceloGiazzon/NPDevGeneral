@@ -30,6 +30,20 @@
 - The real proof is a clean Linux CI run (`.github/workflows/npdev-pr-gate.yml`) — the dev machine
   often has stale jars that hide a missing entry.
 
+## Automated guard (added 2026-07-22)
+
+`NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/AdapterRegistrationConsistencyTest.java`
+now enforces this checklist mechanically: every `NPDevKernel/settings.gradle` adapter must appear in
+ALL three proof-test lists (or in the test's explicit `KNOWN_NOT_PACKAGED` set, with the reason
+recorded here), and the three lists must stay identical. It caught a real drift on arrival
+(`TrustedSourceEmitter...` was missing `file-store-objectstore`). The sync script needs no guard —
+verified list-free (jar discovery). If you consciously exclude a new adapter, add it to
+`KNOWN_NOT_PACKAGED` AND record the reason below:
+
+- `audit-*`, `events-inproc`, `eventstore-postgres`, `flowinstance-*`, `idempotency-*`,
+  `tracestore-postgres`, `tracing-inproc`: not imported unconditionally by the RuntimeHost template.
+- `postgres-test-support`: test-support module, never packaged.
+
 ## For a capable agent (future work, not part of this checklist)
 
 Replace these three hand-maintained lists with a single source of truth — e.g. a test that enumerates
