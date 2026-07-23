@@ -109,7 +109,7 @@ parts: `NPDev_General__OutsideRepo/{reg12-slice3-evidence,external-tester-eviden
 > here: REG-1, REG-2, REG-3, REG-4, REG-5, REG-7, REG-8, REG-9, REG-10, REG-11, REG-12, REG-13,
 > REG-14, REG-18, REG-19, REG-20, REG-21, REG-22, REG-24, REG-27, REG-28, REG-29, REG-30. Still
 > genuinely open or partial: **REG-6** (CLOSED as re-scoped 2026-07-22 — risk-core done, purity deferred; see §1.6), **REG-16** (adversarial review done for LNCH-2/LNCH-4 only),
-> **REG-17** (ADVANCED 2026-07-22 — external Linux run 29974176793 executed, findings filed), **REG-23** and **REG-25** (deferred boundaries).
+> **REG-17** (ADVANCED round 2, 2026-07-23 — 3 CI findings fixed+confirmed on re-run 30051880197, 2 new surfaced: REG-2-on-Linux + surface-evidence wrapper), **REG-23** and **REG-25** (deferred boundaries).
 > The authoritative current state is `docs/LAUNCH_READINESS_GAPS.md` (24 DONE / 0 PARTIAL / 0 OPEN)
 > plus each entry's own **Status** line below, not this summary table.
 
@@ -960,7 +960,7 @@ verification ledger, and never let a summary claim more than its evidence file.
 
 ### 3.2 REG-17 — No third party has ever reproduced any verification
 
-**Type:** PROCESS · **Severity:** MEDIUM · **Effort:** M · **Status:** **ADVANCED (2026-07-22) — full Linux validation executed on external hardware; findings filed, not yet green.** Run `29974176793` (`npdev-ci-validation.yml` on a clean `main` checkout, GitHub ubuntu) completed with failures; every failed step is recorded at `..\NPDev_General__OutsideRepo\reg17-linux-validation-2026-07-22\run-29974176793-findings.md` (filed, not silently fixed — this project's discipline). The reproduction *mechanism* is proven external; closure follows when the filed findings are fixed and a re-run is green.
+**Type:** PROCESS · **Severity:** MEDIUM · **Effort:** M · **Status:** **ADVANCED — round 2 (2026-07-23); mechanism proven, 3 findings fixed+confirmed, 2 new surfaced.** Round 1 (run `29974176793`, `main`) surfaced 3 CI bugs (CI-1 `projectcachedir`, CI-2 upload-`..`, CI-3 script-quality). All three FIXED (commits `2065a72`/`60cda1d`/`b8a5112`) and **CONFIRMED green on the re-run** (`30051880197`, `beta1-vision-spine`, GitHub ubuntu+windows): the Linux job advanced from dying at step 4 to passing 11 steps. That re-run then surfaced **2 NEW first-contact findings**, each a prior closure that was environment/wrapper-specific and does NOT hold on the full external run: **(NEW-1)** the 10 `IT-EXTPG-1` tests REG-2 closed "10/10 green on real Postgres" (local Windows Docker) fail on Linux CI at `StartupValidator.java:317` — partially reopens REG-2 on Linux; **(NEW-2)** `run-runtime-surface-evidence.ps1` hard-throws on the `classification`/`footprint` checks REG-5 retired to advisory, because ci-validation calls the raw script not the advisory wrapper. Both filed at `..\NPDev_General__OutsideRepo\reg17-linux-validation-2026-07-22\run-30051880197-findings.md` (not silently fixed). Closure path: fix NEW-1 + NEW-2, re-dispatch, confirm green. Neither is a launch-blocking product defect.
 
 **What.** Every green suite, live rehearsal and gate run in this project's history was produced on
 one machine, by you or an AI session you supervised. The verification ledger is honest and detailed
