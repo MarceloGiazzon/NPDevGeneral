@@ -978,6 +978,7 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                         ":adapters:document-render-stub:jar",
                         ":adapters:expression-cel:jar",
                         ":adapters:file-store-inproc:jar",
+                        ":adapters:file-store-objectstore:jar",
                         ":adapters:flow-compiled:jar",
                         ":adapters:json-jackson:jar",
                         ":adapters:metrics-micrometer:jar",
