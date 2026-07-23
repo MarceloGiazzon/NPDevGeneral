@@ -108,7 +108,7 @@ parts: `NPDev_General__OutsideRepo/{reg12-slice3-evidence,external-tester-eviden
 > is kept only for historical shape. Read these as **CLOSED** regardless of how their row renders
 > here: REG-1, REG-2, REG-3, REG-4, REG-5, REG-7, REG-8, REG-9, REG-10, REG-11, REG-12, REG-13,
 > REG-14, REG-18, REG-19, REG-20, REG-21, REG-22, REG-24, REG-27, REG-28, REG-29, REG-30. Still
-> genuinely open or partial: **REG-6** (~40%, structural refactor, deliberately deferred), **REG-15**
+> genuinely open or partial: **REG-6** (CLOSED as re-scoped 2026-07-22 — risk-core done, purity deferred; see §1.6), **REG-15**
 > (release tag DONE, trademark parked), **REG-16** (adversarial review done for LNCH-2/LNCH-4 only),
 > **REG-17** (PARTIAL — 2 of 4 gates reproduced), **REG-23** and **REG-25** (deferred boundaries).
 > The authoritative current state is `docs/LAUNCH_READINESS_GAPS.md` (24 DONE / 0 PARTIAL / 0 OPEN)
@@ -419,7 +419,17 @@ Then either make the check blocking again or delete it. Record the decision in
 
 ### 1.6 REG-6 — `ColumnFacts`: eight passes each re-derive column semantics
 
-**Type:** GAP (structural) · **Severity:** MEDIUM · **Effort:** M · **Status:** **SUBSTANTIALLY ADVANCED (2026-07-21, REG-6/P7); drift concern CLOSED.** Landed the `ColumnFacts` projection (`columnFactsFor(manifest, table)` — one read-only per-(table,column) view exposing platformManaged/repairablePlatformColumn/additiveEligible/requiredByModel/declaredType/renamedFrom/literalDefaultJson + `bond()`), and a class-load drift-guard asserting `REPAIRABLE_PLATFORM_COLUMNS == PLATFORM_MANAGED_COLUMNS \ {id}` — so the "two overlapping platform-column sets with different contents" **can no longer silently drift** (that named concern is closed). Migrated the per-column *semantic* re-derivations (the relax pass's platform skip, the schema-ahead detector's platform subtraction, and the `refuseIfRequiredBondColumnMissing` bond heuristic) to the projection/helpers. **Deliberately not changed:** the set-algebra passes (additive/required diffs), which are set operations, not semantic re-derivation — rewriting them adds risk to the most-fixed subsystem without addressing the flagged concern, so this is not the full "every pass reads it." Verified behavior-preserving: H2 matrix 41/41 + Postgres matrix 25/25 unchanged, relax 4/4, bond 3/3, new ColumnFactsTest 3/3, generator conformance still green; RED-proof confirmed the bond migration is genuinely covered (`RequiredBondRefusalTest` goes red when `bond()` is broken).
+**Type:** GAP (structural) · **Severity:** MEDIUM · **Effort:** M · **Status:** **CLOSED as re-scoped (2026-07-22) — risk-core done; full set-algebra purity formally DEFERRED (owner decision).** Previously: SUBSTANTIALLY ADVANCED (2026-07-21, REG-6/P7); drift concern CLOSED. Landed the `ColumnFacts` projection (`columnFactsFor(manifest, table)` — one read-only per-(table,column) view exposing platformManaged/repairablePlatformColumn/additiveEligible/requiredByModel/declaredType/renamedFrom/literalDefaultJson + `bond()`), and a class-load drift-guard asserting `REPAIRABLE_PLATFORM_COLUMNS == PLATFORM_MANAGED_COLUMNS \ {id}` — so the "two overlapping platform-column sets with different contents" **can no longer silently drift** (that named concern is closed). Migrated the per-column *semantic* re-derivations (the relax pass's platform skip, the schema-ahead detector's platform subtraction, and the `refuseIfRequiredBondColumnMissing` bond heuristic) to the projection/helpers. **Deliberately not changed:** the set-algebra passes (additive/required diffs), which are set operations, not semantic re-derivation — rewriting them adds risk to the most-fixed subsystem without addressing the flagged concern, so this is not the full "every pass reads it." Verified behavior-preserving: H2 matrix 41/41 + Postgres matrix 25/25 unchanged, relax 4/4, bond 3/3, new ColumnFactsTest 3/3, generator conformance still green; RED-proof confirmed the bond migration is genuinely covered (`RequiredBondRefusalTest` goes red when `bond()` is broken).
+
+> **Closure as re-scoped (2026-07-22).** The owner accepted closing REG-6 at its risk-core: (1) the
+> drift that produced T-B1/T-B2 is CI-guarded (`PlatformColumnContractTest` + the class-load
+> drift-guard); (2) the per-column *semantic* re-derivations are migrated to `ColumnFacts`; (3) a
+> class-header directive now requires any NEW pass to read `ColumnFacts`, so the flaw class cannot
+> silently return; (4) both guard suites re-verified green 2026-07-22. The full "every set-algebra
+> pass reads the projection" purity migration is **formally DEFERRED** with this entry's own
+> rationale (set operations are not semantic re-derivation; rewriting them adds risk to the
+> most-fixed subsystem without closing a gap). Reopen ONLY if a new pass is about to be added — the
+> directive marks that trigger at the code site itself.
 
 **What.** `SchemaLifecycleExecutor` contains roughly eight passes — relax, tighten, backfill,
 additive, delta-report, classify, bond-refusal, rename, unique-constraint — each performing its own
