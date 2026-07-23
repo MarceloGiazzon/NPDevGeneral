@@ -115,7 +115,7 @@ is actually done today.
 > | LNCH-19 (Linux CI) | REG-10 | PARTIAL | **DONE** | `npdev-pr-gate.yml` observed **green** on ubuntu-latest (run `29899362276`); six root-caused first-contact-with-Linux fixes |
 > | LNCH-20 (cross-platform) | REG-11 | OPEN | **DONE** | Cross-platform build **proven** by the green run; also fixed a real generated-app `D:/`-cache portability bug |
 > | LNCH-22 (docs test) | REG-14 | PARTIAL | **DONE** | Closed on the 2nd attempt: the first pass was reverted on verification (two cold runs could not build *from docs alone* — a `runtimehost-libs` build-root divergence), fixed in `2adf8ec` (sync mirrors `build.gradle`'s walk) + tutorial one-time-setup step + Windows-safe verify-curl. **Validated by a project-blind in-sandbox run on `2adf8ec`: tutorial built + booted from docs alone (201/422), no source-reading, no leftover libs.** Evidence: `NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/lnch22-insandbox-blind-PASS.md` |
-> | LNCH-23 (launch checklist) | REG-15 | PARTIAL | **DONE** | Release tag cut (`beta1.1`, on the `beta1→main` merge); license/ADR/release-process already done; trademark parked (portfolio project, owner's decision) |
+> | LNCH-23 (launch checklist) | REG-15 | PARTIAL | **DONE** | Release tag cut (`beta1.1`, on the `beta1→main` merge); license/ADR/release-process already done; trademark **N/A** — individual/hobby project, no mark to defend, none sought (owner's final decision 2026-07-23). REG-15 fully DONE, not parked |
 >
 > **Register-native items (findings that are NOT LNCH gaps — do not look for them here).** The register
 > also tracks work with no LNCH equivalent, all closed/decided except where noted: LNCH-1's own
@@ -1139,6 +1139,12 @@ Not yet actioned — filed per the loop's own discipline ("do not silently patch
    code-free Spring Boot default error body the moment the flow actually runs — real cause
    (`Capability binding not found for capability 'persistence'`) is visible only in the app's raw
    stdout log, which no doc names as a debugging step.
+   **PARTIALLY FIXED 2026-07-23 (doc half):** both examples now declare `capabilities` +
+   `bindings` (persistence→repository; eventBus→inproc for the event-using Level 3) with an
+   explanatory "why this is required / validates-clean-but-500s-at-runtime" note. The **runtime
+   diagnostic half** (surface `CAPABILITY_BINDING_MISSING` as an actionable HTTP body / boot-time
+   fail-fast instead of a bare 500) is a RuntimeHost code change scoped in
+   `docs/GROUP_A_CLOSURE_PLAN.md` Task 5 — not yet built.
 3. **No doc names the automatically-generated concept CRUD's REST verbs/paths** beyond the one `POST`
    create example shown in the tutorial and the manual — list/get/update/delete are undocumented
    (correctly guessable from REST convention, but unverified against the docs).
