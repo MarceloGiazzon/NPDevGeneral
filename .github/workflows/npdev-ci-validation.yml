@@ -136,6 +136,15 @@ jobs:
           pwsh -NoProfile -File ./scripts/quality/generate-final-evidence-bundle.ps1
           pwsh -NoProfile -File ./scripts/quality/run-portable-tooling-check.ps1
 
+      # CI-2 (2026-07-23): upload-artifact@v4 forbids '..' in path patterns. The evidence bundle lives
+      # OUTSIDE the repo (build-output policy). Copy it into an in-workspace dir first, then upload
+      # that legal path (mirrors npdev-pr-gate.yml's ci-evidence pattern).
+      - name: Stage out-of-repo evidence for upload
+        if: always()
+        run: |
+          mkdir -p ci-maturity-evidence
+          cp -r ../NPDev_General__OutsideRepo/temp/final-evidence-bundle ci-maturity-evidence/ 2>/dev/null || true
+
       - name: Upload Linux maturity evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -143,7 +152,7 @@ jobs:
           name: npdev-linux-maturity-validation-evidence
           path: |
             scripts/reports/out
-            ../NPDev_General__OutsideRepo/temp/final-evidence-bundle
+            ci-maturity-evidence
             NPDevContract/dsl/**/build/test-results/test
             NPDevKernel/**/build/test-results/test
             NPDevGenerator/**/build/test-results/test
