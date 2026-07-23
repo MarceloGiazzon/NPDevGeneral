@@ -66,7 +66,7 @@
 | ARCH-8b | Flow field-default application not applied | Runtime footgun | DONE | P3 | M |
 | ARCH-10b | Panel dataSource `orderBy` unapplied | Runtime bug | DONE | P3 | S |
 | BOND-B2 | Duplicate anchor-resolution in FlywayEmitter | Tech debt | DONE (moot) | P3 | S |
-| BOND-B4 | ReleaseGateValidator not CI-wired | Test/CI | PARTIAL (needs your CI-trigger call) | P3 | S |
+| BOND-B4 | ReleaseGateValidator not CI-wired | Test/CI | **DONE (2026-07-23)** — `ReleaseGateValidatorTest` runs inside `:NPDevContract:dsl:check`, which `npdev-pr-gate.yml` executes on every PR (confirmed green on `beta1-vision-spine`, run `29965541583`). No separate CI step needed; the validator is exercised on every PR. | P3 | S |
 | BOND-B6 | Cross-pack bond untested end-to-end | Test coverage | DONE | P3 | M |
 | BOND-B7 | Pack table-name convention untested | Test coverage | DONE | P4 | S |
 | AW-P2 | selectors[]/bandPickers unification + FK auto-Prompt wiring | Feature | PARTIAL (picker unification DONE; FK auto-Prompt re-scoped out) | P4 | S |
