@@ -135,7 +135,8 @@ jobs:
         run: |
           for f in build/test-results/integrationTest/*.xml; do
             echo "----- $f -----"
-            grep -oE 'message="[^"]{0,500}"' "$f" | head -6 || true
+            grep -oE '<(error|failure)[^>]*type="[^"]*"' "$f" | head -3 || true
+            grep -oE '(Flyway[^<"]{0,200}|StartupValidator[^<"]{0,120}|mode=postgres[^<"]{0,120}|schema history[^<"]{0,120}|no successful migrations[^<"]{0,120})' "$f" | head -6 || true
           done
 
       - name: Bootstrap post-Beta0 maturity reports
