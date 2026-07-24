@@ -13,6 +13,8 @@ import com.npdev.adapters.runtime.validation.StrictExecutionValidator;
 import com.npdev.adapters.tracing.redaction.DefaultEventRedactionPolicy;
 import com.npdev.adapters.tracing.redaction.DefaultExecutionRedactionPolicy;
 import com.npdev.adapters.tracing.redaction.DefaultTraceRedactionPolicy;
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.kernel.CapabilityRegistry;
 import com.npdev.kernel.ports.EventMetaStore;
 import com.npdev.kernel.ports.EventRedactionPolicy;
 import com.npdev.kernel.ports.EventStore;
@@ -117,7 +119,9 @@ public class NpdevObservabilityConfig {
             @Value("${npdev.auth.jwt.issuer:}") String jwtIssuer,
             @Value("${npdev.auth.jwt.audience:}") String jwtAudience,
             @Value("${npdev.auth.jwt.public-key-path:}") String jwtPublicKeyPath,
-            @Value("${npdev.auth.jwt.private-key-path:}") String jwtPrivateKeyPath
+            @Value("${npdev.auth.jwt.private-key-path:}") String jwtPrivateKeyPath,
+            CompiledModel compiledModel,
+            CapabilityRegistry capabilityRegistry
     ) {
         return new StartupValidator(
                 runtimeSettings,
@@ -130,7 +134,9 @@ public class NpdevObservabilityConfig {
                 jwtIssuer,
                 jwtAudience,
                 jwtPublicKeyPath,
-                jwtPrivateKeyPath
+                jwtPrivateKeyPath,
+                compiledModel,
+                capabilityRegistry
         );
     }
 

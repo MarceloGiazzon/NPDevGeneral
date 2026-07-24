@@ -185,6 +185,17 @@ value here fails later, at first use, not at boot:
 | `NPDEV_FILESTORE_OBJECTSTORE_BUCKET` / `_ENDPOINT` / `_REGION` / `_ACCESSKEYID` / `_SECRETACCESSKEY` | Required when `NPDEV_FILESTORE_PROVIDER=objectstore`. See `docs/DEPLOYMENT.md`. |
 | `NPDEV_MAIL_SMTP_HOST` | SMTP host when the `mail-smtp` adapter is bound instead of `mail-inproc`. See `docs/EMAIL_NOTIFICATIONS.md`. |
 
+## Persistence capability binding (checked at boot)
+
+A model whose flows persist data — `createConcept`/`updateConcept`/`saveConcept` steps, or a direct
+`persistence.*` capability call — must declare a `persistence` binding in `model.json`'s `bindings`
+array (see `docs/NPDEV_USER_MANUAL.md` section 5.1 for the `capabilities`/`bindings` block shape). A
+binding can legitimately come from a built-in pack instead of the model's own `bindings` array, so
+model *validation* cannot assume its absence is an error — but a generated app that reaches runtime
+with flows that persist and **no bound adapter for `persistence`** (neither `persistence-inproc` for
+dev nor `persistence-postgres` for prod) refuses to boot with an `IllegalStateException` naming the
+offending flow, instead of failing opaquely on the first `createConcept` call (LEDGER-1).
+
 ## Where these come from
 
 Every property above ultimately resolves through Spring's normal
