@@ -85,15 +85,61 @@ at the decision point); only the message got a friendlier preamble.
 `proposedConversionSql` is reserved for a future phase (proposed conversion SQL) and is currently always
 `null`.
 
-## Planned surfaces (not yet implemented)
+## Surface 2 — pre-deploy CLI (implemented)
 
-- **Surface 2 — pre-deploy CLI.** A `REPORT_ONLY` lifecycle mode that computes the report against the
-  live database, prints it, writes zero DDL, and exits with a code (`0` safe / `2` needs-attention /
-  `3` destructive), wired to a `-ImpactOnly` flag on `Build-NpdevApp.ps1`. (`-PlanOnly` remains the
-  model-vs-previous-model preview that needs no database; `-ImpactOnly` would be model-vs-live-database.)
-- **Surface 3 — ControlPanel.** A SUPERUSER endpoint + page that renders the report on demand for a
-  running app.
+A `REPORT_ONLY` lifecycle mode computes the impact report against the app's **live, already-reachable**
+database, prints it (`ImpactReportText`), and exits the JVM **before any DDL, claim, or history write** —
+even before the stored fingerprint is read. It is enabled by a JVM system property, so no Spring wiring
+is needed:
 
-Both are specified in [`SCHEMA_ENGINE_REBUILD_PLAN.md`](SCHEMA_ENGINE_REBUILD_PLAN.md) Phase 6 (P6.4,
-P6.5) and are safe, additive follow-ups on top of the engine (`ImpactReport` / `ImpactReportJson` /
-`ImpactReportText`) that already exists.
+```
+-Dnpdev.schema.lifecycle.mode=REPORT_ONLY
+```
+
+Exit codes mirror the verdict:
+
+| Exit code | Verdict |
+|---|---|
+| `0` | `NO_CHANGES` or `SAFE` |
+| `2` | `NEEDS_ATTENTION` |
+| `3` | `DESTRUCTIVE` |
+
+`Build-NpdevApp.ps1 -ImpactOnly` drives this end to end: it generates + builds the app, then runs the
+freshly-built jar **once, in the foreground**, with `REPORT_ONLY` set, and propagates the app's exit code
+as the script's own exit code. It also emits a standalone `_ops\Impact-Only.ps1` in the app's ops toolbox
+(sibling of `Build-App.ps1` / `Start-App.ps1`) so the same check can be re-run later, independent of a
+regeneration, against whatever jar is currently built — e.g. right before promoting it to the target
+environment.
+
+```powershell
+# One-shot: generate, build, and check impact against the target database
+& scripts\appgen\Build-NpdevApp.ps1 -AppFolder <appFolder> -ImpactOnly
+
+# Or, re-run later against an already-built jar
+& <OutRoot>\_ops\Impact-Only.ps1
+```
+
+`-PlanOnly` and `-ImpactOnly` answer different questions and are not interchangeable:
+
+| Flag | Compares | Needs a database? |
+|---|---|---|
+| `-PlanOnly` | model vs. the **previous model** | No — offline estimate |
+| `-ImpactOnly` | model vs. the **live database** | Yes — the target must already be reachable |
+
+`-ImpactOnly` does **not** start the database environment (H2Server) or leave a long-running process
+behind — the JVM exits as soon as the report is printed, before the web server would ever bind a port.
+
+## Surface 3 — ControlPanel (implemented)
+
+`SchemaImpactController`, SUPERUSER-gated exactly like `SchemaAcknowledgmentController`, exposes the same
+report on a running app:
+
+- `GET /api/admin/schema-migration/impact` → the JSON report (`ImpactReportJson`), header
+  `X-Super-User-Key: <key>` required.
+- `GET /api/admin/schema-migration/impact/view` → a minimal self-contained HTML page that prompts for the
+  Super User key client-side and renders the table. Diagnostic surface, not a product page.
+
+Both surfaces reuse the same read-only entry point, `com.finalexec.db.SchemaImpactFacade.forLiveDatabase`
+(SER-P6.0), so the CLI and the ControlPanel can never disagree about what an upgrade would do.
+
+Specified in [`SCHEMA_ENGINE_REBUILD_PLAN.md`](SCHEMA_ENGINE_REBUILD_PLAN.md) Phase 6 (P6.4, P6.5).
