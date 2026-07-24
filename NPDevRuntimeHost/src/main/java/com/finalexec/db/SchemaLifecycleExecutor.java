@@ -223,6 +223,26 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * {@code SchemaLifecycleExecutorProofMatrixTest}. Behavior is unchanged: {@link #migrate(Flyway)}
      * is just {@code migrate(flyway, loadManifest())}.
      */
+    /** SER-P6.4: compute the REPORT_ONLY exit code (read-only, zero writes) and print the impact table.
+     *  0 = NO_CHANGES/SAFE, 2 = NEEDS_ATTENTION, 3 = DESTRUCTIVE. Package-private for direct unit testing;
+     *  the JVM-exit shell is the only caller in production. */
+    int reportOnlyExitCode(DataSource dataSource) {
+        SchemaImpactFacade.Result result = SchemaImpactFacade.forLiveDatabase(dataSource);
+        System.out.println(ImpactReportText.render(result.report(), result.fromFingerprint(),
+                result.toFingerprint(), result.ackToken()));
+        return codeFor(result.report().verdict());
+    }
+
+    /** SER-P6.4: the verdict-to-exit-code mapping, extracted so tests can assert it directly without
+     *  going through a DataSource. 0 = NO_CHANGES/SAFE, 2 = NEEDS_ATTENTION, 3 = DESTRUCTIVE. */
+    static int codeFor(ImpactReport.Verdict verdict) {
+        return switch (verdict) {
+            case NO_CHANGES, SAFE -> 0;
+            case NEEDS_ATTENTION -> 2;
+            case DESTRUCTIVE -> 3;
+        };
+    }
+
     void migrate(Flyway flyway, SchemaManifest manifest) {
         Configuration configuration = flyway.getConfiguration();
         DataSource dataSource = configuration.getDataSource();
@@ -260,6 +280,14 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     + "diff that cannot be executed item by item -- still requires a token. Recommended: switch to "
                     + "strategy=KeepExistingIfCompatible with allowDestructiveRecreate=false and use "
                     + "Build-NpdevApp.ps1 -PlanOnly / -AcknowledgeDestructive -- see docs/SCHEMA_EVOLUTION.md.");
+        }
+        // SER-P6.4 (Surface 2): REPORT_ONLY mode computes + prints the impact report and exits with a
+        // verdict code, WITHOUT any DDL/claim/history write. Read the mode as a JVM system property so no
+        // Spring wiring is needed; the -ImpactOnly script passes -Dnpdev.schema.lifecycle.mode=REPORT_ONLY.
+        if ("REPORT_ONLY".equalsIgnoreCase(System.getProperty("npdev.schema.lifecycle.mode", "APPLY"))) {
+            int code = reportOnlyExitCode(dataSource);
+            System.out.flush();
+            System.exit(code);
         }
         // LNCH-1 remediation R2 (F1): capture the stored fingerprint BEFORE beforeMigrate runs, so we
         // know whether this boot is an upgrade (fingerprint mismatch) independently of whichever
