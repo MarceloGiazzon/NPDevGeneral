@@ -1059,6 +1059,29 @@ well-shaped, not that a helper name appears; (3) only then migrate any genuinely
 remainder and re-block the step. Do **not** mass-migrate 59 scripts before deciding which is
 authoritative — the convention or the check.
 
+## 3.6 REG-32 — `npdev-ci-validation.yml` Bootstrap step aggregates ~21 maturity reports its producers never generate
+
+**Type:** PROCESS (CI evidence-orchestration) · **Severity:** LOW–MED · **Effort:** M–L · **Status:**
+**OPEN (filed 2026-07-24, made advisory in CI).** The Linux job's "Bootstrap post-Beta0 maturity
+reports" step runs `npdev report bootstrap`, which **aggregates** ~21 maturity reports
+(`beta0-state-truth`, `maturity-score`, `postgres-fidelity`, `scenario-coherence`,
+`editor-decomplexification`, `maturity-max-final-closure`, …) and hard-fails if any are missing or
+schema-invalid. It does **not** generate them — those come from ~21 separate `run-*.ps1` producer
+gates (there is no single orchestrator; `postBeta0MaturityCheck` is a *checker* that reads the
+bootstrap report, not a generator). This job never runs those producers, so the aggregator sees ~19
+"missing" (REG-3-class precondition-unmet) plus, in the CI run, a schema-invalid
+`stateful-additive-migrations-report.json` (`const` fields fail their schema). Surfaced only after
+REG-17's Fix A unblocked the postgres-IT step so this one finally ran (run `30057723015`). **Made
+advisory** (`continue-on-error: true`, 2026-07-24) — the job's REAL validation (DSL/kernel/generator/
+CLI + postgres ITs, incl. Fix A) passes and is unaffected. Reproduced locally (exit 1, missing-producer
+precondition). **How to fix (capable agent):** (1) apply the REG-3 pattern to
+`bootstrap-post-beta0-reports.ps1` + `validate-report-schemas.ps1` + `generate-final-evidence-bundle.ps1`
+— distinguish *precondition-unmet* (producers not run → non-fatal) from *check-failed* (an existing
+report is invalid → fatal); (2) either wire the ~21 producer gates into the job before bootstrap (heavy
+— several build/boot apps, expect more first-contact findings) **or** scope the required-report set to
+what this job produces; (3) fix the real `stateful-additive-migrations` `const` schema mismatch. Not a
+product defect — CI evidence-orchestration.
+
 ---
 
 ## 4. Suggested order (revised 2026-07-21 after independent code verification)
