@@ -435,6 +435,13 @@ tasks.named('test') {
     if (shadowLog != null && !shadowLog.toString().trim().isEmpty()) {
         systemProperty 'npdev.schema.shadow.logFile', shadowLog.toString().trim()
     }
+    // Phase 4.1: forward the classify-reduction self-check controls (measure/assert reducer == classify).
+    ['npdev.schema.classify.check', 'npdev.schema.classify.assert'].each { p ->
+        def v = System.getProperty(p) ?: providers.gradleProperty(p).getOrNull()
+        if (v != null && !v.toString().trim().isEmpty()) {
+            systemProperty p, v.toString().trim()
+        }
+    }
     if (System.getProperty('os.name', '').toLowerCase().contains('win')
             && System.getenv('DOCKER_HOST') == null) {
         environment 'DOCKER_HOST', 'npipe:////./pipe/dockerDesktopLinuxEngine'

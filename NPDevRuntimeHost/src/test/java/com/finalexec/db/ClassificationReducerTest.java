@@ -72,10 +72,14 @@ class ClassificationReducerTest {
     }
 
     @Test
-    void destructiveItemsAreDestructive() {
+    void classifyLevelMappingMatchesClassify() {
+        // A dropped COLUMN is the one destructive thing classify decides directly.
         assertEquals(DESTRUCTIVE, reduce(item(SafetyClass.DESTRUCTIVE_DROP_COLUMN, "gone")).value());
+        // A table drop maps to DESTRUCTIVE as the conservative default (ownership-gated in reality --
+        // a Phase 4 reconciliation item threaded before classify is switched to the reducer).
         assertEquals(DESTRUCTIVE, reduce(item(SafetyClass.DESTRUCTIVE_DROP_TABLE, null)).value());
-        assertEquals(DESTRUCTIVE, reduce(item(SafetyClass.DESTRUCTIVE_NARROW_TYPE, "name")).value());
+        // classify flags any type change as TYPE_CHANGE_DETECTED; narrow-destructiveness is deferred.
+        assertEquals(TYPE_CHANGE_DETECTED, reduce(item(SafetyClass.DESTRUCTIVE_NARROW_TYPE, "name")).value());
     }
 
     @Test

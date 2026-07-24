@@ -109,6 +109,38 @@ public final class ShadowParityProbe {
         }
     }
 
+    /** Classification-level self-check (Phase 4.1): compares {@link ClassificationReducer}'s reduction of
+     *  the live schema diff against what the live {@code classify} returned. Gated on the
+     *  {@code npdev.schema.classify.check} property so it costs nothing in normal runs. Log-only unless
+     *  {@code npdev.schema.classify.assert} is set. Never changes behavior (fully swallowed). */
+    public static void compareClassification(javax.sql.DataSource dataSource,
+            SchemaLifecycleExecutor.SchemaManifest manifest,
+            SchemaLifecycleExecutor.SchemaChangeClassification direct) {
+        if (System.getProperty("npdev.schema.classify.check") == null) {
+            return;
+        }
+        boolean diverged = false;
+        String line = null;
+        try {
+            CurrentSchema current = new CurrentSchemaReader().read(dataSource);
+            DesiredSchema desired = DesiredSchemaFactory.fromManifest(manifest);
+            SchemaDiff diff = new SchemaDiffEngine().diff(desired, scopeToOwnedBusinessTables(current, manifest));
+            SchemaLifecycleExecutor.SchemaChangeClassification reduced = ClassificationReducer.reduce(diff, desired);
+            if (reduced != direct) {
+                diverged = true;
+                line = "CLASSIFY_DIVERGENCE: reducer=" + reduced + " direct=" + direct
+                        + " items=" + diff.items().size() + " sample=" + sample(diff);
+                System.out.println(line);
+                appendToLogFile(line);
+            }
+        } catch (Throwable ignored) {
+            return;
+        }
+        if (diverged && Boolean.getBoolean("npdev.schema.classify.assert")) {
+            throw new AssertionError("Classify reduction divergence: " + line);
+        }
+    }
+
     private static void appendToLogFile(String line) {
         String logFile = System.getProperty(LOG_FILE_PROPERTY);
         if (logFile == null || logFile.isBlank()) {
