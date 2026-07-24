@@ -399,8 +399,24 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
 
     /** Package-private (not private) so it is directly unit-testable against a real H2
      * {@link DataSource}, following {@link #classify}/{@link #attemptInPlaceRenames}'s precedent
-     * (LNCH-1 Phase 4 -- the destructive-path integration tests drive this method directly). */
+     * (LNCH-1 Phase 4 -- the destructive-path integration tests drive this method directly).
+     *
+     * <p>Schema-engine rebuild Phase 3: a thin wrapper around {@link #beforeMigrateDecision} that runs
+     * the read-only {@link ShadowParityProbe} alongside the live decision -- snapshot the live schema
+     * before, compare the shadow's verdict after (on success OR refusal). The probe is log-only and
+     * swallows everything, so this CANNOT change behavior; a refusal is always rethrown unchanged. */
     DestructiveRecreation beforeMigrate(DataSource dataSource, SchemaManifest manifest) {
+        com.finalexec.db.schemastate.CurrentSchema shadowPre = ShadowParityProbe.snapshot(dataSource);
+        DestructiveRecreation result = null;
+        try {
+            result = beforeMigrateDecision(dataSource, manifest);
+            return result;
+        } finally {
+            ShadowParityProbe.compareAndLog(shadowPre, manifest, result);
+        }
+    }
+
+    private DestructiveRecreation beforeMigrateDecision(DataSource dataSource, SchemaManifest manifest) {
         String stored = readFingerprint(dataSource);
         if (stored == null || stored.isBlank()) {
             // A genuinely fresh boot: nothing stored, nothing to fast-forward FROM, and -- critically
