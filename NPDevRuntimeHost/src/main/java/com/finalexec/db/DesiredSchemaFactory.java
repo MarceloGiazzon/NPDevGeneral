@@ -71,10 +71,14 @@ public final class DesiredSchemaFactory {
         // eligible and are not flagged here — a known best-effort limit (Phase 2 does not diff FKs).
         boolean bond = facts.requiredByModel() && !facts.additiveEligible();
         String declaredType = facts.declaredType();
+        // Platform columns (id/version/row_version/tenant_id) are ALWAYS NOT NULL (§6), independent of
+        // whether they appear in the model's required set — so nullable only when a non-platform,
+        // non-required model field.
+        boolean nullable = !facts.requiredByModel() && !facts.platformManaged();
         return new DesiredColumn(
                 lower(rawColumn),
                 declaredType == null ? null : SqlTypeNormalization.normalize(declaredType),
-                !facts.requiredByModel(),
+                nullable,
                 facts.literalDefaultJson(),
                 facts.platformManaged(),
                 facts.requiredByModel(),

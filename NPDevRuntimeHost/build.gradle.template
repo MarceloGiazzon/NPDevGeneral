@@ -423,6 +423,15 @@ tasks.named('test') {
     if (activeProfiles != null && !activeProfiles.toString().trim().isEmpty()) {
         systemProperty 'spring.profiles.active', activeProfiles.toString().trim()
     }
+    // Schema-engine rebuild Phase 3: forward the shadow-parity controls (assert-on-divergence + the
+    // divergence diagnostic log) from the Gradle JVM to the forked test JVM so GATE-H2/GATE-PG can
+    // drive parity. Off unless explicitly passed (-Dnpdev.schema.shadow.assert / .logFile).
+    ['npdev.schema.shadow.assert', 'npdev.schema.shadow.logFile'].each { p ->
+        def v = System.getProperty(p) ?: providers.gradleProperty(p).getOrNull()
+        if (v != null && !v.toString().trim().isEmpty()) {
+            systemProperty p, v.toString().trim()
+        }
+    }
     if (System.getProperty('os.name', '').toLowerCase().contains('win')
             && System.getenv('DOCKER_HOST') == null) {
         environment 'DOCKER_HOST', 'npipe:////./pipe/dockerDesktopLinuxEngine'

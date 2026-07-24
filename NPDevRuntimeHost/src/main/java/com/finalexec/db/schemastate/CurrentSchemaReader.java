@@ -81,7 +81,7 @@ public final class CurrentSchemaReader {
                 String columnDefault = rs.getString("COLUMN_DEF");
                 columns.put(column, new CurrentColumn(
                         column,
-                        SqlTypeNormalization.normalize(typeName),
+                        SqlTypeNormalization.normalize(qualifyTypeWithSize(typeName, size, scale)),
                         sizeOrNull,
                         scaleOrNull,
                         nullable,
@@ -203,6 +203,27 @@ public final class CurrentSchemaReader {
 
     private static String lower(String value) {
         return value == null ? null : value.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Reconstruct the parameterized SQL type from JDBC's bare {@code TYPE_NAME} + size/scale, mirroring
+     * {@code SchemaLifecycleExecutor.qualifyTypeWithSize} EXACTLY so the shadow's current-side type
+     * compares equal to the manifest's declared type (e.g. live {@code VARCHAR}+50 → {@code VARCHAR(50)}
+     * == desired {@code VARCHAR(50)}). Kept byte-identical to the live formatter; if that one changes,
+     * change this too (both feed the same {@code SqlTypeNormalization}).
+     */
+    private static String qualifyTypeWithSize(String typeName, int columnSize, int decimalDigits) {
+        if (typeName == null || typeName.isBlank()) {
+            return typeName;
+        }
+        String upper = typeName.toUpperCase(Locale.ROOT);
+        if (upper.contains("CHAR")) {
+            return typeName + "(" + columnSize + ")";
+        }
+        if (upper.equals("NUMERIC") || upper.equals("DECIMAL")) {
+            return typeName + "(" + columnSize + "," + decimalDigits + ")";
+        }
+        return typeName;
     }
 
     private record TableRef(String schema, String rawName) {

@@ -407,12 +407,25 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * swallows everything, so this CANNOT change behavior; a refusal is always rethrown unchanged. */
     DestructiveRecreation beforeMigrate(DataSource dataSource, SchemaManifest manifest) {
         com.finalexec.db.schemastate.CurrentSchema shadowPre = ShadowParityProbe.snapshot(dataSource);
+        boolean shadowFingerprintChanged = shadowFingerprintChanged(dataSource, manifest);
         DestructiveRecreation result = null;
         try {
             result = beforeMigrateDecision(dataSource, manifest);
             return result;
         } finally {
-            ShadowParityProbe.compareAndLog(shadowPre, manifest, result);
+            ShadowParityProbe.compareAndLog(shadowPre, manifest, result, shadowFingerprintChanged);
+        }
+    }
+
+    /** Same upgrade-detection {@code migrate()} uses (stored fingerprint present AND differs): the live
+     *  engine only runs structural passes when this is true, so the shadow must mirror the gate or a
+     *  fingerprint-match boot (engine no-ops) reads as a spurious divergence. Fail-open on error. */
+    private boolean shadowFingerprintChanged(DataSource dataSource, SchemaManifest manifest) {
+        try {
+            String stored = readFingerprint(dataSource);
+            return stored != null && !stored.isBlank() && !stored.equals(manifest.schemaFingerprint());
+        } catch (Throwable ignored) {
+            return true;
         }
     }
 

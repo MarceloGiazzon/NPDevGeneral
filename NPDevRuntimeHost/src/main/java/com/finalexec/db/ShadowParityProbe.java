@@ -25,6 +25,9 @@ public final class ShadowParityProbe {
     /** Test-only: when {@code true}, a divergence throws instead of logging (wired in Phase 3.2). */
     public static final String ASSERT_PROPERTY = "npdev.schema.shadow.assert";
 
+    /** Diagnostic (Phase 3.3): when set to a path, each divergence is appended there for analysis. */
+    public static final String LOG_FILE_PROPERTY = "npdev.schema.shadow.logFile";
+
     private ShadowParityProbe() {
     }
 
@@ -54,22 +57,70 @@ public final class ShadowParityProbe {
      */
     public static void compareAndLog(CurrentSchema preSnapshot,
             SchemaLifecycleExecutor.SchemaManifest manifest,
-            SchemaLifecycleExecutor.DestructiveRecreation liveResult) {
+            SchemaLifecycleExecutor.DestructiveRecreation liveResult,
+            boolean fingerprintChanged) {
         try {
             if (preSnapshot == null || manifest == null || !manifest.physicalDatabase()) {
                 return;
             }
+            // The live engine runs structural passes ONLY on a fingerprint change; on a match it
+            // no-ops regardless of live shape. Mirror that gate, or a fingerprint-match boot reads as a
+            // spurious divergence (the shadow would still see additive/create differences).
+            if (!fingerprintChanged) {
+                return;
+            }
             DesiredSchema desired = DesiredSchemaFactory.fromManifest(manifest);
-            SchemaDiff diff = new SchemaDiffEngine().diff(desired, preSnapshot);
+            SchemaDiff diff = new SchemaDiffEngine().diff(desired, scopeToOwnedBusinessTables(preSnapshot, manifest));
             Verdict shadow = shadowVerdict(diff);
             Verdict live = liveVerdict(liveResult);
             if (shadow != live) {
-                System.out.println("SHADOW_DIVERGENCE: expected=" + shadow + " actual=" + live
-                        + " items=" + diff.items().size() + " destructive=" + diff.destructiveItems().size());
+                String line = "SHADOW_DIVERGENCE: shadow=" + shadow + " live=" + live
+                        + " items=" + diff.items().size() + " destructive=" + diff.destructiveItems().size()
+                        + " tables=" + preSnapshot.tables().keySet() + " sample=" + sample(diff);
+                System.out.println(line);
+                String logFile = System.getProperty(LOG_FILE_PROPERTY);
+                if (logFile != null && !logFile.isBlank()) {
+                    try {
+                        java.nio.file.Files.writeString(java.nio.file.Path.of(logFile), line + System.lineSeparator(),
+                                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+                    } catch (Throwable ignored) {
+                        // best-effort diagnostic only
+                    }
+                }
             }
         } catch (Throwable ignored) {
             // The shadow must never change behavior — swallow absolutely everything.
         }
+    }
+
+    /**
+     * The live executor only ever touches the business tables the model owns — never Flyway's own
+     * bookkeeping, and internal/platform tables self-heal through a separate path. The shadow must
+     * mirror that scope, or every {@code npdev_*}/{@code flyway_schema_history} table reads as an
+     * unexplained DROP. Excludes {@code manifest.internalTables()} + anything with the {@code npdev_}
+     * platform prefix + Flyway's history table; everything else (business tables, current or dropped)
+     * stays in scope.
+     */
+    static CurrentSchema scopeToOwnedBusinessTables(CurrentSchema current,
+            SchemaLifecycleExecutor.SchemaManifest manifest) {
+        java.util.Set<String> internal = new java.util.HashSet<>();
+        for (String t : manifest.internalTables()) {
+            internal.add(t.toLowerCase(java.util.Locale.ROOT));
+        }
+        java.util.Map<String, com.finalexec.db.schemastate.CurrentTable> kept = new java.util.LinkedHashMap<>();
+        current.tables().forEach((name, table) -> {
+            if (internal.contains(name) || name.startsWith("npdev_") || name.equals("flyway_schema_history")) {
+                return;
+            }
+            kept.put(name, table);
+        });
+        return new CurrentSchema(kept);
+    }
+
+    private static String sample(SchemaDiff diff) {
+        return diff.items().stream().limit(4)
+                .map(i -> i.safetyClass() + "(" + i.itemKey() + ")")
+                .toList().toString();
     }
 
     static Verdict shadowVerdict(SchemaDiff diff) {
