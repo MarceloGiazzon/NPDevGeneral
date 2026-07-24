@@ -1063,6 +1063,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             extraTables.removeAll(expectedTables);
 
             RenameResolution.Result resolution = RenameResolution.resolve(missingTables, extraTables, declaredTableRenames);
+            // SER-P4.3: prove the canonical SchemaDiff resolves the identical table-rename work-list
+            // before it replaces this bespoke RenameResolution (default-on assert; behavior unchanged).
+            assertTableRenamesMatchDiff(dataSource, manifest, resolution.explainedRenames());
             List<Map.Entry<String, String>> work = new ArrayList<>(resolution.explainedRenames().entrySet());
             // R4 (F5): write-before-execute the whole pass as one audit row with per-item detail.
             List<String> itemDetails = new ArrayList<>();
@@ -1080,6 +1083,46 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         }
         if (!renamed.isEmpty()) {
             System.out.println("NPDev schema lifecycle: applied in-place table renames: " + renamed);
+        }
+    }
+
+    /** SER-P4.3: the table-rename work-list (new -&gt; old) derived from the canonical {@link
+     * com.finalexec.db.schemastate.SchemaDiff} -- the {@code RENAME_TABLE} items the engine resolves.
+     * Proven equal to the bespoke {@link RenameResolution} result before it replaces it. */
+    private static Map<String, String> tableRenamesFromDiff(DataSource dataSource, SchemaManifest manifest) {
+        com.finalexec.db.schemastate.CurrentSchema current =
+                new com.finalexec.db.schemastate.CurrentSchemaReader().read(dataSource);
+        com.finalexec.db.schemastate.SchemaDiff diff = new com.finalexec.db.schemastate.SchemaDiffEngine()
+                .diff(DesiredSchemaFactory.fromManifest(manifest),
+                        ShadowParityProbe.scopeToOwnedBusinessTables(current, manifest));
+        Map<String, String> renames = new LinkedHashMap<>();
+        for (com.finalexec.db.schemastate.SchemaDiffItem di : diff.items()) {
+            if (di.safetyClass() == com.finalexec.db.schemastate.SafetyClass.SAFE_RENAME
+                    && di.itemKey().startsWith("RENAME_TABLE:")) {
+                renames.put(di.after(), di.before()); // after = new name, before = old name
+            }
+        }
+        return renames;
+    }
+
+    /** SER-P4.3 equivalence probe (gated on {@code npdev.schema.rename.assert}, default-on in tests):
+     * the diff-derived table-rename work-list must equal the bespoke {@link RenameResolution} one,
+     * key-for-key, before the switch. Fully swallowed unless asserting; never changes behavior. */
+    private static void assertTableRenamesMatchDiff(DataSource dataSource, SchemaManifest manifest,
+            Map<String, String> bespoke) {
+        if (!Boolean.getBoolean("npdev.schema.rename.assert")) {
+            return;
+        }
+        Map<String, String> fromDiff;
+        try {
+            fromDiff = tableRenamesFromDiff(dataSource, manifest);
+        } catch (Throwable ignored) {
+            return;
+        }
+        if (!fromDiff.equals(bespoke)) {
+            String line = "TABLE_RENAME_DIVERGENCE: bespoke=" + bespoke + " diff=" + fromDiff;
+            System.out.println(line);
+            throw new AssertionError(line);
         }
     }
 
