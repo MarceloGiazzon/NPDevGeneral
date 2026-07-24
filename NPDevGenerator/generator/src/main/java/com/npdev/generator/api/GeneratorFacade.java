@@ -19,6 +19,7 @@ import com.npdev.generator.emitters.RuntimeAuthPropertiesEmitter;
 import com.npdev.generator.emitters.RuntimeLogPropertiesEmitter;
 import com.npdev.generator.emitters.ServiceEmitter;
 import com.npdev.generator.emitters.TrustedSourceEmitter;
+import com.npdev.generator.dbconfig.ConversionHookEmitter;
 import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
 import com.npdev.generator.dbconfig.SchemaRealizationEmitter;
 import com.npdev.generator.dbconfig.DatabaseEngine;
@@ -212,6 +213,9 @@ public final class GeneratorFacade {
 
         new SchemaRealizationEmitter().emit(model, outRoot, databasePlan, modelSourcePath,
                 migrationPlanDestructiveItemStableStrings, destructiveAcknowledgmentToken);
+        // SER-P7.2: operator-authored conversion hooks (definition/migrations/<ordinal>-<slug>/), opt-in
+        // -- a no-op when the app declares none.
+        new ConversionHookEmitter().emit(modelSourcePath, outRoot);
         new GeneratedFolderSignatureEmitter().emit(outRoot);
     }
 
