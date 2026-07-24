@@ -341,11 +341,11 @@ jobs:
           }
 
       - name: Script automation quality
-        # CI-3 (2026-07-23): non-blocking pending recalibration. Its structured-report-contract
-        # sub-check greps for two helper NAMES, not report behavior, and flags 59/68 pre-existing
-        # scripts -- mis-calibrated, not a regression. Tracked as a debt item in
-        # docs/NPDEV_OPEN_ITEMS_REGISTER.md (REG-31). Re-block once the check tests behavior.
-        continue-on-error: true
+        # REG-31 (2026-07-24): recalibrated -- structured-report-contract now asserts report
+        # *behavior* (serializes + persists JSON to the standard reports/out convention) instead
+        # of grepping for two helper-function names. 3 genuinely non-compliant scripts (no JSON
+        # report at all) are excluded as a dated backlog list in the script and filed in
+        # docs/NPDEV_OPEN_ITEMS_REGISTER.md (REG-31). Re-blocking.
         timeout-minutes: 10
         run: |
           & pwsh -NoProfile -ExecutionPolicy Bypass `
