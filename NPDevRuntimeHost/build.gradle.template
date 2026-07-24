@@ -423,14 +423,17 @@ tasks.named('test') {
     if (activeProfiles != null && !activeProfiles.toString().trim().isEmpty()) {
         systemProperty 'spring.profiles.active', activeProfiles.toString().trim()
     }
-    // Schema-engine rebuild Phase 3: forward the shadow-parity controls (assert-on-divergence + the
-    // divergence diagnostic log) from the Gradle JVM to the forked test JVM so GATE-H2/GATE-PG can
-    // drive parity. Off unless explicitly passed (-Dnpdev.schema.shadow.assert / .logFile).
-    ['npdev.schema.shadow.assert', 'npdev.schema.shadow.logFile'].each { p ->
-        def v = System.getProperty(p) ?: providers.gradleProperty(p).getOrNull()
-        if (v != null && !v.toString().trim().isEmpty()) {
-            systemProperty p, v.toString().trim()
-        }
+    // Schema-engine rebuild Phase 3.2: the read-only shadow parity assertion is ON BY DEFAULT -- every
+    // test that drives SchemaLifecycleExecutor.beforeMigrate now also asserts the shadow SchemaDiffEngine
+    // agrees with the live engine on schema-driven decisions (non-schema overrides are scoped out in
+    // ShadowParityProbe). This makes parity a standing invariant: a future change that makes the shadow
+    // diverge fails here. Override with -Pnpdev.schema.shadow.assert=false; point .logFile at a path to
+    // capture divergences for analysis.
+    def shadowAssert = System.getProperty('npdev.schema.shadow.assert') ?: providers.gradleProperty('npdev.schema.shadow.assert').getOrNull()
+    systemProperty 'npdev.schema.shadow.assert', (shadowAssert != null && !shadowAssert.toString().trim().isEmpty() ? shadowAssert.toString().trim() : 'true')
+    def shadowLog = System.getProperty('npdev.schema.shadow.logFile') ?: providers.gradleProperty('npdev.schema.shadow.logFile').getOrNull()
+    if (shadowLog != null && !shadowLog.toString().trim().isEmpty()) {
+        systemProperty 'npdev.schema.shadow.logFile', shadowLog.toString().trim()
     }
     if (System.getProperty('os.name', '').toLowerCase().contains('win')
             && System.getenv('DOCKER_HOST') == null) {
