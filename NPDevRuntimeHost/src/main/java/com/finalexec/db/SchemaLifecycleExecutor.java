@@ -1515,67 +1515,32 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             SchemaChangeClassification classification) {
         record PendingBackfill(String table, String column, String sqlType, String literalDefaultJson) {
         }
+        // SER-P4.6: which additive-eligible required columns need a literal-default backfill (pending) or
+        // have no literal default and so refuse the boot (refusal) is derived from the canonical SchemaDiff
+        // -- covering the missing case (ADD_REQUIRED_COLUMN) AND the crash-recovery half-applied case
+        // (TIGHTEN_NOT_NULL: present-but-nullable; a converged present+NOT NULL column produces no diff
+        // item and is correctly skipped). Each diff item's lower-cased name is resolved back to its
+        // model-case table/column so the emitted DDL and refusal messages are byte-identical to the former
+        // live-introspection loop. Proven equivalent at P4.6a.
         List<PendingBackfill> pending = new ArrayList<>();
         List<String> refusals = new ArrayList<>();
-        try (Connection connection = dataSource.getConnection()) {
-            DatabaseMetaData metadata = connection.getMetaData();
-            for (Map.Entry<String, List<String>> entry : manifest.businessTableColumns().entrySet()) {
-                String table = entry.getKey();
-                Set<String> actualColumns = readActualColumns(metadata, table);
-                if (actualColumns.isEmpty()) {
-                    continue; // brand-new table -- V1's CREATE TABLE IF NOT EXISTS handles it, nothing to backfill
-                }
-                List<String> requiredColumns = manifest.businessTableRequiredColumns().getOrDefault(table, List.of());
-                if (requiredColumns.isEmpty()) {
-                    continue;
-                }
-                Set<String> additiveEligible = new LinkedHashSet<>(
-                        manifest.businessTableAdditiveColumns().getOrDefault(table, List.of()));
-                for (String column : requiredColumns) {
-                    // Crash-recovery correctness (5.4): a column that ALREADY exists but is not yet
-                    // NOT NULL is a half-applied backfill from a previous crashed boot (ADD COLUMN
-                    // succeeded, UPDATE/SET NOT NULL did not) -- it still needs to go through
-                    // addBackfillAndTightenColumn (itself idempotent-by-check on each of its three
-                    // steps), not be skipped just because the column is no longer literally
-                    // "missing". Only a column that is BOTH present AND already NOT NULL is fully
-                    // converged and safe to skip outright.
-                    if (actualColumns.contains(column) && isColumnNotNull(metadata.getConnection(), table, column)) {
-                        continue;
-                    }
-                    if (!additiveEligible.contains(column)) {
-                        continue; // not this method's concern (a required bond -- see refuseIfRequiredBondColumnMissing)
-                    }
-                    String literalDefaultJson = manifest.businessTableColumnDefaultLiterals()
-                            .getOrDefault(table, Map.of()).get(column);
-                    if (literalDefaultJson == null) {
-                        boolean hasExpressionDefault = manifest.businessTableExpressionDefaultColumns()
-                                .getOrDefault(table, List.of()).contains(column);
-                        refusals.add(table + "." + column + (hasExpressionDefault
-                                ? " (an expression default is declared, but only literal defaults are backfilled "
-                                        + "automatically in v1 -- declare a literal default or make the field optional)"
-                                : " (no default declared -- declare a literal default or make the field optional)"));
-                        continue;
-                    }
-                    String sqlType = manifest.businessTableColumnTypes().getOrDefault(table, Map.of()).get(column);
-                    pending.add(new PendingBackfill(table, column, sqlType, literalDefaultJson));
-                }
+        for (BackfillItem item : backfillItemsFromDiff(dataSource, manifest)) {
+            String table = item.table();   // model-case
+            String column = item.column(); // model-case
+            if (item.refusal()) {
+                boolean hasExpressionDefault = manifest.businessTableExpressionDefaultColumns()
+                        .getOrDefault(table, List.of()).contains(column);
+                refusals.add(table + "." + column + (hasExpressionDefault
+                        ? " (an expression default is declared, but only literal defaults are backfilled "
+                                + "automatically in v1 -- declare a literal default or make the field optional)"
+                        : " (no default declared -- declare a literal default or make the field optional)"));
+            } else {
+                String literalDefaultJson = manifest.businessTableColumnDefaultLiterals()
+                        .getOrDefault(table, Map.of()).get(column);
+                String sqlType = manifest.businessTableColumnTypes().getOrDefault(table, Map.of()).get(column);
+                pending.add(new PendingBackfill(table, column, sqlType, literalDefaultJson));
             }
-        } catch (SQLException exception) {
-            throw new IllegalStateException("Failed inspecting live database for required-field backfills", exception);
         }
-
-        // SER-P4.6: prove the canonical SchemaDiff resolves the identical pending-backfill and refusal
-        // sets (including the crash-recovery half-applied case) before it replaces this bespoke loop.
-        Set<String> bespokePending = new LinkedHashSet<>();
-        for (PendingBackfill item : pending) {
-            bespokePending.add((item.table() + "." + item.column()).toLowerCase(Locale.ROOT));
-        }
-        Set<String> bespokeRefusal = new LinkedHashSet<>();
-        for (String r : refusals) {
-            int paren = r.indexOf(" (");
-            bespokeRefusal.add((paren < 0 ? r : r.substring(0, paren)).toLowerCase(Locale.ROOT));
-        }
-        assertBackfillsMatchDiff(dataSource, manifest, bespokePending, bespokeRefusal);
 
         if (!refusals.isEmpty()) {
             writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification, null, null, "REFUSED");
@@ -1611,67 +1576,70 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 + "literal default, then enforced NOT NULL (LNCH-1 Phase 5): " + backfilled);
     }
 
-    /** The required-field backfill pass's plan derived from the canonical diff (SER-P4.6): the
-     * additive-eligible required columns that need a literal-default backfill (pending) or that have no
-     * literal default and so refuse the boot (refusal). Both cover the MISSING case (ADD_REQUIRED_COLUMN)
-     * and the crash-recovery half-applied case (TIGHTEN_NOT_NULL: present-but-nullable); platform-column
-     * repair (TIGHTEN_PLATFORM) and required bonds (non-additive) are OTHER passes and excluded here. */
-    private record BackfillPlan(Set<String> pending, Set<String> refusal) {
+    /** One required-field backfill decision derived from the canonical diff (SER-P4.6), in model-case:
+     * an additive-eligible required column that needs a literal-default backfill ({@code refusal=false},
+     * from a NEEDS_BACKFILL item) or has no literal default and so refuses the boot ({@code refusal=true},
+     * from a NEEDS_HOOK item). Covers the MISSING case (ADD_REQUIRED_COLUMN) and the crash-recovery
+     * half-applied case (TIGHTEN_NOT_NULL: present-but-nullable); platform repair (TIGHTEN_PLATFORM) and
+     * required bonds (non-additive) are OTHER passes and excluded. */
+    private record BackfillItem(String table, String column, boolean refusal) {
     }
 
-    private static BackfillPlan backfillPlanFromDiff(DataSource dataSource, SchemaManifest manifest) {
+    private static List<BackfillItem> backfillItemsFromDiff(DataSource dataSource, SchemaManifest manifest) {
         com.finalexec.db.schemastate.CurrentSchema current =
                 new com.finalexec.db.schemastate.CurrentSchemaReader().read(dataSource);
         com.finalexec.db.schemastate.SchemaDiff diff = new com.finalexec.db.schemastate.SchemaDiffEngine()
                 .diff(DesiredSchemaFactory.fromManifest(manifest),
                         ShadowParityProbe.scopeToOwnedBusinessTables(current, manifest));
-        Set<String> pending = new LinkedHashSet<>();
-        Set<String> refusal = new LinkedHashSet<>();
+        List<BackfillItem> items = new ArrayList<>();
         for (com.finalexec.db.schemastate.SchemaDiffItem di : diff.items()) {
             String key = di.itemKey();
             if (!key.startsWith("ADD_REQUIRED_COLUMN:") && !key.startsWith("TIGHTEN_NOT_NULL:")) {
                 continue;
             }
-            String table = di.table();
-            String column = di.column(); // DesiredSchemaFactory lower-cases; manifest lists are model-case
-            // This pass only converts additive-eligible required columns; required bonds (non-additive)
-            // and platform columns are refused / repaired by separate passes. Membership is checked
-            // case-insensitively because the diff canonicalises column names to lower-case.
-            if (!containsIgnoreCase(manifest.businessTableRequiredColumns().getOrDefault(table, List.of()), column)
-                    || !containsIgnoreCase(manifest.businessTableAdditiveColumns().getOrDefault(table, List.of()), column)) {
+            // The diff canonicalises names to lower-case; resolve back to the manifest's model-case so the
+            // emitted DDL and refusal messages stay byte-identical to the former loop.
+            String modelTable = resolveModelTable(manifest, di.table());
+            if (modelTable == null) {
                 continue;
             }
-            String columnKey = (table + "." + column).toLowerCase(Locale.ROOT);
+            String modelColumn = resolveModelColumn(manifest, modelTable, di.column());
+            if (modelColumn == null) {
+                continue;
+            }
+            // This pass only converts additive-eligible required columns; required bonds (non-additive)
+            // and platform columns are refused / repaired by separate passes.
+            if (!containsIgnoreCase(manifest.businessTableRequiredColumns().getOrDefault(modelTable, List.of()), di.column())
+                    || !containsIgnoreCase(manifest.businessTableAdditiveColumns().getOrDefault(modelTable, List.of()), di.column())) {
+                continue;
+            }
             if (di.safetyClass() == com.finalexec.db.schemastate.SafetyClass.NEEDS_BACKFILL) {
-                pending.add(columnKey);
+                items.add(new BackfillItem(modelTable, modelColumn, false));
             } else if (di.safetyClass() == com.finalexec.db.schemastate.SafetyClass.NEEDS_HOOK) {
-                refusal.add(columnKey);
+                items.add(new BackfillItem(modelTable, modelColumn, true));
             }
         }
-        return new BackfillPlan(pending, refusal);
+        return items;
     }
 
-    /** SER-P4.6 equivalence probe (gated on {@code npdev.schema.backfill.assert}, default-on in tests):
-     * the diff-derived pending + refusal column sets must equal the bespoke ones. Fully swallowed unless
-     * asserting; never changes behavior. */
-    private static void assertBackfillsMatchDiff(DataSource dataSource, SchemaManifest manifest,
-            Set<String> bespokePending, Set<String> bespokeRefusal) {
-        if (!Boolean.getBoolean("npdev.schema.backfill.assert")) {
-            return;
+    /** The manifest table whose lower-cased name equals {@code lowerTable} (the diff's canonical form). */
+    private static String resolveModelTable(SchemaManifest manifest, String lowerTable) {
+        for (String table : manifest.businessTableColumns().keySet()) {
+            if (table.toLowerCase(Locale.ROOT).equals(lowerTable)) {
+                return table;
+            }
         }
-        BackfillPlan fromDiff;
-        try {
-            fromDiff = backfillPlanFromDiff(dataSource, manifest);
-        } catch (Throwable ignored) {
-            return;
+        return null;
+    }
+
+    /** The model-case column of {@code modelTable} whose lower-cased name equals {@code lowerColumn}. */
+    private static String resolveModelColumn(SchemaManifest manifest, String modelTable, String lowerColumn) {
+        for (String column : manifest.businessTableColumns().getOrDefault(modelTable, List.of())) {
+            if (column.toLowerCase(Locale.ROOT).equals(lowerColumn)) {
+                return column;
+            }
         }
-        if (!fromDiff.pending().equals(bespokePending) || !fromDiff.refusal().equals(bespokeRefusal)) {
-            String line = "BACKFILL_DIVERGENCE: bespokePending=" + bespokePending + " diffPending="
-                    + fromDiff.pending() + " bespokeRefusal=" + bespokeRefusal + " diffRefusal="
-                    + fromDiff.refusal();
-            System.out.println(line);
-            throw new AssertionError(line);
-        }
+        return null;
     }
 
     /** Case-insensitive membership: {@code lowerTarget} is already lower-cased (the diff canonicalises
