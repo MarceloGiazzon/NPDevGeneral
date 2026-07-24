@@ -48,11 +48,12 @@ public final class ClassificationReducer {
             // nothing worse than the SAFE_ADDITIVE baseline either.
             case SAFE_ADDITIVE, SAFE_RELAX, NEEDS_BACKFILL ->
                     SchemaLifecycleExecutor.SchemaChangeClassification.SAFE_ADDITIVE;
-            // NEEDS_HOOK collapses two cases classify treats oppositely: a required NON-bond column with
-            // no literal default is additive-eligible (SAFE_ADDITIVE; the backfill pass refuses it
-            // later), but a required BOND cannot be added at all (DESTRUCTIVE). The desired column's
-            // bond flag disambiguates.
-            case NEEDS_HOOK -> isBond(item, desired)
+            // NEEDS_HOOK collapses two cases classify treats oppositely: a required NON-additive column
+            // (a bond, or a manifest-marked non-additive) cannot be added -> classify DESTRUCTIVE; a
+            // merely required-with-no-default column that IS additive-eligible is SAFE_ADDITIVE (the
+            // backfill pass refuses it later). classify tests businessTableAdditiveColumns membership,
+            // so the desired column's additiveEligible flag is the exact disambiguator.
+            case NEEDS_HOOK -> isNonAdditiveEligible(item, desired)
                     ? SchemaLifecycleExecutor.SchemaChangeClassification.DESTRUCTIVE
                     : SchemaLifecycleExecutor.SchemaChangeClassification.SAFE_ADDITIVE;
             case SAFE_RENAME -> SchemaLifecycleExecutor.SchemaChangeClassification.RENAME_DETECTED;
@@ -65,17 +66,19 @@ public final class ClassificationReducer {
             // `actual.isEmpty() -> continue` guard) -- it leaves the classification at its baseline.
             case SAFE_TABLE_CREATE ->
                     SchemaLifecycleExecutor.SchemaChangeClassification.SAFE_ADDITIVE;
-            // NB (Phase 4 reconciliation item): DESTRUCTIVE_DROP_TABLE cannot be reduced from the pure
-            // schema diff -- classify's handling is ownership-gated (an orphan NPDev cannot prove it
-            // created is left alone => SAFE; a proven dropped concept => DESTRUCTIVE). Mapped to
-            // DESTRUCTIVE here as the conservative default; the ownership signal must be threaded in
-            // before classify is switched to the reducer. Tracked in the classify self-check divergences.
-            case DESTRUCTIVE_DROP_COLUMN, DESTRUCTIVE_DROP_TABLE, MANUAL_REVIEW ->
+            // classify is COLUMN-level over the DESIRED tables' columns (it iterates
+            // businessTableColumns) -- it never even looks at a live table the model no longer declares,
+            // so an orphan / renamed-away table contributes nothing to the classification (its removal is
+            // an ownership-gated decision made by a separate pass). A dropped CONCEPT is likewise absent
+            // from businessTableColumns, so classify never returns DESTRUCTIVE from a table drop either.
+            case DESTRUCTIVE_DROP_TABLE ->
+                    SchemaLifecycleExecutor.SchemaChangeClassification.SAFE_ADDITIVE;
+            case DESTRUCTIVE_DROP_COLUMN, MANUAL_REVIEW ->
                     SchemaLifecycleExecutor.SchemaChangeClassification.DESTRUCTIVE;
         };
     }
 
-    private static boolean isBond(SchemaDiffItem item, DesiredSchema desired) {
+    private static boolean isNonAdditiveEligible(SchemaDiffItem item, DesiredSchema desired) {
         if (item.column() == null) {
             return false;
         }
@@ -84,6 +87,6 @@ public final class ClassificationReducer {
             return false;
         }
         DesiredColumn column = table.columns().get(item.column());
-        return column != null && column.bond();
+        return column != null && !column.additiveEligible();
     }
 }

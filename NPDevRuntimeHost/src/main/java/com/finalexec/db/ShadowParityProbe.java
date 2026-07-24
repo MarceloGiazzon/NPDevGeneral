@@ -119,12 +119,24 @@ public final class ShadowParityProbe {
         if (System.getProperty("npdev.schema.classify.check") == null) {
             return;
         }
+        // classify's classification is COLUMN-level over the desired tables. Two of its outcomes are
+        // NOT column-level and so are out of the reducer's scope: the empty-manifest guard
+        // (businessTableColumns empty -> DESTRUCTIVE outright), and any table-DROP decision (ownership-
+        // gated: empty-manifest / orphan-left-alone / proven-concept-drop, all handled by separate
+        // logic). When classify is switched to the reducer these stay as pre-checks around it; here we
+        // skip them so the self-check verifies exactly what the reducer is responsible for.
+        if (manifest.businessTableColumns().isEmpty()) {
+            return;
+        }
         boolean diverged = false;
         String line = null;
         try {
             CurrentSchema current = new CurrentSchemaReader().read(dataSource);
             DesiredSchema desired = DesiredSchemaFactory.fromManifest(manifest);
             SchemaDiff diff = new SchemaDiffEngine().diff(desired, scopeToOwnedBusinessTables(current, manifest));
+            if (onlyTableDrops(diff)) {
+                return;
+            }
             SchemaLifecycleExecutor.SchemaChangeClassification reduced = ClassificationReducer.reduce(diff, desired);
             if (reduced != direct) {
                 diverged = true;

@@ -115,6 +115,15 @@ public final class SchemaDiffEngine {
     }
 
     private static SchemaDiffItem addColumnItem(DesiredTable dt, DesiredColumn dc) {
+        // A column the manifest marks NON-additive-eligible (a required bond, or a hand-declared
+        // non-additive) cannot be safely added -- an operator must supply the data (NEEDS_HOOK); the
+        // reducer maps this to the DESTRUCTIVE that classify returns for a missing non-additive column.
+        if (!dc.additiveEligible()) {
+            return SchemaDiffItem.of("ADD_REQUIRED_COLUMN:" + dt.name() + ":" + dc.name(), dt.name(), dc.name(),
+                    SafetyClass.NEEDS_HOOK, null, dc.normalizedSqlType());
+        }
+        // Additive-eligible but required-not-null: backfill from a literal default, else an operator hook
+        // (classify treats both as SAFE_ADDITIVE; the backfill pass refuses the no-default case later).
         if (dc.requiredByModel() && !dc.nullable()) {
             SafetyClass sc = dc.literalDefault() != null ? SafetyClass.NEEDS_BACKFILL : SafetyClass.NEEDS_HOOK;
             return SchemaDiffItem.of("ADD_REQUIRED_COLUMN:" + dt.name() + ":" + dc.name(), dt.name(), dc.name(),

@@ -14,6 +14,10 @@ package com.finalexec.db.schemastate;
  * @param platformManaged    true for {@code id}/{@code version}/{@code row_version}/{@code tenant_id}
  * @param requiredByModel    true when the model declares the field required (⇒ NOT NULL for a model field)
  * @param bond               true when this is a bond/FK field (best-effort: a required non-additive column)
+ * @param additiveEligible   whether this column may be safely ADDED to an existing table (the manifest's
+ *                           {@code businessTableAdditiveColumns} membership, which is exactly what
+ *                           {@code classify} tests — NOT a nullable/required proxy; a required bond is
+ *                           marked non-additive, and a hand-built manifest may mark any column so)
  * @param renamedFromColumn  the prior column name when the model declares {@code renamedFrom}, else {@code null}
  */
 public record DesiredColumn(
@@ -24,6 +28,7 @@ public record DesiredColumn(
         boolean platformManaged,
         boolean requiredByModel,
         boolean bond,
+        boolean additiveEligible,
         String renamedFromColumn
 ) {
 }
