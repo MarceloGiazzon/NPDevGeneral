@@ -276,7 +276,26 @@ sourceSets {
             // or even compile, as part of the plain `test` task (no com.npdev.generated. reference,
             // so generatedRuntimeDependentTestSources' auto-exclusion would not otherwise catch it;
             // see generatedRuntimeIntegrationTestSources above for the integrationTest inclusion).
-            exclude 'com/finalexec/db/SchemaLifecycleExecutorPostgresProofMatrixTest.java'
+            // Docker-dependent (Testcontainers Postgres): excluded from the default `test` so a plain
+            // run never needs Docker. It is mount-INDEPENDENT (pure schema-lifecycle, no generated
+            // runtime), so it can be run directly against a bare template on demand via
+            // `-PincludePostgresMatrix` -- this is GATE-PG in docs/SCHEMA_ENGINE_REBUILD_PLAN.md:
+            //   gradlew test --tests com.finalexec.db.SchemaLifecycleExecutorPostgresProofMatrixTest -PincludePostgresMatrix
+            if (!providers.gradleProperty('includePostgresMatrix').present) {
+                exclude 'com/finalexec/db/SchemaLifecycleExecutorPostgresProofMatrixTest.java'
+            }
+            // These two tests exercise MAIN classes that import com.npdev.generated.* (ConceptQueryController
+            // -> RuntimeContextService; ActuatorAdminGuardFilter), so those main classes are excluded from
+            // compilation when the generated-runtime mount is absent (a bare-template checkout, e.g. running
+            // GATE-H2/GATE-PG directly per docs/SCHEMA_ENGINE_REBUILD_PLAN.md). The test files themselves
+            // contain no com.npdev.generated. text, so the generatedRuntimeDependentTestSources heuristic
+            // above cannot catch them, and they fail compileTestJava with "cannot find symbol". Exclude them
+            // ONLY when the mount is absent, so the assembled-app gate (mount present) still compiles and runs
+            // them exactly as before -- a transitive-dependency gap the text heuristic can't see.
+            if (!generatedRuntimeMountPresent()) {
+                exclude 'com/finalexec/api/ConceptQueryControllerTest.java'
+                exclude 'com/finalexec/config/ActuatorAdminGuardFilterTest.java'
+            }
         }
     }
     integrationTest {
@@ -380,7 +399,14 @@ tasks.named('bootRun') {
 }
 
 tasks.named('test') {
-    dependsOn 'enforceSingleSchemaRealizationSource'
+    // enforceSingleSchemaRealizationSource verifies an ASSEMBLED FinalApp carries its generated
+    // schema-realization artifacts under npdev-generated/ -- meaningless for a bare-template checkout
+    // (no mount), where it can only fail. Depend on it only when the mount is present, so the
+    // assembled-app gate keeps the guarantee while a direct GATE-H2/GATE-PG run against the template
+    // (docs/SCHEMA_ENGINE_REBUILD_PLAN.md) can execute the mount-independent unit tests.
+    if (generatedRuntimeMountPresent()) {
+        dependsOn 'enforceSingleSchemaRealizationSource'
+    }
     useJUnitPlatform()
     // Perf: forked test JVMs default to 512m and do NOT inherit org.gradle.jvmargs.
     // Deliberately no maxParallelForks here: these are Spring Boot slices sharing a
