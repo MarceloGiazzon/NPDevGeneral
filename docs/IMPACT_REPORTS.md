@@ -143,3 +143,61 @@ Both surfaces reuse the same read-only entry point, `com.finalexec.db.SchemaImpa
 (SER-P6.0), so the CLI and the ControlPanel can never disagree about what an upgrade would do.
 
 Specified in [`SCHEMA_ENGINE_REBUILD_PLAN.md`](SCHEMA_ENGINE_REBUILD_PLAN.md) Phase 6 (P6.4, P6.5).
+
+## Conversion hooks — sanctioned destruction (implemented, Phase 7)
+
+A **conversion hook** is operator-authored SQL that converts data as part of a schema change, instead of
+letting the change destroy it. Owner-approved policy (rule-6, 2026-07-24): **a destructive item a hook
+resolves needs no acknowledgment token** — authoring the hook *is* the acknowledgment. An unclaimed
+destructive item remains exactly as token-gated as it always was; hooks only ever narrow what still needs
+a token, never widen what's allowed to happen silently.
+
+### The operator loop
+
+1. **See what an upgrade would do.** `-ImpactOnly` (Surface 2) or the ControlPanel (Surface 3) against
+   the target database, *before* deploying the new jar. Every item that needs attention prints its
+   `itemKey` — e.g. `DROP_COLUMN:invoices:legacy_total:NUMERIC(10,2)`.
+2. **Write a hook folder** in the app definition (layer 2, e.g.
+   `D:\WorkSpace\NPDev\AppGen\apps\<app>\definition\migrations\<ordinal>-<slug>\`):
+   - `hook.json` — `id` (also the destination folder name and the natural-sort execution order — prefix
+     it with the same ordinal as the folder, e.g. `"001-split-legacy-total"`), `claims` (the `itemKey`(s)
+     this hook resolves), optional `description`/`verifySql`/`verifyExpect`.
+   - `convert.sql` — the SQL that actually performs the conversion (it does the real work, including any
+     destructive DDL — a hook is not a pre-step the platform later re-executes, it IS the execution).
+   - Optional `convert.h2.sql` / `convert.postgres.sql` for engine-specific syntax; `convert.sql` is the
+     fallback for whichever engine has no override.
+3. **Regenerate.** `ConversionHookEmitter` validates every `hook.json` against
+   [`conversion-hook.schema.json`](../NPDevContract/schemas/conversion-hook.schema.json) at generation
+   time — a malformed hook fails the BUILD, never the boot — and copies valid hooks into the FinalApp at
+   `src/main/resources/db/conversion-hooks/<id>/`.
+4. **Re-run `-ImpactOnly`.** The claimed item now renders `HOOK: <id>` instead of `!!`, and — if that was
+   the only destructive item — the verdict drops from `DESTRUCTIVE` to `SAFE`/`NEEDS_ATTENTION` with no
+   acknowledgment token shown. Nothing has run yet; this is still a read-only preview.
+5. **Deploy.** On the real upgrade boot, `ConversionHookRunner` runs every hook whose claims match the
+   live unresolved diff (in ascending `id` order, each in its own transaction), verifies it if `verifySql`
+   is set, and re-diffs afterward to confirm the claim was honored — a claim is a promise the engine
+   verifies, never trusts. If the hook resolved everything it claimed, the boot proceeds with no token
+   required for that item.
+
+This loop — see the blast radius, write the conversion, watch it resolve, deploy — is the GeneXus
+reorganization experience NPDev didn't have before Phase 7.
+
+### What a refusal looks like
+
+- **`verifySql` doesn't match `verifyExpect`** → the boot refuses *before* anything destructive runs
+  (`HOOK_VERIFY_FAILED` in `npdev_schema_history`).
+- **A hook's `convert.sql` throws** → its own transaction rolls back atomically, the boot refuses
+  (`HOOK_FAILED`).
+- **A hook claims an item but the re-diff still finds it** → the boot refuses (`hook '<id>' claimed
+  '<itemKey>' but the change is still required`) — never trust a claim without checking.
+- **No hook claims an item at all** → completely unaffected; the existing itemized acknowledgment-token
+  path applies exactly as before Phase 7.
+
+### v1 scope
+
+SQL-only. A Java `DataMigrationHook` interface (for conversions too complex for a SQL script) is
+deliberately deferred to the ADR-0003 code-bearing-objects track — not part of this phase.
+
+Specified in [`SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md`](SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md)
+Phase 7 (P7.1–P7.5). See also [`DATABASES_AND_MIGRATIONS.md`](DATABASES_AND_MIGRATIONS.md) §12 for the
+operator decision matrix this adds a row to.
