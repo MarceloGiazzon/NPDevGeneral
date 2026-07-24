@@ -156,14 +156,22 @@ jobs:
             grep -oE '(Flyway[^<"]{0,200}|StartupValidator[^<"]{0,120}|mode=postgres[^<"]{0,120}|schema history[^<"]{0,120}|no successful migrations[^<"]{0,120})' "$f" | head -6 || true
           done
 
-      # REG-32 (2026-07-24): `npdev report bootstrap` AGGREGATES ~21 post-beta0 maturity reports
-      # (beta0-state-truth, maturity-score, fidelity, scenario, editor, ...) — it does NOT generate
-      # them. Those reports are produced by ~21 separate `run-*.ps1` gates that this job does not run,
-      # so the aggregator hard-fails on missing inputs (~19 "missing", REG-3-class precondition). The
-      # job's REAL validation (DSL/kernel/generator/CLI + postgres ITs above, incl. Fix A) is
-      # unaffected and passes. Advisory until the producer gates are wired in — tracked as REG-32 in
-      # docs/NPDEV_OPEN_ITEMS_REGISTER.md. Reproduced locally (exit 1, missing-producer precondition).
-      - name: Bootstrap post-Beta0 maturity reports (advisory — producers not wired, REG-32)
+      # REG-32 (2026-07-24): `npdev report bootstrap` AGGREGATES ~21 post-beta0 maturity reports —
+      # it does NOT generate them; those come from ~21 separate `run-*.ps1` gates this job does not
+      # run, so ~19 are expected-missing (REG-3-class precondition, not a defect). FIXED: the
+      # PowerShell chain (`npdev report bootstrap` / bootstrap-post-beta0-reports.ps1 +
+      # validate-report-schemas.ps1 + generate-final-evidence-bundle.ps1) now distinguishes
+      # precondition-unmet (exit 2, non-fatal) from check-failed (exit 1) — verified locally, prints
+      # "PRECONDITION-UNMET: 19 of 21 ..." and exits 2 on this same missing-producer state that used
+      # to hard-fail. The 1 real schema-invalid report (stateful-additive-migrations) is also fixed.
+      # STILL ADVISORY (REG-35, filed 2026-07-24): the OTHER commands below —
+      # `./gradlew postBeta0MaturityCheck` (a separate Gradle-native validation pipeline with the
+      # identical missing-vs-invalid conflation, pre-existing, not touched by REG-32) and the nested
+      # per-artifact strictness in final-evidence-bundle-manifest.schema.json — still hard-fail on
+      # this job's expected missing-producer state. See docs/NPDEV_OPEN_ITEMS_REGISTER.md (REG-32,
+      # REG-35) before removing continue-on-error; removing it now would just go red for REG-35's
+      # reasons instead of REG-32's.
+      - name: Bootstrap post-Beta0 maturity reports (advisory — REG-32 PowerShell chain fixed; REG-35 Gradle-native gap open)
         continue-on-error: true
         timeout-minutes: 60
         run: |

@@ -21,13 +21,17 @@ function Invoke-Producer {
     $exitCode = $LASTEXITCODE
     $ErrorActionPreference = "Stop"
     $output | ForEach-Object { [string]$_ } | Set-Content -Path $outputPath -Encoding UTF8
+    # REG-3 exit-code convention (also adopted by validate-report-schemas.ps1 and
+    # generate-final-evidence-bundle.ps1, REG-32): 0 passed, 2 precondition-unmet (required inputs
+    # were never generated -- not a defect), 1 check-failed (a real, evaluable failure).
+    $status = if ($exitCode -eq 0) { "passed" } elseif ($exitCode -eq 2) { "precondition-unmet" } else { "failed" }
     return [pscustomobject]@{
         name = $Name
         command = ($Command -join " ")
         startedAt = $startedAt
         completedAt = (Get-Date).ToUniversalTime().ToString("o")
         exitCode = $exitCode
-        status = if ($exitCode -eq 0) { "passed" } else { "failed" }
+        status = $status
         outputPath = $outputPath
     }
 }
@@ -73,7 +77,7 @@ if ([string]::IsNullOrWhiteSpace($RunId)) {
 New-Item -ItemType Directory -Force -Path "scripts/reports/out" | Out-Null
 
 $producers = @()
-$producers += Invoke-Producer -Name "required-report-schema-validation" -Command @("pwsh", "-NoProfile", "-File", "scripts/quality/validate-report-schemas.ps1", "-RunId", $RunId)
+$producers += Invoke-Producer -Name "required-report-schema-validation" -Command @("pwsh", "-NoProfile", "-File", "scripts/quality/validate-report-schemas.ps1", "-RunId", $RunId, "-RequireAllMaturityReports")
 $producers += Invoke-Producer -Name "final-evidence-bundle" -Command @("pwsh", "-NoProfile", "-File", "scripts/quality/generate-final-evidence-bundle.ps1", "-RunId", $RunId)
 
 $requiredReports = New-RequiredReportRegistry
@@ -94,9 +98,20 @@ $schemaValidation = if (Test-Path -Path "scripts/reports/out/required-report-sch
 $finalManifest = if (Test-Path -Path "scripts/reports/out/final-evidence-bundle-manifest.json" -PathType Leaf) { Read-JsonFile "scripts/reports/out/final-evidence-bundle-manifest.json" } else { $null }
 $missingReports = @($reportStates | Where-Object { -not $_.exists })
 $failedReports = @($reportStates | Where-Object { $_.exists -and $_.overallStatus -ne "passed" })
-$schemaInvalidCount = if ($null -ne $schemaValidation) { [int]$schemaValidation.schemaInvalidReportCount } else { $requiredReports.Count }
-$producerFailures = @($producers | Where-Object { $_.status -ne "passed" })
-$overallStatus = if ($missingReports.Count -eq 0 -and $failedReports.Count -eq 0 -and $schemaInvalidCount -eq 0 -and $producerFailures.Count -eq 0 -and $null -ne $finalManifest -and [string]$finalManifest.overallStatus -eq "passed") { "passed" } else { "failed" }
+# REG-32: schemaInvalidReportCount now comes from validate-report-schemas.ps1 already scoped to
+# reports that EXIST but fail schema (not ones that were simply never produced -- see that script).
+$schemaInvalidCount = if ($null -ne $schemaValidation) { [int]$schemaValidation.schemaInvalidReportCount } else { 0 }
+$producerFailures = @($producers | Where-Object { $_.status -eq "failed" })
+$producerPreconditionsUnmet = @($producers | Where-Object { $_.status -eq "precondition-unmet" })
+$finalManifestStatus = if ($null -ne $finalManifest) { [string]$finalManifest.overallStatus } else { "missing" }
+
+# REG-32 (REG-3 pattern): distinguish "required evidence was never generated" (precondition-unmet --
+# this job does not run the ~21 producer gates, so ~19 missing reports is expected, not a defect)
+# from "an existing report/producer asserts something is actually broken" (check-failed). Only the
+# latter should hard-fail; the former degrades to a non-fatal, clearly-labeled precondition state.
+$hasCheckFailure = ($failedReports.Count -gt 0) -or ($schemaInvalidCount -gt 0) -or ($producerFailures.Count -gt 0) -or ($finalManifestStatus -eq "failed")
+$hasPreconditionGap = ($missingReports.Count -gt 0) -or ($producerPreconditionsUnmet.Count -gt 0) -or ($finalManifestStatus -eq "precondition-unmet") -or ($finalManifestStatus -eq "missing")
+$overallStatus = if ($hasCheckFailure) { "failed" } elseif ($hasPreconditionGap) { "precondition-unmet" } else { "passed" }
 
 $report = [pscustomobject]@{
     schemaVersion = "npdev-report-bootstrap-and-regeneration-report.v1"
@@ -109,6 +124,7 @@ $report = [pscustomobject]@{
     missingReportCount = $missingReports.Count
     failedReportCount = $failedReports.Count
     schemaInvalidReportCount = $schemaInvalidCount
+    producerPreconditionUnmetCount = $producerPreconditionsUnmet.Count
     finalEvidenceManifestGenerated = ($null -ne $finalManifest -and [string]$finalManifest.overallStatus -eq "passed")
     ciUploadsReports = $true
     producers = $producers
@@ -132,8 +148,14 @@ $report = [pscustomobject]@{
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ReportPath) | Out-Null
 $report | ConvertTo-Json -Depth 60 | Set-Content -Path $ReportPath -Encoding UTF8
 
-if ($overallStatus -ne "passed") {
+# EXIT CODES (REG-3 pattern): 0 passed, 2 PRECONDITION-UNMET (required reports/producers never ran --
+# not a defect), 1 CHECK-FAILED (an existing report/producer asserts something is actually broken).
+if ($overallStatus -eq "failed") {
     Write-Error ("Report bootstrap failed. Report: " + $ReportPath)
+}
+if ($overallStatus -eq "precondition-unmet") {
+    Write-Host ("PRECONDITION-UNMET: " + $missingReports.Count + " of " + $requiredReports.Count + " required reports were never generated (producers not run). Report: " + $ReportPath)
+    exit 2
 }
 
 Write-Host ("Report bootstrap passed. Report: " + $ReportPath)

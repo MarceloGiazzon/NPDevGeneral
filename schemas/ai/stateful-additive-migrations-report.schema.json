@@ -47,25 +47,22 @@
     "dryRunSqlAttached": { "type": "boolean" },
     "riskThresholdConfigurable": { "type": "boolean" },
     "checks": { "type": "array", "items": { "type": "object" } },
-    "findings": { "type": "array", "items": { "type": "object" } },
+    "findings": {
+      "$comment": "REG-32 (2026-07-24): this producer has emitted narrative-prose findings (same shape as doesNotSolve below) since its first commit (5e7321e, 2026-07-21) -- no consumer reads findings as structured objects here (unlike other *-report schemas). object:true was never satisfied; schema corrected to match the producer's actual, deliberate design.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
     "doesNotSolve": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
   },
   "allOf": [
     {
+      "$comment": "REG-32 (2026-07-24): dropped the const:true requirement on migrationModeAdditiveOnlySupported/migrationPlanOnlySupported/versionedFlywayMigrationGenerated/safeAdditiveChangesAllowed/runtimeMigrationStaticPreflightPassed/flywayPostgresMigrationProofPassed/flywaySchemaHistoryVerified/dryRunSqlAttached. The producer's own R8 remediation (2026-07-20, see run-stateful-additive-migrations-check.ps1's `findings`) deliberately retired these -- their capability moved to the LNCH-1 Postgres Testcontainers twin / StatefulMigrationPlannerTest / Build-NpdevApp.ps1 -PlanOnly, so the script permanently reports them false and gates overallStatus on its `checks` array instead. The schema still required const:true on all of them, so a correctly-passing report was schema-invalid -- the schema was stale, not the report. Fields remain required+typed boolean; only the const-when-passed assertion was scoped down to the 4 that are still real, live-verified signals.",
       "if": { "properties": { "overallStatus": { "const": "passed" } }, "required": ["overallStatus"] },
       "then": {
         "properties": {
-          "migrationModeAdditiveOnlySupported": { "const": true },
-          "migrationPlanOnlySupported": { "const": true },
-          "versionedFlywayMigrationGenerated": { "const": true },
-          "safeAdditiveChangesAllowed": { "const": true },
           "destructiveChangesRejected": { "const": true },
           "runtimeMigrationPreflightPassed": { "const": true },
-          "runtimeMigrationStaticPreflightPassed": { "const": true },
-          "flywayPostgresMigrationProofPassed": { "const": true },
           "flywayValidateOrMigrateProofPassed": { "const": true },
-          "flywaySchemaHistoryVerified": { "const": true },
-          "dryRunSqlAttached": { "const": true },
           "riskThresholdConfigurable": { "const": true }
         }
       }

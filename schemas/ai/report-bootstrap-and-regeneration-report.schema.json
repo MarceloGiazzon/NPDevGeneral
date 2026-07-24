@@ -28,7 +28,10 @@
     "generatedAt": { "type": "string", "format": "date-time" },
     "scriptPath": { "const": "scripts/quality/bootstrap-post-beta0-reports.ps1" },
     "workspaceRoot": { "type": "string", "minLength": 1 },
-    "overallStatus": { "enum": ["passed", "failed"] },
+    "overallStatus": {
+      "$comment": "REG-32 (2026-07-24): added precondition-unmet (REG-3 pattern) -- this job does not run the ~21 producer gates that generate the required reports, so 'missing' is an expected, non-fatal precondition, not a defect. Only 'failed' means an existing report/producer actually asserts something broken.",
+      "enum": ["passed", "failed", "precondition-unmet"]
+    },
     "requiredReportCount": { "const": 21 },
     "missingReportCount": { "type": "integer", "minimum": 0 },
     "failedReportCount": { "type": "integer", "minimum": 0 },
