@@ -347,6 +347,19 @@ jobs:
         run: |
           .\gradlew check --no-daemon --console=plain
 
+      # Windows-only diagnostic (2026-07-24): LegacyModelMigrationToolTest shells to `npdev.bat migrate`
+      # and asserts exit 0; it fails ONLY on the CI Windows runner (exit-0 locally), and the console
+      # truncates the captured subprocess output. Dump the test XML (which holds npdev.bat's stdout+
+      # stderr in the assertion message) so we can finally see WHY it exits non-zero on CI.
+      - name: On DSL failure, surface LegacyModelMigration output (Windows)
+        if: failure()
+        run: |
+          Get-ChildItem -Recurse -Path NPDevContract -Filter "TEST-*LegacyModelMigration*.xml" -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "----- $($_.FullName) -----"
+            $raw = Get-Content -Raw -LiteralPath $_.FullName
+            Write-Host $raw.Substring(0, [Math]::Min(4000, $raw.Length))
+          }
+
       - name: Preflight generator source completeness
         timeout-minutes: 5
         run: |
