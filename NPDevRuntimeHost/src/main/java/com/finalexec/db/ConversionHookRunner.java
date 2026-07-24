@@ -24,9 +24,11 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -190,6 +192,25 @@ public final class ConversionHookRunner {
                 List.of("appliedHooks=" + applied.stream().map(Hook::id).toList(),
                         "residualUnresolvedCount=" + residualKeys.size()));
         return true;
+    }
+
+    /**
+     * SER-P7.4: a read-only index of every {@code hook.json} claim currently on the classpath,
+     * {@code itemKey -> hookId} -- NO diff computation, NO SQL execution. The Impact Report uses this
+     * to show {@code HOOK: <id>} for an item a hook WOULD resolve if this boot actually ran, before it
+     * runs (REPORT_ONLY / ControlPanel are read-only surfaces). When two hooks claim the same key, the
+     * later one (classpath enumeration order) wins -- an authoring conflict an operator should
+     * resolve, not a case this index needs to arbitrate cleverly. Never throws (mirrors {@link
+     * #loadHooks}'s degrade-to-empty contract).
+     */
+    public static Map<String, String> loadClaimIndex() {
+        Map<String, String> index = new LinkedHashMap<>();
+        for (Hook hook : loadHooks()) {
+            for (String claim : hook.claims()) {
+                index.put(claim, hook.id());
+            }
+        }
+        return index;
     }
 
     private static String historyLabel(Hook hook) {

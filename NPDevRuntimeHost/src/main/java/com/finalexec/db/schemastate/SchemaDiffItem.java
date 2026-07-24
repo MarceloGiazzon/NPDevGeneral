@@ -37,4 +37,10 @@ public record SchemaDiffItem(
                 || safetyClass == SafetyClass.DESTRUCTIVE_DROP_TABLE
                 || safetyClass == SafetyClass.DESTRUCTIVE_NARROW_TYPE;
     }
+
+    /** SER-P7.4: a copy with {@link #resolution} replaced -- used by the Impact Report to mark an item
+     *  {@link Resolution#HOOK_CLAIMED} once a conversion hook's claim is found to cover it. */
+    public SchemaDiffItem withResolution(Resolution newResolution) {
+        return new SchemaDiffItem(itemKey, table, column, constraint, safetyClass, before, after, newResolution);
+    }
 }
