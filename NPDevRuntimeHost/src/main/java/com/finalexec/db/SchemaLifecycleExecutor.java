@@ -1173,88 +1173,19 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     void attemptInPlaceRenames(DataSource dataSource, SchemaManifest manifest) {
         record ColumnRename(String table, String oldName, String newName) {
         }
+        // SER-P4.4: the whole plan -- the renames to apply, the tables deferred to the destructive path,
+        // and the stale-marker warnings -- is now derived from the canonical SchemaDiff (proven equal to
+        // the former RenameResolution loop at P4.4a), not a second live introspection.
+        ColumnRenamePlan derived = columnRenamesFromDiff(dataSource, manifest);
+        for (String warning : derived.staleWarnings()) {
+            System.out.println(warning);
+        }
         List<ColumnRename> plan = new ArrayList<>();
+        for (String[] rename : derived.renames()) {
+            plan.add(new ColumnRename(rename[0], rename[1], rename[2]));
+        }
         List<String> renamed = new ArrayList<>();
-        List<String> skipped = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
-            DatabaseMetaData metadata = connection.getMetaData();
-            for (Map.Entry<String, Map<String, String>> tableRenames : manifest.businessTableRenamedColumns().entrySet()) {
-                String table = tableRenames.getKey();
-                Map<String, String> declaredRenames = tableRenames.getValue();
-                if (declaredRenames.isEmpty()) {
-                    continue;
-                }
-                List<String> expectedColumns = manifest.businessTableColumns().getOrDefault(table, List.of());
-                if (expectedColumns.isEmpty()) {
-                    continue;
-                }
-                Set<String> expected = new LinkedHashSet<>(expectedColumns);
-                Set<String> actual = readActualColumns(metadata, table);
-                if (actual.isEmpty()) {
-                    // Table doesn't exist yet (brand new concept) -- nothing to rename; matches
-                    // classify()'s "actual.isEmpty() -> continue" guard for the same reason (§2.4).
-                    continue;
-                }
-                Set<String> additiveEligible = new LinkedHashSet<>(
-                        manifest.businessTableAdditiveColumns().getOrDefault(table, List.of()));
-                Set<String> extraInDb = new LinkedHashSet<>(actual);
-                extraInDb.removeAll(expected);
-                Set<String> missingInDb = new LinkedHashSet<>(expected);
-                missingInDb.removeAll(actual);
-
-                // R6 (F7): cheap boot-side symmetry with the plan's stale-marker warning. When a
-                // declared rename's OLD column is absent live AND its NEW column is also absent, the
-                // marker explained nothing and the column is still missing -- this table is heading to
-                // the destructive path, quite possibly because a stale marker turned a rename into a
-                // drop. Log one WARN naming the suspect marker; no behavior change.
-                for (Map.Entry<String, String> declared : declaredRenames.entrySet()) {
-                    String newName = declared.getKey();
-                    String oldName = declared.getValue();
-                    if (oldName != null && !oldName.isBlank()
-                            && !actual.contains(oldName.toLowerCase(Locale.ROOT))
-                            && !actual.contains(newName.toLowerCase(Locale.ROOT))) {
-                        System.out.println("NPDev schema lifecycle: WARNING -- declared rename '" + oldName
-                                + "' -> '" + newName + "' on table '" + table + "' explains nothing: neither the "
-                                + "old nor the new column exists live. A stale renamedFrom marker (e.g. a second "
-                                + "rename that never updated the marker to the immediately-previous name) can turn "
-                                + "a rename into a destructive drop -- see docs/SCHEMA_EVOLUTION.md#marker-lifecycle.");
-                    }
-                }
-
-                RenameResolution.Result resolution = RenameResolution.resolve(missingInDb, extraInDb, declaredRenames);
-                if (resolution.explainedRenames().isEmpty()) {
-                    continue;
-                }
-                boolean eligible = resolution.remainingMissing().isEmpty()
-                        || additiveEligible.containsAll(resolution.remainingMissing());
-                if (!eligible) {
-                    skipped.add(table + " (a remaining expected column is neither renamed-in nor "
-                            + "additive-eligible -- remainingMissing=" + resolution.remainingMissing() + ")");
-                    continue;
-                }
-                // LNCH-1 P3 (3.3 composability): a rename MAY be combined with a type change on the
-                // same column. Phase 1 deferred that whole table to the destructive path here
-                // (comment used to read "deferred to the destructive path pending Phase 3's
-                // type-widening support") -- Phase 3 closes that gap from the OTHER side instead:
-                // the rename is applied unconditionally whenever it is otherwise eligible, and
-                // beforeMigrate() runs attemptInPlaceTypeWidenings() immediately afterward, against
-                // the NEW column name, to resolve any residual type diff. If that residual turns out
-                // to be a narrowing/incomparable change (not safely widenable), the table still ends
-                // up on the destructive path via the final re-classification -- applying the rename
-                // first causes no incorrect persisted state, since a subsequent destructive recreate
-                // drops and recreates the table (and the pre-drop snapshot correctly captures data
-                // under the already-renamed column).
-                for (Map.Entry<String, String> pair : resolution.explainedRenames().entrySet()) {
-                    plan.add(new ColumnRename(table, pair.getValue(), pair.getKey()));
-                }
-            }
-            // SER-P4.4: prove the canonical SchemaDiff resolves the identical column-rename plan (with the
-            // same per-table eligibility gate) before it replaces this bespoke RenameResolution loop.
-            Set<String> bespokeKeys = new LinkedHashSet<>();
-            for (ColumnRename r : plan) {
-                bespokeKeys.add(r.table() + ":" + r.oldName() + ":" + r.newName());
-            }
-            assertColumnRenamesMatchDiff(dataSource, manifest, bespokeKeys);
             // R4 (F5): one write-before-execute audit row for the whole column-rename pass.
             List<String> itemDetails = new ArrayList<>();
             for (ColumnRename r : plan) {
@@ -1272,72 +1203,101 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         if (!renamed.isEmpty()) {
             System.out.println("NPDev schema lifecycle: applied in-place field renames: " + renamed);
         }
-        if (!skipped.isEmpty()) {
+        if (!derived.skipped().isEmpty()) {
             System.out.println("NPDev schema lifecycle: tables left for the destructive path (rename did not "
-                    + "fully explain the diff): " + skipped);
+                    + "fully explain the diff): " + derived.skipped());
         }
     }
 
-    /** SER-P4.4: the column-rename plan keys ({@code table:old:new}) derived from the canonical
-     * {@link com.finalexec.db.schemastate.SchemaDiff} -- the {@code RENAME_COLUMN} items the engine
-     * resolves, filtered by the SAME per-table eligibility gate the bespoke pass applies (a table whose
-     * remaining missing columns are not all additive-eligible is deferred whole to the destructive path,
-     * so none of its renames are applied here). Proven equal to the bespoke plan before it replaces it. */
-    private static Set<String> columnRenameKeysFromDiff(DataSource dataSource, SchemaManifest manifest) {
+    /** The column-rename pass's whole plan, derived from the canonical diff (SER-P4.4). */
+    private record ColumnRenamePlan(List<String[]> renames, List<String> skipped, List<String> staleWarnings) {
+    }
+
+    /**
+     * SER-P4.4: the column-rename plan derived from the canonical {@link com.finalexec.db.schemastate.SchemaDiff}
+     * instead of a second live introspection + {@link RenameResolution} pass.
+     * <ul>
+     *   <li><b>renames</b> ({@code {table, old, new}}) -- the {@code RENAME_COLUMN} items the engine
+     *       resolves, on tables that pass the SAME per-table eligibility gate the bespoke pass applied (a
+     *       table whose remaining missing columns are not all additive-eligible is deferred whole to the
+     *       destructive path, so none of its renames are applied here). Applying an eligible rename is
+     *       unconditional even when the column ALSO has a type change: {@code beforeMigrate} runs
+     *       {@code attemptInPlaceTypeWidenings} immediately afterward against the new name, and a residual
+     *       narrowing simply re-classifies the table onto the destructive path (whose pre-drop snapshot
+     *       captures data under the already-renamed column) -- no incorrect persisted state.</li>
+     *   <li><b>skipped</b> -- those ineligible tables, for the operator log.</li>
+     *   <li><b>staleWarnings</b> -- R6 (F7): a declared rename whose OLD and NEW columns are BOTH absent
+     *       live explained nothing (a stale {@code renamedFrom} marker can turn a rename into a drop).</li>
+     * </ul>
+     */
+    private static ColumnRenamePlan columnRenamesFromDiff(DataSource dataSource, SchemaManifest manifest) {
         com.finalexec.db.schemastate.CurrentSchema current =
                 new com.finalexec.db.schemastate.CurrentSchemaReader().read(dataSource);
         com.finalexec.db.schemastate.SchemaDiff diff = new com.finalexec.db.schemastate.SchemaDiffEngine()
                 .diff(DesiredSchemaFactory.fromManifest(manifest),
                         ShadowParityProbe.scopeToOwnedBusinessTables(current, manifest));
-        // Per table: the declared renames (old->new) and the remaining-missing (added) columns. A
+        // Per table: the resolved renames (old->new) and the remaining-missing (added) columns. A
         // RENAME_COLUMN item is the rename; an ADD_(REQUIRED_)COLUMN item is a column absent live and not
         // rename-explained -- exactly the bespoke pass's remainingMissing.
         Map<String, List<String[]>> renamesByTable = new LinkedHashMap<>();
-        Map<String, List<String>> missingByTable = new LinkedHashMap<>();
+        Map<String, Set<String>> missingByTable = new LinkedHashMap<>();
         for (com.finalexec.db.schemastate.SchemaDiffItem di : diff.items()) {
             if (di.safetyClass() == com.finalexec.db.schemastate.SafetyClass.SAFE_RENAME
                     && di.itemKey().startsWith("RENAME_COLUMN:")) {
                 renamesByTable.computeIfAbsent(di.table(), t -> new ArrayList<>())
                         .add(new String[] {di.before(), di.after()});
             } else if (di.itemKey().startsWith("ADD_COLUMN:") || di.itemKey().startsWith("ADD_REQUIRED_COLUMN:")) {
-                missingByTable.computeIfAbsent(di.table(), t -> new ArrayList<>()).add(di.column());
+                missingByTable.computeIfAbsent(di.table(), t -> new LinkedHashSet<>()).add(di.column());
             }
         }
-        Set<String> keys = new LinkedHashSet<>();
+
+        List<String[]> renames = new ArrayList<>();
+        List<String> skipped = new ArrayList<>();
         for (Map.Entry<String, List<String[]>> entry : renamesByTable.entrySet()) {
             String table = entry.getKey();
             Set<String> additive = new LinkedHashSet<>(
                     manifest.businessTableAdditiveColumns().getOrDefault(table, List.of()));
-            List<String> remainingMissing = missingByTable.getOrDefault(table, List.of());
+            Set<String> remainingMissing = missingByTable.getOrDefault(table, Set.of());
             if (!additive.containsAll(remainingMissing)) {
-                continue; // ineligible: deferred whole to the destructive path, no rename applied
+                skipped.add(table + " (a remaining expected column is neither renamed-in nor "
+                        + "additive-eligible -- remainingMissing=" + remainingMissing + ")");
+                continue;
             }
             for (String[] oldNew : entry.getValue()) {
-                keys.add(table + ":" + oldNew[0] + ":" + oldNew[1]);
+                renames.add(new String[] {table, oldNew[0], oldNew[1]});
             }
         }
-        return keys;
-    }
 
-    /** SER-P4.4 equivalence probe (gated on {@code npdev.schema.rename.assert}, default-on in tests):
-     * the diff-derived column-rename plan must equal the bespoke one, key-for-key. Fully swallowed unless
-     * asserting; never changes behavior. */
-    private static void assertColumnRenamesMatchDiff(DataSource dataSource, SchemaManifest manifest,
-            Set<String> bespoke) {
-        if (!Boolean.getBoolean("npdev.schema.rename.assert")) {
-            return;
+        // R6 (F7): the stale-marker warning, now checked against the live CurrentSchema (the full column
+        // set the diff read) rather than a separate readActualColumns call.
+        List<String> staleWarnings = new ArrayList<>();
+        for (Map.Entry<String, Map<String, String>> tableRenames : manifest.businessTableRenamedColumns().entrySet()) {
+            String table = tableRenames.getKey();
+            Map<String, String> declaredRenames = tableRenames.getValue();
+            if (declaredRenames.isEmpty()
+                    || manifest.businessTableColumns().getOrDefault(table, List.of()).isEmpty()) {
+                continue;
+            }
+            com.finalexec.db.schemastate.CurrentTable liveTable = current.tables().get(table.toLowerCase(Locale.ROOT));
+            Set<String> liveColumns = liveTable == null ? Set.of() : liveTable.columns().keySet();
+            if (liveColumns.isEmpty()) {
+                continue; // brand-new table -- nothing live to rename
+            }
+            for (Map.Entry<String, String> declared : declaredRenames.entrySet()) {
+                String newName = declared.getKey();
+                String oldName = declared.getValue();
+                if (oldName != null && !oldName.isBlank()
+                        && !liveColumns.contains(oldName.toLowerCase(Locale.ROOT))
+                        && !liveColumns.contains(newName.toLowerCase(Locale.ROOT))) {
+                    staleWarnings.add("NPDev schema lifecycle: WARNING -- declared rename '" + oldName
+                            + "' -> '" + newName + "' on table '" + table + "' explains nothing: neither the "
+                            + "old nor the new column exists live. A stale renamedFrom marker (e.g. a second "
+                            + "rename that never updated the marker to the immediately-previous name) can turn "
+                            + "a rename into a destructive drop -- see docs/SCHEMA_EVOLUTION.md#marker-lifecycle.");
+                }
+            }
         }
-        Set<String> fromDiff;
-        try {
-            fromDiff = columnRenameKeysFromDiff(dataSource, manifest);
-        } catch (Throwable ignored) {
-            return;
-        }
-        if (!fromDiff.equals(bespoke)) {
-            String line = "COLUMN_RENAME_DIVERGENCE: bespoke=" + bespoke + " diff=" + fromDiff;
-            System.out.println(line);
-            throw new AssertionError(line);
-        }
+        return new ColumnRenamePlan(renames, skipped, staleWarnings);
     }
 
     /**
