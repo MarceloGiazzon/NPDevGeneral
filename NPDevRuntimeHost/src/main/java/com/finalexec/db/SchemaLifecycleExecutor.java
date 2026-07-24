@@ -648,6 +648,10 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // classify()'s classification value beyond what is used here for logging/history purposes).
         SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, manifest);
         String expectedToken = DestructiveAckToken.compute(manifest.schemaFingerprint(), report.stableStrings());
+        // SER-P6.3 (Surface 1): persist + print the operator-facing impact report (read-only row-count
+        // probes over the canonical diff) at the destructive decision point, for both the refused and the
+        // applied outcome. Fully swallowed — never affects the boot or the byte-identical token above.
+        ImpactReportWriter.writeAndPrint(dataSource, manifest, stored, expectedToken);
         String providedToken = manifest.destructiveAcknowledgment() == null
                 ? "" : manifest.destructiveAcknowledgment().trim();
         boolean staticTokenMatches = !providedToken.isBlank() && providedToken.equals(expectedToken);
