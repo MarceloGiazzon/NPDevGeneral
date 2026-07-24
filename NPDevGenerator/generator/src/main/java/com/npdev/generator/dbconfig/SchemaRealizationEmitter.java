@@ -1000,7 +1000,14 @@ public final class SchemaRealizationEmitter {
     ) {
         String statement = addConstraintSql.endsWith(";") ? addConstraintSql : addConstraintSql + ";";
         if (engine != DatabaseEngine.POSTGRES) {
-            return statement + "\n";
+            // REG-38: this lands in R__npdev_schema_additive_columns.sql, a Flyway *repeatable*
+            // migration that re-runs whenever its checksum changes (any model edit regenerates it).
+            // A bare "ADD CONSTRAINT" is not idempotent -- the re-run against a DB that already has
+            // the constraint fails with "Constraint already exists" and refuses the whole boot. H2
+            // supports "DROP CONSTRAINT IF EXISTS", so drop-then-add makes the statement idempotent
+            // the same way the Postgres branch below is (via its IF-NOT-EXISTS catalog guard).
+            return "ALTER TABLE " + tableName + " DROP CONSTRAINT IF EXISTS " + constraintName + ";\n"
+                    + statement + "\n";
         }
         // INFORMATION_SCHEMA.TABLE_CONSTRAINTS is standard SQL available in both PostgreSQL
         // and H2 PostgreSQL-compatibility mode. pg_constraint/pg_class/pg_namespace are

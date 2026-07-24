@@ -73,6 +73,13 @@ final class SchemaRealizationEmitterAdditiveColumnsTest {
                 "a NULLABLE bond column must now be additive-eligible (LNCH-1 P5 5.3): " + additiveSql);
         assertTrue(additiveSql.contains("ADD CONSTRAINT") && additiveSql.contains("FOREIGN KEY (" + customerIdColumn + ")"),
                 "a nullable bond added via the additive path must get its own FK constraint: " + additiveSql);
+        // REG-38: R__ is a Flyway *repeatable* migration -- it re-runs whenever its checksum changes
+        // (i.e. after any model edit). On H2 the additive FK was emitted as a bare ADD CONSTRAINT with
+        // no guard, so the re-run failed with "Constraint already exists" and refused the boot. The H2
+        // path must be idempotent the way the Postgres path already is: DROP CONSTRAINT IF EXISTS then ADD.
+        assertTrue(additiveSql.contains("DROP CONSTRAINT IF EXISTS fk_orders_" + customerIdColumn),
+                "H2 additive FK must be idempotent (DROP CONSTRAINT IF EXISTS before ADD) so the repeatable "
+                + "migration can re-run against an existing DB: " + additiveSql);
         assertFalse(additiveSql.contains("ADD COLUMN IF NOT EXISTS " + ownerIdColumn),
                 "a REQUIRED bond column must still be excluded from the additive script: " + additiveSql);
 
