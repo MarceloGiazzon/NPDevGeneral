@@ -1073,25 +1073,59 @@ was 9/68). CI's "Script automation quality" step `continue-on-error: true` remov
 ## 3.6 REG-32 — `npdev-ci-validation.yml` Bootstrap step aggregates ~21 maturity reports its producers never generate
 
 **Type:** PROCESS (CI evidence-orchestration) · **Severity:** LOW–MED · **Effort:** M–L · **Status:**
-**OPEN (filed 2026-07-24, made advisory in CI).** The Linux job's "Bootstrap post-Beta0 maturity
-reports" step runs `npdev report bootstrap`, which **aggregates** ~21 maturity reports
-(`beta0-state-truth`, `maturity-score`, `postgres-fidelity`, `scenario-coherence`,
-`editor-decomplexification`, `maturity-max-final-closure`, …) and hard-fails if any are missing or
+**CLOSED for the PowerShell bootstrap chain (2026-07-24); residual Gradle-native gap filed separately
+as REG-35.** The Linux job's "Bootstrap post-Beta0 maturity reports" step runs `npdev report
+bootstrap`, which **aggregates** ~21 maturity reports and hard-fails if any are missing or
 schema-invalid. It does **not** generate them — those come from ~21 separate `run-*.ps1` producer
-gates (there is no single orchestrator; `postBeta0MaturityCheck` is a *checker* that reads the
-bootstrap report, not a generator). This job never runs those producers, so the aggregator sees ~19
-"missing" (REG-3-class precondition-unmet) plus, in the CI run, a schema-invalid
-`stateful-additive-migrations-report.json` (`const` fields fail their schema). Surfaced only after
-REG-17's Fix A unblocked the postgres-IT step so this one finally ran (run `30057723015`). **Made
-advisory** (`continue-on-error: true`, 2026-07-24) — the job's REAL validation (DSL/kernel/generator/
-CLI + postgres ITs, incl. Fix A) passes and is unaffected. Reproduced locally (exit 1, missing-producer
-precondition). **How to fix (capable agent):** (1) apply the REG-3 pattern to
-`bootstrap-post-beta0-reports.ps1` + `validate-report-schemas.ps1` + `generate-final-evidence-bundle.ps1`
-— distinguish *precondition-unmet* (producers not run → non-fatal) from *check-failed* (an existing
-report is invalid → fatal); (2) either wire the ~21 producer gates into the job before bootstrap (heavy
-— several build/boot apps, expect more first-contact findings) **or** scope the required-report set to
-what this job produces; (3) fix the real `stateful-additive-migrations` `const` schema mismatch. Not a
-product defect — CI evidence-orchestration.
+gates this job never runs, so the aggregator saw ~19 "missing" (REG-3-class precondition-unmet) plus a
+genuinely schema-invalid `stateful-additive-migrations-report.json`. **Fix (both halves done):**
+(1) **Precondition-awareness (REG-3 pattern applied):** `bootstrap-post-beta0-reports.ps1`,
+`validate-report-schemas.ps1`, and `generate-final-evidence-bundle.ps1` now each distinguish
+*precondition-unmet* (required reports never generated → exit 2, non-fatal) from *check-failed* (an
+existing report/producer is genuinely invalid → exit 1). `validate-report-schemas.ps1`'s own
+`schemaInvalidReportCount` also had a real bug: a report that was simply never generated has
+`schemaStatus="not-run"`, which the old filter (`schemaStatus -ne "passed"`) counted as *invalid* —
+conflating "never produced" with "produced but wrong." Fixed to require `.exists` too. Both PowerShell
+callers now pass `-RequireAllMaturityReports` so the required-set matches the 21-report registry both
+already hardcode. Schemas `report-bootstrap-and-regeneration-report.schema.json` and
+`final-evidence-bundle-manifest.schema.json` extended with a third `overallStatus` enum value
+(`precondition-unmet`). Verified locally: `bootstrap-post-beta0-reports.ps1` on the current tree (19/21
+reports genuinely absent) now prints `PRECONDITION-UNMET: 19 of 21 required reports were never
+generated (producers not run)` and exits **2**, not 1; `npdev report bootstrap` (the CLI wrapper)
+propagates that exit code unchanged (`except subprocess.CalledProcessError: return exc.returncode` —
+already correct, no CLI change needed).
+(2) **Fixed the 1 real schema-invalid report** — `stateful-additive-migrations-report.json`. Root
+cause was **two** real defects, not one: (a) `run-stateful-additive-migrations-check.ps1`'s
+`Resolve-GeneratorTestResultXml` walked up **two** directory levels from the repo root
+(`Split-Path -Parent (Split-Path -Parent $root)` → `…\WorkSpace`) when the generator's
+`layout.buildDirectory` redirect actually lands one level up (`…\WorkSpace\NPDev\Build\gradle\...`) —
+found by regenerating the report fresh and locating the real XML on disk; the stale (2026-07-21)
+committed report predated this and had accidentally never exercised the affected check honestly.
+Fixed to a single `Split-Path -Parent $root`, RED (`migration-plan-never-reports-false-fresh-install`
+failed, `resultXmlCaptured: false`) → GREEN (re-ran the two gated Gradle test classes, ~8 min,
+`resultXmlCaptured: true`, `overallStatus: passed`). (b) The schema itself was stale: it required
+`const: true` on 8 boolean fields the producer's own embedded R8 remediation (2026-07-20, documented
+in its `findings`) deliberately retired to permanent `false` — their capability moved to the LNCH-1
+Postgres Testcontainers twin / `StatefulMigrationPlannerTest` / `Build-NpdevApp.ps1 -PlanOnly`, and
+`overallStatus` is gated on the `checks` array, not these descriptive fields. Relaxed the schema's
+`allOf[0].then` to only require `const: true` on the 4 fields that are still real, live-verified
+signals (`destructiveChangesRejected`, `runtimeMigrationPreflightPassed`,
+`flywayValidateOrMigrateProofPassed`, `riskThresholdConfigurable`). Also found `findings` items were
+narrative strings (matching this producer's own `doesNotSolve` shape) against an item-type of
+`object` the producer never satisfied since its first commit — no consumer reads `findings` as
+structured objects here, so relaxed to `string`. Verified: `Invoke-JsonSchemaValidation.ps1` against
+the regenerated report → `errorCount: 0` (was 10: 8 const + 1 if/then meta + 1 findings-type).
+**Residual (filed as REG-35, NOT fixed here — discovered as a byproduct of this verification, out of
+this task's scope):** the SAME CI step also runs `./gradlew postBeta0MaturityCheck`, whose
+Gradle-native `validateReports`/`validateBoundaryLocks` tasks (`build.gradle`) have (a) the identical
+missing-vs-invalid conflation this task just fixed in PowerShell, in a wholly separate validation
+pipeline, and (b) `final-evidence-bundle-manifest.schema.json`'s `artifacts[]` per-item fields
+(`overallStatus` enum, `bytes >= 1`, `sha256` pattern) are unconditionally strict with no tolerance for
+a not-yet-generated sub-artifact — both pre-existing, both trip on any run with missing producer
+reports (i.e. every run of this job today), independent of anything in this closure. Because of that,
+the CI step's `continue-on-error: true` is **kept** (not removed) and its comment updated to name what
+is fixed vs. what REG-35 still covers — removing it now would just turn the step red for a different,
+already-filed reason and misrepresent this closure as more complete than it is.
 
 ## 3.7 REG-33 — CLI's on-demand `npm install` for the JSON-schema validator fails on Windows from a Python subprocess
 
@@ -1133,6 +1167,42 @@ security, RuntimeHost gate, Editor gate) have never run to completion; each may 
 Linux-container tests to scope the same way — iterate as they surface. Note: the two other generator
 proof tests boot a real app via `ProcessBuilder` (no container) and **pass** on Windows — only genuine
 Linux-container tests need this treatment, not all packaged-app tests.
+
+## 3.9 REG-35 — Gradle-native `postBeta0MaturityCheck` has the same missing-vs-invalid conflation REG-32 fixed in PowerShell, plus an overly strict nested artifact schema
+
+**Type:** PROCESS (CI evidence-orchestration, Gradle-native) · **Severity:** LOW · **Effort:** M ·
+**Status:** OPEN (filed 2026-07-24, discovered as a byproduct of verifying REG-32's fix — pre-existing,
+not caused by that work). The Linux job's "Bootstrap post-Beta0 maturity reports" step also runs
+`./gradlew postBeta0MaturityCheck` (`build.gradle`), a completely separate Gradle-native validation
+pipeline (`validateSchemas`/`validateAiScenarios`/`validateScenarioCoherence`/`validateBoundaryLocks`/
+`validateReports` → `writeGradleNativeValidationReport`) that independently re-checks 7 of the same
+maturity reports. Reproduced locally (`./gradlew postBeta0MaturityCheck`, after installing the JSON
+schema validator's `node_modules` by hand — Gradle's own `exec{}` call to bare `npm` fails to start on
+this Windows box, a REG-33-shaped PATH/`.cmd` issue worth checking separately if it also affects a
+real CI Windows job). Two independent gaps, neither touched by REG-32:
+(1) **`validateReports`** (`build.gradle` ~line 362) treats a missing report file as an unconditional
+`failures << "...: missing schema or report"` (no precondition-unmet concept exists anywhere in this
+Gradle-native framework — `recordCheck`'s `passed`/`failed` is strictly binary), and separately checks
+`reportJson.overallStatus != 'passed'` verbatim — so `report-bootstrap-and-regeneration-report.json`'s
+new (REG-32) `"precondition-unmet"` value now also trips it as a hard failure. Reproduced: 6 of 7
+report pairs "missing schema or report" + the 7th "report status is precondition-unmet". Fix would
+mirror REG-3/REG-32: classify a missing report as a distinct, non-blocking bucket, and treat
+`overallStatus: "precondition-unmet"` as tolerable (only `"failed"` blocks).
+(2) **`final-evidence-bundle-manifest.schema.json`'s `artifacts[]` items** (`overallStatus` enum,
+`bytes >= 1`, `sha256` pattern, `schemaVersion` minLength) are unconditionally required with no
+"this sub-artifact was never generated" escape hatch — pre-existing (would have failed schema
+validation on this manifest the first time ANY required report was missing, well before REG-32).
+Reproduced: validating a freshly-generated manifest (19/21 reports absent) → 76 schema errors, all on
+missing artifacts' placeholder values (`overallStatus: "missing"` not in `["passed","failed"]`,
+`bytes: 0` violates `minimum: 1`, empty `sha256`/`schemaVersion` violate their constraints).
+(3) `validateBoundaryLocks` also independently fails on this tree for an unrelated, long-pre-existing
+reason (hardcoded `D:\`/`C:\` drive-letter paths in `README.md` and this same workflow file, both
+untouched this session — confirmed via `git status`/`git diff`) — not part of this finding's scope,
+noted only because it's why `./gradlew postBeta0MaturityCheck` can't be evaluated in isolation from it.
+**Not fixed here** — `build.gradle` is the single most central, highest-blast-radius build file in the
+repo and was not part of REG-32's scoped file list; extending the REG-3 pattern into a second,
+structurally different (Groovy/Gradle-native, not PowerShell) validation pipeline is its own bounded
+task. Until fixed, the CI "Bootstrap post-Beta0 maturity reports" step keeps `continue-on-error: true`.
 
 ---
 
