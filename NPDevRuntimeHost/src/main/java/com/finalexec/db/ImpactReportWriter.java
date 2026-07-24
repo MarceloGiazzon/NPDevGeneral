@@ -40,10 +40,12 @@ final class ImpactReportWriter {
     }
 
     /**
-     * Compute + persist + print the impact report for an upgrade. {@code ackToken} is the expected
-     * acknowledgment token (shown only when the verdict is DESTRUCTIVE). Fully swallowed.
+     * Compute + persist + print the impact report for an upgrade, and return the rendered text (or
+     * {@code null} on any failure) so a caller can reuse it (e.g. in a refusal message). {@code ackToken}
+     * is the expected acknowledgment token (shown only when the verdict is DESTRUCTIVE). Fully swallowed —
+     * never throws, never affects the boot.
      */
-    static void writeAndPrint(DataSource dataSource, SchemaLifecycleExecutor.SchemaManifest manifest,
+    static String writeAndPrint(DataSource dataSource, SchemaLifecycleExecutor.SchemaManifest manifest,
             String fromFingerprint, String ackToken) {
         try {
             CurrentSchema current = new CurrentSchemaReader().read(dataSource);
@@ -58,8 +60,10 @@ final class ImpactReportWriter {
 
             System.out.println(text);
             persist(json, fromFingerprint, toFingerprint);
+            return text;
         } catch (Throwable ignored) {
             // best-effort diagnostic only — must never affect the boot
+            return null;
         }
     }
 

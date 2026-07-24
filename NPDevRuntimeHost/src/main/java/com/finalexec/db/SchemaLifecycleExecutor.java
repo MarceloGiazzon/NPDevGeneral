@@ -539,6 +539,12 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // (switched inside classify; the P4.1 self-check that guarded this is now tautological and gone).
         SchemaChangeClassification classification = classify(dataSource, manifest);
         SchemaChangeClassification classificationForFallthrough = classification;
+        // SER-P6.3 (Surface 1): write + print the operator-facing impact report for EVERY upgrade boot --
+        // this is the single point all outcomes (safe / rename / widen / destructive) pass through. The
+        // read-only diff's DESTRUCTIVE items are not changed by the in-place passes below, so the report's
+        // verdict is final here; the exact acknowledgment token (when destructive) is computed post-in-place
+        // at the decision point below and shown in the refusal message. Fully swallowed; text reused there.
+        String impactReportText = ImpactReportWriter.writeAndPrint(dataSource, manifest, stored, null);
         if (classification == SchemaChangeClassification.SAFE_ADDITIVE) {
             System.out.println("NPDev schema lifecycle: fingerprint changed from " + stored + " to "
                     + manifest.schemaFingerprint() + " but every difference is a new non-bond column on an "
@@ -648,10 +654,6 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // classify()'s classification value beyond what is used here for logging/history purposes).
         SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, manifest);
         String expectedToken = DestructiveAckToken.compute(manifest.schemaFingerprint(), report.stableStrings());
-        // SER-P6.3 (Surface 1): persist + print the operator-facing impact report (read-only row-count
-        // probes over the canonical diff) at the destructive decision point, for both the refused and the
-        // applied outcome. Fully swallowed — never affects the boot or the byte-identical token above.
-        ImpactReportWriter.writeAndPrint(dataSource, manifest, stored, expectedToken);
         String providedToken = manifest.destructiveAcknowledgment() == null
                 ? "" : manifest.destructiveAcknowledgment().trim();
         boolean staticTokenMatches = !providedToken.isBlank() && providedToken.equals(expectedToken);
@@ -677,7 +679,8 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         if (!tokenMatches && !blanketAuthorized) {
             writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classificationForFallthrough,
                     report, providedToken.isBlank() ? null : providedToken, "REFUSED");
-            throw new IllegalStateException("Schema fingerprint changed from " + stored + " to "
+            throw new IllegalStateException((impactReportText != null ? impactReportText + "\n" : "")
+                    + "Schema fingerprint changed from " + stored + " to "
                     + manifest.schemaFingerprint() + " and includes destructive change(s) requiring an explicit, "
                     + "itemized acknowledgment (LNCH-1 Phase 4). Itemized destructive report: "
                     + report.stableStrings() + ". Expected acknowledgment token: " + expectedToken
