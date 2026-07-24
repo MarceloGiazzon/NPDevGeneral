@@ -263,6 +263,15 @@ jobs:
           cache-dependency-path: |
             NPDevEditor/ui-react/package-lock.json
 
+      # Root-3 fix (2026-07-24): LegacyModelMigrationToolTest runs `npdev migrate`, which validates via
+      # the in-repo Node JSON-schema validator and, if its node_modules is absent (gitignored → absent
+      # on a fresh checkout), runs `npm install` from INSIDE a Python subprocess. That on-demand install
+      # ENOENTs (-4058) specifically on the CI Windows runner (works on Linux + locally). Pre-install
+      # the deps here with npm run normally (not via Python's .cmd subprocess) so the CLI skips its
+      # broken on-demand install. Product follow-up: make the CLI's npm call Windows-robust (REG-33).
+      - name: Pre-install JSON Schema validator deps (Windows)
+        run: npm --prefix scripts/quality/json-schema-validator install --silent
+
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
