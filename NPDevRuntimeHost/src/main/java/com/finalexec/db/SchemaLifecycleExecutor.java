@@ -3144,6 +3144,12 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         }
     }
 
+    /** Public accessor for the stored schema fingerprint (SER-P6.0): lets the Impact Report facade and
+     *  the ControlPanel surface read the "from" fingerprint without package-private access. Read-only. */
+    public static String readStoredFingerprintPublic(DataSource dataSource) {
+        return readFingerprint(dataSource);
+    }
+
     public static SchemaManifest loadManifest() {
         try {
             ClassPathResource resource = new ClassPathResource("npdev/db/schema-realization-manifest.json");
