@@ -1248,6 +1248,13 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     plan.add(new ColumnRename(table, pair.getValue(), pair.getKey()));
                 }
             }
+            // SER-P4.4: prove the canonical SchemaDiff resolves the identical column-rename plan (with the
+            // same per-table eligibility gate) before it replaces this bespoke RenameResolution loop.
+            Set<String> bespokeKeys = new LinkedHashSet<>();
+            for (ColumnRename r : plan) {
+                bespokeKeys.add(r.table() + ":" + r.oldName() + ":" + r.newName());
+            }
+            assertColumnRenamesMatchDiff(dataSource, manifest, bespokeKeys);
             // R4 (F5): one write-before-execute audit row for the whole column-rename pass.
             List<String> itemDetails = new ArrayList<>();
             for (ColumnRename r : plan) {
@@ -1268,6 +1275,68 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         if (!skipped.isEmpty()) {
             System.out.println("NPDev schema lifecycle: tables left for the destructive path (rename did not "
                     + "fully explain the diff): " + skipped);
+        }
+    }
+
+    /** SER-P4.4: the column-rename plan keys ({@code table:old:new}) derived from the canonical
+     * {@link com.finalexec.db.schemastate.SchemaDiff} -- the {@code RENAME_COLUMN} items the engine
+     * resolves, filtered by the SAME per-table eligibility gate the bespoke pass applies (a table whose
+     * remaining missing columns are not all additive-eligible is deferred whole to the destructive path,
+     * so none of its renames are applied here). Proven equal to the bespoke plan before it replaces it. */
+    private static Set<String> columnRenameKeysFromDiff(DataSource dataSource, SchemaManifest manifest) {
+        com.finalexec.db.schemastate.CurrentSchema current =
+                new com.finalexec.db.schemastate.CurrentSchemaReader().read(dataSource);
+        com.finalexec.db.schemastate.SchemaDiff diff = new com.finalexec.db.schemastate.SchemaDiffEngine()
+                .diff(DesiredSchemaFactory.fromManifest(manifest),
+                        ShadowParityProbe.scopeToOwnedBusinessTables(current, manifest));
+        // Per table: the declared renames (old->new) and the remaining-missing (added) columns. A
+        // RENAME_COLUMN item is the rename; an ADD_(REQUIRED_)COLUMN item is a column absent live and not
+        // rename-explained -- exactly the bespoke pass's remainingMissing.
+        Map<String, List<String[]>> renamesByTable = new LinkedHashMap<>();
+        Map<String, List<String>> missingByTable = new LinkedHashMap<>();
+        for (com.finalexec.db.schemastate.SchemaDiffItem di : diff.items()) {
+            if (di.safetyClass() == com.finalexec.db.schemastate.SafetyClass.SAFE_RENAME
+                    && di.itemKey().startsWith("RENAME_COLUMN:")) {
+                renamesByTable.computeIfAbsent(di.table(), t -> new ArrayList<>())
+                        .add(new String[] {di.before(), di.after()});
+            } else if (di.itemKey().startsWith("ADD_COLUMN:") || di.itemKey().startsWith("ADD_REQUIRED_COLUMN:")) {
+                missingByTable.computeIfAbsent(di.table(), t -> new ArrayList<>()).add(di.column());
+            }
+        }
+        Set<String> keys = new LinkedHashSet<>();
+        for (Map.Entry<String, List<String[]>> entry : renamesByTable.entrySet()) {
+            String table = entry.getKey();
+            Set<String> additive = new LinkedHashSet<>(
+                    manifest.businessTableAdditiveColumns().getOrDefault(table, List.of()));
+            List<String> remainingMissing = missingByTable.getOrDefault(table, List.of());
+            if (!additive.containsAll(remainingMissing)) {
+                continue; // ineligible: deferred whole to the destructive path, no rename applied
+            }
+            for (String[] oldNew : entry.getValue()) {
+                keys.add(table + ":" + oldNew[0] + ":" + oldNew[1]);
+            }
+        }
+        return keys;
+    }
+
+    /** SER-P4.4 equivalence probe (gated on {@code npdev.schema.rename.assert}, default-on in tests):
+     * the diff-derived column-rename plan must equal the bespoke one, key-for-key. Fully swallowed unless
+     * asserting; never changes behavior. */
+    private static void assertColumnRenamesMatchDiff(DataSource dataSource, SchemaManifest manifest,
+            Set<String> bespoke) {
+        if (!Boolean.getBoolean("npdev.schema.rename.assert")) {
+            return;
+        }
+        Set<String> fromDiff;
+        try {
+            fromDiff = columnRenameKeysFromDiff(dataSource, manifest);
+        } catch (Throwable ignored) {
+            return;
+        }
+        if (!fromDiff.equals(bespoke)) {
+            String line = "COLUMN_RENAME_DIVERGENCE: bespoke=" + bespoke + " diff=" + fromDiff;
+            System.out.println(line);
+            throw new AssertionError(line);
         }
     }
 
