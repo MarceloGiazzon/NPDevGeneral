@@ -283,6 +283,9 @@ sourceSets {
             //   gradlew test --tests com.finalexec.db.SchemaLifecycleExecutorPostgresProofMatrixTest -PincludePostgresMatrix
             if (!providers.gradleProperty('includePostgresMatrix').present) {
                 exclude 'com/finalexec/db/SchemaLifecycleExecutorPostgresProofMatrixTest.java'
+                // Same rule for the schema-engine-rebuild Postgres golden tests (Testcontainers):
+                // excluded from the default `test`, included on demand via -PincludePostgresMatrix.
+                exclude 'com/finalexec/db/schemastate/CurrentSchemaReaderPostgresTest.java'
             }
             // These two tests exercise MAIN classes that import com.npdev.generated.* (ConceptQueryController
             // -> RuntimeContextService; ActuatorAdminGuardFilter), so those main classes are excluded from
