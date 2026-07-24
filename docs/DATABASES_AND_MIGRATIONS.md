@@ -430,13 +430,24 @@ it; a class-load drift-guard makes the two platform-column sets unable to silent
 code-site directive requires any **new** pass to read `ColumnFacts`. This closed the specific drift that
 caused T-B1/T-B2 and CI-guards it.
 
-**What remains (deferred, by owner decision):** the *set-algebra* passes still compute their own set
-diffs, and there is still no *current-side* canonical model or complete portable reader. The full fix is
-a **desired-vs-current diff engine** computed once, that every pass consumes — see
-[`SCHEMA_ENGINE_REBUILD_PLAN.md`](SCHEMA_ENGINE_REBUILD_PLAN.md) for the strangler-fig plan (build a
-read-only shadow, prove parity across the whole H2+Postgres matrix, then migrate passes one at a time).
-The deferral is a bet that the interest is cheaper than the rebuild *right now* — a defensible bet, but
-an explicit one against architectural debt, not a closed problem.
+**What has been done — the full fix (2026-07-24, Schema Engine Rebuild — REG-6 CLOSED FULLY):** the
+**desired-vs-current diff engine** described above now exists and is wired in. A single canonical model —
+`CurrentSchema` (a complete, portable H2+Postgres reader), `DesiredSchema` (built from `ColumnFacts`), and
+`SchemaDiff` (produced once by `SchemaDiffEngine`) — is the ONE place column semantics are derived, and
+**every executor pass consumes it**: both decision surfaces (`classify`, `SchemaDeltaReport` and its
+byte-identical acknowledgment token) and all four mutation passes (table renames, column renames, type
+widenings, required-field backfills). Built exactly as
+[`SCHEMA_ENGINE_REBUILD_PLAN.md`](SCHEMA_ENGINE_REBUILD_PLAN.md) prescribes: a read-only shadow proved
+100% parity across the whole H2+Postgres matrix, then each pass was switched one commit at a time behind a
+default-on equivalence assert, both quality gates green after every step. The passes **can no longer
+disagree** — there is only one derivation. T-B1/T-B2's whole family is structurally foreclosed.
+
+**Known remaining limit (separate, documented — NOT a re-derivation):** the desired side carries no
+explicit FK/index lists (the P0.2 asymmetry — bonds/indexes are derived at generation, not in the
+manifest), so `SchemaDiffEngine` models columns/types/nullability/defaults/uniques/renames but does not
+diff FKs/indexes yet. That is a deferred *enhancement* (plan P5.2), to be added when the desired side can
+express them — it is a smaller surface than the whole engine, and it is no longer a case of two passes
+re-deriving and drifting.
 
 ## 17. Bugs of the same family found in practice
 

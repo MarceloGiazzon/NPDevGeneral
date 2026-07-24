@@ -435,21 +435,10 @@ tasks.named('test') {
     if (shadowLog != null && !shadowLog.toString().trim().isEmpty()) {
         systemProperty 'npdev.schema.shadow.logFile', shadowLog.toString().trim()
     }
-    // Phase 4.1: the classify-reduction self-check is ON BY DEFAULT (like the shadow assert) -- every
-    // test driving beforeMigrate now also asserts ClassificationReducer reduces the live diff to the
-    // SAME classification classify returned (column-level; table-level/empty-manifest cases scoped out
-    // in the probe). This LOCKS the reducer <-> classify equivalence proven across H2 + Postgres, so a
-    // future change that makes them diverge fails here. Override with -Pnpdev.schema.classify.assert=false.
-    ['npdev.schema.classify.check', 'npdev.schema.classify.assert'].each { p ->
-        def v = System.getProperty(p) ?: providers.gradleProperty(p).getOrNull()
-        systemProperty p, (v != null && !v.toString().trim().isEmpty() ? v.toString().trim() : 'true')
-    }
-    // SER-P4.3+: the mutation passes (table renames, ...) assert their diff-derived work-list equals the
-    // bespoke one before/while being switched to the diff. ON BY DEFAULT; -Pnpdev.schema.rename.assert=false to disable.
-    ['npdev.schema.rename.assert', 'npdev.schema.widen.assert', 'npdev.schema.backfill.assert'].each { p ->
-        def v = System.getProperty(p) ?: providers.gradleProperty(p).getOrNull()
-        systemProperty p, (v != null && !v.toString().trim().isEmpty() ? v.toString().trim() : 'true')
-    }
+    // SER Phase 4 COMPLETE: classify + SchemaDeltaReport + all four mutation passes now consume the
+    // canonical SchemaDiff directly (no re-derivation left to self-check), so the per-pass equivalence
+    // asserts (npdev.schema.classify/rename/widen/backfill.*) that guarded each switch are retired.
+    // The end-to-end guard is now the behavior tests + the shadow parity assert (above), which stays on.
     if (System.getProperty('os.name', '').toLowerCase().contains('win')
             && System.getenv('DOCKER_HOST') == null) {
         environment 'DOCKER_HOST', 'npipe:////./pipe/dockerDesktopLinuxEngine'
