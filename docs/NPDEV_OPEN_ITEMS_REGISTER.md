@@ -1106,6 +1106,23 @@ Windows user running `npdev migrate/validate/generate` without pre-existing `nod
 the same ENOENT. Likely a Python-3.12+ Windows `.cmd`-via-subprocess behavior change; verify the fix on
 a clean Windows checkout.
 
+## 3.8 REG-34 — Windows CI job runs Testcontainers (Linux-container) tests that `windows-latest` can't run
+
+**Type:** PROCESS (CI platform scoping) · **Severity:** LOW · **Effort:** S (per test) · **Status:**
+**IN PROGRESS (2026-07-24).** The `npdev-ci-validation.yml` **Windows** job runs full gate suites that
+include Testcontainers tests (which start **Linux** containers — MinIO, Postgres). **GitHub
+`windows-latest` runners cannot run Linux containers** (only Windows containers; unlike Linux runners
+and a local Docker Desktop), so those tests fail on Windows while passing on the green Linux job.
+Surfaced by REG-17 once Fix A + REG-33 unblocked the Windows job's downstream gates. **Approach:**
+disable each genuinely-Linux-container test on Windows via `@DisabledOnOs(OS.WINDOWS)` (they stay
+enabled on Linux CI, which validates them). **Done so far:** the generator gate's
+`HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest` (MinIO) — verified locally that it skips
+on Windows and still builds. **Remaining:** the Windows job's further gates (Security hardening, Runtime
+security, RuntimeHost gate, Editor gate) have never run to completion; each may contain more
+Linux-container tests to scope the same way — iterate as they surface. Note: the two other generator
+proof tests boot a real app via `ProcessBuilder` (no container) and **pass** on Windows — only genuine
+Linux-container tests need this treatment, not all packaged-app tests.
+
 ---
 
 ## 4. Suggested order (revised 2026-07-21 after independent code verification)
