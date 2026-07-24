@@ -57,6 +57,16 @@ public final class ImpactReport {
         return items;
     }
 
+    /** Build a report from already-probed items, deriving the verdict the same worst-item-wins way
+     * {@link #generate} does. No DB — used by the deterministic renderer tests against a fixed fixture. */
+    static ImpactReport ofProbedItems(List<Item> probed) {
+        Verdict verdict = probed.isEmpty() ? Verdict.NO_CHANGES : Verdict.SAFE;
+        for (Item item : probed) {
+            verdict = worse(verdict, verdictFor(item.diffItem()));
+        }
+        return new ImpactReport(verdict, List.copyOf(probed));
+    }
+
     /**
      * Build the report: probe each diff item read-only against {@code dataSource}, then reduce to a
      * verdict (empty diff → NO_CHANGES; any destructive item → DESTRUCTIVE; any NEEDS_BACKFILL/NEEDS_HOOK
