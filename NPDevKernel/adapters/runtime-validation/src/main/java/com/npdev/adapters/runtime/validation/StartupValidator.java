@@ -1,5 +1,10 @@
 package com.npdev.adapters.runtime.validation;
 
+import com.npdev.dsl.v1.compiled.CompiledCapabilityCall;
+import com.npdev.dsl.v1.compiled.CompiledFlow;
+import com.npdev.dsl.v1.compiled.CompiledFlowStep;
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.kernel.CapabilityRegistry;
 import com.npdev.kernel.ports.EventStore;
 import com.npdev.kernel.ports.FlowInstanceStore;
 import org.springframework.beans.factory.InitializingBean;
@@ -15,6 +20,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
@@ -25,6 +31,7 @@ public final class StartupValidator implements InitializingBean {
     private static final String SCHEDULER_ANCHOR = "scheduler-settings";
     private static final String AUTH_ANCHOR = "authentication";
     private static final String POSTGRES_ANCHOR = "postgres-mode-required-variables";
+    private static final String CAPABILITY_BINDING_ANCHOR = "persistence-capability-binding-checked-at-boot";
 
     private final RuntimeSettings settings;
     private final DataSource dataSource;
@@ -37,6 +44,8 @@ public final class StartupValidator implements InitializingBean {
     private final String jwtAudience;
     private final String jwtPublicKeyPath;
     private final String jwtPrivateKeyPath;
+    private final CompiledModel compiledModel;
+    private final CapabilityRegistry capabilityRegistry;
     private final ResourceLoader resourceLoader;
 
     public StartupValidator(
@@ -53,7 +62,30 @@ public final class StartupValidator implements InitializingBean {
             String jwtPrivateKeyPath
     ) {
         this(settings, dataSource, eventStore, flowInstanceStore, environment, authMode, apiKeyMappings,
-                jwtIssuer, jwtAudience, jwtPublicKeyPath, jwtPrivateKeyPath, new DefaultResourceLoader());
+                jwtIssuer, jwtAudience, jwtPublicKeyPath, jwtPrivateKeyPath, null, null);
+    }
+
+    // LEDGER-1: overload adding compiledModel/capabilityRegistry for the persistence-binding
+    // boot-time check. Both null is equivalent to the 11-arg constructor above (check skipped) --
+    // kept separate rather than folding into one signature so existing callers/tests are untouched.
+    public StartupValidator(
+            RuntimeSettings settings,
+            DataSource dataSource,
+            EventStore eventStore,
+            FlowInstanceStore flowInstanceStore,
+            Environment environment,
+            String authMode,
+            String apiKeyMappings,
+            String jwtIssuer,
+            String jwtAudience,
+            String jwtPublicKeyPath,
+            String jwtPrivateKeyPath,
+            CompiledModel compiledModel,
+            CapabilityRegistry capabilityRegistry
+    ) {
+        this(settings, dataSource, eventStore, flowInstanceStore, environment, authMode, apiKeyMappings,
+                jwtIssuer, jwtAudience, jwtPublicKeyPath, jwtPrivateKeyPath, compiledModel, capabilityRegistry,
+                new DefaultResourceLoader());
     }
 
     // Package-visible for tests: lets a test inject a ResourceLoader (and thus point key paths at
@@ -70,6 +102,8 @@ public final class StartupValidator implements InitializingBean {
             String jwtAudience,
             String jwtPublicKeyPath,
             String jwtPrivateKeyPath,
+            CompiledModel compiledModel,
+            CapabilityRegistry capabilityRegistry,
             ResourceLoader resourceLoader
     ) {
         this.settings = Objects.requireNonNull(settings, "settings");
@@ -83,6 +117,8 @@ public final class StartupValidator implements InitializingBean {
         this.jwtAudience = jwtAudience;
         this.jwtPublicKeyPath = jwtPublicKeyPath;
         this.jwtPrivateKeyPath = jwtPrivateKeyPath;
+        this.compiledModel = compiledModel;
+        this.capabilityRegistry = capabilityRegistry;
         this.resourceLoader = resourceLoader == null ? new DefaultResourceLoader() : resourceLoader;
     }
 
@@ -99,6 +135,61 @@ public final class StartupValidator implements InitializingBean {
         if (settings.isPostgresMode()) {
             validatePostgres();
         }
+        validatePersistenceBinding();
+    }
+
+    // LEDGER-1: a model whose flows persist (createConcept/updateConcept/saveConcept, or a direct
+    // persistence.* capabilityCall -- all of these compile down to a CompiledFlowStep whose
+    // capabilityCall.capabilityName is "persistence") but has no bound persistence adapter currently
+    // 500s opaquely on the first such call (RegistryCapabilityDispatcher returns a structured
+    // CAPABILITY_BINDING_MISSING failure that a flow step turns into an uncaught exception -> bare
+    // Spring 500; the clear message reaches only stdout). Refuse to boot instead, naming the flow and
+    // the fix. compiledModel/capabilityRegistry are null for callers that don't wire them (skip check).
+    private void validatePersistenceBinding() {
+        if (compiledModel == null || capabilityRegistry == null) {
+            return;
+        }
+        if (capabilityRegistry.has("persistence")) {
+            return;
+        }
+        String offendingFlow = findFlowReferencingPersistence(compiledModel);
+        if (offendingFlow == null) {
+            return;
+        }
+        throw configError(
+                "Model flow '" + offendingFlow + "' persists via capability 'persistence' but no "
+                        + "persistence capability binding is registered. Declare a binding "
+                        + "(persistence-inproc for dev / persistence-postgres for prod).",
+                CAPABILITY_BINDING_ANCHOR
+        );
+    }
+
+    private static String findFlowReferencingPersistence(CompiledModel model) {
+        for (CompiledFlow flow : model.getFlows()) {
+            if (stepsReferencePersistence(flow.getSteps())) {
+                return flow.getName();
+            }
+        }
+        return null;
+    }
+
+    private static boolean stepsReferencePersistence(List<CompiledFlowStep> steps) {
+        if (steps == null) {
+            return false;
+        }
+        for (CompiledFlowStep step : steps) {
+            CompiledCapabilityCall capabilityCall = step.getCapabilityCall();
+            if (capabilityCall != null && "persistence".equalsIgnoreCase(capabilityCall.getCapabilityName())) {
+                return true;
+            }
+            if (stepsReferencePersistence(step.getThenSteps())
+                    || stepsReferencePersistence(step.getElseSteps())
+                    || stepsReferencePersistence(step.getLoopSteps())
+                    || stepsReferencePersistence(step.getOnFailureSteps())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void validateModeAndProfiles() {

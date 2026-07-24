@@ -1139,12 +1139,25 @@ Not yet actioned — filed per the loop's own discipline ("do not silently patch
    code-free Spring Boot default error body the moment the flow actually runs — real cause
    (`Capability binding not found for capability 'persistence'`) is visible only in the app's raw
    stdout log, which no doc names as a debugging step.
-   **PARTIALLY FIXED 2026-07-23 (doc half):** both examples now declare `capabilities` +
-   `bindings` (persistence→repository; eventBus→inproc for the event-using Level 3) with an
-   explanatory "why this is required / validates-clean-but-500s-at-runtime" note. The **runtime
-   diagnostic half** (surface `CAPABILITY_BINDING_MISSING` as an actionable HTTP body / boot-time
-   fail-fast instead of a bare 500) is a RuntimeHost code change scoped in
-   `docs/GROUP_A_CLOSURE_PLAN.md` Task 5 — not yet built.
+   **FIXED 2026-07-23/24 (both halves).** Doc half (2026-07-23): both examples now declare
+   `capabilities` + `bindings` (persistence→repository; eventBus→inproc for the event-using Level 3)
+   with an explanatory "why this is required / validates-clean-but-500s-at-runtime" note. **Runtime
+   diagnostic half (2026-07-24, LEDGER-1):** `StartupValidator` (`NPDevKernel/adapters/runtime-
+   validation`) now reads the compiled model's flow steps and the built `CapabilityRegistry` at boot;
+   if any flow references the `persistence` capability (via `createConcept`/`updateConcept`/
+   `saveConcept`, or a direct `persistence.*` capabilityCall — all of these compile down to the same
+   `CompiledFlowStep.capabilityCall.capabilityName == "persistence"`) and no adapter is bound, the app
+   now **refuses to boot** with a docs-linked `IllegalStateException` naming the offending flow,
+   instead of booting fine and only 500ing opaquely on first use. RED→GREEN verified live: generated
+   `ledger1-red-repro` (a `simple-user-registry-inmemory` copy with the `persistence` binding
+   removed) — RED: booted fine, `GET /api/flows/CreateUser/execute` returned a structured 422 (that
+   debug surface already had its own error handling), but the generated business CRUD path
+   (`POST /api/users`) threw an uncaught `IllegalStateException` → bare Spring
+   `{"status":500,"error":"Internal Server Error"}`, with the real cause
+   (`Capability binding not found for capability 'persistence' and adapter '<missing>'`) visible only
+   in `_ops/app.out.log` — confirming the finding as described. GREEN: after the fix + a
+   `Rebuild-And-Restage.ps1` cycle, the same app refuses to boot with the new diagnostic. See
+   `docs/CONFIGURATION.md#persistence-capability-binding-checked-at-boot`.
 3. **No doc names the automatically-generated concept CRUD's REST verbs/paths** beyond the one `POST`
    create example shown in the tutorial and the manual — list/get/update/delete are undocumented
    (correctly guessable from REST convention, but unverified against the docs).

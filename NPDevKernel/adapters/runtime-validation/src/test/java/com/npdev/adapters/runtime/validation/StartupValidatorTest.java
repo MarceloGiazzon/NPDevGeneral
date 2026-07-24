@@ -1,5 +1,10 @@
 package com.npdev.adapters.runtime.validation;
 
+import com.npdev.dsl.v1.compiled.CompiledCapabilityCall;
+import com.npdev.dsl.v1.compiled.CompiledFlow;
+import com.npdev.dsl.v1.compiled.CompiledFlowStep;
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.kernel.CapabilityRegistry;
 import com.npdev.kernel.events.EventEnvelope;
 import com.npdev.kernel.execution.FlowInstance;
 import com.npdev.kernel.ports.EventStore;
@@ -12,6 +17,7 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -422,6 +428,110 @@ class StartupValidatorTest {
         IllegalStateException ex = assertThrows(IllegalStateException.class, validator::validate);
         assertTrue(ex.getMessage() != null && ex.getMessage().contains("private-key-path"),
                 "Expected the message to name the unreadable private-key-path");
+    }
+
+    @Test
+    void shouldFailWhenFlowPersistsButNoPersistenceBindingRegistered() {
+        // LEDGER-1: a flow with a persistence capabilityCall + an empty registry (no adapter bound
+        // for "persistence") must refuse to boot instead of 500ing opaquely on first use.
+        StartupValidator validator = new StartupValidator(
+                inprocSettingsWithAuthAndSchedulerDisabled(),
+                null,
+                eventStore(),
+                flowInstanceStore(),
+                new MockEnvironment(),
+                "apikey",
+                "",
+                null,
+                null,
+                null,
+                null,
+                modelWithPersistenceFlow(),
+                new CapabilityRegistry()
+        );
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, validator::validate);
+        assertTrue(ex.getMessage() != null && ex.getMessage().contains("CreateUser"),
+                "Expected the message to name the offending flow");
+        assertTrue(ex.getMessage().contains("persistence"),
+                "Expected the message to name the missing capability");
+        assertTrue(ex.getMessage().contains("CONFIGURATION.md#persistence-capability-binding"),
+                "Expected the message to link the capability-binding config doc");
+    }
+
+    @Test
+    void shouldPassWhenFlowPersistsAndPersistenceBindingIsRegistered() {
+        CapabilityRegistry registry = new CapabilityRegistry();
+        registry.register("persistence", new Object());
+
+        StartupValidator validator = new StartupValidator(
+                inprocSettingsWithAuthAndSchedulerDisabled(),
+                null,
+                eventStore(),
+                flowInstanceStore(),
+                new MockEnvironment(),
+                "apikey",
+                "",
+                null,
+                null,
+                null,
+                null,
+                modelWithPersistenceFlow(),
+                registry
+        );
+
+        assertDoesNotThrow(validator::validate);
+    }
+
+    @Test
+    void shouldPassWhenCompiledModelAndCapabilityRegistryAreNotProvided() {
+        // Backward compatibility: callers that don't wire compiledModel/capabilityRegistry (the
+        // 11-arg constructor) must skip the persistence-binding check entirely, not fail on the
+        // nulls.
+        StartupValidator validator = new StartupValidator(
+                inprocSettingsWithAuthAndSchedulerDisabled(),
+                null,
+                eventStore(),
+                flowInstanceStore(),
+                new MockEnvironment(),
+                "apikey",
+                "",
+                null,
+                null,
+                null,
+                null
+        );
+
+        assertDoesNotThrow(validator::validate);
+    }
+
+    private static RuntimeSettings inprocSettingsWithAuthAndSchedulerDisabled() {
+        return new RuntimeSettings(
+                "inproc",
+                false,
+                0,
+                0,
+                false,
+                1024,
+                64,
+                null,
+                null,
+                null,
+                5,
+                30,
+                10,
+                4096,
+                null
+        );
+    }
+
+    private static CompiledModel modelWithPersistenceFlow() {
+        CompiledCapabilityCall capabilityCall = new CompiledCapabilityCall(
+                "persistence", "PersistenceCapability", "save", List.of(), "$input", "$saved");
+        CompiledFlowStep saveStep = new CompiledFlowStep(
+                "save-user", "capabilityCall", null, null, List.of(), null, null, null, capabilityCall);
+        CompiledFlow flow = new CompiledFlow("CreateUser", "User", List.of(saveStep));
+        return new CompiledModel("test", "1.0.0", "1.0", Map.of(), List.of(), List.of(), List.of(), List.of(flow));
     }
 
     private static RuntimeSettings jwtSettings() {
