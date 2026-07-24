@@ -38,7 +38,11 @@ public final class DesiredSchemaFactory {
         Map<String, List<SchemaLifecycleExecutor.UniqueConstraintDecl>> uniquesByTable =
                 manifest.businessTableUniqueConstraints();
 
-        for (String table : manifest.businessTables()) {
+        // Iterate businessTableColumns().keySet(), NOT businessTables(): classify() enumerates desired
+        // tables from businessTableColumns().entrySet(), so this is the same desired-table set it sees.
+        // (In real generated manifests they are equal; some hand-built test manifests differ, which
+        // otherwise made the diff phantom-DROP a table classify actually treats as desired.)
+        for (String table : manifest.businessTableColumns().keySet()) {
             Map<String, SchemaLifecycleExecutor.ColumnFacts> facts =
                     SchemaLifecycleExecutor.columnFactsFor(manifest, table);
             List<String> columnNames = manifest.businessTableColumns().getOrDefault(table, List.of());
@@ -63,8 +67,8 @@ public final class DesiredSchemaFactory {
     private static DesiredColumn toDesiredColumn(String rawColumn, SchemaLifecycleExecutor.ColumnFacts facts) {
         if (facts == null) {
             // A column with no facts (shouldn't happen for a well-formed manifest) is treated as a
-            // plain nullable column so the diff still sees it rather than dropping it silently.
-            return new DesiredColumn(lower(rawColumn), null, true, null, false, false, false, null);
+            // plain nullable, additive-eligible column so the diff still sees it rather than dropping it.
+            return new DesiredColumn(lower(rawColumn), null, true, null, false, false, false, true, null);
         }
         // ColumnFacts javadoc: a required column that is NOT additive-eligible is a required bond/FK
         // (the only reason a required column fails additive eligibility). Nullable bonds are additive-
@@ -83,6 +87,7 @@ public final class DesiredSchemaFactory {
                 facts.platformManaged(),
                 facts.requiredByModel(),
                 bond,
+                facts.additiveEligible(),
                 lower(facts.renamedFrom()));
     }
 

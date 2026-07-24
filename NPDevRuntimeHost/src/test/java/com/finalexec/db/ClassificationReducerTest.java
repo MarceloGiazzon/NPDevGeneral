@@ -28,8 +28,10 @@ class ClassificationReducerTest {
     // so the two NEEDS_HOOK cases can be disambiguated.
     private static final DesiredSchema DESIRED = new DesiredSchema(Map.of(
             "orders", new DesiredTable("orders", Map.of(
-                    "owner_id", new DesiredColumn("owner_id", "UUID", false, null, false, true, true, null),
-                    "owner", new DesiredColumn("owner", "VARCHAR(20)", false, null, false, true, false, null)
+                    // required bond -> non-additive-eligible (classify: DESTRUCTIVE if missing)
+                    "owner_id", new DesiredColumn("owner_id", "UUID", false, null, false, true, true, false, null),
+                    // required non-bond, no default -> additive-eligible (classify: SAFE_ADDITIVE)
+                    "owner", new DesiredColumn("owner", "VARCHAR(20)", false, null, false, true, false, true, null)
             ), List.of(), null)));
 
     private static SchemaChange reduce(SchemaDiffItem... items) {
@@ -75,9 +77,10 @@ class ClassificationReducerTest {
     void classifyLevelMappingMatchesClassify() {
         // A dropped COLUMN is the one destructive thing classify decides directly.
         assertEquals(DESTRUCTIVE, reduce(item(SafetyClass.DESTRUCTIVE_DROP_COLUMN, "gone")).value());
-        // A table drop maps to DESTRUCTIVE as the conservative default (ownership-gated in reality --
-        // a Phase 4 reconciliation item threaded before classify is switched to the reducer).
-        assertEquals(DESTRUCTIVE, reduce(item(SafetyClass.DESTRUCTIVE_DROP_TABLE, null)).value());
+        // A table drop is NOT part of classify's column-level classification: classify only iterates
+        // desired tables (businessTableColumns), so a dropped/orphan/renamed-away table contributes
+        // nothing -> SAFE_ADDITIVE baseline.
+        assertEquals(SAFE_ADDITIVE, reduce(item(SafetyClass.DESTRUCTIVE_DROP_TABLE, null)).value());
         // classify flags any type change as TYPE_CHANGE_DETECTED; narrow-destructiveness is deferred.
         assertEquals(TYPE_CHANGE_DETECTED, reduce(item(SafetyClass.DESTRUCTIVE_NARROW_TYPE, "name")).value());
     }

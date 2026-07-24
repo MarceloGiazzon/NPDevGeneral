@@ -435,12 +435,14 @@ tasks.named('test') {
     if (shadowLog != null && !shadowLog.toString().trim().isEmpty()) {
         systemProperty 'npdev.schema.shadow.logFile', shadowLog.toString().trim()
     }
-    // Phase 4.1: forward the classify-reduction self-check controls (measure/assert reducer == classify).
+    // Phase 4.1: the classify-reduction self-check is ON BY DEFAULT (like the shadow assert) -- every
+    // test driving beforeMigrate now also asserts ClassificationReducer reduces the live diff to the
+    // SAME classification classify returned (column-level; table-level/empty-manifest cases scoped out
+    // in the probe). This LOCKS the reducer <-> classify equivalence proven across H2 + Postgres, so a
+    // future change that makes them diverge fails here. Override with -Pnpdev.schema.classify.assert=false.
     ['npdev.schema.classify.check', 'npdev.schema.classify.assert'].each { p ->
         def v = System.getProperty(p) ?: providers.gradleProperty(p).getOrNull()
-        if (v != null && !v.toString().trim().isEmpty()) {
-            systemProperty p, v.toString().trim()
-        }
+        systemProperty p, (v != null && !v.toString().trim().isEmpty() ? v.toString().trim() : 'true')
     }
     if (System.getProperty('os.name', '').toLowerCase().contains('win')
             && System.getenv('DOCKER_HOST') == null) {

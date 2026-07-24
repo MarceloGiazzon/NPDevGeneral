@@ -193,11 +193,12 @@ class SchemaDiffEngineTest {
 
     private static DesiredColumn dCol(String name, String type, boolean nullable, String def,
             boolean platform, boolean required) {
-        return new DesiredColumn(name, type, nullable, def, platform, required, false, null);
+        // non-bond columns are always additive-eligible
+        return new DesiredColumn(name, type, nullable, def, platform, required, false, true, null);
     }
 
     private static DesiredColumn dColRenamed(String name, String type, boolean nullable, String renamedFrom) {
-        return new DesiredColumn(name, type, nullable, null, false, false, false, renamedFrom);
+        return new DesiredColumn(name, type, nullable, null, false, false, false, true, renamedFrom);
     }
 
     private static CurrentTable cTable(String name, CurrentColumn... cols) {
