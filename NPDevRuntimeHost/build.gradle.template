@@ -444,6 +444,14 @@ tasks.named('test') {
         def v = System.getProperty(p) ?: providers.gradleProperty(p).getOrNull()
         systemProperty p, (v != null && !v.toString().trim().isEmpty() ? v.toString().trim() : 'true')
     }
+    // SER-P4.2: the SchemaDeltaReport diff-derived itemization self-check is ON BY DEFAULT -- on every
+    // destructive-path boot it asserts the diff yields the byte-identical stableString SET (the
+    // acknowledgment-token input) the legacy live-introspection does. Override with
+    // -Pnpdev.schema.delta.assert=false.
+    ['npdev.schema.delta.check', 'npdev.schema.delta.assert'].each { p ->
+        def v = System.getProperty(p) ?: providers.gradleProperty(p).getOrNull()
+        systemProperty p, (v != null && !v.toString().trim().isEmpty() ? v.toString().trim() : 'true')
+    }
     if (System.getProperty('os.name', '').toLowerCase().contains('win')
             && System.getenv('DOCKER_HOST') == null) {
         environment 'DOCKER_HOST', 'npipe:////./pipe/dockerDesktopLinuxEngine'
