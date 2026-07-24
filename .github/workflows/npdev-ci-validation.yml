@@ -108,16 +108,22 @@ jobs:
           ./npdev normalize ai-model golden-ai-scenarios/base-ai-loop/ai-model.json > /tmp/npdev-normalized-model.json
           ./npdev generate app --model NPDevContract/dsl/resources/Models/canonical-demo/model.json --config NPDevContract/dsl/resources/Models/canonical-demo/config.json --output build/npdev-generated
 
-      - name: Generate RuntimeHost canonical app for integration tests
+      # Fix A / NEW-1 (2026-07-24): the postgres ITs boot a real generated app under mode=postgres,
+      # which requires a JDBC DataSource bean. The InMemory `canonical-demo` wires none (in-memory
+      # adapters only) -> StartupValidator aborts context load "DataSource bean is required when
+      # mode=postgres". Use a JDBC-capable sample: `superuser-admin-console` (H2Local wires a JDBC
+      # DataSource; Testcontainers overrides the URL to postgres). Proven locally RED->GREEN:
+      # canonical-demo integrationTest 10/35 FAIL, superuser-admin-console 35/35 PASS.
+      - name: Generate RuntimeHost sample app (Postgres-capable) for integration tests
         timeout-minutes: 45
         run: |
           pwsh -NoProfile -ExecutionPolicy Bypass \
             -File "$GITHUB_WORKSPACE/scripts/samples/generate-sample.ps1" \
             -WorkspaceRoot "$GITHUB_WORKSPACE" \
-            -SampleIds canonical-demo
+            -SampleIds superuser-admin-console
 
       - name: RuntimeHost generated-app Postgres integration tests
-        working-directory: NPDevSamples/canonical-demo/Output/App
+        working-directory: NPDevSamples/superuser-admin-console/Output/App
         timeout-minutes: 45
         run: |
           chmod +x ./gradlew
@@ -131,7 +137,7 @@ jobs:
       # the next run pins it exactly. See NPDev_General__OutsideRepo/reg17-linux-validation-2026-07-22/.
       - name: On failure, surface integration-test error messages (NEW-1)
         if: failure()
-        working-directory: NPDevSamples/canonical-demo/Output/App
+        working-directory: NPDevSamples/superuser-admin-console/Output/App
         run: |
           for f in build/test-results/integrationTest/*.xml; do
             echo "----- $f -----"
