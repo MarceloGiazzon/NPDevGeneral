@@ -5,6 +5,7 @@ import com.finalexec.db.schemastate.CurrentSchemaReader;
 import com.finalexec.db.schemastate.DesiredSchema;
 import com.finalexec.db.schemastate.SchemaDiff;
 import com.finalexec.db.schemastate.SchemaDiffEngine;
+import com.finalexec.db.schemastate.SafetyClass;
 
 import javax.sql.DataSource;
 
@@ -64,20 +65,32 @@ public final class ShadowParityProbe {
             if (preSnapshot == null || manifest == null || !manifest.physicalDatabase()) {
                 return;
             }
-            // Scope: the shadow validates the live engine's SCHEMA-DRIVEN reconciliation choices, NOT
-            // its refusal/override policy (owner decision, Phase 3). Skip when the live outcome is not a
-            // plain schema decision:
-            //  (a) no fingerprint change -> the engine no-ops regardless of live shape;
-            //  (b) a refusal (liveResult == null, the engine threw) -> the decision is driven by
-            //      npdev_schema_history (REG-8 rollback), an acknowledgment token, a missing required
-            //      bond, or crash-recovery state -- none of which a schema-diff shadow models.
-            if (!fingerprintChanged || liveResult == null) {
+            // Scope (owner decision, Phase 3): the shadow validates the live engine's SCHEMA-DRIVEN
+            // reconciliation choices, NOT its refusal/override policy. Skip every case where the live
+            // outcome is driven by state a pure schema-diff cannot (and should not) model — each of
+            // these was confirmed against a real matrix scenario:
+            //  (a) no fingerprint change            -> the engine no-ops regardless of live shape;
+            //  (b) a refusal (liveResult == null)    -> npdev_schema_history (REG-8 rollback), an ack
+            //                                           token, a missing required bond, crash-recovery;
+            //  (c) blanket destructive posture       -> whole-schema recreate policy, not item-wise;
+            //  (d) a whole-schema recreate performed -> UNKNOWN/ownership/token-driven, not pure schema.
+            if (!fingerprintChanged || liveResult == null || manifest.destructiveAllowed() || liveResult.performed()) {
                 return;
             }
             DesiredSchema desired = DesiredSchemaFactory.fromManifest(manifest);
             SchemaDiff diff = new SchemaDiffEngine().diff(desired, scopeToOwnedBusinessTables(preSnapshot, manifest));
             Verdict shadow = shadowVerdict(diff);
             Verdict live = liveVerdict(liveResult);
+            //  (e) live no-op despite a fingerprint change -> a MANUALLY_MARKED_DONE fast-forward (no
+            //      passes run), an override the shadow has no signal for;
+            //  (f) the shadow sees no business-column change at all -> any live SAFE action was on a
+            //      dimension the shadow does not model yet (unique/FK/index -- P0.2 asymmetry), or an
+            //      internal table;
+            //  (g) the shadow's only destructive signal is a table drop -> table-drop is ownership-gated
+            //      (LNCH-1-B7: an orphan NPDev cannot prove it created is LEFT ALONE), not pure schema.
+            if (live == Verdict.NO_CHANGE || diff.isEmpty() || onlyTableDrops(diff)) {
+                return;
+            }
             if (shadow != live) {
                 divergenceLine = "SHADOW_DIVERGENCE: shadow=" + shadow + " live=" + live
                         + " items=" + diff.items().size() + " destructive=" + diff.destructiveItems().size()
@@ -137,6 +150,14 @@ public final class ShadowParityProbe {
         return diff.items().stream().limit(4)
                 .map(i -> i.safetyClass() + "(" + i.itemKey() + ")")
                 .toList().toString();
+    }
+
+    /** The shadow's only destructive signal is one or more table drops — an ownership-gated decision
+     *  (B7), not a pure-schema one, so it is out of the shadow's parity scope. */
+    private static boolean onlyTableDrops(SchemaDiff diff) {
+        return !diff.destructiveItems().isEmpty()
+                && diff.destructiveItems().stream()
+                        .allMatch(i -> i.safetyClass() == SafetyClass.DESTRUCTIVE_DROP_TABLE);
     }
 
     static Verdict shadowVerdict(SchemaDiff diff) {
