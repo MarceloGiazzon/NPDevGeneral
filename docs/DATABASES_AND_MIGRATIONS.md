@@ -309,6 +309,10 @@ NPDev's migration story is genuinely strong on *not silently doing damage*. What
 
 ## 12. Operator control surface (ownership, strategy, mark-done, recreate)
 
+> **See also:** [`IMPACT_REPORTS.md`](IMPACT_REPORTS.md) — the read-only "what will this upgrade do to my
+> data?" report (the GeneXus IAR equivalent) written on every upgrade boot and led by the destructive
+> refusal message.
+
 The `schemaLifecycle` block in `db.definition.json` gives operators explicit control:
 
 ```json
