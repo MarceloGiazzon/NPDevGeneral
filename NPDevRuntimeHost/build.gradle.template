@@ -446,7 +446,7 @@ tasks.named('test') {
     }
     // SER-P4.3+: the mutation passes (table renames, ...) assert their diff-derived work-list equals the
     // bespoke one before/while being switched to the diff. ON BY DEFAULT; -Pnpdev.schema.rename.assert=false to disable.
-    ['npdev.schema.rename.assert', 'npdev.schema.widen.assert'].each { p ->
+    ['npdev.schema.rename.assert', 'npdev.schema.widen.assert', 'npdev.schema.backfill.assert'].each { p ->
         def v = System.getProperty(p) ?: providers.gradleProperty(p).getOrNull()
         systemProperty p, (v != null && !v.toString().trim().isEmpty() ? v.toString().trim() : 'true')
     }
