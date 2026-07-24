@@ -205,6 +205,16 @@ jobs:
             17
             21
 
+      # Round-3 finding (2026-07-23): LegacyModelMigrationToolTest shells out to `npdev.bat`, which
+      # calls bare `python`. On windows-latest without setup-python, `python` resolves to the App
+      # Execution Alias stub (exits non-zero), so the test's `assertEquals(0, exitValue)` failed. The
+      # Linux job's `npdev` wrapper prefers python3 (pre-installed on ubuntu), so it was never hit
+      # there. Put a real Python on PATH.
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Configure Gradle CI
         timeout-minutes: 5
         run: |
