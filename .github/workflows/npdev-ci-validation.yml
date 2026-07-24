@@ -47,9 +47,9 @@ jobs:
       # test. Strip it (mirrors npdev-pr-gate.yml) so gradle uses its portable default project cache.
       - name: Neutralize dev-machine gradle projectcachedir (portability)
         run: |
-          sed -i '/org\.gradle\.projectcachedir/d' NPDevContract/dsl/gradle.properties
-          sed -i '/org\.gradle\.projectcachedir/d' NPDevKernel/gradle.properties
-          sed -i '/org\.gradle\.projectcachedir/d' NPDevGenerator/gradle.properties
+          for f in gradle.properties NPDevContract/dsl/gradle.properties NPDevEditor/gradle.properties NPDevGenerator/gradle.properties NPDevKernel/gradle.properties NPDevRuntimeHost/gradle.properties; do
+            [ -f "$f" ] && sed -i '/org\.gradle\.projectcachedir/d' "$f" || true
+          done
 
       - name: DSL contract check
         working-directory: NPDevContract/dsl
@@ -107,6 +107,17 @@ jobs:
           ./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json
           ./npdev normalize ai-model golden-ai-scenarios/base-ai-loop/ai-model.json > /tmp/npdev-normalized-model.json
           ./npdev generate app --model NPDevContract/dsl/resources/Models/canonical-demo/model.json --config NPDevContract/dsl/resources/Models/canonical-demo/config.json --output build/npdev-generated
+
+      # Shared-root fix (2026-07-24): the generated app resolves runtimehost-libs to
+      # <repo-parent>/<repo-name>__OutsideRepo/runtimehost-libs and `verifyNpdevRuntimeHostLibs` fails
+      # if the manifest is absent. There was NO explicit sync step, so the libs were present only by
+      # warm gradle-cache luck — a cold-cache run failed ("Missing NPDev RuntimeHost libs manifest").
+      # Stage them deterministically here (sync mirrors build.gradle's dir resolution, LNCH-22).
+      - name: Stage RuntimeHost libs (deterministic; not cache-dependent)
+        timeout-minutes: 30
+        run: |
+          chmod +x NPDevKernel/gradlew NPDevGenerator/gradlew NPDevRuntimeHost/gradlew 2>/dev/null || true
+          pwsh -NoProfile -File scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars
 
       # Fix A / NEW-1 (2026-07-24): the postgres ITs boot a real generated app under mode=postgres,
       # which requires a JDBC DataSource bean. The InMemory `canonical-demo` wires none (in-memory
@@ -389,6 +400,14 @@ jobs:
           }
 
           git ls-files "NPDevGenerator/generator/src/main/java/com/npdev/generator/output/*"
+
+      # Shared-root fix (2026-07-24): stage runtimehost-libs deterministically before the generator
+      # gate (which prepares a RuntimeHost sample and fails "RuntimeHost prerequisite missing" without
+      # them). No explicit sync step existed → cache-dependent. Sync mirrors build.gradle's resolution.
+      - name: Stage RuntimeHost libs (deterministic; not cache-dependent)
+        timeout-minutes: 30
+        run: pwsh -NoProfile -File scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars
+
       - name: Generator gate / prepare RuntimeHost sample output
         timeout-minutes: 40
         run: |
