@@ -1400,6 +1400,18 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     plan.add(new Widening(table, diff.getKey(), actualTypes.get(diff.getKey()), diff.getValue()));
                 }
             }
+            // SER-P4.5: prove the canonical SchemaDiff resolves the identical widening plan (which columns
+            // widen) and per-table all-or-nothing skip set before it replaces this bespoke loop.
+            Set<String> bespokeWidened = new LinkedHashSet<>();
+            for (Widening w : plan) {
+                bespokeWidened.add(w.table() + ":" + w.column());
+            }
+            Set<String> bespokeSkipped = new LinkedHashSet<>();
+            for (String s : skipped) {
+                int paren = s.indexOf(" (");
+                bespokeSkipped.add(paren < 0 ? s : s.substring(0, paren));
+            }
+            assertWideningsMatchDiff(dataSource, manifest, bespokeWidened, bespokeSkipped);
             // R4 (F5): one write-before-execute audit row for the whole type-widening pass.
             List<String> itemDetails = new ArrayList<>();
             for (Widening w : plan) {
@@ -1420,6 +1432,67 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         if (!skipped.isEmpty()) {
             System.out.println("NPDev schema lifecycle: tables left for the destructive path (type diff not "
                     + "fully explained by safe widenings): " + skipped);
+        }
+    }
+
+    /** The type-widening pass's plan derived from the canonical diff (SER-P4.5): which shared columns
+     * safely widen, and which tables are deferred whole to the destructive path (per-table all-or-nothing:
+     * a table with ANY non-widening type change -- a DESTRUCTIVE_NARROW_TYPE item -- widens nothing). */
+    private record WideningPlan(Set<String> widenedKeys, Set<String> skippedTables) {
+    }
+
+    private static WideningPlan wideningPlanFromDiff(DataSource dataSource, SchemaManifest manifest) {
+        com.finalexec.db.schemastate.CurrentSchema current =
+                new com.finalexec.db.schemastate.CurrentSchemaReader().read(dataSource);
+        com.finalexec.db.schemastate.SchemaDiff diff = new com.finalexec.db.schemastate.SchemaDiffEngine()
+                .diff(DesiredSchemaFactory.fromManifest(manifest),
+                        ShadowParityProbe.scopeToOwnedBusinessTables(current, manifest));
+        Map<String, List<String>> widenColsByTable = new LinkedHashMap<>();
+        Set<String> narrowTables = new LinkedHashSet<>();
+        for (com.finalexec.db.schemastate.SchemaDiffItem di : diff.items()) {
+            if (di.safetyClass() == com.finalexec.db.schemastate.SafetyClass.SAFE_WIDEN) {
+                widenColsByTable.computeIfAbsent(di.table(), t -> new ArrayList<>()).add(di.column());
+            } else if (di.safetyClass() == com.finalexec.db.schemastate.SafetyClass.DESTRUCTIVE_NARROW_TYPE) {
+                narrowTables.add(di.table());
+            }
+        }
+        // Every table with a type diff (widen and/or narrow); a narrow anywhere on it defers the whole table.
+        Set<String> typeDiffTables = new LinkedHashSet<>(widenColsByTable.keySet());
+        typeDiffTables.addAll(narrowTables);
+        Set<String> widenedKeys = new LinkedHashSet<>();
+        Set<String> skippedTables = new LinkedHashSet<>();
+        for (String table : typeDiffTables) {
+            if (narrowTables.contains(table)) {
+                skippedTables.add(table);
+            } else {
+                for (String column : widenColsByTable.getOrDefault(table, List.of())) {
+                    widenedKeys.add(table + ":" + column);
+                }
+            }
+        }
+        return new WideningPlan(widenedKeys, skippedTables);
+    }
+
+    /** SER-P4.5 equivalence probe (gated on {@code npdev.schema.widen.assert}, default-on in tests): the
+     * diff-derived widening plan (widened columns + deferred tables) must equal the bespoke one. Fully
+     * swallowed unless asserting; never changes behavior. */
+    private static void assertWideningsMatchDiff(DataSource dataSource, SchemaManifest manifest,
+            Set<String> bespokeWidened, Set<String> bespokeSkipped) {
+        if (!Boolean.getBoolean("npdev.schema.widen.assert")) {
+            return;
+        }
+        WideningPlan fromDiff;
+        try {
+            fromDiff = wideningPlanFromDiff(dataSource, manifest);
+        } catch (Throwable ignored) {
+            return;
+        }
+        if (!fromDiff.widenedKeys().equals(bespokeWidened) || !fromDiff.skippedTables().equals(bespokeSkipped)) {
+            String line = "WIDENING_DIVERGENCE: bespokeWidened=" + bespokeWidened + " diffWidened="
+                    + fromDiff.widenedKeys() + " bespokeSkipped=" + bespokeSkipped + " diffSkipped="
+                    + fromDiff.skippedTables();
+            System.out.println(line);
+            throw new AssertionError(line);
         }
     }
 
