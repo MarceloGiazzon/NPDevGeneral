@@ -1054,19 +1054,10 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         }
         List<String> renamed = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
-            DatabaseMetaData metadata = connection.getMetaData();
-            Set<String> liveTables = readActualTableNames(metadata);
-            Set<String> expectedTables = new LinkedHashSet<>(manifest.businessTableColumns().keySet());
-            Set<String> missingTables = new LinkedHashSet<>(expectedTables);
-            missingTables.removeAll(liveTables);
-            Set<String> extraTables = new LinkedHashSet<>(liveTables);
-            extraTables.removeAll(expectedTables);
-
-            RenameResolution.Result resolution = RenameResolution.resolve(missingTables, extraTables, declaredTableRenames);
-            // SER-P4.3: prove the canonical SchemaDiff resolves the identical table-rename work-list
-            // before it replaces this bespoke RenameResolution (default-on assert; behavior unchanged).
-            assertTableRenamesMatchDiff(dataSource, manifest, resolution.explainedRenames());
-            List<Map.Entry<String, String>> work = new ArrayList<>(resolution.explainedRenames().entrySet());
+            // SER-P4.3: the rename work-list (new -> old) now comes from the canonical SchemaDiff --
+            // proven byte-identical to the former RenameResolution over live introspection (P4.3a).
+            List<Map.Entry<String, String>> work = new ArrayList<>(
+                    tableRenamesFromDiff(dataSource, manifest).entrySet());
             // R4 (F5): write-before-execute the whole pass as one audit row with per-item detail.
             List<String> itemDetails = new ArrayList<>();
             for (Map.Entry<String, String> pair : work) {
@@ -1103,27 +1094,6 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             }
         }
         return renames;
-    }
-
-    /** SER-P4.3 equivalence probe (gated on {@code npdev.schema.rename.assert}, default-on in tests):
-     * the diff-derived table-rename work-list must equal the bespoke {@link RenameResolution} one,
-     * key-for-key, before the switch. Fully swallowed unless asserting; never changes behavior. */
-    private static void assertTableRenamesMatchDiff(DataSource dataSource, SchemaManifest manifest,
-            Map<String, String> bespoke) {
-        if (!Boolean.getBoolean("npdev.schema.rename.assert")) {
-            return;
-        }
-        Map<String, String> fromDiff;
-        try {
-            fromDiff = tableRenamesFromDiff(dataSource, manifest);
-        } catch (Throwable ignored) {
-            return;
-        }
-        if (!fromDiff.equals(bespoke)) {
-            String line = "TABLE_RENAME_DIVERGENCE: bespoke=" + bespoke + " diff=" + fromDiff;
-            System.out.println(line);
-            throw new AssertionError(line);
-        }
     }
 
     /**
