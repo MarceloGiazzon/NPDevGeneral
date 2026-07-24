@@ -8,6 +8,11 @@ import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.NarrowType;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.Unknown;
 import com.npdev.dsl.v1.schemaevolution.SqlTypeNormalization;
 import com.npdev.dsl.v1.schemaevolution.TypeChangeMatrix;
+import com.finalexec.db.schemastate.CurrentSchema;
+import com.finalexec.db.schemastate.CurrentSchemaReader;
+import com.finalexec.db.schemastate.SchemaDiff;
+import com.finalexec.db.schemastate.SchemaDiffEngine;
+import com.finalexec.db.schemastate.SchemaDiffItem;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -176,13 +181,116 @@ final class SchemaDeltaReport {
             itemizeTableLevelDiff(connection, metadata, manifest, items,
                     SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource));
             itemizeColumnLevelDiff(metadata, manifest, items);
+            items.sort(Comparator.comparing(SchemaDeltaReport::sortKey));
+            List<SchemaDeltaItem> legacy = List.copyOf(items);
+            // SER-P4.2: prove the diff-derived itemization yields byte-identical stableStrings (the
+            // operator acknowledgment-token input) before it is trusted to replace the legacy live-
+            // introspection. Default-on assert; legacy is still returned here, so behavior is preserved.
+            assertDiffEquivalence(connection, dataSource, manifest, legacy);
+            return new SchemaDeltaReport(legacy);
         } catch (SQLException exception) {
             items.add(new Unknown("Failed introspecting the live database while building the schema delta report: "
                     + exception.getMessage()));
+            items.sort(Comparator.comparing(SchemaDeltaReport::sortKey));
+            return new SchemaDeltaReport(List.copyOf(items));
         }
+    }
 
+    /** The exact {@link Unknown} description for a missing, non-additive, non-rename-explained column --
+     * factored out so the legacy live-introspection itemizer and the SER-P4.2 diff-derived itemizer
+     * emit the byte-identical string that {@link com.npdev.dsl.v1.schemaevolution.DestructiveAckToken}
+     * hashes. */
+    private static String unknownMissingColumnMessage(String table, String column) {
+        return "Table '" + table + "' expects column '" + column
+                + "' which is missing from the live database and is not explained by an "
+                + "additive-eligible column or a declared rename -- likely a new required field "
+                + "with no literal-default backfill declared (backfill support is LNCH-1 Phase 5 "
+                + "scope, not yet available).";
+    }
+
+    /**
+     * SER-P4.2: the same residual itemization as {@link #itemizeTableLevelDiff}/{@link #itemizeColumnLevelDiff}
+     * above, but sourced from the canonical desired-vs-current {@link SchemaDiff} instead of a second,
+     * independently-drifting live introspection. Maps the diff's destructive/hook items to the exact
+     * four-kind vocabulary: DROP_COLUMN/NARROW_TYPE reuse the diff item's own key fields (its itemKey is
+     * already {@code SchemaDeltaItem.stableString()} verbatim); DROP_TABLE re-applies the SAME ownership
+     * gate and declared-rename-source exclusion the legacy path applies (scope already removes internal/
+     * npdev_/flyway tables); a missing non-additive column (NEEDS_HOOK on an ADD) becomes the identical
+     * {@link Unknown}. Every other safety class is not part of the residual destructive report.
+     */
+    private static List<SchemaDeltaItem> fromDiff(Connection connection, DataSource dataSource,
+            SchemaLifecycleExecutor.SchemaManifest manifest) {
+        CurrentSchema current = new CurrentSchemaReader().read(dataSource);
+        SchemaDiff diff = new SchemaDiffEngine().diff(DesiredSchemaFactory.fromManifest(manifest),
+                ShadowParityProbe.scopeToOwnedBusinessTables(current, manifest));
+        Set<String> owned = SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource);
+        Set<String> renameOldTables = new LinkedHashSet<>();
+        for (String old : manifest.businessTableRenames().values()) {
+            renameOldTables.add(old.toLowerCase(Locale.ROOT));
+        }
+        List<SchemaDeltaItem> items = new ArrayList<>();
+        for (SchemaDiffItem di : diff.items()) {
+            switch (di.safetyClass()) {
+                case DESTRUCTIVE_DROP_COLUMN ->
+                        items.add(new DropColumn(di.table(), di.column(), di.before() == null ? "" : di.before()));
+                case DESTRUCTIVE_NARROW_TYPE ->
+                        items.add(new NarrowType(di.table(), di.column(), di.before(), di.after()));
+                case DESTRUCTIVE_DROP_TABLE -> {
+                    String table = di.table().toLowerCase(Locale.ROOT);
+                    // Legacy never drops a declared rename source, and (when ownership is known) only a
+                    // table NPDev itself created.
+                    if (renameOldTables.contains(table)) {
+                        break;
+                    }
+                    if (owned != null && !owned.contains(table)) {
+                        break;
+                    }
+                    items.add(new DropTable(di.table(), bestEffortRowCount(connection, di.table())));
+                }
+                case NEEDS_HOOK -> {
+                    // Only a MISSING non-additive column is the legacy report's Unknown; a NEEDS_HOOK on a
+                    // shared-column tightening (TIGHTEN_NOT_NULL) is not itemized by the legacy path.
+                    if (di.itemKey().startsWith("ADD_REQUIRED_COLUMN:")
+                            && !manifest.businessTableAdditiveColumns()
+                                    .getOrDefault(di.table(), List.of()).contains(di.column())) {
+                        items.add(new Unknown(unknownMissingColumnMessage(di.table(), di.column())));
+                    }
+                }
+                default -> {
+                    // SAFE_*, NEEDS_BACKFILL, SAFE_WIDEN/RELAX/RENAME, SAFE_TABLE_CREATE: not destructive-residual.
+                }
+            }
+        }
         items.sort(Comparator.comparing(SchemaDeltaReport::sortKey));
-        return new SchemaDeltaReport(List.copyOf(items));
+        return items;
+    }
+
+    /** SER-P4.2 equivalence probe: compares the diff-derived itemization's {@code stableString} SET
+     * against the legacy report's. Set-equality (order-independent, as {@code DestructiveAckToken} sorts
+     * before hashing) is exactly what keeps the acknowledgment token byte-identical. Gated on
+     * {@code npdev.schema.delta.check}; throws on divergence only under {@code npdev.schema.delta.assert}.
+     * Fully swallowed otherwise -- can never change behavior. */
+    private static void assertDiffEquivalence(Connection connection, DataSource dataSource,
+            SchemaLifecycleExecutor.SchemaManifest manifest, List<SchemaDeltaItem> legacy) {
+        boolean assertOn = Boolean.getBoolean("npdev.schema.delta.assert");
+        if (System.getProperty("npdev.schema.delta.check") == null && !assertOn) {
+            return;
+        }
+        List<String> diffStrings;
+        try {
+            diffStrings = fromDiff(connection, dataSource, manifest).stream()
+                    .map(SchemaDeltaItem::stableString).sorted().toList();
+        } catch (Throwable ignored) {
+            return;
+        }
+        List<String> legacyStrings = legacy.stream().map(SchemaDeltaItem::stableString).sorted().toList();
+        if (!diffStrings.equals(legacyStrings)) {
+            String line = "DELTA_DIVERGENCE: legacy=" + legacyStrings + " diff=" + diffStrings;
+            System.out.println(line);
+            if (assertOn) {
+                throw new AssertionError(line);
+            }
+        }
     }
 
     /**
@@ -259,11 +367,7 @@ final class SchemaDeltaReport {
                 if (additiveEligible.contains(missingColumn)) {
                     continue; // handled by the ordinary additive repeatable migration, not this report
                 }
-                items.add(new Unknown("Table '" + table + "' expects column '" + missingColumn
-                        + "' which is missing from the live database and is not explained by an "
-                        + "additive-eligible column or a declared rename -- likely a new required field "
-                        + "with no literal-default backfill declared (backfill support is LNCH-1 Phase 5 "
-                        + "scope, not yet available)."));
+                items.add(new Unknown(unknownMissingColumnMessage(table, missingColumn)));
             }
 
             Map<String, String> expectedTypes = manifest.businessTableColumnTypes().getOrDefault(table, Map.of());
