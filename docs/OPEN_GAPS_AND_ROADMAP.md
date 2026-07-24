@@ -351,8 +351,17 @@
 - **Verify:** `autoPanels:[{concept:"Cliente"}]` → working list+detail+form applet — confirmed live
   (Expedicao/Recebimento AutoPanels, P7 evidence).
 
-### AW-P2 — Unify `selectors[]`/`bandPickers` + FK auto-Prompt wiring (re-scoped) — PARTIAL, narrowed scope confirmed
-- **Status:** PARTIAL (the picker-unification half is DONE; the FK auto-Prompt half is correctly
+### AW-P2 — Unify `selectors[]`/`bandPickers` + FK auto-Prompt wiring (re-scoped) ✅ DONE (2026-07-24)
+- **Status:** DONE · **Priority:** P4 · **Category:** Feature
+- **Closure (2026-07-24, owner-confirmed):** Both in-scope halves are landed. (1) The
+  picker-unification half was done 2026-07-13 (below). (2) The **FK auto-Prompt** half is confirmed
+  **already implemented** — code-grounded at `FieldWidgetDefaults.defaultWidget` (a reference field
+  with no explicit widget resolves to `LOOKUP`, i.e. the picker) → `business-ui-app.mustache`'s
+  `createLookupInput`, so every FK field auto-renders a working browse/pick dialog with zero authoring.
+  The original "FK fields lack a Prompt" premise was wrong (documented below). The only residual — an
+  opt-in `field.ui.selectorRef` hook for a *custom, filtered, `selectors[]`-declared* picker — was
+  **owner-descoped** as an optional P4 follow-up, not part of AW-P2's closure.
+- **Prior status (superseded):** PARTIAL (the picker-unification half is DONE; the FK auto-Prompt half is correctly
   scoped-out below, not abandoned) · **Priority:** P4 · **Category:** Feature
 - **Key finding that reframes this item:** `bandPickers.<band>.panel` was **already** able to
   reference a `selectors[]`-expanded panel with zero code changes — `expandSelector` compiles a
