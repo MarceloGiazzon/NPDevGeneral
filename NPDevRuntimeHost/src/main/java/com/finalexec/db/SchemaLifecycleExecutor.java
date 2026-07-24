@@ -1347,71 +1347,21 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     void attemptInPlaceTypeWidenings(DataSource dataSource, SchemaManifest manifest) {
         record Widening(String table, String column, String fromType, String toType) {
         }
+        // SER-P4.5: which shared columns safely widen (and which tables defer whole to the destructive
+        // path under the per-table all-or-nothing rule) is derived from the canonical SchemaDiff, not a
+        // second live introspection. Proven byte-identical at P4.5a.
+        WideningPlan derived = wideningPlanFromDiff(dataSource, manifest);
         List<Widening> plan = new ArrayList<>();
+        for (String[] entry : derived.widened()) {
+            String table = entry[0];
+            String column = entry[1];
+            // toType from the manifest's DECLARED type keeps the emitted DDL byte-for-byte identical to
+            // the former loop; the diff's normalized after-type is used only for classification.
+            String toType = manifest.businessTableColumnTypes().getOrDefault(table, Map.of()).get(column);
+            plan.add(new Widening(table, column, entry[2], toType));
+        }
         List<String> widened = new ArrayList<>();
-        List<String> skipped = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
-            DatabaseMetaData metadata = connection.getMetaData();
-            for (Map.Entry<String, List<String>> entry : manifest.businessTableColumns().entrySet()) {
-                String table = entry.getKey();
-                List<String> expectedColumns = entry.getValue();
-                Set<String> actualColumns = readActualColumns(metadata, table);
-                if (actualColumns.isEmpty()) {
-                    // Table doesn't exist yet (brand new concept) -- nothing to widen; matches
-                    // classify()'s "actual.isEmpty() -> continue" guard for the same reason (§2.4).
-                    continue;
-                }
-                Map<String, String> expectedTypes = manifest.businessTableColumnTypes().getOrDefault(table, Map.of());
-                Map<String, String> actualTypes = readActualColumnTypes(metadata, table);
-
-                Map<String, String> differing = new LinkedHashMap<>();
-                for (String column : expectedColumns) {
-                    if (!actualColumns.contains(column)) {
-                        continue; // not a shared column at this point (new / not-yet-renamed / etc.) -- out of scope here
-                    }
-                    String expectedType = expectedTypes.get(column);
-                    String actualType = actualTypes.get(column);
-                    if (expectedType == null || actualType == null) {
-                        continue;
-                    }
-                    if (!normalizeSqlType(expectedType).equals(normalizeSqlType(actualType))) {
-                        differing.put(column, expectedType);
-                    }
-                }
-                if (differing.isEmpty()) {
-                    continue;
-                }
-
-                boolean allWidening = true;
-                for (Map.Entry<String, String> diff : differing.entrySet()) {
-                    String actualType = actualTypes.get(diff.getKey());
-                    if (TypeChangeMatrix.classify(actualType, diff.getValue()) != TypeChangeMatrix.Classification.WIDENING) {
-                        allWidening = false;
-                        break;
-                    }
-                }
-                if (!allWidening) {
-                    skipped.add(table + " (not every type-differing column on this table is a safe widening -- "
-                            + "per-table all-or-nothing rule, deferred to the destructive path)");
-                    continue;
-                }
-
-                for (Map.Entry<String, String> diff : differing.entrySet()) {
-                    plan.add(new Widening(table, diff.getKey(), actualTypes.get(diff.getKey()), diff.getValue()));
-                }
-            }
-            // SER-P4.5: prove the canonical SchemaDiff resolves the identical widening plan (which columns
-            // widen) and per-table all-or-nothing skip set before it replaces this bespoke loop.
-            Set<String> bespokeWidened = new LinkedHashSet<>();
-            for (Widening w : plan) {
-                bespokeWidened.add(w.table() + ":" + w.column());
-            }
-            Set<String> bespokeSkipped = new LinkedHashSet<>();
-            for (String s : skipped) {
-                int paren = s.indexOf(" (");
-                bespokeSkipped.add(paren < 0 ? s : s.substring(0, paren));
-            }
-            assertWideningsMatchDiff(dataSource, manifest, bespokeWidened, bespokeSkipped);
             // R4 (F5): one write-before-execute audit row for the whole type-widening pass.
             List<String> itemDetails = new ArrayList<>();
             for (Widening w : plan) {
@@ -1429,16 +1379,22 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         if (!widened.isEmpty()) {
             System.out.println("NPDev schema lifecycle: applied in-place type widenings: " + widened);
         }
-        if (!skipped.isEmpty()) {
+        if (!derived.skippedTables().isEmpty()) {
+            List<String> skipped = new ArrayList<>();
+            for (String table : derived.skippedTables()) {
+                skipped.add(table + " (not every type-differing column on this table is a safe widening -- "
+                        + "per-table all-or-nothing rule, deferred to the destructive path)");
+            }
             System.out.println("NPDev schema lifecycle: tables left for the destructive path (type diff not "
                     + "fully explained by safe widenings): " + skipped);
         }
     }
 
-    /** The type-widening pass's plan derived from the canonical diff (SER-P4.5): which shared columns
-     * safely widen, and which tables are deferred whole to the destructive path (per-table all-or-nothing:
-     * a table with ANY non-widening type change -- a DESTRUCTIVE_NARROW_TYPE item -- widens nothing). */
-    private record WideningPlan(Set<String> widenedKeys, Set<String> skippedTables) {
+    /** The type-widening pass's plan derived from the canonical diff (SER-P4.5): the shared columns that
+     * safely widen (each {@code {table, column, fromType}}) and the tables deferred whole to the
+     * destructive path (per-table all-or-nothing: a table with ANY non-widening type change -- a
+     * DESTRUCTIVE_NARROW_TYPE item -- widens nothing). */
+    private record WideningPlan(List<String[]> widened, Set<String> skippedTables) {
     }
 
     private static WideningPlan wideningPlanFromDiff(DataSource dataSource, SchemaManifest manifest) {
@@ -1447,11 +1403,12 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         com.finalexec.db.schemastate.SchemaDiff diff = new com.finalexec.db.schemastate.SchemaDiffEngine()
                 .diff(DesiredSchemaFactory.fromManifest(manifest),
                         ShadowParityProbe.scopeToOwnedBusinessTables(current, manifest));
-        Map<String, List<String>> widenColsByTable = new LinkedHashMap<>();
+        Map<String, List<String[]>> widenColsByTable = new LinkedHashMap<>(); // table -> [{column, fromType}]
         Set<String> narrowTables = new LinkedHashSet<>();
         for (com.finalexec.db.schemastate.SchemaDiffItem di : diff.items()) {
             if (di.safetyClass() == com.finalexec.db.schemastate.SafetyClass.SAFE_WIDEN) {
-                widenColsByTable.computeIfAbsent(di.table(), t -> new ArrayList<>()).add(di.column());
+                widenColsByTable.computeIfAbsent(di.table(), t -> new ArrayList<>())
+                        .add(new String[] {di.column(), di.before()});
             } else if (di.safetyClass() == com.finalexec.db.schemastate.SafetyClass.DESTRUCTIVE_NARROW_TYPE) {
                 narrowTables.add(di.table());
             }
@@ -1459,41 +1416,18 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // Every table with a type diff (widen and/or narrow); a narrow anywhere on it defers the whole table.
         Set<String> typeDiffTables = new LinkedHashSet<>(widenColsByTable.keySet());
         typeDiffTables.addAll(narrowTables);
-        Set<String> widenedKeys = new LinkedHashSet<>();
+        List<String[]> widened = new ArrayList<>();
         Set<String> skippedTables = new LinkedHashSet<>();
         for (String table : typeDiffTables) {
             if (narrowTables.contains(table)) {
                 skippedTables.add(table);
             } else {
-                for (String column : widenColsByTable.getOrDefault(table, List.of())) {
-                    widenedKeys.add(table + ":" + column);
+                for (String[] colFrom : widenColsByTable.getOrDefault(table, List.of())) {
+                    widened.add(new String[] {table, colFrom[0], colFrom[1]});
                 }
             }
         }
-        return new WideningPlan(widenedKeys, skippedTables);
-    }
-
-    /** SER-P4.5 equivalence probe (gated on {@code npdev.schema.widen.assert}, default-on in tests): the
-     * diff-derived widening plan (widened columns + deferred tables) must equal the bespoke one. Fully
-     * swallowed unless asserting; never changes behavior. */
-    private static void assertWideningsMatchDiff(DataSource dataSource, SchemaManifest manifest,
-            Set<String> bespokeWidened, Set<String> bespokeSkipped) {
-        if (!Boolean.getBoolean("npdev.schema.widen.assert")) {
-            return;
-        }
-        WideningPlan fromDiff;
-        try {
-            fromDiff = wideningPlanFromDiff(dataSource, manifest);
-        } catch (Throwable ignored) {
-            return;
-        }
-        if (!fromDiff.widenedKeys().equals(bespokeWidened) || !fromDiff.skippedTables().equals(bespokeSkipped)) {
-            String line = "WIDENING_DIVERGENCE: bespokeWidened=" + bespokeWidened + " diffWidened="
-                    + fromDiff.widenedKeys() + " bespokeSkipped=" + bespokeSkipped + " diffSkipped="
-                    + fromDiff.skippedTables();
-            System.out.println(line);
-            throw new AssertionError(line);
-        }
+        return new WideningPlan(widened, skippedTables);
     }
 
     /**
