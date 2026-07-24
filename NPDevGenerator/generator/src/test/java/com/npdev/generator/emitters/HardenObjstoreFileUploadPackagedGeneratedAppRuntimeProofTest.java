@@ -55,6 +55,9 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
+
 /**
  * HARDEN-OBJSTORE-P4: proves the full path (controller -&gt; config -&gt; adapter -&gt; object store)
  * end to end in a real packaged app -- generate a model with a genuine {@code file}-typed field,
@@ -63,6 +66,10 @@ import java.util.stream.Stream;
  * tenant prefix. Companion to {@link TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest}
  * (same generate-assemble-boot harness), scoped to the file-store surface only.
  */
+@DisabledOnOs(value = OS.WINDOWS, disabledReason =
+        "Uses a MinIO Testcontainers Linux container; GitHub windows-latest runners cannot run Linux "
+        + "containers (unlike Linux runners / local Docker Desktop). Validated by the green Linux CI "
+        + "job. Windows-CI Docker-test scoping is tracked as REG-34.")
 final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
