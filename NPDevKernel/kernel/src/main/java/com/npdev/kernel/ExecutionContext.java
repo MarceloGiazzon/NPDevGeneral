@@ -17,7 +17,7 @@ public record ExecutionContext(
     private static final String DEFAULT_ROLE = "USER";
 
     public ExecutionContext {
-        tenantId = normalizeOrDefault(tenantId, DEFAULT_TENANT_ID);
+        tenantId = normalizeTenantId(tenantId);
         actorId = normalizeOrDefault(actorId, DEFAULT_ACTOR_ID);
         tags = normalizeTags(tags);
         roles = normalizeRoles(roles);
@@ -94,6 +94,19 @@ public record ExecutionContext(
     private static String normalizeOrDefault(String value, String fallback) {
         String normalized = normalize(value);
         return normalized == null ? fallback : normalized;
+    }
+
+    /**
+     * REG-25: tenantId is the isolation-bucket key, so it is canonicalized to lowercase (not just
+     * trimmed) at this single choke point. Every read and write derives its tenant from an
+     * {@link ExecutionContext}, so two casings of the same logical tenant ({@code Acme}/{@code acme})
+     * converge to one bucket here -- matching {@code TenantRegistryService}, which already lowercases
+     * on insert. The reserved "default" sentinel (REG-24) is unaffected (already lowercase). actorId
+     * is deliberately NOT lowercased: actor identities are case-sensitive.
+     */
+    private static String normalizeTenantId(String tenantId) {
+        String normalized = normalize(tenantId);
+        return normalized == null ? DEFAULT_TENANT_ID : normalized.toLowerCase(Locale.ROOT);
     }
 
     private static Map<String, String> normalizeTags(Map<String, String> tags) {
