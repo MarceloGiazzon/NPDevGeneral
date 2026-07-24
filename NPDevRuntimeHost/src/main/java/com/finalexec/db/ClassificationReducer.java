@@ -46,7 +46,7 @@ public final class ClassificationReducer {
             // column backfilled from a literal default, a platform tighten. classify ignores pure
             // nullability relaxations entirely (no column added/removed), so SAFE_RELAX contributes
             // nothing worse than the SAFE_ADDITIVE baseline either.
-            case SAFE_ADDITIVE, SAFE_TABLE_CREATE, SAFE_RELAX, NEEDS_BACKFILL ->
+            case SAFE_ADDITIVE, SAFE_RELAX, NEEDS_BACKFILL ->
                     SchemaLifecycleExecutor.SchemaChangeClassification.SAFE_ADDITIVE;
             // NEEDS_HOOK collapses two cases classify treats oppositely: a required NON-bond column with
             // no literal default is additive-eligible (SAFE_ADDITIVE; the backfill pass refuses it
@@ -56,8 +56,21 @@ public final class ClassificationReducer {
                     ? SchemaLifecycleExecutor.SchemaChangeClassification.DESTRUCTIVE
                     : SchemaLifecycleExecutor.SchemaChangeClassification.SAFE_ADDITIVE;
             case SAFE_RENAME -> SchemaLifecycleExecutor.SchemaChangeClassification.RENAME_DETECTED;
-            case SAFE_WIDEN -> SchemaLifecycleExecutor.SchemaChangeClassification.TYPE_CHANGE_DETECTED;
-            case DESTRUCTIVE_DROP_COLUMN, DESTRUCTIVE_DROP_TABLE, DESTRUCTIVE_NARROW_TYPE, MANUAL_REVIEW ->
+            // classify flags ANY shared-column type difference as TYPE_CHANGE_DETECTED and defers the
+            // narrow-vs-widen destructiveness to attemptInPlaceTypeWidenings' fall-through -- so a
+            // narrowing is TYPE_CHANGE_DETECTED at the classify level, not DESTRUCTIVE.
+            case SAFE_WIDEN, DESTRUCTIVE_NARROW_TYPE ->
+                    SchemaLifecycleExecutor.SchemaChangeClassification.TYPE_CHANGE_DETECTED;
+            // A brand-new table is not safe-additive EVIDENCE either way in classify (it hits the
+            // `actual.isEmpty() -> continue` guard) -- it leaves the classification at its baseline.
+            case SAFE_TABLE_CREATE ->
+                    SchemaLifecycleExecutor.SchemaChangeClassification.SAFE_ADDITIVE;
+            // NB (Phase 4 reconciliation item): DESTRUCTIVE_DROP_TABLE cannot be reduced from the pure
+            // schema diff -- classify's handling is ownership-gated (an orphan NPDev cannot prove it
+            // created is left alone => SAFE; a proven dropped concept => DESTRUCTIVE). Mapped to
+            // DESTRUCTIVE here as the conservative default; the ownership signal must be threaded in
+            // before classify is switched to the reducer. Tracked in the classify self-check divergences.
+            case DESTRUCTIVE_DROP_COLUMN, DESTRUCTIVE_DROP_TABLE, MANUAL_REVIEW ->
                     SchemaLifecycleExecutor.SchemaChangeClassification.DESTRUCTIVE;
         };
     }

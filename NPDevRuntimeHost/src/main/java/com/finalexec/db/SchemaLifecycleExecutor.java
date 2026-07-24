@@ -536,6 +536,10 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         }
 
         SchemaChangeClassification classification = classify(dataSource, manifest);
+        // Phase 4.1 self-check (gated on npdev.schema.classify.check, swallowed): measure whether
+        // ClassificationReducer would reduce the live diff to this same classification, before the
+        // reducer is trusted to replace classify. Cannot change behavior.
+        ShadowParityProbe.compareClassification(dataSource, manifest, classification);
         SchemaChangeClassification classificationForFallthrough = classification;
         if (classification == SchemaChangeClassification.SAFE_ADDITIVE) {
             System.out.println("NPDev schema lifecycle: fingerprint changed from " + stored + " to "
