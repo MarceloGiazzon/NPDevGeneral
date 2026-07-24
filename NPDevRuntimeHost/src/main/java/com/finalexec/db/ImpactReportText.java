@@ -1,5 +1,6 @@
 package com.finalexec.db;
 
+import com.finalexec.db.schemastate.Resolution;
 import com.finalexec.db.schemastate.SchemaDiffItem;
 
 import java.util.ArrayList;
@@ -43,7 +44,9 @@ public final class ImpactReportText {
         for (ImpactReport.Item item : report.items()) {
             SchemaDiffItem di = item.diffItem();
             boolean isDestructive = di.isDestructive();
-            String mark = isDestructive ? "!!" : "";
+            // SER-P7.4: a hook-claimed item renders "HOOK" here (its id is folded into the NOTE
+            // column by ImpactReport) instead of the "!!" destructive/attention marker.
+            String mark = di.resolution() == Resolution.HOOK_CLAIMED ? "HOOK" : (isDestructive ? "!!" : "");
             String change = change(di);
             String rowsAffected = item.rowsAffected() < 0 ? "?" : Long.toString(item.rowsAffected());
             rows.add(new String[] {mark, di.safetyClass().name(), nullSafe(di.table()),
@@ -76,6 +79,9 @@ public final class ImpactReportText {
     }
 
     private static int verdictBucket(ImpactReport.Item item) {
+        if (item.diffItem().resolution() == Resolution.HOOK_CLAIMED) {
+            return 0;
+        }
         if (item.diffItem().isDestructive()) {
             return 2;
         }

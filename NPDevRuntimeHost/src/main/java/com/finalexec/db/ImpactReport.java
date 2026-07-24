@@ -1,5 +1,6 @@
 package com.finalexec.db;
 
+import com.finalexec.db.schemastate.Resolution;
 import com.finalexec.db.schemastate.SchemaDiff;
 import com.finalexec.db.schemastate.SchemaDiffItem;
 import com.finalexec.db.schemastate.SafetyClass;
@@ -10,6 +11,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -73,20 +75,27 @@ public final class ImpactReport {
      * → NEEDS_ATTENTION; otherwise SAFE). Never throws.
      */
     public static ImpactReport generate(SchemaDiff diff, DataSource dataSource) {
+        // SER-P7.4: a read-only index of every hook.json claim on the classpath -- an item this diff
+        // contains that a hook claims renders as HOOK_CLAIMED (text: "HOOK: <id>", JSON: the
+        // resolution field) instead of counting toward NEEDS_ATTENTION/DESTRUCTIVE. Never throws.
+        Map<String, String> claims = loadClaimIndexBestEffort();
         List<Item> reported = new ArrayList<>();
         Verdict verdict = diff.isEmpty() ? Verdict.NO_CHANGES : Verdict.SAFE;
         try (Connection connection = dataSource.getConnection()) {
-            for (SchemaDiffItem di : diff.items()) {
-                StringBuilder note = new StringBuilder();
-                long rows = probe(connection, di, note);
-                reported.add(new Item(di, rows, note.toString()));
-                verdict = worse(verdict, verdictFor(di));
+            for (SchemaDiffItem raw : diff.items()) {
+                Item item = probedItem(connection, raw, claims);
+                reported.add(item);
+                verdict = worse(verdict, verdictFor(item.diffItem()));
             }
         } catch (Throwable ignored) {
             // A connection-level failure must not fail the report: emit the items with unknown counts.
             if (reported.isEmpty()) {
-                for (SchemaDiffItem di : diff.items()) {
-                    reported.add(new Item(di, -1L, "probe unavailable (no connection)"));
+                for (SchemaDiffItem raw : diff.items()) {
+                    String hookId = claimHookId(raw, claims);
+                    SchemaDiffItem di = hookId == null ? raw : raw.withResolution(Resolution.HOOK_CLAIMED);
+                    String note = hookId == null ? "probe unavailable (no connection)"
+                            : "HOOK: " + hookId + " (probe unavailable -- no connection)";
+                    reported.add(new Item(di, -1L, note));
                     verdict = worse(verdict, verdictFor(di));
                 }
             }
@@ -94,7 +103,43 @@ public final class ImpactReport {
         return new ImpactReport(verdict, List.copyOf(reported));
     }
 
+    private static Item probedItem(Connection connection, SchemaDiffItem raw, Map<String, String> claims) {
+        String hookId = claimHookId(raw, claims);
+        SchemaDiffItem di = hookId == null ? raw : raw.withResolution(Resolution.HOOK_CLAIMED);
+        StringBuilder note = new StringBuilder();
+        long rows = probe(connection, di, note);
+        if (hookId != null) {
+            String prefix = "HOOK: " + hookId + (note.length() > 0 ? ". " : "");
+            note.insert(0, prefix);
+        }
+        return new Item(di, rows, note.toString());
+    }
+
+    private static Map<String, String> loadClaimIndexBestEffort() {
+        try {
+            return ConversionHookRunner.loadClaimIndex();
+        } catch (Throwable ignored) {
+            return Map.of();
+        }
+    }
+
+    /** {@code null} unless an UNRESOLVED, otherwise-attention-worthy item (NEEDS_BACKFILL/NEEDS_HOOK/
+     *  DESTRUCTIVE_*) is covered by a claim -- a SAFE_* item is never claim-annotated, since a hook has
+     *  nothing to do for one. */
+    private static String claimHookId(SchemaDiffItem di, Map<String, String> claims) {
+        String hookId = claims.get(di.itemKey());
+        if (hookId == null || di.resolution() != Resolution.UNRESOLVED || verdictFor(di) == Verdict.SAFE) {
+            return null;
+        }
+        return hookId;
+    }
+
     private static Verdict verdictFor(SchemaDiffItem di) {
+        // SER-P7.4 (rule 6, read-only preview): an item a hook claims does not count toward
+        // NEEDS_ATTENTION/DESTRUCTIVE -- the verdict/exit-code apply only to UNCLAIMED items.
+        if (di.resolution() == Resolution.HOOK_CLAIMED) {
+            return Verdict.SAFE;
+        }
         if (di.isDestructive()) {
             return Verdict.DESTRUCTIVE;
         }
