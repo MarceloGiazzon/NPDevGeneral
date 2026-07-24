@@ -535,11 +535,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     + "docs/SCHEMA_EVOLUTION.md#refusals-and-rollback.");
         }
 
+        // SER-P4.8: classify's COLUMN-level decision is now ClassificationReducer over the live diff
+        // (switched inside classify; the P4.1 self-check that guarded this is now tautological and gone).
         SchemaChangeClassification classification = classify(dataSource, manifest);
-        // Phase 4.1 self-check (gated on npdev.schema.classify.check, swallowed): measure whether
-        // ClassificationReducer would reduce the live diff to this same classification, before the
-        // reducer is trusted to replace classify. Cannot change behavior.
-        ShadowParityProbe.compareClassification(dataSource, manifest, classification);
         SchemaChangeClassification classificationForFallthrough = classification;
         if (classification == SchemaChangeClassification.SAFE_ADDITIVE) {
             System.out.println("NPDev schema lifecycle: fingerprint changed from " + stored + " to "
@@ -2139,70 +2137,17 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         SchemaChangeClassification worst = SchemaChangeClassification.SAFE_ADDITIVE;
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
-            for (Map.Entry<String, List<String>> entry : manifest.businessTableColumns().entrySet()) {
-                String table = entry.getKey();
-                Set<String> expected = new LinkedHashSet<>(entry.getValue());
-                Set<String> additiveEligible = new LinkedHashSet<>(
-                        manifest.businessTableAdditiveColumns().getOrDefault(table, List.of()));
-                Set<String> actual = readActualColumns(metadata, table);
-                if (actual.isEmpty()) {
-                    // Table doesn't exist yet (brand new concept); V1's CREATE TABLE IF NOT EXISTS handles it.
-                    continue;
-                }
-                Set<String> extraInDb = new LinkedHashSet<>(actual);
-                extraInDb.removeAll(expected);
-                Set<String> missingInDb = new LinkedHashSet<>(expected);
-                missingInDb.removeAll(actual);
-
-                if (extraInDb.isEmpty() && (missingInDb.isEmpty() || additiveEligible.containsAll(missingInDb))) {
-                    // No column was removed and every added column is additive-eligible -- but a
-                    // SHARED column (same name, present both before and after) may still have had its
-                    // type changed, which a pure name-based diff can never see. Must check before
-                    // declaring this table safe, not after -- a perfect name match would otherwise
-                    // always short-circuit past the type-change check below.
-                    if (hasTypeChange(metadata, table, expected, manifest.businessTableColumnTypes().getOrDefault(table, Map.of()))) {
-                        worst = worse(worst, SchemaChangeClassification.TYPE_CHANGE_DETECTED);
-                    }
-                    continue;
-                }
-
-                Map<String, String> renames = manifest.businessTableRenamedColumns().getOrDefault(table, Map.of());
-                Map<String, String> expectedTypes = manifest.businessTableColumnTypes().getOrDefault(table, Map.of());
-                RenameResolution.Result resolution = RenameResolution.resolve(missingInDb, extraInDb, renames);
-                Set<String> remainingMissing = resolution.remainingMissing();
-                Set<String> remainingExtra = resolution.remainingExtra();
-
-                if (remainingExtra.isEmpty() && (remainingMissing.isEmpty() || additiveEligible.containsAll(remainingMissing))) {
-                    // Renames (plus, at most, additive-eligible new columns) fully explain the
-                    // diff -- but a renamed column may ALSO have had its type changed (the live
-                    // column is still under the OLD name, so a plain expected-name lookup into
-                    // actualTypes can never see it), and an unrelated, non-renamed shared column
-                    // on this same table may independently have a type change. Both must be
-                    // checked before declaring this table a clean RENAME_DETECTED, otherwise a
-                    // type change silently rides along with the rename onto the in-place path.
-                    Map<String, String> actualTypes = readActualColumnTypes(metadata, table);
-                    boolean typeChanged = false;
-                    for (Map.Entry<String, String> explained : resolution.explainedRenames().entrySet()) {
-                        String expectedType = normalizeSqlType(expectedTypes.get(explained.getKey()));
-                        String actualType = normalizeSqlType(actualTypes.get(explained.getValue()));
-                        if (expectedType != null && actualType != null && !expectedType.equals(actualType)) {
-                            typeChanged = true;
-                            break;
-                        }
-                    }
-                    if (!typeChanged) {
-                        Set<String> sharedColumns = new LinkedHashSet<>(expected);
-                        sharedColumns.removeAll(resolution.explainedRenames().keySet());
-                        sharedColumns.removeAll(remainingMissing);
-                        typeChanged = hasTypeChange(metadata, table, sharedColumns, expectedTypes);
-                    }
-                    worst = worse(worst, typeChanged
-                            ? SchemaChangeClassification.TYPE_CHANGE_DETECTED
-                            : SchemaChangeClassification.RENAME_DETECTED);
-                    continue;
-                }
-                return SchemaChangeClassification.DESTRUCTIVE;
-            }
+            // SER-P4.8: the COLUMN-level classification is now ClassificationReducer over the live
+            // SchemaDiff -- proven equivalent to the former per-table name/type/rename loop across every
+            // H2 + Postgres proof-matrix scenario (the classify self-check asserted this default-on until
+            // this switch made it tautological). The empty-manifest guard (above) and the LNCH-1-B7
+            // dropped-concept escalation (below) are NOT column-level and remain exactly as they were.
+            worst = ClassificationReducer.reduce(
+                    new com.finalexec.db.schemastate.SchemaDiffEngine().diff(
+                            DesiredSchemaFactory.fromManifest(manifest),
+                            ShadowParityProbe.scopeToOwnedBusinessTables(
+                                    new com.finalexec.db.schemastate.CurrentSchemaReader().read(dataSource), manifest)),
+                    DesiredSchemaFactory.fromManifest(manifest));
             // LNCH-1-B7: the loop above iterates ONLY manifest-declared tables, so a table the new
             // model no longer declares (a dropped CONCEPT) is invisible to it -- the boot classified
             // SAFE_ADDITIVE and the table survived forever, even though -PlanOnly had told the
