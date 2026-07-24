@@ -70,6 +70,48 @@ public final class IdentityRoleLookup {
         }
     }
 
+    /** REG-23: config property (JVM system property, bridged from Spring by RuntimeHost at boot) — an
+     * ISO-8601 instant after which legacy tokens with NO {@code tv} claim are rejected. Unset/blank =
+     * today's lenient behavior. */
+    public static final String REJECT_TVLESS_AFTER_PROPERTY = "npdev.auth.jwt.reject-tokens-without-tv-after";
+
+    /**
+     * REG-23: THE single revocation decision point, called by BOTH claim->context paths (RuntimeHost
+     * {@code IdentityAwareContextResolver} and {@link GeneratedCrudRuntimeSupport}) so they can never
+     * diverge. A token WITH a {@code tv} claim is revoked when its version no longer matches the stored
+     * {@code token_version}. A token WITHOUT a {@code tv} claim (legacy, pre-{@code tv}) is NOT revoked
+     * -- backward compatible -- UNTIL the operator sets {@link #REJECT_TVLESS_AFTER_PROPERTY} to a past
+     * instant (chosen {@code >= } the max token lifetime after {@code tv} shipped, so no legitimate
+     * tv-less token can still exist), after which every tv-less token is rejected. Never throws; a
+     * malformed cutover fails OPEN (treated as unset) — {@code StartupValidator} rejects a malformed
+     * value at boot so it never reaches here.
+     */
+    public static boolean isTokenRevoked(Object rawTokenVersion, DataSource dataSource, String tenantId, String actorId) {
+        if (rawTokenVersion == null) {
+            return rejectTvlessTokensNow();
+        }
+        int claimedVersion;
+        try {
+            claimedVersion = Integer.parseInt(String.valueOf(rawTokenVersion));
+        } catch (NumberFormatException malformed) {
+            return false;
+        }
+        return claimedVersion != tokenVersion(dataSource, tenantId, actorId);
+    }
+
+    private static boolean rejectTvlessTokensNow() {
+        String configured = System.getProperty(REJECT_TVLESS_AFTER_PROPERTY);
+        if (configured == null || configured.isBlank()) {
+            return false;
+        }
+        try {
+            java.time.Instant cutover = java.time.Instant.parse(configured.trim());
+            return !java.time.Instant.now().isBefore(cutover);
+        } catch (java.time.format.DateTimeParseException malformed) {
+            return false;
+        }
+    }
+
     public static Set<String> rolesFor(DataSource dataSource, String tenantId, String actorId) {
         if (dataSource == null || actorId == null || actorId.isBlank()) {
             return Set.of();

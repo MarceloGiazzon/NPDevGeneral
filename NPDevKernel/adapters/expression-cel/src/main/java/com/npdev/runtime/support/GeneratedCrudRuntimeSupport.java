@@ -2834,16 +2834,9 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     private boolean isTokenRevoked(Object rawTokenVersion, String tenantId, String actorId) {
-        if (rawTokenVersion == null) {
-            return false;
-        }
-        int claimedVersion;
-        try {
-            claimedVersion = Integer.parseInt(String.valueOf(rawTokenVersion));
-        } catch (NumberFormatException malformed) {
-            return false;
-        }
-        return claimedVersion != IdentityRoleLookup.tokenVersion(dataSource, tenantId, actorId);
+        // REG-23: delegate to the single shared decision point (IdentityRoleLookup.isTokenRevoked) so
+        // both claim->context paths agree, including the config-driven rejection of legacy tv-less tokens.
+        return IdentityRoleLookup.isTokenRevoked(rawTokenVersion, dataSource, tenantId, actorId);
     }
 
     private static Set<String> parseRoles(Object rawRoles) {
