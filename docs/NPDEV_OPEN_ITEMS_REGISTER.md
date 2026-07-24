@@ -1082,6 +1082,23 @@ report is invalid → fatal); (2) either wire the ~21 producer gates into the jo
 what this job produces; (3) fix the real `stateful-additive-migrations` `const` schema mismatch. Not a
 product defect — CI evidence-orchestration.
 
+## 3.7 REG-33 — CLI's on-demand `npm install` for the JSON-schema validator fails on Windows from a Python subprocess
+
+**Type:** BUG (product, Windows) · **Severity:** LOW · **Effort:** S · **Status:** **OPEN (filed
+2026-07-24; worked around in CI).** `npdev_cli.py`'s `validate_json_schema` (used by `migrate`,
+`validate`, `generate`, …) runs `npm --prefix scripts/quality/json-schema-validator install`
+(`check=True`) when the validator's `node_modules` is absent (it is gitignored → absent on any fresh
+checkout). That on-demand `npm install` — invoked as `subprocess.run([npm.cmd, ...])` from Python —
+**fails with ENOENT (exit `4294963238` = libuv `-4058`) on the CI Windows runner** (works on Linux and
+on a local Windows dev box). Root-caused via a CI diagnostic that captured the test XML:
+`LegacyModelMigrationToolTest` → `npdev migrate` → this install → `CalledProcessError`. **Worked around
+2026-07-24** by pre-installing the validator deps as a normal `npm` workflow step in the CI Windows job
+(so the CLI skips its own broken install). **Real fix (product):** make the CLI's npm invocation
+Windows-robust — run it via `cmd /c npm …` (or `shell=True`, or invoke `node <npm-cli.js>`) so a real
+Windows user running `npdev migrate/validate/generate` without pre-existing `node_modules` doesn't hit
+the same ENOENT. Likely a Python-3.12+ Windows `.cmd`-via-subprocess behavior change; verify the fix on
+a clean Windows checkout.
+
 ---
 
 ## 4. Suggested order (revised 2026-07-21 after independent code verification)
