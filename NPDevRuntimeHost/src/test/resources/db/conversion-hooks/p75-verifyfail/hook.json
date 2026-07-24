@@ -1,0 +1,7 @@
+{
+  "id": "p75-verifyfail",
+  "claims": ["ADD_REQUIRED_COLUMN:p75_verifyfail:status"],
+  "description": "P7.5 fixture: adds the column but declares a verifySql expectation that can never match, to prove verify-mismatch aborts the boot before any destructive step.",
+  "verifySql": "SELECT COUNT(*) FROM p75_verifyfail WHERE status IS NULL",
+  "verifyExpect": 999
+}

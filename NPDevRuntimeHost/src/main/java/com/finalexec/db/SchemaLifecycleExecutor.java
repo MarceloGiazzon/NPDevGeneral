@@ -436,14 +436,27 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     DestructiveRecreation beforeMigrate(DataSource dataSource, SchemaManifest manifest) {
         com.finalexec.db.schemastate.CurrentSchema shadowPre = ShadowParityProbe.snapshot(dataSource);
         boolean shadowFingerprintChanged = shadowFingerprintChanged(dataSource, manifest);
+        conversionHooksAppliedLastDecision = false;
         DestructiveRecreation result = null;
         try {
             result = beforeMigrateDecision(dataSource, manifest);
             return result;
         } finally {
-            ShadowParityProbe.compareAndLog(shadowPre, manifest, result, shadowFingerprintChanged);
+            // SER-P7.3: a conversion hook resolving a destructive item is a state a pure schema-diff
+            // snapshot taken BEFORE it ran cannot predict -- exactly the same category of "override
+            // the shadow has no signal for" as (c)/(d)/(e) already documented in compareAndLog, so it
+            // is threaded through as its own exemption rather than tripping SHADOW_DIVERGENCE.
+            ShadowParityProbe.compareAndLog(shadowPre, manifest, result, shadowFingerprintChanged,
+                    conversionHooksAppliedLastDecision);
         }
     }
+
+    /** SER-P7.3: set by {@link #beforeMigrateDecision} (via {@link ConversionHookRunner#run}) when at
+     *  least one conversion hook actually applied this boot -- read by {@link #beforeMigrate} to tell
+     *  {@link ShadowParityProbe} to skip its comparison (see the javadoc there). Reset at the top of
+     *  every {@link #beforeMigrate} call; safe as instance state because a {@code SchemaLifecycleExecutor}
+     *  is a fresh, single-boot-use object (see the class's Flyway wiring). */
+    private boolean conversionHooksAppliedLastDecision;
 
     /** Same upgrade-detection {@code migrate()} uses (stored fingerprint present AND differs): the live
      *  engine only runs structural passes when this is true, so the shadow must mirror the gate or a
@@ -669,6 +682,17 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     + "falling through to destructive recreation as the safety net.");
         }
 
+        // SER-P7.3 (Phase 7, the freedom pillar): run operator-authored conversion hooks against the
+        // current residual diff BEFORE the bond-column refusal and SchemaDeltaReport below -- a hook's
+        // convert SQL performs its claimed conversion (including destructive ones) itself, so by the
+        // time SchemaDeltaReport re-computes fresh below, whatever the hook resolved has simply
+        // vanished from the residual diff and needs no acknowledgment token (rule 6; see
+        // ConversionHookRunner's class javadoc for why no special-casing is needed downstream).
+        // Idempotent no-op (and writes no history) when nothing is currently unresolved.
+        conversionHooksAppliedLastDecision = ConversionHookRunner.run(dataSource, manifest,
+                (label, outcome, details) ->
+                        insertRawHistoryRow(dataSource, stored, manifest.schemaFingerprint(), label, details, outcome));
+
         // LNCH-1 P5 (5.3): a required bond/FK field missing from an existing, populated table is
         // intercepted HERE, before SchemaDeltaReport ever runs -- independently re-derived per
         // table (not relying on classify()'s short-circuit-to-DESTRUCTIVE aggregate value), so it
@@ -681,6 +705,19 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // it. SchemaDeltaReport independently re-introspects the live database (it does not trust
         // classify()'s classification value beyond what is used here for logging/history purposes).
         SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, manifest);
+        // SER-P7.3 (rule 6): a conversion hook can fully resolve every residual destructive item
+        // between classify() above and this fresh re-introspection -- when that happens there is
+        // nothing left requiring an acknowledgment token, exactly as if the diff had been SAFE_ADDITIVE
+        // all along ("authoring the hook IS the acknowledgment"). Before Phase 7 this branch was
+        // unreachable (nothing could change the live schema between classify() and here), so the
+        // token-required refusal below never needed to consider an empty report.
+        if (report.isEmpty()) {
+            System.out.println("NPDev schema lifecycle: every residual destructive item was resolved by a "
+                    + "conversion hook; no acknowledgment token required. Fingerprint changed from " + stored
+                    + " to " + manifest.schemaFingerprint() + ".");
+            writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classificationForFallthrough);
+            return DestructiveRecreation.safeAdditiveOutcome();
+        }
         String expectedToken = DestructiveAckToken.compute(manifest.schemaFingerprint(), report.stableStrings());
         String providedToken = manifest.destructiveAcknowledgment() == null
                 ? "" : manifest.destructiveAcknowledgment().trim();
