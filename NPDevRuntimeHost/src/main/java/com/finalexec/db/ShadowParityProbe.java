@@ -55,11 +55,15 @@ public final class ShadowParityProbe {
      * Compare the shadow's verdict (from the pre-action snapshot + the manifest) against what the live
      * engine did ({@code liveResult}; {@code null} means the engine refused the boot). Log-only, never
      * throws.
+     *
+     * @param conversionHooksApplied SER-P7.3: {@code true} when {@link ConversionHookRunner} actually
+     *                               applied at least one hook this boot -- see exemption (h) below.
      */
     public static void compareAndLog(CurrentSchema preSnapshot,
             SchemaLifecycleExecutor.SchemaManifest manifest,
             SchemaLifecycleExecutor.DestructiveRecreation liveResult,
-            boolean fingerprintChanged) {
+            boolean fingerprintChanged,
+            boolean conversionHooksApplied) {
         String divergenceLine = null;
         try {
             if (preSnapshot == null || manifest == null || !manifest.physicalDatabase()) {
@@ -73,8 +77,12 @@ public final class ShadowParityProbe {
             //  (b) a refusal (liveResult == null)    -> npdev_schema_history (REG-8 rollback), an ack
             //                                           token, a missing required bond, crash-recovery;
             //  (c) blanket destructive posture       -> whole-schema recreate policy, not item-wise;
-            //  (d) a whole-schema recreate performed -> UNKNOWN/ownership/token-driven, not pure schema.
-            if (!fingerprintChanged || liveResult == null || manifest.destructiveAllowed() || liveResult.performed()) {
+            //  (d) a whole-schema recreate performed -> UNKNOWN/ownership/token-driven, not pure schema;
+            //  (h) a conversion hook applied (SER-P7.3) -> the hook's own SQL changed the live schema
+            //      in a way the PRE-action snapshot cannot predict; "authoring the hook IS the
+            //      acknowledgment" is deliberately outside the pure-diff model, same category as (c)/(d).
+            if (!fingerprintChanged || liveResult == null || manifest.destructiveAllowed() || liveResult.performed()
+                    || conversionHooksApplied) {
                 return;
             }
             DesiredSchema desired = DesiredSchemaFactory.fromManifest(manifest);

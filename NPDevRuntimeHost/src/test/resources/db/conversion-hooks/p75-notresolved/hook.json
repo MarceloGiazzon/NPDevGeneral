@@ -1,0 +1,5 @@
+{
+  "id": "p75-notresolved",
+  "claims": ["ADD_REQUIRED_COLUMN:p75_notresolved:status"],
+  "description": "P7.5 fixture: claims a column it never actually adds, to prove a claim is verified against a re-diff, never trusted."
+}

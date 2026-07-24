@@ -286,6 +286,8 @@ sourceSets {
                 // Same rule for the schema-engine-rebuild Postgres golden tests (Testcontainers):
                 // excluded from the default `test`, included on demand via -PincludePostgresMatrix.
                 exclude 'com/finalexec/db/schemastate/CurrentSchemaReaderPostgresTest.java'
+                // SER-P7.5: the conversion-hook Postgres twin (Testcontainers) -- same rule.
+                exclude 'com/finalexec/db/ConversionHookRunnerPostgresTest.java'
             }
             // These two tests exercise MAIN classes that import com.npdev.generated.* (ConceptQueryController
             // -> RuntimeContextService; ActuatorAdminGuardFilter), so those main classes are excluded from

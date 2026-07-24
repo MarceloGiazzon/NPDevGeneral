@@ -1,0 +1,5 @@
+{
+  "id": "p75-sqlerror",
+  "claims": ["ADD_REQUIRED_COLUMN:p75_sqlerror:status"],
+  "description": "P7.5 fixture: a first statement that would succeed followed by an invalid one, to prove the whole hook transaction rolls back atomically on failure."
+}

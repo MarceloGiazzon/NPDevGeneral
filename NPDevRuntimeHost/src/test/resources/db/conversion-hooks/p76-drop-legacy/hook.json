@@ -1,0 +1,5 @@
+{
+  "id": "p76-drop-legacy",
+  "claims": ["DROP_COLUMN:p76_widgets:legacy_flag:BOOLEAN"],
+  "description": "P7.5/P7.7 fixture: drops the column itself, so the boot needs no acknowledgment token (rule 6, full beforeMigrate integration proof)."
+}
