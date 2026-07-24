@@ -1084,8 +1084,15 @@ product defect — CI evidence-orchestration.
 
 ## 3.7 REG-33 — CLI's on-demand `npm install` for the JSON-schema validator fails on Windows from a Python subprocess
 
-**Type:** BUG (product, Windows) · **Severity:** LOW · **Effort:** S · **Status:** **OPEN (filed
-2026-07-24; worked around in CI).** `npdev_cli.py`'s `validate_json_schema` (used by `migrate`,
+**Type:** BUG (product, Windows) · **Severity:** LOW · **Effort:** S · **Status:** **FIXED
+(2026-07-24), verified locally RED→GREEN.** Real cause (captured via CI diagnostic): `npm --prefix
+<validator> install` run with `cwd=repo-root` makes npm read `package.json` from **cwd** (the repo root
+has none) → `ENOENT ... open D:\...\package.json` (exit `4294963238` / `-4058`) on the CI Windows npm.
+The `--prefix` flag only sets where `node_modules` lands, not where npm reads the manifest. **Fix:**
+`npdev_cli.py` now runs `npm install` with `cwd=validator_root` (no `--prefix`). Verified locally:
+removed `node_modules`, ran `npdev migrate` → install ran from the validator dir, exit 0, valid output.
+CI also pre-installs the deps in the Windows job (belt-and-suspenders) via `working-directory`. Original
+framing (kept for history): `npdev_cli.py`'s `validate_json_schema` (used by `migrate`,
 `validate`, `generate`, …) runs `npm --prefix scripts/quality/json-schema-validator install`
 (`check=True`) when the validator's `node_modules` is absent (it is gitignored → absent on any fresh
 checkout). That on-demand `npm install` — invoked as `subprocess.run([npm.cmd, ...])` from Python —

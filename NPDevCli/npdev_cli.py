@@ -204,7 +204,10 @@ def validate_json_schema(schema: Path, instance: Path) -> dict:
         npm = shutil.which("npm.cmd" if os.name == "nt" else "npm") or shutil.which("npm")
         if not npm:
             raise CliError("npm is required to install the canonical JSON Schema validator dependencies")
-        subprocess.run([npm, "--prefix", str(validator_root), "install", "--silent"], cwd=root, check=True)
+        # Run `npm install` FROM the validator dir (cwd), not `--prefix <dir>` from the repo root:
+        # `--prefix` sets where node_modules lands but npm still reads package.json from cwd, so with
+        # cwd=repo-root (which has no package.json) npm ENOENTs on Windows (D:\...\package.json). REG-33.
+        subprocess.run([npm, "install", "--silent"], cwd=validator_root, check=True)
     completed = subprocess.run(
         [
             "node",
