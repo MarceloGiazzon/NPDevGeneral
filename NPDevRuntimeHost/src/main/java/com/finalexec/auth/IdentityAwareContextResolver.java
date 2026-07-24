@@ -48,25 +48,17 @@ public final class IdentityAwareContextResolver implements AuthenticatedContextR
     }
 
     /**
-     * LNCH-4: a JWT minted with a {@code tv} (token version) claim is only valid while that claim
-     * still matches {@code identity_users.token_version} for the same (tenant, actor). A token minted
-     * before this feature existed carries no {@code tv} claim at all and is deliberately never
-     * rejected here -- revocation only ever applies going forward from the first login that mints one.
+     * LNCH-4 / REG-23: a JWT with a {@code tv} (token version) claim is valid only while that claim
+     * matches {@code identity_users.token_version} for the same (tenant, actor). A token minted before
+     * that feature carries no {@code tv} claim; it is not rejected by default (backward compat) UNLESS
+     * the operator sets {@code npdev.auth.jwt.reject-tokens-without-tv-after}. The whole decision lives
+     * in {@link IdentityRoleLookup#isTokenRevoked} so this path and the kernel
+     * {@code GeneratedCrudRuntimeSupport} path can never diverge.
      */
     private void rejectIfTokenRevoked(Map<String, Object> claims, ExecutionContext context) {
         Object rawTokenVersion = claims == null ? null : claims.get("tv");
-        if (rawTokenVersion == null) {
-            return;
-        }
-        int claimedVersion;
-        try {
-            claimedVersion = Integer.parseInt(String.valueOf(rawTokenVersion));
-        } catch (NumberFormatException malformed) {
-            return;
-        }
-        int currentVersion = IdentityRoleLookup.tokenVersion(
-                dataSourceProvider.getIfAvailable(), context.tenantId(), context.actorId());
-        if (claimedVersion != currentVersion) {
+        if (IdentityRoleLookup.isTokenRevoked(
+                rawTokenVersion, dataSourceProvider.getIfAvailable(), context.tenantId(), context.actorId())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "token_revoked");
         }
     }

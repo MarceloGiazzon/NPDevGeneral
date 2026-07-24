@@ -93,6 +93,7 @@ Only checked when `npdev.auth.enabled` (default `true`).
 | `npdev.auth.jwt.public-key-path` | token verification (both shapes) | Required; placeholder-rejected; **the key file must actually be readable** or startup fails fast with a `#authentication`-linked message (was: opaque per-request `jwt_public_key_not_found`). |
 | `npdev.auth.jwt.private-key-path` | token *signing* (`LoginController`) | **Optional** — blank = verify-only. If set, the file **must be readable** or startup fails fast with a `#authentication`-linked message. (Before REG-9 a set-but-missing path crashed the whole context with a raw Spring placeholder / `NoSuchFileException` at bean creation; a blank path *also* crashed, making verify-only impossible.) |
 | `npdev.auth.jwt.expiry-seconds` | token signing | No (defaults to `28800`, i.e. 8 hours) |
+| `npdev.auth.jwt.reject-tokens-without-tv-after` | token revocation (both claim→context paths) | **Optional (default off).** An ISO-8601 instant (e.g. `2026-08-01T00:00:00Z`); once reached, legacy JWTs carrying **no `tv` (token-version) claim** are rejected. Set it to `≥ max token lifetime` after the `tv` feature shipped, so no legitimate tv-less token can still exist. Unset/blank = today's lenient behavior. A malformed value fails startup fast. (REG-23) |
 
 `StartupValidator` also rejects obviously-placeholder values for `issuer`/`audience`/
 `public-key-path` — anything containing `example.com`, `your-auth-provider`, `changeme`,
@@ -112,6 +113,7 @@ internal hyphens, so `NPDEV_AUTH_JWT_ISSUER` / `NPDEV_AUTH_JWT_AUDIENCE` bind as
 | `npdev.auth.jwt.issuer` | `NPDEV_AUTH_JWT_ISSUER` |
 | `npdev.auth.jwt.audience` | `NPDEV_AUTH_JWT_AUDIENCE` |
 | `npdev.auth.jwt.public-key-path` | `NPDEV_AUTH_JWT_PUBLICKEYPATH` |
+| `npdev.auth.jwt.reject-tokens-without-tv-after` | `NPDEV_AUTH_JWT_REJECTTOKENSWITHOUTTVAFTER` |
 | `npdev.auth.jwt.private-key-path` | `NPDEV_AUTH_JWT_PRIVATEKEYPATH` |
 
 Login also needs to know which table/columns hold credentials (defaults match the identity pack's
