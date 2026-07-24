@@ -59,14 +59,19 @@ public final class ShadowParityProbe {
             SchemaLifecycleExecutor.SchemaManifest manifest,
             SchemaLifecycleExecutor.DestructiveRecreation liveResult,
             boolean fingerprintChanged) {
+        String divergenceLine = null;
         try {
             if (preSnapshot == null || manifest == null || !manifest.physicalDatabase()) {
                 return;
             }
-            // The live engine runs structural passes ONLY on a fingerprint change; on a match it
-            // no-ops regardless of live shape. Mirror that gate, or a fingerprint-match boot reads as a
-            // spurious divergence (the shadow would still see additive/create differences).
-            if (!fingerprintChanged) {
+            // Scope: the shadow validates the live engine's SCHEMA-DRIVEN reconciliation choices, NOT
+            // its refusal/override policy (owner decision, Phase 3). Skip when the live outcome is not a
+            // plain schema decision:
+            //  (a) no fingerprint change -> the engine no-ops regardless of live shape;
+            //  (b) a refusal (liveResult == null, the engine threw) -> the decision is driven by
+            //      npdev_schema_history (REG-8 rollback), an acknowledgment token, a missing required
+            //      bond, or crash-recovery state -- none of which a schema-diff shadow models.
+            if (!fingerprintChanged || liveResult == null) {
                 return;
             }
             DesiredSchema desired = DesiredSchemaFactory.fromManifest(manifest);
@@ -74,22 +79,33 @@ public final class ShadowParityProbe {
             Verdict shadow = shadowVerdict(diff);
             Verdict live = liveVerdict(liveResult);
             if (shadow != live) {
-                String line = "SHADOW_DIVERGENCE: shadow=" + shadow + " live=" + live
+                divergenceLine = "SHADOW_DIVERGENCE: shadow=" + shadow + " live=" + live
                         + " items=" + diff.items().size() + " destructive=" + diff.destructiveItems().size()
                         + " tables=" + preSnapshot.tables().keySet() + " sample=" + sample(diff);
-                System.out.println(line);
-                String logFile = System.getProperty(LOG_FILE_PROPERTY);
-                if (logFile != null && !logFile.isBlank()) {
-                    try {
-                        java.nio.file.Files.writeString(java.nio.file.Path.of(logFile), line + System.lineSeparator(),
-                                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
-                    } catch (Throwable ignored) {
-                        // best-effort diagnostic only
-                    }
-                }
+                System.out.println(divergenceLine);
+                appendToLogFile(divergenceLine);
             }
         } catch (Throwable ignored) {
-            // The shadow must never change behavior — swallow absolutely everything.
+            // The shadow must never change behavior — swallow absolutely everything from the computation.
+            return;
+        }
+        // Test-only hard assertion (P3.2), thrown OUTSIDE the swallowing try so it propagates. Never
+        // reached on a refusal (skipped above), so it cannot mask a live refusal exception.
+        if (divergenceLine != null && Boolean.getBoolean(ASSERT_PROPERTY)) {
+            throw new AssertionError("Shadow parity divergence (npdev.schema.shadow.assert on): " + divergenceLine);
+        }
+    }
+
+    private static void appendToLogFile(String line) {
+        String logFile = System.getProperty(LOG_FILE_PROPERTY);
+        if (logFile == null || logFile.isBlank()) {
+            return;
+        }
+        try {
+            java.nio.file.Files.writeString(java.nio.file.Path.of(logFile), line + System.lineSeparator(),
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch (Throwable ignored) {
+            // best-effort diagnostic only
         }
     }
 
