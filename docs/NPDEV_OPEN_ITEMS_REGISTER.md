@@ -932,7 +932,7 @@ both enforce `tenant_id`; seed/export route through the enforced gateway; no SUP
 business data; SQL-injection-safe query filters; revocation checked on both claim→context paths). The
 residual is **5 MEDIUM + 3 LOW + 1 INFO**, all login/throttle/actuator hardening, filed as dated
 **REG-18…REG-26** below. Per the plan's triage, with no CRITICAL/HIGH there is no *mandatory* Tier-B
-work; the MEDIUM/LOW remediations are scheduled, not dropped. **TIER B ALSO DONE (2026-07-21):** all 5 MEDIUM findings fixed (REG-18/19/20/21/22), REG-24 verified already-guarded, REG-26 WONTFIX, REG-23/25 deferred with rationale — see the REG-18…26 table below. REG-16 is now fully addressed.
+work; the MEDIUM/LOW remediations are scheduled, not dropped. **TIER B ALSO DONE (2026-07-21):** all 5 MEDIUM findings fixed (REG-18/19/20/21/22), REG-24 verified already-guarded, REG-26 WONTFIX, REG-23/25 deferred with rationale — see the REG-18…26 table below. REG-16 is now fully addressed **for the LNCH-2+4 surface it originally scoped**. The other ~21 launch surfaces (generator codegen, kernel FlowEngine/`KernelRunner`, LNCH-13 row-level authz, export/PDF, …) remained at zero adversarial review — tracked as its own residual item, **REG-16-resid** (§3.10), rather than reopening this closed item's scope. Round 1 of REG-16-resid (kernel execution path) is done — see §3.10.
 
 **What.** LNCH-1 has absorbed **five** full review→plan→implement→review rounds. Every other item in
 the ledger — including LNCH-2 (tenant isolation), LNCH-4 (auth), LNCH-13 (row-level authz) — has had
@@ -1203,6 +1203,51 @@ noted only because it's why `./gradlew postBeta0MaturityCheck` can't be evaluate
 repo and was not part of REG-32's scoped file list; extending the REG-3 pattern into a second,
 structurally different (Groovy/Gradle-native, not PowerShell) validation pipeline is its own bounded
 task. Until fixed, the CI "Bootstrap post-Beta0 maturity reports" step keeps `continue-on-error: true`.
+
+## 3.10 REG-16-resid — adversarial review of the other ~21 launch surfaces (multi-round programme)
+
+**Type:** PROCESS (security review) · **Severity:** HIGH (the surface risk; not launch-blocking —
+see honest note) · **Effort:** L (multi-round) · **Status:** **Round 1 of N COMPLETE (2026-07-24).**
+REG-16's original Tier-A review (§3.1) covered only LNCH-2 (tenant isolation) + LNCH-4 (auth); the
+other ~21 launch surfaces — generator codegen, kernel `FlowEngine`/`KernelRunner`, LNCH-13 row-level
+authz, the export/PDF path — had never had an attack-first review. This item tracks that residual
+work as an iterative, one-surface-per-round programme (`docs/POST_REG17_CLOSURE_PLAN.md` Task 4),
+reusing the REG-16 template and discipline.
+
+**Round 1 (2026-07-24): the kernel execution path** — `KernelRunner`'s capability-invocation path
+(circuit-gate → bulkhead-acquire → idempotency-check → retry → cache-write → failure-accounting),
+`RegistryCapabilityDispatcher`, and the idempotency/circuit-breaker/bulkhead mechanisms (both in-proc
+and Postgres-backed adapters). Chosen first because it's the code every generated app runs — a flaw
+there is a flaw everywhere. Findings document: `docs/REG16_KERNEL_EXECUTION_ADVERSARIAL_REVIEW.md`.
+**Headline: no CRITICAL or HIGH finding.** Tenant scoping of all three resilience mechanisms is
+correct (`CapabilityOpKey(tenantId, capability, operation)` keys idempotency/circuit/bulkhead state
+alike — no cross-tenant leakage); the bulkhead's admission control is genuinely atomic
+(`java.util.concurrent.Semaphore`); reflection-based capability dispatch never lets request data
+choose *which* method is invoked, only argument values (author-time operation selection, not a
+confused-deputy surface). Residual: **2 MEDIUM + 2 INFO**, filed as **REG-36** and **REG-37** below
+(no dated item for the two INFO notes — one is a recommendation for a future reviewer, the other a
+cross-reference confirming an already-tracked, already-guarded item — see the findings doc F3/F4).
+Per the plan's triage, with no CRITICAL/HIGH the mandatory Tier-B work for this round is empty; both
+MEDIUMs are scheduled, not dropped or silently fixed.
+
+**Rounds not yet done:** loop/await/orchestration flow-step types, `DefaultProcedureExecutor`, the
+other durable-state Postgres adapters' own SQL, the generator's codegen output itself, LNCH-13
+row-level authz, and the export/PDF path all remain at **zero** adversarial review. Each is a
+candidate for a future round; do not attempt all of them at once (per the plan's explicit STOP rule
+against mechanizing this item).
+
+### REG-36, REG-37 — findings filed by REG-16-resid Round 1 (2026-07-24)
+
+| New item | From | Sev | Fix sketch |
+|---|---|---|---|
+| REG-36 | REG16K-F1 | MED | Bound/digest the idempotency key (SHA-256 hex when the resolved value exceeds a small threshold) symmetrically with the already-bounded cached success value (`KernelRunner.IDEMPOTENCY_RESULT_MAX_CHARS`). Today an oversized caller-influenced key (via a model author's `idempotencyKeyField`) can exceed Postgres's btree index-entry size limit, crashing the post-success idempotency-cache write with an uncaught exception — reporting an already-successful call as failed, and (because no record was cached) letting a caller's retry re-execute the operation, defeating dedup. Regression test: an oversized idempotency-key-field value still produces a cacheable, re-findable record. |
+| REG-37 | REG16K-F2 | MED | Make the circuit-breaker failure-counter update atomic. `KernelRunner.onCapabilityFailure` does a plain get-then-put with no CAS/lock, present in both `InProcCircuitBreakerStateStore` (bare `ConcurrentHashMap`) and `JdbcCircuitBreakerStateStore` (blind `UPDATE … SET consecutive_failures = ?`, client-computed value, no server-side increment or row lock) — the bug is in `KernelRunner`'s orchestration, not either store. Under genuinely concurrent failures (exactly the scenario the circuit breaker exists for), the counter can undercount, delaying or preventing the circuit from opening at its configured threshold. Fix: push the increment into the store contract (`recordFailure(key, now, thresholds)`) implemented atomically in both backends (`ConcurrentHashMap.compute` / `UPDATE … SET consecutive_failures = consecutive_failures + 1 … RETURNING *`). Regression test: N concurrent synthetic failures against the same `CapabilityOpKey` leave the counter at N (or trip the circuit), not fewer. |
+
+**Honest note (per the closure plan).** Neither REG-36 nor REG-37 is launch-blocking — the ledger
+remains 24/0/0 and this round found no data-breach/auth-bypass hole. REG-16-resid stays open until
+enough further rounds have covered the highest-value remaining surfaces; it is the largest genuine
+*unknown* left in the codebase (not a known bug), so it remains the highest-value non-mechanical work
+outstanding.
 
 ---
 
