@@ -468,10 +468,31 @@
   — only single-selected-row band rendering exists. Confirmed 2026-07-13.
 
 ### AW-Deferred — WMS surfaces intentionally stubbed (boundary)
-- **Status:** BOUNDARY · **Priority:** —
-- **What:** `Imprimir` (report generation), `Add Doctos`/NFe attach (file-upload — see ARCH-upload),
-  `Histórico` viewer. Currently stub actions, not implementations. Out of scope for the current
-  primitive; revisit when report-generation and file-upload primitives exist.
+- **Status:** BOUNDARY (except `Add Doctos`, now DONE below) · **Priority:** —
+- **What:** `Imprimir` (report generation) and `Histórico` viewer remain stub actions (out of scope for
+  the current primitive; revisit when report-generation exists). **`Add Doctos`/NFe attach — DONE
+  (ARCH-upload P6, 2026-07-24), see below.**
+
+### ARCH-upload P6 — WmsOffice `Add Doctos`/NFe attach ✅ DONE (2026-07-24)
+- **Status:** DONE · **Priority:** P4 · **Category:** Feature (app-scope, layer 2)
+- **What was done, per the GeneXus reference:** the GeneXus source-of-truth (`WmsLabs_Mod_GX17.xml`)
+  models outbound documents as `DoctoSaida` with a `DoctoSaidaBlob` ("Arquivo") + `DoctoSaidaArquivoNome`
+  attached to a load. Mirrored in NPDev with **zero platform change**: added an `arquivo` field
+  (`type: file`, `contentTypes: [application/xml, text/xml, application/pdf]`, `maxSizeBytes: 10 MB`) to
+  the existing `DocumentoFiscal` (NF-e) concept in the WmsOffice app definition (layer 2). The generator
+  auto-emits the FileHandle column + the business-UI upload/download widget (`createFileInput`); the
+  pre-existing `FileUploadController`/`FileStore` primitive handles storage, tenant-isolated.
+- **Verified live (fresh H2 DB, tenant `default`):** `POST /api/files/DocumentoFiscal/arquivo` (XML)
+  returned a tenant-prefixed FileHandle (`key: default/…`, `sizeBytes: 104`); `GET /api/files?storeId=&key=`
+  returned **byte-identical** content; a disallowed `image/gif` upload was rejected **415** (the field's
+  `contentTypes` restriction is enforced). App boots healthy with the field wired.
+- **Byproducts (filed):** this rebuild surfaced two real platform bugs — **REG-38** (additive-migration
+  constraint idempotency on H2; **found + fixed + verified**) and **REG-40** (additive migration never
+  CREATEs new tables → new-concept upgrade against an existing DB fails; filed). Login on the reused DB
+  was blocked by **REG-39** (WmsOffice's private identity-pack copy had drifted pre-LNCH-4, missing
+  `token_version`); fixed by syncing the app's pack to the platform, login re-verified live.
+- **Scope note:** the app definition is layer 2 (not this git repo); only the docs/register updates land
+  here. No platform code changed for the feature itself.
 
 ---
 
