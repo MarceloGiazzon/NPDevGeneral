@@ -198,6 +198,24 @@ with flows that persist and **no bound adapter for `persistence`** (neither `per
 dev nor `persistence-postgres` for prod) refuses to boot with an `IllegalStateException` naming the
 offending flow, instead of failing opaquely on the first `createConcept` call (LEDGER-1).
 
+## Identity pack freshness (checked at boot)
+
+An app can carry its **own copy** of a built-in pack (a local `$ref` under its model root) instead of
+composing `NPDevContract/packs/<alias>/pack.json` fresh at every generation (the normal path, via
+`BuiltinPackComposer`). When the platform's pack later gains a field that platform code then reads
+**unconditionally**, every app whose copy predates that addition breaks at runtime — and breaks
+*misleadingly*: a missing-column `SQLException` gets caught by generic error handling and reported as
+something else entirely (REG-39 — a stale copy of the identity pack's `token_version` column made
+`LoginController` fail every login with `invalid_credentials`, not a schema error).
+
+If the generated model declares an `identity::User` concept (i.e. this app uses the built-in identity
+pack, by whatever mechanism), `StartupValidator` requires it to carry the `tokenVersion` field the
+platform's identity pack has had since LNCH-4. A stale copy refuses to boot with an
+`IllegalStateException` naming the missing field and the fix (regenerate so the app composes the
+platform's current pack, or update a locally-committed copy to match) — instead of surfacing later as an
+unrelated-looking auth failure. An app that doesn't use the identity pack at all has no `identity::User`
+concept and skips this check entirely.
+
 ## Where these come from
 
 Every property above ultimately resolves through Spring's normal

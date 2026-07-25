@@ -1,6 +1,8 @@
 package com.npdev.adapters.runtime.validation;
 
 import com.npdev.dsl.v1.compiled.CompiledCapabilityCall;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowStep;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -503,6 +505,92 @@ class StartupValidatorTest {
         );
 
         assertDoesNotThrow(validator::validate);
+    }
+
+    @Test
+    void shouldFailWhenIdentityPackCopyIsStaleMissingTokenVersion() {
+        // REG-39: a "identity::User" concept with no tokenVersion field is exactly WmsOffice's stale
+        // pack-copy symptom -- must refuse to boot instead of letting it surface later as a misleading
+        // invalid_credentials error.
+        StartupValidator validator = new StartupValidator(
+                inprocSettingsWithAuthAndSchedulerDisabled(),
+                null,
+                eventStore(),
+                flowInstanceStore(),
+                new MockEnvironment(),
+                "apikey",
+                "",
+                null,
+                null,
+                null,
+                null,
+                modelWithIdentityUser(false),
+                new CapabilityRegistry()
+        );
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, validator::validate);
+        assertTrue(ex.getMessage() != null && ex.getMessage().contains("STALE"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("identity::User"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("tokenVersion"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("CONFIGURATION.md#identity-pack-freshness-checked-at-boot"),
+                "Expected the message to link the new config doc anchor: " + ex.getMessage());
+    }
+
+    @Test
+    void shouldPassWhenIdentityPackCopyHasTokenVersion() {
+        StartupValidator validator = new StartupValidator(
+                inprocSettingsWithAuthAndSchedulerDisabled(),
+                null,
+                eventStore(),
+                flowInstanceStore(),
+                new MockEnvironment(),
+                "apikey",
+                "",
+                null,
+                null,
+                null,
+                null,
+                modelWithIdentityUser(true),
+                new CapabilityRegistry()
+        );
+
+        assertDoesNotThrow(validator::validate);
+    }
+
+    @Test
+    void shouldPassWhenModelHasNoIdentityPackAtAll() {
+        // An app that doesn't use the built-in identity pack has no "identity::User" concept -- the
+        // check must skip cleanly, not fail on its absence.
+        StartupValidator validator = new StartupValidator(
+                inprocSettingsWithAuthAndSchedulerDisabled(),
+                null,
+                eventStore(),
+                flowInstanceStore(),
+                new MockEnvironment(),
+                "apikey",
+                "",
+                null,
+                null,
+                null,
+                null,
+                new CompiledModel("test", "1.0.0", "1.0", Map.of()),
+                new CapabilityRegistry()
+        );
+
+        assertDoesNotThrow(validator::validate);
+    }
+
+    private static CompiledModel modelWithIdentityUser(boolean includeTokenVersion) {
+        List<CompiledField> fields = includeTokenVersion
+                ? List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("username", "string", "java.lang.String", false, true, true),
+                        new CompiledField("tokenVersion", "integer", "int", false, false, false))
+                : List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("username", "string", "java.lang.String", false, true, true));
+        CompiledConcept identityUser = new CompiledConcept("identity::User", "IdentityUser", "identity_users", fields);
+        return new CompiledModel("test", "1.0.0", "1.0", Map.of("identity::User", identityUser));
     }
 
     private static RuntimeSettings inprocSettingsWithAuthAndSchedulerDisabled() {
