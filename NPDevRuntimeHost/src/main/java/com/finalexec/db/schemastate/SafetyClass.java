@@ -2,9 +2,9 @@ package com.finalexec.db.schemastate;
 
 /**
  * The safety class of one {@link SchemaDiffItem} — THE central vocabulary of the schema-engine rebuild
- * (Phase 2). It deliberately merges the live executor's classification outcomes with the dead
- * {@code com.finalexec.npdev.migration.MigrationRiskAssessmentBuilder} taxonomy (safe / backfill /
- * manual / breaking), so Phase 9 can retire that lineage without losing its idea. Every diff item
+ * (Phase 2). It deliberately merged the live executor's classification outcomes with the (now deleted,
+ * SER-P9.1) {@code com.finalexec.npdev.migration.MigrationRiskAssessmentBuilder} taxonomy (safe /
+ * backfill / manual / breaking), so that lineage's idea survived its own retirement. Every diff item
  * carries exactly one of these; the passes (Phase 4) and the Impact Report (Phase 6) act on it.
  */
 public enum SafetyClass {
