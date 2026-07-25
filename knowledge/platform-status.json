@@ -192,9 +192,9 @@
       "id": "AW-P2",
       "title": "selectors[]/bandPickers unification + FK auto-Prompt wiring",
       "category": "Feature",
-      "status": "PARTIAL",
+      "status": "DONE",
       "priority": "P4",
-      "notes": "picker unification DONE; FK auto-Prompt re-scoped out"
+      "notes": "2026-07-24, owner-confirmed; selectorRef descoped to an optional P4 follow-up"
     },
     {
       "id": "AW-P3",
