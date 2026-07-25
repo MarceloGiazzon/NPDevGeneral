@@ -257,7 +257,12 @@
   reimplementation — confirmed.
 
 ### BOND-B4 — Wire ReleaseGateValidator into the test suite / CI — mostly DONE, one finding needs your call
-- **Status:** PARTIAL (test coverage DONE; CI-trigger question open) · **Priority:** P3 · **Category:** Test/CI
+- **Status:** DONE (2026-07-23) · **Priority:** P3 · **Category:** Test/CI
+- **Closure (2026-07-23):** the CI-trigger question this section left open on 2026-07-12 is answered:
+  `ReleaseGateValidatorTest` runs inside `:NPDevContract:dsl:check`, which `npdev-pr-gate.yml` executes
+  on every PR (confirmed green on `beta1-vision-spine`). *Corrected 2026-07-25: this Status line still
+  read `PARTIAL` from 2026-07-12 while the summary row had been updated to DONE — found by
+  `scripts/quality/check-register-consistency.py` on its first run.*
 - **What was done 2026-07-12:** `ReleaseGateValidatorTest` extended with the 3 planned cases
   (`releaseGatePassesWhenAllDependenciesMeetTarget`, `semanticValidatorDoesNotBlockOnTruthEdgeViolation`,
   `bondClosureIncludesTransitiveDependencies`) — `:NPDevContract:dsl:check` green (4/4 tests, one
