@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -73,6 +74,51 @@ class SchemaLifecycleExecutorConversionHookIntegrationTest {
             DatabaseMetaData metadata = connection.getMetaData();
             assertFalse(hasColumn(metadata, "p76_widgets", "legacy_flag"),
                     "the hook's own convert.sql must have actually dropped the column");
+        }
+    }
+
+    @Test
+    void backfillHookResolvesEndToEndThroughBeforeMigrate() throws SQLException {
+        // SER closure-plan G3: unlike hookResolvedDestructiveDropNeedsNoAcknowledgmentTokenAndBootSucceeds
+        // (a DESTRUCTIVE_DROP_COLUMN item), this proves a NEEDS_HOOK backfill item -- a new required
+        // column with no literal default, additive-eligible=false -- also resolves through the REAL
+        // beforeMigrate seam, not just ConversionHookRunner.run() called directly
+        // (ConversionHookRunnerH2Test#rule6_hookResolvesTheNeedsHookItem_bootGreenNoResidualNoToken).
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE p73_backfill (id BIGINT PRIMARY KEY)");
+            statement.execute("INSERT INTO p73_backfill (id) VALUES (1)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        // p73-backfill (src/test/resources/db/conversion-hooks/p73-backfill) claims exactly
+        // "ADD_REQUIRED_COLUMN:p73_backfill:status" and its convert.sql adds the column itself.
+        // additiveColumns is empty for "status" (NOT additive-eligible) -> NEEDS_HOOK, not NEEDS_BACKFILL.
+        SchemaLifecycleExecutor.SchemaManifest manifest = new SchemaLifecycleExecutor.SchemaManifest(
+                "H2Local", "jdbc", true, "sha256:new", List.of(), List.of("p73_backfill"),
+                Map.of("p73_backfill", List.of("id", "status")),
+                Map.of("p73_backfill", List.of("id")),
+                Map.of("p73_backfill", Map.of("id", "BIGINT", "status", "VARCHAR(20)")),
+                Map.of(), Map.of(),
+                false, "KeepExistingIfCompatible", "NpdevOwnedTablesOnly",
+                "", "", // no blanket flag, NO acknowledgment token provided
+                Map.of("p73_backfill", List.of("status")), Map.of(), Map.of(), Map.of());
+
+        // No exception -- the hook resolved the only unresolved item.
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, manifest);
+
+        assertTrue(result.safeAdditive(), "fully hook-resolved is reported the same way a SAFE_ADDITIVE boot is");
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(hasColumn(metadata, "p73_backfill", "status"),
+                    "the hook's own convert.sql must have actually added the column");
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT status FROM p73_backfill WHERE id = 1")) {
+                try (var resultSet = statement.executeQuery()) {
+                    assertTrue(resultSet.next());
+                    assertEquals("legacy", resultSet.getString(1),
+                            "the pre-existing row must have survived with the hook's backfilled value");
+                }
+            }
         }
     }
 

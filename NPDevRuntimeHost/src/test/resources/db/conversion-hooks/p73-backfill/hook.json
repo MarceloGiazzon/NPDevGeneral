@@ -1,0 +1,5 @@
+{
+  "id": "p73-backfill",
+  "claims": ["ADD_REQUIRED_COLUMN:p73_backfill:status"],
+  "description": "SER closure-plan G3: proves a backfill (NEEDS_HOOK, not destructive) hook resolves end-to-end through beforeMigrate, not just ConversionHookRunner.run() in isolation."
+}
