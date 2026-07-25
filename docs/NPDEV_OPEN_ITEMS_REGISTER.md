@@ -104,26 +104,31 @@ parts: `NPDev_General__OutsideRepo/{reg12-slice3-evidence,external-tester-eviden
 
 ### 0.2 Register at a glance
 
-> **STATUS CORRECTION (2026-07-22).** The table below predates the 2026-07-21/07-22 closure wave and
-> is kept only for historical shape. Read these as **CLOSED** regardless of how their row renders
-> here: REG-1, REG-2, REG-3, REG-4, REG-5, REG-7, REG-8, REG-9, REG-10, REG-11, REG-12, REG-13,
-> REG-14, REG-18, REG-19, REG-20, REG-21, REG-22, REG-24, REG-27, REG-28, REG-29, REG-30. Still
-> genuinely open or partial: **REG-6** (CLOSED FULLY 2026-07-24 — Schema Engine Rebuild: one canonical SchemaDiff, every pass consumes it; see §1.6), **REG-16** (adversarial review done for LNCH-2/LNCH-4 only),
-> **REG-17** (ADVANCED round 2, 2026-07-23 — 3 CI findings fixed+confirmed on re-run 30051880197, 2 new surfaced: REG-2-on-Linux + surface-evidence wrapper), **REG-23** and **REG-25** (deferred boundaries).
+> **STATUS CORRECTION (2026-07-22, index synced 2026-07-25 — SER-G9).** The table below predates the
+> 2026-07-21/07-22 closure wave; rows are now struck through and annotated CLOSED directly (matching
+> each item's own §-section) rather than relying on this disclaimer to override a stale-looking row.
+> Read these as **CLOSED** regardless of how their row renders: REG-1, REG-2, REG-3, REG-4, REG-5,
+> REG-7, REG-8, REG-9, REG-10, REG-11, REG-12, REG-13, REG-14, REG-18, REG-19, REG-20, REG-21, REG-22,
+> REG-24, REG-27, REG-28, REG-29, REG-30, REG-40. REG-6 is CLOSED FULLY (2026-07-24 — Schema Engine
+> Rebuild: one canonical SchemaDiff, every pass consumes it; see §1.6). **Genuinely still open:**
+> **REG-16** (adversarial review — Tier A complete only, remaining tiers unreviewed), **REG-17**
+> (third-party reproduction — 2/4 gates run by an independent tester), **REG-23** and **REG-25**
+> (deferred boundaries), plus the Schema Engine Phase-7 conversion-hook gaps and the FK/index-diffing
+> deferral tracked in `docs/SER_FINAL_CLOSURE_PLAN.md` (Groups A/B).
 > The authoritative current state is `docs/LAUNCH_READINESS_GAPS.md` (24 DONE / 0 PARTIAL / 0 OPEN)
 > plus each entry's own **Status** line below, not this summary table.
 
 | ID | Title | Type | Sev | Effort | § |
 |---|---|---|---|---|---|
-| **REG-1** | 9 app definitions remain on the deprecated blanket destructive posture (down from 27) | GAP | MED | S/M | 1.1 |
-| **REG-2** | `IT-EXTPG-1` — 10 integration tests unrunnable; **root cause unconfirmed, re-diagnose first** | BUG | MED | S/M | 1.2 |
-| **REG-3** | `GATE-REL-1` — **corrected:** already fixed 2026-05-14; real gap is stale evidence-report orchestration | GAP | LOW | S | 1.3 |
-| **REG-4** | `T-F1` — load-sensitive flake, root cause unestablished | BUG | LOW | S/M | 1.4 |
-| **REG-5** | `GATE-OBS-1a` — surface-governance drift needs a governance owner | PROCESS | LOW | S | 1.5 |
+| ~~**REG-1**~~ | 9 app definitions remain on the deprecated blanket destructive posture — **CLOSED (2026-07-21, REG-1/P8)**: all 7 flip-worthy apps flipped to `KeepExistingIfCompatible`, live additive-change proof on `superuser-admin-console` | GAP | MED | S/M | 1.1 |
+| ~~**REG-2**~~ | `IT-EXTPG-1` — 10 integration tests unrunnable — **CLOSED (2026-07-21, REG-2/P2)**: real cause was `DatabaseIdentityStartupValidator`, fixed at the profile level; 10/10 green on real Postgres | BUG | MED | S/M | 1.2 |
+| ~~**REG-3**~~ | `GATE-REL-1` — **CLOSED (2026-07-21, REG-3/P1)**: dependency-ordered evidence-report orchestration added, gate distinguishes precondition-unmet from check-failed | GAP | LOW | S | 1.3 |
+| ~~**REG-4**~~ | `T-F1` — load-sensitive flake — **CLOSED (2026-07-21, REG-4/P8)**: root cause fixed (a stray caller interrupt in `SandboxedPluginExecutionEngine.execute`), not just tolerance-widened | BUG | LOW | S/M | 1.4 |
+| ~~**REG-5**~~ | `GATE-OBS-1a` — **CLOSED (2026-07-21, REG-5/P8)**: retired the 6 redundant convergence checks to informational-only (the allowlist already enforces this), dated rationale recorded | PROCESS | LOW | S | 1.5 |
 | **REG-6** | `ColumnFacts` → canonical `SchemaDiff` — every executor pass now consumes ONE desired-vs-current model (Schema Engine Rebuild, 2026-07-24) | CLOSED | MED | M | 1.6 |
 | **REG-7** | `LNCH-1-B6` — no migration advisory lock (multi-instance) | BOUNDARY | — | M | 1.7 |
 | **REG-8** | `LNCH-1-B9` — schema-ahead detector blind to a pure column drop | BOUNDARY | — | M | 1.8 |
-| **REG-9** | LNCH-4 — auth table stakes: secrets management still open (**rescoped: 2 of 4 already done**) | GAP | **P0** | S/M | 2.1 |
+| ~~**REG-9**~~ | LNCH-4 — auth table stakes — **CLOSED (2026-07-21, REG-9/P3)**: JWT env-var keys + `StartupValidator` fail-fast + verify-only `LoginController`; super-user key defaulted to WONTFIX (reversible) | GAP | **P0** | S/M | 2.1 |
 | ~~**REG-10**~~ | LNCH-19 — Linux CI **now observed GREEN** (run `29899362276`, 2026-07-22) — DONE | GAP | **P1** | S/M | 2.2 |
 | ~~**REG-11**~~ | LNCH-20 — cross-platform build **PROVEN** by the green run; also fixed a real generated-app `D:/`-cache portability bug — DONE | GAP | P2 | S | 2.3 |
 | ~~**REG-12**~~ | LNCH-10 — Excel/PDF/print export beyond CSV — **CLOSED 2026-07-22** (all 3 slices DONE) | GAP | P1 | L | 2.4 |
