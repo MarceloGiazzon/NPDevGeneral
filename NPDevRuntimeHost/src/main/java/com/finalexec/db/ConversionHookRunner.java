@@ -150,7 +150,7 @@ public final class ConversionHookRunner {
                     + "not roll back an earlier one).");
         }
 
-        String engine = detectEngine(dataSource);
+        String engine = detectEngine(dataSource, manifest);
         List<Hook> applied = new ArrayList<>();
         for (Hook hook : selected) {
             historyWriter.write(historyLabel(hook), "HOOK_STARTED", List.of("claims=" + hook.claims()));
@@ -347,7 +347,16 @@ public final class ConversionHookRunner {
         }
     }
 
-    private static String detectEngine(DataSource dataSource) {
+    /** SER closure-plan G7: prefer the manifest's declared engine (the same source of truth the rest of
+     *  the executor uses) over probing the live JDBC connection, falling back to the JDBC probe only
+     *  when the manifest is absent or blank (e.g. direct unit tests that hand-build a manifest without
+     *  bothering to set it). Two independent engine-detection paths reading the same DataSource were
+     *  harmless today but drift-prone. */
+    private static String detectEngine(DataSource dataSource, SchemaLifecycleExecutor.SchemaManifest manifest) {
+        String declared = manifest == null ? null : manifest.engine();
+        if (declared != null && !declared.isBlank()) {
+            return declared.toLowerCase(Locale.ROOT).contains("postgres") ? "postgres" : "h2";
+        }
         try (Connection connection = dataSource.getConnection()) {
             String product = connection.getMetaData().getDatabaseProductName();
             return product != null && product.toLowerCase(Locale.ROOT).contains("postgres") ? "postgres" : "h2";
