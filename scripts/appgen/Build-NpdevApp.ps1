@@ -40,6 +40,12 @@ param(
   # web-asset/ops-toolbox/info-page steps -- with a script-friendly exit code (1 if any destructive
   # item is present, 0 otherwise). A full generation pass still happens (cheap, local, touches
   # nothing live) -- see this switch's usage below for why an honest plan needs one anyway.
+  # SER-P9.2: this is the OFFLINE estimate -- model vs. the PREVIOUS MODEL, no database contacted, no
+  # row counts, safe to run with nothing deployed yet. Kept deliberately (not part of the SER-P9.1
+  # dead-lineage retirement) because that offline capability has no live-database equivalent.
+  # Contrast -ImpactOnly (SER-P6.4): model vs. the LIVE DATABASE -- the truth, with real row counts,
+  # but the target must already be reachable. Use -PlanOnly for a quick pre-authoring sanity check;
+  # use -ImpactOnly before an actual deploy.
   [switch]$PlanOnly,
   # -Upgrade: same plan computation/printing as -PlanOnly, but does NOT exit early -- the script
   # continues through its normal steps (this IS the real upgrade). Additionally captures the
