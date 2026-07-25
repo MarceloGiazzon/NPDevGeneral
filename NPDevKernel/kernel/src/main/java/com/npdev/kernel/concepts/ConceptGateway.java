@@ -25,6 +25,33 @@ public interface ConceptGateway {
 
     ConceptRecord save(ConceptWriteRequest request, ExecutionContext context);
 
+    /**
+     * REG-16-resid Round 3 (R3-F2): answer "may this actor write this record?" WITHOUT writing it.
+     *
+     * <p>Runs exactly the two gates {@link #save} runs — {@code concept.write} permission and the
+     * row-level {@code access.write} scope — against the record's CURRENT state, then stops. Throws
+     * {@code ConceptGatewayAccessDeniedException} on denial, the same exception {@code save} throws,
+     * so callers need no new error handling.</p>
+     *
+     * <p><b>Why this had to exist.</b> A generated app's many-to-many bond endpoints mutate a junction
+     * table, not the concept row, so there is nothing meaningful to {@code save} — yet they must still
+     * be gated by the source record's write authorization. Before this, the only way to ask the
+     * question was to perform a write, so the endpoints asked nothing at all and shipped with zero
+     * authorization. A check that can only be performed by causing the side effect is a check people
+     * will skip.</p>
+     *
+     * <p>The default implementation is deliberately <b>fail-closed</b>: a gateway that has not
+     * implemented the check denies rather than silently allowing. That is the opposite of the usual
+     * default-method convention, and it is the right way round here — the failure mode of the
+     * permissive default is exactly the bug this method was added to fix.</p>
+     */
+    default void authorizeWrite(ConceptReadRequest request, ExecutionContext context) {
+        throw new ConceptGatewayAccessDeniedException(
+                "AUTHORIZATION_UNAVAILABLE",
+                "This ConceptGateway cannot authorize a write without performing it; denying "
+                        + request.conceptName() + " rather than proceeding unchecked.");
+    }
+
     void delete(ConceptReadRequest request, ExecutionContext context);
 
     default List<ConceptGatewayTraceRecord> explain() {

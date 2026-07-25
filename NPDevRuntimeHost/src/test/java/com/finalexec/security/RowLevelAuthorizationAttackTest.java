@@ -150,6 +150,50 @@ class RowLevelAuthorizationAttackTest {
     }
 
     /**
+     * REG-16-resid R3 / R3-F2 (HIGH) — the RUNTIME half of the many-to-many bond authorization fix.
+     *
+     * <p>Every generated app emits four HTTP endpoints per many-to-many bond
+     * ({@code GET/POST/DELETE/PUT /{id}/{bond}...}) that mutate a junction table. They shipped with
+     * <b>no authorization at all</b>: no coarse permission check, no row-level {@code access.write}
+     * gate, no tenant predicate (the junction SQL keys on the source id alone) and no audit — while
+     * create/update/delete on the very same concept had all four. Any authenticated caller holding a
+     * record id could rewrite that record's relationships regardless of write scope.</p>
+     *
+     * <p>The fix routes those endpoints through the new {@link ConceptGateway#authorizeWrite}, which
+     * asks "may this actor write this record?" without writing it. This test proves the new method
+     * genuinely denies — a structural assertion that the generated service calls it could not.</p>
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("adapters")
+    void userBCannotAuthorizeAWriteAgainstUserARow(Supplier<ConceptStore> storeFactory) {
+        DefaultConceptGateway gateway = gatewayOver(storeFactory.get());
+        String aId = seedRow(gateway, USER_A);
+
+        ConceptGatewayAccessDeniedException denied = assertThrows(
+                ConceptGatewayAccessDeniedException.class,
+                () -> gateway.authorizeWrite(new ConceptReadRequest(CONCEPT, aId, null), USER_B),
+                "user B must not be authorized to write user A's row, so its bond members are out of reach too");
+        assertEquals("ROW_SCOPE_DENIED", denied.code());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("adapters")
+    void authorizeWriteAllowsTheRowsOwnerAndPersistsNothing(Supplier<ConceptStore> storeFactory) {
+        // The other half of the contract, and the half a deny-everything implementation would fail:
+        // the owner must pass, and the check must have NO side effect -- the whole reason it exists
+        // is that a junction-table mutation has no concept row to save.
+        ConceptStore store = storeFactory.get();
+        DefaultConceptGateway gateway = gatewayOver(store);
+        String aId = seedRow(gateway, USER_A);
+        var before = gateway.read(new ConceptReadRequest(CONCEPT, aId, null), USER_A).orElseThrow();
+
+        gateway.authorizeWrite(new ConceptReadRequest(CONCEPT, aId, null), USER_A);
+
+        var after = gateway.read(new ConceptReadRequest(CONCEPT, aId, null), USER_A).orElseThrow();
+        assertEquals(before.data(), after.data(), "authorizeWrite must not modify the record it checks");
+    }
+
+    /**
      * REG-16-resid R2 / LNCH13-F1 — the RUNTIME half of the CRITICAL fix.
      *
      * <p>{@code ServiceBaseFlowRowLevelAuthzTest} proves the generated service now EMITS
