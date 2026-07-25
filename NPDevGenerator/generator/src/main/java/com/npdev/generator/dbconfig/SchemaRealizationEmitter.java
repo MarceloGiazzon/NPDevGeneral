@@ -1151,6 +1151,8 @@ public final class SchemaRealizationEmitter {
         Map<String, Map<String, String>> businessTableColumnDefaultLiterals = new LinkedHashMap<>();
         Map<String, List<String>> businessTableExpressionDefaultColumns = new LinkedHashMap<>();
         Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints = new LinkedHashMap<>();
+        Map<String, List<ForeignKeyDecl>> businessTableForeignKeys = new LinkedHashMap<>();
+        Map<String, List<IndexDecl>> businessTableIndexes = new LinkedHashMap<>();
 
         Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
         for (CompiledConcept concept : model.getConcepts()) {
@@ -1182,6 +1184,17 @@ public final class SchemaRealizationEmitter {
             if (!uniqueConstraints.isEmpty()) {
                 businessTableUniqueConstraints.put(table, uniqueConstraints);
             }
+            // SER-G8: the FKs and indexes this concept's DDL creates, recorded in the manifest so the
+            // runtime can VERIFY them (ExternallyManaged full-shape check) instead of being blind to
+            // the FK/index dimension entirely. Same source of truth as the DDL emitted above.
+            List<ForeignKeyDecl> foreignKeys = collectForeignKeys(concept, conceptsByName);
+            if (!foreignKeys.isEmpty()) {
+                businessTableForeignKeys.put(table, foreignKeys);
+            }
+            List<IndexDecl> indexes = collectIndexes(concept, conceptsByName, uniqueConstraints);
+            if (!indexes.isEmpty()) {
+                businessTableIndexes.put(table, indexes);
+            }
         }
 
         return new BusinessTableMetadata(
@@ -1194,8 +1207,20 @@ public final class SchemaRealizationEmitter {
                 businessTableRequiredColumns,
                 businessTableColumnDefaultLiterals,
                 businessTableExpressionDefaultColumns,
-                businessTableUniqueConstraints
+                businessTableUniqueConstraints,
+                businessTableForeignKeys,
+                businessTableIndexes
         );
+    }
+
+    /** SER-G8: a foreign key the model declares, for manifest emission. Carries no NAME — the runtime
+     *  matches by column set + referenced table, because constraint names are engine-generated. */
+    public record ForeignKeyDecl(List<String> columns, String referencedTable, List<String> referencedColumns) {
+    }
+
+    /** SER-G8: an index the model declares, for manifest emission. Carries no NAME, for the same reason
+     *  as {@link ForeignKeyDecl}. */
+    public record IndexDecl(List<String> columns, boolean unique) {
     }
 
     /** See {@link #computeBusinessTableMetadata}. */
@@ -1209,12 +1234,52 @@ public final class SchemaRealizationEmitter {
             Map<String, List<String>> businessTableRequiredColumns,
             Map<String, Map<String, String>> businessTableColumnDefaultLiterals,
             Map<String, List<String>> businessTableExpressionDefaultColumns,
-            Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints
+            Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints,
+            Map<String, List<ForeignKeyDecl>> businessTableForeignKeys,
+            Map<String, List<IndexDecl>> businessTableIndexes
     ) {
         static BusinessTableMetadata empty() {
             return new BusinessTableMetadata(List.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
-                    Map.of(), Map.of(), Map.of(), Map.of());
+                    Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
         }
+    }
+
+    /** SER-G8: every bond field on this concept becomes one FK — the SAME (column -&gt; targetTable.anchor)
+     *  relationship {@code appendBondConstraints}/the additive path emit as DDL. */
+    private static List<ForeignKeyDecl> collectForeignKeys(
+            CompiledConcept concept, Map<String, CompiledConcept> conceptsByName) {
+        List<ForeignKeyDecl> foreignKeys = new ArrayList<>();
+        for (CompiledField field : concept.getFields()) {
+            Optional<Bond> bond = BondModelSupport.resolveBond(concept, field, conceptsByName);
+            if (bond.isEmpty()) {
+                continue;
+            }
+            Bond resolved = bond.get();
+            foreignKeys.add(new ForeignKeyDecl(
+                    List.of(SqlIdentifierSupport.columnName(field)),
+                    resolved.targetTable(),
+                    List.of(resolved.anchorColumn())));
+        }
+        return List.copyOf(foreignKeys);
+    }
+
+    /** SER-G8: the indexes this concept's DDL creates — one per unique constraint (unique) and one per
+     *  bond column (non-unique, the FK lookup index). Deliberately does NOT include implicit primary-key
+     *  indexes: the runtime treats a live PK over the same columns as satisfying a declared index, and
+     *  the model never needs to ask for one. */
+    private static List<IndexDecl> collectIndexes(
+            CompiledConcept concept, Map<String, CompiledConcept> conceptsByName,
+            List<UniqueConstraintDecl> uniqueConstraints) {
+        List<IndexDecl> indexes = new ArrayList<>();
+        for (UniqueConstraintDecl unique : uniqueConstraints) {
+            indexes.add(new IndexDecl(List.copyOf(unique.columns()), true));
+        }
+        for (CompiledField field : concept.getFields()) {
+            if (BondModelSupport.resolveBond(concept, field, conceptsByName).isPresent()) {
+                indexes.add(new IndexDecl(List.of(SqlIdentifierSupport.columnName(field)), false));
+            }
+        }
+        return List.copyOf(indexes);
     }
 
     private static void emitManifest(
@@ -1292,6 +1357,33 @@ public final class SchemaRealizationEmitter {
         manifest.put("businessTableColumnDefaultLiterals", businessTableColumnDefaultLiterals);
         manifest.put("businessTableExpressionDefaultColumns", businessTableExpressionDefaultColumns);
         manifest.put("businessTableUniqueConstraints", businessTableUniqueConstraints);
+        // SER-G8: the model's declared FKs/indexes, encoded name-lessly (the runtime matches by column
+        // set, since constraint/index names are engine-generated and differ across H2/Postgres).
+        Map<String, List<Map<String, Object>>> encodedForeignKeys = new LinkedHashMap<>();
+        for (Map.Entry<String, List<ForeignKeyDecl>> entry : businessMetadata.businessTableForeignKeys().entrySet()) {
+            List<Map<String, Object>> encoded = new ArrayList<>();
+            for (ForeignKeyDecl decl : entry.getValue()) {
+                Map<String, Object> one = new LinkedHashMap<>();
+                one.put("columns", decl.columns());
+                one.put("referencedTable", decl.referencedTable());
+                one.put("referencedColumns", decl.referencedColumns());
+                encoded.add(one);
+            }
+            encodedForeignKeys.put(entry.getKey(), encoded);
+        }
+        Map<String, List<Map<String, Object>>> encodedIndexes = new LinkedHashMap<>();
+        for (Map.Entry<String, List<IndexDecl>> entry : businessMetadata.businessTableIndexes().entrySet()) {
+            List<Map<String, Object>> encoded = new ArrayList<>();
+            for (IndexDecl decl : entry.getValue()) {
+                Map<String, Object> one = new LinkedHashMap<>();
+                one.put("columns", decl.columns());
+                one.put("unique", decl.unique());
+                encoded.add(one);
+            }
+            encodedIndexes.put(entry.getKey(), encoded);
+        }
+        manifest.put("businessTableForeignKeys", encodedForeignKeys);
+        manifest.put("businessTableIndexes", encodedIndexes);
         // LNCH-1 Phase 6 (task 6.3): the destructive-item stable strings from a migration plan
         // computed THIS generation pass (empty when none was computed -- see this method's caller,
         // SchemaRealizationEmitter#emit's 5-arg overload). Lets the runtime executor's agreement

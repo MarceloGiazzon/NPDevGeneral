@@ -231,19 +231,112 @@ class SchemaLifecycleExecutorExternallyManagedTest {
         assertEquals("EXTERNAL_VERIFIED", latestOutcome(dataSource));
     }
 
+    @Test
+    @DisplayName("SER-G8: a bond's foreign key the live schema does not enforce refuses")
+    void missingForeignKeyRefuses() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE owners (id BIGINT PRIMARY KEY)");
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, owner_id BIGINT)"); // no FK
+        }
+        SchemaLifecycleExecutor.SchemaManifest manifest = externallyManagedManifest(
+                Map.of("widgets", List.of("id", "owner_id")),
+                Map.of("widgets", Map.of("id", "BIGINT", "owner_id", "BIGINT")),
+                Map.of(), Map.of(),
+                Map.of("widgets", List.of(new SchemaLifecycleExecutor.ForeignKeyDecl(
+                        List.of("owner_id"), "owners", List.of("id")))),
+                Map.of());
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class,
+                () -> executor.verifyExternallyManagedSchemaCompatible(dataSource, manifest));
+        assertTrue(exception.getMessage().contains("missing foreign key"), exception.getMessage());
+        assertTrue(exception.getMessage().contains("owners"), exception.getMessage());
+        assertEquals("EXTERNAL_REFUSED", latestOutcome(dataSource));
+    }
+
+    @Test
+    @DisplayName("SER-G8: a live foreign key satisfying the bond verifies, ignoring its engine-chosen name")
+    void satisfiedForeignKeyVerifiesRegardlessOfConstraintName() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE owners (id BIGINT PRIMARY KEY)");
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, owner_id BIGINT, "
+                    + "CONSTRAINT some_name_npdev_would_never_choose FOREIGN KEY (owner_id) REFERENCES owners (id))");
+        }
+        SchemaLifecycleExecutor.SchemaManifest manifest = externallyManagedManifest(
+                Map.of("widgets", List.of("id", "owner_id")),
+                Map.of("widgets", Map.of("id", "BIGINT", "owner_id", "BIGINT")),
+                Map.of(), Map.of(),
+                Map.of("widgets", List.of(new SchemaLifecycleExecutor.ForeignKeyDecl(
+                        List.of("owner_id"), "owners", List.of("id")))),
+                Map.of());
+
+        executor.verifyExternallyManagedSchemaCompatible(dataSource, manifest);
+
+        assertEquals("EXTERNAL_VERIFIED", latestOutcome(dataSource));
+    }
+
+    @Test
+    @DisplayName("SER-G8: a declared index the live schema lacks refuses; extra live indexes are tolerated")
+    void missingIndexRefusesButExtraLiveIndexesAreTolerated() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            // An EXTRA index the model never declares must never be reported (missing-only, by design).
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, tenant_id VARCHAR(120), note VARCHAR(50))");
+            statement.execute("CREATE INDEX an_external_dbas_own_index ON widgets (note)");
+        }
+        SchemaLifecycleExecutor.SchemaManifest manifest = externallyManagedManifest(
+                Map.of("widgets", List.of("id", "tenant_id", "note")),
+                Map.of("widgets", Map.of("id", "BIGINT", "tenant_id", "VARCHAR(120)", "note", "VARCHAR(50)")),
+                Map.of(), Map.of(), Map.of(),
+                Map.of("widgets", List.of(new SchemaLifecycleExecutor.IndexDecl(List.of("tenant_id"), false))));
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class,
+                () -> executor.verifyExternallyManagedSchemaCompatible(dataSource, manifest));
+        assertTrue(exception.getMessage().contains("missing index on [tenant_id]"), exception.getMessage());
+        assertFalse(exception.getMessage().contains("an_external_dbas_own_index"),
+                "an extra live index must never be reported: " + exception.getMessage());
+        assertEquals("EXTERNAL_REFUSED", latestOutcome(dataSource));
+    }
+
+    @Test
+    @DisplayName("SER-G8: a primary key satisfies a declared index over the same columns")
+    void primaryKeySatisfiesADeclaredIndex() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY)");
+        }
+        SchemaLifecycleExecutor.SchemaManifest manifest = externallyManagedManifest(
+                Map.of("widgets", List.of("id")),
+                Map.of("widgets", Map.of("id", "BIGINT")),
+                Map.of(), Map.of(), Map.of(),
+                Map.of("widgets", List.of(new SchemaLifecycleExecutor.IndexDecl(List.of("id"), false))));
+
+        executor.verifyExternallyManagedSchemaCompatible(dataSource, manifest);
+
+        assertEquals("EXTERNAL_VERIFIED", latestOutcome(dataSource));
+    }
+
     private static SchemaLifecycleExecutor.SchemaManifest externallyManagedManifest(
             Map<String, List<String>> businessTableColumns,
             Map<String, Map<String, String>> businessTableColumnTypes) {
         return externallyManagedManifest(businessTableColumns, businessTableColumnTypes, Map.of(), Map.of());
     }
 
-    /** SER-P5.2 overload: also lets a scenario declare required columns and unique constraints, the two
-     *  full-shape dimensions the upgraded verification checks. */
     private static SchemaLifecycleExecutor.SchemaManifest externallyManagedManifest(
             Map<String, List<String>> businessTableColumns,
             Map<String, Map<String, String>> businessTableColumnTypes,
             Map<String, List<String>> businessTableRequiredColumns,
             Map<String, List<SchemaLifecycleExecutor.UniqueConstraintDecl>> businessTableUniqueConstraints) {
+        return externallyManagedManifest(businessTableColumns, businessTableColumnTypes,
+                businessTableRequiredColumns, businessTableUniqueConstraints, Map.of(), Map.of());
+    }
+
+    /** SER-P5.2/G8 overload: lets a scenario declare required columns, unique constraints, foreign keys
+     *  and indexes — every full-shape dimension the upgraded verification checks. */
+    private static SchemaLifecycleExecutor.SchemaManifest externallyManagedManifest(
+            Map<String, List<String>> businessTableColumns,
+            Map<String, Map<String, String>> businessTableColumnTypes,
+            Map<String, List<String>> businessTableRequiredColumns,
+            Map<String, List<SchemaLifecycleExecutor.UniqueConstraintDecl>> businessTableUniqueConstraints,
+            Map<String, List<SchemaLifecycleExecutor.ForeignKeyDecl>> businessTableForeignKeys,
+            Map<String, List<SchemaLifecycleExecutor.IndexDecl>> businessTableIndexes) {
         return new SchemaLifecycleExecutor.SchemaManifest(
                 "Postgres", "jdbc", true, "sha256:external-test",
                 List.of(), List.copyOf(businessTableColumns.keySet()),
@@ -251,7 +344,8 @@ class SchemaLifecycleExecutorExternallyManagedTest {
                 Map.of(), Map.of(), false,
                 "KeepExistingIfCompatible", "NpdevOwnedTablesOnly", "", "",
                 businessTableRequiredColumns, Map.of(), Map.of(), businessTableUniqueConstraints,
-                List.of(), "ExternallyManaged"
+                List.of(), "ExternallyManaged",
+                businessTableForeignKeys, businessTableIndexes
         );
     }
 

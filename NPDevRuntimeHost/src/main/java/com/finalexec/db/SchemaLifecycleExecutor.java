@@ -410,6 +410,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     appendExternalNullabilityProblem(problems, table, column, liveTable, desiredTable, normalized);
                 }
                 appendExternalUniqueProblems(problems, table, liveTable, desiredTable);
+                appendExternalForeignKeyAndIndexProblems(problems, table, liveTable, manifest);
             }
         } catch (SQLException exception) {
             problems.add("(failed introspecting live schema: " + exception.getMessage() + ")");
@@ -471,6 +472,51 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             if (!satisfied) {
                 problems.add(table + " (missing unique constraint on " + wanted.columns()
                         + ": the model declares this combination unique but the live schema does not enforce it)");
+            }
+        }
+    }
+
+    /**
+     * SER-G8: the foreign-key and index half of the full-shape {@code ExternallyManaged} check — the last
+     * dimension P5.2 could not cover until the manifest carried explicit FK/index lists.
+     *
+     * <p><b>Missing-only, matched by column set.</b> A live schema is allowed to have EXTRA FKs and extra
+     * indexes (an external DBA's performance indexes, and every engine's implicit PK/unique-backing index);
+     * only something the MODEL declares and the live schema lacks is reported. Matching deliberately
+     * ignores constraint/index NAMES — they are engine-generated ({@code PRIMARY_KEY_5} on H2,
+     * {@code widgets_pkey} on Postgres) and would produce pure noise. A unique constraint or primary key
+     * over the same columns satisfies a declared index.
+     */
+    private static void appendExternalForeignKeyAndIndexProblems(List<String> problems, String table,
+            com.finalexec.db.schemastate.CurrentTable liveTable, SchemaManifest manifest) {
+        if (liveTable == null) {
+            return;
+        }
+        for (ForeignKeyDecl wanted : manifest.businessTableForeignKeys().getOrDefault(table, List.of())) {
+            boolean satisfied = false;
+            for (com.finalexec.db.schemastate.CurrentForeignKey live : liveTable.foreignKeys()) {
+                satisfied = satisfied || (sameColumnSet(live.columns(), wanted.columns())
+                        && live.referencedTable() != null
+                        && live.referencedTable().equalsIgnoreCase(wanted.referencedTable()));
+            }
+            if (!satisfied) {
+                problems.add(table + " (missing foreign key on " + wanted.columns() + " -> "
+                        + wanted.referencedTable() + ": the model declares this bond but the live schema "
+                        + "does not enforce referential integrity for it)");
+            }
+        }
+        for (IndexDecl wanted : manifest.businessTableIndexes().getOrDefault(table, List.of())) {
+            boolean satisfied = sameColumnSet(liveTable.primaryKeyColumns(), wanted.columns());
+            for (com.finalexec.db.schemastate.CurrentIndex live : liveTable.indexes()) {
+                satisfied = satisfied || (sameColumnSet(live.columns(), wanted.columns())
+                        && (!wanted.unique() || live.unique()));
+            }
+            for (com.finalexec.db.schemastate.CurrentUniqueConstraint live : liveTable.uniques()) {
+                satisfied = satisfied || sameColumnSet(live.columns(), wanted.columns());
+            }
+            if (!satisfied) {
+                problems.add(table + " (missing " + (wanted.unique() ? "unique " : "") + "index on "
+                        + wanted.columns() + ": the model declares it but the live schema does not have it)");
             }
         }
     }
@@ -3360,11 +3406,64 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     // REG-7.1: absent from every manifest emitted before this field existed --
                     // asText("NpdevManaged") defaults to today's only behavior, so a pre-existing
                     // manifest is unaffected (same pattern as destructiveAcknowledgment above).
-                    lifecycle.path("ownership").asText("NpdevManaged")
+                    lifecycle.path("ownership").asText("NpdevManaged"),
+                    // SER-G8: the model's declared FKs/indexes. Absent from every manifest emitted
+                    // before G8 -- both helpers default to an empty map, so a pre-G8 app behaves exactly
+                    // as it did (nothing to verify, nothing to diff).
+                    foreignKeyListMap(root.path("businessTableForeignKeys")),
+                    indexListMap(root.path("businessTableIndexes"))
             );
         } catch (Exception exception) {
             throw new IllegalStateException("Failed loading schema realization manifest", exception);
         }
+    }
+
+    /** SER-G8: parses {@code {"table":[{"columns":[..],"referencedTable":"t","referencedColumns":[..]}]}}. */
+    private static Map<String, List<ForeignKeyDecl>> foreignKeyListMap(JsonNode object) {
+        Map<String, List<ForeignKeyDecl>> result = new LinkedHashMap<>();
+        if (object == null || !object.isObject()) {
+            return Map.copyOf(result);
+        }
+        object.fields().forEachRemaining(entry -> {
+            List<ForeignKeyDecl> decls = new ArrayList<>();
+            if (entry.getValue().isArray()) {
+                for (JsonNode node : entry.getValue()) {
+                    List<String> columns = strings(node.path("columns"));
+                    String referencedTable = node.path("referencedTable").asText("");
+                    if (columns.isEmpty() || referencedTable.isBlank()) {
+                        continue;
+                    }
+                    decls.add(new ForeignKeyDecl(columns, referencedTable, strings(node.path("referencedColumns"))));
+                }
+            }
+            if (!decls.isEmpty()) {
+                result.put(entry.getKey(), List.copyOf(decls));
+            }
+        });
+        return Map.copyOf(result);
+    }
+
+    /** SER-G8: parses {@code {"table":[{"columns":[..],"unique":true}]}}. */
+    private static Map<String, List<IndexDecl>> indexListMap(JsonNode object) {
+        Map<String, List<IndexDecl>> result = new LinkedHashMap<>();
+        if (object == null || !object.isObject()) {
+            return Map.copyOf(result);
+        }
+        object.fields().forEachRemaining(entry -> {
+            List<IndexDecl> decls = new ArrayList<>();
+            if (entry.getValue().isArray()) {
+                for (JsonNode node : entry.getValue()) {
+                    List<String> columns = strings(node.path("columns"));
+                    if (!columns.isEmpty()) {
+                        decls.add(new IndexDecl(columns, node.path("unique").asBoolean(false)));
+                    }
+                }
+            }
+            if (!decls.isEmpty()) {
+                result.put(entry.getKey(), List.copyOf(decls));
+            }
+        });
+        return Map.copyOf(result);
     }
 
     private static List<String> strings(JsonNode array) {
@@ -3442,6 +3541,17 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     record UniqueConstraintDecl(String name, List<String> columns, boolean tenantScoped) {
     }
 
+    /** SER-G8: a foreign key the MODEL declares (derived from a bond at generation time). Matched
+     *  against the live schema by column set + referenced table, never by name — constraint names are
+     *  engine-generated and differ between H2 and Postgres. */
+    record ForeignKeyDecl(List<String> columns, String referencedTable, List<String> referencedColumns) {
+    }
+
+    /** SER-G8: an index the MODEL declares (a unique index, a tenant index, or a bond-column index).
+     *  Matched by column set (+ uniqueness), never by name, for the same reason as {@link ForeignKeyDecl}. */
+    record IndexDecl(List<String> columns, boolean unique) {
+    }
+
     public record SchemaManifest(
             String engine,
             String storageMode,
@@ -3470,8 +3580,51 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             // default, today's only behavior) or "ExternallyManaged" (NPDev issues no DDL, only
             // verifies compatibility). Raw string (not an enum) to match every other lifecycle field
             // here, all of which are parsed straight from JSON text.
-            String ownership
+            String ownership,
+            // SER-G8: the FKs and indexes the MODEL declares, per table. Added LAST so every existing
+            // construction keeps compiling via the 22-arg convenience constructor below, and absent from
+            // an older generated manifest simply means "empty" -- an app built before G8 behaves exactly
+            // as it did. Matched against the live schema by COLUMN SET, never by name (constraint/index
+            // names are engine-generated and differ between H2 and Postgres).
+            Map<String, List<ForeignKeyDecl>> businessTableForeignKeys,
+            Map<String, List<IndexDecl>> businessTableIndexes
     ) {
+        /** SER-G8 backward-compatible convenience constructor matching the PRE-G8 22-arg shape --
+         * defaults the two new FK/index maps to empty. Keeps every existing hand-built manifest (tests,
+         * and any caller that does not care about FK/index) compiling and behaving identically. */
+        public SchemaManifest(
+                String engine,
+                String storageMode,
+                boolean physicalDatabase,
+                String schemaFingerprint,
+                List<String> internalTables,
+                List<String> businessTables,
+                Map<String, List<String>> businessTableColumns,
+                Map<String, List<String>> businessTableAdditiveColumns,
+                Map<String, Map<String, String>> businessTableColumnTypes,
+                Map<String, Map<String, String>> businessTableRenamedColumns,
+                Map<String, String> businessTableRenames,
+                boolean allowDestructiveRecreate,
+                String strategy,
+                String scope,
+                String destructiveRecreateConfirmation,
+                String destructiveAcknowledgment,
+                Map<String, List<String>> businessTableRequiredColumns,
+                Map<String, Map<String, String>> businessTableColumnDefaultLiterals,
+                Map<String, List<String>> businessTableExpressionDefaultColumns,
+                Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints,
+                List<String> planItemStableStrings,
+                String ownership
+        ) {
+            this(engine, storageMode, physicalDatabase, schemaFingerprint, internalTables, businessTables,
+                    businessTableColumns, businessTableAdditiveColumns, businessTableColumnTypes,
+                    businessTableRenamedColumns, businessTableRenames, allowDestructiveRecreate, strategy,
+                    scope, destructiveRecreateConfirmation, destructiveAcknowledgment,
+                    businessTableRequiredColumns, businessTableColumnDefaultLiterals,
+                    businessTableExpressionDefaultColumns, businessTableUniqueConstraints,
+                    planItemStableStrings, ownership, Map.of(), Map.of());
+        }
+
         /** Backward-compatible convenience constructor matching this record's PRE-Phase-6 20-arg
          * shape (every field above {@code planItemStableStrings}) -- defaults
          * {@code planItemStableStrings} to an empty list and {@code ownership} to
