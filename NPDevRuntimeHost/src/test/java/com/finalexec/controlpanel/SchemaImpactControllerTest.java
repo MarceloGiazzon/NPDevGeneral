@@ -49,7 +49,7 @@ class SchemaImpactControllerTest {
         ObjectProvider<DataSource> dataSourceProvider = Mockito.mock(ObjectProvider.class);
         when(dataSourceProvider.getIfAvailable()).thenReturn(dataSource);
 
-        SchemaImpactController controller = new SchemaImpactController(dataSourceProvider, runtimeContextService);
+        SchemaImpactController controller = new SchemaImpactController(dataSourceProvider, runtimeContextService, null);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 

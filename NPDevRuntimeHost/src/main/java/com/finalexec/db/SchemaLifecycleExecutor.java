@@ -9,9 +9,11 @@ import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.DropColumn;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.DropTable;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.NarrowType;
 import com.npdev.dsl.v1.schemaevolution.SqlTypeNormalization;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.schemaevolution.TypeChangeMatrix;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.Configuration;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
@@ -209,6 +211,16 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      */
     private static final String HISTORY_TABLE = "npdev_schema_history";
 
+    /**
+     * REG-39 layer 3: optional so every existing {@code SchemaLifecycleExecutor*Test}'s {@code new
+     * SchemaLifecycleExecutor()} (this class has no constructor -- dozens of call sites) keeps working
+     * untouched. {@code null} here just means "-ImpactOnly ran with no compiled model available," and
+     * {@link SchemaImpactFacade#forLiveDatabase(DataSource, CompiledModel)} already treats {@code null}
+     * as "skip the identity-pack drift check," same as an app that doesn't use the identity pack.
+     */
+    @Autowired(required = false)
+    private CompiledModel compiledModel;
+
     @Override
     public void migrate(Flyway flyway) {
         migrate(flyway, loadManifest());
@@ -227,7 +239,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      *  0 = NO_CHANGES/SAFE, 2 = NEEDS_ATTENTION, 3 = DESTRUCTIVE. Package-private for direct unit testing;
      *  the JVM-exit shell is the only caller in production. */
     int reportOnlyExitCode(DataSource dataSource) {
-        SchemaImpactFacade.Result result = SchemaImpactFacade.forLiveDatabase(dataSource);
+        SchemaImpactFacade.Result result = SchemaImpactFacade.forLiveDatabase(dataSource, compiledModel);
         System.out.println(ImpactReportText.render(result.report(), result.fromFingerprint(),
                 result.toFingerprint(), result.ackToken()));
         return codeFor(result.report().verdict());

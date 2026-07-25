@@ -2,6 +2,7 @@ package com.finalexec.controlpanel;
 
 import com.finalexec.db.ImpactReportJson;
 import com.finalexec.db.SchemaImpactFacade;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import jakarta.servlet.http.HttpServletRequest;
@@ -33,20 +34,25 @@ public class SchemaImpactController {
 
     private final ObjectProvider<DataSource> dataSourceProvider;
     private final RuntimeContextService runtimeContextService;
+    private final CompiledModel compiledModel;
 
     public SchemaImpactController(
             ObjectProvider<DataSource> dataSourceProvider,
-            RuntimeContextService runtimeContextService
+            RuntimeContextService runtimeContextService,
+            CompiledModel compiledModel
     ) {
         this.dataSourceProvider = dataSourceProvider;
         this.runtimeContextService = runtimeContextService;
+        this.compiledModel = compiledModel;
     }
 
     @GetMapping(value = "/impact", produces = "application/json")
     public ResponseEntity<String> impact(HttpServletRequest httpRequest) {
         requireSuperUser(httpRequest);
         DataSource dataSource = requireDataSource();
-        SchemaImpactFacade.Result r = SchemaImpactFacade.forLiveDatabase(dataSource);
+        // REG-39 layer 3: same identity-pack-drift check StartupValidator fails fast on at boot,
+        // surfaced here too so it's visible without a boot (NEEDS_ATTENTION item if stale).
+        SchemaImpactFacade.Result r = SchemaImpactFacade.forLiveDatabase(dataSource, compiledModel);
         String json = ImpactReportJson.render(r.report(), Instant.now().toString(),
                 r.fromFingerprint(), r.toFingerprint(), r.ackToken());
         return ResponseEntity.ok().header("Content-Type", "application/json").body(json);

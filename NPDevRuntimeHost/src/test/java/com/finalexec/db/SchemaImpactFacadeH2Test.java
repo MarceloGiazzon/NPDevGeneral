@@ -1,5 +1,8 @@
 package com.finalexec.db;
 
+import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -10,8 +13,11 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
@@ -49,6 +55,47 @@ class SchemaImpactFacadeH2Test {
         assertNotNull(result);
         assertNotNull(result.report());
         assertNull(result.ackToken(), "no manifest -> no diff -> never DESTRUCTIVE -> no token");
+    }
+
+    /** REG-39 layer 3: a stale identity-pack copy must surface as NEEDS_ATTENTION here too, not only at
+     *  boot -- even with no manifest on the classpath (this test's no-manifest branch would otherwise
+     *  always report NO_CHANGES, so seeing NEEDS_ATTENTION here proves the drift check is really wired
+     *  through, not just present as dead code). */
+    @Test
+    void staleIdentityPackCopySurfacesAsNeedsAttentionEvenWithNoManifest() {
+        CompiledModel staleModel = staleIdentityPackModel();
+
+        SchemaImpactFacade.Result result = SchemaImpactFacade.forLiveDatabase(dataSource, staleModel);
+
+        assertEquals(ImpactReport.Verdict.NEEDS_ATTENTION, result.report().verdict());
+        assertEquals(1, result.report().items().size());
+        assertEquals("identity_users", result.report().items().get(0).diffItem().table());
+    }
+
+    @Test
+    void freshIdentityPackCopyStaysNoChangesWithNoManifest() {
+        CompiledModel freshModel = freshIdentityPackModel();
+
+        SchemaImpactFacade.Result result = SchemaImpactFacade.forLiveDatabase(dataSource, freshModel);
+
+        assertEquals(ImpactReport.Verdict.NO_CHANGES, result.report().verdict());
+    }
+
+    private static CompiledModel staleIdentityPackModel() {
+        List<CompiledField> fields = List.of(
+                new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                new CompiledField("username", "string", "java.lang.String", false, true, true));
+        CompiledConcept identityUser = new CompiledConcept("identity::User", "IdentityUser", "identity_users", fields);
+        return new CompiledModel("test", "1.0.0", "1.0", Map.of("identity::User", identityUser));
+    }
+
+    private static CompiledModel freshIdentityPackModel() {
+        List<CompiledField> fields = List.of(
+                new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                new CompiledField("username", "string", "java.lang.String", false, true, true),
+                new CompiledField("tokenVersion", "integer", "int", false, false, false));
+        CompiledConcept identityUser = new CompiledConcept("identity::User", "IdentityUser", "identity_users", fields);
+        return new CompiledModel("test", "1.0.0", "1.0", Map.of("identity::User", identityUser));
     }
 
     /** Minimal {@link DataSource} over {@link DriverManager} (no H2-specific compile dependency). */
