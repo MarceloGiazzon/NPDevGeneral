@@ -160,8 +160,27 @@ public class TenantRegistryService {
     }
 
     /**
-     * Per-request gate: returns false only when the tenant has an explicit DISABLED row. Unknown
-     * tenants and an absent/unreadable registry both return true (fail-open).
+     * Per-request gate: returns false when the tenant has an explicit DISABLED row, or when a
+     * registry that demonstrably EXISTS cannot be read.
+     *
+     * <p>Unknown tenants, an absent {@code DataSource}, and an app with no registry table at all are
+     * still fail-open -- that is the class-level contract above, and it is what lets the registry be
+     * added without breaking existing deployments.</p>
+     *
+     * <p><b>REG-43 (2026-07-25).</b> Every {@link SQLException} used to return {@code true}, silently.
+     * That gave the one control that makes "disable" mean anything an undetectable off-switch: drop the
+     * table, exhaust the pool, rename a column mid-migration, and every DISABLED tenant is served again
+     * with nothing logged at any level. The two failure modes are now separated, because they mean
+     * genuinely different things:</p>
+     *
+     * <ul>
+     *   <li><b>The table does not exist</b> -- this app has no tenant registry. Fail OPEN: unchanged
+     *       behaviour, and the only case the fail-open contract was ever written for.</li>
+     *   <li><b>Anything else</b> -- the registry exists and we could not read it, so we do not know
+     *       whether this tenant is disabled. Fail CLOSED and log at ERROR. This costs no availability
+     *       that is not already lost: if the database is failing, the request's own data queries are
+     *       failing too, so the caller gets a 403 instead of a 500 -- while the control stays intact.</li>
+     * </ul>
      */
     public boolean isActive(String tenantId) {
         String id = normalize(tenantId);
@@ -183,8 +202,51 @@ public class TenantRegistryService {
                 return !Status.DISABLED.name().equalsIgnoreCase(resultSet.getString("status"));
             }
         } catch (SQLException exception) {
-            return true;
+            if (isMissingRegistryTable(exception)) {
+                LOGGER.log(System.Logger.Level.INFO,
+                        () -> "Tenant registry table " + NpdevTenantTable.NAME + " is absent; tenant status checks "
+                                + "are inactive for this app (every tenant is treated as active).");
+                return true;
+            }
+            LOGGER.log(System.Logger.Level.ERROR,
+                    () -> "Tenant registry unreadable while checking tenant '" + id + "'; DENYING the request "
+                            + "because a disabled tenant must not be served on a read failure (REG-43). Cause: "
+                            + exception,
+                    exception);
+            return false;
         }
+    }
+
+    private static final System.Logger LOGGER = System.getLogger(TenantRegistryService.class.getName());
+
+    /**
+     * "The registry table is not there" vs "the registry is broken" -- the whole REG-43 fix turns on
+     * telling these apart, so it is decided by SQLState rather than by message text.
+     *
+     * <p>{@code 42S02} is the ODBC/H2 "base table or view not found" state; Postgres reports
+     * {@code 42P01} (undefined_table). Both are checked across the whole cause chain, since a pooled
+     * DataSource commonly wraps the driver's exception. The message fallback exists only for drivers
+     * that report {@code 42000} (generic syntax-or-access) for a missing table -- it is a last resort,
+     * not the primary signal.</p>
+     */
+    private static boolean isMissingRegistryTable(SQLException exception) {
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sql) {
+                String state = sql.getSQLState();
+                if ("42S02".equals(state) || "42P01".equals(state)) {
+                    return true;
+                }
+            }
+            String message = cause.getMessage();
+            if (message != null) {
+                String lower = message.toLowerCase(Locale.ROOT);
+                if ((lower.contains("not found") || lower.contains("does not exist") || lower.contains("doesn't exist"))
+                        && lower.contains(NpdevTenantTable.NAME.toLowerCase(Locale.ROOT))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private DataSource requireDataSource() {

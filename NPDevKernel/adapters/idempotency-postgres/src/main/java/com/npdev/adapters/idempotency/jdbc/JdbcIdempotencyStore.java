@@ -1,5 +1,6 @@
 package com.npdev.adapters.idempotency.jdbc;
 
+import com.npdev.kernel.capability.IdempotencyKeys;
 import com.npdev.kernel.capability.IdempotencyRecord;
 import com.npdev.kernel.ports.IdempotencyStore;
 
@@ -35,7 +36,11 @@ public class JdbcIdempotencyStore implements IdempotencyStore {
             statement.setString(1, requireValue(tenantId, "tenantId"));
             statement.setString(2, requireValue(capability, "capability"));
             statement.setString(3, requireValue(operation, "operation"));
-            statement.setString(4, requireValue(idempotencyKey, "idempotencyKey"));
+            // REG-36: bound here, not at the caller. Keys arrive from several places (a model author's
+            // idempotencyKeyField, an Idempotency-Key header via GeneratedCrudRuntimeSupport, flow
+            // resume) and every one of them must agree on the stored form, or a lookup silently misses
+            // the record its own write created.
+            statement.setString(4, IdempotencyKeys.bound(requireValue(idempotencyKey, "idempotencyKey")));
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
                     return Optional.empty();
@@ -111,7 +116,10 @@ public class JdbcIdempotencyStore implements IdempotencyStore {
         String safeTenant = requireValue(tenantId, "tenantId");
         String safeCapability = requireValue(capability, "capability");
         String safeOperation = requireValue(operation, "operation");
-        String safeKey = requireValue(idempotencyKey, "idempotencyKey");
+        // REG-36: an oversized key used to reach the index unchanged and blow past Postgres's btree
+        // entry limit -- so a call that had ALREADY SUCCEEDED was reported as failed, and, with
+        // nothing cached, the caller's retry ran the operation a second time.
+        String safeKey = IdempotencyKeys.bound(requireValue(idempotencyKey, "idempotencyKey"));
         if (createdAtMs <= 0) {
             throw new IllegalArgumentException("createdAtMs must be > 0");
         }

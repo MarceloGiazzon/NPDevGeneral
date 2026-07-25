@@ -3,6 +3,7 @@ package com.npdev.adapters.circuit.jdbc;
 import com.npdev.kernel.capability.CapabilityOpKey;
 import com.npdev.kernel.capability.CircuitBreakerState;
 import com.npdev.kernel.capability.CircuitBreakerStateSummary;
+import com.npdev.kernel.capability.CircuitBreakerTransitions;
 import com.npdev.kernel.capability.CircuitState;
 import com.npdev.kernel.ports.CircuitBreakerStateStore;
 
@@ -79,6 +80,144 @@ public class JdbcCircuitBreakerStateStore implements CircuitBreakerStateStore {
             statement.executeUpdate();
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed resetting circuit breaker state", exception);
+        }
+    }
+
+    /**
+     * REG-37: read, decide and write inside ONE transaction with the row locked, so N concurrent
+     * failures against the same key produce exactly N increments.
+     *
+     * <p>The previous shape -- caller does {@code get()}, computes, then {@code put()} -- issues two
+     * independent statements on two independent connections with nothing serialising them, so a burst
+     * of failures collapses into a single increment and the circuit opens late or never.</p>
+     *
+     * <p><b>Why the row is seeded first.</b> {@code SELECT ... FOR UPDATE} locks rows, and a row that
+     * does not exist cannot be locked -- two concurrent <em>first</em> failures would both find
+     * nothing, both compute 1, and one would lose. So a CLOSED/zero row is inserted first (duplicate
+     * key tolerated, since another thread racing to the same conclusion is exactly the expected case),
+     * and only then is it locked. Seeding a zero row is harmless: it is the same state {@link #get}
+     * already synthesises for a missing key.</p>
+     */
+    @Override
+    public CircuitBreakerState recordFailure(CapabilityOpKey key, long nowMs, int openAfterFailures, long openMs) {
+        Objects.requireNonNull(key, "key");
+        seedIfAbsent(key);
+
+        String selectForUpdate = """
+                SELECT state, consecutive_failures, opened_at_ms, last_failure_at_ms, half_open_allowed_at_ms, half_open_trial_count
+                FROM npdev_circuit_breaker
+                WHERE tenant_id = ? AND capability = ? AND operation = ?
+                FOR UPDATE
+                """;
+        String update = """
+                UPDATE npdev_circuit_breaker
+                SET state = ?, consecutive_failures = ?, opened_at_ms = ?, last_failure_at_ms = ?,
+                    half_open_allowed_at_ms = ?, half_open_trial_count = ?
+                WHERE tenant_id = ? AND capability = ? AND operation = ?
+                """;
+
+        Connection connection = null;
+        boolean previousAutoCommit = true;
+        try {
+            connection = dataSource.getConnection();
+            previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+
+            CircuitBreakerState current = null;
+            try (PreparedStatement statement = connection.prepareStatement(selectForUpdate)) {
+                statement.setString(1, key.tenantId());
+                statement.setString(2, key.capabilityName());
+                statement.setString(3, key.operationName());
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    if (resultSet.next()) {
+                        current = new CircuitBreakerState(
+                                parseState(resultSet.getString("state")),
+                                resultSet.getInt("consecutive_failures"),
+                                resultSet.getLong("opened_at_ms"),
+                                resultSet.getLong("last_failure_at_ms"),
+                                resultSet.getLong("half_open_allowed_at_ms"),
+                                resultSet.getInt("half_open_trial_count")
+                        );
+                    }
+                }
+            }
+
+            CircuitBreakerState next = CircuitBreakerTransitions.afterFailure(current, nowMs, openAfterFailures, openMs);
+            try (PreparedStatement statement = connection.prepareStatement(update)) {
+                statement.setString(1, next.state().name());
+                statement.setInt(2, next.consecutiveFailures());
+                statement.setLong(3, next.openedAtMs());
+                statement.setLong(4, next.lastFailureAtMs());
+                statement.setLong(5, next.halfOpenAllowedAtMs());
+                statement.setInt(6, next.halfOpenTrialCount());
+                statement.setString(7, key.tenantId());
+                statement.setString(8, key.capabilityName());
+                statement.setString(9, key.operationName());
+                statement.executeUpdate();
+            }
+            connection.commit();
+            return next;
+        } catch (SQLException exception) {
+            rollbackQuietly(connection);
+            throw new IllegalStateException("Failed recording circuit breaker failure", exception);
+        } finally {
+            closeQuietly(connection, previousAutoCommit);
+        }
+    }
+
+    /**
+     * Create a CLOSED/zero row for {@code key} if there is not one already, and otherwise do nothing
+     * at all.
+     *
+     * <p>Deliberately NOT {@link #insertOrIgnore}: despite the name, that method <em>upserts</em> --
+     * on a duplicate key it falls through to {@code update(key, state)}. Seeding through it therefore
+     * reset the counter to zero at the start of every single {@code recordFailure}, so the count never
+     * exceeded 1. The concurrency test caught it immediately (expected 200, got 1), which is the
+     * argument for asserting the counter's VALUE rather than merely that it moved.</p>
+     */
+    private void seedIfAbsent(CapabilityOpKey key) {
+        String sql = """
+                INSERT INTO npdev_circuit_breaker (
+                    tenant_id, capability, operation, state, consecutive_failures,
+                    opened_at_ms, last_failure_at_ms, half_open_allowed_at_ms, half_open_trial_count
+                ) VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0)
+                """;
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, key.tenantId());
+            statement.setString(2, key.capabilityName());
+            statement.setString(3, key.operationName());
+            statement.setString(4, CircuitState.CLOSED.name());
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            if (isDuplicateKey(exception)) {
+                return;  // another thread seeded it first -- the expected outcome, not an error
+            }
+            throw new IllegalStateException("Failed seeding circuit breaker state", exception);
+        }
+    }
+
+    private static void rollbackQuietly(Connection connection) {
+        if (connection == null) {
+            return;
+        }
+        try {
+            connection.rollback();
+        } catch (SQLException ignored) {
+            // The original failure is the one worth reporting; a rollback that also fails adds nothing.
+        }
+    }
+
+    private static void closeQuietly(Connection connection, boolean restoreAutoCommit) {
+        if (connection == null) {
+            return;
+        }
+        try (connection) {
+            // Restore autoCommit before returning the connection: a pooled connection handed back in
+            // manual-commit mode silently breaks whichever unrelated caller borrows it next.
+            connection.setAutoCommit(restoreAutoCommit);
+        } catch (SQLException ignored) {
+            // Nothing useful to do while unwinding.
         }
     }
 
