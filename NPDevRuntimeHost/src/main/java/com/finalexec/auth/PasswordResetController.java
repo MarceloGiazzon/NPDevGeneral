@@ -17,6 +17,7 @@ import java.security.SecureRandom;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Base64;
@@ -162,6 +163,19 @@ public class PasswordResetController {
             markTokenUsed(connection, record.tokenId());
             bumpTokenVersion(connection, record.userId(), tenantId);
             return ResponseEntity.ok(Map.of("ok", true));
+        } catch (IdentityPackSchemaException schemaException) {
+            // REG-39: the token_version bump below found a schema mismatch (stale built-in-pack
+            // copy). The credential update already committed, so the reset itself worked -- but
+            // failing to report the revocation gap as a schema error (instead of the generic
+            // password_reset_failed) is exactly the kind of masking that made REG-39 expensive.
+            LOG.log(Level.SEVERE, "Password reset confirm: identity pack schema mismatch bumping token_version",
+                    schemaException);
+            return ResponseEntity.status(500).body(Map.of(
+                    "error", "identity_pack_schema_error",
+                    "detail", "Password reset succeeded but session revocation failed because this app's "
+                            + "identity pack copy is out of date. See "
+                            + "docs/CONFIGURATION.md#identity-pack-freshness-checked-at-boot. Cause: "
+                            + schemaException.getMessage()));
         } catch (Exception exception) {
             LOG.log(Level.WARNING, "Password reset confirm failed", exception);
             return ResponseEntity.status(500).body(Map.of("error", "password_reset_failed"));
@@ -247,8 +261,14 @@ public class PasswordResetController {
             ps.setObject(1, userId);
             ps.setString(2, tenantId);
             ps.executeUpdate();
-        } catch (Exception ignored) {
-            // Best-effort, same as the ControlPanel path -- the reset itself already succeeded.
+        } catch (SQLException exception) {
+            // REG-39: a schema mismatch here is NOT the same kind of "best-effort, don't care" failure
+            // as e.g. a transient lock -- it means this app's identity pack copy is stale, and staying
+            // silent about it is exactly how REG-39 went undiagnosed. Let it propagate distinctly;
+            // anything else stays best-effort, same as before.
+            if (SqlSchemaErrors.isSchemaMismatch(exception)) {
+                throw new IdentityPackSchemaException(exception);
+            }
         }
     }
 

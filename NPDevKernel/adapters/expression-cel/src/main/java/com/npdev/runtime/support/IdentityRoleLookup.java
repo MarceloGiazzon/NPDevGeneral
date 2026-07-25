@@ -7,6 +7,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.logging.Logger;
 
 /**
  * Resolves the roles assigned to an actor in the built-in identity pack
@@ -20,6 +21,8 @@ import java.util.Set;
  * are absent ({@code internal.tables=false}). Never throws.</p>
  */
 public final class IdentityRoleLookup {
+
+    private static final Logger LOG = Logger.getLogger(IdentityRoleLookup.class.getName());
 
     private static final String ROLE_QUERY = """
             SELECT r.name
@@ -66,8 +69,25 @@ public final class IdentityRoleLookup {
                 return resultSet.wasNull() ? 0 : version;
             }
         } catch (SQLException exception) {
+            // REG-39: this method's "never throws" contract stays (it's on the hot per-request
+            // claim-to-context path, both here and in GeneratedCrudRuntimeSupport, so making it throw
+            // would ripple into every caller) -- but a schema mismatch (stale built-in-pack copy
+            // missing token_version) must not fail SILENTLY the way it did for WmsOffice. Log it
+            // loudly; StartupValidator already fails the app at boot for this specific case, so
+            // reaching here at all means that check was bypassed or the drift is in a column it
+            // doesn't yet cover.
+            if (isSchemaMismatch(exception)) {
+                LOG.severe("token_version lookup failed: identity pack schema mismatch (see "
+                        + "docs/CONFIGURATION.md#identity-pack-freshness-checked-at-boot) -- "
+                        + exception.getMessage());
+            }
             return 0;
         }
+    }
+
+    private static boolean isSchemaMismatch(SQLException exception) {
+        String state = exception.getSQLState();
+        return state != null && state.startsWith("42");
     }
 
     /** REG-23: config property (JVM system property, bridged from Spring by RuntimeHost at boot) — an
