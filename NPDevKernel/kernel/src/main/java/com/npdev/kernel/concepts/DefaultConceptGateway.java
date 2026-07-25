@@ -155,17 +155,34 @@ public final class DefaultConceptGateway implements ConceptGateway {
         for (ConceptRecord item : page.items()) {
             // LNCH-13: row-level scoping applied to the already-paginated page, not pushed into
             // the SQL WHERE clause -- a deliberate v1 boundary (see docs/EXPRESSIONS.md /
-            // LAUNCH_READINESS_GAPS.md). This prevents cross-scope row LEAKAGE (the security
-            // property the DoD's attack suite checks) at the cost of page.total()/hasMore()
-            // possibly over-reporting relative to the row-scoped result set, since the store's
-            // count was computed before this filter ran.
+            // LAUNCH_READINESS_GAPS.md).
             if (semanticPolicy.isRowReadable(item, requestContext)) {
                 visible.add(semanticPolicy.filterVisibleFields(item, requestContext));
             }
         }
+        long total = page.total();
+        boolean hasMore = page.hasMore();
+        // REG-42 (LNCH13-F3, REG-16-resid Round 2 follow-up): page.total()/hasMore() above were
+        // computed by the store BEFORE row-scope filtering, so trusting them would leak the count
+        // of rows outside the caller's access.read scope (an information-disclosure side channel,
+        // not just a pagination-accuracy nuisance -- see docs/ROW_LEVEL_AUTHORIZATION.md). Only pay
+        // the extra query when the concept actually declares access.read; every other concept's
+        // query() is unaffected. Re-runs the SAME filters/sorts unpaged (bounded by
+        // ConceptQuery.MAX_LIMIT, the platform's existing single-query ceiling) to count exactly the
+        // rows this caller may see.
+        if (semanticPolicy.hasRowReadScope(request.conceptName())) {
+            ConceptQuery unpaged = new ConceptQuery(
+                    request.query().filters(), request.query().sorts(), 0, ConceptQuery.MAX_LIMIT);
+            ConceptPage unpagedResult = store.query(tenantId, request.conceptName(), unpaged);
+            long readableTotal = unpagedResult.items().stream()
+                    .filter(item -> semanticPolicy.isRowReadable(item, requestContext))
+                    .count();
+            total = readableTotal;
+            hasMore = (long) request.query().offset() + visible.size() < readableTotal;
+        }
         audit(effectiveContext, "CONCEPT_LIST", request.conceptName(), "*", "SUCCESS", "allowed", tenantId);
         trace(requestContext, "SUCCESS", "allowed", decision);
-        return new ConceptPage(visible, page.total(), page.hasMore());
+        return new ConceptPage(visible, total, hasMore);
     }
 
     private static boolean matchesExact(ConceptRecord record, String field, String value) {
@@ -193,13 +210,22 @@ public final class DefaultConceptGateway implements ConceptGateway {
         Optional<ConceptRecord> previous = store.findById(tenantId, request.conceptName(), request.id());
         requestContext = requestContext.withPreviousRecord(previous);
 
+        // REG-41 (LNCH13-F2, REG-16-resid Round 2): authorization must run BEFORE any semantic
+        // validation that touches the previous record's data (normalizeAndValidate /
+        // applyDefaultsAndDerivedValues / validateLifecycleTransition / BEFORE_COMMIT rule
+        // profiles, bundled in runWriteSemantics below) -- otherwise a caller with no write
+        // permission or no row-scope access can learn the row's current state (e.g. its
+        // lifecycle-status value, via a CONCEPT_LIFECYCLE_TRANSITION_INVALID error's "from" detail)
+        // from a validation failure thrown before authorization ever ran. The previous-record
+        // FETCH above stays where it is -- enforceRowWritable needs it for update/delete -- it is
+        // the semantic-validation USE of that data that must wait until authorization passes.
+        enforcePermission(effectiveContext, "concept.write", request.conceptName(), "CONCEPT_WRITE", request.id());
+        enforceRowWritable(requestContext, "CONCEPT_WRITE");
+
         ConceptSemanticDecision decision = runWriteSemantics(
                 requestContext,
                 ruleProfilesForWriteBeforeCommit(effectiveContext)
         );
-
-        enforcePermission(effectiveContext, "concept.write", request.conceptName(), "CONCEPT_WRITE", request.id());
-        enforceRowWritable(requestContext, "CONCEPT_WRITE");
 
         // LNCH-16: expectedRowVersion is a compare-and-swap request; force explicitly opts out of
         // it even when a version was supplied (a flow declaring last-write-wins intent). Anything

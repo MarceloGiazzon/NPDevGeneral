@@ -5,9 +5,13 @@ import com.finalexec.db.JdbcBusinessConceptStore;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledConceptAccess;
 import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.dsl.v1.compiled.CompiledLifecycle;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledStateMachineState;
+import com.npdev.dsl.v1.compiled.CompiledStateTransition;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGatewayAccessDeniedException;
+import com.npdev.kernel.concepts.ConceptGatewaySemanticException;
 import com.npdev.kernel.concepts.ConceptGatewaySemanticPolicy;
 import com.npdev.kernel.concepts.ConceptListRequest;
 import com.npdev.kernel.concepts.ConceptReadRequest;
@@ -58,6 +62,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RowLevelAuthorizationAttackTest {
 
     private static final String CONCEPT = "Order";
+    private static final String TICKET = "Ticket";
     private static final String TENANT = "clinic-a";
     private static final ExecutionContext USER_A = ExecutionContext.of(TENANT, "user-a");
     private static final ExecutionContext USER_B = ExecutionContext.of(TENANT, "user-b");
@@ -109,6 +114,11 @@ class RowLevelAuthorizationAttackTest {
         assertEquals(1, page.items().size(), "user B's query page must contain only their own row");
         assertFalse(page.items().stream().anyMatch(r -> aId.equals(r.id())),
                 "user A's row must never surface in user B's query page");
+        // REG-42 (LNCH13-F3, REG-16-resid Round 2 follow-up): pagination metadata must be
+        // row-scoped too, not only the items array -- otherwise B learns via `total` that a row
+        // exists that B cannot see, even though the items list correctly hides it.
+        assertEquals(1, page.total(), "total must reflect only rows user B can read, not the tenant's full row count");
+        assertFalse(page.hasMore(), "hasMore must be false once every row B can read has been returned");
     }
 
     @ParameterizedTest(name = "{0}")
@@ -199,6 +209,45 @@ class RowLevelAuthorizationAttackTest {
         assertFalse(flowRan.get(), "the update flow must never run for a denied write");
     }
 
+    /**
+     * REG-41 (LNCH13-F2, REG-16-resid Round 2 follow-up): {@code DefaultConceptGateway.save()} used
+     * to run lifecycle-transition validation against the PREVIOUS record before the coarse
+     * {@code concept.write} permission and row-level {@code access.write} checks. Since that
+     * validation failure's detail map includes the row's actual current status ({@code "from"}), an
+     * actor with NO write access to the row at all could learn its current lifecycle state by simply
+     * submitting an unreachable target status and reading the resulting error -- authorization must
+     * gate BEFORE any semantic work touches another actor's data, not after.
+     *
+     * <p>Ticket starts life {@code OPEN} (declared initial state); the only declared transition is
+     * {@code OPEN -> CLOSED}. User B (who does not own the row) submits {@code status: "ARCHIVED"} --
+     * a declared state with no transition path from {@code OPEN}, which {@code
+     * validateLifecycleTransition} would reject with the row's real current status in the exception
+     * detail if it ever ran. It must never run for B: the row-scope denial must fire first.</p>
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("ticketAdapters")
+    void unauthorizedWriteIsRowScopeDeniedBeforeLifecycleValidationLeaksTheRowsStatus(Supplier<ConceptStore> storeFactory) {
+        DefaultConceptGateway gateway = ticketGatewayOver(storeFactory.get());
+        String aId = UUID.randomUUID().toString();
+        gateway.save(new ConceptWriteRequest(TICKET, aId, null,
+                Map.of("id", aId, "ownerId", USER_A.actorId(), "status", "OPEN")), USER_A);
+
+        RuntimeException thrown = assertThrows(RuntimeException.class,
+                () -> gateway.save(new ConceptWriteRequest(TICKET, aId, null,
+                        Map.of("id", aId, "ownerId", "user-a", "status", "ARCHIVED")), USER_B),
+                "user B must not be able to write user A's Ticket, regardless of the payload's status");
+
+        assertTrue(thrown instanceof ConceptGatewayAccessDeniedException,
+                "row-scope authorization must deny BEFORE lifecycle validation ever runs -- got "
+                        + thrown.getClass().getSimpleName() + ": " + thrown.getMessage());
+        assertEquals("ROW_SCOPE_DENIED", ((ConceptGatewayAccessDeniedException) thrown).code());
+        assertFalse(thrown.getMessage() != null && thrown.getMessage().contains("OPEN"),
+                "the denial must not leak the row's actual current status: " + thrown.getMessage());
+        assertFalse(thrown instanceof ConceptGatewaySemanticException,
+                "must not be the lifecycle-validation exception -- that would mean authorization ran "
+                        + "too late, after already touching user A's row data");
+    }
+
     @ParameterizedTest(name = "{0}")
     @MethodSource("adapters")
     void userBCannotDeleteUserARow(Supplier<ConceptStore> storeFactory) {
@@ -214,6 +263,73 @@ class RowLevelAuthorizationAttackTest {
     }
 
     // --- helpers -----------------------------------------------------------------------------
+
+    static Stream<Arguments> ticketAdapters() {
+        return Stream.of(
+                Arguments.of(Named.of("InMemory adapter", (Supplier<ConceptStore>) RowLevelAuthorizationAttackTest::newInMemoryTicketStore)),
+                Arguments.of(Named.of("JDBC/H2 adapter", (Supplier<ConceptStore>) RowLevelAuthorizationAttackTest::newJdbcTicketStore))
+        );
+    }
+
+    private static DefaultConceptGateway ticketGatewayOver(ConceptStore store) {
+        ConceptGatewaySemanticPolicy policy = RuntimeConceptGatewaySemanticPolicies.fromCompiledModel(ticketModel());
+        return new DefaultConceptGateway(
+                store,
+                PermissionEvaluator.allowAll(),
+                TenantIsolationPolicy.STRICT_EQUALS,
+                AuditLogStore.noop(),
+                policy,
+                com.npdev.kernel.concepts.ConceptGatewayTraceSink.noop()
+        );
+    }
+
+    private static CompiledModel ticketModel() {
+        CompiledLifecycle lifecycle = new CompiledLifecycle(
+                "status",
+                List.of(
+                        new CompiledStateMachineState("OPEN", "Open", true, false, Map.of()),
+                        new CompiledStateMachineState("CLOSED", "Closed", false, false, Map.of()),
+                        new CompiledStateMachineState("ARCHIVED", "Archived", false, true, Map.of())
+                ),
+                List.of(new CompiledStateTransition("OPEN", "CLOSED", List.of()))
+        );
+        CompiledConcept ticket = new CompiledConcept(
+                TICKET, TICKET, "tickets",
+                List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("ownerId", "string", "String", false, true, false),
+                        new CompiledField("status", "string", "String", false, true, false)
+                ),
+                List.of(),
+                List.of(),
+                lifecycle,
+                null,
+                null,
+                null,
+                List.of(),
+                new CompiledConceptAccess(null, "ownerId == $user.id")
+        );
+        return new CompiledModel("row.level.attack.ticket", "1.0.0", "1.0.0", Map.of(ticket.getName(), ticket));
+    }
+
+    private static ConceptStore newInMemoryTicketStore() {
+        return new InMemoryConceptStore(ticketModel());
+    }
+
+    private static ConceptStore newJdbcTicketStore() {
+        try {
+            String url = "jdbc:h2:mem:row-level-attack-ticket-" + System.nanoTime() + ";DB_CLOSE_DELAY=-1";
+            DataSource dataSource = new SingleConnectionUrlDataSource(url);
+            try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+                statement.execute(
+                        "CREATE TABLE tickets (id UUID NOT NULL, owner_id VARCHAR(255), status VARCHAR(255), "
+                                + "tenant_id VARCHAR(120) NOT NULL, PRIMARY KEY (id))");
+            }
+            return new JdbcBusinessConceptStore(dataSource, ticketModel());
+        } catch (SQLException exception) {
+            throw new IllegalStateException("failed to build H2-backed JDBC concept store", exception);
+        }
+    }
 
     private static DefaultConceptGateway gatewayOver(ConceptStore store) {
         ConceptGatewaySemanticPolicy policy = RuntimeConceptGatewaySemanticPolicies.fromCompiledModel(orderModel());
