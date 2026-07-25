@@ -22,8 +22,20 @@
 | 5 | **REG-37** — circuit-breaker failure counter is not atomic | BUG | MED | `REG16_RESID_COMPLETION_PLAN.md` §1.4 | Get-then-put with no CAS in **both** the in-proc and JDBC stores; the breaker opens late under exactly the load it exists for |
 | 6 | **REG-36** — unbounded idempotency key | BUG | MED | same §1.3 | Caller-influenced key stored unbounded while the cached *value* is already bounded; storage/DoS vector |
 
-**That is the whole blocking list.** Items 1–4 are one session each and must not be batched (the
-register forbids it by name); items 5–6 are contained fixes.
+**That is the whole blocking list — and all six close in 3 sessions**, not 6. See
+**[`ONE_PLAN_CLOSE_EVERYTHING.md`](ONE_PLAN_CLOSE_EVERYTHING.md)**, the single plan that closes
+everything on this page.
+
+The compression is not "batch the reviews anyway". It works because (a) a **mechanical sweep** runs
+first across all four surfaces — the bug classes already found here (guard-in-one-branch, swallowed
+security exceptions, unparameterised SQL) are *grep-able patterns*, and pattern-matching genuinely
+batches; and (b) the four surfaces **pair by threat model** — codegen output + export/PDF are both
+"what happens to content on the way out", flow/`await` + Postgres adapter SQL are both "who owns
+durable state, and does identity survive it". Reviewing a pair that shares a mental model is more
+effective than splitting it, not less.
+
+What does **not** change: a CRITICAL/HIGH still stops the session on the spot, each surface still gets
+its own scope list and its own findings document, and if depth runs out you split rather than skim.
 
 ## 2. Open but NOT blocking
 
