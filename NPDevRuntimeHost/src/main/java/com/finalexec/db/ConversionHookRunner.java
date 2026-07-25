@@ -228,6 +228,14 @@ public final class ConversionHookRunner {
         return index;
     }
 
+    /** Test-only seam (SER closure plan G1): the number of loaded hooks whose common convert SQL
+     *  resolved to non-null/non-blank -- proves sibling resolution ({@link #readSiblingIfPresent})
+     *  works on whatever classpath layout is in effect (a directory during ordinary test runs, a
+     *  {@code jar:} URL when {@link #loadHooks} is driven from inside a packaged boot jar). */
+    static long loadedHooksWithConvertSqlCount() {
+        return loadHooks().stream().filter(h -> h.commonSql() != null && !h.commonSql().isBlank()).count();
+    }
+
     private static String historyLabel(Hook hook) {
         return "CONVERSION_HOOK:" + hook.id();
     }
