@@ -61,6 +61,15 @@ SUMMARY_ROW = re.compile(
 DETAIL_HEADING = re.compile(
     r"^#{2,4}\s+(?:[0-9]+(?:\.[0-9]+)*\s+)?(?P<id>[A-Z][A-Za-z0-9]*-[A-Za-z0-9-]+)\b"
 )
+# `### REG-36, REG-37, REG-41 — findings filed by ...` / `## 3.3 REG-18…REG-26 — ...`
+# A heading naming SEVERAL items is a group heading, not any one item's detail section: there is no
+# single **Status:** it could carry. Previously such a heading was treated as the detail section for
+# whichever id came first, which then reported as UNPARSEABLE forever -- three of the nine items on
+# ONE_PLAN's "unparseable status" list were this, not documentation drift.
+GROUP_HEADING = re.compile(
+    r"^#{2,4}\s+(?:[0-9]+(?:\.[0-9]+)*\s+)?"
+    r"[A-Z][A-Za-z0-9]*-[A-Za-z0-9-]+\s*(?:,|…|\.\.\.)\s*[A-Z][A-Za-z0-9]*-[A-Za-z0-9-]+"
+)
 # The first bolded token after `**Status:**`, e.g. `**Status:** **CLOSED (2026-07-21, ...)**`
 STATUS_LINE = re.compile(r"\*\*Status:\*\*\s*\*{0,2}(?P<status>[^*\n.]{0,80})")
 
@@ -101,6 +110,7 @@ def parse(path: Path, mode: str) -> tuple[dict[str, tuple[int, str]], dict[str, 
 
     pending_id: str | None = None
     pending_line = 0
+    awaiting_status_text = False
     for number, line in enumerate(lines, start=1):
         row = SUMMARY_ROW.match(line)
         if row:
@@ -109,20 +119,38 @@ def parse(path: Path, mode: str) -> tuple[dict[str, tuple[int, str]], dict[str, 
             summary.setdefault(item, (number, row_verdict(line, bool(row.group("struck")), mode)))
             continue
 
+        if GROUP_HEADING.match(line):
+            pending_id = None  # a heading covering several items: not any one item's section
+            continue
+
         heading = DETAIL_HEADING.match(line)
         if heading:
             pending_id = heading.group("id")
             pending_line = number
             sectioned.add(pending_id)
+            awaiting_status_text = False
             continue
 
         if pending_id:
+            # `**Status:** DONE (...)` on one line, or `**Status:**` with the value wrapped onto the
+            # next -- both are used in these documents, and reflowing prose to satisfy a parser is the
+            # wrong way round. Four more of ONE_PLAN's nine "unparseable" items were only this.
+            if awaiting_status_text:
+                verdict = classify(line.strip()[:80])
+                if verdict:
+                    detail.setdefault(pending_id, (pending_line, verdict))
+                    pending_id = None
+                awaiting_status_text = False
+                continue
+
             found = STATUS_LINE.search(line)
             if found:
                 verdict = classify(found.group("status"))
                 if verdict:
                     detail.setdefault(pending_id, (pending_line, verdict))
-                pending_id = None
+                    pending_id = None
+                else:
+                    awaiting_status_text = True  # value continues on the next line
             elif line.startswith("#"):
                 pending_id = None  # next heading arrived before any Status line
     return summary, detail, sectioned

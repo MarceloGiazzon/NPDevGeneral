@@ -129,8 +129,8 @@ parts: `NPDev_General__OutsideRepo/{reg12-slice3-evidence,external-tester-eviden
 | ~~**REG-4**~~ | `T-F1` — load-sensitive flake — **CLOSED (2026-07-21, REG-4/P8)**: root cause fixed (a stray caller interrupt in `SandboxedPluginExecutionEngine.execute`), not just tolerance-widened | BUG | LOW | S/M | 1.4 |
 | ~~**REG-5**~~ | `GATE-OBS-1a` — **CLOSED (2026-07-21, REG-5/P8)**: retired the 6 redundant convergence checks to informational-only (the allowlist already enforces this), dated rationale recorded | PROCESS | LOW | S | 1.5 |
 | ~~**REG-6**~~ | `ColumnFacts` → canonical `SchemaDiff` — **CLOSED FULLY (2026-07-24, Schema Engine Rebuild)**: every executor pass consumes ONE desired-vs-current model | GAP | MED | M | 1.6 |
-| **REG-7** | `LNCH-1-B6` — no migration advisory lock (multi-instance) | BOUNDARY | — | M | 1.7 |
-| **REG-8** | `LNCH-1-B9` — schema-ahead detector blind to a pure column drop | BOUNDARY | — | M | 1.8 |
+| ~~**REG-7**~~ | `LNCH-1-B6` — no migration advisory lock (multi-instance). **CLOSED (2026-07-22)** as a BOUNDARY converted to a feature — see §1.7 | BOUNDARY | — | M | 1.7 |
+| ~~**REG-8**~~ | `LNCH-1-B9` — schema-ahead detector blind to a pure column drop. **CLOSED (2026-07-22)** by refusal rather than full reconstruction; the fresh-install false negative it exposed is REG-27 — see §1.8 | BOUNDARY | — | M | 1.8 |
 | ~~**REG-9**~~ | LNCH-4 — auth table stakes — **CLOSED (2026-07-21, REG-9/P3)**: JWT env-var keys + `StartupValidator` fail-fast + verify-only `LoginController`; super-user key defaulted to WONTFIX (reversible) | GAP | **P0** | S/M | 2.1 |
 | ~~**REG-10**~~ | LNCH-19 — Linux CI **now observed GREEN** (run `29899362276`, 2026-07-22) — DONE | GAP | **P1** | S/M | 2.2 |
 | ~~**REG-11**~~ | LNCH-20 — cross-platform build **PROVEN** by the green run; also fixed a real generated-app `D:/`-cache portability bug — DONE | GAP | P2 | S | 2.3 |
@@ -138,7 +138,7 @@ parts: `NPDev_General__OutsideRepo/{reg12-slice3-evidence,external-tester-eviden
 | ~~**REG-13**~~ | LNCH-18 — non-author usability test — **CLOSED 2026-07-22** (independent cold-tester run) | GAP | P1 | S | 2.5 |
 | ~~**REG-14**~~ | LNCH-22 — newcomer documentation test — **CLOSED 2026-07-22** (same run) | GAP | P2 | S | 2.6 |
 | ~~**REG-15**~~ | LNCH-23 — release tag DONE + trademark **N/A** (individual hobby project, no mark) — **DONE 2026-07-23** | PROCESS | P2 | S | 2.7 |
-| **REG-16** | Adversarial review of the other 23 launch items — **TIER A + TIER B DONE (2026-07-21)**; the open remainder is tracked as **REG-16-resid** (§3.1). Corrected 2026-07-25: this row previously read "zero adversarial review", which had not been true since 2026-07-21 | PROCESS | **HIGH** | L | 3.1 |
+| ~~**REG-16**~~ | Adversarial review of the other 23 launch items — **TIER A + TIER B DONE (2026-07-21)**; the open remainder is tracked as **REG-16-resid** (§3.1). Corrected 2026-07-25: this row previously read "zero adversarial review", which had not been true since 2026-07-21. **CLOSED 2026-07-25** — REG-16-resid finished all six rounds, so no launch surface remains unreviewed | PROCESS | **HIGH** | L | 3.1 |
 | ~~**REG-17**~~ | No third party has ever reproduced any verification — **DONE (2026-07-24, run `30067198501`)**: full CI green end-to-end on GitHub-hosted runners from a clean checkout (automated external reproduction on hardware this project has never touched). A literal human third-party run remains an optional nice-to-have, owner's call. Corrected 2026-07-25: this row previously read "PARTIAL, advanced 2026-07-22" while the detail section had already recorded achievement the day before | PROCESS | MED | M | 3.2 |
 
 ---
@@ -931,7 +931,8 @@ REG-3 currently blocks the larger release gate independently.
 
 ### 3.1 REG-16 — The other 23 launch items have had zero adversarial review
 
-**Type:** PROCESS · **Severity:** **HIGH** · **Effort:** L · **Status:** **TIER A COMPLETE (2026-07-21).**
+**Type:** PROCESS · **Severity:** **HIGH** · **Effort:** L · **Status:** **CLOSED (2026-07-25).** Tier A and Tier B of this item's own LNCH-2+4 scope completed 2026-07-21; the residual programme covering the other ~21 surfaces (**REG-16-resid**, §3.10) finished all six rounds on 2026-07-25, so no launch surface is left at zero adversarial review. Detail of the original Tier A work follows.
+**TIER A COMPLETE (2026-07-21).**
 The independent, attack-first review of the LNCH-2 (tenant isolation) + LNCH-4 (auth) surface has now
 happened — REG-16's actual problem statement ("zero adversarial review") is resolved. Findings +
 triaged remediation plan: `docs/REG16_TENANT_AUTH_ADVERSARIAL_REVIEW.md`. **Headline: no CRITICAL or
