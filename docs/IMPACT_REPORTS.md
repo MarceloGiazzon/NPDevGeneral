@@ -35,6 +35,19 @@ Worst-item-wins, over every item in the diff:
 explains why. A safe item (additive, relax, widen, rename, create) affects no existing rows and is not
 probed (`0`).
 
+### A drift item that isn't from the schema diff: stale built-in-pack copy (REG-39)
+
+One item can appear in the report that is **not** derived from `SchemaDiff` at all: `itemKey` prefix
+`STALE_IDENTITY_PACK:identity_users:tokenVersion`, `safetyClass NEEDS_HOOK` (so it counts toward
+`NEEDS_ATTENTION` the same as any other item). It fires when this app's compiled model declares an
+`identity::User` concept (i.e. it uses the built-in identity pack, by whatever mechanism) but that
+concept is missing the `tokenVersion` field the platform's identity pack has carried since LNCH-4 — the
+same drift `StartupValidator` fails fast on at boot (see
+[`CONFIGURATION.md`](CONFIGURATION.md#identity-pack-freshness-checked-at-boot)), surfaced here too so an
+operator can see it in a pre-deploy `-ImpactOnly` run or the ControlPanel view without needing to boot
+the app first. `rowsAffected` for this item is the `identity_users` row count — how many accounts are
+affected. See `com.finalexec.db.IdentityPackDriftItem`.
+
 ## Surface 1 — at boot time (implemented)
 
 On **every upgrade boot** (whenever the schema fingerprint changed), the executor writes the machine
