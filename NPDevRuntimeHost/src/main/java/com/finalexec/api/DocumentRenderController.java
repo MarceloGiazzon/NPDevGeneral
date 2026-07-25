@@ -38,14 +38,32 @@ import java.util.Locale;
  * per-document behavior differs beyond which concept/title/page options it declares.
  *
  * <p>Unlike CSV's incremental per-page streaming, the whole result set must be materialized before
- * rendering (the HTML-to-PDF adapter needs the complete document up front) -- bounded the same way
- * CSV's page loop is, at {@link ConceptQuery#MAX_LIMIT} rows per page while accumulating.
+ * rendering (the HTML-to-PDF adapter needs the complete document up front), so the TOTAL row count is
+ * capped by {@link #MAX_DOCUMENT_ROWS} -- see R6-F1 below.
  */
 @RestController
 @RequestMapping({"/api/v1/documents", "/api/documents"})
 public class DocumentRenderController {
 
     private static final int RENDER_PAGE_SIZE = ConceptQuery.MAX_LIMIT;
+
+    /**
+     * REG-16-resid Round 6 (R6-F1): a hard ceiling on how many rows one PDF may materialize.
+     *
+     * <p>This class's javadoc used to claim the accumulation loop was "bounded the same way CSV's
+     * page loop is, at {@code ConceptQuery.MAX_LIMIT} rows per page while accumulating". That was
+     * false in the way that matters: {@code MAX_LIMIT} bounds each PAGE, and the loop then appended
+     * every page into one list. CSV can say that honestly because it <em>streams</em> — it writes and
+     * flushes each page, then drops it. This path kept all of them, then built one HTML string from
+     * them, then one PDF byte array. A single request against a large concept therefore held the
+     * whole result set three times over, and on a shared host one tenant's export could exhaust
+     * memory for every other tenant.</p>
+     *
+     * <p>The request is <b>rejected</b> past the ceiling rather than truncated. A report that
+     * silently omits rows is a correctness failure that nobody notices; a 413 telling the caller to
+     * narrow the filter is one they cannot miss.</p>
+     */
+    static final int MAX_DOCUMENT_ROWS = 50_000;
 
     private final NPDevModelProvider modelProvider;
     private final RuntimeContextService runtimeContextService;
@@ -90,6 +108,13 @@ public class DocumentRenderController {
         int offset = 0;
         while (true) {
             records.addAll(page.items());
+            if (records.size() > MAX_DOCUMENT_ROWS) {
+                throw new ResponseStatusException(
+                        HttpStatus.PAYLOAD_TOO_LARGE,
+                        "Document '" + document.name() + "' matched more than " + MAX_DOCUMENT_ROWS
+                                + " rows. A PDF must be materialized in full before it can be rendered, so narrow "
+                                + "the query (filters) or use the CSV export, which streams without this limit.");
+            }
             offset += page.items().size();
             if (!page.hasMore() || page.items().isEmpty()) {
                 break;

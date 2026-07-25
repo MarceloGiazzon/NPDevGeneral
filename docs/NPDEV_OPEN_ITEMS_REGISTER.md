@@ -1288,12 +1288,39 @@ identifiers are safe **by construction** via `SqlIdentifierSupport.toSnake`'s wh
 escaping; and REG-41's lifecycle-status leak is **not** reachable on this surface because
 `persistence.findById` goes through the gateway first. GATE-KERNEL + GATE-H2 + GATE-GEN green.
 
+**Round 6 (2026-07-25): the export/PDF path** — `ConceptQueryController#exportCsv`,
+`DocumentRenderController#renderPdf`, and both document-render adapters. Findings document:
+`docs/REG16_EXPORT_PDF_ADVERSARIAL_REVIEW.md`. **Headline: no CRITICAL, no HIGH; three findings, all
+fixed in-round.** The plan's own highest-consequence question for this round — *does export honour
+row-level `access.read` scope, or export everything the tenant has?* — has a clean answer: **it
+does**, on both paths, via `conceptGateway.query`, with REG-42 already covering the `total`/`hasMore`
+metadata. A scope-blind export does not exist here. **R6-F2 (MED)**: CSV formula injection —
+`csvEscape` implemented RFC 4180 correctly but left `= + - @` (and leading tab/CR) intact, so a stored
+field value executes as a formula when a **different** user (typically an admin, whose read scope is
+wider) opens the export. The only finding in this programme whose impact genuinely crosses users. The
+fix deliberately declines the stock advice's trade: neutralizing every `= + - @` lead would corrupt
+negative numbers, so a cell is prefixed only when it leads with one of those AND is not a plain number
+(`-42` untouched; `-1+cmd|'/c calc'!A1` neutralized). Encoding extracted to a new `CsvCells` because
+`ConceptQueryController` imports the generated runtime and is excluded from a bare-template
+compilation *along with its test* — a security control whose test silently does not run in some
+configurations is not much of a control. **R6-F1 (MED)**: the PDF path accumulated the entire result
+set in memory while its own javadoc claimed it was "bounded the same way CSV's page loop is" —
+`MAX_LIMIT` bounds a PAGE, and CSV can say that honestly only because it *streams*. One tenant's
+export could exhaust the heap for every other tenant on a shared host; now capped at
+`MAX_DOCUMENT_ROWS` (50,000) and **rejected with 413** rather than silently truncated. **R6-F3
+(LOW)**: `DocumentRenderInProcAdapter` set no URI policy, so OpenHTMLtoPDF would fetch remote images,
+stylesheets and `@import`s from inside the server (SSRF; `file:` for local reads). Not reachable today
+— verified, not assumed: one caller, which composes and escapes its own HTML — but the policy now
+lives where the fetch happens. `DocumentRenderSsrfTest` drives a **real local HTTP server** and
+asserts zero hits (a mis-wired resolver still looks correctly configured); confirmed RED with the
+resolver disabled — the renderer really did make the requests. Also recorded: `escape()` omits `'`,
+safe only because every interpolation is element text rather than an attribute. GATE-KERNEL + GATE-H2
+green.
+
 **Rounds not yet done:** loop/await/orchestration flow-step types + `DefaultProcedureExecutor`
-(Round 4), the durable-state Postgres adapters' own SQL (Round 5), and the export/PDF path (Round 6)
-remain at **zero** adversarial review. Round 6 was Round 3's scheduled partner and was deliberately
-**not** started once Round 3 turned up a HIGH — per the plan's guardrail that a CRITICAL/HIGH stops
-the session on the spot. Do not attempt the remainder all at once (the plan's explicit STOP rule
-against mechanizing this item).
+(Round 4) and the durable-state Postgres adapters' own SQL (Round 5) remain at **zero** adversarial
+review. Do not attempt the remainder all at once (the plan's explicit STOP rule against mechanizing
+this item).
 
 ### REG-36, REG-37, REG-41, REG-42, REG-43 — findings filed by REG-16-resid Rounds 1-2 and the pattern sweep
 
