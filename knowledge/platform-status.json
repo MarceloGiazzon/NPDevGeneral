@@ -168,9 +168,9 @@
       "id": "BOND-B4",
       "title": "ReleaseGateValidator not CI-wired",
       "category": "Test/CI",
-      "status": "PARTIAL",
+      "status": "**DONE (2026-07-23)** — `ReleaseGateValidatorTest` runs inside `:NPDevContract:dsl:check`, which `npdev-pr-gate.yml` executes on every PR (confirmed green on `beta1-vision-spine`, run `29965541583`). No separate CI step needed; the validator is exercised on every PR.",
       "priority": "P3",
-      "notes": "needs your CI-trigger call"
+      "notes": ""
     },
     {
       "id": "BOND-B6",
@@ -338,7 +338,7 @@
       "category": "lifted-boundary",
       "status": "LIFTED",
       "priority": "",
-      "notes": "No server-side multipart / file-upload primitive existed (0 multipart/MultipartFile refs). Now: kernel FileStoreContract port + file-store-inproc filesystem adapter (tenant-prefixed, path-traversal-safe, streaming — the file-store-objectstore S3 half deferred, needs external SDK/infra this session couldn't provision); schema/DSL file field type (contentTypes/maxSizeBytes/multiple, maps to a JSON handle column, forbids unique/reference); FileUploadController (POST/GET/DELETE /api/files) validates type/size and enforces tenant isolation via the handle key's tenant prefix; generated forms get a real upload/download widget; the editor authors file fields. Verified genuinely live: TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest generates, compiles, and boots a real FinalApp with all of this wired in (caught and fixed a missing adapter-jar entry in the test's own build list before it passed)."
+      "notes": "No server-side multipart / file-upload primitive existed (0 multipart/MultipartFile refs). Now: kernel FileStoreContract port + file-store-inproc filesystem adapter (tenant-prefixed, path-traversal-safe, streaming — the file-store-objectstore S3 half was later delivered (2026-07, S3ObjectStoreFileStoreAdapter + a MinIO Testcontainers live test + a unit test) — so only ARCH-upload's P6 WMS wiring remains deferred, and that is app-scope, not a platform gap); schema/DSL file field type (contentTypes/maxSizeBytes/multiple, maps to a JSON handle column, forbids unique/reference); FileUploadController (POST/GET/DELETE /api/files) validates type/size and enforces tenant isolation via the handle key's tenant prefix; generated forms get a real upload/download widget; the editor authors file fields. Verified genuinely live: TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest generates, compiles, and boots a real FinalApp with all of this wired in (caught and fixed a missing adapter-jar entry in the test's own build list before it passed)."
     },
     {
       "id": "ARCH-loop",

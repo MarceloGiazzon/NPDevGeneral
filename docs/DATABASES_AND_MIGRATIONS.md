@@ -347,7 +347,8 @@ Mapping to the four operator "options" one naturally wants:
 | Warn about data loss / migrate errors | refuse + itemize + snapshot + acknowledgment token | shipped (stronger than a warning) |
 | Delete & rebuild tables | `allowDestructiveRecreate` + confirmation | shipped |
 | Export & recover data | pre-drop JSONL snapshots (export) | **export only — restore is manual** |
-| Manually program the SQL / do nothing | `ExternallyManaged` + `mark-done` | shipped (all-or-nothing; no per-step custom hook) |
+| Do nothing (NPDev doesn't own the schema) | `ExternallyManaged` + `mark-done` | shipped (all-or-nothing) |
+| Manually program the SQL — per-item, verified | **conversion hooks** (SER Phase 7): operator SQL that claims a specific diff item, verified by re-diff, no token needed for what it resolves | shipped — see [`IMPACT_REPORTS.md`](IMPACT_REPORTS.md#conversion-hooks--sanctioned-destruction-implemented-phase-7) |
 
 ## 13. Data safety: snapshots, refusals, rollback
 
@@ -520,17 +521,39 @@ re-derived ad hoc every time. That is the debt paying interest.
 - **Acknowledgment token** — `I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED`, required to proceed through a
   destructive change.
 
-## 20. Where this is going
+## 20. Where this stands (the finished engine) and what's still open
 
-The destination is the declarative ideal NPDev already aims at, done properly: a **canonical
-desired-vs-current schema model**, with a **complete portable current-schema reader**, diffed **once**,
-consumed by every pass — replacing reconciliation-by-inference with reconciliation-from-state. That one
-abstraction also upgrades `ExternallyManaged` verification from column-shaped to full-shaped and folds in
-REG-40 (new tables become a first-class diff item). The migration path is the strangler-fig in
-[`SCHEMA_ENGINE_REBUILD_PLAN.md`](SCHEMA_ENGINE_REBUILD_PLAN.md): build it as a read-only shadow, prove
-it agrees with today's engine across the entire H2 + Postgres proof matrix, then move the passes onto it
-one at a time — behavior-preserving, Docker-verified, never big-bang, because this is the most
-consequential code in the platform.
+**Done, as of 2026-07-24 (`SCHEMA_ENGINE_REBUILD_PLAN.md` / `SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md`,
+Phases 1–9, all closed):** the declarative ideal §16 described as a destination is now how the engine
+actually works. One canonical desired-vs-current model (`CurrentSchema` / `DesiredSchema` / `SchemaDiff`,
+`SchemaDiffEngine`) is diffed once and consumed by every pass and every surface built after it:
+
+- The Impact Report (§12's link, [`IMPACT_REPORTS.md`](IMPACT_REPORTS.md)) — the GeneXus IAR equivalent,
+  on three surfaces: printed on every upgrade boot, the `-ImpactOnly` pre-deploy CLI, and a ControlPanel
+  endpoint — all three read the identical diff, so they can never disagree about what an upgrade would do.
+- **Conversion hooks** (Phase 7) — operator SQL that claims a specific diff item and resolves it itself;
+  a hook-resolved destructive item needs no acknowledgment token ("authoring the hook IS the
+  acknowledgment," an owner-approved policy). This is the "Manually program the SQL" row in §12's table,
+  finally shipped per-item rather than all-or-nothing.
+- **Proposed conversion SQL** (Phase 8) — the platform drafts a copy-convert script for a convertible
+  narrowing; the operator always decides whether to paste it into a hook. Never auto-run.
+- The old, pre-REG-6 `com.finalexec.npdev.migration.*` lineage (LNCH-1-era risk assessment / model-diff
+  preview / storage-schema-snapshot classes) is deleted (Phase 9) — one design superseded it, not two
+  living side by side. `MigrationPlanEmitter` (the generator's offline model-vs-previous-model preview,
+  `-PlanOnly`) was kept deliberately: it answers a different question than `-ImpactOnly` (model vs. the
+  *live database*) and has no live-database equivalent.
+
+**Still open, documented, not silently missing:**
+
+- **FK/index diffing** (the P0.2 asymmetry, §16) — the desired side carries no explicit FK/index lists
+  yet (bonds/indexes are derived at generation, not in the manifest), so `SchemaDiffEngine` does not diff
+  them. Deferred *enhancement*, plan P5.2 — a smaller surface than the whole engine now that the engine
+  itself exists.
+- **A Java `DataMigrationHook` interface** — conversion hooks are v1 SQL-only by design; a code-bearing
+  hook (for conversions too complex for a script) is deferred to the ADR-0003 code-bearing-objects track.
+- **`ExternallyManaged` verification is still column-shaped only** (§15) — that mode issues zero DDL by
+  design, so it was never part of the `SchemaDiff` migration; upgrading it to full-shaped (nullability/
+  uniqueness/FK-aware) is unstarted, separate work.
 
 ---
 
