@@ -191,13 +191,19 @@ public class {{entityName}}ServiceBase {
 {{#codaAllowed}}
         codaHook.ifPresent(hook -> hook.beforeCreate("{{conceptName}}", createPayload, crudCtx));
 {{/codaAllowed}}
-{{#hasCreateFlow}}
-        enforceWithCreateFlow(crudCtx, generatedId, createPayload);
-{{/hasCreateFlow}}
-{{^hasCreateFlow}}
+        // LNCH-13/REG-16-resid R2: enforceWithConceptGateway now runs BEFORE any create flow, not
+        // only when no create flow is declared, so a declared access.write row-level rule -- and the
+        // coarse invariant/lifecycle rule profiles -- are checked, and can DENY, before a flow's own
+        // side effects (notifications, external calls) ever run. Without this, a concept combining a
+        // custom create flow with access.write got ZERO row-level write enforcement on this endpoint:
+        // enforceWithCreateFlow only calls kernelRunner.execute(...), never conceptGateway.save(...),
+        // and the later saveWithIntegrityMapping(e) persists straight through conceptStore, bypassing
+        // ConceptGatewaySemanticPolicy.isRowWritable entirely.
 {{#kernelControlled}}
         enforceWithConceptGateway("{{conceptName}}", generatedId, createPayload);
 {{/kernelControlled}}
+{{#hasCreateFlow}}
+        enforceWithCreateFlow(crudCtx, generatedId, createPayload);
 {{/hasCreateFlow}}
 
         {{entityName}} e = new {{entityName}}();
@@ -260,13 +266,14 @@ public class {{entityName}}ServiceBase {
 {{#codaAllowed}}
         codaHook.ifPresent(hook -> hook.beforeUpdate("{{conceptName}}", id, updatePayload, crudCtx));
 {{/codaAllowed}}
-{{#hasUpdateFlow}}
-        enforceWithUpdateFlow(crudCtx, id, updatePayload);
-{{/hasUpdateFlow}}
-{{^hasUpdateFlow}}
+        // LNCH-13/REG-16-resid R2: see the create-path note above -- runs BEFORE any update flow,
+        // not only in its absence, so a declared access.write row-level rule is checked against the
+        // record's PREVIOUS state before the flow's own side effects run.
 {{#kernelControlled}}
         enforceWithConceptGateway("{{conceptName}}", id, updatePayload);
 {{/kernelControlled}}
+{{#hasUpdateFlow}}
+        enforceWithUpdateFlow(crudCtx, id, updatePayload);
 {{/hasUpdateFlow}}
 {{#hasFileFields}}
         // HARDEN-GC-P2: snapshot the pre-update value(s) BEFORE applyUpdateFields mutates
@@ -322,13 +329,14 @@ public class {{entityName}}ServiceBase {
 {{#codaAllowed}}
         codaHook.ifPresent(hook -> hook.beforeDelete("{{conceptName}}", id, crudCtx));
 {{/codaAllowed}}
-{{#hasDeleteFlow}}
-        enforceWithDeleteFlow(crudCtx, id);
-{{/hasDeleteFlow}}
-{{^hasDeleteFlow}}
+        // LNCH-13/REG-16-resid R2: see the create-path note above -- runs BEFORE any delete flow,
+        // not only in its absence, so a declared access.write row-level rule is checked before the
+        // flow's own side effects run.
 {{#kernelControlled}}
         enforceDeleteWithConceptGateway("{{conceptName}}", id);
 {{/kernelControlled}}
+{{#hasDeleteFlow}}
+        enforceWithDeleteFlow(crudCtx, id);
 {{/hasDeleteFlow}}
         deleteWithIntegrityMapping(id);
 {{#hasFileFields}}
@@ -579,10 +587,13 @@ public class {{entityName}}ServiceBase {
 
 {{#hasCreateFlow}}
     /**
-     * Flow-CRUD wrapper integration: the core mutation step delegates to this declared Flow's own
-     * steps instead of the default {@code conceptGateway.save(...)}. Permission/tenant/idempotency/
-     * audit around this call are unchanged from the standard path (see createFromSource) -- this
-     * Flow must not assume it owns any of that; crudCtx is already verified by the time this runs.
+     * Flow-CRUD wrapper integration: runs this declared Flow's own steps as an ADDITIONAL business-logic
+     * step alongside the standard mutation path -- NOT instead of it. {@code createFromSource} always
+     * calls {@code enforceWithConceptGateway} first (LNCH-13/REG-16-resid R2: row-level access.write and
+     * the invariant/lifecycle rule profiles must be checked, and able to DENY, before this Flow's own
+     * side effects -- notifications, external calls -- ever run). Permission/tenant/idempotency/audit
+     * around this call are unchanged from the standard path (see createFromSource) -- this Flow must not
+     * assume it owns any of that; crudCtx is already verified by the time this runs.
      */
     private void enforceWithCreateFlow(ExecutionContext crudCtx, UUID generatedId, Map<String, Object> createPayload) {
         Map<String, Object> flowInput = new LinkedHashMap<>(createPayload);
