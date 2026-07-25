@@ -170,12 +170,12 @@
     "f86b348e5637": {
       "rule": "D1",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:1030",
-      "why": "Not SQL. This is a System.out.println warning about a whole-schema recreation; the sweep matched it because SQL-shaped text sits beside it. Confirmed by reading it in REG-16-resid Round 5 (docs/REG16_POSTGRES_ADAPTER_SQL_ADVERSARIAL_REVIEW.md \u00a71)."
+      "why": "Not SQL. This is a System.out.println warning about a whole-schema recreation; the sweep matched it because SQL-shaped text sits beside it. Confirmed by reading it in REG-16-resid Round 5 (docs/REG16_POSTGRES_ADAPTER_SQL_ADVERSARIAL_REVIEW.md §1)."
     },
     "57dd15073293": {
       "rule": "D1",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:1031",
-      "why": "Not SQL. This is a System.out.println warning about a whole-schema recreation; the sweep matched it because SQL-shaped text sits beside it. Confirmed by reading it in REG-16-resid Round 5 (docs/REG16_POSTGRES_ADAPTER_SQL_ADVERSARIAL_REVIEW.md \u00a71)."
+      "why": "Not SQL. This is a System.out.println warning about a whole-schema recreation; the sweep matched it because SQL-shaped text sits beside it. Confirmed by reading it in REG-16-resid Round 5 (docs/REG16_POSTGRES_ADAPTER_SQL_ADVERSARIAL_REVIEW.md §1)."
     },
     "35f8a5ebeabe": {
       "rule": "E1",
@@ -1416,6 +1416,36 @@
       "rule": "J1",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java:113",
       "why": "False positive: the match is inside a PowerShell runbook emitted as a Java text block, not SQL. The sweep sees SQL-shaped words in a generated shell script."
+    },
+    "235d6ecfac83": {
+      "rule": "B3",
+      "where": "NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java:424",
+      "why": "REG-46's tenant-scoped adapter methods (findByIdScoped/deleteScoped/existsScoped). The tenant predicate IS applied: the statement is built from TWO literals -- \"... where <id> = ? and \" + tableColumns.columnName(TENANT_COLUMN) + \" = ?\" -- and binds scope.tenantId(); the sweep matches only the first literal (its documented second-literal limitation). When the table has no tenant column the method delegates to the unscoped sibling, which is correct: a table with no tenant column holds no tenant-owned rows to scope."
+    },
+    "d341f3c11f96": {
+      "rule": "B3",
+      "where": "NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java:485",
+      "why": "REG-46's tenant-scoped adapter methods (findByIdScoped/deleteScoped/existsScoped). The tenant predicate IS applied: the statement is built from TWO literals -- \"... where <id> = ? and \" + tableColumns.columnName(TENANT_COLUMN) + \" = ?\" -- and binds scope.tenantId(); the sweep matches only the first literal (its documented second-literal limitation). When the table has no tenant column the method delegates to the unscoped sibling, which is correct: a table with no tenant column holds no tenant-owned rows to scope."
+    },
+    "3a8febd8c1b0": {
+      "rule": "D2",
+      "where": "NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java:424",
+      "why": "Same three REG-46 methods. The only concatenated identifiers are the table name and resolveIdColumn(...)/resolveCriteriaColumn(...), which resolve against the live table's ACTUAL columns -- Round 5's 'identifiers are safe by construction via two whitelists' finding. Every VALUE is a bound parameter."
+    },
+    "f2be87c07dbc": {
+      "rule": "D2",
+      "where": "NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java:459",
+      "why": "Same three REG-46 methods. The only concatenated identifiers are the table name and resolveIdColumn(...)/resolveCriteriaColumn(...), which resolve against the live table's ACTUAL columns -- Round 5's 'identifiers are safe by construction via two whitelists' finding. Every VALUE is a bound parameter."
+    },
+    "5064970f078a": {
+      "rule": "D2",
+      "where": "NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java:485",
+      "why": "Same three REG-46 methods. The only concatenated identifiers are the table name and resolveIdColumn(...)/resolveCriteriaColumn(...), which resolve against the live table's ACTUAL columns -- Round 5's 'identifiers are safe by construction via two whitelists' finding. Every VALUE is a bound parameter."
+    },
+    "fac25a53f0f3": {
+      "rule": "I5",
+      "where": "NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java:428/463/489",
+      "why": "scope.tenantId() bound into a REG-46 tenant-scoped read/delete/exists. The tenant is supplied by the kernel from the authenticated context (RegistryCapabilityDispatcher prepends TenantScope; it is not author- or caller-writable), and tenant_id is length-bounded by its own column definition."
     }
   }
 }
