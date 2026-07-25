@@ -320,6 +320,9 @@
 > lives in `docs/architecture/AGGREGATE_WORKBENCH_PLAN.md` §5, updated alongside this reconciliation.
 
 ### AW-RECONCILE — Reconcile phase-status markers against committed code ✅ DONE (2026-07-12)
+
+**Status:** DONE (2026-07-12). Recorded on its own line, not only in the heading, so the register
+self-check can cross-read it against the summary table (the checker looks for `**Status:**`).
 - **Result:** P0 slice 2 DONE (`887ab34` compiled layer, `f57b84c` `AggregateApiController` +
   `AggregateRuntime` nested-read — the plan's proposed `AggregateController`/`RuntimeApiEmitter`
   names never landed; a hand-written RuntimeHost controller satisfies the acceptance criterion
