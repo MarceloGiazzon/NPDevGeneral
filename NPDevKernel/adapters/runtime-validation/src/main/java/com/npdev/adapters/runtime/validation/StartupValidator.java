@@ -1,6 +1,7 @@
 package com.npdev.adapters.runtime.validation;
 
 import com.npdev.dsl.v1.compiled.CompiledCapabilityCall;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowStep;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -32,6 +33,9 @@ public final class StartupValidator implements InitializingBean {
     private static final String AUTH_ANCHOR = "authentication";
     private static final String POSTGRES_ANCHOR = "postgres-mode-required-variables";
     private static final String CAPABILITY_BINDING_ANCHOR = "persistence-capability-binding-checked-at-boot";
+    private static final String IDENTITY_PACK_ANCHOR = "identity-pack-freshness-checked-at-boot";
+    private static final String IDENTITY_USER_CONCEPT = "identity::User";
+    private static final String TOKEN_VERSION_FIELD = "tokenVersion";
 
     private final RuntimeSettings settings;
     private final DataSource dataSource;
@@ -136,6 +140,7 @@ public final class StartupValidator implements InitializingBean {
             validatePostgres();
         }
         validatePersistenceBinding();
+        validateIdentityPackFreshness();
     }
 
     // LEDGER-1: a model whose flows persist (createConcept/updateConcept/saveConcept, or a direct
@@ -171,6 +176,48 @@ public final class StartupValidator implements InitializingBean {
             }
         }
         return null;
+    }
+
+    // REG-39: an app can carry its OWN copy of a built-in pack (a local $ref under its model root,
+    // rather than composing NPDevContract/packs/<alias>/pack.json fresh via BuiltinPackComposer at
+    // every generation). When the platform's pack gains a field that platform code (LoginController,
+    // PasswordResetController, ControlPanelTenantUsersController, IdentityRoleLookup) then reads
+    // unconditionally, every app whose copy predates that addition breaks -- and breaks misleadingly,
+    // as a swallowed SQLException masquerading as invalid_credentials, not as a schema error (this is
+    // exactly what happened to WmsOffice: its local identity-pack copy predated the LNCH-4
+    // tokenVersion field). compiledModel already carries the FULLY MERGED, pack-namespaced concept set
+    // ("identity::User" etc.) regardless of which mechanism contributed it, so this check needs no new
+    // generation-time plumbing: if this app declares an "identity::User" concept at all, it must carry
+    // the tokenVersion field the platform's current identity pack has had since LNCH-4. An app that
+    // doesn't use the identity pack at all has no "identity::User" concept -- skip, nothing to check.
+    private void validateIdentityPackFreshness() {
+        if (compiledModel == null) {
+            return;
+        }
+        CompiledConcept identityUser = null;
+        for (CompiledConcept concept : compiledModel.getConcepts()) {
+            if (IDENTITY_USER_CONCEPT.equalsIgnoreCase(concept.getName())) {
+                identityUser = concept;
+                break;
+            }
+        }
+        if (identityUser == null) {
+            return;
+        }
+        boolean hasTokenVersion = identityUser.getFields().stream()
+                .anyMatch(field -> TOKEN_VERSION_FIELD.equalsIgnoreCase(field.getName()));
+        if (!hasTokenVersion) {
+            throw configError(
+                    "This app's copy of the built-in 'identity' pack is STALE: concept '" + IDENTITY_USER_CONCEPT
+                            + "' is missing the '" + TOKEN_VERSION_FIELD + "' field the platform's identity pack "
+                            + "has carried since LNCH-4. Left unfixed, this makes login fail with a misleading "
+                            + "'invalid_credentials' error instead of this message (REG-39). Fix: regenerate this "
+                            + "app so it composes the platform's CURRENT NPDevContract/packs/identity/pack.json "
+                            + "(the normal path via BuiltinPackComposer), or bring any locally-committed copy of "
+                            + "the identity pack up to date with it.",
+                    IDENTITY_PACK_ANCHOR
+            );
+        }
     }
 
     private static boolean stepsReferencePersistence(List<CompiledFlowStep> steps) {
