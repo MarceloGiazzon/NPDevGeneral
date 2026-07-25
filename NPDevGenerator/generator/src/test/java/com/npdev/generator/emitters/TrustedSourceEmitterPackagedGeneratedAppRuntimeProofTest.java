@@ -1079,10 +1079,22 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
         return process;
     }
 
+    /** How long a packaged app may take to answer /actuator/health. See waitForHealth. */
+    private static final Duration HEALTH_TIMEOUT = Duration.ofMinutes(6);
+
     private static void waitForHealth(int port, Path evidenceRoot) throws Exception {
         HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
         URI uri = URI.create("http://localhost:" + port + "/actuator/health");
-        Instant deadline = Instant.now().plus(Duration.ofMinutes(2));
+        // F7 (POST_PROGRAMME_AUDIT_PLAN §2.4): 2 minutes was not enough. Gradle runs this suite
+        // with maxParallelForks = 2, so this test's packaged Spring Boot app can be booting at the
+        // same time as the other packaged-app proof's -- two JVMs each starting Tomcat, Flyway and
+        // a datasource, on a machine already busy compiling. That produced three intermittent
+        // "did not become healthy" failures across the 2026-07-25 security programme, every one of
+        // which passed on an isolated re-run. The app is not broken; it is queued behind the other
+        // one. Raised to 6 minutes, which is well clear of the observed worst case and still far
+        // below the 12-minute @Timeout on the test itself, so a genuine boot failure is still
+        // caught -- just later.
+        Instant deadline = Instant.now().plus(HEALTH_TIMEOUT);
         Exception last = null;
         while (Instant.now().isBefore(deadline)) {
             try {
@@ -1101,7 +1113,13 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
             }
             Thread.sleep(1000L);
         }
-        throw new IllegalStateException("Packaged app did not become healthy on port " + port, last);
+        // Say how long we actually waited: "did not become healthy" alone cost a diagnosis cycle
+        // every time it fired, because it does not distinguish "app crashed" from "app was slow".
+        throw new IllegalStateException(
+                "Packaged app did not become healthy on port " + port + " within " + HEALTH_TIMEOUT
+                        + " (see " + evidenceRoot.resolve("packaged-app-boot-output.txt") + "). If the log shows a"
+                        + " normal startup that simply ran past the deadline, this is F7's fork-contention"
+                        + " flake, not a regression -- re-run this test alone to confirm.", last);
     }
 
     private static Map<String, Object> postJson(HttpClient client, int port, String path, Map<String, Object> payload)

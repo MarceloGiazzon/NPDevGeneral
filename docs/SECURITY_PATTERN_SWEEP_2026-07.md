@@ -74,11 +74,33 @@ than cleared** — routing, not absolution, is the deliverable.
 
 Every hit has one of three verdicts, per ONE_PLAN §2.1.
 
-| Verdict | Count | Where it is recorded |
+> ### CLOSED 2026-07-25 — the routed hits have been consumed
+>
+> **The sweep now reports 355 hits, 355 cleared, 0 needing triage.** Rounds 3–6 resolved the routed
+> hits; this section originally recorded the routing, and the loop was closed afterwards per
+> `POST_PROGRAMME_AUDIT_PLAN.md` §2.1. Its own rule — *"when a routed hit is resolved, add its
+> fingerprint to the allowlist with the reason"* — had not been executed at the end of the programme,
+> leaving 307 permanent "new" hits. **That is the failure mode this document warned about**: at 307,
+> nobody reads the output and a real hit hides in it.
+>
+> **Closing the loop found a new MEDIUM.** The `unbounded-caller-input` group was the one Rounds 3–6
+> never systematically covered. Refusing to blanket-clear it surfaced **REG-47**: a caller-supplied
+> `correlationId`, only `trim()`ed, written into `TEXT` columns that are btree index key material in
+> **8 indexes across 4 tables** — including the primary key of `npdev_correlation_owner`. That is
+> REG-36's exact failure mode on a different key. Had those 29 hits been waved through as "same class
+> as REG-36, already fixed", it would still be there.
+>
+> **Count reconciliation (audit finding F3).** The "32" below was the hit count when this document was
+> written; two more rules (D1) were added during Round 5, and content-keyed fingerprints mean one
+> entry can clear several identical snippets — so 34 entries cleared 48 hits before this closure. The
+> allowlist now holds **282 entries covering all 355 hits**. The lesson kept: a count written into
+> prose goes stale, so the numbers that matter are the ones the tool prints.
+
+| Verdict | Count (at routing time) | Where it is recorded |
 |---|---|---|
 | **(i) genuine finding** | 1 | REG-43, filed in the register + fixed this session (§3) |
 | **(ii) safe, with the reason recorded** | 32 | `scripts/quality/security-pattern-sweep-allowlist.json`, rules below |
-| **(iii) needs deep review** | 304 | routed per surface in §4 |
+| **(iii) needs deep review** | 304 | routed per surface in §4 — **all consumed**, see §4.0 |
 | unchanged | 19 | `conditional-guard-no-else` on `{{#kernelControlled}}` — escalated as one question (§4.1) |
 
 Verdicts are keyed by a **fingerprint of the matched text**, not its line number, so a verdict survives
@@ -146,6 +168,28 @@ Fixed in this session with a runtime test (§5).
 ## 4. (iii) Routing — what each remaining session must actually look at
 
 This is the section sessions 2 and 3 exist to consume. Counts are hits, not findings.
+
+### 4.0 What each round resolved (closure record, 2026-07-25)
+
+| Rule | Group | Resolved by |
+|---|---|---|
+| **E1** | 13 × `{{#kernelControlled}}` guards | **REG-44** — one root cause, not 13 findings (Round 3 §3) |
+| **F1–F4, F6** | 100 × SQL identifier splicing | **Round 5 §1** — safe *by construction*: `safeIdentifier` throws, `toSnake` whitelists, the persistence adapter resolves names against the live catalog. Zero injection findings |
+| **F5** | 12 × identity-pack identifiers in auth SQL | **Round 5 §5.1 (R5-F2)** — recorded INFO: values parameterised, identifiers come from generator-written properties |
+| **G1** | 9 × generated-CRUD tenant-less probes | **Round 3 §4.1/4.2 (R3-F4, R3-F5)** — refused earlier by `enforceBondTargetTenant`, no oracle |
+| **G3** | 4 × persistence-adapter tenant-less reads | **REG-46** — the port has no tenant parameter at all |
+| **G4** | 2 × `JdbcTraceStore` | **Round 5 §2** — enforced three layers up; the sweep's headline lead was *not* a vulnerability |
+| **G5** | schema/claim/mark/publication stores | **Round 5 §4** — deliberately not tenant-scoped: the schema belongs to the database |
+| **H1** | 15 × generated-CRUD swallowed exceptions | **Round 3** — data-integrity probes with a database-constraint backstop, not authorization verdicts |
+| **H5** | `TenantRegistryService` | **REG-43's own fix** — the flagged `return false` is now the deliberate fail-**closed** branch |
+| **I1** | idempotency / circuit stores | **REG-36** |
+| **I2** | 29 × correlation-id binds | **REG-47 — NEW, found by this closure** |
+| **J1** | `OperationalRunbookEmitter` | False positive: SQL-shaped words inside an emitted PowerShell runbook |
+
+Rules **I3** and **I4** are the only ones cleared purely on reasoning rather than on a round's
+findings document: identity/admin writes bounded by their own `VARCHAR` column definitions, and
+payload columns that are not index key material. Both state the test that would falsify them — *is
+this column part of an index key?* — which is exactly the question REG-47 turned on.
 
 ### 4.1 → SESSION 2, Round 3 (generator codegen output)
 

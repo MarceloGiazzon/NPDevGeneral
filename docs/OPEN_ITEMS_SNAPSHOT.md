@@ -38,10 +38,12 @@ All six items that stood here on 2026-07-25 morning are closed:
 | 2 | **REG-45** — flow resume is tenant-scoped but not actor-scoped | BUG | MED | Any holder of `RESUME_EXECUTIONS` can resume another user's suspended flow and receive its accumulated state. Needs a policy decision (require the originating actor? an override permission?) before it can be fixed |
 | 3 | **REG-46** — `PersistenceCapabilityContract` has no tenant parameter | BUG | MED | The flow-step persistence route is unscoped while generated CRUD is tenant- **and** row-scoped. Fixing it is a breaking change to a published port |
 | 4 | **REG-16-resid F4** — row-level authz is check-then-act (TOCTOU) | INFO | — | Rated INFO with honest reasoning; revisit only if `expectedRowVersion` CAS becomes the default |
-| 5 | **GATE-GEN packaged-app proofs are load-flaky** | PROCESS | — | `TrustedSourceEmitter…RuntimeProofTest` / `HardenGcDeleteReplaceCascade…RuntimeProofTest` intermittently fail with *"Packaged app did not become healthy on port N"* when the full suite runs: two Spring Boot apps booting in parallel forks on a loaded machine. Observed 3× across this programme, and **passed every time on an isolated re-run** and on a repeat full run. Not a regression — but it costs a diagnosis cycle each time, so it should get a longer health timeout or forced serialization |
+| 5 | **REG-47** — unbounded caller-supplied `correlationId` in index key material | BUG | MED | REG-36's failure mode on a different key: only `trim()`ed, then written into `TEXT` columns that are btree index key material across **8 indexes in 4 tables**, including the primary key of `npdev_correlation_owner`. **Found by the sweep-closure pass**, in the one hit group Rounds 3–6 never systematically covered. Recommended fix is to *reject* (400), not digest — unlike an idempotency key, a correlation id has no legitimate oversized form, and digesting would silently change an id the caller later looks up on several endpoints |
 
-All three MEDIUMs are **filed rather than improvised**: each needs a decision (product, policy, or
-API-contract) that a review round is the wrong place to make.
+REG-44/45/46 are **filed rather than improvised**: each needs a decision (product, policy, or
+API-contract) that a review round is the wrong place to make. REG-47 is filed because it was found
+after the programme closed, and its fix — reject vs. digest — is a small contract choice worth stating
+before implementing.
 
 ## 3. Closed by this programme — verified, not claimed
 
@@ -58,6 +60,8 @@ API-contract) that a review round is the wrong place to make.
 | **REG-39 healthy-pack live control** | Redone on a genuinely fresh DB: `Tomcat started`, zero `StartupValidator` failures |
 | **Conversion hooks on Postgres** | Live-proven end to end on a real container: real row counts, hook-claim matching, DDL, data conversion (1999¢→$19) and the `HOOK_APPLIED` audit row |
 | **9 unparseable-status items** | Now **zero**, in both documents — seven were checker blind spots, and fixing them exposed two real drifts |
+| **Sweep triage loop closed** | Was 307 permanent "new" hits — the exact noise failure its own design warned about. Now **355 hits, 355 cleared, 0 new**, every entry carrying a reason and grouped by root cause rather than by site |
+| **GATE-GEN packaged-app flake** | Health-check deadline 2 → 6 min with a diagnostic failure message. Root cause was fork contention (two Spring Boot apps booting at once), not the app. **Three consecutive full GATE-GEN runs green** |
 
 ## 4. Not gaps — deliberate boundaries
 
@@ -78,7 +82,8 @@ list and its own findings document. So the accurate statement changes to:
 
 > **Every launch surface has had an adversarial review.** No CRITICAL issue is known anywhere. One HIGH
 > was found — in generated code, reproducing into every app — and was fixed with a runtime proof rather
-> than deferred. Three MEDIUMs remain open, each because it needs a decision rather than a patch.
+> than deferred. Four MEDIUMs remain open: three need a decision rather than a patch, and REG-47 was
+> filed after the programme closed.
 
 That is a materially stronger claim than the one this page carried this morning, and it is the one the
 work supports — no more.
@@ -88,3 +93,9 @@ to break the thing; it is not a proof of absence. The single most instructive re
 is that Round 3 found a complete authorization bypass on a write surface that had been shipping — in
 code adjacent to a CRITICAL fixed only days earlier. The base rate for "one more careful look finds
 something" is not yet zero.
+
+**Confirmed again immediately afterwards.** Closing the security sweep's triage loop — pure maintenance,
+no new review — turned up **REG-47**, in the one hit group the six rounds never systematically covered.
+It was found only because those 29 hits were not waved through as "same class as REG-36, already
+fixed". Two lessons worth keeping: the instrument built to find problems is the thing most likely to
+rot first, and *the group a reviewer is most tempted to bulk-clear is the group nobody has read*.
