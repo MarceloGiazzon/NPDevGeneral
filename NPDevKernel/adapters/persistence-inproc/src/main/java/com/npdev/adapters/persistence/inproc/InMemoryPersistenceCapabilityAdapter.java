@@ -4,6 +4,8 @@ import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.ports.PersistenceCapabilityContract;
+import com.npdev.kernel.ports.TenantScope;
+import com.npdev.kernel.ports.TenantScopedPersistenceCapabilityContract;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -17,7 +19,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * In-memory implementation of the persistence capability contract for in-proc runtime mode.
  */
-public final class InMemoryPersistenceCapabilityAdapter implements PersistenceCapabilityContract {
+public final class InMemoryPersistenceCapabilityAdapter
+        implements PersistenceCapabilityContract, TenantScopedPersistenceCapabilityContract {
     private final Map<String, Map<Object, Map<String, Object>>> storeByConcept = new ConcurrentHashMap<>();
     private final CompiledModel compiledModel;
 
@@ -63,6 +66,81 @@ public final class InMemoryPersistenceCapabilityAdapter implements PersistenceCa
                 .put(id, new LinkedHashMap<>(record));
 
         return immutableRecord(record);
+    }
+
+
+    // ---------------------------------------------------------------------------------------------
+    // REG-46: the tenant-scoped port. The in-memory adapter had exactly the same hole as the Postgres
+    // one -- which is why REG-46 was a gap in the PORT rather than a difference between backends -- so
+    // it is closed here too. Dev and production must not disagree about who can read what, or an
+    // isolation bug is invisible until deployment.
+    //
+    // A record with no tenant marker is visible to everyone, matching the Postgres adapter's rule of
+    // only scoping tables that actually carry a tenant column.
+    // ---------------------------------------------------------------------------------------------
+
+    @Override
+    public Object save(TenantScope scope, Object entity) {
+        Map<String, Object> record = mutableRecord(entity);
+        record.put("tenantId", scope.tenantId());
+        return save((Object) "default", (Object) record);
+    }
+
+    @Override
+    public Object findById(TenantScope scope, Object concept, Object id) {
+        Object found = findById(concept, id);
+        return visibleTo(scope, found) ? found : null;
+    }
+
+    @Override
+    public Object query(TenantScope scope, Object concept, Object criteria) {
+        Object rows = query(concept, criteria);
+        if (!(rows instanceof List<?> list)) {
+            return rows;
+        }
+        List<Object> visible = new ArrayList<>();
+        for (Object row : list) {
+            if (visibleTo(scope, row)) {
+                visible.add(row);
+            }
+        }
+        return List.copyOf(visible);
+    }
+
+    @Override
+    public Object delete(TenantScope scope, Object concept, Object id) {
+        // Read first: deleting a row the caller cannot see must report "nothing deleted" rather than
+        // deleting it, and must not disclose that it exists.
+        if (!visibleTo(scope, findById(concept, id))) {
+            return false;
+        }
+        return delete(concept, id);
+    }
+
+    @Override
+    public Object exists(TenantScope scope, Object concept, Object field, Object value) {
+        Object rows = query(scope, concept, Map.of(Objects.toString(field, ""), value));
+        return rows instanceof List<?> list && !list.isEmpty();
+    }
+
+    @Override
+    public Object unique(TenantScope scope, Object concept, Object field, Object value) {
+        return !(Boolean) exists(scope, concept, field, value);
+    }
+
+    /** A record belongs to the caller when it carries no tenant marker, or carries theirs. */
+    private static boolean visibleTo(TenantScope scope, Object record) {
+        if (record == null) {
+            return false;
+        }
+        if (!(record instanceof Map<?, ?> map)) {
+            return true;
+        }
+        Object owner = map.get("tenantId");
+        if (owner == null) {
+            owner = map.get("tenant_id");
+        }
+        return scope.covers(owner == null ? null : String.valueOf(owner));
     }
 
     @Override

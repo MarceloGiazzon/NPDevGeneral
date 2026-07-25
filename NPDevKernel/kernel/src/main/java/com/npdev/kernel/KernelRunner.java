@@ -4320,12 +4320,14 @@ CapabilityCall call = new CapabilityCall(
         return eventTenantId.equals(instanceTenantId);
     }
 
+    /**
+     * REG-47: this is the single chokepoint every correlation id passes through on its way into
+     * durable state, so it is where the length bound belongs. It used to only {@code trim()}, which
+     * let a caller-supplied value of arbitrary length reach eight btree indexes across four tables --
+     * see {@link CorrelationIds} for why that fails, and why it rejects rather than digests.
+     */
     private static String normalizeCorrelationId(String correlationId) {
-        if (correlationId == null) {
-            return null;
-        }
-        String trimmed = correlationId.trim();
-        return trimmed.isBlank() ? null : trimmed;
+        return CorrelationIds.require(correlationId);
     }
 
     private static String normalizeTenantOrDefault(String tenantId) {

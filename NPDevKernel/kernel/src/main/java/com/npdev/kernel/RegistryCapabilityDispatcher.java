@@ -5,6 +5,8 @@ import com.npdev.kernel.ports.CapabilityAdapter;
 
 
 import java.lang.reflect.InvocationTargetException;
+import com.npdev.kernel.ports.TenantScope;
+import com.npdev.kernel.ports.TenantScopedPersistenceCapabilityContract;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -159,9 +161,28 @@ public final class RegistryCapabilityDispatcher implements CapabilityDispatcher 
             }
         }
 
+        // REG-46: an adapter on the tenant-scoped persistence port takes the executing tenant as its
+        // first argument, supplied HERE from the flow's authenticated state -- never from the model's
+        // declared args, which the author controls. Declared arity is therefore unchanged for every
+        // existing model, and the tenant is not author-writable. See
+        // TenantScopedPersistenceCapabilityContract for why that distinction is the whole point.
+        List<Object> invocationArgs = effectiveCall.args();
+        if (adapter instanceof TenantScopedPersistenceCapabilityContract) {
+            List<Object> scoped = new ArrayList<>();
+            scoped.add(TenantScope.of(tenantOf(contextState)));
+            scoped.addAll(effectiveCall.args());
+            invocationArgs = scoped;
+        }
+
         Method method;
         try {
-            method = resolveOperation(adapter, effectiveCall.operation(), effectiveCall.args().size());
+            method = resolveOperation(
+                    adapter instanceof TenantScopedPersistenceCapabilityContract
+                            ? TenantScopedPersistenceCapabilityContract.class
+                            : adapter.getClass(),
+                    adapter.getClass(),
+                    effectiveCall.operation(),
+                    invocationArgs.size());
         } catch (RuntimeException exception) {
             return CapabilityResult.failure(
                     "CAPABILITY_CONTRACT_VIOLATION",
@@ -179,7 +200,7 @@ public final class RegistryCapabilityDispatcher implements CapabilityDispatcher 
             if (method.getParameterCount() == 0) {
                 return CapabilityResult.success(method.invoke(adapter));
             }
-            return CapabilityResult.success(method.invoke(adapter, effectiveCall.args().toArray()));
+            return CapabilityResult.success(method.invoke(adapter, invocationArgs.toArray()));
         } catch (InvocationTargetException invocationTargetException) {
             Throwable cause = invocationTargetException.getCause() == null
                     ? invocationTargetException
@@ -218,8 +239,27 @@ public final class RegistryCapabilityDispatcher implements CapabilityDispatcher 
                 .ifPresent(contract -> contract.resolveOperation(call.operation()));
     }
 
-    private static Method resolveOperation(Object adapter, String operation, int argCount) {
-        Class<?> type = adapter.getClass();
+    /**
+     * REG-46: the executing tenant, taken from the flow state the kernel stamps with the authenticated
+     * ExecutionContext's tenantId. Falls back to "default" for the same reason KernelRunner does --
+     * that is the platform's no-tenant sentinel, and an authorization policy already denies under it,
+     * so an unstamped call fails closed rather than reading across tenants.
+     */
+    private static String tenantOf(Map<String, Object> contextState) {
+        Object tenant = contextState == null ? null : contextState.get("tenantId");
+        String tenantId = tenant == null ? null : String.valueOf(tenant).trim();
+        return (tenantId == null || tenantId.isBlank()) ? "default" : tenantId;
+    }
+
+    /**
+     * @param searchType   where to look for the operation. For a tenant-scoped persistence adapter this
+     *                     is the INTERFACE, so the class's same-arity legacy overloads cannot make the
+     *                     lookup ambiguous (REG-46).
+     * @param reportedType the concrete adapter class, used only in error messages -- naming the
+     *                     interface there would send a reader to the wrong file.
+     */
+    private static Method resolveOperation(Class<?> searchType, Class<?> reportedType, String operation, int argCount) {
+        Class<?> type = searchType;
         List<Method> candidates = new ArrayList<>();
         for (Method method : type.getMethods()) {
             if (!method.getName().equals(operation)) {
@@ -234,11 +274,11 @@ public final class RegistryCapabilityDispatcher implements CapabilityDispatcher 
         }
 
         if (candidates.isEmpty()) {
-            throw new IllegalStateException("Operation not found: " + operation + " on adapter " + type.getName());
+            throw new IllegalStateException("Operation not found: " + operation + " on adapter " + reportedType.getName());
         }
         if (candidates.size() > 1) {
             throw new IllegalStateException("Ambiguous capability operation " + operation
-                    + " with " + argCount + " arguments on adapter " + type.getName()
+                    + " with " + argCount + " arguments on adapter " + reportedType.getName()
                     + ". Use non-overloaded operation names.");
         }
         return candidates.get(0);
