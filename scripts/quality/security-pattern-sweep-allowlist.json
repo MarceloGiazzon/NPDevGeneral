@@ -166,6 +166,16 @@
       "rule": "C1",
       "where": "NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache:142",
       "why": "`referenceFinders` is a LIST section, not a boolean: the guard is emitted once per finder, so there is no 'else' shape in which a finder exists without its check."
+    },
+    "f86b348e5637": {
+      "rule": "D1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:1030",
+      "why": "Not SQL. This is a System.out.println warning about a whole-schema recreation; the sweep matched it because SQL-shaped text sits beside it. Confirmed by reading it in REG-16-resid Round 5 (docs/REG16_POSTGRES_ADAPTER_SQL_ADVERSARIAL_REVIEW.md \u00a71)."
+    },
+    "57dd15073293": {
+      "rule": "D1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:1031",
+      "why": "Not SQL. This is a System.out.println warning about a whole-schema recreation; the sweep matched it because SQL-shaped text sits beside it. Confirmed by reading it in REG-16-resid Round 5 (docs/REG16_POSTGRES_ADAPTER_SQL_ADVERSARIAL_REVIEW.md \u00a71)."
     }
   }
 }
