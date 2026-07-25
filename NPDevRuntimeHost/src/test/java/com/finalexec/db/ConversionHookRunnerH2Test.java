@@ -123,6 +123,29 @@ class ConversionHookRunnerH2Test {
     }
 
     @Test
+    void rule4b_verifyMismatchRollsBackTheHooksDataChanges() throws SQLException {
+        // SER-P7 finding-#1 fix: verifySql runs INSIDE the hook's transaction, so a mismatch rolls the
+        // WHOLE hook back and nothing persists. Proven here with a DML change (a guaranteed rollback on
+        // both engines): the fixture's convert.sql inserts a marker row and declares a verifyExpect that
+        // can never match, so after the refused run the marker row must be GONE. (Before the fix the
+        // convert SQL committed first and only the boot was aborted, leaving the change behind.)
+        // NOTE: on H2 a *DDL* statement (ADD/DROP COLUMN) auto-commits and cannot be rolled back this
+        // way -- see ConversionHookRunner's javadoc and docs/IMPACT_REPORTS.md; Postgres rolls back fully.
+        exec("CREATE TABLE p75_verifyrollback (id BIGINT PRIMARY KEY)");
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                "p75_verifyrollback", Map.of("id", "BIGINT", "status", "VARCHAR(20)"),
+                List.of("id"), List.of("id", "status"));
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class,
+                () -> ConversionHookRunner.run(dataSource, manifest, historyWriter));
+        assertTrue(exception.getMessage().contains("verification failed"), exception.getMessage());
+        assertTrue(exception.getMessage().contains("rolled back"), exception.getMessage());
+
+        assertEquals(0L, singleLongQuery("SELECT COUNT(*) FROM p75_verifyrollback WHERE id = 4242"),
+                "a failed verify must roll back the hook's DML -- the marker row must not persist");
+    }
+
+    @Test
     void rule5_claimedButNotActuallyResolvedRefusesTheBoot() throws SQLException {
         exec("CREATE TABLE p75_notresolved (id BIGINT PRIMARY KEY)");
         SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(

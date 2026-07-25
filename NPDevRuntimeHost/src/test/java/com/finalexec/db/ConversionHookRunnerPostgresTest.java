@@ -113,6 +113,13 @@ class ConversionHookRunnerPostgresTest {
 
         List<String> outcomes = history.stream().map(row -> row[1]).toList();
         assertTrue(outcomes.contains("HOOK_VERIFY_FAILED"), outcomes.toString());
+
+        // SER-P7 finding-#1 fix: unlike H2, Postgres has transactional DDL -- the verify ran INSIDE the
+        // hook transaction, so the failure rolled the WHOLE hook back, INCLUDING the column its
+        // convert.sql ADDed. This is the full atomicity the fix delivers on the production engine.
+        assertEquals(0L, singleLongQuery("SELECT COUNT(*) FROM information_schema.columns "
+                        + "WHERE table_name = 'p75_verifyfail' AND column_name = 'status'"),
+                "Postgres rolls the hook's DDL back on a verify failure -- 'status' must not persist");
     }
 
     private void exec(String sql) throws SQLException {

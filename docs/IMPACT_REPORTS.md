@@ -184,14 +184,24 @@ reorganization experience NPDev didn't have before Phase 7.
 
 ### What a refusal looks like
 
-- **`verifySql` doesn't match `verifyExpect`** → the boot refuses *before* anything destructive runs
-  (`HOOK_VERIFY_FAILED` in `npdev_schema_history`).
+- **`verifySql` doesn't match `verifyExpect`** → the hook is rolled back and the boot refuses
+  (`HOOK_VERIFY_FAILED` in `npdev_schema_history`). The `verifySql` runs *inside* the hook's transaction,
+  so a mismatch undoes the hook's changes and nothing persists.
 - **A hook's `convert.sql` throws** → its own transaction rolls back atomically, the boot refuses
   (`HOOK_FAILED`).
 - **A hook claims an item but the re-diff still finds it** → the boot refuses (`hook '<id>' claimed
   '<itemKey>' but the change is still required`) — never trust a claim without checking.
 - **No hook claims an item at all** → completely unaffected; the existing itemized acknowledgment-token
   path applies exactly as before Phase 7.
+
+> **⚠ H2 DDL caveat (engine limitation, not a bug).** PostgreSQL has transactional DDL, so a rolled-back
+> hook fully undoes both its data (DML) and its schema (DDL) changes — a failed `verifySql` leaves the
+> schema exactly as it was. **H2 does not have transactional DDL:** an `ALTER TABLE`/`DROP` auto-commits
+> (and implicitly commits everything before it in the same batch), so on H2 a verify failure rolls back
+> the hook's DML but any DDL it already ran persists. If you need a verify failure to leave the schema
+> untouched, keep destructive DDL and data movement in separate hooks/boots, or run the conversion on
+> Postgres. (This is exactly why NPDev verifies the *residual diff* after hooks run — rule 5 — as the
+> real backstop: a claim that didn't actually resolve refuses the boot regardless of engine.)
 
 ### v1 scope
 

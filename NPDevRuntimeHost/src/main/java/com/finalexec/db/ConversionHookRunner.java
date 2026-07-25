@@ -56,6 +56,18 @@ import java.util.Set;
  * is required for what the hook already resolved. "Authoring the hook IS the acknowledgment" falls out
  * of the existing token-over-residual-diff design; nothing downstream needed to change. An unclaimed
  * destructive item is untouched by any of this and remains exactly as token-gated as before.
+ *
+ * <h2>Verify runs INSIDE the hook transaction (finding #1), and the H2 DDL caveat</h2>
+ * A hook's {@code convert.sql} AND its {@code verifySql} run in ONE transaction on ONE connection
+ * ({@link #executeAndVerify}); the transaction commits ONLY when there is no verifySql or it matched
+ * {@code verifyExpect}. A verify mismatch (or a verifySql that errors) rolls the WHOLE hook back, so
+ * nothing persists and the boot refuses cleanly. <b>Engine caveat:</b> PostgreSQL has transactional DDL,
+ * so a rolled-back hook fully undoes both its data (DML) and schema (DDL) changes. <b>H2 has no
+ * transactional DDL</b> — an {@code ALTER TABLE}/{@code DROP} auto-commits, so on H2 a verify failure
+ * rolls back the hook's DML but any DDL it already executed persists (and, worse, an H2 DDL statement
+ * implicitly commits everything before it in the same batch). Practical guidance: keep destructive DDL
+ * and data movement in SEPARATE hooks/boots, or run conversions on Postgres, if you need a verify
+ * failure to leave the schema untouched. This is an H2 engine limitation, not a hook-runner bug.
  */
 public final class ConversionHookRunner {
 
@@ -135,36 +147,39 @@ public final class ConversionHookRunner {
             }
             String sqlHash = sha256Hex(sql);
 
+            // SER-P7 (finding #1 fix): run the convert SQL AND its verifySql in ONE transaction, so a
+            // verify mismatch (or a verifySql that errors) rolls the WHOLE hook back -- nothing persists.
+            // Previously the convert SQL committed first and verify ran on a separate connection, so a
+            // failing verify aborted the boot but the hook's (possibly destructive) changes stayed
+            // committed and a re-boot silently proceeded. Now "nothing persisted" is literally true.
+            HookOutcome outcome;
             try {
-                executeInOwnTransaction(dataSource, sql);
+                outcome = executeAndVerify(dataSource, sql, hook.verifySql(), hook.verifyExpect());
             } catch (SQLException exception) {
                 historyWriter.write(historyLabel(hook), "HOOK_FAILED",
                         List.of("sqlHash=" + sqlHash, "error=" + exception.getMessage()));
                 throw new IllegalStateException("Conversion hook '" + hook.id()
-                        + "' failed executing its convert SQL (transaction rolled back): "
+                        + "' failed executing its convert SQL (transaction rolled back, nothing persisted): "
                         + exception.getMessage() + " -- refusing the boot.", exception);
             }
 
-            if (hook.verifySql() != null && !hook.verifySql().isBlank()) {
-                long actual;
-                try {
-                    actual = runVerify(dataSource, hook.verifySql());
-                } catch (SQLException exception) {
-                    historyWriter.write(historyLabel(hook), "HOOK_VERIFY_FAILED",
-                            List.of("verifySql failed to run: " + exception.getMessage()));
-                    throw new IllegalStateException("Conversion hook '" + hook.id()
-                            + "' verifySql failed to run: " + exception.getMessage()
-                            + " -- refusing the boot (nothing destructive has run yet).", exception);
-                }
-                if (actual != hook.verifyExpect()) {
-                    historyWriter.write(historyLabel(hook), "HOOK_VERIFY_FAILED",
-                            List.of("expected=" + hook.verifyExpect(), "actual=" + actual));
-                    throw new IllegalStateException("Conversion hook '" + hook.id()
-                            + "' verification failed: expected " + hook.verifyExpect() + " but got " + actual
-                            + " -- refusing the boot (nothing destructive has run yet).");
-                }
+            if (outcome.verifyRan() && outcome.verifyError() != null) {
+                historyWriter.write(historyLabel(hook), "HOOK_VERIFY_FAILED",
+                        List.of("verifySql failed to run: " + outcome.verifyError()));
+                throw new IllegalStateException("Conversion hook '" + hook.id()
+                        + "' verifySql failed to run: " + outcome.verifyError()
+                        + " -- refusing the boot (the hook's changes were rolled back; nothing persisted).");
+            }
+            if (outcome.verifyRan() && !outcome.committed()) {
+                historyWriter.write(historyLabel(hook), "HOOK_VERIFY_FAILED",
+                        List.of("expected=" + hook.verifyExpect(), "actual=" + outcome.verifyActual()));
+                throw new IllegalStateException("Conversion hook '" + hook.id()
+                        + "' verification failed: expected " + hook.verifyExpect() + " but got " + outcome.verifyActual()
+                        + " -- refusing the boot (the hook's changes were rolled back; nothing persisted).");
+            }
+            if (outcome.verifyRan()) {
                 historyWriter.write(historyLabel(hook), "HOOK_VERIFIED",
-                        List.of("expected=" + hook.verifyExpect(), "actual=" + actual));
+                        List.of("expected=" + hook.verifyExpect(), "actual=" + outcome.verifyActual()));
             }
 
             historyWriter.write(historyLabel(hook), "HOOK_APPLIED",
@@ -303,24 +318,54 @@ public final class ConversionHookRunner {
         }
     }
 
-    private static void executeInOwnTransaction(DataSource dataSource, String sql) throws SQLException {
+    /** The result of running a hook's convert SQL (+ optional verifySql) in one transaction.
+     *  {@code committed} is true only when there was no verifySql or it matched {@code verifyExpect};
+     *  on a mismatch or a verifySql that itself errored, the transaction was rolled back
+     *  ({@code committed=false}) and nothing persisted. {@code verifyError} is non-null only when the
+     *  verifySql failed to execute. */
+    private record HookOutcome(boolean committed, boolean verifyRan, long verifyActual, String verifyError) {
+    }
+
+    /**
+     * SER-P7 (finding #1 fix): execute the hook's convert SQL and, when present, its verifySql in ONE
+     * transaction on ONE connection, so a verify failure rolls the entire hook back. A convert-SQL
+     * failure propagates as {@link SQLException} (already rolled back). Otherwise the transaction commits
+     * ONLY when there is no verifySql or the verify matched; a mismatch or a verifySql execution error
+     * rolls back and returns {@code committed=false} so the caller can refuse the boot with nothing
+     * persisted.
+     */
+    private static HookOutcome executeAndVerify(DataSource dataSource, String convertSql, String verifySql,
+            int verifyExpect) throws SQLException {
         try (Connection connection = dataSource.getConnection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             try {
-                for (String statementSql : splitStatements(sql)) {
+                for (String statementSql : splitStatements(convertSql)) {
                     try (Statement statement = connection.createStatement()) {
                         statement.execute(statementSql);
                     }
                 }
-                connection.commit();
-            } catch (SQLException exception) {
-                try {
-                    connection.rollback();
-                } catch (SQLException ignored) {
-                    // best-effort rollback; the original exception is what matters
+                if (verifySql == null || verifySql.isBlank()) {
+                    connection.commit();
+                    return new HookOutcome(true, false, -1L, null);
                 }
-                throw exception;
+                long actual;
+                try (PreparedStatement statement = connection.prepareStatement(verifySql);
+                     ResultSet resultSet = statement.executeQuery()) {
+                    actual = resultSet.next() ? resultSet.getLong(1) : -1L;
+                } catch (SQLException verifyException) {
+                    safeRollback(connection);
+                    return new HookOutcome(false, true, -1L, verifyException.getMessage());
+                }
+                if (actual != verifyExpect) {
+                    safeRollback(connection);
+                    return new HookOutcome(false, true, actual, null);
+                }
+                connection.commit();
+                return new HookOutcome(true, true, actual, null);
+            } catch (SQLException convertException) {
+                safeRollback(connection);
+                throw convertException;
             } finally {
                 try {
                     connection.setAutoCommit(previousAutoCommit);
@@ -331,11 +376,11 @@ public final class ConversionHookRunner {
         }
     }
 
-    private static long runVerify(DataSource dataSource, String verifySql) throws SQLException {
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(verifySql);
-             ResultSet resultSet = statement.executeQuery()) {
-            return resultSet.next() ? resultSet.getLong(1) : -1L;
+    private static void safeRollback(Connection connection) {
+        try {
+            connection.rollback();
+        } catch (SQLException ignored) {
+            // best-effort rollback; the outcome/exception already tells the caller what to do
         }
     }
 

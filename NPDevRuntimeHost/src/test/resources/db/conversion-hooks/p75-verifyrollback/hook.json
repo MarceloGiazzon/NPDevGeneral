@@ -1,0 +1,7 @@
+{
+  "id": "p75-verifyrollback",
+  "claims": ["ADD_REQUIRED_COLUMN:p75_verifyrollback:status"],
+  "description": "P7 finding-#1 fixture: convert.sql makes a DML change (a marker row) and declares a verifyExpect that can never match, to prove a verify mismatch rolls the hook's data changes back (nothing persists).",
+  "verifySql": "SELECT COUNT(*) FROM p75_verifyrollback WHERE id = 4242",
+  "verifyExpect": 999
+}
