@@ -1,61 +1,63 @@
 # Open Items — verified snapshot
 
-> **As of:** 2026-07-25 · **HEAD:** `e612ec8` + this commit · **Branch:** `beta1-vision-spine`
+> **As of:** 2026-07-25 (end of the `ONE_PLAN_CLOSE_EVERYTHING.md` programme) · **Branch:** `beta1-vision-spine`
 > **Every row below was verified against the live tree**, not copied from a summary table. The register's
-> own index is now machine-checked against its detail sections by
-> `scripts/quality/check-register-consistency.py` (wired into `run-ai-knowledge-gate.ps1` step 1/4).
+> own index is machine-checked against its detail sections by
+> `scripts/quality/check-register-consistency.py`, and the security pattern sweep is machine-checked
+> against the real historical bugs it claims to catch by `security-pattern-sweep.py --self-test` —
+> both wired into `run-ai-knowledge-gate.ps1`.
 >
 > **This file is a point-in-time snapshot, not a second source of truth.** The register
 > (`NPDEV_OPEN_ITEMS_REGISTER.md`) remains authoritative; if they disagree, the register wins and this
-> file is stale. It exists to answer "what is actually left?" at a glance without reading 1,300 lines.
+> file is stale.
 
 ---
 
 ## 1. Genuinely open — blocking a "stable and complete" release
 
-| # | Item | Type | Sev | Where | Note |
-|---|---|---|---|---|---|
-| 1 | **REG-16-resid Round 3** — generator **codegen output** | SECURITY REVIEW | **HIGH** | `REG16_RESID_COMPLETION_PLAN.md` §2 | Zero adversarial review. A flaw here reproduces into **every** generated app. Round 2 found a CRITICAL in the first surface it examined properly — the base rate argues this cannot be skipped |
-| 2 | **REG-16-resid Round 4** — flow/`await` orchestration + `DefaultProcedureExecutor` | SECURITY REVIEW | **HIGH** | same §2 | Zero review. Newest execution surface; durable-resume identity/authorization is the risky part |
-| 3 | **REG-16-resid Round 5** — durable-state Postgres adapters' own SQL | SECURITY REVIEW | **HIGH** | same §2 | Zero review. Hand-written SQL: injection + tenant-scoping |
-| 4 | **REG-16-resid Round 6** — export/PDF path | SECURITY REVIEW | **HIGH** | same §2 | Zero review. Untrusted-content rendering: SSRF / traversal / exhaustion; does export honour `access.read` scope? |
-| 5 | **REG-37** — circuit-breaker failure counter is not atomic | BUG | MED | `REG16_RESID_COMPLETION_PLAN.md` §1.4 | Get-then-put with no CAS in **both** the in-proc and JDBC stores; the breaker opens late under exactly the load it exists for |
-| 6 | **REG-36** — unbounded idempotency key | BUG | MED | same §1.3 | Caller-influenced key stored unbounded while the cached *value* is already bounded; storage/DoS vector |
+**Empty.**
 
-**That is the whole blocking list — and all six close in 3 sessions**, not 6. See
-**[`ONE_PLAN_CLOSE_EVERYTHING.md`](ONE_PLAN_CLOSE_EVERYTHING.md)**, the single plan that closes
-everything on this page.
+All six items that stood here on 2026-07-25 morning are closed:
 
-The compression is not "batch the reviews anyway". It works because (a) a **mechanical sweep** runs
-first across all four surfaces — the bug classes already found here (guard-in-one-branch, swallowed
-security exceptions, unparameterised SQL) are *grep-able patterns*, and pattern-matching genuinely
-batches; and (b) the four surfaces **pair by threat model** — codegen output + export/PDF are both
-"what happens to content on the way out", flow/`await` + Postgres adapter SQL are both "who owns
-durable state, and does identity survive it". Reviewing a pair that shares a mental model is more
-effective than splitting it, not less.
+| Was | Outcome |
+|---|---|
+| REG-16-resid **Round 3** — generator codegen output | **DONE** — found a **HIGH** (R3-F2), fixed with a runtime proof |
+| REG-16-resid **Round 4** — flow/`await` orchestration | **DONE** — no CRITICAL/HIGH |
+| REG-16-resid **Round 5** — durable-state adapter SQL | **DONE** — no CRITICAL/HIGH, zero injection findings |
+| REG-16-resid **Round 6** — export/PDF | **DONE** — no CRITICAL/HIGH, 3 findings all fixed in-round |
+| **REG-37** — circuit-breaker counter not atomic | **CLOSED** — atomic in both stores, concurrency-proven RED→GREEN |
+| **REG-36** — unbounded idempotency key | **CLOSED** — bounded symmetrically, proven on a real Postgres |
 
-What does **not** change: a CRITICAL/HIGH still stops the session on the spot, each surface still gets
-its own scope list and its own findings document, and if depth runs out you split rather than skim.
+**REG-16 itself is now closed**, since its residual programme has no unreviewed surface left.
 
 ## 2. Open but NOT blocking
 
-| # | Item | Type | Note |
-|---|---|---|---|
-| 7 | **REG-39** healthy-pack **live** control | EVIDENCE | The stale-pack case is fully live-proven. The healthy-pack control's log ended in a Flyway checksum mismatch (a test-procedure artifact — regeneration against a restored DB), so it never reached the check. False positives **are** covered at unit level (`shouldPassWhenIdentityPackCopyHasTokenVersion`, `shouldPassWhenModelHasNoIdentityPackAtAll`). Redo with a fresh empty DB dir — corrected in that run's `SUMMARY.md` |
-| 8 | **Conversion hooks: no Postgres live proof** | EVIDENCE | Live-proven on H2 and unit-proven on PG. The docs steer DDL-bearing conversions to Postgres, so the recommended path is the one without a live run |
-| 9 | **8 register + 1 roadmap items** with unparseable status phrasing | PROCESS | Named by the new checker (`--verbose`). Not drift — just phrasing it refuses to guess at (e.g. REG-16's "TIER A COMPLETE", where the tier is complete but the item is open). Hand-verify or reword |
-| 10 | **REG-16-resid F4** — row-level authz is check-then-act (TOCTOU) | INFO | Rated INFO with honest reasoning (needs a second actor who already has write access; consistent with the platform's opt-in `expectedRowVersion` model). Revisit if CAS becomes the default |
+| # | Item | Type | Sev | Note |
+|---|---|---|---|---|
+| 1 | **REG-44** — `crud.kernelControlled: false` silently voids `access.write` | BUG | MED | A model can declare `access.write` and disable the only thing that enforces it, and compile clean. `access.read` *stays* enforced, which is what makes it hard to notice. Fix is cheap; whether it should be a compile error or a warning is a product decision |
+| 2 | **REG-45** — flow resume is tenant-scoped but not actor-scoped | BUG | MED | Any holder of `RESUME_EXECUTIONS` can resume another user's suspended flow and receive its accumulated state. Needs a policy decision (require the originating actor? an override permission?) before it can be fixed |
+| 3 | **REG-46** — `PersistenceCapabilityContract` has no tenant parameter | BUG | MED | The flow-step persistence route is unscoped while generated CRUD is tenant- **and** row-scoped. Fixing it is a breaking change to a published port |
+| 4 | **REG-16-resid F4** — row-level authz is check-then-act (TOCTOU) | INFO | — | Rated INFO with honest reasoning; revisit only if `expectedRowVersion` CAS becomes the default |
+| 5 | **GATE-GEN packaged-app proofs are load-flaky** | PROCESS | — | `TrustedSourceEmitter…RuntimeProofTest` / `HardenGcDeleteReplaceCascade…RuntimeProofTest` intermittently fail with *"Packaged app did not become healthy on port N"* when the full suite runs: two Spring Boot apps booting in parallel forks on a loaded machine. Observed 3× across this programme, and **passed every time on an isolated re-run** and on a repeat full run. Not a regression — but it costs a diagnosis cycle each time, so it should get a longer health timeout or forced serialization |
 
-## 3. Closed this session (verified by me, not claimed)
+All three MEDIUMs are **filed rather than improvised**: each needs a decision (product, policy, or
+API-contract) that a review round is the wrong place to make.
 
-| Item | Evidence I checked |
+## 3. Closed by this programme — verified, not claimed
+
+| Item | What was actually proven |
 |---|---|
-| **REG-41** — authz ran *after* lifecycle validation, leaking row status via the error channel | Reorder confirmed in `DefaultConceptGateway`; previous-record *fetch* correctly left in place, only its *use* deferred. 18/18 security tests green |
-| **REG-42** — `query()`'s `total`/`hasMore` leaked out-of-scope row counts | Re-query gated on `hasRowReadScope`, so unscoped concepts pay nothing. Green on both adapter families |
-| **LNCH13-F1** (CRITICAL) — flow-backed CRUD bypassed row-level write authz | Fix unconditional on all three paths (create/update/delete); now has a **runtime** proof that denial happens *and* the flow's side effects never run |
-| **G8** — FK/index diffing | Manifest carries FK/index; diff + `ExternallyManaged` both see them; missing-only by design |
-| **AW-P2, REG-17, REG-6, REG-16 index row, Phase-5 ledger row** | All were closed-but-rendered-open; corrected |
-| **BOND-B4** | **Found by the new checker on its first run** — summary said `DONE (2026-07-23)`, detail still said `PARTIAL` from 2026-07-12. Detail was stale; corrected |
+| **R3-F2 (HIGH)** — m2m bond endpoints had **zero** authorization | Four HTTP endpoints per bond, in every generated app, with no permission check, no row-level gate, no tenant predicate and no audit. New `ConceptGateway.authorizeWrite` (defaulting to **deny**); RED→GREEN behaviourally on both adapter families *and* structurally (4/4 RED pre-fix) |
+| **R3-F1 (MED)** — XSS sinks in the generated UI | `text()` is a null-coalescer, not an escaper, and fed `innerHTML`. Sink removed rather than escaped; test asserts against the **emitted asset** and whitelists the one safe `innerHTML` form |
+| **R6-F2 (MED)** — CSV formula injection | The only finding here whose impact **crosses users**. Neutralized without corrupting negative numbers |
+| **R6-F1 (MED)** — PDF export had no total-row bound | Its javadoc claimed a bound that did not exist. Now capped and 413-rejected |
+| **R6-F3 (LOW)** — renderer fetched external resources | SSRF confirmed **real** against a live local HTTP server, then closed |
+| **REG-43 (MED)** — silent fail-open tenant gate | Found by the new sweep on its first run. Missing-table still fails open; anything else now fails closed and logs |
+| **REG-36 / REG-37** | See §1. REG-36's own write-up was corrected in the process (the Postgres btree limit bites *after compression*) |
+| **REG-7 / REG-8** | Found closed-but-unstruck by the improved register checker |
+| **REG-39 healthy-pack live control** | Redone on a genuinely fresh DB: `Tomcat started`, zero `StartupValidator` failures |
+| **Conversion hooks on Postgres** | Live-proven end to end on a real container: real row counts, hook-claim matching, DDL, data conversion (1999¢→$19) and the `HOOK_APPLIED` audit row |
+| **9 unparseable-status items** | Now **zero**, in both documents — seven were checker blind spots, and fixing them exposed two real drifts |
 
 ## 4. Not gaps — deliberate boundaries
 
@@ -66,7 +68,23 @@ Check there before filing anything as a gap.
 
 ## 5. The honest headline
 
-Four surfaces sit at **zero** adversarial review, and the one surface that *was* reviewed properly
-yielded a CRITICAL authorization bypass that had been shipping. Until Rounds 3–6 are done, the accurate
-statement is **"no known CRITICAL issues in the reviewed surfaces"** — not "secure". Everything else on
-this list is either a contained MEDIUM or an evidence-tidiness item.
+The previous version of this page said:
+
+> *"Four surfaces sit at zero adversarial review… Until Rounds 3–6 are done, the accurate statement is
+> **'no known CRITICAL issues in the reviewed surfaces'** — not 'secure'."*
+
+**Rounds 3–6 are done.** Every launch surface has now had an adversarial review with its own scope
+list and its own findings document. So the accurate statement changes to:
+
+> **Every launch surface has had an adversarial review.** No CRITICAL issue is known anywhere. One HIGH
+> was found — in generated code, reproducing into every app — and was fixed with a runtime proof rather
+> than deferred. Three MEDIUMs remain open, each because it needs a decision rather than a patch.
+
+That is a materially stronger claim than the one this page carried this morning, and it is the one the
+work supports — no more.
+
+**What it still does not mean.** An adversarial review is a competent read by someone actively trying
+to break the thing; it is not a proof of absence. The single most instructive result of this programme
+is that Round 3 found a complete authorization bypass on a write surface that had been shipping — in
+code adjacent to a CRITICAL fixed only days earlier. The base rate for "one more careful look finds
+something" is not yet zero.
