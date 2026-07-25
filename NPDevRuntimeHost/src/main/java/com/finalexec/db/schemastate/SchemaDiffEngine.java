@@ -51,6 +51,7 @@ public final class SchemaDiffEngine {
             CurrentTable ct = current.tables().get(dt.name());
             if (ct != null) {
                 diffColumns(dt, ct, items);
+                diffForeignKeysAndIndexes(dt, ct, items);
                 handledCurrentTables.add(dt.name());
             } else {
                 items.add(SchemaDiffItem.of("CREATE_TABLE:" + dt.name(), dt.name(), null,
@@ -71,6 +72,74 @@ public final class SchemaDiffEngine {
                 .thenComparing(i -> i.column() == null ? "" : i.column())
                 .thenComparing(SchemaDiffItem::itemKey));
         return new SchemaDiff(List.copyOf(items));
+    }
+
+    /**
+     * SER-G8: the FK/index dimension, at last visible to the diff (the P0.2 asymmetry is closed — the
+     * manifest now carries explicit FK/index lists).
+     *
+     * <p><b>Missing-only, and deliberately so.</b> This reports a foreign key or index the MODEL declares
+     * that the live schema lacks; it NEVER reports an extra live one. The live side legitimately contains
+     * indexes the desired side will never enumerate — every engine's implicit primary-key and
+     * unique-constraint index (which {@code DatabaseMetaData.getIndexInfo} returns), plus any performance
+     * index a DBA added. A drop-proposing FK/index diff would therefore propose dropping primary-key
+     * indexes: catastrophic, and exactly the "noisy FK diff" the closure plan warned about.
+     *
+     * <p>Matching is by COLUMN SET, never by name — constraint/index names are engine-generated and differ
+     * between H2 and Postgres. A live primary key or unique constraint over the same columns satisfies a
+     * declared index. Items are classified {@link SafetyClass#SAFE_ADDITIVE} (adding a constraint destroys
+     * no data), so this changes no classification verdict; it makes the gap VISIBLE in the Impact Report.
+     */
+    private void diffForeignKeysAndIndexes(DesiredTable dt, CurrentTable ct, List<SchemaDiffItem> items) {
+        for (DesiredForeignKey wanted : dt.foreignKeys()) {
+            boolean satisfied = false;
+            for (CurrentForeignKey live : ct.foreignKeys()) {
+                satisfied = satisfied || (sameColumnSet(live.columns(), wanted.columns())
+                        && live.referencedTable() != null
+                        && live.referencedTable().equalsIgnoreCase(wanted.referencedTable()));
+            }
+            if (!satisfied) {
+                items.add(SchemaDiffItem.of(
+                        "ADD_FOREIGN_KEY:" + dt.name() + ":" + String.join(",", wanted.columns())
+                                + ":" + wanted.referencedTable(),
+                        dt.name(), wanted.columns().isEmpty() ? null : wanted.columns().get(0),
+                        SafetyClass.SAFE_ADDITIVE, null, wanted.referencedTable()));
+            }
+        }
+        for (DesiredIndex wanted : dt.indexes()) {
+            boolean satisfied = sameColumnSet(ct.primaryKeyColumns(), wanted.columns());
+            for (CurrentIndex live : ct.indexes()) {
+                satisfied = satisfied || (sameColumnSet(live.columns(), wanted.columns())
+                        && (!wanted.unique() || live.unique()));
+            }
+            for (CurrentUniqueConstraint live : ct.uniques()) {
+                satisfied = satisfied || sameColumnSet(live.columns(), wanted.columns());
+            }
+            if (!satisfied) {
+                items.add(SchemaDiffItem.of(
+                        "ADD_INDEX:" + dt.name() + ":" + String.join(",", wanted.columns())
+                                + (wanted.unique() ? ":unique" : ""),
+                        dt.name(), wanted.columns().isEmpty() ? null : wanted.columns().get(0),
+                        SafetyClass.SAFE_ADDITIVE, null, String.join(",", wanted.columns())));
+            }
+        }
+    }
+
+    /** Order-insensitive, case-insensitive column-set equality (names are already lower-cased on both
+     *  sides, but an engine can still report a different order). */
+    private static boolean sameColumnSet(List<String> a, List<String> b) {
+        if (a == null || b == null || a.size() != b.size()) {
+            return false;
+        }
+        Set<String> left = new LinkedHashSet<>();
+        for (String value : a) {
+            left.add(value == null ? "" : value.toLowerCase(java.util.Locale.ROOT));
+        }
+        Set<String> right = new LinkedHashSet<>();
+        for (String value : b) {
+            right.add(value == null ? "" : value.toLowerCase(java.util.Locale.ROOT));
+        }
+        return left.equals(right);
     }
 
     private void diffColumns(DesiredTable dt, CurrentTable ct, List<SchemaDiffItem> items) {

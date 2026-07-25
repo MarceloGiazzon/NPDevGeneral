@@ -141,6 +141,68 @@ class SchemaDiffEngineTest {
         assertTrue(item.itemKey().startsWith("TIGHTEN_PLATFORM:"), item.itemKey());
     }
 
+    @Test
+    void declaredForeignKeyMissingLiveIsReportedAsSafeAdditive() {
+        DesiredTable orders = new DesiredTable("orders",
+                Map.of("owner_id", dCol("owner_id", "UUID", true, null, false, false)),
+                List.of(), null,
+                List.of(new DesiredForeignKey(List.of("owner_id"), "owners", List.of("id"))),
+                List.of());
+        DesiredSchema desired = desired(orders);
+        CurrentSchema current = current(cTable("orders", cCol("owner_id", "UUID", true)));
+
+        SchemaDiffItem item = only(engine.diff(desired, current));
+        assertEquals(SafetyClass.SAFE_ADDITIVE, item.safetyClass(),
+                "adding a missing FK destroys nothing -- it must not change any classification verdict");
+        assertTrue(item.itemKey().startsWith("ADD_FOREIGN_KEY:orders:owner_id:owners"), item.itemKey());
+    }
+
+    @Test
+    void aLiveForeignKeyWithADifferentNameStillSatisfiesTheDeclaredOne() {
+        DesiredTable orders = new DesiredTable("orders",
+                Map.of("owner_id", dCol("owner_id", "UUID", true, null, false, false)),
+                List.of(), null,
+                List.of(new DesiredForeignKey(List.of("owner_id"), "owners", List.of("id"))),
+                List.of());
+        CurrentTable live = new CurrentTable("orders",
+                Map.of("owner_id", cCol("owner_id", "UUID", true)),
+                List.of("id"), List.of(),
+                // engine-chosen name -- matching must ignore it
+                List.of(new CurrentForeignKey("CONSTRAINT_8F", List.of("owner_id"), "owners", List.of("id"), null)),
+                List.of());
+        assertTrue(engine.diff(desired(orders), current(live)).isEmpty(),
+                "an FK is matched by column set + referenced table, never by its engine-generated name");
+    }
+
+    @Test
+    void extraLiveIndexesAreNeverReported() {
+        // The live side always carries implicit PK/unique indexes the model never declares. Reporting
+        // them would propose dropping primary-key indexes -- this pins that we never do.
+        DesiredTable orders = new DesiredTable("orders",
+                Map.of("id", dCol("id", "UUID", false, null, true, true)),
+                List.of(), null, List.of(), List.of());
+        CurrentTable live = new CurrentTable("orders",
+                Map.of("id", cCol("id", "UUID", false)),
+                List.of("id"), List.of(), List.of(),
+                List.of(new CurrentIndex("PRIMARY_KEY_5", List.of("id"), true),
+                        new CurrentIndex("a_dbas_own_perf_index", List.of("id"), false)));
+        assertTrue(engine.diff(desired(orders), current(live)).isEmpty(),
+                "extra live indexes must never appear in the diff (missing-only by design)");
+    }
+
+    @Test
+    void aPrimaryKeySatisfiesADeclaredIndexOverTheSameColumns() {
+        DesiredTable orders = new DesiredTable("orders",
+                Map.of("id", dCol("id", "UUID", false, null, true, true)),
+                List.of(), null, List.of(),
+                List.of(new DesiredIndex(List.of("id"), false)));
+        CurrentTable live = new CurrentTable("orders",
+                Map.of("id", cCol("id", "UUID", false)),
+                List.of("id"), List.of(), List.of(), List.of());
+        assertTrue(engine.diff(desired(orders), current(live)).isEmpty(),
+                "a live PK over the same columns satisfies a declared index");
+    }
+
     // ---- helpers ----
 
     private SafetyClass columnAddChange(DesiredColumn added) {

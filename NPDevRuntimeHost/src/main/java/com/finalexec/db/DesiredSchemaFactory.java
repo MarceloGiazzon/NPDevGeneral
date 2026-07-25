@@ -57,9 +57,24 @@ public final class DesiredSchemaFactory {
                 uniques.add(new DesiredUniqueConstraint(lowerAll(decl.columns())));
             }
 
+            // SER-G8: the model's declared FKs/indexes, lower-cased to match CurrentSchema. Empty for a
+            // pre-G8 manifest (the keys simply are not there), so the diff behaves exactly as before.
+            List<com.finalexec.db.schemastate.DesiredForeignKey> foreignKeys = new ArrayList<>();
+            for (SchemaLifecycleExecutor.ForeignKeyDecl decl
+                    : manifest.businessTableForeignKeys().getOrDefault(table, List.of())) {
+                foreignKeys.add(new com.finalexec.db.schemastate.DesiredForeignKey(
+                        lowerAll(decl.columns()), lower(decl.referencedTable()), lowerAll(decl.referencedColumns())));
+            }
+            List<com.finalexec.db.schemastate.DesiredIndex> indexes = new ArrayList<>();
+            for (SchemaLifecycleExecutor.IndexDecl decl
+                    : manifest.businessTableIndexes().getOrDefault(table, List.of())) {
+                indexes.add(new com.finalexec.db.schemastate.DesiredIndex(lowerAll(decl.columns()), decl.unique()));
+            }
+
             String renamedFrom = tableRenames.get(table);
             tables.put(lower(table), new DesiredTable(
-                    lower(table), Map.copyOf(columns), List.copyOf(uniques), lower(renamedFrom)));
+                    lower(table), Map.copyOf(columns), List.copyOf(uniques), lower(renamedFrom),
+                    List.copyOf(foreignKeys), List.copyOf(indexes)));
         }
         return new DesiredSchema(Map.copyOf(tables));
     }

@@ -386,15 +386,18 @@ Recorded plainly (these are known, not hidden):
   required field on a populated table is refused, not evaluated.
 - **No automated snapshot restore** (§13).
 - **No cross-database data migration** (H2 → Postgres data movement is a different, unbuilt feature).
-- **`ExternallyManaged` verification does not check foreign keys or indexes.** As of 2026-07-25 (P5.2)
-  it checks declared tables/columns exist with compatible SQL types, **plus nullability** (both fatal
-  directions — a model-required column that is nullable live, and a live `NOT NULL` column *with no
-  default* that the model treats as optional) **and every unique constraint the model declares** (a live
-  PK or unique over the same columns satisfies it; a live unique the model doesn't declare is tolerated,
-  since an external schema may be stricter). What it still cannot see is **FKs and indexes** — the
-  manifest carries no explicit FK/index lists (they are derived at generation), so the desired side
-  can't express them yet. An external schema missing a bond's FK or an expected index still verifies
-  clean.
+- **FK/index checking is missing-only, by design.** As of 2026-07-25 the manifest carries explicit
+  `businessTableForeignKeys`/`businessTableIndexes` (SER-G8), so both the diff and the `ExternallyManaged`
+  check finally see that dimension — the P0.2 asymmetry is closed. `ExternallyManaged` now verifies
+  tables/columns/types, **nullability** (both fatal directions — a model-required column that is nullable
+  live, and a live `NOT NULL` column *with no default* the model treats as optional), **declared uniques**,
+  **declared FKs, and declared indexes**. What it deliberately does **not** do is report anything the live
+  schema has *extra*: an external DBA's performance index, and every engine's implicit PK/unique-backing
+  index (which `getIndexInfo` returns), are legitimate. A drop-proposing FK/index diff would have proposed
+  dropping primary-key indexes. Matching is by **column set**, never by name (names are engine-generated:
+  `widgets_pkey` on Postgres, `CONSTRAINT_8` on H2); a live PK or unique over the same columns satisfies a
+  declared index. Consequence to know: **NPDev will tell you a constraint is missing, but never that one is
+  surplus.**
 - **`mark-done` trusts the operator completely** — it doesn't verify the live schema matches; it just
   stops trying to converge.
 - **`classify`'s verdict is not changed by nullability alone.** (Corrected 2026-07-25: it is no longer
