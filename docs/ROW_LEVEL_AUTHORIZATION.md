@@ -78,13 +78,19 @@ over real HTTP against a booted generated app), not by the hermetic gateway-leve
 tests, since those construct `DefaultConceptGateway` directly and never exercise the generated
 `ServiceBase` code path. Fixed in `service-base.mustache`.
 
-## Known limitation: `query()` paging is an approximation under row-scope
+## `query()` pagination metadata is row-scoped too (REG-42, fixed 2026-07-25)
 
-`ConceptGateway.query` (LNCH-5's filter/sort/page endpoint) filters row-scope *after* the store
-already computed `total`/`hasMore` for the unfiltered page. If a page mixes readable and
-unreadable rows, the returned `total`/`hasMore` can overcount relative to what the caller actually
-sees. Pushing row-scope into the store-level query (e.g. as a SQL predicate) instead of a
-post-fetch filter is future work, not required for `read`/`list`'s correctness.
+`ConceptGateway.query` (LNCH-5's filter/sort/page endpoint) still filters the returned `items` *after*
+the store computes its initial page, but `total`/`hasMore` are no longer trusted from that unfiltered
+count. REG-16-resid Round 2 reclassified the old "pagination approximation" framing here as a genuine
+information-disclosure defect (LNCH13-F3): a caller whose `access.read` excludes most of a tenant's
+rows could learn how many rows exist outside their own scope via `total`, even though `items` correctly
+hid them. `ConceptGatewaySemanticPolicy.hasRowReadScope(conceptName)` now tells `DefaultConceptGateway`
+when a concept declares `access.read` at all; only then does `query()` pay the cost of an unpaged
+re-query (bounded by `ConceptQuery.MAX_LIMIT`, the same ceiling every single query already has) to
+recompute `total`/`hasMore` against the row-scoped result set. Every other concept's `query()` is
+unaffected. See `docs/REG16_LNCH13_ROWLEVEL_AUTHZ_ADVERSARIAL_REVIEW.md` (LNCH13-F3) and the register's
+REG-42 row.
 
 ## What's deliberately out of scope
 
