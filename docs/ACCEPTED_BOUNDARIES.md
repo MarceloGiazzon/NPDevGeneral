@@ -1,0 +1,49 @@
+# Accepted Boundaries — what NPDev deliberately does not do
+
+> **Written:** 2026-07-25 · Verified against the live tree.
+>
+> **These are not gaps, not bugs, and not a backlog.** Each is a conscious design decision with a stated
+> reason, a workaround, and a named trigger that would justify revisiting it. Treating one of these as a
+> "TODO" and "fixing" it without hitting its trigger is how a stable subsystem gets destabilised.
+>
+> **How to use this document:** before filing an item as a gap, check here. If it is listed, the question
+> is not *"why isn't this done?"* but *"has its revisit trigger fired?"*
+
+---
+
+## 1. Schema evolution & migration
+
+| # | Boundary | Why it is deliberate | What to do instead (workaround) | Revisit trigger | Ref |
+|---|---|---|---|---|---|
+| B1 | **No automatic rename inference** — a rename must be declared via `renamedFrom` | In a pure shape diff, "renamed a→b" and "dropped a, added b" are **identical**. Guessing wrong silently destroys a column's data. Intent cannot be recovered from shape | Declare `renamedFrom` on the field/concept. The engine then treats it as a rename and preserves data | Never, for inference-by-heuristic. Only if the authoring layer gains a real rename *event* (not a guess) | `DATABASES_AND_MIGRATIONS.md` §15 |
+| B2 | **No expression-valued backfills** — only a literal `default` is backfilled | A literal is deterministic and reviewable; an arbitrary expression executed against every existing row at boot is not, and a bad one is unrecoverable | Declare a literal `default`, make the field optional, or write a **conversion hook** (`IMPACT_REPORTS.md`) that computes values with real SQL | An expression sandbox with a dry-run + row-count preview exists | §15 |
+| B3 | **FK/index checking is missing-only** — NPDev reports a declared constraint the DB lacks, never a surplus one | The live side always carries constraints the model never declares (implicit PK/unique indexes, a DBA's performance indexes). Reporting extras would propose **dropping primary-key indexes** | Manage extra indexes outside NPDev; they are respected and never touched | Only if the manifest ever becomes a *complete* enumeration of every legitimate index — which is not the design | §15, SER-G8 |
+| B4 | **Single-instance only** — concurrency is detect-and-refuse, not a lock | REG-7 was converted to a feature: a **claim row** makes a racing instance refuse loudly rather than interleave. A true advisory lock was scoped out | Deploy one instance per app+database during migration; scale out after the schema converges | A real multi-instance rolling-deploy requirement (needs `pg_advisory_lock` + an H2 equivalent) | REG-7 §1.7 |
+| B5 | **Schema-ahead detection closes by refusal, not reconstruction** — a pure column drop by a newer build leaves no residue to detect | You cannot detect what was *removed* without history. REG-8 Trigger C refuses when the DB was migrated past this build, which is the safe answer | Roll forward, or use `mark-done` deliberately after verifying by hand | A full schema-history snapshot (not just a fingerprint) is stored per boot | REG-8 §1.8 |
+| B6 | **`mark-done` trusts the operator completely** | It exists precisely for "I fixed it by hand; stop trying to converge". Verifying would defeat its purpose | Use `-ImpactOnly` first to see what NPDev *thinks* differs, then mark done knowingly | Never — verification is what the ordinary path already does | §15 |
+| B7 | **Refusals are not side-effect-free** | A refusal can happen after an idempotent Flyway step already ran. Making the whole boot transactional is impossible across engines (H2 has no transactional DDL) | Treat a refused boot as "inspect before retrying"; the history table records what ran | Only if every supported engine gains transactional DDL | §13, §15 |
+| B8 | **Dropping a concept needs one boot of ownership history first** (LNCH-1-B7) | NPDev only drops a table it can **prove** it created. Without that proof, a hand-made table in the same schema could be swept away | Boot once with the concept present (recording ownership), then remove it | Never — this is the guard that makes surgical drops safe | §15 |
+| B9 | **No automated snapshot restore** | Snapshots are written before destruction, but restoring is a judgement call (partial? which tables? what about rows written since?) that a tool should not make silently | Restore by hand from `runtime-data/schema-snapshot-before-drop/`; the format is plain JSONL | An operator-driven restore *command* with an explicit target + dry-run | §13, §15 |
+| B10 | **No cross-database data migration** (H2 → Postgres) | A different feature entirely (data movement, not schema reconciliation); conflating them would bloat the engine | Export/import with standard DB tooling | Genuine demand for an H2→Postgres promotion path | §15 |
+| B11 | **H2 has no transactional DDL** — a failed hook `verifySql` rolls back DML but not DDL | An engine limitation, not a code choice. Postgres rolls back fully | Split destructive DDL and data movement into separate hooks/boots, or run conversions on Postgres. Rule 5 (post-hook re-diff) is the engine-independent backstop | Never (upstream H2 behaviour) | `IMPACT_REPORTS.md`, `ConversionHookRunner` javadoc |
+| B12 | **Conversion hooks are individually atomic, not collectively atomic** | Each hook runs in its own transaction so a later failure does not silently undo verified earlier work | **Write every hook idempotent** (`ADD COLUMN IF NOT EXISTS`, `UPDATE … WHERE <not-yet-converted>`) | A single-transaction multi-hook mode, if operators ask for it | `IMPACT_REPORTS.md` |
+| B13 | **Conversion hooks are SQL-only in v1** — no Java `DataMigrationHook` | Code-bearing objects belong to the ADR-0003 track, with its own sandboxing/versioning story. Shipping a Java hook casually would pre-empt that design | Express the conversion in SQL; it covers the copy-convert-drop pattern | ADR-0003 code-bearing-objects lands | `ConversionHookRunner` javadoc |
+| B14 | **Sanctioned destruction: a hook-resolved destructive item needs no token** (rule 6) | Authoring the hook *is* the acknowledgment. Owner-approved, ADR-0008 (2026-07-25, no conditions) | Unclaimed destructive items remain fully token-gated; rule 5 verifies every claim by re-diffing | Owner revokes or conditions the ADR | ADR-0008 |
+
+## 2. Authoring & runtime
+
+| # | Boundary | Why it is deliberate | What to do instead | Revisit trigger | Ref |
+|---|---|---|---|---|---|
+| B15 | **`await` cannot be nested inside a loop body** | Durable resume of an in-flight `await` *inside* an iteration is a genuinely hard state problem; rejecting it at validation is honest rather than half-supporting it | Restructure the flow so the await is outside the loop | The durable-resume slice on the BOUNDARY_LIFT roadmap | `SemanticValidator:2416` |
+| B16 | **`selectorRef` (custom filtered picker) descoped** | FK fields already auto-render a working browse/pick dialog with zero authoring; a *custom filtered* picker is an optional refinement, not a gap | Use the automatic `LOOKUP` widget | Real demand for filtered pickers | AW-P2, `OPEN_GAPS_AND_ROADMAP.md` |
+| B17 | **Super-user key is issued, not supplied** (REG-9 Q1) | Preserves "the platform issues the key" model; making it supplied invites weak operator-chosen keys | Read the issued key from its file path (never over HTTP) | Reversible if deployment demands it | REG-9 §2.1 |
+
+## 3. Reading these correctly
+
+Three of these boundaries exist because **the safe answer is to refuse rather than guess**: B1 (rename),
+B4 (concurrency), B5 (schema-ahead). That is the schema engine's governing instinct — when intent cannot
+be recovered from shape, stop and ask a human. Several others (B3, B12, B13) exist because **the
+conservative half of a feature is worth shipping without the dangerous half**.
+
+If you are about to remove one of these, the question to answer in writing is: *what new information do
+we have that the original decision lacked?* If the answer is "none, it just feels incomplete" — leave it.
