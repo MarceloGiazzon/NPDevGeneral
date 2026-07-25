@@ -355,15 +355,32 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     }
 
     /**
-     * REG-7.1 (D5): the read-only compatibility check itself. Reuses {@link #readActualColumns},
-     * {@link #readActualColumnTypes} and {@link #normalizeSqlType} -- the SAME live-introspection and
-     * type-comparison plumbing {@link #classify} and {@link #findSchemaAheadMissingColumns} use
-     * (REG-6: one notion of "does the live schema match", never a second, drifting one). Returns one
-     * itemized, human-readable problem string per missing table, missing column, or incompatible
-     * column type; empty when the live schema fully satisfies this build's model.
+     * REG-7.1 (D5): the read-only compatibility check itself. Returns one itemized, human-readable
+     * problem string per incompatibility; empty when the live schema fully satisfies this build's model.
+     *
+     * <p><b>SER-P5.2 — full-shape, not column-shape.</b> This used to check only table existence, column
+     * existence and column type, so an external schema that matched every column NAME but violated the
+     * model's nullability or uniqueness assumptions verified "compatible" and failed later at runtime.
+     * It now also checks <b>nullability</b> (both fatal directions — see
+     * {@link #appendExternalNullabilityProblem}) and <b>unique constraints</b> the model declares
+     * ({@link #appendExternalUniqueProblems}), sourcing those facts from the canonical
+     * {@code CurrentSchema}/{@code DesiredSchema} pair rather than a second hand-rolled introspection
+     * (REG-6: one notion of "does the live schema match", never a second, drifting one).
+     *
+     * <p><b>Still not checked (deferred):</b> foreign keys and indexes. The manifest carries no explicit
+     * FK/index lists (the P0.2 asymmetry — they are derived at generation), so the desired side cannot yet
+     * express them; {@code CurrentSchemaReader} already reads them for when it can. Until then an external
+     * schema missing a bond's FK or an index verifies clean.
      */
     private static List<String> findExternalSchemaIncompatibilities(DataSource dataSource, SchemaManifest manifest) {
         List<String> problems = new ArrayList<>();
+        // SER-P5.2: the FULL-SHAPE facts (nullability, uniques) come from the canonical CurrentSchema +
+        // DesiredSchema -- the same models classify/SchemaDeltaReport/the Impact Report consume -- so this
+        // verification is no longer a second, drifting notion of "does the live schema match" (REG-6).
+        // Read once, outside the metadata loop below.
+        com.finalexec.db.schemastate.CurrentSchema fullCurrent =
+                new com.finalexec.db.schemastate.CurrentSchemaReader().read(dataSource);
+        com.finalexec.db.schemastate.DesiredSchema fullDesired = DesiredSchemaFactory.fromManifest(manifest);
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
             for (Map.Entry<String, List<String>> entry : manifest.businessTableColumns().entrySet()) {
@@ -373,6 +390,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     problems.add(table + " (table missing)");
                     continue;
                 }
+                String tableKey = table.toLowerCase(Locale.ROOT);
+                com.finalexec.db.schemastate.CurrentTable liveTable = fullCurrent.tables().get(tableKey);
+                com.finalexec.db.schemastate.DesiredTable desiredTable = fullDesired.tables().get(tableKey);
                 Map<String, String> expectedTypes = manifest.businessTableColumnTypes().getOrDefault(table, Map.of());
                 Map<String, String> actualTypes = readActualColumnTypes(metadata, table);
                 for (String column : entry.getValue()) {
@@ -387,12 +407,88 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                         problems.add(table + "." + column + " (type mismatch: model expects " + expectedType
                                 + ", live schema has " + actualType + ")");
                     }
+                    appendExternalNullabilityProblem(problems, table, column, liveTable, desiredTable, normalized);
                 }
+                appendExternalUniqueProblems(problems, table, liveTable, desiredTable);
             }
         } catch (SQLException exception) {
             problems.add("(failed introspecting live schema: " + exception.getMessage() + ")");
         }
         return problems;
+    }
+
+    /**
+     * SER-P5.2: the nullability half of the full-shape {@code ExternallyManaged} check. Two genuinely
+     * fatal directions, each reported with the reason it breaks at RUNTIME (this path refuses a boot, so
+     * it must not flag a difference that would in fact work):
+     * <ul>
+     *   <li><b>model requires NOT NULL, live is nullable</b> — the app can read a {@code null} into a
+     *       field its model says always has a value.</li>
+     *   <li><b>live is NOT NULL with NO default, model treats it as optional</b> — an insert that omits
+     *       the column fails outright. The {@code no default} qualifier matters: a live {@code NOT NULL
+     *       DEFAULT …} column is perfectly safe for an optional model field, so it is NOT flagged.</li>
+     * </ul>
+     */
+    private static void appendExternalNullabilityProblem(List<String> problems, String table, String column,
+            com.finalexec.db.schemastate.CurrentTable liveTable,
+            com.finalexec.db.schemastate.DesiredTable desiredTable, String columnKey) {
+        if (liveTable == null || desiredTable == null) {
+            return;
+        }
+        com.finalexec.db.schemastate.CurrentColumn liveColumn = liveTable.columns().get(columnKey);
+        com.finalexec.db.schemastate.DesiredColumn desiredColumn = desiredTable.columns().get(columnKey);
+        if (liveColumn == null || desiredColumn == null) {
+            return;
+        }
+        if (!desiredColumn.nullable() && liveColumn.nullable()) {
+            problems.add(table + "." + column + " (nullability mismatch: the model requires a value (NOT NULL) "
+                    + "but the live column is nullable)");
+        } else if (desiredColumn.nullable() && !liveColumn.nullable()
+                && liveColumn.defaultValueNormalized() == null) {
+            problems.add(table + "." + column + " (nullability mismatch: the live column is NOT NULL with no "
+                    + "default but the model treats it as optional -- an insert that omits it will fail)");
+        }
+    }
+
+    /**
+     * SER-P5.2: the uniqueness half. A unique invariant the MODEL declares but the live schema does not
+     * enforce is a silent data-integrity hole (the app assumes uniqueness nothing guarantees). A live
+     * unique constraint the model does NOT declare is deliberately tolerated — an externally-managed
+     * schema is allowed to be stricter than the model. A primary key covering exactly the same columns
+     * satisfies the requirement.
+     */
+    private static void appendExternalUniqueProblems(List<String> problems, String table,
+            com.finalexec.db.schemastate.CurrentTable liveTable,
+            com.finalexec.db.schemastate.DesiredTable desiredTable) {
+        if (liveTable == null || desiredTable == null) {
+            return;
+        }
+        for (com.finalexec.db.schemastate.DesiredUniqueConstraint wanted : desiredTable.uniques()) {
+            boolean satisfied = sameColumnSet(liveTable.primaryKeyColumns(), wanted.columns());
+            for (com.finalexec.db.schemastate.CurrentUniqueConstraint live : liveTable.uniques()) {
+                satisfied = satisfied || sameColumnSet(live.columns(), wanted.columns());
+            }
+            if (!satisfied) {
+                problems.add(table + " (missing unique constraint on " + wanted.columns()
+                        + ": the model declares this combination unique but the live schema does not enforce it)");
+            }
+        }
+    }
+
+    /** Order-insensitive, case-insensitive column-set equality for constraint comparison. */
+    private static boolean sameColumnSet(List<String> a, List<String> b) {
+        if (a == null || b == null || a.size() != b.size()) {
+            return false;
+        }
+        Set<String> left = new LinkedHashSet<>();
+        for (String value : a) {
+            left.add(value == null ? "" : value.toLowerCase(Locale.ROOT));
+        }
+        Set<String> right = new LinkedHashSet<>();
+        for (String value : b) {
+            right.add(value == null ? "" : value.toLowerCase(Locale.ROOT));
+        }
+        return left.equals(right);
     }
 
     /**
