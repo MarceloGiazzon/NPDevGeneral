@@ -408,6 +408,36 @@ public final class DefaultConceptGateway implements ConceptGateway {
     }
 
     /**
+     * REG-16-resid Round 3 (R3-F2): the same two gates {@link #save} applies -- {@code concept.write}
+     * permission, then row-level {@code access.write} scope against the record's CURRENT state --
+     * with nothing persisted afterwards.
+     *
+     * <p>The order matches {@code save}'s deliberately, including REG-41's constraint that
+     * authorization precede anything that reads the previous record's data. Nothing here touches
+     * that data: the previous record is fetched only so {@code enforceRowWritable} can evaluate the
+     * scope rule against it, which is the same use {@code save} makes of it.</p>
+     */
+    @Override
+    public void authorizeWrite(ConceptReadRequest request, ExecutionContext context) {
+        ExecutionContext effectiveContext = normalizeContext(context);
+        String tenantId = enforceTenant(
+                request.tenantId(), effectiveContext, "CONCEPT_WRITE", request.conceptName(), request.id());
+
+        ConceptGatewayRequestContext requestContext = requestContext(
+                ConceptGatewayOperation.SAVE,
+                request.conceptName(),
+                request.id(),
+                tenantId,
+                Map.of(),
+                effectiveContext,
+                Optional.empty()
+        ).withPreviousRecord(store.findById(tenantId, request.conceptName(), request.id()));
+
+        enforcePermission(effectiveContext, "concept.write", request.conceptName(), "CONCEPT_WRITE", request.id());
+        enforceRowWritable(requestContext, "CONCEPT_WRITE");
+    }
+
+    /**
      * LNCH-13: row-level write scoping -- {@link ConceptGatewaySemanticPolicy#isRowWritable}
      * against the previous record (update/delete) or incoming data (create). Unlike the read
      * path (which fails closed to "not found" per-record), a denied write throws immediately:

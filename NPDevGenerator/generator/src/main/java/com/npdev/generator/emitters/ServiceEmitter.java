@@ -141,6 +141,9 @@ public final class ServiceEmitter extends AbstractEmitter {
             ctx.put("hasFileFields", !fileFields.isEmpty());
             ctx.put("referenceFinders", referenceFinders);
             ctx.put("manyToManyBonds", manyToManyBonds);
+            // REG-16-resid Round 3 (R3-F2): the bond-authorization helpers are emitted ONCE per
+            // service, not once per bond, so they need a boolean the per-bond list cannot provide.
+            ctx.put("hasManyToManyBonds", !manyToManyBonds.isEmpty());
             ctx.put("expressionInvariants", expressionInvariants);
             ctx.put("allowedMutationTopics", allowedMutationTopics);
             ctx.put("emitCreatedEvent", hasMutationTopic(allowedMutationTopics, entity.getClassName() + ".created"));
