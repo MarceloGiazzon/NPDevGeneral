@@ -1,0 +1,171 @@
+{
+  "_comment": [
+    "Triage verdicts for scripts/quality/security-pattern-sweep.py. Each entry means: a human looked at this",
+    "exact code and decided it is safe, and here is the reason. The key is a fingerprint of the matched TEXT,",
+    "so EDITING that code invalidates the verdict and the hit resurfaces -- which is the point.",
+    "Rationale for each rule id lives in docs/SECURITY_PATTERN_SWEEP_2026-07.md.",
+    "Never clear a hit here without recording why in that document."
+  ],
+  "cleared": {
+    "b8e1b1a379d4": {
+      "rule": "A1",
+      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4626",
+      "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here."
+    },
+    "6179cd7bed39": {
+      "rule": "A1",
+      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4659",
+      "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here."
+    },
+    "2fa2af4f60a5": {
+      "rule": "A1",
+      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4697",
+      "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here."
+    },
+    "992fc25b3292": {
+      "rule": "A1",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java:4198",
+      "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here."
+    },
+    "d9ac8b1319aa": {
+      "rule": "A1",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/auth/Role.java:21",
+      "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here."
+    },
+    "8e3910280ed8": {
+      "rule": "A1",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/auth/RolePermissions.java:70",
+      "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here."
+    },
+    "38ea3d12911b": {
+      "rule": "A1",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptQueryEngine.java:130",
+      "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here."
+    },
+    "93bde9615d7e": {
+      "rule": "A1",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/mvp/MvpKernelRunner.java:539",
+      "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here."
+    },
+    "45db367e510e": {
+      "rule": "A1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/api/ConceptQueryController.java:251",
+      "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here."
+    },
+    "478675759e35": {
+      "rule": "A1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/RuntimePluginArtifactRealizationProvider.java:61",
+      "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here."
+    },
+    "6af5a10d7635": {
+      "rule": "A1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/SemanticBehaviorWriteBackService.java:372",
+      "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here."
+    },
+    "ffdc052c731c": {
+      "rule": "A2",
+      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java:116",
+      "why": "IdentityRoleLookup.isTokenRevoked/rejectTvlessTokensNow: a malformed `tv` claim cannot be attacker-produced -- the claim is inside the JWT the server itself signed, so reaching the catch means the server emitted a non-numeric tv, not that a caller chose one. The system-property cutover parse is validated at boot by StartupValidator."
+    },
+    "b63958498091": {
+      "rule": "A2",
+      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java:130",
+      "why": "IdentityRoleLookup.isTokenRevoked/rejectTvlessTokensNow: a malformed `tv` claim cannot be attacker-produced -- the claim is inside the JWT the server itself signed, so reaching the catch means the server emitted a non-numeric tv, not that a caller chose one. The system-property cutover parse is validated at boot by StartupValidator."
+    },
+    "56abb5e304c9": {
+      "rule": "A3",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConfiguredConceptGatewaySemanticPolicy.java:275",
+      "why": "Documented fail-CLOSED: a row-level access rule that will not evaluate denies. This is the correct direction and is explained in-line at the catch."
+    },
+    "305525fd9cb1": {
+      "rule": "A4",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/auth/PasswordHasher.java:55",
+      "why": "Fail-closed: a hash that cannot be verified is not a match. Returning false is the only safe answer and no other outcome is reachable."
+    },
+    "3ae140c571aa": {
+      "rule": "B1",
+      "where": "NPDevKernel/adapters/bulkhead-postgres/src/main/java/com/npdev/adapters/bulkhead/postgres/PostgresAdvisoryBulkheadStore.java:62",
+      "why": "Connectivity/liveness probe or an advisory-lock call -- it reads no tenant rows at all, so there is no tenant scope to apply."
+    },
+    "7cd050ba8e4c": {
+      "rule": "B1",
+      "where": "NPDevKernel/adapters/bulkhead-postgres/src/main/java/com/npdev/adapters/bulkhead/postgres/PostgresAdvisoryBulkheadStore.java:84",
+      "why": "Connectivity/liveness probe or an advisory-lock call -- it reads no tenant rows at all, so there is no tenant scope to apply."
+    },
+    "3361c0a50370": {
+      "rule": "B1",
+      "where": "NPDevKernel/adapters/runtime-validation/src/main/java/com/npdev/adapters/runtime/validation/NpdevDbHealthIndicator.java:33",
+      "why": "Connectivity/liveness probe or an advisory-lock call -- it reads no tenant rows at all, so there is no tenant scope to apply."
+    },
+    "c3f2085926b4": {
+      "rule": "B1",
+      "where": "NPDevKernel/adapters/runtime-validation/src/main/java/com/npdev/adapters/runtime/validation/StartupValidator.java:395",
+      "why": "Connectivity/liveness probe or an advisory-lock call -- it reads no tenant rows at all, so there is no tenant scope to apply."
+    },
+    "5f6af4e7841e": {
+      "rule": "B2",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/DatabaseIdentityStartupValidator.java:63",
+      "why": "Schema/DDL engine. The physical schema is a property of the DATABASE, not of a tenant: all tenants share one set of tables, so a tenant predicate here would be meaningless. These endpoints are separately admin-gated."
+    },
+    "34fe3b0129c9": {
+      "rule": "B2",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/ImpactReport.java:192",
+      "why": "Schema/DDL engine. The physical schema is a property of the DATABASE, not of a tenant: all tenants share one set of tables, so a tenant predicate here would be meaningless. These endpoints are separately admin-gated."
+    },
+    "51b89918a9c1": {
+      "rule": "B2",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/PendingSchemaAcknowledgmentStore.java:107",
+      "why": "Schema/DDL engine. The physical schema is a property of the DATABASE, not of a tenant: all tenants share one set of tables, so a tenant predicate here would be meaningless. These endpoints are separately admin-gated."
+    },
+    "4893c5c5732f": {
+      "rule": "B2",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/PendingSchemaAcknowledgmentStore.java:137",
+      "why": "Schema/DDL engine. The physical schema is a property of the DATABASE, not of a tenant: all tenants share one set of tables, so a tenant predicate here would be meaningless. These endpoints are separately admin-gated."
+    },
+    "b000bd07f1c2": {
+      "rule": "B2",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/ProposedConversionSql.java:74",
+      "why": "Schema/DDL engine. The physical schema is a property of the DATABASE, not of a tenant: all tenants share one set of tables, so a tenant predicate here would be meaningless. These endpoints are separately admin-gated."
+    },
+    "04ce2add809f": {
+      "rule": "B2",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaDeltaReport.java:218",
+      "why": "Schema/DDL engine. The physical schema is a property of the DATABASE, not of a tenant: all tenants share one set of tables, so a tenant predicate here would be meaningless. These endpoints are separately admin-gated."
+    },
+    "1bfb9f7f22ad": {
+      "rule": "B2",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaDropSnapshotWriter.java:106",
+      "why": "Schema/DDL engine. The physical schema is a property of the DATABASE, not of a tenant: all tenants share one set of tables, so a tenant predicate here would be meaningless. These endpoints are separately admin-gated."
+    },
+    "dbb2b116e1ce": {
+      "rule": "B2",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaDropSnapshotWriter.java:125",
+      "why": "Schema/DDL engine. The physical schema is a property of the DATABASE, not of a tenant: all tenants share one set of tables, so a tenant predicate here would be meaningless. These endpoints are separately admin-gated."
+    },
+    "9957a271a923": {
+      "rule": "B2",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:2401",
+      "why": "Schema/DDL engine. The physical schema is a property of the DATABASE, not of a tenant: all tenants share one set of tables, so a tenant predicate here would be meaningless. These endpoints are separately admin-gated."
+    },
+    "c23f4d2e25de": {
+      "rule": "B2",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:2816",
+      "why": "Schema/DDL engine. The physical schema is a property of the DATABASE, not of a tenant: all tenants share one set of tables, so a tenant predicate here would be meaningless. These endpoints are separately admin-gated."
+    },
+    "b48fa7453d0f": {
+      "rule": "B2",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:2832",
+      "why": "Schema/DDL engine. The physical schema is a property of the DATABASE, not of a tenant: all tenants share one set of tables, so a tenant predicate here would be meaningless. These endpoints are separately admin-gated."
+    },
+    "a8060383a4ff": {
+      "rule": "B2",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:3355",
+      "why": "Schema/DDL engine. The physical schema is a property of the DATABASE, not of a tenant: all tenants share one set of tables, so a tenant predicate here would be meaningless. These endpoints are separately admin-gated."
+    },
+    "2b8772bc052f": {
+      "rule": "C1",
+      "where": "NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache:142",
+      "why": "`referenceFinders` is a LIST section, not a boolean: the guard is emitted once per finder, so there is no 'else' shape in which a finder exists without its check."
+    }
+  }
+}

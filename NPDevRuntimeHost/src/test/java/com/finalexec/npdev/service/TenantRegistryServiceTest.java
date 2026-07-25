@@ -23,11 +23,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TenantRegistryServiceTest {
 
     private TenantRegistryService service;
+    private DataSource dataSource;
 
     @BeforeEach
     void setUp() throws SQLException {
         String url = "jdbc:h2:mem:" + getClass().getSimpleName() + System.nanoTime() + ";DB_CLOSE_DELAY=-1";
-        DataSource dataSource = new SingleConnectionUrlDataSource(url);
+        dataSource = new SingleConnectionUrlDataSource(url);
         try (Connection c = dataSource.getConnection(); Statement s = c.createStatement()) {
             s.execute("CREATE TABLE npdev_tenant (tenant_id VARCHAR(120) PRIMARY KEY, display_name VARCHAR(255), status VARCHAR(32), created_at_ms BIGINT, persistence_mode VARCHAR(32))");
         }
@@ -94,6 +95,67 @@ class TenantRegistryServiceTest {
         service.create("acme", "Acme Corp");
         assertThrows(TenantRegistryService.TenantAlreadyExistsException.class,
                 () -> service.create("acme", "Acme Corp Again"));
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // REG-43 -- isActive() used to answer "active" on EVERY SQLException, silently. The control
+    // that gives tenant-disable its teeth therefore had an undetectable off-switch. These two
+    // tests pin the distinction the fix turns on; the second is the one that was RED before it.
+    // ---------------------------------------------------------------------------------------
+
+    @Test
+    void isActiveStillFailsOpenWhenTheRegistryTableDoesNotExist() throws SQLException {
+        // The case the fail-open contract was actually written for: an app that never adopted the
+        // tenant registry. Adding the registry must not break it, so this must stay OPEN. Note the
+        // SQLState is H2's real one, not a stub -- the fix is only trustworthy if it reads what a
+        // driver genuinely reports.
+        service.create("acme", "Acme");
+        service.setStatus("acme", TenantRegistryService.Status.DISABLED);
+        assertFalse(service.isActive("acme"), "precondition: the disable must work while the table exists");
+
+        try (Connection c = dataSource.getConnection(); Statement s = c.createStatement()) {
+            s.execute("DROP TABLE npdev_tenant");
+        }
+        assertTrue(service.isActive("acme"),
+                "no registry table at all means this app has no registry -- every tenant is active");
+    }
+
+    @Test
+    void isActiveFailsClosedWhenAnExistingRegistryCannotBeRead() {
+        // RED before REG-43: the old code returned true here, so a DISABLED tenant was served again
+        // the moment the database misbehaved -- with nothing logged. A connection failure is the
+        // realistic trigger (pool exhausted, database down mid-request), and it is emphatically NOT
+        // "this app has no registry", so it must DENY.
+        TenantRegistryService broken = new TenantRegistryService(new FixedProvider(new FailingDataSource(
+                new SQLException("connection refused", "08001"))));
+
+        assertFalse(broken.isActive("acme"),
+                "an unreadable-but-present registry means we do not know if this tenant is disabled -- deny");
+    }
+
+    @Test
+    void isActiveOnAnUnreadableRegistryStillLetsUnauthenticatedTrafficThrough() {
+        // The filter only calls isActive when a request carries a tenant claim; a null tenant must
+        // never be turned into a 403 by a database fault, or a DB blip would lock out the login
+        // endpoint itself and make the outage unrecoverable.
+        TenantRegistryService broken = new TenantRegistryService(new FixedProvider(new FailingDataSource(
+                new SQLException("connection refused", "08001"))));
+
+        assertTrue(broken.isActive(null));
+        assertTrue(broken.isActive("   "));
+    }
+
+    /** A DataSource that is present but always fails -- "the registry exists and is unreadable". */
+    private record FailingDataSource(SQLException failure) implements DataSource {
+        @Override public Connection getConnection() throws SQLException { throw failure; }
+        @Override public Connection getConnection(String u, String p) throws SQLException { throw failure; }
+        @Override public PrintWriter getLogWriter() { return null; }
+        @Override public void setLogWriter(PrintWriter out) { }
+        @Override public void setLoginTimeout(int seconds) { }
+        @Override public int getLoginTimeout() { return 0; }
+        @Override public Logger getParentLogger() { return Logger.getLogger(getClass().getName()); }
+        @Override public <T> T unwrap(Class<T> iface) throws SQLException { throw new SQLException("not a wrapper"); }
+        @Override public boolean isWrapperFor(Class<?> iface) { return false; }
     }
 
     private record FixedProvider(DataSource dataSource) implements ObjectProvider<DataSource> {

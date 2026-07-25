@@ -9,7 +9,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import javax.sql.DataSource;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -66,4 +72,41 @@ class PostgresCircuitBreakerStateStoreTest {
         assertEquals(CircuitState.CLOSED, store.get(key).state());
     }
 
+    /**
+     * REG-37 on the engine that actually ships. {@code JdbcCircuitBreakerStateStoreConcurrencyTest}
+     * proves the same contract on H2 so it runs in GATE-KERNEL without Docker; this one exists because
+     * row-locking semantics are exactly the kind of thing that differs between engines, and "it works
+     * on H2" is not evidence about Postgres.
+     */
+    @Test
+    void concurrentFailuresAreCountedExactlyOnPostgres() throws Exception {
+        CapabilityOpKey key = new CapabilityOpKey("tenant-a", "persistence", "concurrent-save");
+        int threads = 8;
+        int perThread = 25;
+
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch startTogether = new CountDownLatch(1);
+        try {
+            List<Future<?>> running = new ArrayList<>();
+            for (int t = 0; t < threads; t++) {
+                running.add(pool.submit(() -> {
+                    startTogether.await();
+                    for (int i = 0; i < perThread; i++) {
+                        store.recordFailure(key, 1_000L + i, Integer.MAX_VALUE, 30_000L);
+                    }
+                    return null;
+                }));
+            }
+            startTogether.countDown();
+            for (Future<?> task : running) {
+                task.get(180, TimeUnit.SECONDS);
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertEquals(threads * perThread, store.get(key).consecutiveFailures(),
+                "every concurrent failure must be counted -- an undercount opens the breaker late");
+        assertEquals(CircuitState.CLOSED, store.get(key).state());
+    }
 }

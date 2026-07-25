@@ -3383,45 +3383,20 @@ private final EventBus eventBus;
         if (error == null) {
             return;
         }
-        CircuitBreakerState current = circuitBreakerStateStore.get(key);
         if (!isCircuitFailure(error.kind())) {
+            CircuitBreakerState current = circuitBreakerStateStore.get(key);
             if (current != null && current.state() != CircuitState.CLOSED) {
                 circuitBreakerStateStore.reset(key);
             }
             return;
         }
 
-        int failures = current == null ? 1 : Math.max(1, current.consecutiveFailures() + 1);
-        if (current != null && current.state() == CircuitState.HALF_OPEN) {
-            failures = Math.max(1, failures);
-        }
-        int effectiveFailureThreshold = Math.max(1, circuitOpenAfterFailures);
-        long effectiveOpenMs = Math.max(0L, circuitOpenMs);
-        if (failures >= effectiveFailureThreshold || (current != null && current.state() == CircuitState.HALF_OPEN)) {
-            circuitBreakerStateStore.put(
-                    key,
-                    new CircuitBreakerState(
-                            CircuitState.OPEN,
-                            failures,
-                            now,
-                            now,
-                            now + effectiveOpenMs,
-                            0
-                    )
-            );
-            return;
-        }
-        circuitBreakerStateStore.put(
-                key,
-                new CircuitBreakerState(
-                        CircuitState.CLOSED,
-                        failures,
-                        0L,
-                        now,
-                        0L,
-                        0
-                )
-        );
+        // REG-37: the increment and the open/closed decision now happen INSIDE the store, under a
+        // lock it owns. This used to be get() -> compute here -> put(), which is a read-modify-write
+        // race: concurrent failures both read the same count, both write count+1, and the breaker
+        // opens late under exactly the load it exists for. The rule itself lives in
+        // CircuitBreakerTransitions so both backends provably apply the same one.
+        circuitBreakerStateStore.recordFailure(key, now, circuitOpenAfterFailures, circuitOpenMs);
     }
 
     private static boolean isCircuitFailure(CapabilityErrorKind kind) {
