@@ -34,16 +34,10 @@ All six items that stood here on 2026-07-25 morning are closed:
 
 | # | Item | Type | Sev | Note |
 |---|---|---|---|---|
-| 1 | **REG-44** — `crud.kernelControlled: false` silently voids `access.write` | BUG | MED | A model can declare `access.write` and disable the only thing that enforces it, and compile clean. `access.read` *stays* enforced, which is what makes it hard to notice. Fix is cheap; whether it should be a compile error or a warning is a product decision |
-| 2 | **REG-45** — flow resume is tenant-scoped but not actor-scoped | BUG | MED | Any holder of `RESUME_EXECUTIONS` can resume another user's suspended flow and receive its accumulated state. Needs a policy decision (require the originating actor? an override permission?) before it can be fixed |
-| 3 | **REG-46** — `PersistenceCapabilityContract` has no tenant parameter | BUG | MED | The flow-step persistence route is unscoped while generated CRUD is tenant- **and** row-scoped. Fixing it is a breaking change to a published port |
-| 4 | **REG-16-resid F4** — row-level authz is check-then-act (TOCTOU) | INFO | — | Rated INFO with honest reasoning; revisit only if `expectedRowVersion` CAS becomes the default |
-| 5 | **REG-47** — unbounded caller-supplied `correlationId` in index key material | BUG | MED | REG-36's failure mode on a different key: only `trim()`ed, then written into `TEXT` columns that are btree index key material across **8 indexes in 4 tables**, including the primary key of `npdev_correlation_owner`. **Found by the sweep-closure pass**, in the one hit group Rounds 3–6 never systematically covered. Recommended fix is to *reject* (400), not digest — unlike an idempotency key, a correlation id has no legitimate oversized form, and digesting would silently change an id the caller later looks up on several endpoints |
+| 1 | **REG-16-resid F4** — row-level authz is check-then-act (TOCTOU) | INFO | — | Rated INFO with honest reasoning: it needs a second actor who *already* has write access, and it matches the platform's opt-in `expectedRowVersion` model. **Revisit trigger, recorded deliberately:** only if `expectedRowVersion` CAS becomes the default. Not "fixed" now, on purpose |
 
-REG-44/45/46 are **filed rather than improvised**: each needs a decision (product, policy, or
-API-contract) that a review round is the wrong place to make. REG-47 is filed because it was found
-after the programme closed, and its fix — reject vs. digest — is a small contract choice worth stating
-before implementing.
+**Every MEDIUM is closed.** REG-44, REG-45, REG-46 and REG-47 were each blocked on a decision rather
+than on effort; all four were decided by the owner on 2026-07-25 and implemented the same day.
 
 ## 3. Closed by this programme — verified, not claimed
 
@@ -62,6 +56,10 @@ before implementing.
 | **9 unparseable-status items** | Now **zero**, in both documents — seven were checker blind spots, and fixing them exposed two real drifts |
 | **Sweep triage loop closed** | Was 307 permanent "new" hits — the exact noise failure its own design warned about. Now **355 hits, 355 cleared, 0 new**, every entry carrying a reason and grouped by root cause rather than by site |
 | **GATE-GEN packaged-app flake** | Health-check deadline 2 → 6 min with a diagnostic failure message. Root cause was fork contention (two Spring Boot apps booting at once), not the app. **Three consecutive full GATE-GEN runs green** |
+| **REG-44** — unenforceable access rules | Now a **compile error** before any emitter runs, resolved per concept so a concept-scoped opt-out cannot slip past. Its register row also corrected: the flag voids every coarse CRUD check, not only `access.write` |
+| **REG-45** — resume was not actor-scoped | Requires the originating actor; an instance with no recorded actor stays tenant-scoped only, so operator recovery of anonymous/scheduler flows still works |
+| **REG-46** — tenant-blind persistence port | New `TenantScopedPersistenceCapabilityContract` + `TenantScope`; the dispatcher supplies the tenant, so it is never author-writable. Two overload collisions found *by testing*, one caught by the adapter's own pre-existing suite |
+| **REG-47** — unbounded `correlationId` | Rejected at 400 chars in `KernelRunner`, before any event is published or flow state written |
 
 ## 4. Not gaps — deliberate boundaries
 
@@ -82,8 +80,8 @@ list and its own findings document. So the accurate statement changes to:
 
 > **Every launch surface has had an adversarial review.** No CRITICAL issue is known anywhere. One HIGH
 > was found — in generated code, reproducing into every app — and was fixed with a runtime proof rather
-> than deferred. Four MEDIUMs remain open: three need a decision rather than a patch, and REG-47 was
-> filed after the programme closed.
+> than deferred. **No MEDIUM remains open**: the four that were blocked on product, policy and
+> API-contract decisions were decided and closed.
 
 That is a materially stronger claim than the one this page carried this morning, and it is the one the
 work supports — no more.
