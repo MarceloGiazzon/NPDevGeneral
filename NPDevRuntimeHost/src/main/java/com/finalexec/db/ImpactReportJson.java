@@ -44,7 +44,9 @@ public final class ImpactReportJson {
             out.append("      \"rowsAffected\": ").append(item.rowsAffected()).append(",\n");
             out.append("      \"probeNote\": ").append(str(item.probeNote())).append(",\n");
             out.append("      \"resolution\": ").append(str(di.resolution().name())).append(",\n");
-            out.append("      \"proposedConversionSql\": null\n");
+            ProposedConversionSql.Proposal proposal = di.resolution() == com.finalexec.db.schemastate.Resolution.UNRESOLVED
+                    ? ProposedConversionSql.forNarrowing(di) : null;
+            out.append("      \"proposedConversionSql\": ").append(str(proposal == null ? null : proposal.sql())).append('\n');
             out.append("    }");
         }
         out.append(report.items().isEmpty() ? "]\n" : "\n  ]\n");

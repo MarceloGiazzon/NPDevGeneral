@@ -201,3 +201,46 @@ deliberately deferred to the ADR-0003 code-bearing-objects track — not part of
 Specified in [`SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md`](SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md)
 Phase 7 (P7.1–P7.5). See also [`DATABASES_AND_MIGRATIONS.md`](DATABASES_AND_MIGRATIONS.md) §12 for the
 operator decision matrix this adds a row to.
+
+## Proposed conversion SQL — platform drafts, operator decides (implemented, Phase 8)
+
+For a convertible `DESTRUCTIVE_NARROW_TYPE` item, the Impact Report drafts the copy-convert SQL an
+operator can paste straight into a conversion hook's `convert.sql` — `com.finalexec.db.ProposedConversionSql`,
+a pure function (no DB, no clock). The pattern:
+
+```sql
+ALTER TABLE t ADD COLUMN col__new <newtype>;
+UPDATE t SET col__new = SUBSTRING(col, 1, <n>);        -- a sized-char narrowing: truncate, don't error
+  -- or: UPDATE t SET col__new = CAST(col AS <newtype>); -- everything else NARROWING (numeric precision/scale, etc.)
+ALTER TABLE t DROP COLUMN col;
+ALTER TABLE t RENAME COLUMN col__new TO col;
+```
+
+plus a suggested `verifySql` (run *before* the drop, so it can still see both columns):
+`SELECT COUNT(*) FROM t WHERE col IS NOT NULL AND col__new IS NULL`, `verifyExpect: 0`.
+
+- **JSON** — the `items[].proposedConversionSql` field (previously always `null`) now carries the draft
+  script for a convertible item.
+- **Text** — a `proposed conversions` section after the summary/token, one block per convertible item,
+  formatted as a ready-to-paste hook body.
+- **Where no safe automatic conversion exists** (an `INCOMPARABLE` type-family change, e.g.
+  `VARCHAR -> INTEGER`, or an unparseable type) — the field stays `null` / the text shows *"no safe
+  automatic conversion — write a custom hook."* A copy-convert draft is a mechanical `CAST`/`SUBSTRING`;
+  it cannot invent a conversion between unrelated types.
+- **An item already claimed by a real hook** (`HOOK_CLAIMED`) is never given a draft — there is nothing
+  to propose for something already resolved.
+- **Engine note:** H2 and Postgres share the exact syntax this class emits (`ADD`/`DROP`/`RENAME COLUMN`,
+  `SUBSTRING(str, pos, len)`, `CAST(expr AS type)`) for every case it covers today, so nothing branches
+  per-engine yet — `ProposedConversionSql`'s one internal seam (`convertExpression`) is where a future
+  divergence would go, without touching either renderer.
+
+### Non-goal
+
+**NPDev never auto-runs a proposal.** Adoption is always the operator copying the draft into a hook and
+reviewing it first — the same discipline every conversion hook already requires (Phase 7's "authoring
+the hook IS the acknowledgment" is still true; a *draft* is not authorship). This is a deliberate
+contrast with GeneXus, which auto-runs its reorganization conversions: NPDev keeps a human between the
+draft and the execution.
+
+Specified in [`SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md`](SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md)
+Phase 8 (P8.1–P8.3).
