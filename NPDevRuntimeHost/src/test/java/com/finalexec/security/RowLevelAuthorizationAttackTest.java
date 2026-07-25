@@ -33,6 +33,7 @@ import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
@@ -136,6 +137,66 @@ class RowLevelAuthorizationAttackTest {
                         Map.of("id", forgedId, "ownerId", "user-a", "note", "planted-by-b")), USER_B),
                 "user B must not be able to create a row claiming user A's ownership");
         assertEquals("ROW_SCOPE_DENIED", denied.code());
+    }
+
+    /**
+     * REG-16-resid R2 / LNCH13-F1 — the RUNTIME half of the CRITICAL fix.
+     *
+     * <p>{@code ServiceBaseFlowRowLevelAuthzTest} proves the generated service now EMITS
+     * {@code enforceWithConceptGateway(...)} before {@code enforceWithCreateFlow(...)}. That is a
+     * structural assertion over generated source: it shows the call is there and ordered, but it cannot
+     * show that the call actually DENIES, nor that it denies BEFORE the flow's side effects run. This
+     * test closes that gap by executing the exact sequence the fixed template emits — gateway enforcement
+     * first, flow second — and asserting the denial happens and the flow never ran.
+     *
+     * <p>Why this matters more than usual: {@code docs/ROW_LEVEL_AUTHORIZATION.md}'s own history records
+     * that the READ-side twin of this bug went undetected until live E2E testing. This bug class is known
+     * to survive tests that only inspect shape, so the fix deserves a behavioural proof.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("adapters")
+    void flowBackedCreateIsDeniedBeforeTheFlowRuns(Supplier<ConceptStore> storeFactory) {
+        DefaultConceptGateway gateway = gatewayOver(storeFactory.get());
+        String forgedId = UUID.randomUUID().toString();
+        AtomicBoolean flowRan = new AtomicBoolean(false);
+
+        // The generated createFromSource for a flow-backed concept now does, in this order:
+        //   enforceWithConceptGateway(...)  -> gateway.save(...)   <-- must deny here
+        //   enforceWithCreateFlow(...)      -> kernelRunner.execute(...)  <-- must never be reached
+        ConceptGatewayAccessDeniedException denied = assertThrows(
+                ConceptGatewayAccessDeniedException.class,
+                () -> {
+                    gateway.save(new ConceptWriteRequest(CONCEPT, forgedId, null,
+                            Map.of("id", forgedId, "ownerId", "user-a", "note", "planted-by-b")), USER_B);
+                    flowRan.set(true); // stands in for the declared create Flow's own steps
+                },
+                "a flow-backed create must still be row-scope denied -- before the fix this endpoint "
+                        + "called only the flow and persisted straight through conceptStore");
+        assertEquals("ROW_SCOPE_DENIED", denied.code());
+        assertFalse(flowRan.get(),
+                "the flow's side effects (notifications, external calls) must never run for a write the "
+                        + "row-level rule denies -- enforcement precedes the flow, it does not follow it");
+    }
+
+    /** REG-16-resid R2 / LNCH13-F1: the update twin — denial is evaluated against the record's PREVIOUS
+     *  state, so a non-owner cannot update a row by supplying a payload that claims ownership. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("adapters")
+    void flowBackedUpdateIsDeniedBeforeTheFlowRuns(Supplier<ConceptStore> storeFactory) {
+        DefaultConceptGateway gateway = gatewayOver(storeFactory.get());
+        String aId = seedRow(gateway, USER_A);
+        AtomicBoolean flowRan = new AtomicBoolean(false);
+
+        ConceptGatewayAccessDeniedException denied = assertThrows(
+                ConceptGatewayAccessDeniedException.class,
+                () -> {
+                    gateway.save(new ConceptWriteRequest(CONCEPT, aId, null,
+                            Map.of("id", aId, "ownerId", "user-b", "note", "hijacked-by-b")), USER_B);
+                    flowRan.set(true);
+                },
+                "a flow-backed update must be denied on the PREVIOUS owner, not the payload's claim");
+        assertEquals("ROW_SCOPE_DENIED", denied.code());
+        assertFalse(flowRan.get(), "the update flow must never run for a denied write");
     }
 
     @ParameterizedTest(name = "{0}")
