@@ -169,24 +169,11 @@ public class ConceptQueryController {
 
     /** Minimal RFC4180 quoting: a value containing a comma, quote, or newline is wrapped in
      * quotes with internal quotes doubled; everything else is written as-is. */
+    /** Delegates to {@link CsvCells} -- see that class for why the encoding lives outside this
+     * controller (this one imports com.npdev.generated.*, so it is not compiled in a bare-template
+     * checkout, and the formula-injection defence must verify in every configuration). */
     static String toCsvRow(List<?> values) {
-        StringBuilder row = new StringBuilder();
-        for (int index = 0; index < values.size(); index++) {
-            if (index > 0) {
-                row.append(',');
-            }
-            row.append(csvEscape(values.get(index)));
-        }
-        row.append("\r\n");
-        return row.toString();
-    }
-
-    private static String csvEscape(Object value) {
-        String text = value == null ? "" : String.valueOf(value);
-        if (text.indexOf(',') < 0 && text.indexOf('"') < 0 && text.indexOf('\n') < 0 && text.indexOf('\r') < 0) {
-            return text;
-        }
-        return "\"" + text.replace("\"", "\"\"") + "\"";
+        return CsvCells.toCsvRow(values);
     }
 
     /**
