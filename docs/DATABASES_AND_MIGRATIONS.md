@@ -386,13 +386,23 @@ Recorded plainly (these are known, not hidden):
   required field on a populated table is refused, not evaluated.
 - **No automated snapshot restore** (§13).
 - **No cross-database data migration** (H2 → Postgres data movement is a different, unbuilt feature).
-- **`ExternallyManaged` verification is column-shaped only.** It checks that declared tables/columns
-  exist with compatible SQL types; it does **not** check nullability, uniqueness, indexes, or foreign
-  keys. A schema can pass this check and still be incompatible in ways it doesn't look for.
+- **`ExternallyManaged` verification does not check foreign keys or indexes.** As of 2026-07-25 (P5.2)
+  it checks declared tables/columns exist with compatible SQL types, **plus nullability** (both fatal
+  directions — a model-required column that is nullable live, and a live `NOT NULL` column *with no
+  default* that the model treats as optional) **and every unique constraint the model declares** (a live
+  PK or unique over the same columns satisfies it; a live unique the model doesn't declare is tolerated,
+  since an external schema may be stricter). What it still cannot see is **FKs and indexes** — the
+  manifest carries no explicit FK/index lists (they are derived at generation), so the desired side
+  can't express them yet. An external schema missing a bond's FK or an expected index still verifies
+  clean.
 - **`mark-done` trusts the operator completely** — it doesn't verify the live schema matches; it just
   stops trying to converge.
-- **`classify` has no nullability awareness** — it diffs names + types only; nullability is handled by
-  separate passes (the seam where T-B1 hid).
+- **`classify`'s verdict is not changed by nullability alone.** (Corrected 2026-07-25: it is no longer
+  true that classify "diffs names + types only" — since the REG-6 rebuild it reduces the canonical
+  `SchemaDiff`, which *does* model nullability, and the separate-pass seam where T-B1 hid is gone.) What
+  remains is a deliberate mapping choice: a pure relaxation (`SAFE_RELAX`) contributes nothing to the
+  worst-item verdict, because relaxing `NOT NULL` never endangers existing rows. Tightening is not
+  silent — it surfaces as a backfill/hook item.
 - **Single-instance only.** Concurrency is detect-and-refuse, **not** a lock. A true
   near-simultaneous-`INSERT` race remains theoretically possible; the first-ever boot of a brand-new
   database is not claim-protected. Do not run multi-instance deployments of the same app+database

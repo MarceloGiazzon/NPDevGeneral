@@ -111,10 +111,13 @@ parts: `NPDev_General__OutsideRepo/{reg12-slice3-evidence,external-tester-eviden
 > REG-7, REG-8, REG-9, REG-10, REG-11, REG-12, REG-13, REG-14, REG-18, REG-19, REG-20, REG-21, REG-22,
 > REG-24, REG-27, REG-28, REG-29, REG-30, REG-40. REG-6 is CLOSED FULLY (2026-07-24 — Schema Engine
 > Rebuild: one canonical SchemaDiff, every pass consumes it; see §1.6). **Genuinely still open:**
-> **REG-16** (adversarial review — Tier A complete only, remaining tiers unreviewed), **REG-17**
-> (third-party reproduction — 2/4 gates run by an independent tester), **REG-23** and **REG-25**
-> (deferred boundaries), plus the Schema Engine Phase-7 conversion-hook gaps and the FK/index-diffing
-> deferral tracked in `docs/SER_FINAL_CLOSURE_PLAN.md` (Groups A/B).
+> **REG-16-resid** (adversarial review — **Tier A AND Tier B are DONE** as of 2026-07-21; only the
+> residual remains — corrected 2026-07-25, this note previously said "Tier A complete only"),
+> **REG-17** (third-party reproduction — 2/4 gates run by an independent tester), **REG-23** and
+> **REG-25** (deferred boundaries), plus the FK/index-diffing deferral (G8 /
+> `docs/SER_FINAL_CLOSURE_PLAN.md` Group B) — which is now ALSO the only remaining part of the
+> `ExternallyManaged` full-shape check, since P5.2 closed its nullability + declared-uniques halves on
+> 2026-07-25. The Phase-7 conversion-hook gaps (Group A) were closed 2026-07-25.
 > The authoritative current state is `docs/LAUNCH_READINESS_GAPS.md` (24 DONE / 0 PARTIAL / 0 OPEN)
 > plus each entry's own **Status** line below, not this summary table.
 
@@ -125,7 +128,7 @@ parts: `NPDev_General__OutsideRepo/{reg12-slice3-evidence,external-tester-eviden
 | ~~**REG-3**~~ | `GATE-REL-1` — **CLOSED (2026-07-21, REG-3/P1)**: dependency-ordered evidence-report orchestration added, gate distinguishes precondition-unmet from check-failed | GAP | LOW | S | 1.3 |
 | ~~**REG-4**~~ | `T-F1` — load-sensitive flake — **CLOSED (2026-07-21, REG-4/P8)**: root cause fixed (a stray caller interrupt in `SandboxedPluginExecutionEngine.execute`), not just tolerance-widened | BUG | LOW | S/M | 1.4 |
 | ~~**REG-5**~~ | `GATE-OBS-1a` — **CLOSED (2026-07-21, REG-5/P8)**: retired the 6 redundant convergence checks to informational-only (the allowlist already enforces this), dated rationale recorded | PROCESS | LOW | S | 1.5 |
-| **REG-6** | `ColumnFacts` → canonical `SchemaDiff` — every executor pass now consumes ONE desired-vs-current model (Schema Engine Rebuild, 2026-07-24) | CLOSED | MED | M | 1.6 |
+| ~~**REG-6**~~ | `ColumnFacts` → canonical `SchemaDiff` — **CLOSED FULLY (2026-07-24, Schema Engine Rebuild)**: every executor pass consumes ONE desired-vs-current model | GAP | MED | M | 1.6 |
 | **REG-7** | `LNCH-1-B6` — no migration advisory lock (multi-instance) | BOUNDARY | — | M | 1.7 |
 | **REG-8** | `LNCH-1-B9` — schema-ahead detector blind to a pure column drop | BOUNDARY | — | M | 1.8 |
 | ~~**REG-9**~~ | LNCH-4 — auth table stakes — **CLOSED (2026-07-21, REG-9/P3)**: JWT env-var keys + `StartupValidator` fail-fast + verify-only `LoginController`; super-user key defaulted to WONTFIX (reversible) | GAP | **P0** | S/M | 2.1 |
@@ -135,7 +138,7 @@ parts: `NPDev_General__OutsideRepo/{reg12-slice3-evidence,external-tester-eviden
 | ~~**REG-13**~~ | LNCH-18 — non-author usability test — **CLOSED 2026-07-22** (independent cold-tester run) | GAP | P1 | S | 2.5 |
 | ~~**REG-14**~~ | LNCH-22 — newcomer documentation test — **CLOSED 2026-07-22** (same run) | GAP | P2 | S | 2.6 |
 | ~~**REG-15**~~ | LNCH-23 — release tag DONE + trademark **N/A** (individual hobby project, no mark) — **DONE 2026-07-23** | PROCESS | P2 | S | 2.7 |
-| **REG-16** | The other 23 launch items have had zero adversarial review (~23 files/3.4k LOC scoped) | PROCESS | **HIGH** | L | 3.1 |
+| **REG-16** | Adversarial review of the other 23 launch items — **TIER A + TIER B DONE (2026-07-21)**; the open remainder is tracked as **REG-16-resid** (§3.1). Corrected 2026-07-25: this row previously read "zero adversarial review", which had not been true since 2026-07-21 | PROCESS | **HIGH** | L | 3.1 |
 | **REG-17** | No third party has ever reproduced any verification — **PARTIAL, advanced 2026-07-22** (2/4 gates ran+triaged by an independent tester) | PROCESS | MED | M | 3.2 |
 
 ---

@@ -154,16 +154,103 @@ class SchemaLifecycleExecutorExternallyManagedTest {
         assertThrows(IllegalStateException.class, () -> executor.migrate(flyway, manifest));
     }
 
+    @Test
+    @DisplayName("SER-P5.2: a schema that passes column-shape but fails NULLABILITY refuses, itemized")
+    void columnShapeOkButNullabilityMismatchRefuses() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            // Every column the model names exists, with the right type -- the pre-P5.2 check passed this.
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+        }
+        // ... but the model REQUIRES name, and the live column is nullable.
+        SchemaLifecycleExecutor.SchemaManifest manifest = externallyManagedManifest(
+                Map.of("widgets", List.of("id", "name")),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)")),
+                Map.of("widgets", List.of("name")),
+                Map.of());
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class,
+                () -> executor.verifyExternallyManagedSchemaCompatible(dataSource, manifest));
+        assertTrue(exception.getMessage().contains("widgets.name"), exception.getMessage());
+        assertTrue(exception.getMessage().contains("nullability mismatch"), exception.getMessage());
+        assertEquals("EXTERNAL_REFUSED", latestOutcome(dataSource));
+    }
+
+    @Test
+    @DisplayName("SER-P5.2: a live NOT NULL column WITH a default is fine for an optional model field")
+    void liveNotNullWithADefaultIsToleratedForAnOptionalField() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, "
+                    + "name VARCHAR(50) NOT NULL DEFAULT 'unnamed')");
+        }
+        // The model treats name as optional; the live column is NOT NULL but has a default, so an insert
+        // that omits it still succeeds -- this must NOT be flagged (a false refusal would brick the boot).
+        SchemaLifecycleExecutor.SchemaManifest manifest = externallyManagedManifest(
+                Map.of("widgets", List.of("id", "name")),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)")));
+
+        executor.verifyExternallyManagedSchemaCompatible(dataSource, manifest);
+
+        assertEquals("EXTERNAL_VERIFIED", latestOutcome(dataSource));
+    }
+
+    @Test
+    @DisplayName("SER-P5.2: a unique invariant the model declares but the live schema lacks refuses")
+    void missingUniqueConstraintRefuses() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, email VARCHAR(50))");
+        }
+        SchemaLifecycleExecutor.SchemaManifest manifest = externallyManagedManifest(
+                Map.of("widgets", List.of("id", "email")),
+                Map.of("widgets", Map.of("id", "BIGINT", "email", "VARCHAR(50)")),
+                Map.of(),
+                Map.of("widgets", List.of(
+                        new SchemaLifecycleExecutor.UniqueConstraintDecl("uq_widgets_email", List.of("email"), false))));
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class,
+                () -> executor.verifyExternallyManagedSchemaCompatible(dataSource, manifest));
+        assertTrue(exception.getMessage().contains("missing unique constraint"), exception.getMessage());
+        assertEquals("EXTERNAL_REFUSED", latestOutcome(dataSource));
+    }
+
+    @Test
+    @DisplayName("SER-P5.2: a live UNIQUE constraint satisfying the model's declared invariant verifies")
+    void satisfiedUniqueConstraintVerifies() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, email VARCHAR(50), "
+                    + "CONSTRAINT uq_widgets_email UNIQUE (email))");
+        }
+        SchemaLifecycleExecutor.SchemaManifest manifest = externallyManagedManifest(
+                Map.of("widgets", List.of("id", "email")),
+                Map.of("widgets", Map.of("id", "BIGINT", "email", "VARCHAR(50)")),
+                Map.of(),
+                Map.of("widgets", List.of(
+                        new SchemaLifecycleExecutor.UniqueConstraintDecl("uq_widgets_email", List.of("email"), false))));
+
+        executor.verifyExternallyManagedSchemaCompatible(dataSource, manifest);
+
+        assertEquals("EXTERNAL_VERIFIED", latestOutcome(dataSource));
+    }
+
     private static SchemaLifecycleExecutor.SchemaManifest externallyManagedManifest(
             Map<String, List<String>> businessTableColumns,
             Map<String, Map<String, String>> businessTableColumnTypes) {
+        return externallyManagedManifest(businessTableColumns, businessTableColumnTypes, Map.of(), Map.of());
+    }
+
+    /** SER-P5.2 overload: also lets a scenario declare required columns and unique constraints, the two
+     *  full-shape dimensions the upgraded verification checks. */
+    private static SchemaLifecycleExecutor.SchemaManifest externallyManagedManifest(
+            Map<String, List<String>> businessTableColumns,
+            Map<String, Map<String, String>> businessTableColumnTypes,
+            Map<String, List<String>> businessTableRequiredColumns,
+            Map<String, List<SchemaLifecycleExecutor.UniqueConstraintDecl>> businessTableUniqueConstraints) {
         return new SchemaLifecycleExecutor.SchemaManifest(
                 "Postgres", "jdbc", true, "sha256:external-test",
                 List.of(), List.copyOf(businessTableColumns.keySet()),
                 businessTableColumns, Map.of(), businessTableColumnTypes,
                 Map.of(), Map.of(), false,
                 "KeepExistingIfCompatible", "NpdevOwnedTablesOnly", "", "",
-                Map.of(), Map.of(), Map.of(), Map.of(),
+                businessTableRequiredColumns, Map.of(), Map.of(), businessTableUniqueConstraints,
                 List.of(), "ExternallyManaged"
         );
     }
