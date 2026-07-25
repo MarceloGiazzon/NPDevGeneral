@@ -73,6 +73,12 @@ public final class ConversionHookRunner {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+    /** SER closure-plan G6: detects a hook's convert SQL mixing DDL ({@code ALTER}/{@code DROP}/
+     *  {@code CREATE TABLE}) with a {@code verifySql} on H2, where a verify failure would not roll back
+     *  the already-executed DDL (H2 has no transactional DDL). */
+    private static final java.util.regex.Pattern MIXES_DDL_PATTERN =
+            java.util.regex.Pattern.compile("(?is).*\\b(ALTER|DROP|CREATE)\\s+TABLE\\b.*");
+
     private ConversionHookRunner() {
     }
 
@@ -133,6 +139,17 @@ public final class ConversionHookRunner {
         }
         selected.sort(Comparator.comparing(Hook::id, ConversionHookRunner::naturalCompare));
 
+        // SER closure-plan G5: hooks are individually atomic, not collectively atomic (rule 3) -- each
+        // runs in its own transaction, so a later hook failing does NOT roll back an earlier one that
+        // already committed. Operators need to know this so they write idempotent convert.sql (a later
+        // boot re-runs only what the diff still says is unresolved, which may re-select an already-
+        // partially-applied hook). See docs/IMPACT_REPORTS.md's conversion-hooks refusal list.
+        if (selected.size() > 1) {
+            System.out.println("NPDev schema lifecycle: running " + selected.size() + " conversion hooks "
+                    + "in separate transactions -- each hook must be idempotent (a later hook failing does "
+                    + "not roll back an earlier one).");
+        }
+
         String engine = detectEngine(dataSource);
         List<Hook> applied = new ArrayList<>();
         for (Hook hook : selected) {
@@ -145,6 +162,19 @@ public final class ConversionHookRunner {
                 throw new IllegalStateException("Conversion hook '" + hook.id()
                         + "' has no convert SQL for engine '" + engine + "' -- refusing the boot.");
             }
+
+            // SER closure-plan G6: a detection guard for the H2 non-transactional-DDL caveat (already
+            // fixed as far as possible + documented, fce3eb1) -- warn AT THE MOMENT it matters, when a
+            // hook actually mixes DDL with a verifySql on H2, rather than only in a javadoc an operator
+            // may never read.
+            if ("h2".equals(engine) && hook.verifySql() != null && !hook.verifySql().isBlank()
+                    && MIXES_DDL_PATTERN.matcher(sql).matches()) {
+                System.out.println("NPDev schema lifecycle: WARNING -- conversion hook '" + hook.id()
+                        + "' mixes DDL with a verifySql on H2. H2 has no transactional DDL, so if the "
+                        + "verify fails the DDL will NOT be rolled back (data changes will be). Split DDL "
+                        + "and data movement into separate hooks, or run this conversion on Postgres.");
+            }
+
             String sqlHash = sha256Hex(sql);
 
             // SER-P7 (finding #1 fix): run the convert SQL AND its verifySql in ONE transaction, so a

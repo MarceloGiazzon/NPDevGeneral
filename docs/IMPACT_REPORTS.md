@@ -202,6 +202,16 @@ reorganization experience NPDev didn't have before Phase 7.
 > untouched, keep destructive DDL and data movement in separate hooks/boots, or run the conversion on
 > Postgres. (This is exactly why NPDev verifies the *residual diff* after hooks run — rule 5 — as the
 > real backstop: a claim that didn't actually resolve refuses the boot regardless of engine.)
+>
+> The runtime also warns at the moment it matters: if a hook's `convert.sql` mixes `ALTER`/`DROP`/
+> `CREATE TABLE` with a `verifySql`, on H2, the boot log prints a `WARNING` naming the hook before it runs.
+
+> **⚠ Hooks are individually atomic, not collectively atomic.** Each hook runs in its own transaction
+> (rule 3). If hook 2 in a boot fails, hook 1 stays committed and the boot refuses; the *next* boot
+> re-runs only what the diff still says is unresolved — which may re-select an already-partially-applied
+> hook. **Write every hook to be idempotent** (`ADD COLUMN` guarded so it tolerates already existing,
+> `UPDATE ... WHERE <not-yet-converted>`), because a hook may run again after a later hook failed. When a
+> boot selects more than one hook, the log prints a one-line reminder of this before running them.
 
 ### v1 scope
 
