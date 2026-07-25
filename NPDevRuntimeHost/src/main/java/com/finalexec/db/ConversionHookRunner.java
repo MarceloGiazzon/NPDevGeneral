@@ -392,27 +392,127 @@ public final class ConversionHookRunner {
         }
     }
 
-    /** Naive but string-literal-aware {@code ;}-statement splitter: a semicolon inside a single-quoted
-     *  literal does not split. No support for {@code --}/{@code /* *&#47;} comments -- keep hook SQL
-     *  simple (this mirrors the level of sophistication conversion hooks are meant to need; anything
-     *  fancier belongs in a future Java {@code DataMigrationHook}, explicitly deferred). */
+    /** SER closure-plan G4: the lexical states {@link #splitStatements} tracks. Not a SQL parser --
+     *  just enough to know when a {@code ;} is inside something that isn't a statement terminator. */
+    private enum SplitterState {
+        NORMAL, SINGLE_QUOTE, DOUBLE_QUOTE, LINE_COMMENT, BLOCK_COMMENT, DOLLAR_QUOTE
+    }
+
+    /**
+     * Comment/quote-aware {@code ;}-statement splitter, a single-pass explicit state machine (SER
+     * closure-plan G4 -- deliberately still no SQL parser dependency, matching the level of
+     * sophistication conversion hooks are meant to need; anything fancier belongs in a future Java
+     * {@code DataMigrationHook}, explicitly deferred). A {@code ;} does NOT split while inside:
+     * <ul>
+     *   <li>a {@code '...'} single-quoted literal (doubled {@code ''} escapes fall out correctly: each
+     *       quote char still just toggles the state, and a doubled pair has no room for a real
+     *       {@code ;} between the two quote chars anyway);</li>
+     *   <li>a {@code "..."} double-quoted identifier;</li>
+     *   <li>a {@code -- ...} line comment (ends at the next newline);</li>
+     *   <li>a {@code /* ... *&#47;} block comment;</li>
+     *   <li>Postgres {@code $$...$$} / {@code $tag$...$tag$} dollar-quoting.</li>
+     * </ul>
+     * Comment/quote text is preserved verbatim in the output (not stripped) -- the target engine
+     * understands its own comment syntax fine; this only decides where NOT to split.
+     */
     private static List<String> splitStatements(String sql) {
         List<String> statements = new ArrayList<>();
         StringBuilder current = new StringBuilder();
-        boolean inSingleQuote = false;
-        for (int i = 0; i < sql.length(); i++) {
+        SplitterState state = SplitterState.NORMAL;
+        String dollarTag = null;
+        int length = sql.length();
+        int i = 0;
+        while (i < length) {
             char c = sql.charAt(i);
-            if (c == '\'') {
-                inSingleQuote = !inSingleQuote;
-            }
-            if (c == ';' && !inSingleQuote) {
-                String statement = current.toString().trim();
-                if (!statement.isEmpty()) {
-                    statements.add(statement);
+            switch (state) {
+                case NORMAL -> {
+                    if (c == '-' && i + 1 < length && sql.charAt(i + 1) == '-') {
+                        current.append(c).append(sql.charAt(i + 1));
+                        state = SplitterState.LINE_COMMENT;
+                        i += 2;
+                        continue;
+                    }
+                    if (c == '/' && i + 1 < length && sql.charAt(i + 1) == '*') {
+                        current.append(c).append(sql.charAt(i + 1));
+                        state = SplitterState.BLOCK_COMMENT;
+                        i += 2;
+                        continue;
+                    }
+                    if (c == '\'') {
+                        current.append(c);
+                        state = SplitterState.SINGLE_QUOTE;
+                        i++;
+                        continue;
+                    }
+                    if (c == '"') {
+                        current.append(c);
+                        state = SplitterState.DOUBLE_QUOTE;
+                        i++;
+                        continue;
+                    }
+                    if (c == '$') {
+                        String tag = matchDollarQuoteStart(sql, i);
+                        if (tag != null) {
+                            current.append(tag);
+                            dollarTag = tag;
+                            state = SplitterState.DOLLAR_QUOTE;
+                            i += tag.length();
+                            continue;
+                        }
+                    }
+                    if (c == ';') {
+                        String statement = current.toString().trim();
+                        if (!statement.isEmpty()) {
+                            statements.add(statement);
+                        }
+                        current.setLength(0);
+                        i++;
+                        continue;
+                    }
+                    current.append(c);
+                    i++;
                 }
-                current.setLength(0);
-            } else {
-                current.append(c);
+                case SINGLE_QUOTE -> {
+                    current.append(c);
+                    if (c == '\'') {
+                        state = SplitterState.NORMAL;
+                    }
+                    i++;
+                }
+                case DOUBLE_QUOTE -> {
+                    current.append(c);
+                    if (c == '"') {
+                        state = SplitterState.NORMAL;
+                    }
+                    i++;
+                }
+                case LINE_COMMENT -> {
+                    current.append(c);
+                    if (c == '\n') {
+                        state = SplitterState.NORMAL;
+                    }
+                    i++;
+                }
+                case BLOCK_COMMENT -> {
+                    if (c == '*' && i + 1 < length && sql.charAt(i + 1) == '/') {
+                        current.append(c).append(sql.charAt(i + 1));
+                        state = SplitterState.NORMAL;
+                        i += 2;
+                        continue;
+                    }
+                    current.append(c);
+                    i++;
+                }
+                case DOLLAR_QUOTE -> {
+                    if (c == '$' && sql.regionMatches(i, dollarTag, 0, dollarTag.length())) {
+                        current.append(dollarTag);
+                        state = SplitterState.NORMAL;
+                        i += dollarTag.length();
+                        continue;
+                    }
+                    current.append(c);
+                    i++;
+                }
             }
         }
         String last = current.toString().trim();
@@ -420,6 +520,27 @@ public final class ConversionHookRunner {
             statements.add(last);
         }
         return statements;
+    }
+
+    /** Detects a dollar-quote START tag at {@code sql[index]} (which must be {@code '$'}): {@code $$} or
+     *  {@code $tag$} where {@code tag} matches {@code [A-Za-z_][A-Za-z0-9_]*}. Returns the full opener
+     *  (e.g. {@code "$$"} or {@code "$tag$"}), or {@code null} when this isn't a valid dollar-quote
+     *  opener (e.g. a bare {@code $1} positional parameter with no matching second {@code $}). */
+    private static String matchDollarQuoteStart(String sql, int index) {
+        int closeIndex = sql.indexOf('$', index + 1);
+        if (closeIndex < 0) {
+            return null;
+        }
+        String inner = sql.substring(index + 1, closeIndex);
+        if (!inner.isEmpty() && !inner.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+            return null;
+        }
+        return sql.substring(index, closeIndex + 1);
+    }
+
+    /** Test-only seam (SER closure plan G4): {@link #splitStatements} is {@code private}. */
+    static List<String> splitStatementsForTest(String sql) {
+        return splitStatements(sql);
     }
 
     private static String sha256Hex(String text) {
