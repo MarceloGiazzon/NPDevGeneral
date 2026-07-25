@@ -75,7 +75,36 @@ public final class ImpactReportText {
         if (report.verdict() == ImpactReport.Verdict.DESTRUCTIVE && ackToken != null && !ackToken.isBlank()) {
             out.append("  acknowledgment token: ").append(ackToken).append('\n');
         }
+        appendProposedConversions(out, report);
         return out.toString();
+    }
+
+    /** SER-P8.1: a ready-to-paste hook body (convert.sql + suggested verifySql) for every convertible
+     *  DESTRUCTIVE_NARROW_TYPE item, or a "write a custom hook" note where no safe automatic conversion
+     *  exists. NEVER auto-run -- see {@link ProposedConversionSql}'s class javadoc. */
+    private static void appendProposedConversions(StringBuilder out, ImpactReport report) {
+        List<ImpactReport.Item> narrowing = report.items().stream()
+                .filter(item -> item.diffItem().safetyClass() == com.finalexec.db.schemastate.SafetyClass.DESTRUCTIVE_NARROW_TYPE
+                        && item.diffItem().resolution() == Resolution.UNRESOLVED)
+                .toList();
+        if (narrowing.isEmpty()) {
+            return;
+        }
+        out.append("  proposed conversions (paste into a hook.json + convert.sql, review before trusting):\n");
+        for (ImpactReport.Item item : narrowing) {
+            SchemaDiffItem di = item.diffItem();
+            out.append("    ").append(nullSafe(di.table())).append('.').append(nullSafe(di.column()))
+                    .append(" (").append(nullSafe(di.before())).append(" -> ").append(nullSafe(di.after())).append("):\n");
+            ProposedConversionSql.Proposal proposal = ProposedConversionSql.forNarrowing(di);
+            if (proposal == null) {
+                out.append("      no safe automatic conversion -- write a custom hook.\n");
+                continue;
+            }
+            for (String line : proposal.sql().split("\n")) {
+                out.append("      ").append(line).append('\n');
+            }
+            out.append("      verifySql: ").append(proposal.verifySql()).append('\n');
+        }
     }
 
     private static int verdictBucket(ImpactReport.Item item) {
