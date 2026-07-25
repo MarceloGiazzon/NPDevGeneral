@@ -243,6 +243,12 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
     }
 
     @Override
+    public boolean hasRowReadScope(String conceptName) {
+        ConceptDefinition concept = conceptsByName.get(normalizeKey(conceptName));
+        return concept != null && concept.access() != null && hasText(concept.access().read());
+    }
+
+    @Override
     public boolean isRowWritable(ConceptGatewayRequestContext request) {
         ConceptDefinition concept = concept(request);
         if (concept == null || concept.access() == null || !hasText(concept.access().write())) {
