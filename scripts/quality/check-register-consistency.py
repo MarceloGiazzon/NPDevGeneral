@@ -176,6 +176,7 @@ def row_verdict(line: str, struck: bool, mode: str) -> str | None:
 
 def check(path: Path, mode: str, verbose: bool) -> list[str]:
     summary, detail, sectioned = parse(path, mode)
+    raw_lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     problems: list[str] = []
     unparseable: list[str] = []
     single_source = 0
@@ -191,7 +192,20 @@ def check(path: Path, mode: str, verbose: bool) -> list[str]:
                     f"but its **Status:** phrasing is not conclusive -- verify this one by hand"
                 )
             else:
-                single_source += 1  # only appears once (e.g. a findings-table row): nothing to contradict
+                # A single-source row has no detail section to contradict -- but in strikethrough mode
+                # it can still contradict ITSELF: unstruck means "open" by convention, while its own
+                # description text may say CLOSED/DONE. That is how REG-25/27/28/29/30 sat closed and
+                # unstruck while this very script reported 0 contradictions (found 2026-07-25).
+                if mode == "strikethrough" and declared == "open":
+                    own = classify(raw_lines[summary_line - 1])
+                    if own == "closed":
+                        problems.append(
+                            f"{path.name}:{summary_line}: {item} is not struck through (reads as OPEN) "
+                            f"but its own description says CLOSED/DONE. Fix: strike the id "
+                            f"(~~**{item}**~~), or correct the description if it is still open."
+                        )
+                        continue
+                single_source += 1  # nothing to contradict
             continue
         detail_line, verdict = detail[item]
         if declared is None:
