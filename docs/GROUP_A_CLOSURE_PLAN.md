@@ -1,5 +1,8 @@
 # Group A Closure Plan — close the actionable open items
 
+> **STATUS: HISTORICAL** — last changed 2026-07-23; its completion state has **not** been re-verified. Treat nothing here as an open commitment: check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (authoritative) or `docs/OPEN_ITEMS_SNAPSHOT.md` before acting on any item.
+
+
 > **Written:** 2026-07-23 · **Branch:** `beta1-vision-spine` · **Repo root:** `D:\WorkSpace\NPDev\NPDev_General`
 > **Companion:** `docs/REMAINING_GAPS_CLOSURE_PLAN.md`, `docs/POST_LNCH22_EXECUTION_PLAN.md` (same rules/format).
 >

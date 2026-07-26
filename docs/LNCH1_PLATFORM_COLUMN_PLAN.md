@@ -1,5 +1,8 @@
 # LNCH-1 Platform-Column Plan — Closing the Last Four Findings
 
+> **STATUS: HISTORICAL** — last changed 2026-07-21; its completion state has **not** been re-verified. Treat nothing here as an open commitment: check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (authoritative) or `docs/OPEN_ITEMS_SNAPSHOT.md` before acting on any item.
+
+
 > **Status:** APPROVED PLAN — not started
 > **Written:** 2026-07-21, verified against the working tree at commit `a49af58` (branch `beta1-vision-spine`)
 > **Origin:** an independent review of the completed LNCH-1 **closeout** round

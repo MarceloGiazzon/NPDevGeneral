@@ -1,5 +1,8 @@
 # LNCH-1 — Schema Evolution for Live Apps: Dedicated Implementation Plan
 
+> **STATUS: HISTORICAL** — last changed 2026-07-20; its completion state has **not** been re-verified. Treat nothing here as an open commitment: check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (authoritative) or `docs/OPEN_ITEMS_SNAPSHOT.md` before acting on any item.
+
+
 > **Status:** DONE (2026-07-19) — all 9 phases (0-8) complete · **Priority:** P0 (the last existential launch blocker)
 > **Remediation round (R0–R9), 2026-07-20:** an independent post-implementation review found 2
 > high-severity bugs (required-field backfill silently skipped on destructive paths; `DROP_TABLE`

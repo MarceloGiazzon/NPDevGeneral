@@ -1,5 +1,8 @@
 # REG-7 + REG-8 → Features: External-DB Ownership, Migration Marking, Collision Detection
 
+> **STATUS: HISTORICAL** — last changed 2026-07-22; its completion state has **not** been re-verified. Treat nothing here as an open commitment: check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (authoritative) or `docs/OPEN_ITEMS_SNAPSHOT.md` before acting on any item.
+
+
 > **Status:** APPROVED PLAN — not started.
 > **Written:** 2026-07-21, against commit `25b4e20` (branch `beta1-vision-spine`). Working tree clean
 > except this file.

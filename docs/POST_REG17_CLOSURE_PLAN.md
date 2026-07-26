@@ -1,5 +1,8 @@
 # Post-REG-17 Closure Plan — LEDGER-1, REG-31, REG-32, REG-16-resid
 
+> **STATUS: HISTORICAL** — last changed 2026-07-24; its completion state has **not** been re-verified. Treat nothing here as an open commitment: check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (authoritative) or `docs/OPEN_ITEMS_SNAPSHOT.md` before acting on any item.
+
+
 > **Written:** 2026-07-24 · **Branch:** `beta1-vision-spine` · **Repo root:** `D:\WorkSpace\NPDev\NPDev_General`
 >
 > **Honest scoping — read first.** These four are NOT all the same kind of work:

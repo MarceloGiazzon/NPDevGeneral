@@ -1,5 +1,8 @@
 # Closure Plan — REG-28 / REG-29 / REG-30 + REG-12 Slice 2 (unblocking the PDF plan)
 
+> **STATUS: HISTORICAL** — last changed 2026-07-22; its completion state has **not** been re-verified. Treat nothing here as an open commitment: check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (authoritative) or `docs/OPEN_ITEMS_SNAPSHOT.md` before acting on any item.
+
+
 > **Status:** EXECUTED (2026-07-22) — P1/P2/P3 all DONE, verified live, committed. See
 > `docs/NPDEV_OPEN_ITEMS_REGISTER.md` §0.1 addendum 2 and §3.4/§2.4 for the closure record.
 > **Written:** 2026-07-22, against `main` at `beta1.1` (dev on `beta1-vision-spine`).

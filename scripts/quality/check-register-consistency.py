@@ -229,6 +229,34 @@ def check(path: Path, mode: str, verbose: bool) -> list[str]:
     return problems
 
 
+def check_plan_status_banners(root: Path, verbose: bool) -> list[str]:
+    """Every planning document must declare its tense in its first few lines.
+
+    A plan whose work is finished but which still reads as a live backlog is the same drift class this
+    script was written for, one document type over: someone opens `ONE_PLAN_CLOSE_EVERYTHING.md` and
+    starts executing a programme that closed days ago, or re-does REG-17 because `FINAL_FOUR` still
+    describes it as open. On 2026-07-25 that was 15 of 22 planning documents.
+
+    The rule is deliberately NOT "detect whether the work is done" -- that is unknowable from the text
+    and guessing it would be exactly the false-confidence this repo keeps paying for. It just requires
+    the author to SAY, in one line, which of EXECUTED / ACTIVE / HISTORICAL / SUPERSEDED applies.
+    Stating the tense costs a sentence; leaving it implicit costs a reader an hour.
+    """
+    problems: list[str] = []
+    checked = 0
+    for path in sorted((root / "docs").glob("*PLAN*.md")):
+        head = "\n".join(path.read_text(encoding="utf-8", errors="replace").split("\n")[:8])
+        checked += 1
+        if "STATUS:" not in head:
+            problems.append(
+                f"docs/{path.name}: no `> **STATUS: …**` line in the first 8 lines. Add one saying "
+                f"EXECUTED (work landed) / ACTIVE (live backlog) / HISTORICAL (unverified) / "
+                f"SUPERSEDED (point at the replacement), so a reader knows whether to act on it."
+            )
+    print(f"  planning documents: {checked - len(problems)}/{checked} declare a status")
+    return problems
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--root", default=".", help="repo root (default: cwd)")
@@ -249,9 +277,11 @@ def main(argv: list[str]) -> int:
             print(f"ERROR: missing document: {target}", file=sys.stderr)
             return 2
         all_problems.extend(check(target, mode, args.verbose))
+    all_problems.extend(check_plan_status_banners(root, args.verbose))
 
     if all_problems:
-        print(f"\nFAIL: {len(all_problems)} row(s) contradict their own detail section:\n", file=sys.stderr)
+        print(f"\nFAIL: {len(all_problems)} tracking inconsistency(ies) — a summary row contradicting "
+              f"its own detail section, or a plan not declaring its tense:\n", file=sys.stderr)
         for problem in all_problems:
             print(f"  - {problem}", file=sys.stderr)
         print(

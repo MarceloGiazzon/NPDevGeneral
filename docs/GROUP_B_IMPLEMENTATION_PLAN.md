@@ -1,5 +1,8 @@
 # Group B Implementation Plan — un-defer and complete ALL deferred items
 
+> **STATUS: HISTORICAL** — last changed 2026-07-24; its completion state has **not** been re-verified. Treat nothing here as an open commitment: check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (authoritative) or `docs/OPEN_ITEMS_SNAPSHOT.md` before acting on any item.
+
+
 > **Written:** 2026-07-24 · **Branch:** `beta1-vision-spine` · **Repo root:** `D:\WorkSpace\NPDev\NPDev_General`
 >
 > **Owner decisions captured 2026-07-24 (drive this plan):**

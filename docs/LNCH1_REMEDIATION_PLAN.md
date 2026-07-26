@@ -1,5 +1,8 @@
 # LNCH-1 Remediation Plan — Fixing the Post-Implementation Review Findings
 
+> **STATUS: HISTORICAL** — last changed 2026-07-19; its completion state has **not** been re-verified. Treat nothing here as an open commitment: check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (authoritative) or `docs/OPEN_ITEMS_SNAPSHOT.md` before acting on any item.
+
+
 > **Status:** APPROVED PLAN — not started
 > **Written:** 2026-07-19, verified against the working tree at commit `1948129`
 > **Origin:** an independent review of the completed LNCH-1 implementation
