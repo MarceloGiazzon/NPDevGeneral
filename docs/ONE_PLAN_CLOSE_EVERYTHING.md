@@ -1,5 +1,8 @@
 # ONE PLAN — close every remaining open item
 
+> **STATUS: EXECUTED (2026-07-25).** All four review rounds done, REG-36/37/43/44/45/46/47 closed, blocking list empty. Kept as a record.
+
+
 > **Written:** 2026-07-25 · **Branch:** `beta1-vision-spine` · **Repo root:** `D:\WorkSpace\NPDev\NPDev_General`
 > **Scope:** this single document closes **everything** still open — the 4 unreviewed security surfaces,
 > REG-36, REG-37, and the 4 non-blocking evidence/process items. Nothing else remains after it.

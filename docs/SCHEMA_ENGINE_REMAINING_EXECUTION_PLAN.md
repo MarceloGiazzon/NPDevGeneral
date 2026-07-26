@@ -1,5 +1,8 @@
 # Schema Engine — Remaining Work: Detailed Execution Plan
 
+> **STATUS: EXECUTED (2026-07-25).** Every task landed. Superseded by `SER_FINAL_CLOSURE_PLAN.md` and then by `ONE_PLAN_CLOSE_EVERYTHING.md`; kept as a record.
+
+
 **Audience:** an implementing AI/agent that will follow this literally. Be conservative, verify every
 step, and do not improvise beyond what is written. When something here disagrees with the code, the code
 wins — STOP and report rather than guessing.

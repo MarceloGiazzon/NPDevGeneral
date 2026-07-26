@@ -1,5 +1,8 @@
 # Post-programme audit — findings + implementation plan
 
+> **STATUS: EXECUTED (2026-07-25).** F1/F2/F3/F4/F5/F6/F7 all closed; F8 remains an accepted boundary by design. Kept as a record.
+
+
 > **Written:** 2026-07-25, after `ONE_PLAN_CLOSE_EVERYTHING.md` completed (HEAD `2f81695`).
 > **Audience:** an executor with limited autonomy. Every fact was verified against the live tree —
 > I ran all five gates myself and read the code, I did not take the summary on trust.

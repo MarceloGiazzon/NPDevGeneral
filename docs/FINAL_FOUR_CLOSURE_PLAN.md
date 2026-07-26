@@ -1,5 +1,8 @@
 # Final Four — Closure Plan for REG-16-resid, REG-17, AW-P2, REG-39
 
+> **STATUS: EXECUTED (2026-07-25).** REG-16-resid, REG-17, AW-P2 and REG-39 all closed. Kept as a record.
+
+
 > **Written:** 2026-07-25 · **Branch:** `beta1-vision-spine` · **Repo root:** `D:\WorkSpace\NPDev\NPDev_General`
 > **Audience:** an executor with limited autonomy (AI or human). Every fact was verified against the live
 > tree on 2026-07-25. **If reality does not match this document → STOP and report.**

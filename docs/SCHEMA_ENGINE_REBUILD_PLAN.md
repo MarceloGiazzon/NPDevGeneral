@@ -1,5 +1,8 @@
 # Schema Engine Rebuild v2 — the Impact-Analysis Engine (REG-6 closure + GeneXus-grade impacts)
 
+> **STATUS: EXECUTED — Phases 0-9 all DONE (2026-07-25).** REG-6 is CLOSED FULLY. Kept for its Progress Ledger (§I.6) and the design rationale; this is a RECORD, not a live backlog.
+
+
 **Status:** PLAN v2 (supersedes v1 of 2026-07-24; nothing built yet) · **Owner decision:** rebuild
 the engine strangler-fig AND deliver the operator-facing impact/conversion experience on top of it
 · **Risk:** HIGHEST in the platform (this code decides whether a live production database is

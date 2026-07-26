@@ -1,5 +1,8 @@
 # Schema Engine — Final Closure Plan (ALL remaining open items)
 
+> **STATUS: EXECUTED (2026-07-25).** Groups A/B/C all closed (G1-G12). Kept as a record.
+
+
 > **Written:** 2026-07-25 · **Branch:** `beta1-vision-spine` · **Repo root:** `D:\WorkSpace\NPDev\NPDev_General`
 > **HEAD when written:** `fce3eb1` (finding-#1 fix)
 > **Audience:** an AI executor with limited autonomy. **Your job is execution, not investigation.**
