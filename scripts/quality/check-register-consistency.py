@@ -249,8 +249,16 @@ LEDGER_EXCLUSIONS = {
     "LNCH1_CLOSEOUT_PLAN.md": "Executed plan (marked HISTORICAL). Its tables are task checklists, not a status ledger of record.",
     "LNCH1_PLATFORM_COLUMN_PLAN.md": "Executed plan (marked HISTORICAL). Same: task tables, not tracked items.",
     "REGISTER_CLOSURE_PLAN.md": "Executed plan (marked HISTORICAL). Tables restate register items; the register itself is the checked source.",
-    "REG16_CODEGEN_OUTPUT_ADVERSARIAL_REVIEW.md": "Findings document. Its table is per-finding severity (F1..Fn), not open/closed status; the register carries the tracked REG-nn rows.",
 }
+
+# Adversarial-review findings documents are excluded as a CLASS, not one by one: their tables are
+# per-finding SEVERITY (F1..Fn -- CRITICAL/HIGH/MEDIUM/INFO), never open/closed status, and the
+# tracked REG-nn rows those findings produce live in the register, which IS cross-checked. Excluding
+# them by rule rather than by name means the next review round's findings document does not fail this
+# gate the day it is written -- a gate that fires on correct new work is a gate people learn to skip.
+LEDGER_EXCLUSION_PATTERNS = (
+    re.compile(r"_ADVERSARIAL_REVIEW\.md$"),
+)
 
 
 def ledger_coverage_gaps(root: Path) -> list[str]:
@@ -269,6 +277,8 @@ def ledger_coverage_gaps(root: Path) -> list[str]:
     gaps: list[str] = []
     for path in sorted((root / "docs").glob("*.md")):
         if path.name in checked or path.name in LEDGER_EXCLUSIONS:
+            continue
+        if any(rule.search(path.name) for rule in LEDGER_EXCLUSION_PATTERNS):
             continue
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
         rows = sum(1 for line in lines if SUMMARY_ROW.match(line))
