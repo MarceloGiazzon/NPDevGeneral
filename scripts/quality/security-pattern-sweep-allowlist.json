@@ -1446,6 +1446,46 @@
       "rule": "I5",
       "where": "NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java:428/463/489",
       "why": "scope.tenantId() bound into a REG-46 tenant-scoped read/delete/exists. The tenant is supplied by the kernel from the authenticated context (RegistryCapabilityDispatcher prepends TenantScope; it is not author- or caller-writable), and tenant_id is length-bounded by its own column definition."
+    },
+    "3fa7915dd3e9": {
+      "rule": "B4",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledMetadataCanonicalJson.java:1631",
+      "why": "Not a database read. The DSL module is the model COMPILER -- it has no DataSource and issues no SQL at all. Every hit here is the literal string \"select\" used as an HTML widget type (FieldWidgetDefaults.SELECT, the <select> dropdown) or a compiled panel's widget verdict. Verified 2026-07-25 when NPDevContract/dsl was added to SCAN_ROOTS."
+    },
+    "6b4071cfb42b": {
+      "rule": "B4",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledMetadataCanonicalJson.java:1634",
+      "why": "Not a database read. The DSL module is the model COMPILER -- it has no DataSource and issues no SQL at all. Every hit here is the literal string \"select\" used as an HTML widget type (FieldWidgetDefaults.SELECT, the <select> dropdown) or a compiled panel's widget verdict. Verified 2026-07-25 when NPDevContract/dsl was added to SCAN_ROOTS."
+    },
+    "a6117079356d": {
+      "rule": "B4",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/FieldWidgetDefaults.java:26",
+      "why": "Not a database read. The DSL module is the model COMPILER -- it has no DataSource and issues no SQL at all. Every hit here is the literal string \"select\" used as an HTML widget type (FieldWidgetDefaults.SELECT, the <select> dropdown) or a compiled panel's widget verdict. Verified 2026-07-25 when NPDevContract/dsl was added to SCAN_ROOTS."
+    },
+    "e3ddace8159e": {
+      "rule": "B4",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/FieldWidgetDefaults.java:32",
+      "why": "Not a database read. The DSL module is the model COMPILER -- it has no DataSource and issues no SQL at all. Every hit here is the literal string \"select\" used as an HTML widget type (FieldWidgetDefaults.SELECT, the <select> dropdown) or a compiled panel's widget verdict. Verified 2026-07-25 when NPDevContract/dsl was added to SCAN_ROOTS."
+    },
+    "442af45e8f81": {
+      "rule": "D3",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java:519",
+      "why": "SQL-shaped English or a URL, not SQL -- same class as rule D1. AutoPanelExpander builds the ROUTE \"/select/\" + selector.name(); ValidationDiagnosticNormalizer builds the sentence \"Update the model so it satisfies ...\". The DSL module issues no SQL. Verified 2026-07-25."
+    },
+    "8bcecc3efea3": {
+      "rule": "D3",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ValidationDiagnosticNormalizer.java:318",
+      "why": "SQL-shaped English or a URL, not SQL -- same class as rule D1. AutoPanelExpander builds the ROUTE \"/select/\" + selector.name(); ValidationDiagnosticNormalizer builds the sentence \"Update the model so it satisfies ...\". The DSL module issues no SQL. Verified 2026-07-25."
+    },
+    "2b8fc719e1e6": {
+      "rule": "A5",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/expr/ComputedExpression.java:395",
+      "why": "Value coercion, not an authorization verdict -- same reasoning as rule A1, one module over. ComputedExpression catches NumberFormatException around Double.parseDouble to answer 'is this text numeric?'; TypeChangeMatrix catches it while parsing a SQL type's (precision,scale) and returns null meaning 'unparseable type'. No security decision is being answered. Verified 2026-07-25."
+    },
+    "65d0ff0a9c9e": {
+      "rule": "A5",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/schemaevolution/TypeChangeMatrix.java:163",
+      "why": "Value coercion, not an authorization verdict -- same reasoning as rule A1, one module over. ComputedExpression catches NumberFormatException around Double.parseDouble to answer 'is this text numeric?'; TypeChangeMatrix catches it while parsing a SQL type's (precision,scale) and returns null meaning 'unparseable type'. No security decision is being answered. Verified 2026-07-25."
     }
   }
 }
