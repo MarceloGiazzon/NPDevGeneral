@@ -1,5 +1,8 @@
 # REG-16-resid — Completion Plan (4 filed MEDIUMs + Rounds 3–6)
 
+> **STATUS: EXECUTED (2026-07-25).** All four MEDIUMs closed and Rounds 3-6 completed (compressed into 3 sessions per `ONE_PLAN_CLOSE_EVERYTHING.md`). Kept as a record.
+
+
 > **Written:** 2026-07-25 · **Branch:** `beta1-vision-spine` · **Repo root:** `D:\WorkSpace\NPDev\NPDev_General`
 > **Audience:** an executor with limited autonomy. Every fact verified against the live tree on 2026-07-25.
 > **If reality does not match this document → STOP and report.**
