@@ -493,6 +493,46 @@ SKIP = re.compile(r"(/build/|/node_modules/|/static-react/|/npdev-generated/|app
 
 ALLOWLIST = Path("scripts/quality/security-pattern-sweep-allowlist.json")
 
+# Modules deliberately NOT swept, each with the reason. Anything with main Java that is neither in
+# SCAN_ROOTS nor named here fails coverage_gaps() -- see its docstring for why that matters.
+SCAN_EXCLUSIONS = {
+    # Verified 2026-07-25: a single file, `CoreMarker`, an empty final class used as a package anchor
+    # for module-boundary checks. No SQL, no auth, no templates, no caller-influenced input. If this
+    # module ever gains real code the exclusion should be removed rather than widened.
+    "NPDevKernel/core": "One empty marker class (CoreMarker) used as a package anchor; no code surface.",
+}
+
+
+def coverage_gaps(root: Path) -> list[str]:
+    """Does SCAN_ROOTS still cover every module that has main Java?
+
+    Blind spot #4 (2026-07-25) was NPDevContract/dsl missing from SCAN_ROOTS: 163 source files,
+    including the destructive-acknowledgment TOKEN computation, reporting "0 new" because nothing
+    looked at them. The patterns were fine; the *coverage claim* was wrong, and nothing checked it.
+
+    That is the shape of every blind spot found in this repo: an instrument verifies its CONTENT and
+    nobody verifies its SCOPE. A green sweep means "the patterns I ran, over the roots I listed, found
+    nothing" -- it silently says nothing about roots that were never listed. So the list is now an
+    assertion the tool itself checks: add a module and the sweep fails until you either sweep it or
+    state why not.
+    """
+    covered = [Path(r).as_posix() for r in SCAN_ROOTS]
+    gaps: list[str] = []
+    for main_java in sorted(root.glob("*/*/src/main/java")) + sorted(root.glob("*/src/main/java")):
+        rel = main_java.relative_to(root).as_posix()
+        module = rel.rsplit("/src/main/java", 1)[0]
+        if any(rel.startswith(c) or c.startswith(rel) for c in covered):
+            continue
+        if module in SCAN_EXCLUSIONS:
+            continue
+        count = sum(1 for _ in main_java.rglob("*.java"))
+        gaps.append(
+            f"{rel} ({count} .java files) is not in SCAN_ROOTS and not in SCAN_EXCLUSIONS. "
+            f"Either add it to SCAN_ROOTS, or add '{module}' to SCAN_EXCLUSIONS with the reason it "
+            f"carries no SQL/auth/template surface."
+        )
+    return gaps
+
 
 def collect(root: Path, only: str | None) -> list[Hit]:
     hits: list[Hit] = []
@@ -678,6 +718,16 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
 
     root = Path(args.root).resolve()
+
+    # Coverage is asserted BEFORE anything else, including --self-test: a sweep whose scope is wrong
+    # produces a confident green over the wrong files, which is worse than a red. See coverage_gaps().
+    gaps = coverage_gaps(root)
+    if gaps:
+        print("COVERAGE GAP: the sweep is not scanning every module that has main Java:", file=sys.stderr)
+        for gap in gaps:
+            print(f"  - {gap}", file=sys.stderr)
+        return 2
+
     if args.self_test:
         return self_test(root)
 

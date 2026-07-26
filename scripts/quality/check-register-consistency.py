@@ -282,6 +282,9 @@ def main(argv: list[str]) -> int:
     targets = [
         (root / "docs" / "NPDEV_OPEN_ITEMS_REGISTER.md", "strikethrough"),
         (root / "docs" / "OPEN_GAPS_AND_ROADMAP.md", "status-cell"),
+        # Added 2026-07-25 (blind spot #5): a third ledger with 24 rows and full detail sections that
+        # nothing had ever cross-checked. Same status-cell convention as the roadmap.
+        (root / "docs" / "LAUNCH_READINESS_GAPS.md", "status-cell"),
     ]
 
     print("Register consistency check (summary rows vs their own detail sections)")
