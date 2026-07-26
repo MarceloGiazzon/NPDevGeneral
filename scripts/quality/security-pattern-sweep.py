@@ -480,6 +480,12 @@ SCAN_ROOTS = [
     "NPDevKernel/adapters",
     "NPDevKernel/kernel/src/main/java",
     "NPDevRuntimeHost/src/main/java",
+    # Added 2026-07-25. This module was missing, and its absence is exactly the failure mode this
+    # sweep exists to prevent: 163 source files reporting "0 new" because nothing looked at them.
+    # It holds DestructiveAckToken (the destructive-acknowledgment TOKEN computation), SemanticValidator,
+    # and the schema-evolution primitives -- security-relevant by any reading. A scan root list is a
+    # claim about coverage; an incomplete one turns a green check into false comfort.
+    "NPDevContract/dsl/src/main/java",
 ]
 
 # Generated bundles and vendored assets: not ours to fix, and huge.
