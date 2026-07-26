@@ -243,6 +243,45 @@ def check(path: Path, mode: str, verbose: bool) -> list[str]:
     return problems
 
 
+# Ledger-SHAPED documents that are deliberately not status-cross-checked, each with the reason.
+# Anything else that looks like a ledger fails ledger_coverage_gaps() -- see its docstring.
+LEDGER_EXCLUSIONS = {
+    "LNCH1_CLOSEOUT_PLAN.md": "Executed plan (marked HISTORICAL). Its tables are task checklists, not a status ledger of record.",
+    "LNCH1_PLATFORM_COLUMN_PLAN.md": "Executed plan (marked HISTORICAL). Same: task tables, not tracked items.",
+    "REGISTER_CLOSURE_PLAN.md": "Executed plan (marked HISTORICAL). Tables restate register items; the register itself is the checked source.",
+    "REG16_CODEGEN_OUTPUT_ADVERSARIAL_REVIEW.md": "Findings document. Its table is per-finding severity (F1..Fn), not open/closed status; the register carries the tracked REG-nn rows.",
+}
+
+
+def ledger_coverage_gaps(root: Path) -> list[str]:
+    """Is the checked-document list still complete?
+
+    Blind spot #5 was `LAUNCH_READINESS_GAPS.md` -- a third ledger with 24 rows and full detail
+    sections that this script had simply never been pointed at. The rules were right; the SCOPE was
+    silently short, and nothing checked it. Exactly the failure this script exists to prevent, one
+    level up.
+
+    So the document list is now an assertion rather than a constant: anything ledger-shaped (>=5 id
+    rows AND >=1 detail heading) must be either checked or named in LEDGER_EXCLUSIONS with a reason.
+    Add a new ledger and this fails until someone decides which it is.
+    """
+    checked = {"NPDEV_OPEN_ITEMS_REGISTER.md", "OPEN_GAPS_AND_ROADMAP.md", "LAUNCH_READINESS_GAPS.md"}
+    gaps: list[str] = []
+    for path in sorted((root / "docs").glob("*.md")):
+        if path.name in checked or path.name in LEDGER_EXCLUSIONS:
+            continue
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        rows = sum(1 for line in lines if SUMMARY_ROW.match(line))
+        heads = sum(1 for line in lines if DETAIL_HEADING.match(line))
+        if rows >= 5 and heads >= 1:
+            gaps.append(
+                f"docs/{path.name} is ledger-shaped ({rows} id rows, {heads} detail headings) but is "
+                f"neither cross-checked nor in LEDGER_EXCLUSIONS. Either add it to the target list "
+                f"with its status convention, or exclude it with the reason it is not a status ledger."
+            )
+    return gaps
+
+
 def check_plan_status_banners(root: Path, verbose: bool) -> list[str]:
     """Every planning document must declare its tense in its first few lines.
 
@@ -295,6 +334,9 @@ def main(argv: list[str]) -> int:
             return 2
         all_problems.extend(check(target, mode, args.verbose))
     all_problems.extend(check_plan_status_banners(root, args.verbose))
+    # Coverage last so its message is not buried, but it is a HARD gap: a ledger nobody checks is the
+    # same failure as a summary row nobody cross-checks.
+    all_problems.extend(ledger_coverage_gaps(root))
 
     if all_problems:
         print(f"\nFAIL: {len(all_problems)} tracking inconsistency(ies) — a summary row contradicting "
