@@ -1,5 +1,8 @@
 # Final Launch-Gaps Closure Plan — LNCH-10 Slice 3 (PDF) + LNCH-18 / LNCH-22 (external test)
 
+> **STATUS: HISTORICAL** — last changed 2026-07-22; its completion state has **not** been re-verified. Treat nothing here as an open commitment: check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (authoritative) or `docs/OPEN_ITEMS_SNAPSHOT.md` before acting on any item.
+
+
 > **Status:** EXECUTED (2026-07-22) — Part A and Part B both DONE, verified live, committed. The
 > launch ledger (`docs/LAUNCH_READINESS_GAPS.md`) reaches **24 DONE · 0 PARTIAL · 0 OPEN**. See
 > `docs/NPDEV_OPEN_ITEMS_REGISTER.md` §0.1 addendum 3 for the closure record.
