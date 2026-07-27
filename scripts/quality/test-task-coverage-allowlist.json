@@ -1,0 +1,14 @@
+{
+  "_comment": [
+    "Reviewed exemptions for scripts/quality/check-test-task-coverage.py. Each entry means: a human",
+    "decided this custom Gradle Test task is deliberately not reachable from a plain CI workflow scan",
+    "(e.g. genuinely nightly-only, or invoked only through a generated-app copy), and here is why.",
+    "The key is a fingerprint of the task's qualified name + declaring directory, so moving or renaming",
+    "the task invalidates the exemption and it resurfaces for re-review -- which is the point.",
+    "Empty today: as of 2026-07-27 both custom Test tasks in the repo (:generator:behaviorTest,",
+    "NPDevRuntimeHost's integrationTest) are judged directly reachable by the gate. Add an entry here",
+    "only when the gate actually flags a violation for a task that is genuinely covered by a path the",
+    "gate cannot see -- do not pre-clear anything speculatively."
+  ],
+  "cleared": {}
+}
