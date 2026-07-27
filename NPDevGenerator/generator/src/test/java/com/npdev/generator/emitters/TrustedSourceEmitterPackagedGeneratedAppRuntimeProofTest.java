@@ -757,7 +757,7 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                         },
                         {
                           "name": "emitFlowCompleted",
-                          "type": "event",
+                          "type": "emitEvent",
                           "event": "generated.flow.CreateItem12UserFlow.completed",
                           "payload": "actionResult"
                         }
@@ -770,7 +770,7 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                       "steps": [
                         {
                           "name": "waitForApproval",
-                          "type": "await",
+                          "type": "awaitEvent",
                           "awaitEvent": "item12.user.approved",
                           "awaitRef": "approval"
                         },
@@ -787,7 +787,7 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                         },
                         {
                           "name": "emitWaitingFlowCompleted",
-                          "type": "event",
+                          "type": "emitEvent",
                           "event": "generated.flow.AwaitThenCreateItem12UserFlow.completed",
                           "payload": "actionResult"
                         }
@@ -807,7 +807,7 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                           "steps": [
                             {
                               "name": "emitNameSeen",
-                              "type": "event",
+                              "type": "emitEvent",
                               "event": "generated.flow.SumItem12NamesForEachFlow.nameSeen",
                               "payload": "name"
                             }

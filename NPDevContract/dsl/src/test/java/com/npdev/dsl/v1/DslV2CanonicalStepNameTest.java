@@ -14,36 +14,45 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.npdev.dsl.v1.validation.ModelSchemaValidationException;
+
 /**
- * 2.A.2 (docs/DSL2_AND_DECOMPOSITION_PLAN.md): the DSL 2.0 canonical step-type spellings
- * ({@code invariantCheck}, {@code map}) must parse, validate, and compile to the exact same
- * compiled-model shape as the v1 spellings they're introduced alongside ({@code validate},
- * {@code assign}) -- this is the widening half of the migration: both spellings are valid today,
- * and must mean the same thing. The other 10 canonical names ({@code capabilityCall},
- * {@code emitEvent}, {@code scheduleEvent}, {@code branch}, {@code awaitEvent}, {@code return},
- * {@code forEach}, {@code createConcept}, {@code updateConcept}, {@code generatedAction}) were
- * already valid schema values before this change, so they need no new coverage here.
+ * 2.A.4 (docs/DSL2_AND_DECOMPOSITION_PLAN.md): proves the two DSL 2.0 canonical step-type
+ * spellings this task added ({@code invariantCheck}, {@code map}) compile to the correct
+ * runtime-facing type strings, and that their retired v1 counterparts ({@code validate},
+ * {@code assign}) are now genuinely rejected -- the schema has been narrowed (2.A.4), so there
+ * is no more "compiles identically to the old spelling" to prove (that was 2.A.2's widening-phase
+ * version of this test; the transition is over). The other 10 canonical names
+ * ({@code capabilityCall}, {@code emitEvent}, {@code scheduleEvent}, {@code branch},
+ * {@code awaitEvent}, {@code return}, {@code forEach}, {@code createConcept},
+ * {@code updateConcept}, {@code generatedAction}) were already valid schema values before this
+ * change, so they need no new coverage here.
  */
 class DslV2CanonicalStepNameTest {
 
     @Test
-    void invariantCheckStepCompilesIdenticallyToValidateStep() throws Exception {
-        CompiledModel v1 = compile(flowModelWithStepType("validate"));
-        CompiledModel v2 = compile(flowModelWithStepType("invariantCheck"));
-
-        assertEquals(canonicalStepTypes(v1), canonicalStepTypes(v2));
-        assertEquals("invariant", canonicalStepTypes(v2).get(0));
+    void invariantCheckStepCompilesToInvariantType() throws Exception {
+        CompiledModel model = compile(flowModelWithStepType("invariantCheck"));
+        assertEquals("invariant", canonicalStepTypes(model).get(0));
     }
 
     @Test
-    void mapStepCompilesIdenticallyToAssignStep() throws Exception {
-        CompiledModel v1 = compile(mapModelWithStepType("assign"));
-        CompiledModel v2 = compile(mapModelWithStepType("map"));
+    void mapStepCompilesToMapType() throws Exception {
+        CompiledModel model = compile(mapModelWithStepType("map"));
+        assertEquals("map", canonicalStepTypes(model).get(0));
+    }
 
-        assertEquals(canonicalStepTypes(v1), canonicalStepTypes(v2));
-        assertEquals("map", canonicalStepTypes(v2).get(0));
+    @Test
+    void retiredValidateSpellingIsRejectedAtSchemaLevel() {
+        assertThrows(ModelSchemaValidationException.class, () -> parse(flowModelWithStepType("validate")));
+    }
+
+    @Test
+    void retiredAssignSpellingIsRejectedAtSchemaLevel() {
+        assertThrows(ModelSchemaValidationException.class, () -> parse(mapModelWithStepType("assign")));
     }
 
     private static List<String> canonicalStepTypes(CompiledModel model) {

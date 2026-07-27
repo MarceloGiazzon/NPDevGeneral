@@ -173,23 +173,31 @@ Two collapsing passes turn these into the 9 real kinds:
 exercises 6 of the 9 kinds in sequence:
 
 ```jsonc
-{ "type": "validate", ... }                                    // → INVARIANT_CHECK
+{ "type": "invariantCheck", ... }                               // → INVARIANT_CHECK
 { "type": "createConcept", ... }                                // → CAPABILITY_CALL
-{ "type": "emitEvent", "event": "ExpenseSubmitted", ... }       // → EMIT_EVENT
-{ "type": "if", "condition": "$saved.needsManagerApproval==true",
+{ "type": "emitEvent", "event": "ExpenseSubmitted", ... }        // → EMIT_EVENT
+{ "type": "branch", "condition": "$saved.needsManagerApproval==true",
   "then": [
-    { "type": "waitForEvent", "awaitEvent": "ExpenseApproved",
-      "match": { "correlation": true } },                       // → AWAIT_EVENT
-    { "type": "callCapability", "cap": "notification", ... },    // → CAPABILITY_CALL
-    { "type": "callCapability", "cap": "webhook", ... },         // → CAPABILITY_CALL
+    { "type": "awaitEvent", "awaitEvent": "ExpenseApproved",
+      "match": { "correlation": true } },                        // → AWAIT_EVENT
+    { "type": "capabilityCall", "capability": "notification", ... }, // → CAPABILITY_CALL
+    { "type": "capabilityCall", "capability": "webhook", ... },  // → CAPABILITY_CALL
     { "type": "return", "value": "$approval" }                   // → RETURN
   ], "else": [ ... ] }                                           // → BRANCH
 ```
 
-`NPDevSamples/canonical-demo/Input/model.json`'s `CreateAppointment` flow (`:1115-1191`) covers `MAP`
-(`"type": "assign"`, `:1154-1158`) and `SCHEDULE_EVENT` with a real delay (`"delayMinutes": 1440`,
-`:1165-1183`). `NPDevSamples/user-minimal/Input/model.json`'s `AwaitDemo` flow (`:179-198`) is a
-minimal, dedicated `AWAIT_EVENT` example — two steps, nothing else.
+`NPDevSamples/canonical-demo/Input/model.json`'s `CreateAppointment` flow covers `MAP`
+(`"type": "map"`) and `SCHEDULE_EVENT` with a real delay (`"delayMinutes": 1440`).
+`NPDevSamples/user-minimal/Input/model.json`'s `AwaitDemo` flow is a minimal, dedicated
+`AWAIT_EVENT` example — two steps, nothing else.
+
+> **DSL 2.0 (2026-07-27, `docs/DSL2_AND_DECOMPOSITION_PLAN.md` §2.A):** the spellings above are the
+> canonical ones as of this writing — `model.schema.json`'s `flowStep.type` enum now accepts exactly
+> these 12 names (the 9 kinds above, plus `createConcept`/`updateConcept`/`generatedAction` sugar);
+> the 23-alias v1 vocabulary (`validate`, `assign`, `callCapability`, `if`, `await`, `waitForEvent`,
+> `cap`/`op`/`out` field shorthands, etc.) is retired. Line numbers against these two files are
+> intentionally omitted above since the migration renumbered their content slightly; the flow/step
+> names quoted are stable.
 
 **Honest gap:** no real sample model in this repo uses `FOR_EACH` or `onFailure` (compensation) —
 only test code (`KernelRunnerForEachDurabilityTest`, `KernelRunnerCompensationTest`) and the hand-written
@@ -360,7 +368,9 @@ specializing flow is forbidden from redefining `steps` — it must use `hooks` i
 immediately before or after its named `targetStep`, in the **base** flow's own step list, before
 compilation ever sees the result. In practice: you never touch the base flow's file; a new
 specializing flow adds only the incremental behavior. Worked example (the only one in the repo):
-`NPDevContract/dsl/src/test/resources/specialization/valid-specialization.json:75-102`.
+`NPDevContract/dsl/src/test/resources/specialization/valid-specialization.json:195-208`
+(`SubmitMedicalInvoice specializes SubmitInvoice`, a `before`/`return-base` hook emitting
+`MedicalInvoiceCreated`).
 
 **Event-triggered orchestration rules** are model-top-level `orchestrationRules[]` — not part of any
 flow at all. Each has a trigger event, an optional condition expression over `$event`, and one or more
@@ -371,9 +381,11 @@ subscribes directly to the event bus per orchestration
 the flow engine's own subscribers, not routed through `FlowStepDefinition`/`executeSteps`. Each firing
 claims an exactly-once execution slot (`OrchestrationExecutionRegistry`, keyed by orchestration name +
 source event id) before running its actions. Worked example:
-`NPDevSamples/canonical-demo/Input/model.json:1064-1111` — `CompleteAppointmentFlow`, triggered on
-`AppointmentCompleted`, conditioned on `$event.status`, creating an `InsuranceClaim` and calling
-`notification.send`.
+`NPDevSamples/canonical-demo/Input/model.json`'s `orchestrationRules` entry `CompleteAppointmentFlow`
+— triggered on `AppointmentCompleted`, conditioned on `$event.status`, creating an `InsuranceClaim`
+and calling `notification.send`. Since DSL 2.0 (`docs/DSL2_AND_DECOMPOSITION_PLAN.md` §2.A), an
+orchestration rule's actions are always the `actions` array (a single-element list here) — the
+scalar `action` field this example originally used has been retired.
 
 **Lifecycle rule profiles** are a third, distinct "config the model, not the code" mechanism —
 `ConceptRuleProfile` (`ALWAYS`, `INTERACTIVE`, `HEADLESS`, `QUERY`, `BEFORE_COMMIT`, `AFTER_COMMIT`) —
