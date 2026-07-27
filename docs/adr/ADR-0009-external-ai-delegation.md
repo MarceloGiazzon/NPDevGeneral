@@ -98,23 +98,42 @@ its author opts in, per app, per mission, per vendor — the model-surface field
   known bugs LNCH13-F1 and R3-F2) is the control: if the model finds neither known bug, the channel
   is recorded low-yield, not "clean."
 
+## P4 addendum — NVIDIA model ceiling for this account (2026-07-27)
+
+After the real P4 calibration runs (0/4, see the plan's P4 row), an attempt was made to re-run
+`M0-CALIB-LNCH13` against a stronger NVIDIA model in case `meta/llama-3.3-70b-instruct` itself was
+the low-yield variable. Three candidates were tried against the real, configured API key —
+`nvidia/llama-3.1-nemotron-70b-instruct`, `moonshotai/kimi-k2.6` (twice, including a user-supplied
+"confirmed working" request shape) — and all three failed identically: `404 Function '<id>': Not
+found for account '<account-id>'`. A direct query of NVIDIA Build's own `GET /v1/models` endpoint
+against the same key confirmed both rejected model IDs are nonetheless *listed* in the account's
+catalog response — meaning that endpoint reflects NVIDIA's public catalog, not this account's actual
+invocation entitlements, and there is no API-visible way to tell the two apart in advance. Rather
+than keep spending real vendor calls on further guesses, the owner decided (2026-07-27) to accept
+`meta/llama-3.3-70b-instruct` as this account's practical ceiling and let the original P4 result
+stand as-is. **This is an account-provisioning limit, not a finding about model capability or about
+the calibration methodology** — it does not change the P4 low-yield verdict or loosen honesty rule 4.
+The three failed re-calibration attempts produced pack files but no verdicts (no vendor response was
+received), left at
+`D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\external-ai-review\packs-recalib\` for provenance.
+
 ## Decision block
 
 ```
 Decision: [ ] APPROVED   [x] APPROVED WITH CONDITIONS   [ ] REJECTED   [ ] PENDING
 Owner: Marcelo Giazzon
-Date:  2026-07-26
-Conditions: D3/D4/D5 remain open (see table). No real vendor network call until D3 is answered
-            and real API keys are supplied for the D1 vendors -- that boundary is independent of
-            which phases are otherwise implemented (owner explicitly chose "build P0-P9 together"
-            for everything else).
+Date:  2026-07-26 (D3 resolved 2026-07-27)
+Conditions: D4/D5 remain open (see table). Real vendor network calls are now policy-authorized
+            (D3) with working API keys in place (D1/D2), but each ACTUAL send still requires an
+            explicit go-ahead at the moment it happens (honesty rule 6 -- egress is a publish
+            action, not something a resolved policy pre-authorizes silently forever).
 ```
 
 | # | Question | Status |
 |---|---|---|
-| D1 | Which external vendor(s)? | **ANSWERED 2026-07-26: OpenAI, Google Gemini, xAI Grok** (three, expanded from the plan's recommended two) |
+| D1 | Which external vendor(s)? | **ANSWERED 2026-07-26, REVISED 2026-07-26: NVIDIA Build (`nvidia`, OpenAI-compatible via `https://integrate.api.nvidia.com/v1/chat/completions`) + Google Gemini** — replaces the original "OpenAI, Google Gemini, xAI Grok" answer; owner does not hold OpenAI/xAI accounts, provided a real NVIDIA Build key (named `NVIDIABuild-Autogen-25`) and a real Gemini key instead. Down from three vendors to two — the multi-vendor mitigation (§6) still holds with two, just with a smaller sample |
 | D2 | Transport: API key or manual paste? | **ANSWERED 2026-07-26: API key integration** (`external-ai-http` is the primary transport; `external-ai-inproc` paste-transport still built as the fail-safe/offline twin, mirroring the `mail-inproc`/`mail-smtp` pair) |
-| D3 | Egress authorization for NPDev's own source (code excerpts approved; `.env`/keys/DB dumps hard-blocked regardless) | PENDING — blocks P3 (platform producer) and P4/P5 (any real mission run) |
+| D3 | Egress authorization for NPDev's own source | **ANSWERED 2026-07-27: approved, per the plan's own drafted recommendation** — code excerpts (the curated `packContents` a mission profile already declares) may be sent to the D1 vendors; `.env`/keys/DB dumps remain hard-blocked regardless, enforced by the sanitizer (secret-content-patterns.json) independent of this decision. Rationale unchanged from the plan: ADR-0007 already ratified Apache-2.0 source-first distribution, so this code is destined to be public — low IP risk in a vendor seeing curated excerpts of it early. This unblocks P4 (calibration) and, once P4 actually completes, P5 (M1–M6) — see the mission run records for each mission's remaining individual blockers |
 | D4 | REG-17 DoD ruling — does M4 close REG-17 or only advance it? | PENDING |
 | D5 | E5 real participants — permanently open, or schedule sessions? | PENDING |
 | D6 | Feature scope: missions only (M1–M7), or also a general flow step? | **ANSWERED 2026-07-26: missions only** — no per-record flow-step primitive in this pass |
@@ -124,7 +143,9 @@ P1 (`ExternalAiCapabilityContract`, `CapabilityContractCatalog` registration, `e
 `external-ai-http`) is built on these answers — RED-first proof that `submitPack` denies by default,
 plus both adapters' own test suites, all green (`NPDevKernel/kernel`,
 `NPDevKernel/adapters/external-ai-inproc`, `NPDevKernel/adapters/external-ai-http`). The HTTP
-adapter is config-driven (`ExternalAiVendorProfile`) with default public endpoints for the three D1
-vendors; it fails closed with a distinct error code both when a mission names an unconfigured
-vendor and when the configured API-key environment variable is unset, so no code path exists that
-sends anything before D3 is answered and real keys are supplied.
+adapter is config-driven (`ExternalAiVendorProfile`) with default public endpoints for the two D1
+vendors (revised); it fails closed with a distinct error code both when a mission names an unconfigured
+vendor and when the configured API-key environment variable is unset. With D1-D3 now all answered and
+real keys configured, no policy gate remains against a real send -- the only remaining gate is the
+explicit go-ahead at the moment of each actual call, which this ADR's honesty rule 6 makes a
+standing requirement, not a one-time approval.

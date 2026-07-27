@@ -46,7 +46,7 @@ try {
     try {
         foreach ($mission in $missionsData.missions) {
             $missionFile = Join-Path $tempDir ($mission.missionId + ".json")
-            $mission | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $missionFile -Encoding UTF8
+            $mission | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $missionFile -Encoding utf8NoBOM
             & pwsh -NoProfile -File "scripts/quality/Invoke-JsonSchemaValidation.ps1" -SchemaPath $missionSchema -InstancePath $missionFile | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 $failures += "mission $($mission.missionId) fails external-ai-mission.schema.json"

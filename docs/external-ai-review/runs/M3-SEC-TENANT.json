@@ -1,6 +1,11 @@
 {
   "missionId": "M3-SEC-TENANT",
-  "runStatus": "NOT_RUN",
-  "notRunReason": "Blocked on ADR-0009 D3 (egress authorization for NPDev's own source) and real vendor API keys.",
-  "runAt": "2026-07-26T00:00:00Z"
+  "runStatus": "RUN",
+  "packManifestSha256": "1cd5cd29803b57c9b44baafe880f2b14357b1b620873c7434d8c8d2ebb53dd90",
+  "verdictRecordKind": "external-ai-verdict",
+  "vendors": [
+    "gemini",
+    "nvidia"
+  ],
+  "runAt": "2026-07-27T04:32:36.160082+00:00"
 }

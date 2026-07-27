@@ -1,6 +1,16 @@
 {
   "missionId": "M5-COLDSTART-DOCS",
-  "runStatus": "NOT_RUN",
-  "notRunReason": "Blocked on ADR-0009 D3 and real vendor API keys.",
-  "runAt": "2026-07-26T00:00:00Z"
+  "runStatus": "RUN",
+  "packManifestSha256": "808ade3dd9dc7b0d18acb8c4a2b84a466d7e00dfab213f90fc62e021e44e06da",
+  "recordKind": "external-ai-coldstart-run",
+  "vendors": [
+    "nvidia"
+  ],
+  "vendor": "nvidia",
+  "model": "meta/llama-3.3-70b-instruct",
+  "details": {
+    "validationStatus": "warning",
+    "validationErrorCount": 0
+  },
+  "runAt": "2026-07-27T04:33:06.330022+00:00"
 }
