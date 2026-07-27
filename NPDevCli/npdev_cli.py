@@ -586,6 +586,88 @@ def migrate_legacy_model(args: argparse.Namespace) -> None:
     print(str(target))
 
 
+def run_migrate_dsl2(args: argparse.Namespace) -> int:
+    """2.A.3 (docs/DSL2_AND_DECOMPOSITION_PLAN.md): rewrite flowStep.type spellings and field
+    aliases to their DSL 2.0 canonical form, across one or more files/directories. Dry-run by
+    default (reports what would change); pass --write to apply. See dsl_v2_migration.py's module
+    docstring for the full design: idempotent, structural (never a blind key-value replace), and
+    refuses to touch anything it detects as a serialized compiled-model fixture rather than a raw
+    authored document.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from dsl_v2_migration import migrate_document  # local import: keep this optional dependency
+
+    inputs = [Path(p).expanduser().resolve() for p in args.input]
+    files: list[Path] = []
+    for p in inputs:
+        if p.is_dir():
+            files.extend(sorted(p.rglob("*.json")))
+        elif p.is_file():
+            files.append(p)
+        else:
+            print(f"npdev migrate dsl-2: input not found: {p}", file=sys.stderr)
+            return 2
+
+    changed_count = 0
+    compiled_skipped_count = 0
+    ambiguous_count = 0
+    unchanged_count = 0
+    invalid_count = 0
+    report_entries = []
+
+    for f in files:
+        try:
+            doc = read_json(f)
+        except CliError as exc:
+            invalid_count += 1
+            print(f"  [SKIP] {f}: {exc}", file=sys.stderr)
+            continue
+        if not isinstance(doc, dict):
+            continue
+
+        result = migrate_document(doc)
+        report_entries.append({
+            "file": str(f),
+            "changed": result.changed,
+            "isCompiled": result.is_compiled,
+            "changes": result.changes,
+            "ambiguities": result.ambiguities,
+        })
+
+        if result.is_compiled:
+            compiled_skipped_count += 1
+            continue
+        if result.ambiguities:
+            ambiguous_count += 1
+            for a in result.ambiguities:
+                print(f"  [AMBIGUOUS] {f}: {a}")
+        if result.changed:
+            changed_count += 1
+            verb = "CHANGED" if args.write else "WOULD CHANGE"
+            for c in result.changes:
+                print(f"  [{verb}] {f}: {c}")
+            if args.write:
+                f.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+        else:
+            unchanged_count += 1
+
+    print(
+        f"\n{len(files)} file(s) scanned: {changed_count} changed, {compiled_skipped_count} "
+        f"compiled-model (skipped), {ambiguous_count} with ambiguities left untouched, "
+        f"{unchanged_count} already canonical, {invalid_count} invalid JSON (skipped)"
+    )
+    if not args.write and changed_count > 0:
+        print("Dry run -- pass --write to apply.")
+
+    if args.report:
+        report_path = Path(args.report).expanduser()
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report_entries, indent=2) + "\n", encoding="utf-8")
+        print(f"Report written: {report_path}")
+
+    return 1 if invalid_count > 0 else 0
+
+
 def write_temp_model(model: dict, target: Path) -> Path:
     temp = target.parent / (target.name + ".validation.tmp")
     temp.parent.mkdir(parents=True, exist_ok=True)
@@ -938,6 +1020,17 @@ def build_parser() -> argparse.ArgumentParser:
     migrate_legacy.add_argument("--input", required=True)
     migrate_legacy.add_argument("--output", required=True)
 
+    migrate_dsl2 = migrate_sub.add_parser("dsl-2")
+    migrate_dsl2.add_argument(
+        "--input", required=True, nargs="+",
+        help="one or more files or directories (searched recursively for *.json) to migrate",
+    )
+    migrate_dsl2.add_argument(
+        "--write", action="store_true",
+        help="apply changes in place; without this flag, reports what would change and exits",
+    )
+    migrate_dsl2.add_argument("--report", help="write a JSON report of every file's outcome to this path")
+
     migration = subparsers.add_parser("migration")
     migration_sub = migration.add_subparsers(dest="migration_command")
     migration_diff = migration_sub.add_parser("diff")
@@ -1013,6 +1106,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "migrate" and args.migrate_command == "legacy-model":
             migrate_legacy_model(args)
             return 0
+        if args.command == "migrate" and args.migrate_command == "dsl-2":
+            return run_migrate_dsl2(args)
         if args.command == "migration" and args.migration_command == "diff":
             run_migration_diff(args)
             return 0
