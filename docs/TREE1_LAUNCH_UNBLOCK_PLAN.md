@@ -443,8 +443,16 @@ so. A heading-level change can make a gate parse zero rows and still exit 0.
 **Why.** The current README opens on Box/Object/Truth, the T0–T6 ladder, and an
 Application-Box → Module-Box hierarchy. Verified against the code:
 
-- `"box"` appears **0 times** in `model.schema.json`
-- `TruthLevel.java` exists and is referenced in **0 files** across generator, kernel, and runtime host
+- `"box"` appears **0 times** in `model.schema.json` — the Box/Object hierarchy itself is genuinely
+  not implemented.
+- **Correction (found during T1.13, 2026-07-27):** the original claim here — "`TruthLevel.java`
+  exists and is referenced in 0 files across generator, kernel, and runtime host" — was wrong.
+  `truthLevel` IS in the schema (all four copies) and IS enforced: `SemanticValidator` warns on an
+  upward truth edge, and `ReleaseGateValidator.validatePromotion` hard-blocks a promotion when the
+  reachable bond closure's truth level is below the target (`NPDevContract/docs/BONDS.md` Phase 6,
+  DONE, tested). So "Truth" specifically has a real, if partial, implementation; it's the Box/Object
+  *hierarchy* that doesn't exist. The README rewrite below states this distinction accurately rather
+  than repeating the blanket claim.
 
 So the front door describes an architecture that is not implemented, and says nothing about what
 NPDev does, who it is for, or how to run it. There is no quickstart, no screenshot, no limitations
