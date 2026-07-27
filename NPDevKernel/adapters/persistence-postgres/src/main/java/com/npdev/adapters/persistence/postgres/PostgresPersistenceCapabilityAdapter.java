@@ -5,6 +5,7 @@ import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledLifecycle;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.kernel.ports.PersistenceCapabilityContract;
 import com.npdev.kernel.ports.TenantScope;
 import com.npdev.kernel.ports.TenantScopedPersistenceCapabilityContract;
@@ -404,6 +405,23 @@ public final class PostgresPersistenceCapabilityAdapter
 
     private static final String TENANT_COLUMN = "tenant_id";
 
+    /**
+     * REG-50(a): a genuine metadata-query failure must never be treated the same as "this table
+     * legitimately has no tenant_id column" -- the latter falls back to the unscoped overload by
+     * design (internal/shared tables), the former must fail closed instead. Owner's decision: a
+     * tri-state (not blanket fail-closed for every metadata failure everywhere), matching REG-43's
+     * precedent that blanket fail-closed bricks apps/tables that were never meant to be scoped.
+     */
+    private static void enforceMetadataAvailableForTenantScoping(TableColumns tableColumns, String table, String operation) {
+        if (tableColumns.queryFailed()) {
+            throw new IllegalStateException(
+                    "Cannot verify tenant scoping for table " + table + " (" + operation + "): "
+                            + "table-metadata query failed, so whether this table has a tenant_id "
+                            + "column is unknown -- refusing rather than silently falling back to "
+                            + "an unscoped operation.");
+        }
+    }
+
     @Override
     public Object save(TenantScope scope, Object entity) {
         return save(stampTenant(entity, scope.tenantId()));
@@ -417,6 +435,7 @@ public final class PostgresPersistenceCapabilityAdapter
         String table = tableName(concept);
         try (Connection c = dataSource.getConnection()) {
             TableColumns tableColumns = resolveTableColumns(c, table);
+            enforceMetadataAvailableForTenantScoping(tableColumns, table, "findById");
             if (!tableColumns.hasColumn(TENANT_COLUMN)) {
                 return findById(concept, id);
             }
@@ -452,6 +471,7 @@ public final class PostgresPersistenceCapabilityAdapter
         String table = tableName(concept);
         try (Connection c = dataSource.getConnection()) {
             TableColumns tableColumns = resolveTableColumns(c, table);
+            enforceMetadataAvailableForTenantScoping(tableColumns, table, "delete");
             if (!tableColumns.hasColumn(TENANT_COLUMN)) {
                 return delete(concept, id);
             }
@@ -478,6 +498,7 @@ public final class PostgresPersistenceCapabilityAdapter
         }
         try (Connection connection = dataSource.getConnection()) {
             TableColumns tableColumns = resolveTableColumns(connection, table);
+            enforceMetadataAvailableForTenantScoping(tableColumns, table, "exists");
             if (!tableColumns.hasColumn(TENANT_COLUMN)) {
                 return exists(concept, field, value);
             }
@@ -539,12 +560,20 @@ public final class PostgresPersistenceCapabilityAdapter
     }
 
     private static TableColumns loadTableColumns(Connection connection, String table) {
+        DatabaseMetaData metaData;
         try {
-            DatabaseMetaData metaData = connection.getMetaData();
-            if (metaData == null) {
-                return TableColumns.unavailable();
-            }
+            metaData = connection.getMetaData();
+        } catch (SQLException exception) {
+            // REG-50(a): the metadata query itself could not even start -- a genuine failure, not
+            // "this table has no columns". Must never be treated the same as the latter for a
+            // tenant-scoped table's fallback check.
+            return TableColumns.queryFailedResult();
+        }
+        if (metaData == null) {
+            return TableColumns.queryFailedResult();
+        }
 
+        try {
             TableColumns columns = readColumns(metaData, null, table);
             if (!columns.isEmpty()) {
                 return columns;
@@ -559,10 +588,14 @@ public final class PostgresPersistenceCapabilityAdapter
             if (!columns.isEmpty()) {
                 return columns;
             }
-        } catch (SQLException ignored) {
-            // fallback below
+        } catch (SQLException exception) {
+            // REG-50(a): the catalog query threw mid-read -- also a genuine failure, distinct from
+            // all three case variants legitimately returning zero columns (a real "no such table").
+            return TableColumns.queryFailedResult();
         }
 
+        // All three case variants queried successfully and genuinely found zero columns -- a real
+        // "no such table", not a failure. Legitimate for a table that was never tenant-scoped.
         return TableColumns.unavailable();
     }
 
@@ -625,9 +658,15 @@ public final class PostgresPersistenceCapabilityAdapter
 
     private static Map<String, Object> normalizeCriteria(String table, Map<String, Object> runtimeCriteria, TableColumns tableColumns) {
         if (!tableColumns.isAvailable()) {
+            // REG-50(b): metadata is unavailable, so there is no catalog to cross-check a derived
+            // column name against -- route through the SAME whitelist "Runtime/generated SQL"
+            // identifiers already use elsewhere in the platform (SqlIdentifierSupport, per
+            // docs/REG16_POSTGRES_ADAPTER_SQL_ADVERSARIAL_REVIEW.md's "two independent whitelists"),
+            // not a third, bespoke one. safeSqlIdentifier coerces to [a-z0-9_]+ and enforces
+            // Postgres's 63-char identifier limit; a hostile field name can never reach SQL text.
             LinkedHashMap<String, Object> dbCriteria = new LinkedHashMap<>();
             for (Map.Entry<String, Object> entry : runtimeCriteria.entrySet()) {
-                dbCriteria.put(toDbColumn(entry.getKey()), entry.getValue());
+                dbCriteria.put(SqlIdentifierSupport.safeSqlIdentifier(entry.getKey()), entry.getValue());
             }
             return dbCriteria;
         }
@@ -653,7 +692,8 @@ public final class PostgresPersistenceCapabilityAdapter
 
     private static String resolveCriteriaColumn(String table, String runtimeField, TableColumns tableColumns) {
         if (!tableColumns.isAvailable()) {
-            return toDbColumn(runtimeField);
+            // REG-50(b): see normalizeCriteria's identical comment above.
+            return SqlIdentifierSupport.safeSqlIdentifier(runtimeField);
         }
 
         String column = resolveColumn(table, runtimeField, tableColumns);
@@ -706,9 +746,11 @@ public final class PostgresPersistenceCapabilityAdapter
     }
 
     private static Map<String, Object> dbColumnRecord(Map<String, Object> runtimeRecord) {
+        // REG-50(b): same unavailable-metadata fallback as normalizeCriteria/resolveCriteriaColumn --
+        // same whitelist, same reasoning.
         LinkedHashMap<String, Object> dbRecord = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : runtimeRecord.entrySet()) {
-            dbRecord.put(toDbColumn(entry.getKey()), entry.getValue());
+            dbRecord.put(SqlIdentifierSupport.safeSqlIdentifier(entry.getKey()), entry.getValue());
         }
         return dbRecord;
     }
@@ -1118,11 +1160,30 @@ public final class PostgresPersistenceCapabilityAdapter
 
     private static final class TableColumns {
         private final boolean available;
+        // REG-50(a): tri-state -- distinguishes "queried the catalog successfully, this table
+        // genuinely has zero/no such columns" (available=false, queryFailed=false -- a legitimate
+        // state for a table that was never meant to be tenant-scoped) from "the metadata query
+        // itself threw/couldn't run" (queryFailed=true -- a transient failure that must never be
+        // silently treated the same as the first case for a table that SHOULD be tenant-scoped).
+        private final boolean queryFailed;
         private final Map<String, String> columnsByLowerName = new LinkedHashMap<>();
         private final Map<String, String> columnsByRuntimeFieldLowerName = new LinkedHashMap<>();
 
         private TableColumns(boolean available) {
+            this(available, false);
+        }
+
+        private TableColumns(boolean available, boolean queryFailed) {
             this.available = available;
+            this.queryFailed = queryFailed;
+        }
+
+        static TableColumns queryFailedResult() {
+            return new TableColumns(false, true);
+        }
+
+        boolean queryFailed() {
+            return queryFailed;
         }
 
         static TableColumns unavailable() {

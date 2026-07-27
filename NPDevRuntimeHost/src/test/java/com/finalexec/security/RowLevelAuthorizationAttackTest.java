@@ -292,6 +292,44 @@ class RowLevelAuthorizationAttackTest {
                         + "too late, after already touching user A's row data");
     }
 
+    /**
+     * REG-48 (delete-side twin of REG-41 / LNCH13-F2): {@code DefaultConceptGateway.delete()} runs
+     * {@code evaluateRuleProfiles} (concept invariants) against the row's CURRENT data BEFORE
+     * {@code enforcePermission}/{@code enforceRowWritable}. A concept-level invariant's rejection
+     * detail (its name/expression) reveals something true about the row's current state to a caller
+     * who has not yet been authorized to touch it at all -- the same class of leak REG-41 closed for
+     * {@code save()}, never applied to {@code delete()}.
+     *
+     * <p>{@code Vault.locked} models a "must be unlocked before deletion" invariant
+     * ({@code locked == 'false'}). The row is seeded directly through the store (bypassing the
+     * gateway, since the gateway's own create path would reject seeding a locked vault under the
+     * same invariant) in a LOCKED state. User B, who owns nothing here, attempts to delete it: before
+     * the fix, the invariant evaluates against the real data and denies with
+     * {@code CONCEPT_INVARIANT_REJECTED} -- telling B the vault is currently locked -- before
+     * authorization ever runs. After the fix, authorization must deny first with
+     * {@code ROW_SCOPE_DENIED}, and the invariant must never be reached for an unauthorized caller.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("vaultAdapters")
+    void unauthorizedDeleteIsRowScopeDeniedBeforeInvariantValidationLeaksTheRowsLockedState(Supplier<ConceptStore> storeFactory) {
+        ConceptStore store = storeFactory.get();
+        DefaultConceptGateway gateway = vaultGatewayOver(store);
+        String aId = seedLockedVault(store, USER_A);
+
+        RuntimeException thrown = assertThrows(RuntimeException.class,
+                () -> gateway.delete(new ConceptReadRequest(VAULT, aId, null), USER_B),
+                "user B must not be able to delete user A's Vault, regardless of its locked state");
+
+        assertTrue(thrown instanceof ConceptGatewayAccessDeniedException,
+                "row-scope authorization must deny BEFORE invariant validation ever runs -- got "
+                        + thrown.getClass().getSimpleName() + ": " + thrown.getMessage());
+        assertEquals("ROW_SCOPE_DENIED", ((ConceptGatewayAccessDeniedException) thrown).code());
+        assertFalse(thrown instanceof ConceptGatewaySemanticException,
+                "must not be the invariant-rejection exception -- that would mean authorization ran "
+                        + "too late, after already evaluating a rule against user A's row data, leaking "
+                        + "that the vault is currently locked to a caller with zero access to it");
+    }
+
     @ParameterizedTest(name = "{0}")
     @MethodSource("adapters")
     void userBCannotDeleteUserARow(Supplier<ConceptStore> storeFactory) {
@@ -307,6 +345,75 @@ class RowLevelAuthorizationAttackTest {
     }
 
     // --- helpers -----------------------------------------------------------------------------
+
+    private static final String VAULT = "Vault";
+
+    static Stream<Arguments> vaultAdapters() {
+        return Stream.of(
+                Arguments.of(Named.of("InMemory adapter", (Supplier<ConceptStore>) RowLevelAuthorizationAttackTest::newInMemoryVaultStore)),
+                Arguments.of(Named.of("JDBC/H2 adapter", (Supplier<ConceptStore>) RowLevelAuthorizationAttackTest::newJdbcVaultStore))
+        );
+    }
+
+    private static DefaultConceptGateway vaultGatewayOver(ConceptStore store) {
+        ConceptGatewaySemanticPolicy policy = RuntimeConceptGatewaySemanticPolicies.fromCompiledModel(vaultModel());
+        return new DefaultConceptGateway(
+                store,
+                PermissionEvaluator.allowAll(),
+                TenantIsolationPolicy.STRICT_EQUALS,
+                AuditLogStore.noop(),
+                policy,
+                com.npdev.kernel.concepts.ConceptGatewayTraceSink.noop()
+        );
+    }
+
+    private static CompiledModel vaultModel() {
+        CompiledConcept vault = new CompiledConcept(
+                VAULT, VAULT, "vaults",
+                List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("ownerId", "string", "String", false, true, false),
+                        new CompiledField("locked", "string", "String", false, true, false)
+                ),
+                List.of("locked == 'false'"),
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                new CompiledConceptAccess(null, "ownerId == $user.id")
+        );
+        return new CompiledModel("row.level.attack.vault", "1.0.0", "1.0.0", Map.of(vault.getName(), vault));
+    }
+
+    /** Seeds a LOCKED vault directly through the store, bypassing the gateway -- the gateway's own
+     *  create path would itself reject seeding a locked row under the same invariant this test needs
+     *  to already be violated when the (unauthorized) delete attempt runs. */
+    private static String seedLockedVault(ConceptStore store, ExecutionContext owner) {
+        String id = UUID.randomUUID().toString();
+        store.save(new ConceptRecord(VAULT, id, TENANT, Map.of("id", id, "ownerId", owner.actorId(), "locked", "true")));
+        return id;
+    }
+
+    private static ConceptStore newInMemoryVaultStore() {
+        return new InMemoryConceptStore(vaultModel());
+    }
+
+    private static ConceptStore newJdbcVaultStore() {
+        try {
+            String url = "jdbc:h2:mem:row-level-attack-vault-" + System.nanoTime() + ";DB_CLOSE_DELAY=-1";
+            DataSource dataSource = new SingleConnectionUrlDataSource(url);
+            try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+                statement.execute(
+                        "CREATE TABLE vaults (id UUID NOT NULL, owner_id VARCHAR(255), locked VARCHAR(20), "
+                                + "tenant_id VARCHAR(120) NOT NULL, PRIMARY KEY (id))");
+            }
+            return new JdbcBusinessConceptStore(dataSource, vaultModel());
+        } catch (SQLException exception) {
+            throw new IllegalStateException("failed to build H2-backed JDBC concept store", exception);
+        }
+    }
 
     static Stream<Arguments> ticketAdapters() {
         return Stream.of(

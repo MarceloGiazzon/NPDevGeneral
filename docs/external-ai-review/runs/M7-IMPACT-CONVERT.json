@@ -1,6 +1,10 @@
 {
   "missionId": "M7-IMPACT-CONVERT",
-  "runStatus": "NOT_RUN",
-  "notRunReason": "Product feature (P6/P7) is built and verified, but this mission has not been exercised against any real generated app's Impact Report -- no MANUAL_REVIEW instance has been built into a pack yet. Not gated by D3 (product instance, not platform).",
-  "runAt": "2026-07-27T02:56:34.405250+00:00"
+  "runStatus": "RUN",
+  "packManifestSha256": "0a55cb414c16dac3d705879e2e8e80b546926d1562236d2d4e2a8e802a3dbe85",
+  "verdictRecordKind": "external-ai-verdict",
+  "vendors": [
+    "nvidia"
+  ],
+  "runAt": "2026-07-27T08:10:20.474507+00:00"
 }

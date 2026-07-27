@@ -1187,6 +1187,37 @@ ran and hit finding #1 above; `run-frontend-gate.ps1`/`run-beta-release-gate.ps1
 (time budget, the latter is an explicitly long-running multi-script evidence orchestration). Every
 question the tester had to ask is logged in `friction-log-task-c.md`.
 
+### External-AI cold-start finding, 2026-07-27 (M5-COLDSTART-DOCS, ADR-0009)
+
+Per `docs/EXTERNAL_TESTER_COLDSTART.md`'s own "After the run" rule (friction becomes a dated finding
+here, not silently patched) and `docs/adr/ADR-0009-external-ai-delegation.md`'s M5 mission: a
+genuinely repo-blind external AI vendor (NVIDIA Build, `meta/llama-3.3-70b-instruct`, zero filesystem/
+network/tool access) was given only `docs/TUTORIAL_FIRST_APP.md` + `docs/DSL_REFERENCE.md` and asked
+to author a `model.json` for the tutorial's own target app. This is a genuine strengthening of
+LNCH-18/22's own closure (`docs/external-ai-review/runs/M5-COLDSTART-DOCS.json`) — those were closed
+by a same-sandbox subagent (the register's own "subagent-as-tester approximation"); this is the first
+run by a model with no path back to this repo at all.
+
+**Result: real success, one real friction point.** The authored model correctly named the concept
+`ContactMessage` with the tutorial's exact fields (`name`, `email`, `message`, `status`) and validated
+against the platform's own real semantic validator (`status: "warning"`, not `"failed"`) — a blind
+author, from docs alone, produced a structurally and semantically correct model. The warnings were all
+the same shape:
+
+1. **Neither tutorial doc mentions `ui.label` at all**, so a blind author has no way to know
+   presentation metadata is expected — `missing_concept_label` (the `ContactMessage` concept itself)
+   and `missing_field_label` (all 4 non-id fields: `name`, `email`, `message`, `status`) all fired.
+   Not a launch blocker (the validator reports these as warnings, generation still proceeds with a
+   sensible default label), but a real, reproducible cold-start gap: a newcomer following the tutorial
+   literally ends up with an app that generates fine but carries validator warnings they were never
+   told to expect or address.
+
+**Not yet actioned** — filed per the same discipline as the 2026-07-22 findings above ("do not
+silently patch"). Fix sketch, if picked up: either `TUTORIAL_FIRST_APP.md`'s own model example should
+include `ui.label` on the concept/fields it shows (so a literal-copy author gets a clean validation),
+or `DSL_REFERENCE.md`'s concept/field sections should call out that presentation metadata is expected
+and why. Full verdict + validation report: `NPDev_General__OutsideRepo/external-ai-review/packs/M5-COLDSTART-DOCS/*-nvidia-{authored-model,validation-report}.json`.
+
 ### LNCH-23 — Launch checklist: license, packaging, telemetry, release process
 
 **Status:** DONE (2026-07-22) · **Priority:** P2 · **Effort:** M (mostly decisions)
