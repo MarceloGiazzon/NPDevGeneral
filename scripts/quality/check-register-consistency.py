@@ -351,6 +351,72 @@ def mission_run_coverage_gaps(root: Path) -> list[str]:
     return gaps
 
 
+def provenance_audit_gaps(root: Path) -> list[str]:
+    """ADR-0009 / REG-51 residual (`docs/REMAINDER_CLOSURE_PLAN.md` §3.4): defence-in-depth BEHIND
+    the build-time refusal `build-review-pack.py`'s `resolve_provenance()` already enforces.
+
+    That refusal stops a NEW pack from ever being built against stale generated-app output -- the
+    exact class of false positive REG-49 turned out to be. This instead re-audits EXISTING run
+    records (`docs/external-ai-review/runs/*.json`, tracked in the repo) against their backing pack
+    file, when that evidence still happens to be on disk: packs are evidence, kept OUTSIDE the repo
+    at `<repo>__OutsideRepo/external-ai-review/packs/<missionId>/<packManifestSha256>.json`, not
+    guaranteed to survive indefinitely or be present on every checkout.
+
+    A run record whose pack file is NOT found locally is never flagged: an absent file is not proof
+    of anything wrong, and treating it as one would manufacture exactly the false-positive class
+    this project's own lesson #4 warns against ("a gate that cries wolf gets bypassed"). Only a pack
+    that IS found and reads `source.stale: true`, or is `source.kind: "generated-app"` without
+    `provenanceVerified: true`, is a real finding: the run record's own verdict may be untrustworthy.
+    """
+    runs_dir = root / "docs" / "external-ai-review" / "runs"
+    if not runs_dir.is_dir():
+        return []
+    packs_dir = root.parent / f"{root.name}__OutsideRepo" / "external-ai-review" / "packs"
+    gaps: list[str] = []
+    for run_file in sorted(runs_dir.glob("*.json")):
+        try:
+            record = json.loads(run_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue  # already reported by mission_run_coverage_gaps
+        if record.get("runStatus") != "RUN":
+            continue
+        # Same discipline as mission_run_coverage_gaps' notRunReason: a limitation is not a gap once
+        # it is disclosed in the TRACKED record itself, not only in external (not-guaranteed-present)
+        # pack evidence -- that disclosure is the actual fix for the blind spot (info sitting in one
+        # place, checked in another). Simple substring match, not a new enum: this mirrors the
+        # existing note field's own free-text convention rather than inventing a stricter one.
+        if "provenance" in str(record.get("note", "")).lower():
+            continue
+        mission_id = record.get("missionId", run_file.stem)
+        pack_hash = record.get("packManifestSha256")
+        if not pack_hash:
+            continue
+        pack_file = packs_dir / mission_id / f"{pack_hash}.json"
+        if not pack_file.is_file():
+            continue  # evidence not available on this checkout -- not a finding
+        try:
+            pack = json.loads(pack_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            gaps.append(f"docs/external-ai-review/runs/{run_file.name}: backing pack "
+                        f"{pack_file} is not valid JSON: {exc}")
+            continue
+        source = pack.get("source", {})
+        if source.get("stale"):
+            gaps.append(
+                f"docs/external-ai-review/runs/{run_file.name}: backing pack ({pack_file.name}) is "
+                f"marked source.stale=true -- this run's verdict was produced from generated code "
+                f"that predates a relevant template fix (the REG-49 false-positive class). Re-run "
+                f"the mission against freshly generated output before trusting this record."
+            )
+        elif source.get("kind") == "generated-app" and not source.get("provenanceVerified"):
+            gaps.append(
+                f"docs/external-ai-review/runs/{run_file.name}: backing pack ({pack_file.name}) is "
+                f"source.kind=generated-app but provenanceVerified is not true -- provenance was "
+                f"never actually checked for this run."
+            )
+    return gaps
+
+
 def check_plan_status_banners(root: Path, verbose: bool) -> list[str]:
     """Every planning document must declare its tense in its first few lines.
 
@@ -407,6 +473,7 @@ def main(argv: list[str]) -> int:
     # same failure as a summary row nobody cross-checks.
     all_problems.extend(ledger_coverage_gaps(root))
     all_problems.extend(mission_run_coverage_gaps(root))
+    all_problems.extend(provenance_audit_gaps(root))
 
     if all_problems:
         print(f"\nFAIL: {len(all_problems)} tracking inconsistency(ies) — a summary row contradicting "

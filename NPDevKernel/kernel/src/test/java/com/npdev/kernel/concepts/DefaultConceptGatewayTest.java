@@ -6,6 +6,7 @@ import com.npdev.kernel.inproc.InMemoryConceptStore;
 import com.npdev.kernel.ports.AuditLogStore;
 import com.npdev.kernel.ports.AuditQuery;
 import com.npdev.kernel.ports.PermissionEvaluator;
+import com.npdev.kernel.ports.TenantIsolationPolicy;
 import com.npdev.kernel.security.PermissionDecision;
 import org.junit.jupiter.api.Test;
 
@@ -123,6 +124,35 @@ class DefaultConceptGatewayTest {
         assertEquals(1, audit.records.size());
         assertEquals("DENIED", audit.records.get(0).outcome());
         assertEquals("tenant_scope_denied", audit.records.get(0).reasonCode());
+    }
+
+    /**
+     * REG-52: {@code ExecutionContext}'s own constructor lowercases {@code tenantId} (REG-25), but
+     * a per-request {@code tenantId} (here on {@code ConceptReadRequest}) only ever goes through
+     * that record's own {@code normalizeOptional} -- trim only, never lowercased -- so it reaches
+     * {@code TenantIsolationPolicy.STRICT_EQUALS} in whatever case the caller supplied. Using the
+     * REAL {@code STRICT_EQUALS} (not the test-double {@code (left, right) -> left.equals(right)}
+     * used elsewhere in this file, which is the same case-sensitive shape but not the production
+     * policy) is deliberate: this proves the actual shipped policy, not a stand-in for it.
+     */
+    @Test
+    void sameTenantMatchIsCaseInsensitiveEvenWhenARequestTenantIdBypassesExecutionContextNormalization() {
+        DefaultConceptGateway gateway = new DefaultConceptGateway(
+                new InMemoryConceptStore(),
+                PermissionEvaluator.allowAll(),
+                TenantIsolationPolicy.STRICT_EQUALS,
+                AuditLogStore.noop()
+        );
+        ExecutionContext context = ExecutionContext.of("Acme", "actor-a");
+        gateway.save(new ConceptWriteRequest("UserAccount", "user-1", null, Map.of("email", "a@example.test")), context);
+
+        Optional<ConceptRecord> loaded = gateway.read(
+                new ConceptReadRequest("UserAccount", "user-1", "ACME"),
+                context
+        );
+
+        assertTrue(loaded.isPresent(), "ACME and the context's normalized acme are the same logical "
+                + "tenant -- a case difference alone must not deny the read");
     }
 
     @Test
