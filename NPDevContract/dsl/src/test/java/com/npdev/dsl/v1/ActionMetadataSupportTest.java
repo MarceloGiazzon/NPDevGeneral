@@ -110,7 +110,7 @@ class ActionMetadataSupportTest {
                           "type": "createConcept",
                           "scope": "Appointment",
                           "input": "$input",
-                          "out": "$saved",
+                          "output": "$saved",
                           "action": {
                             "label": "Persist appointment",
                             "successMessage": "Appointment persisted.",

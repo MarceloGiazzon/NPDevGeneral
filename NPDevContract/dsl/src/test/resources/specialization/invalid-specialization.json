@@ -6,8 +6,17 @@
     {
       "name": "Invoice",
       "fields": [
-        { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "code", "type": "string", "required": true }
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "required": true
+        }
       ]
     }
   ],
@@ -16,15 +25,24 @@
       "name": "InvoiceCreated",
       "version": "1.0",
       "payload": [
-        { "name": "code", "type": "string" }
+        {
+          "name": "code",
+          "type": "string"
+        }
       ]
     },
     {
       "name": "InvoiceCreatedV2",
       "specializes": "InvoiceCreated",
       "payload": [
-        { "name": "code", "type": "string" },
-        { "name": "extra", "type": "string" }
+        {
+          "name": "code",
+          "type": "string"
+        },
+        {
+          "name": "extra",
+          "type": "string"
+        }
       ]
     }
   ],
@@ -33,10 +51,18 @@
       "name": "EmitInvoice",
       "concept": "Invoice",
       "steps": [
-        { "name": "emit", "type": "event", "event": "InvoiceCreatedV2", "payload": "$input" },
-        { "name": "ret", "type": "return", "value": "$input" }
+        {
+          "name": "emit",
+          "type": "emitEvent",
+          "event": "InvoiceCreatedV2",
+          "payload": "$input"
+        },
+        {
+          "name": "ret",
+          "type": "return",
+          "value": "$input"
+        }
       ]
     }
   ]
 }
-
