@@ -9,6 +9,7 @@ import com.npdev.dsl.v1.ast.CapabilityPolicyAst;
 import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.EventAst;
 import com.npdev.dsl.v1.ast.EventPayloadAst;
+import com.npdev.dsl.v1.ast.ExternalAiAst;
 import com.npdev.dsl.v1.ast.EnumOptionAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.FlowAst;
@@ -190,6 +191,7 @@ public final class SemanticValidator {
 
         validateCapabilities(effectiveModel, errors);
         validateBindings(effectiveModel, errors);
+        validateExternalAiEgress(effectiveModel, errors);
         validateEvents(effectiveModel, errors);
         Map<String, DomainTypeAst> domainTypesByLower = validateDomainTypes(effectiveModel, errors);
         validateEntityLocalFields(effectiveModel, errors);
@@ -2799,6 +2801,25 @@ public final class SemanticValidator {
             if (!boundCapabilities.contains(capability)) {
                 errors.add("Flow references capability without binding: " + capability);
             }
+        }
+    }
+
+    /**
+     * ADR-0009: egress must not be enabled with no vendor configured. The model-level analogue of
+     * {@code ExternalAiCapabilityContract}'s fail-closed runtime default (a contract with no adapter
+     * opted in denies) -- an author who sets {@code egress} to anything but {@code denied} without
+     * naming at least one vendor in {@code externalAi.vendors} is caught here, at author time,
+     * instead of only discovering the gap when {@code external-ai-http} has no vendor profile to
+     * resolve against at runtime.
+     */
+    private static void validateExternalAiEgress(ModelAst modelAst, List<String> errors) {
+        ExternalAiAst externalAi = modelAst.getExternalAi();
+        if (externalAi == null || "denied".equalsIgnoreCase(externalAi.getEgress())) {
+            return;
+        }
+        if (externalAi.getVendors().isEmpty()) {
+            errors.add("externalAi.egress is '" + externalAi.getEgress() + "' but no vendors are declared -- "
+                    + "egress requires at least one vendor in externalAi.vendors (see ADR-0009 D1).");
         }
     }
 

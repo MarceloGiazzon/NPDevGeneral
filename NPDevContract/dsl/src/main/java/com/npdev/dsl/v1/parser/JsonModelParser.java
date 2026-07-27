@@ -241,6 +241,7 @@ public final class JsonModelParser {
                 String domainType = readText(f, "domainType");
                 String connectable = readText(f, "connectable");
                 String renamedFrom = readText(f, "renamedFrom");
+                boolean sensitive = f.has("sensitive") && f.get("sensitive").asBoolean(false);
                 SchemaAst fieldSchema = parseSchema(f, "concepts[" + name + "].fields[" + fname + "]");
                 PresentationMetadataAst fieldUi = parsePresentationMetadata(
                         f.get("ui"),
@@ -263,7 +264,8 @@ public final class JsonModelParser {
                         fieldUi,
                         connectable,
                         renamedFrom,
-                        fileMetadata
+                        fileMetadata,
+                        sensitive
                 ));
             }
 
@@ -543,6 +545,7 @@ public final class JsonModelParser {
         autoPanels.addAll(parseAutoPanels(root.get("autoPanels")));
         selectors.addAll(parseSelectors(root.get("selectors")));
         documents.addAll(parseDocuments(root.get("documents")));
+        ExternalAiAst externalAi = parseExternalAi(root.get("externalAi"));
 
         return new ModelAst(
                 namespace,
@@ -564,8 +567,22 @@ public final class JsonModelParser {
                 autoPanels,
                 selectors,
                 documents,
-                parserWarnings
+                parserWarnings,
+                externalAi
         );
+    }
+
+    /** ADR-0009: parses the optional app-level externalAi block; null if the model declares none. */
+    private static ExternalAiAst parseExternalAi(JsonNode node) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException("externalAi must be an object");
+        }
+        String egress = readText(node, "egress");
+        List<String> vendors = parseTextArray(node.get("vendors"));
+        return new ExternalAiAst(egress, vendors);
     }
 
     private static List<QueryAst> parseQueries(JsonNode node) throws IOException {

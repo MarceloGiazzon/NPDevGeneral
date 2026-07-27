@@ -21,6 +21,7 @@ public final class CompiledField {
     private final String connectable;
     private final String renamedFrom;
     private final CompiledFileMetadata file;
+    private final boolean sensitive;
 
     public CompiledField(String name, String dslType, String javaType, boolean id, boolean required, boolean unique) {
         this(name, dslType, javaType, id, required, unique, List.of(), null, null, null, null, List.of(), null);
@@ -148,6 +149,30 @@ public final class CompiledField {
             String renamedFrom,
             CompiledFileMetadata file
     ) {
+        this(name, dslType, javaType, id, required, unique, enumValues, referenceTarget, referenceSemantics,
+                domainType, schema, enumOptions, ui, connectable, renamedFrom, file, false);
+    }
+
+    /** ADR-0009: {@code sensitive} marks this field for external-AI pack redaction (model.schema.json's field.sensitive). */
+    public CompiledField(
+            String name,
+            String dslType,
+            String javaType,
+            boolean id,
+            boolean required,
+            boolean unique,
+            List<String> enumValues,
+            String referenceTarget,
+            CompiledReferenceSemantics referenceSemantics,
+            String domainType,
+            CompiledSchema schema,
+            List<CompiledEnumOption> enumOptions,
+            CompiledPresentationMetadata ui,
+            String connectable,
+            String renamedFrom,
+            CompiledFileMetadata file,
+            boolean sensitive
+    ) {
         this.name = name;
         this.dslType = dslType;
         this.javaType = javaType;
@@ -164,6 +189,7 @@ public final class CompiledField {
         this.connectable = connectable;
         this.renamedFrom = renamedFrom;
         this.file = file;
+        this.sensitive = sensitive;
     }
 
     public CompiledField(
@@ -215,4 +241,6 @@ public final class CompiledField {
     public String getRenamedFrom() { return renamedFrom; }
     /** LIFT-UPLOAD-P2: contentTypes/maxSizeBytes/multiple for a `file`-typed field; null otherwise. */
     public CompiledFileMetadata getFile() { return file; }
+    /** ADR-0009: true when this field is marked sensitive for external-AI pack redaction. */
+    public boolean isSensitive() { return sensitive; }
 }

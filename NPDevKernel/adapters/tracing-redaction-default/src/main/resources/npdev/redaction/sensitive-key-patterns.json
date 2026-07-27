@@ -1,0 +1,4 @@
+{
+  "description": "ADR-0009 / P2: the single source of 'what field-name substring counts as sensitive' for the whole redaction policy family (EventRedactionPolicy, ExecutionRedactionPolicy, TraceRedactionPolicy, and the external-AI pack redaction). Before this file existed, each of the three Default*RedactionPolicy classes carried its own private, independently-maintained copy of this list -- and had already silently drifted (the Trace policy's copy omitted 'authorization', found 2026-07-26 while building the external-AI-review feature). One list, loaded by every consumer, in whichever language it runs in (Java classpath resource here; the Python pack producer under scripts/external-review/ reads this same file by repo-relative path).",
+  "keySubstrings": ["password", "token", "secret", "authorization"]
+}

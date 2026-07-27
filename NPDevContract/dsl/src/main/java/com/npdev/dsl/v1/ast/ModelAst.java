@@ -28,6 +28,7 @@ public final class ModelAst {
     private final List<SelectorAst> selectors;
     private final List<DocumentAst> documents;
     private final List<String> parserWarnings;
+    private final ExternalAiAst externalAi;
 
     public ModelAst(String namespace, String version, List<? extends EntityAst> entities) {
         this(namespace, DEFAULT_DSL_VERSION, version, entities, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
@@ -252,6 +253,35 @@ public final class ModelAst {
             List<DocumentAst> documents,
             List<String> parserWarnings
     ) {
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                selectors, documents, parserWarnings, null);
+    }
+
+    /** ADR-0009: canonical constructor, adds {@code externalAi} (app-level egress settings). */
+    public ModelAst(
+            String namespace,
+            String dslVersion,
+            String version,
+            List<? extends EntityAst> entities,
+            List<DomainTypeAst> domainTypes,
+            List<CapabilityAst> capabilities,
+            List<CapabilityBindingAst> bindings,
+            List<EventAst> events,
+            List<FlowAst> flows,
+            List<OrchestrationAst> orchestrationRules,
+            List<QueryAst> queries,
+            List<RuleProfileAst> ruleProfiles,
+            List<ProcedureAst> procedures,
+            List<PanelAst> panels,
+            List<GuidePageAst> guidePages,
+            List<AggregateAst> aggregates,
+            List<AutoPanelAst> autoPanels,
+            List<SelectorAst> selectors,
+            List<DocumentAst> documents,
+            List<String> parserWarnings,
+            ExternalAiAst externalAi
+    ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
         this.version = version;
@@ -272,6 +302,7 @@ public final class ModelAst {
         this.selectors = new ArrayList<>(selectors);
         this.documents = new ArrayList<>(documents);
         this.parserWarnings = new ArrayList<>(parserWarnings);
+        this.externalAi = externalAi;
     }
 
     public String getNamespace() { return namespace; }
@@ -352,6 +383,11 @@ public final class ModelAst {
 
     public List<String> getParserWarnings() {
         return Collections.unmodifiableList(parserWarnings);
+    }
+
+    /** ADR-0009: app-level external-AI delegation settings, or null if the model declares none (denied by default). */
+    public ExternalAiAst getExternalAi() {
+        return externalAi;
     }
 
     private static List<ConceptAst> toConcepts(List<? extends EntityAst> source) {

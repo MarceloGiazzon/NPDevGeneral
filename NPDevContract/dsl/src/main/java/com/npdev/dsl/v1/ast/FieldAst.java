@@ -20,6 +20,7 @@ public final class FieldAst {
     private final String connectable;
     private final String renamedFrom;
     private final FileMetadataAst file;
+    private final boolean sensitive;
 
     public FieldAst(String name, String type, boolean id, boolean required, boolean unique) {
         this(name, type, id, required, unique, List.of(), null, null, null, null, List.of(), null);
@@ -140,6 +141,29 @@ public final class FieldAst {
             String renamedFrom,
             FileMetadataAst file
     ) {
+        this(name, type, id, required, unique, enumValues, referenceTarget, referenceSemantics,
+                domainType, schema, enumOptions, ui, connectable, renamedFrom, file, false);
+    }
+
+    /** ADR-0009: {@code sensitive} marks this field for external-AI pack redaction (model.schema.json's field.sensitive). */
+    public FieldAst(
+            String name,
+            String type,
+            boolean id,
+            boolean required,
+            boolean unique,
+            List<String> enumValues,
+            String referenceTarget,
+            ReferenceSemanticsAst referenceSemantics,
+            String domainType,
+            SchemaAst schema,
+            List<EnumOptionAst> enumOptions,
+            PresentationMetadataAst ui,
+            String connectable,
+            String renamedFrom,
+            FileMetadataAst file,
+            boolean sensitive
+    ) {
         this.name = name;
         this.type = type;
         this.id = id;
@@ -155,6 +179,7 @@ public final class FieldAst {
         this.connectable = connectable;
         this.renamedFrom = renamedFrom;
         this.file = file;
+        this.sensitive = sensitive;
     }
 
     public String getName() { return name; }
@@ -175,4 +200,6 @@ public final class FieldAst {
     public String getRenamedFrom() { return renamedFrom; }
     /** LIFT-UPLOAD-P2: contentTypes/maxSizeBytes/multiple for a `file`-typed field; null otherwise. */
     public FileMetadataAst getFile() { return file; }
+    /** ADR-0009: true when this field is marked sensitive for external-AI pack redaction. */
+    public boolean isSensitive() { return sensitive; }
 }

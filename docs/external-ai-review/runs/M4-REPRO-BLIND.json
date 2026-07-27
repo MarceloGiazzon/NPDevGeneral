@@ -1,0 +1,6 @@
+{
+  "missionId": "M4-REPRO-BLIND",
+  "runStatus": "NOT_RUN",
+  "notRunReason": "Blocked on ADR-0009 D3 and real vendor API keys. Also requires a clean Linux container / GH runner to execute the AI's emitted command plan, which has not been provisioned for this mission yet.",
+  "runAt": "2026-07-26T00:00:00Z"
+}

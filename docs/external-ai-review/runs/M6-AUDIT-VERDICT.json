@@ -1,0 +1,6 @@
+{
+  "missionId": "M6-AUDIT-VERDICT",
+  "runStatus": "NOT_RUN",
+  "notRunReason": "Blocked on ADR-0009 D3 and real vendor API keys. Also requires a specific evidence bundle + explicit claim list, not yet assembled for any audit round.",
+  "runAt": "2026-07-26T00:00:00Z"
+}

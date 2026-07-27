@@ -1,0 +1,6 @@
+{
+  "missionId": "M5-COLDSTART-DOCS",
+  "runStatus": "NOT_RUN",
+  "notRunReason": "Blocked on ADR-0009 D3 and real vendor API keys.",
+  "runAt": "2026-07-26T00:00:00Z"
+}

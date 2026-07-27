@@ -5,7 +5,6 @@ import com.npdev.kernel.events.EventEnvelope;
 import com.npdev.kernel.ports.EventRedactionPolicy;
 
 import java.util.LinkedHashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -73,27 +72,16 @@ public final class DefaultEventRedactionPolicy implements EventRedactionPolicy {
         if (value == null) {
             return null;
         }
-        if (isSensitiveKey(key)) {
+        if (SensitiveKeyPolicy.isSensitiveKey(key)) {
             return MASKED;
         }
         if (value instanceof String text) {
-            if (text.contains("@")) {
+            if (SensitiveKeyPolicy.looksLikeSensitiveValue(text)) {
                 return MASKED;
             }
             return text;
         }
         return value;
-    }
-
-    private static boolean isSensitiveKey(String key) {
-        if (key == null) {
-            return false;
-        }
-        String normalized = key.toLowerCase(Locale.ROOT);
-        return normalized.contains("password")
-                || normalized.contains("token")
-                || normalized.contains("secret")
-                || normalized.contains("authorization");
     }
 
     private static boolean hasDebugRole(ExecutionContext requester) {

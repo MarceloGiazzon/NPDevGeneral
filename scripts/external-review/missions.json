@@ -1,0 +1,166 @@
+{
+  "description": "ADR-0009 / PLAN_EXTERNAL_AI_REVIEW_2026-07-26.md \u00a73: the mission registry build-review-pack.py reads from. Each entry validates against NPDevContract/schemas/external-ai-mission.schema.json. paths is repo-relative; missions whose content is per-generated-app (M1, M6) or per-app-runtime (M7) deliberately leave paths empty -- supply --paths at build time.",
+  "missions": [
+    {
+      "missionId": "M0-CALIB-LNCH13",
+      "instance": "platform",
+      "closes": "calibration",
+      "isCalibration": true,
+      "gitPinned": true,
+      "status": "DRAFT",
+      "title": "Calibration control -- pre-fix parent of LNCH13-F1 (CRITICAL)",
+      "description": "Row-level write authorization bypass on flow-backed CRUD: a concept declaring a custom create/update/delete flow got ZERO row-level access.write enforcement on its generated REST endpoint. Fixed at commit 22fb5c8. sourceCommit below is that fix's direct parent (git rev-parse 22fb5c8^), i.e. the code exactly as it stood before the fix -- confirmed against this repo's real history on 2026-07-26, not invented.",
+      "sourceCommit": "aeccb9597f2559ab5726bd4dcf00864c4f3df831",
+      "paths": [
+        "NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache"
+      ],
+      "packContents": ["service-base.mustache at the pre-fix parent of 22fb5c8 (LNCH13-F1)"],
+      "excluded": [
+        "every findings doc",
+        "NPDEV_OPEN_ITEMS_REGISTER.md",
+        "the fix commit and its message",
+        "docs/REG16_FLOW_ORCHESTRATION_ADVERSARIAL_REVIEW.md"
+      ],
+      "vendorRequirements": { "minVendors": 1 }
+    },
+    {
+      "missionId": "M0-CALIB-R3F2",
+      "instance": "platform",
+      "closes": "calibration",
+      "isCalibration": true,
+      "gitPinned": true,
+      "status": "DRAFT",
+      "title": "Calibration control -- pre-fix parent of R3-F2 (HIGH)",
+      "description": "Every many-to-many bond in every generated app exposed four HTTP endpoints with zero authorization. Fixed at commit 75c1b40. sourceCommit below is that fix's direct parent (git rev-parse 75c1b40^) -- confirmed against this repo's real history on 2026-07-26.",
+      "sourceCommit": "0116353046de089d0e1b92433d0857b90f9b74e2",
+      "paths": [
+        "NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache"
+      ],
+      "packContents": ["service-base.mustache (m2m bond endpoints) at the pre-fix parent of 75c1b40 (R3-F2)"],
+      "excluded": [
+        "every findings doc",
+        "NPDEV_OPEN_ITEMS_REGISTER.md",
+        "the fix commit and its message",
+        "docs/REG16_CODEGEN_OUTPUT_ADVERSARIAL_REVIEW.md"
+      ],
+      "vendorRequirements": { "minVendors": 1 }
+    },
+    {
+      "missionId": "M1-SEC-GENCODE",
+      "instance": "both",
+      "closes": "E1 s.1",
+      "isCalibration": false,
+      "gitPinned": false,
+      "status": "DRAFT",
+      "title": "Adversarial review -- a generated app's emitted Java",
+      "description": "2-3 concepts' emitted Java incl. one with custom flows (~5-8k lines sliced from ~75k). Emitted code is per-generated-app under D:\\WorkSpace\\NPDev\\Build (outside this repo, per the Build Output Location Policy) -- there is no static in-repo path, so this mission has none configured. Supply --paths pointing at the generated app's source when actually building this pack.",
+      "paths": [],
+      "packContents": ["2-3 concepts' emitted Java incl. one with custom flows"],
+      "excluded": ["REG16_*.md docs", "NPDEV_OPEN_ITEMS_REGISTER.md", "the thread summary"],
+      "vendorRequirements": { "minVendors": 2 }
+    },
+    {
+      "missionId": "M2-SEC-ROWAUTHZ",
+      "instance": "both",
+      "closes": "E1 s.2",
+      "isCalibration": false,
+      "gitPinned": true,
+      "status": "DRAFT",
+      "title": "Adversarial review -- row-level authorization",
+      "description": "DefaultConceptGateway, ConceptGateway, the semantic policy, and ACCEPTED_BOUNDARIES.md, at the working tree unless --commit overrides it.",
+      "paths": [
+        "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/DefaultConceptGateway.java",
+        "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptGateway.java",
+        "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptGatewaySemanticPolicy.java",
+        "docs/ACCEPTED_BOUNDARIES.md"
+      ],
+      "packContents": [
+        "DefaultConceptGateway.java",
+        "ConceptGateway.java",
+        "ConceptGatewaySemanticPolicy.java",
+        "docs/ACCEPTED_BOUNDARIES.md"
+      ],
+      "excluded": ["our conclusions about them"],
+      "vendorRequirements": { "minVendors": 2 }
+    },
+    {
+      "missionId": "M3-SEC-TENANT",
+      "instance": "both",
+      "closes": "E1 s.3",
+      "isCalibration": false,
+      "gitPinned": true,
+      "status": "DRAFT",
+      "title": "Adversarial review -- tenant isolation",
+      "description": "ExecutionContext, TenantIsolationPolicy, and the persistence-postgres adapter's SQL, at the working tree unless --commit overrides it.",
+      "paths": [
+        "NPDevKernel/kernel/src/main/java/com/npdev/kernel/ExecutionContext.java",
+        "NPDevKernel/kernel/src/main/java/com/npdev/kernel/ports/TenantIsolationPolicy.java",
+        "NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java"
+      ],
+      "packContents": ["ExecutionContext", "TenantIsolationPolicy", "persistence-postgres adapter SQL"],
+      "excluded": ["our conclusions about them"],
+      "vendorRequirements": { "minVendors": 2 }
+    },
+    {
+      "missionId": "M4-REPRO-BLIND",
+      "instance": "platform",
+      "closes": "E2",
+      "isCalibration": false,
+      "gitPinned": false,
+      "status": "DRAFT",
+      "title": "Blind reproduction -- clone/build/run",
+      "description": "GETTING_STARTED.md text only; the AI emits a command plan, a clean Linux container / GH runner executes it -- never this session.",
+      "paths": [
+        "docs/GETTING_STARTED.md"
+      ],
+      "packContents": ["GETTING_STARTED.md"],
+      "excluded": ["the repo", "prior CI logs", "known-issue lists"],
+      "vendorRequirements": { "minVendors": 1 }
+    },
+    {
+      "missionId": "M5-COLDSTART-DOCS",
+      "instance": "both",
+      "closes": "E3",
+      "isCalibration": false,
+      "gitPinned": false,
+      "status": "DRAFT",
+      "title": "Cold-start authoring test",
+      "description": "TUTORIAL_FIRST_APP.md + DSL_REFERENCE.md only; the AI authors a model.json blind, we build and relay errors verbatim.",
+      "paths": [
+        "docs/TUTORIAL_FIRST_APP.md",
+        "docs/DSL_REFERENCE.md"
+      ],
+      "packContents": ["TUTORIAL_FIRST_APP.md", "DSL_REFERENCE.md"],
+      "excluded": ["everything else, per the cold-start kit's own rule"],
+      "vendorRequirements": { "minVendors": 1 }
+    },
+    {
+      "missionId": "M6-AUDIT-VERDICT",
+      "instance": "both",
+      "closes": "E4",
+      "isCalibration": false,
+      "gitPinned": false,
+      "status": "DRAFT",
+      "title": "Independent audit verdict",
+      "description": "An evidence bundle + explicit claim list, supplied per run via --paths -- there is no fixed set.",
+      "paths": [],
+      "packContents": ["evidence bundle", "explicit claim list"],
+      "excluded": ["our verdicts"],
+      "vendorRequirements": { "minVendors": 1 }
+    },
+    {
+      "missionId": "M7-IMPACT-CONVERT",
+      "instance": "product",
+      "closes": "E8",
+      "isCalibration": false,
+      "gitPinned": false,
+      "status": "DRAFT",
+      "title": "Impact-report MANUAL_REVIEW convertibility judgment",
+      "description": "An Impact Report's MANUAL_REVIEW item + the column's shape/sample distribution (values redacted). Per-app product feature (P6/P7): built by com.finalexec.review inside a generated app against that app's own data. This platform producer (scripts/external-review/) does not build this pack; the entry exists so the mission registry is complete and the P8 gate can account for all 9 missions.",
+      "paths": [],
+      "packContents": ["Impact Report MANUAL_REVIEW item", "column shape/sample distribution (values redacted)"],
+      "excluded": ["other columns' raw values", "other Impact Report items not under review", "unredacted row data"],
+      "vendorRequirements": { "minVendors": 1 }
+    }
+  ]
+}
