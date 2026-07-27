@@ -229,6 +229,14 @@ compare-and-swap is opt-in, not default) already accepts similar check-then-act 
 rather than the exception. Recorded for the record; no register item filed (per the triage rule, INFO
 = record only).
 
+**Disposition (2026-07-27, F8, `docs/DECISION_BRIEFS_2026-07.md`):** accepted as a documented
+boundary with a named revisit trigger — revisit if any concept's `access.write` rule can be
+reassigned by a role other than the row's own owner/admin, which is the actual precondition for this
+race to matter at all. Companion action: the existing `ConceptWriteRequest.expectedRowVersion` /
+`ConceptGatewayOptimisticLockException` mechanism (`NPDevKernel/kernel/.../concepts/`) is documented
+in `docs/ROW_LEVEL_AUTHORIZATION.md` as today's opt-in escape hatch for a caller who needs the
+stronger guarantee, and this boundary is recorded in `docs/ACCEPTED_BOUNDARIES.md`.
+
 ---
 
 ## R2 — Triage + remediation plan
