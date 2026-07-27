@@ -6,6 +6,38 @@ application {
     mainClass = 'com.npdev.generator.GeneratorMain'
 }
 
+// REG-49 residual (docs/REMAINDER_CLOSURE_PLAN.md 3.3): ServiceBaseDeleteFlowRowLevelAuthzBehaviorTest
+// compiles+runs a real generated *ServiceBase.java through the REAL GeneratedCrudRuntimeSupport, whose
+// resolveCurrentExecutionContext() internally calls spring-web's RequestContextHolder/
+// ServletRequestAttributes -- the only way to feed it a caller identity. That class is loaded by
+// whichever classloader also has spring-web/jakarta-servlet-api on it (JVM class resolution uses the
+// REFERENCING class's own defining loader, not the caller's), so those two jars must be visible
+// wherever GeneratedCrudRuntimeSupport itself is loaded -- they cannot be scoped to only the test's own
+// child URLClassLoader.
+//
+// They also cannot simply be added to the main `test` task's classpath: TrustedSourceEmitterGeneratedActionTest
+// and its JDBC sibling hand-write their OWN minimal stub classes under these exact same package/class
+// names (org.springframework.stereotype.Service, jakarta.servlet.http.HttpServletRequest, ...) and
+// compile+load them through an isolated URLClassLoader that reuses `System.getProperty("java.class.path")`
+// for its own javac -classpath. Adding real spring-web/jakarta-servlet-api to the shared
+// testRuntimeClasspath lets the real classes shadow those tests' own stubs via parent-first classloader
+// delegation -- confirmed live: both threw NoSuchMethodError the first time this was tried.
+//
+// The fix is a genuinely separate Gradle source set + Test task (not a same-task system-property
+// trick): a fully independent classpath, so neither side can affect the other.
+sourceSets {
+    behaviorTest {
+        java.srcDir 'src/behaviorTest/java'
+        compileClasspath += sourceSets.main.output + configurations.testRuntimeClasspath
+        runtimeClasspath += output + compileClasspath
+    }
+}
+
+configurations {
+    behaviorTestImplementation.extendsFrom testImplementation
+    behaviorTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+
 dependencies {
     implementation project(':dsl')
     implementation project(':core')
@@ -42,6 +74,12 @@ dependencies {
     testImplementation platform('software.amazon.awssdk:bom:2.28.11')
     testImplementation 'software.amazon.awssdk:s3'
     testImplementation 'org.testcontainers:minio:1.21.4'
+
+    // behaviorTest: isolated from the above on purpose -- see the sourceSets note.
+    behaviorTestImplementation project(':adapters:expression-cel')
+    behaviorTestImplementation 'org.springframework:spring-web:6.1.12'
+    behaviorTestImplementation 'jakarta.servlet:jakarta.servlet-api:6.0.0'
+    behaviorTestImplementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.17.2'
 }
 
 tasks.named('run') {
@@ -58,4 +96,18 @@ tasks.named('test') {
     maxHeapSize = '2g'
     maxParallelForks = 2
     jvmArgs '-XX:+UseParallelGC'
+}
+
+tasks.register('behaviorTest', Test) {
+    description = 'REG-49 residual: behavioral tests needing a real spring-web/jakarta-servlet-api, ' +
+            'isolated from the main test task classpath (see sourceSets.behaviorTest above).'
+    group = 'verification'
+    testClassesDirs = sourceSets.behaviorTest.output.classesDirs
+    classpath = sourceSets.behaviorTest.runtimeClasspath
+    useJUnitPlatform()
+    maxHeapSize = '2g'
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('behaviorTest')
 }
