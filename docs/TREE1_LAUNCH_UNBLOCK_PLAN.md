@@ -690,26 +690,39 @@ it belongs in the nightly job. Vitest alone is fast.
 
 **Goal.** Resolve a vision artifact with no runtime consequence.
 
-**Why.** `TruthLevel.java` defines the T0–T6 ladder with a documented bond-integrity rule
-(*"a bond may not point at a concept whose truth level is below the bond's own"*). It is referenced in
-**0 files** across generator, kernel, and runtime host — the rule is written in a javadoc and enforced
-nowhere. The README leads with this concept (T1.8 removes that), so after T1.8 the enum is an orphan.
+**Why — with an important correction (verified 2026-07-27, before implementing).** This task's
+premise was wrong, and the correction matters. The claim was: *"referenced in 0 files across
+generator, kernel, and runtime host — the rule is written in a javadoc and enforced nowhere."*
+Direct inspection found the opposite: `SemanticValidator.validateBondTruthEdge`
+(`SemanticValidator.java:1934-1953`, wired in at `:326`) already emits a warning on an upward truth
+edge, **and** `ReleaseGateValidator.validatePromotion`
+(`NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ReleaseGateValidator.java:31-65`)
+already walks the *reachable bond closure* and **hard-blocks promotion** when a dependency's truth
+level is below the target — a real, tested, working release gate, not a javadoc promise. Both are
+covered by green tests (`TruthLevelSupportTest`, `ReleaseGateValidatorTest`, confirmed passing
+2026-07-27). `NPDevContract/docs/BONDS.md` documents this as **Phase 6 — DONE** (`:195-203`) of a
+9-phase roadmap; Phases 0–4, 6–8 are DONE, Phase 5 is PARTIAL, Phase 9 (end-to-end proof on a live
+FinalApp) is the only phase still open.
+
+The plan-writer's "0 files in generator/kernel/runtime host" was checking the wrong altitude: this
+feature genuinely lives (and is enforced) *inside the DSL module itself* — the release-gate check,
+not codegen or runtime — which the plan's own "Files" line below had already scoped to correctly, but
+the "enforced nowhere" conclusion drawn from it did not hold up.
+
+**Disposition:** no code change needed. **(a) is already true** — the rule already is a compiler
+(well, validator) guarantee, not merely documentation. What remains is Phase 9 (real FinalApp
+end-to-end proof), which is a roadmap item in `BONDS.md`, not a launch-blocker, and BONDS.md already
+tracks it there.
 
 **Files.** `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/TruthLevel.java` and its 14 sibling
-references inside the DSL module.
+references inside the DSL module (unchanged by this correction).
 
-**Steps.** Choose one:
+**Acceptance.** Verified: `TruthLevelSupportTest` and `ReleaseGateValidatorTest` both green
+(2026-07-27). No enum deletion, no new SemanticValidator check — both would have been redundant with
+or a regression against the existing, deliberate "warn at authoring time, hard-block at release time"
+design.
 
-- **(a) Make it real** — enforce the bond-integrity rule in `SemanticValidator` (one check, RED-first
-  test). Small, and it makes the ladder mean something.
-- **(b) Delete it** — remove the enum and its DSL references; keep the concept in the vision doc.
-
-Recommendation: **(a)**, because it is roughly a half-day and converts a documentation promise into a
-compiler guarantee — which is this platform's whole thesis.
-
-**Acceptance.** Either the rule is enforced with a test, or the enum is gone.
-
-**Effort.** S–M. **Depends on.** T1.8.
+**Effort.** Spent: verification only (~15 min), not the estimated half-day. **Depends on.** T1.8.
 
 ---
 
