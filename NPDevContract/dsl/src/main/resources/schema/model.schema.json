@@ -2175,6 +2175,7 @@
           "enum": [
             "validate",
             "invariant",
+            "invariantCheck",
             "enforceInvariants",
             "capability",
             "capabilityCall",
@@ -2193,6 +2194,7 @@
             "createConcept",
             "updateConcept",
             "assign",
+            "map",
             "evaluateInvariant",
             "forEach",
             "loop"
@@ -2372,6 +2374,7 @@
                 "enum": [
                   "validate",
                   "invariant",
+                  "invariantCheck",
                   "enforceInvariants"
                 ]
               }

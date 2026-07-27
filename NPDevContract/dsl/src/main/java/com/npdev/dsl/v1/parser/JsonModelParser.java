@@ -2086,7 +2086,7 @@ public final class JsonModelParser {
         if (type == null) return null;
         String normalized = type.trim().toLowerCase(Locale.ROOT);
         return switch (normalized) {
-            case "validate", "enforceinvariants", "invariant" -> "invariant";
+            case "validate", "enforceinvariants", "invariant", "invariantcheck" -> "invariant";
             case "capabilitycall", "callcapability", "capability" -> "capability";
             case "generatedaction", "generated_action" -> "generatedAction";
             case "createentity", "createconcept", "conceptcreate" -> "createConcept";

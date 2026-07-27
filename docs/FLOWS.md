@@ -159,6 +159,14 @@ Two collapsing passes turn these into the 9 real kinds:
    `updateConcept` are **all author-facing sugar for `CAPABILITY_CALL`** — they compile to a call
    against the concept's own generated CRUD capability, not a distinct runtime behavior.
 
+   **Resolved (2026-07-27, the DSL 2.0 planning gate in `docs/DSL2_AND_DECOMPOSITION_PLAN.md` §2.A.0):**
+   confirmed directly in `ModelCompiler.java` — `isConceptPersistenceStep`/`isCapabilityLikeStep`
+   (`:1539-1547`, `:1587-1592`) both name `createEntity`/`updateEntity`/`createConcept`/`updateConcept`
+   as concept-persistence steps, and `resolveCapabilityNameForStep`/`resolveOperationNameForStep`
+   (`:1549-1567`) resolve them unconditionally to capability `"persistence"`, operation `"save"`. So
+   this is genuinely **(a) sugar, not (b) a distinct behavior**: the "9 step kinds" count above is
+   correct as stated, not understated.
+
 ### Worked examples, from real sample models
 
 `NPDevSamples/medium-expense-approval/Input/model.json`'s one flow, `SubmitExpense` (`:260-340`),
