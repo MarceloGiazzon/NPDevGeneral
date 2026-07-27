@@ -1129,7 +1129,7 @@
       "steps": [
         {
           "name": "validate-appointment",
-          "type": "validate",
+          "type": "invariantCheck",
           "scope": "Appointment",
           "invariants": [
             "PositiveDuration"
@@ -1140,7 +1140,6 @@
           "type": "createConcept",
           "scope": "Appointment",
           "input": "$input",
-          "out": "$saved",
           "action": {
             "label": "Persist appointment",
             "successMessage": "Appointment persisted.",
@@ -1148,17 +1147,18 @@
             "dangerLevel": "low",
             "permissionHint": "appointments.create",
             "inputFormHint": "appointment-create"
-          }
+          },
+          "output": "$saved"
         },
         {
           "name": "capture-created-id",
-          "type": "assign",
+          "type": "map",
           "input": "$saved.id",
-          "out": "$appointmentId"
+          "output": "$appointmentId"
         },
         {
           "name": "schedule-reminder",
-          "type": "if",
+          "type": "branch",
           "condition": "$saved.status == 'Scheduled'",
           "then": [
             {
