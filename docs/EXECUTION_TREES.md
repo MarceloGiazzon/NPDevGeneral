@@ -41,7 +41,7 @@ to Week 5, because **both of them need the same next step**.
 
 | Element | Evidence |
 |---|---|
-| Step kinds implemented | **9** in `FlowStepDefinition` — `AWAIT_EVENT · BRANCH · CAPABILITY_CALL · EMIT_EVENT · INVARIANT_CHECK · MAP · PRE · RETURN · SCHEDULE_EVENT` |
+| Step kinds implemented | **9** in `FlowStepDefinition` — `AWAIT_EVENT · BRANCH · CAPABILITY_CALL · EMIT_EVENT · FOR_EACH · INVARIANT_CHECK · MAP · RETURN · SCHEDULE_EVENT` (not `PRE` — that's a checkpoint value of `INVARIANT_CHECK`, not its own step kind; see `docs/FLOWS.md` §3) |
 | Flow-instance statuses | **6** — `RUNNING · WAITING_EVENT · COMPLETED · FAILED · FAILED_PERMANENT · STUCK` |
 | Durable suspend/resume | `JdbcFlowInstanceStore` · `NpdevFlowInstanceTable` · `ResumeBootstrapRunner` |
 | Event correlation + ownership | `JdbcCorrelationOwnershipStore` / `PostgresCorrelationOwnershipStore` |
