@@ -163,14 +163,16 @@ class ContractSurfaceSupportTest {
                     {
                       "name": "NotifyOnSubmit",
                       "trigger": { "type": "event", "event": "WorkItemSubmitted" },
-                      "action": {
-                        "type": "scheduleEvent",
-                        "event": "WorkItemSubmitted",
-                        "delaySeconds": 0,
-                        "map": {
-                          "id": "$event.id"
+                      "actions": [
+                        {
+                          "type": "scheduleEvent",
+                          "event": "WorkItemSubmitted",
+                          "delaySeconds": 0,
+                          "map": {
+                            "id": "$event.id"
+                          }
                         }
-                      }
+                      ]
                     }
                   ]
                 }

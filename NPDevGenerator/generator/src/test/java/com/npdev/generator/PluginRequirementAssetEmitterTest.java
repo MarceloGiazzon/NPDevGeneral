@@ -63,7 +63,7 @@ class PluginRequirementAssetEmitterTest {
                       "steps": [
                         {
                           "name": "persist",
-                          "type": "capability",
+                          "type": "capabilityCall",
                           "capability": "persistence",
                           "operation": "save",
                           "input": "payload",
@@ -71,7 +71,7 @@ class PluginRequirementAssetEmitterTest {
                         },
                         {
                           "name": "invoke-custom",
-                          "type": "capability",
+                          "type": "capabilityCall",
                           "capability": "customExtension",
                           "operation": "run",
                           "input": "saved",

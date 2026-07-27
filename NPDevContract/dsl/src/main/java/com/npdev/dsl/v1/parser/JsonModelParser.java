@@ -2082,22 +2082,33 @@ public final class JsonModelParser {
         return value.doubleValue();
     }
 
+    /**
+     * DSL 2.0 (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.A.4): a 1:1 map from the 12 canonical
+     * {@code flowStep.type} spellings to their AST-level string. The 23-spelling alias table this
+     * replaced is gone -- {@code model.schema.json}'s narrowed {@code type} enum is now the single
+     * place a non-canonical spelling is refused, with a diagnostic naming the canonical replacement
+     * (REG-51's "refuse, don't silently accept" precedent). Schema validation
+     * ({@code JsonModelSchemaValidator}) always runs before this method is ever called, so
+     * {@code normalized} is already guaranteed to be one of the 12 keys below; {@code default}
+     * exists only as a defensive fallback for that unreachable case, not as tolerance for anything
+     * unrecognized.
+     */
     private static String normalizeStepType(String type) {
         if (type == null) return null;
         String normalized = type.trim().toLowerCase(Locale.ROOT);
         return switch (normalized) {
-            case "validate", "enforceinvariants", "invariant", "invariantcheck" -> "invariant";
-            case "capabilitycall", "callcapability", "capability" -> "capability";
-            case "generatedaction", "generated_action" -> "generatedAction";
-            case "createentity", "createconcept", "conceptcreate" -> "createConcept";
-            case "updateentity", "updateconcept", "conceptupdate" -> "updateConcept";
-            case "emitevent", "event" -> "event";
+            case "invariantcheck" -> "invariant";
+            case "capabilitycall" -> "capability";
+            case "generatedaction" -> "generatedAction";
+            case "createconcept" -> "createConcept";
+            case "updateconcept" -> "updateConcept";
+            case "emitevent" -> "event";
             case "scheduleevent" -> "scheduleEvent";
-            case "if", "branch" -> "branch";
-            case "assign", "map" -> "map";
-            case "waitforevent", "awaitevent", "await_event", "await" -> "await";
+            case "branch" -> "branch";
+            case "map" -> "map";
+            case "awaitevent" -> "await";
             case "return" -> "return";
-            case "foreach", "loop" -> "forEach";
+            case "foreach" -> "forEach";
             default -> type;
         };
     }

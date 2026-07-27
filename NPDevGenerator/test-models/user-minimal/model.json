@@ -6,14 +6,39 @@
     {
       "name": "User",
       "fields": [
-        { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "name", "type": "string", "required": true },
-        { "name": "email", "type": "string", "required": true }
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "required": true
+        }
       ],
       "invariants": [
-        { "name": "EmailRequired", "expr": "email != null && email != ''" },
-        { "name": "NameRequired", "expr": "name != null && name != ''" },
-        { "name": "EmailUnique", "type": "unique", "fields": ["email"] }
+        {
+          "name": "EmailRequired",
+          "expr": "email != null && email != ''"
+        },
+        {
+          "name": "NameRequired",
+          "expr": "name != null && name != ''"
+        },
+        {
+          "name": "EmailUnique",
+          "type": "unique",
+          "fields": [
+            "email"
+          ]
+        }
       ]
     }
   ],
@@ -21,37 +46,80 @@
     {
       "name": "persistence",
       "type": "PersistenceCapability",
-      "operations": ["save", "unique", "findById"]
+      "operations": [
+        "save",
+        "unique",
+        "findById"
+      ]
     }
   ],
   "bindings": [
-    { "capability": "persistence", "adapter": "repository" },
-    { "capability": "eventBus", "adapter": "inproc" }
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    },
+    {
+      "capability": "eventBus",
+      "adapter": "inproc"
+    }
   ],
   "events": [
-    { "name": "UserCreated", "payload": [{ "name": "id", "type": "uuid" }, { "name": "email", "type": "string" }] },
-    { "name": "UserUpdated" },
-    { "name": "UserDeleted" },
-    { "name": "SomethingHappened", "payload": [{ "name": "status", "type": "string" }] }
+    {
+      "name": "UserCreated",
+      "payload": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "email",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "UserUpdated"
+    },
+    {
+      "name": "UserDeleted"
+    },
+    {
+      "name": "SomethingHappened",
+      "payload": [
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    }
   ],
   "flows": [
     {
       "name": "CreateUser",
-      "input": { "concept": "User", "mode": "create" },
+      "input": {
+        "concept": "User",
+        "mode": "create"
+      },
       "steps": [
         {
           "name": "validate-user",
-          "type": "enforceInvariants",
+          "type": "invariantCheck",
           "scope": "User",
-          "invariants": ["EmailRequired", "NameRequired", "EmailUnique"]
+          "invariants": [
+            "EmailRequired",
+            "NameRequired",
+            "EmailUnique"
+          ]
         },
         {
           "name": "save-user",
           "type": "capabilityCall",
-          "cap": "persistence",
-          "op": "save",
-          "args": ["$input"],
-          "out": "$saved"
+          "args": [
+            "$input"
+          ],
+          "capability": "persistence",
+          "operation": "save",
+          "output": "$saved"
         },
         {
           "name": "emit-user-created",
@@ -68,21 +136,29 @@
     },
     {
       "name": "CreateUserMissingEmail",
-      "input": { "concept": "User", "mode": "create" },
+      "input": {
+        "concept": "User",
+        "mode": "create"
+      },
       "steps": [
         {
           "name": "validate-user",
-          "type": "enforceInvariants",
+          "type": "invariantCheck",
           "scope": "User",
-          "invariants": ["EmailRequired", "NameRequired"]
+          "invariants": [
+            "EmailRequired",
+            "NameRequired"
+          ]
         },
         {
           "name": "save-user",
           "type": "capabilityCall",
-          "cap": "persistence",
-          "op": "save",
-          "args": ["$input"],
-          "out": "$saved"
+          "args": [
+            "$input"
+          ],
+          "capability": "persistence",
+          "operation": "save",
+          "output": "$saved"
         },
         {
           "name": "return-user",
@@ -93,13 +169,16 @@
     },
     {
       "name": "AwaitDemo",
-      "input": { "concept": "User", "mode": "update" },
+      "input": {
+        "concept": "User",
+        "mode": "update"
+      },
       "steps": [
         {
           "name": "await-something",
           "type": "awaitEvent",
           "awaitEvent": "SomethingHappened",
-          "as": "$awaited"
+          "awaitRef": "$awaited"
         },
         {
           "name": "return-await",
@@ -110,4 +189,3 @@
     }
   ]
 }
-

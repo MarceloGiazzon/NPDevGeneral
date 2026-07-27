@@ -126,18 +126,15 @@ LNCH-13: declarative row-level (data-scoped) authorization. Each expression is e
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `name` | `string` |  |  |
-| `type` | `"validate" | "invariant" | "invariantCheck" | "enforceInvariants" | "capability" | "capabilityCall" | "callCapability" | "generatedAction" | "generated_action" | "event" | "emitEvent" | "scheduleEvent" | "return" | "branch" | "if" | "await" | "awaitEvent" | "waitForEvent" | "createConcept" | "updateConcept" | "assign" | "map" | "evaluateInvariant" | "forEach" | "loop"` | yes |  |
+| `type` | `"invariantCheck" | "capabilityCall" | "generatedAction" | "emitEvent" | "scheduleEvent" | "return" | "branch" | "awaitEvent" | "createConcept" | "updateConcept" | "map" | "forEach"` | yes |  |
 | `checkpoint` | `"pre" | "post"` |  |  |
 | `phase` | `"pre" | "post"` |  |  |
 | `scope` | `string` |  |  |
 | `invariants` | `array<string>` |  |  |
 | `capability` | `string` |  |  |
-| `cap` | `string` |  |  |
 | `operation` | `string` |  |  |
-| `op` | `string` |  |  |
 | `input` | `string` |  |  |
 | `output` | `string` |  |  |
-| `out` | `string` |  |  |
 | `args` | `array<string>` |  |  |
 | `policy` | `capabilityPolicy` |  |  |
 | `event` | `string` |  |  |
@@ -151,7 +148,6 @@ LNCH-13: declarative row-level (data-scoped) authorization. Each expression is e
 | `else` | `array<flowStep>` |  |  |
 | `awaitEvent` | `string` |  |  |
 | `awaitRef` | `string` |  |  |
-| `as` | `string` |  |  |
 | `match` | `awaitMatch` |  |  |
 | `delaySeconds` | `integer` |  |  |
 | `delayMinutes` | `integer` |  |  |
