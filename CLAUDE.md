@@ -75,6 +75,13 @@ These are the files most often edited; reading any one whole burns 40–100k tok
 - **`AppGen\generator-runtime\current`** (the jar cache the AppGen builders read) is not auto-synced;
   refresh via `AppGen\generator-runtime\prepare-npdev-generator-runtime.ps1 -RuntimeRoot D:\WorkSpace\NPDev\AppGen\generator-runtime` (pass `-RuntimeRoot` explicitly).
 
+## Stability policy
+
+NPDev is pre-1.0 and deliberately unstable (see `README.md`'s "Stability policy" and
+`BREAKING.md`). Standing convention: **every breaking change to the model DSL, generated code
+layout, or internal APIs ships its `npdev migrate` codemod in the same commit**, plus a one-line
+`BREAKING.md` entry — never land the break first and the codemod later.
+
 ## Environment notes
 
 - Windows. Prefer **PowerShell** and the dedicated Grep/Glob/Read tools. Git Bash coreutils are on
