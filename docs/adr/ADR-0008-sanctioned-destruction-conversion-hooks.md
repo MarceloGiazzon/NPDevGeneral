@@ -2,13 +2,13 @@
 
 ## Status
 
-**APPROVED — 2026-07-25.** Drafted per `docs/SER_FINAL_CLOSURE_PLAN.md` G2. Conversion hooks
+**APPROVED — 2026-07-25.** Drafted per `docs/archive/programme-history/SER_FINAL_CLOSURE_PLAN.md` G2. Conversion hooks
 (schema-engine rebuild, Phase 7) were built and shipped in the prior session on a verbal go-ahead from
 the project owner (an interactive "Approve rule-6, proceed to Phase 7" response); this ADR captures that
 approval as a durable decision record and the owner re-confirmed it explicitly against this document's
 decision block on 2026-07-25.
 
-> **Note on filename:** the execution plan that requested this document (`SER_FINAL_CLOSURE_PLAN.md`
+> **Note on filename:** the execution plan that requested this document (`archive/programme-history/SER_FINAL_CLOSURE_PLAN.md`
 > §2.2) suggested `ADR-0005-sanctioned-destruction-conversion-hooks.md`. That number is already taken
 > (`docs/adr/ADR-0005-auto-panel-patterns.md`, existing and unrelated) — this document uses the next
 > free number, **ADR-0008**, instead.
@@ -68,9 +68,9 @@ this ADR does not touch.
 
 ## The residual risks, stated honestly
 
-- **The H2 DDL caveat (tracked as G6 in `SER_FINAL_CLOSURE_PLAN.md`).** H2 has no transactional DDL: a
+- **The H2 DDL caveat (tracked as G6 in `archive/programme-history/SER_FINAL_CLOSURE_PLAN.md`).** H2 has no transactional DDL: a
   verify failure on a hook that mixes `ALTER`/`DROP TABLE` with data movement will roll back the data
-  but not the already-executed DDL. Postgres does not have this gap. `SER_FINAL_CLOSURE_PLAN.md` §2.6
+  but not the already-executed DDL. Postgres does not have this gap. `archive/programme-history/SER_FINAL_CLOSURE_PLAN.md` §2.6
   adds an operator-facing warning when this combination is detected; it does not (cannot) make H2 DDL
   transactional.
 - **A hook is only as safe as the SQL an operator wrote.** The engine verifies that a hook's *claim* was
@@ -92,7 +92,7 @@ Date:  2026-07-25
 Conditions (if any): none
 ```
 
-Approved as drafted. The rest of `SER_FINAL_CLOSURE_PLAN.md`'s Group A (conversion-hook hardening: the
+Approved as drafted. The rest of `archive/programme-history/SER_FINAL_CLOSURE_PLAN.md`'s Group A (conversion-hook hardening: the
 jar-loading proof G1, the backfill end-to-end proof G3, the SQL-splitter hardening G4, the operator-
 facing docs/warnings G5/G6, engine-detection unification G7, and the live P7.7 packaged-jar proof) may
 proceed on this basis.

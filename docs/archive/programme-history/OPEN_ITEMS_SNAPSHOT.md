@@ -63,7 +63,7 @@ than on effort; all four were decided by the owner on 2026-07-25 and implemented
 
 ## 4. Not gaps — deliberate boundaries
 
-17 accepted non-goals with rationale, workaround and revisit trigger: **[`ACCEPTED_BOUNDARIES.md`](ACCEPTED_BOUNDARIES.md)**.
+17 accepted non-goals with rationale, workaround and revisit trigger: **[`ACCEPTED_BOUNDARIES.md`](../../ACCEPTED_BOUNDARIES.md)**.
 Check there before filing anything as a gap.
 
 ---

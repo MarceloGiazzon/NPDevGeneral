@@ -1,12 +1,12 @@
 # LNCH-1 Closeout Plan — The Last Six Findings
 
-> **STATUS: HISTORICAL** — last changed 2026-07-20; its completion state has **not** been re-verified. Treat nothing here as an open commitment: check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (authoritative) or `docs/OPEN_ITEMS_SNAPSHOT.md` before acting on any item.
+> **STATUS: HISTORICAL** — last changed 2026-07-20; its completion state has **not** been re-verified. Treat nothing here as an open commitment: check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (authoritative) or `docs/archive/programme-history/OPEN_ITEMS_SNAPSHOT.md` before acting on any item.
 
 
 > **Status:** APPROVED PLAN — not started
 > **Written:** 2026-07-20, verified against the working tree at commit `0d96cf9` (branch `beta1-vision-spine`)
 > **Origin:** an independent review of the completed LNCH-1 **hardening** round
-> (`docs/LNCH1_HARDENING_PLAN.md`, phases X0–X9, 11 commits) confirmed every hardening fix landed as
+> (`docs/archive/programme-history/LNCH1_HARDENING_PLAN.md`, phases X0–X9, 11 commits) confirmed every hardening fix landed as
 > designed, and found **1 high-severity authorization hole, 2 medium drift risks, and 3 low
 > record/hygiene defects**. This plan closes all six, plus the open `LNCH-1-B8` tooling bug.
 > **Audience:** an AI implementation session (or human) that has NOT read this project's history.
@@ -17,7 +17,7 @@
 > 1. This document, end to end.
 > 2. `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\lnch1-evidence\hardening-verification-ledger.md`
 >    — **the tiebreaker document.** If anything else disagrees with it, it wins.
-> 3. `docs/LNCH1_HARDENING_PLAN.md` §2 (design decisions — still binding) and §3 (guardrails — ALL
+> 3. `docs/archive/programme-history/LNCH1_HARDENING_PLAN.md` §2 (design decisions — still binding) and §3 (guardrails — ALL
 >    still binding).
 > 4. `docs/SCHEMA_EVOLUTION.md` — the user-facing contract, especially "The deprecated blanket flag".
 > 5. `docs/LNCH1_SCHEMA_EVOLUTION_PLAN.md` §1 (map of the machinery) if you have not worked in this
@@ -31,7 +31,7 @@
 >   including every `_official` app (WmsOffice, WordLab, AuxScreen, Pigmentampa, Claude). Apps like
 >   `canonical-demo` and the InMemory samples use `RecreateOnAppStart` +
 >   `NpdevOwnedLogicalStoresOnly` and do **not** have it. Dominant, not universal.
-> - `docs/LNCH1_HARDENING_PLAN.md` §3.1's commands were wrong (`gradlew -p NPDevRuntimeHost test` —
+> - `docs/archive/programme-history/LNCH1_HARDENING_PLAN.md` §3.1's commands were wrong (`gradlew -p NPDevRuntimeHost test` —
 >   RuntimeHost is a **template**, not a buildable subproject) and its §3.2 fixture helper disagreed
 >   with the real additive-eligibility rule. The corrected versions are in
 >   `lnch1-evidence\hardening-X0.md`. **Use those, and §3.1 below.**
@@ -613,6 +613,6 @@ open — in the evidence file, in the verification ledger, and in your summary.*
 ---
 
 *Companion documents: `docs/LNCH1_SCHEMA_EVOLUTION_PLAN.md` (original 9-phase build, guardrails) ·
-`docs/LNCH1_REMEDIATION_PLAN.md` (R0–R9) · `docs/LNCH1_HARDENING_PLAN.md` (X0–X9) ·
+`docs/archive/programme-history/LNCH1_REMEDIATION_PLAN.md` (R0–R9) · `docs/archive/programme-history/LNCH1_HARDENING_PLAN.md` (X0–X9) ·
 `docs/SCHEMA_EVOLUTION.md` (user-facing contract) ·
 `..\NPDev_General__OutsideRepo\lnch1-evidence\hardening-verification-ledger.md` (the tiebreaker).*

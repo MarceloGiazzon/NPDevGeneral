@@ -1,6 +1,6 @@
 # LNCH-1 — Schema Evolution for Live Apps: Dedicated Implementation Plan
 
-> **STATUS: HISTORICAL** — last changed 2026-07-20; its completion state has **not** been re-verified. Treat nothing here as an open commitment: check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (authoritative) or `docs/OPEN_ITEMS_SNAPSHOT.md` before acting on any item.
+> **STATUS: HISTORICAL** — last changed 2026-07-20; its completion state has **not** been re-verified. Treat nothing here as an open commitment: check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (authoritative) or `docs/archive/programme-history/OPEN_ITEMS_SNAPSHOT.md` before acting on any item.
 
 
 > **Status:** DONE (2026-07-19) — all 9 phases (0-8) complete · **Priority:** P0 (the last existential launch blocker)
@@ -8,12 +8,12 @@
 > high-severity bugs (required-field backfill silently skipped on destructive paths; `DROP_TABLE`
 > acknowledgment tokens uncomputable at plan time), 1 systemic fragility (divergent SQL-type
 > normalization between the two token producers), and 7 lower-severity gaps. All are fixed or
-> recorded — see **`docs/LNCH1_REMEDIATION_PLAN.md`** for the plan and
+> recorded — see **`docs/archive/programme-history/LNCH1_REMEDIATION_PLAN.md`** for the plan and
 > `..\NPDev_General__OutsideRepo\lnch1-evidence\remediation-R0-R8.md` for what was verified and
 > what changed behaviourally.
 > **Hardening round (X0–X9), 2026-07-20:** a review of the remediation round found 1 **critical**
 > regression (a concept drop on a blanket-authorized app wiped every other table's data), 2 real
-> bugs, 4 incoherences and 5 gaps. See **`docs/LNCH1_HARDENING_PLAN.md`** and
+> bugs, 4 incoherences and 5 gaps. See **`docs/archive/programme-history/LNCH1_HARDENING_PLAN.md`** and
 > `..\NPDev_General__OutsideRepo\lnch1-evidence\hardening-*.md`.
 > **Postgres status (corrected 2026-07-20 — this header previously said the Testcontainers legs
 > "were NOT run"):** they *were* run later in the remediation session and passed (12 tests). The

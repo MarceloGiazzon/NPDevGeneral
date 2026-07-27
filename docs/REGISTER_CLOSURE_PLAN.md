@@ -1,6 +1,6 @@
 # NPDev Open-Items Register — Closure Plan
 
-> **STATUS: HISTORICAL** — last changed 2026-07-21; its completion state has **not** been re-verified. Treat nothing here as an open commitment: check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (authoritative) or `docs/OPEN_ITEMS_SNAPSHOT.md` before acting on any item.
+> **STATUS: HISTORICAL** — last changed 2026-07-21; its completion state has **not** been re-verified. Treat nothing here as an open commitment: check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (authoritative) or `docs/archive/programme-history/OPEN_ITEMS_SNAPSHOT.md` before acting on any item.
 
 
 > **Status:** APPROVED PLAN — not started.
@@ -9,7 +9,7 @@
 > `beta1-vision-spine`, `beta1-184-gc7e3519`). Working tree clean at write time except this file and
 > its two companions (see §1).
 > **Origin.** `docs/NPDEV_OPEN_ITEMS_REGISTER.md` lists 17 open items (`REG-1`…`REG-17`) left after
-> the five-round LNCH-1 schema-evolution programme (`docs/LNCH1_PROGRAMME_RETROSPECTIVE.md`). This
+> the five-round LNCH-1 schema-evolution programme (`docs/archive/programme-history/LNCH1_PROGRAMME_RETROSPECTIVE.md`). This
 > plan sequences and details the work to close all 17: 2 are deliberate boundaries needing no action,
 > 5 cannot close without an action only you can take (plus one item, REG-12, that's split — one slice
 > actionable, one gated on your call), and 9 are independently, fully closable by an implementation
@@ -22,7 +22,7 @@
 > document says **VERIFY**, check the real code before writing anything — line numbers and method
 > names were captured 2026-07-21 and may have drifted by the time you act.
 > **This plan does not re-litigate what LNCH-1 already closed.** It picks up exactly where
-> `docs/NPDEV_OPEN_ITEMS_REGISTER.md` and `docs/LNCH1_PROGRAMME_RETROSPECTIVE.md` left off.
+> `docs/NPDEV_OPEN_ITEMS_REGISTER.md` and `docs/archive/programme-history/LNCH1_PROGRAMME_RETROSPECTIVE.md` left off.
 > **Reviewed and adjusted 2026-07-21 (same day)** against the question *"if this plan is completed,
 > can we be certain these items are closed, or at least substantially advanced?"* The review found
 > one section had already gone stale (§11.3's REG-1 sub-phase still cited pre-cleanup numbers after
@@ -82,7 +82,7 @@ implementation-session work changes it, and this plan will not pretend otherwise
 2. `docs/NPDEV_OPEN_ITEMS_REGISTER.md` — the source of truth for what is open, **as corrected
    2026-07-21**. Every phase below cites specific sections of it; read the cited section, not just
    this plan's summary of it.
-3. `docs/LNCH1_PROGRAMME_RETROSPECTIVE.md` §6 ("Methodology that emerged") and §7 ("Corrections to
+3. `docs/archive/programme-history/LNCH1_PROGRAMME_RETROSPECTIVE.md` §6 ("Methodology that emerged") and §7 ("Corrections to
    my own work") — the working discipline this plan assumes throughout, and the specific mistake
    patterns (stale claims, un-re-verified attributions, fixture/production divergence) that produced
    several of the corrections in the register on 2026-07-21. Do not repeat them.
@@ -617,7 +617,7 @@ take more than one pass. Splitting them is not lowering the bar — it's stating
    tenants via any ID-taking endpoint, mass-assignment on any DTO bound directly from a request body,
    timing side-channels on login, and error-message information leakage (does a failed login or a
    cross-tenant fetch leak *which* part failed?). Produce a findings document in the same style as
-   `LNCH1_HARDENING_PLAN.md`/`LNCH1_CLOSEOUT_PLAN.md`'s "Findings → phase map" tables — one row per
+   `archive/programme-history/LNCH1_HARDENING_PLAN.md`/`LNCH1_CLOSEOUT_PLAN.md`'s "Findings → phase map" tables — one row per
    finding, severity, why it matters, concrete failure scenario. **This document, existing and
    complete, is itself the certain outcome of Tier A** — REG-16's actual problem statement ("zero
    adversarial review") is resolved the moment R1 is done, independent of what R3/R4 achieve.
@@ -835,7 +835,7 @@ measured (register's own words for REG-13).
 requires the build to actually work cross-platform first.
 
 **Steps, once Q4 is answered:**
-1. Give the person `docs/TUTORIAL_FIRST_APP.md`, the MCP toolbox, and `docs/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md`
+1. Give the person `docs/TUTORIAL_FIRST_APP.md`, the MCP toolbox, and `docs/archive/programme-history/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md`
    — nothing else. Do not help them. Record friction (REG-13, ADR-0006's Definition of Done).
 2. Same session, second pass: have them build the tutorial app from `docs/DSL_REFERENCE.md` and
    `docs/TUTORIAL_FIRST_APP.md` alone, no MCP assistance this time — this is REG-14's distinct DoD
@@ -945,7 +945,7 @@ it was never able to deliver them alone.
 ---
 
 *Companion documents: `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (the corrected source of truth this plan
-sequences) · `docs/LNCH1_PROGRAMME_RETROSPECTIVE.md` (the methodology this plan reuses) ·
+sequences) · `docs/archive/programme-history/LNCH1_PROGRAMME_RETROSPECTIVE.md` (the methodology this plan reuses) ·
 `docs/LAUNCH_READINESS_GAPS.md` (the 24-item ledger these items trace back to) ·
 `docs/SCHEMA_EVOLUTION.md` (relevant to P3/P7/P8's REG-1 flip) ·
 `docs/OPEN_GAPS_AND_ROADMAP.md` (runtime/generator items, updated by P1 and P8).*

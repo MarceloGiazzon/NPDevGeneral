@@ -2,18 +2,18 @@
 
 ## Status
 
-**DRAFT — 2026-07-26.** Drafted per `PLAN_EXTERNAL_AI_REVIEW_2026-07-26.md` (currently at
-`D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\external-ai-review\`, promoted to
-`docs\EXTERNAL_AI_DELEGATION_PLAN.md` with `STATUS: ACTIVE` on owner approval). D1, D2, D6, D7 were
-answered by the owner on 2026-07-26 (see decision block); D3, D4, D5 remain pending. P1 (kernel
-port + adapter pair) is built and green on these answers. **No real network call to any vendor
-happens until D3 is answered and real API keys are supplied** — that boundary is independent of
-which phases are otherwise built.
+**APPROVED WITH CONDITIONS — ratified 2026-07-26, D3 resolved 2026-07-27** (see decision block
+below, which is authoritative). Originally drafted per `PLAN_EXTERNAL_AI_REVIEW_2026-07-26.md`,
+promoted to `docs\archive/programme-history/EXTERNAL_AI_DELEGATION_PLAN.md` with `STATUS: ACTIVE` on owner approval — that
+promotion is complete, not pending. D1, D2, D3, D6, D7 are answered (D1/D2/D6/D7 on 2026-07-26, D3
+on 2026-07-27 — see the decision table); **D4 and D5 remain open**. P0-P9 are built and verified,
+including real vendor calls under D3's authorization (see `archive/programme-history/EXTERNAL_AI_DELEGATION_PLAN.md` and
+`archive/programme-history/REG48_50_CLOSURE_PLAN.md` for the full run history).
 
 ## Context
 
 Several of this project's own documents say, in effect, "a person outside the project must do this
-step": an independent adversarial security review (`EXTERNAL_SECURITY_REVIEW_BRIEF.md`), REG-17's
+step": an independent adversarial security review (`archive/programme-history/EXTERNAL_SECURITY_REVIEW_BRIEF.md`), REG-17's
 third-party reproduction, the cold-start authoring test, an audit sign-off, and — the insight that
 promotes this from a maintainer script to a platform feature — the runtime's own `MANUAL_REVIEW`
 schema-impact items and the `ACCEPTED_BOUNDARIES.md` family of "stop and ask a human" boundaries in

@@ -8,7 +8,7 @@ part, and an unsparing account of what works, what only partly works, and what i
 accidentally) not solved yet.
 
 **Companion docs:** [`SCHEMA_EVOLUTION.md`](SCHEMA_EVOLUTION.md) (the operator-facing feature
-reference), [`SCHEMA_ENGINE_REBUILD_PLAN.md`](SCHEMA_ENGINE_REBUILD_PLAN.md) (the planned rebuild of
+reference), [`archive/programme-history/SCHEMA_ENGINE_REBUILD_PLAN.md`](archive/programme-history/SCHEMA_ENGINE_REBUILD_PLAN.md) (the planned rebuild of
 the reconciliation engine), [`CONFIGURATION.md`](CONFIGURATION.md), [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ---
@@ -418,7 +418,7 @@ Recorded plainly (these are known, not hidden):
   `ALTER … ADD COLUMN/CONSTRAINT` blocks), so a new concept redeployed against an *existing* database
   self-heals instead of failing boot with `Table not found`. Strategic dedup (routing this through the
   same `SchemaDiff` every other pass will eventually consume) still lands later, at
-  [`SCHEMA_ENGINE_REBUILD_PLAN.md`](SCHEMA_ENGINE_REBUILD_PLAN.md)'s P4.6 — this is the same missing
+  [`archive/programme-history/SCHEMA_ENGINE_REBUILD_PLAN.md`](archive/programme-history/SCHEMA_ENGINE_REBUILD_PLAN.md)'s P4.6 — this is the same missing
   abstraction as REG-6 (§16), just closed tactically first.
 
 ## 16. The architectural debt (REG-6) and why it matters
@@ -455,7 +455,7 @@ caused T-B1/T-B2 and CI-guards it.
 **every executor pass consumes it**: both decision surfaces (`classify`, `SchemaDeltaReport` and its
 byte-identical acknowledgment token) and all four mutation passes (table renames, column renames, type
 widenings, required-field backfills). Built exactly as
-[`SCHEMA_ENGINE_REBUILD_PLAN.md`](SCHEMA_ENGINE_REBUILD_PLAN.md) prescribes: a read-only shadow proved
+[`archive/programme-history/SCHEMA_ENGINE_REBUILD_PLAN.md`](archive/programme-history/SCHEMA_ENGINE_REBUILD_PLAN.md) prescribes: a read-only shadow proved
 100% parity across the whole H2+Postgres matrix, then each pass was switched one commit at a time behind a
 default-on equivalence assert, both quality gates green after every step. The passes **can no longer
 disagree** — there is only one derivation. T-B1/T-B2's whole family is structurally foreclosed.
@@ -536,7 +536,7 @@ re-derived ad hoc every time. That is the debt paying interest.
 
 ## 20. Where this stands (the finished engine) and what's still open
 
-**Done, as of 2026-07-24 (`SCHEMA_ENGINE_REBUILD_PLAN.md` / `SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md`,
+**Done, as of 2026-07-24 (`archive/programme-history/SCHEMA_ENGINE_REBUILD_PLAN.md` / `archive/programme-history/SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md`,
 Phases 1–9, all closed):** the declarative ideal §16 described as a destination is now how the engine
 actually works. One canonical desired-vs-current model (`CurrentSchema` / `DesiredSchema` / `SchemaDiff`,
 `SchemaDiffEngine`) is diffed once and consumed by every pass and every surface built after it:
