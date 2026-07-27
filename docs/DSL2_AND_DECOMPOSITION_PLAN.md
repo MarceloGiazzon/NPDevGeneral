@@ -260,8 +260,23 @@ would be the *third* error found in that step-kind list. Write the answer into `
 | `MAP` | `map` | `map` | `assign` |
 | `RETURN` | `return` | `return` | — |
 | `FOR_EACH` | `forEach` | `forEach` | `loop` |
-| *(pending 2.A.0)* | `createConcept` | `createConcept` | `createEntity`, `conceptCreate` |
-| *(pending 2.A.0)* | `updateConcept` | `updateConcept` | `updateEntity`, `conceptUpdate` |
+| *(sugar, resolved 2.A.0)* | `createConcept` | `createConcept` | `createEntity`, `conceptCreate` |
+| *(sugar, resolved 2.A.0)* | `updateConcept` | `updateConcept` | `updateEntity`, `conceptUpdate` |
+| *(sugar, found during implementation)* | `generatedAction` | `generatedAction` | `generated_action` |
+
+> **2.A.0 resolved (verified 2026-07-27):** `ModelCompiler.isConceptPersistenceStep`/
+> `isCapabilityLikeStep` (`:1539-1547`, `:1587-1592`) confirm `createConcept`/`updateConcept` resolve
+> unconditionally to capability `"persistence"`, operation `"save"` — **(a) sugar**, not a distinct
+> runtime behavior. `FLOWS.md`'s "9 step kinds" stands correct.
+>
+> **A gap found while implementing this table:** it omitted `generatedAction` entirely.
+> `generatedAction` is real, current, documented DSL surface (`docs/NPDEV_CONCEPTS_DEEP_DIVE.md:152`,
+> `docs/DSL_REFERENCE.md:127`) that also compiles to `CAPABILITY_CALL` sugar (capability type
+> `GeneratedActionCapability`, adapter `generated-action`, per `ModelCompiler.java:1553,1563,1574,1581`)
+> — the same shape as `createConcept`/`updateConcept`, just missed by the table's original 9-row scope.
+> Kept as its own canonical name (retiring only its `generated_action` snake_case twin) rather than
+> silently folded into `capabilityCall`, since it carries its own required field (`actionName`) and
+> its own documented meaning. **Canonical set is therefore 12 names, not 9 or 11.**
 
 **Why this specific choice, stated for the record:** it moves *toward* what authors already write in
 77 of 129 alias occurrences, it makes DSL ↔ runtime a one-to-one name mapping (so `FLOWS.md` needs
@@ -281,7 +296,7 @@ translation table.
 | `capability` | `cap` | 41 | 1 | **42** |
 | `operation` | `op` | 41 | 1 | **42** |
 | `output` | `out` | 79 | 1 | **80** |
-| `awaitEvent` | `awaitRef` | 0 | **3** | **3** |
+| `awaitRef` | `as` | 0 | **3** | **3** |
 | `position` | `at` | 0 | 0 | 0 |
 | `targetStep` | `target` | 46 | **25** | **71** |
 | `concept` | `targetConcept` | 0 | **10** | **10** |
@@ -292,6 +307,17 @@ translation table.
 
 **Only `at` and `fieldMap` are genuinely unused** — those two can be deleted from the schema with no
 codemod work at all. Every other alias has real uses somewhere.
+
+> **Correction (found during implementation):** this row was mislabeled as `awaitEvent`/`awaitRef` —
+> those are two genuinely different `flowStep` fields (the awaited event's *name* vs. the flow-state
+> ref its matched payload is bound to), not aliases of each other. The real pair, confirmed via
+> `JsonModelParser.java:1423` (`awaitRef = firstNonBlank(readText(stepNode, "awaitRef"),
+> readText(stepNode, "as"))`) and the literal `"awaitRef"` usage found in
+> `NPDevRuntimeHost/src/test/resources/npdev/async-wait-resume-compiled-model.json`, is **keep
+> `awaitRef`, retire `as`** — `awaitRef` is already the canonical AST field name and the spelling the
+> 3 fixture uses already write; `as` is the JSON shorthand alias being retired. (`as` is a separate,
+> unrelated property name in other `$defs` objects — e.g. pack-ref aliasing — and retiring it here
+> only touches `flowStep`'s own schema properties, not those.)
 
 > **`action` vs `actions` needs its own call.** It is a scalar-or-list field — the worst kind, because
 > every consumer must branch. 21 corpus uses take the list form. **Recommendation: `actions`, always
@@ -308,18 +334,37 @@ the fourth (`NPDevContract/dsl/resources/Schemas/model.schema.json`) semanticall
 provenance keys (`canonicalSchema`, `deprecated`). **The mirror script must preserve those two keys**
 or it will destroy the legacy-location marker.
 
+> **Sequencing correction (found during implementation).** Steps 2 and 3 below as originally written
+> ("reduce the enum", "remove the retired aliases") **cannot happen before 2.A.3's byte-identical
+> proof loop runs**: that loop's `before = compile(model)` call runs the corpus's un-migrated,
+> alias-spelled models through schema validation *before* migrating them. If the enum/aliases were
+> already narrowed at that point, `before = compile(model)` would fail schema validation on every
+> alias-using model in the corpus, before the proof could even start. The corrected order: 2.A.2
+> **adds** the new canonical names as valid schema values (a widening, non-breaking change — old
+> aliases stay valid too) and ships the mirror gate; the actual narrowing/removal of old aliases
+> (the breaking half) moves to 2.A.4, landing in the same commit as the parser-switch collapse and
+> the `BREAKING.md` entry, immediately after the corpus is migrated — matching this project's own
+> "ship the codemod with the break" rule.
+
 **Steps.**
 
-1. Bump `dslVersion` to `2.0.0`; keep `schemaVersion` semantics as-is.
-2. Reduce `flowStep.type.enum` from 23 values to the canonical set (9 or 11, per 2.A.0).
-3. Remove the retired field aliases from every `$defs` entry.
-4. Normalize `orchestrationRule.action|actions` to a single list-shaped `actions`.
-5. **Write a mirror check, not a mirror habit.** A tiny gate that asserts the four copies are
+1. **Widen**, don't yet narrow: add every new canonical name (`invariantCheck`, `map`, plus the
+   already-canonical `capabilityCall`/`emitEvent`/`scheduleEvent`/`branch`/`awaitEvent`/`return`/
+   `forEach`/`createConcept`/`updateConcept`/`generatedAction`) to `flowStep.type.enum` if not already
+   present. Leave all 23 old spellings in place for now — they're retired in 2.A.4, not here.
+2. Keep `schemaVersion` semantics as-is; `dslVersion` bumps to `2.0.0` in 2.A.4, alongside the actual
+   break (a version bump before anything actually changed behavior would be its own inaccuracy).
+3. Do **not** yet remove the retired field aliases (`cap`/`op`/`out`/`at`/`target`/`targetConcept`/
+   `eventName`/`capabilityName`/`fieldMap`/scalar `action`) — same reasoning as step 1. They retire in
+   2.A.4.
+4. **Write a mirror check, not a mirror habit.** A tiny gate that asserts the four copies are
    semantically identical (modulo the 2 provenance keys) and fails the build otherwise. Today's
-   3-line drift is benign; the next one might not be. Wire into `run-ai-knowledge-gate.ps1`.
+   3-line drift is benign; the next one might not be. Wire into `run-ai-knowledge-gate.ps1`. This part
+   ships now, unconditionally — it protects whichever schema state exists at any given moment.
 
-**Acceptance.** All four copies semantically identical. `DSL_REFERENCE.md` regenerates
-(`scripts/docs/generate_dsl_reference.py`) and the generator gate's drift check passes.
+**Acceptance.** All four copies semantically identical (mirror gate green). Every model in the
+corpus — old spellings and new — still validates against the widened schema. `DSL_REFERENCE.md`
+regenerates (`scripts/docs/generate_dsl_reference.py`).
 
 **Effort.** M (1 day). **Depends on.** 2.A.1.
 
@@ -363,15 +408,22 @@ matches what `--write` actually did.
 
 **Steps.**
 
-1. Run `npdev migrate --dsl-2 --write` over all 27 models.
-2. **Delete the alias arms** from `JsonModelParser.java:2089-2100`, leaving a 1:1 map. Unknown values
+1. Run `npdev migrate --dsl-2 --write` over the full 195-file/430-site corpus (§2.A.6 -- not just the
+   27 app models 2.A.3's proof loop used; the corpus that must be alias-free is the union of
+   `AppGen/apps` + `NPDevSamples`, `golden-ai-scenarios`, and `NPDevRuntimeHost/src/test/resources`).
+2. **Now** narrow the schema (moved here from 2.A.2, see that section's sequencing correction): remove
+   the 23 old `flowStep.type` spellings down to the 12 canonical names, and remove the retired field
+   aliases (`cap`/`op`/`out`/`at`/`target`/`targetConcept`/`eventName`/`capabilityName`/`fieldMap`/
+   scalar `action`), across all four schema copies. Bump `dslVersion` to `2.0.0` here, in this same
+   commit -- the version number changes when the break actually ships, not before.
+3. **Delete the alias arms** from `JsonModelParser.java:2089-2100`, leaving a 1:1 map. Unknown values
    now produce a validation diagnostic naming the canonical replacement — *refuse, don't silently
    accept*, matching REG-51's precedent.
-3. Regenerate the sample apps; run the full suites.
-4. Update `DSL_REFERENCE.md`, `FLOWS.md` §3, `AI_MODEL_TO_DSL_MAPPING.md`, and the MCP/RAG corpora
+4. Regenerate the sample apps; run the full suites.
+5. Update `DSL_REFERENCE.md`, `FLOWS.md` §3, `AI_MODEL_TO_DSL_MAPPING.md`, and the MCP/RAG corpora
    (`python scripts/ai/build_knowledge.py`) — **the AI substrate teaches the DSL; a stale corpus
    would keep generating v1 models.**
-5. Add the `BREAKING.md` entry, in the same commit, per the charter.
+6. Add the `BREAKING.md` entry, in the same commit, per the charter.
 
 **Acceptance.** Zero alias spellings remain in the corpus. `:NPDevContract:dsl:test` green. A v1 model
 now produces a *helpful* diagnostic, not a silent acceptance. Knowledge corpora rebuilt.
