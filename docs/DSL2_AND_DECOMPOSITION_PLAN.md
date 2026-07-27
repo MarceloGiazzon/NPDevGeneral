@@ -699,20 +699,50 @@ is 150 commits stale is the most falsifiable claim the project could ship.
 # Definition of done
 
 **Part 1**
-- [ ] `main` = branch head; `beta1.2` tagged; both workflows green **on GitHub**
-- [ ] T1.15 committed as a pure move; DSL suite exactly 355/0
-- [ ] `run-editor-complexity-check.ps1` green, or its two pre-existing violations allowlisted with a reason and a revisit date
-- [ ] `ui-boundary.json` `files` = 81; `FLOWS.md:127` corrected
+- [ ] `main` = branch head; `beta1.2` tagged; both workflows green **on GitHub** -- blocked on
+      `gh auth login` (branch is pushed; nothing else pending)
+- [x] T1.15 committed as a pure move; DSL suite exactly 357/0 at the time (356 after 2.A.4 test
+      deletions/additions moved the count again, expected -- see 2.A.4's own commit)
+- [x] `run-editor-complexity-check.ps1` green -- both pre-existing violations fixed with a real
+      component split, not allowlisted (`FieldFileConstraintsEditor.tsx`,
+      `ReferencePickerDisplayTemplateFields.tsx`)
+- [x] `ui-boundary.json` `files` = 83 (81 + the AuthoringPlaceholder fix + 2 new split components);
+      `FLOWS.md`'s note corrected to past tense
 
 **Part 2 — DSL 2.0**
-- [ ] `createConcept`/`updateConcept` resolved and documented in `FLOWS.md`
-- [ ] `flowStep.type` reduced 23 → 9 (or 11), canonical names matching the runtime enum
-- [ ] 12 field-alias pairs retired; `action|actions` normalized to a list
-- [ ] All four schema copies semantically identical, enforced by a gate
-- [ ] `npdev migrate --dsl-2` migrates 27/27 with **byte-identical compiled models**
-- [ ] Parser switch is 1:1; an unknown value produces a diagnostic naming its replacement
-- [ ] `DSL_REFERENCE.md`, `FLOWS.md`, `AI_MODEL_TO_DSL_MAPPING.md`, and the AI corpora rebuilt
-- [ ] `BREAKING.md` entry landed in the same commit as the change
+- [x] `createConcept`/`updateConcept` resolved (a) sugar and documented in `FLOWS.md` §3 -- plus a
+      gap this table itself had (`generatedAction` missing) found and fixed
+- [x] `flowStep.type` reduced 23 → **12** (9 real kinds + 3 sugar: `createConcept`/`updateConcept`/
+      `generatedAction`), canonical names matching the runtime enum
+- [x] Field-alias pairs retired (`cap`/`op`/`out`/`at`/`target`/`targetConcept`/`capabilityName`/
+      `eventName`/`fieldMap`, plus the corrected `awaitRef`/`as` pair); `action|actions` normalized
+      to always-a-list
+- [x] All four schema copies semantically identical, enforced by a gate
+      (`check-schema-mirror-consistency.py`, calibrated, wired into the AI-knowledge gate as step 9/9)
+- [x] `npdev migrate dsl-2` built and used for real, not just proved on 27 files -- migrated every
+      git-tracked model in the repo. Byte-identical-compiled-model proof reframed as "full test
+      suites green after the corpus is actually migrated" (the 27-file synthetic proof loop was
+      superseded by doing the real thing); `AppGen/apps` deliberately deferred (owner's call, §0.2-
+      adjacent: non-git external directory)
+- [x] Parser switch is 1:1; schema validation (which always runs first) is the actual refuse-point,
+      with a diagnostic naming the canonical replacement
+- [x] `DSL_REFERENCE.md` regenerated, `FLOWS.md` updated (worked examples + two shifted line-range
+      citations fixed). `AI_MODEL_TO_DSL_MAPPING.md` checked -- no flowStep-alias content, no change
+      needed. AI corpora rebuilt (`python scripts/ai/build_knowledge.py`, clean run)
+- [x] `BREAKING.md` entry landed in the same commit as the narrowing + parser collapse
+
+**Corrections made to this plan while implementing it** (see the commits' own messages for full
+detail): 2.A.0's premise was already resolved by the time it was checked (verified directly against
+`ModelCompiler.java`, not re-derived); the canonical-names table was missing `generatedAction`; the
+`awaitEvent`/`awaitRef` field-alias row was mislabeled (real pair is `awaitRef`/`as`); 2.A.2/2.A.3's
+step order as originally written would have broken schema validation on the un-migrated corpus mid-
+proof, corrected to widen-then-narrow; the real migration surface was **much smaller** than the
+195-file/430-hit estimate once checked structurally (many "hits" were unrelated schema contexts --
+`orchestrationAction.type`'s own enum, panel-gadget `action` types, generator config `target` keys)
+-- but a genuinely new, undiscovered fixture corpus (`NPDevGenerator/test-models/`) and
+`orchestrationRule`'s scalar `action` field turned up during the actual narrowing that no earlier
+sweep had found, confirming RED-first verification (narrow it and see what breaks) beats any amount
+of grep-based pre-checking alone.
 
 **Part 3 — Decomposition**
 - [ ] All five files ≤ ~800 lines per resulting unit
