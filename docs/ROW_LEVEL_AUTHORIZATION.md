@@ -89,7 +89,7 @@ hid them. `ConceptGatewaySemanticPolicy.hasRowReadScope(conceptName)` now tells 
 when a concept declares `access.read` at all; only then does `query()` pay the cost of an unpaged
 re-query (bounded by `ConceptQuery.MAX_LIMIT`, the same ceiling every single query already has) to
 recompute `total`/`hasMore` against the row-scoped result set. Every other concept's `query()` is
-unaffected. See `docs/REG16_LNCH13_ROWLEVEL_AUTHZ_ADVERSARIAL_REVIEW.md` (LNCH13-F3) and the register's
+unaffected. See `docs/archive/programme-history/REG16_LNCH13_ROWLEVEL_AUTHZ_ADVERSARIAL_REVIEW.md` (LNCH13-F3) and the register's
 REG-42 row.
 
 ## What's deliberately out of scope

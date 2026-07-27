@@ -1,9 +1,9 @@
 # REG-12 Slice 3 — Server-Side Document / PDF Export — Phased Plan
 
-> **STATUS: HISTORICAL** — last changed 2026-07-22; its completion state has **not** been re-verified. Treat nothing here as an open commitment: check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (authoritative) or `docs/OPEN_ITEMS_SNAPSHOT.md` before acting on any item.
+> **STATUS: HISTORICAL** — last changed 2026-07-22; its completion state has **not** been re-verified. Treat nothing here as an open commitment: check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (authoritative) or `docs/archive/programme-history/OPEN_ITEMS_SNAPSHOT.md` before acting on any item.
 
 
-> **Status:** DONE (2026-07-22) — executed via `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part A. See
+> **Status:** DONE (2026-07-22) — executed via `docs/archive/programme-history/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part A. See
 > `docs/NPDEV_OPEN_ITEMS_REGISTER.md` §2.4 and `NPDev_General__OutsideRepo/reg12-slice3-evidence/`
 > for what shipped and the live verification record.
 > **Was:** APPROVED PLAN — not started. Greenlit by the owner (Marcelo) 2026-07-22 ("in scope now").

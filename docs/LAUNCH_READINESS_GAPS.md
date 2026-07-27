@@ -90,7 +90,7 @@ is actually done today.
 > green on a real GitHub Actions runner** (REG-10), which retroactively *proves* several items that
 > were "done but only on one Windows machine."
 >
-> **2026-07-22 addendum — `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` executed; all three closed
+> **2026-07-22 addendum — `docs/archive/programme-history/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` executed; all three closed
 > (LNCH-22 on the second attempt, after a real fix).** LNCH-10 Slice 3 (server-side PDF) closed against
 > `docs/REG12_DOCUMENT_EXPORT_PLAN.md`, verified live + **CI-green** (run `29943008077`, SHA `b5c7c88`).
 > LNCH-18 (authoring) closed via an independent cold-tester run. **LNCH-22 (docs):** its first closure
@@ -111,7 +111,7 @@ is actually done today.
 > |---|---|---|---|---|
 > | LNCH-4 (auth stakes) | REG-9 | PARTIAL | **DONE** | JWT keys via env var + fail-fast validation + verify-only boot; super-user-key seeding WONTFIX by decision |
 > | LNCH-10 (export) | REG-12 | PARTIAL | **DONE** | All 3 slices DONE (2026-07-22) — CSV, print, and server-side PDF (`docs/REG12_DOCUMENT_EXPORT_PLAN.md`) |
-> | LNCH-18 (authoring test) | REG-13 | PARTIAL | **DONE** | Independent cold-tester run 2026-07-22 (subagent, fresh context, own worktree, cold brief only — see `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part B.1 option 2) authored an issue tracker via the CLI validator fallback (no MCP tools registered) and verified create/list/edit/close over REST, unaided. Evidence + friction log: `NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/` |
+> | LNCH-18 (authoring test) | REG-13 | PARTIAL | **DONE** | Independent cold-tester run 2026-07-22 (subagent, fresh context, own worktree, cold brief only — see `docs/archive/programme-history/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part B.1 option 2) authored an issue tracker via the CLI validator fallback (no MCP tools registered) and verified create/list/edit/close over REST, unaided. Evidence + friction log: `NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/` |
 > | LNCH-19 (Linux CI) | REG-10 | PARTIAL | **DONE** | `npdev-pr-gate.yml` observed **green** on ubuntu-latest (run `29899362276`); six root-caused first-contact-with-Linux fixes |
 > | LNCH-20 (cross-platform) | REG-11 | OPEN | **DONE** | Cross-platform build **proven** by the green run; also fixed a real generated-app `D:/`-cache portability bug |
 > | LNCH-22 (docs test) | REG-14 | PARTIAL | **DONE** | Closed on the 2nd attempt: the first pass was reverted on verification (two cold runs could not build *from docs alone* — a `runtimehost-libs` build-root divergence), fixed in `2adf8ec` (sync mirrors `build.gradle`'s walk) + tutorial one-time-setup step + Windows-safe verify-curl. **Validated by a project-blind in-sandbox run on `2adf8ec`: tutorial built + booted from docs alone (201/422), no source-reading, no leftover libs.** Evidence: `NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/lnch22-insandbox-blind-PASS.md` |
@@ -185,10 +185,10 @@ regression coverage.
 took two review rounds after the initial "DONE" to get there, and the second one found something
 serious:
 
-- **Remediation (R0–R9, `docs/LNCH1_REMEDIATION_PLAN.md`)** — 2 high-severity bugs (required-field
+- **Remediation (R0–R9, `docs/archive/programme-history/LNCH1_REMEDIATION_PLAN.md`)** — 2 high-severity bugs (required-field
   backfill silently skipped on destructive paths; `DROP_TABLE` tokens uncomputable at plan time),
   1 systemic fragility, 7 smaller gaps. All fixed or recorded.
-- **Hardening (X0–X9, `docs/LNCH1_HARDENING_PLAN.md`)** — a review of the remediation round found a
+- **Hardening (X0–X9, `docs/archive/programme-history/LNCH1_HARDENING_PLAN.md`)** — a review of the remediation round found a
   **CRITICAL regression it had introduced**: on any app with `allowDestructiveRecreate: true` (i.e.
   every shipped app definition), dropping a concept routed to the whole-schema wipe and destroyed
   **every other table's data**, while the orphaned table it was meant to drop survived. Fixed in X1,
@@ -565,7 +565,7 @@ JSON round-trips through the seeder.
 **Status:** DONE (2026-07-22 — all 3 slices) · **Priority:** P1 · **Effort:** L
 
 **Update (2026-07-22, Slice 3) — closed.** Server-side PDF documents shipped via
-`docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part A: a new `document` DSL kind (bound to a concept,
+`docs/archive/programme-history/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part A: a new `document` DSL kind (bound to a concept,
 declarative, 4-copy schema mirror) + a `DocumentRenderContract` port/adapter pair
 (`document-render-inproc`, pure-JVM OpenHTMLtoPDF/PDFBox, no native/display deps; `document-render-stub`
 as the pair's second half) + `GET /api/documents/{document}/render.pdf` (mirrors `export.csv`'s data
@@ -832,9 +832,9 @@ forEach freeze-thread technique); CRUD write+event atomicity proven under JDBC.
 **Update (2026-07-17).** `docs/adr/ADR-0006-authoring-path.md` ratified: AI-first/editor-secondary.
 The DoD's human-run step — a real non-author completing a build from a plain-English description —
 is explicitly left OPEN, not claimed done (bucket-4, real-person-only; see
-`docs/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` for the prep work done toward it).
+`docs/archive/programme-history/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` for the prep work done toward it).
 
-**Update (2026-07-22) — closed.** `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part B ran the DoD's
+**Update (2026-07-22) — closed.** `docs/archive/programme-history/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part B ran the DoD's
 non-author step via an independent cold-start tester: a subagent given ONLY
 `docs/EXTERNAL_TESTER_COLDSTART.md`'s brief, a fresh context window, and its own isolated git
 worktree — no coaching, no access to this project's plans/register/retrospective (Part B.1 option 2,
@@ -1117,7 +1117,7 @@ builds the tutorial app from docs alone; validator errors carry codes + hints.
 
 ### External-tester findings, 2026-07-22 (LNCH-18/22/REG-17 closure run)
 
-Per `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part B.4 ("every friction point the successful run
+Per `docs/archive/programme-history/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part B.4 ("every friction point the successful run
 still surfaced is filed as a dated finding, docs improve even on a pass"). None of these blocked the
 run's own pass bars (all three tasks passed on the first cold run — no re-run iteration was
 needed), but each is a real, reproducible gap an unaided newcomer hits. Full detail + exact repro

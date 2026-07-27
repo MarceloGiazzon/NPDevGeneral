@@ -131,8 +131,8 @@ Scope in writing: the export/render entry points and their content pipeline. Att
 - Is there a **size/time bound**, or can one export exhaust the host?
 - **Does export honour row-level `access.read` scope, or export everything the tenant has?** ← the highest-consequence question in this session; a scope-blind export is a bulk data leak.
 
-**Deliverables:** `docs/REG16_CODEGEN_OUTPUT_ADVERSARIAL_REVIEW.md` and
-`docs/REG16_EXPORT_PDF_ADVERSARIAL_REVIEW.md` (separate documents — one per surface, per §0 guardrail 2).
+**Deliverables:** `docs/archive/programme-history/REG16_CODEGEN_OUTPUT_ADVERSARIAL_REVIEW.md` and
+`docs/archive/programme-history/REG16_EXPORT_PDF_ADVERSARIAL_REVIEW.md` (separate documents — one per surface, per §0 guardrail 2).
 Triage: CRITICAL/HIGH ⇒ fix now + runtime test · MEDIUM ⇒ dated `REG-nn` row · INFO ⇒ doc only.
 
 ---
@@ -153,7 +153,7 @@ Triage: CRITICAL/HIGH ⇒ fix now + runtime test · MEDIUM ⇒ dated `REG-nn` ro
 - Any string-concatenated **identifier** reachable from model-author input?
 - Do the idempotency / circuit-breaker / bulkhead / claim / mark stores each scope by tenant *in the key*?
 
-**Deliverables:** `docs/REG16_FLOW_ORCHESTRATION_ADVERSARIAL_REVIEW.md` and
+**Deliverables:** `docs/archive/programme-history/REG16_FLOW_ORCHESTRATION_ADVERSARIAL_REVIEW.md` and
 `docs/REG16_POSTGRES_ADAPTER_SQL_ADVERSARIAL_REVIEW.md`. Same triage rule.
 
 ---
@@ -176,7 +176,7 @@ Triage: CRITICAL/HIGH ⇒ fix now + runtime test · MEDIUM ⇒ dated `REG-nn` ro
   every MEDIUM is a dated register row.
 - REG-36, REG-37 closed. `§3.10`'s "Rounds not yet done" list is **empty**.
 - All five gates green, including GATE-AI (register self-check).
-- `OPEN_ITEMS_SNAPSHOT.md` §1 (blocking) is **empty**.
+- `archive/programme-history/OPEN_ITEMS_SNAPSHOT.md` §1 (blocking) is **empty**.
 
 **Then, and only then, the honest claim changes** from *"no known CRITICAL issues in the reviewed
 surfaces"* to *"every launch surface has had an adversarial review"* — which is what "stable and

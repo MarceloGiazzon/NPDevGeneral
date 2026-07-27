@@ -4,7 +4,7 @@
 > **Surface:** `KernelRunner`'s suspend/resume path (`resumeExecution`, `resumeFlow`,
 > `resumeAllWaitingExecutions`, `resumeWaitingExecutionsFor`), the generated `KernelFacade`'s
 > execution/resume endpoints, `DefaultExecutionAuthorizationPolicy`, and loop-step bounding.
-> **Plan:** [`ONE_PLAN_CLOSE_EVERYTHING.md`](ONE_PLAN_CLOSE_EVERYTHING.md) §4.1
+> **Plan:** [`ONE_PLAN_CLOSE_EVERYTHING.md`](../../ONE_PLAN_CLOSE_EVERYTHING.md) §4.1
 
 ---
 

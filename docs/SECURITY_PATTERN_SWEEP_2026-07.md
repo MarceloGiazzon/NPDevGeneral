@@ -78,7 +78,7 @@ Every hit has one of three verdicts, per ONE_PLAN §2.1.
 >
 > **The sweep now reports 355 hits, 355 cleared, 0 needing triage.** Rounds 3–6 resolved the routed
 > hits; this section originally recorded the routing, and the loop was closed afterwards per
-> `POST_PROGRAMME_AUDIT_PLAN.md` §2.1. Its own rule — *"when a routed hit is resolved, add its
+> `archive/programme-history/POST_PROGRAMME_AUDIT_PLAN.md` §2.1. Its own rule — *"when a routed hit is resolved, add its
 > fingerprint to the allowlist with the reason"* — had not been executed at the end of the programme,
 > leaving 307 permanent "new" hits. **That is the failure mode this document warned about**: at 307,
 > nobody reads the output and a real hit hides in it.

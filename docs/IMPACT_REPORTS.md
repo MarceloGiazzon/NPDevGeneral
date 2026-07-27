@@ -155,7 +155,7 @@ report on a running app:
 Both surfaces reuse the same read-only entry point, `com.finalexec.db.SchemaImpactFacade.forLiveDatabase`
 (SER-P6.0), so the CLI and the ControlPanel can never disagree about what an upgrade would do.
 
-Specified in [`SCHEMA_ENGINE_REBUILD_PLAN.md`](SCHEMA_ENGINE_REBUILD_PLAN.md) Phase 6 (P6.4, P6.5).
+Specified in [`archive/programme-history/SCHEMA_ENGINE_REBUILD_PLAN.md`](archive/programme-history/SCHEMA_ENGINE_REBUILD_PLAN.md) Phase 6 (P6.4, P6.5).
 
 ## Conversion hooks — sanctioned destruction (implemented, Phase 7)
 
@@ -231,7 +231,7 @@ reorganization experience NPDev didn't have before Phase 7.
 SQL-only. A Java `DataMigrationHook` interface (for conversions too complex for a SQL script) is
 deliberately deferred to the ADR-0003 code-bearing-objects track — not part of this phase.
 
-Specified in [`SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md`](SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md)
+Specified in [`archive/programme-history/SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md`](archive/programme-history/SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md)
 Phase 7 (P7.1–P7.5). See also [`DATABASES_AND_MIGRATIONS.md`](DATABASES_AND_MIGRATIONS.md) §12 for the
 operator decision matrix this adds a row to.
 
@@ -275,5 +275,5 @@ the hook IS the acknowledgment" is still true; a *draft* is not authorship). Thi
 contrast with GeneXus, which auto-runs its reorganization conversions: NPDev keeps a human between the
 draft and the execution.
 
-Specified in [`SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md`](SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md)
+Specified in [`archive/programme-history/SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md`](archive/programme-history/SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md)
 Phase 8 (P8.1–P8.3).

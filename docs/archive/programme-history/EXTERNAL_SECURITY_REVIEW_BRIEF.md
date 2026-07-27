@@ -50,7 +50,7 @@ These are our claims. Each is a target.
 
 ## 3. Known-and-accepted — not findings unless you can weaponise them
 
-Please read [`ACCEPTED_BOUNDARIES.md`](ACCEPTED_BOUNDARIES.md) first (17 items). The ones most likely
+Please read [`ACCEPTED_BOUNDARIES.md`](../../ACCEPTED_BOUNDARIES.md) first (17 items). The ones most likely
 to look like bugs:
 
 - **Row-level authz is check-then-act** (TOCTOU), not atomic. Accepted: needs a second actor who
@@ -69,7 +69,7 @@ git clone <repo> && cd NPDev_General
 # Generate + build + run a sample app (H2, no external services):
 pwsh -File scripts/appgen/Build-NpdevApp.ps1 -AppFolder superuser-admin-console
 ```
-Full setup: [`GETTING_STARTED.md`](GETTING_STARTED.md). Two known-open CI items, so you do not
+Full setup: [`GETTING_STARTED.md`](../../GETTING_STARTED.md). Two known-open CI items, so you do not
 re-discover them: the Windows `LegacyModelMigrationToolTest` failure, and the Linux
 `npdev report bootstrap` failure.
 
