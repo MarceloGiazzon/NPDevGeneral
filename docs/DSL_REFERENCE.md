@@ -35,6 +35,7 @@ Schema version: `1.0.0`. DSL version: `1.0.0`.
 | `metadata` | `object` |  |  |
 | `fragments` | `array<localModelRef>` |  |  |
 | `packs` | `array<packRef>` |  |  |
+| `externalAi` | `externalAi` |  |  |
 
 ## Concept (`#/$defs/concept`)
 
@@ -63,6 +64,7 @@ Schema version: `1.0.0`. DSL version: `1.0.0`.
 | `id` | `boolean` |  |  |
 | `required` | `boolean | array<string>` |  |  |
 | `unique` | `boolean` |  |  |
+| `sensitive` | `boolean` |  | ADR-0009: marks this field for redaction before it may appear in any external-AI review pack (docs/adr/ADR-0009-external-ai-delegation.md). Authoring-time, and specific to pack building -- independent of the platform's runtime EventRedactionPolicy family. |
 | `connectable` | `"anchor"` |  |  |
 | `renamedFrom` | `string` |  | Declares this field is a rename of a previously-existing column with this name, so a regeneration's schema-lifecycle classifies it as a rename instead of an unrelated remove+add. |
 | `file` | `object` |  | Metadata for a file-typed field (LIFT-UPLOAD). The persisted value is a FileHandle (or list, if multiple), never raw bytes. |
@@ -124,7 +126,7 @@ LNCH-13: declarative row-level (data-scoped) authorization. Each expression is e
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `name` | `string` |  |  |
-| `type` | `"validate" | "invariant" | "enforceInvariants" | "capability" | "capabilityCall" | "callCapability" | "generatedAction" | "generated_action" | "event" | "emitEvent" | "scheduleEvent" | "return" | "branch" | "if" | "await" | "awaitEvent" | "waitForEvent" | "createConcept" | "updateConcept" | "assign" | "evaluateInvariant" | "forEach" | "loop"` | yes |  |
+| `type` | `"validate" | "invariant" | "invariantCheck" | "enforceInvariants" | "capability" | "capabilityCall" | "callCapability" | "generatedAction" | "generated_action" | "event" | "emitEvent" | "scheduleEvent" | "return" | "branch" | "if" | "await" | "awaitEvent" | "waitForEvent" | "createConcept" | "updateConcept" | "assign" | "map" | "evaluateInvariant" | "forEach" | "loop"` | yes |  |
 | `checkpoint` | `"pre" | "post"` |  |  |
 | `phase` | `"pre" | "post"` |  |  |
 | `scope` | `string` |  |  |
