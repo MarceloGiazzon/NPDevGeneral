@@ -116,7 +116,7 @@ class DslV2CanonicalStepNameTest {
                       "name": "DemoFlow",
                       "input": { "concept": "Widget", "mode": "create" },
                       "steps": [
-                        { "name": "capture-label", "type": "%s", "input": "$input.label", "out": "$capturedLabel" },
+                        { "name": "capture-label", "type": "%s", "input": "$input.label", "output": "$capturedLabel" },
                         { "name": "return-captured", "type": "return", "value": "$capturedLabel" }
                       ]
                     }

@@ -70,9 +70,9 @@ class DslFlowModelTest {
                         }
                       },
                       "steps": [
-                        { "name": "pre", "type": "invariant", "checkpoint": "pre", "invariants": ["emailUnique"] },
-                        { "name": "save", "type": "capability", "capability": "PersistenceCapability", "operation": "save", "input": "$input", "output": "$saved" },
-                        { "name": "emit", "type": "event", "event": "UserCreated", "payload": "$saved" }
+                        { "name": "pre", "type": "invariantCheck", "checkpoint": "pre", "invariants": ["emailUnique"] },
+                        { "name": "save", "type": "capabilityCall", "capability": "PersistenceCapability", "operation": "save", "input": "$input", "output": "$saved" },
+                        { "name": "emit", "type": "emitEvent", "event": "UserCreated", "payload": "$saved" }
                       ]
                     }
                   ]
@@ -139,9 +139,9 @@ class DslFlowModelTest {
                       "name": "CreateInvoice",
                       "concept": "SpringInvoice",
                       "steps": [
-                        { "name": "pre", "type": "invariant", "checkpoint": "pre", "invariants": ["missingInvariant"] },
-                        { "name": "cap", "type": "capability", "capability": "PersistenceCapability", "operation": "missingOp" },
-                        { "name": "evt", "type": "event", "event": "MissingEvent", "payload": "$input" }
+                        { "name": "pre", "type": "invariantCheck", "checkpoint": "pre", "invariants": ["missingInvariant"] },
+                        { "name": "cap", "type": "capabilityCall", "capability": "PersistenceCapability", "operation": "missingOp" },
+                        { "name": "evt", "type": "emitEvent", "event": "MissingEvent", "payload": "$input" }
                       ]
                     }
                   ]
@@ -180,7 +180,7 @@ class DslFlowModelTest {
                       "name": "CreateUser",
                       "concept": "User",
                       "steps": [
-                        { "name": "pre", "type": "invariant", "scope": "User" }
+                        { "name": "pre", "type": "invariantCheck", "scope": "User" }
                       ]
                     }
                   ]

@@ -66,10 +66,10 @@ class CompiledModelKernelRunnerDeterminismTest {
                         {
                           "name":"save",
                           "type":"capabilityCall",
-                          "cap":"persistence",
-                          "op":"save",
+                          "capability":"persistence",
+                          "operation":"save",
                           "args":["$input"],
-                          "out":"$saved"
+                          "output":"$saved"
                         },
                         {"name":"emit-created","type":"emitEvent","event":"UserCreated","payload":"$saved"},
                         {"name":"emit-audited","type":"emitEvent","event":"UserAudited","payload":"$saved"},
@@ -130,7 +130,7 @@ class CompiledModelKernelRunnerDeterminismTest {
                       "name":"CreateUser",
                       "concept":"User",
                       "steps":[
-                        {"name":"save","type":"capabilityCall","cap":"persistence","op":"save","args":["$input"],"out":"$saved"}
+                        {"name":"save","type":"capabilityCall","capability":"persistence","operation":"save","args":["$input"],"output":"$saved"}
                       ]
                     }
                   ]
@@ -172,7 +172,7 @@ class CompiledModelKernelRunnerDeterminismTest {
                       "name":"ValidateUser",
                       "concept":"User",
                       "steps":[
-                        {"name":"validate","type":"invariant","checkpoint":"pre","invariants":["EmailRequired"]},
+                        {"name":"validate","type":"invariantCheck","checkpoint":"pre","invariants":["EmailRequired"]},
                         {"name":"return-input","type":"return","value":"$input"}
                       ]
                     }

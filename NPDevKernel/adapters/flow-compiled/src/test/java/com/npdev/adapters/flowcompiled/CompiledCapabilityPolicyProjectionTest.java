@@ -49,10 +49,10 @@ class CompiledCapabilityPolicyProjectionTest {
                         {
                           "name":"save",
                           "type":"capabilityCall",
-                          "cap":"persistence",
-                          "op":"save",
+                          "capability":"persistence",
+                          "operation":"save",
                           "args":["$input"],
-                          "out":"$saved",
+                          "output":"$saved",
                           "policy":{
                             "retryCount":3,
                             "retryDelayMs":250,

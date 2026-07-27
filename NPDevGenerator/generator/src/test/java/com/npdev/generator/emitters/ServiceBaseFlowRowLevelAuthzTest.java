@@ -70,8 +70,8 @@ class ServiceBaseFlowRowLevelAuthzTest {
                   "name": "CreateTicket",
                   "input": { "concept": "Ticket", "mode": "create" },
                   "steps": [
-                    { "name": "save-ticket", "type": "capabilityCall", "cap": "persistence", "op": "save",
-                      "args": ["$input"], "out": "$saved" },
+                    { "name": "save-ticket", "type": "capabilityCall", "capability": "persistence", "operation": "save",
+                      "args": ["$input"], "output": "$saved" },
                     { "name": "return-ticket", "type": "return", "value": "$saved" }
                   ]
                 }
