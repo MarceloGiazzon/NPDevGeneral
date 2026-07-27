@@ -2,8 +2,16 @@
   "schemaVersion": "platform-status.v1",
   "generatedFrom": "docs/OPEN_GAPS_AND_ROADMAP.md",
   "note": "DERIVED -- do not hand-edit. Regenerate via scripts/ai/extract_platform_status.py.",
-  "count": 43,
+  "count": 44,
   "items": [
+    {
+      "id": "ADR-0009",
+      "title": "External AI delegation: governed delegation of a human-judgment step to an external AI (redacted pack in -> vendor -> structured verdict out -> filed, never auto-applied). Kernel port + inproc/http adapters, Python + Java pack producers (byte-identical manifest hash, parity-verified), model schema surface (sensitive, externalAi.egress), ControlPanel/CLI/MCP surfaces, quality gate",
+      "category": "New platform feature",
+      "status": "**PARTIAL — P0-P3, P6, P7, P8 DONE and verified (2026-07-26/27, incl. a real compile check against a generated FinalApp); P4 (calibration control) and P5 (platform's own missions M1-M6) BLOCKED on owner decision D3 (egress authorization for NPDev's own source) plus real vendor API keys; P9 (ledgers) in progress.** See `docs/adr/ADR-0009-external-ai-delegation.md`.",
+      "priority": "P2",
+      "notes": ""
+    },
     {
       "id": "LNCH-1-B7",
       "title": "Concept drop previewed and acknowledged but never executed (classify() ignored orphan tables)",

@@ -44,6 +44,7 @@ Exit codes: 0 = consistent, 1 = at least one contradiction, 2 = a document was u
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -292,6 +293,63 @@ def ledger_coverage_gaps(root: Path) -> list[str]:
     return gaps
 
 
+def mission_run_coverage_gaps(root: Path) -> list[str]:
+    """ADR-0009 / P8: does every external-AI mission have a run record -- RUN or an explicit
+    NOT_RUN reason?
+
+    Same blind-spot shape every other check in this file exists to catch, one programme over: a
+    mission with neither a run record nor a stated reason it hasn't run is indistinguishable from a
+    mission nobody remembered, which is exactly how REG-16 sat at zero adversarial review long after
+    Tier A and B were done. "Never checked" must never look the same as "checked, and here is why it
+    was skipped." Silently absent (no file at all) is a gap here for that reason, not silence.
+
+    A checkout without the external-AI review feature (missions.json absent) has nothing to check --
+    this returns no gaps rather than erroring, the same way ledger_coverage_gaps only looks under
+    docs/.
+    """
+    missions_file = root / "scripts" / "external-review" / "missions.json"
+    if not missions_file.exists():
+        return []
+    runs_dir = root / "docs" / "external-ai-review" / "runs"
+
+    missions = json.loads(missions_file.read_text(encoding="utf-8"))["missions"]
+    gaps: list[str] = []
+    for mission in missions:
+        mission_id = mission["missionId"]
+        run_file = runs_dir / f"{mission_id}.json"
+        if not run_file.exists():
+            gaps.append(
+                f"mission {mission_id} (scripts/external-review/missions.json) has no run record at "
+                f"docs/external-ai-review/runs/{mission_id}.json -- add one with runStatus RUN "
+                f"(+ packManifestSha256 + verdictRecordKind) or NOT_RUN (+ notRunReason)."
+            )
+            continue
+        try:
+            record = json.loads(run_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            gaps.append(f"docs/external-ai-review/runs/{mission_id}.json is not valid JSON: {exc}")
+            continue
+        status = record.get("runStatus")
+        if status == "RUN":
+            if not record.get("packManifestSha256") or not record.get("verdictRecordKind"):
+                gaps.append(
+                    f"docs/external-ai-review/runs/{mission_id}.json says RUN but is missing "
+                    f"packManifestSha256 or verdictRecordKind -- see external-ai-run.schema.json."
+                )
+        elif status == "NOT_RUN":
+            if not str(record.get("notRunReason", "")).strip():
+                gaps.append(
+                    f"docs/external-ai-review/runs/{mission_id}.json says NOT_RUN but notRunReason "
+                    f"is blank -- state why, even if the reason is 'blocked on D3'."
+                )
+        else:
+            gaps.append(
+                f"docs/external-ai-review/runs/{mission_id}.json has runStatus '{status}', expected "
+                f"RUN or NOT_RUN -- there is no third, silent option."
+            )
+    return gaps
+
+
 def check_plan_status_banners(root: Path, verbose: bool) -> list[str]:
     """Every planning document must declare its tense in its first few lines.
 
@@ -347,6 +405,7 @@ def main(argv: list[str]) -> int:
     # Coverage last so its message is not buried, but it is a HARD gap: a ledger nobody checks is the
     # same failure as a summary row nobody cross-checks.
     all_problems.extend(ledger_coverage_gaps(root))
+    all_problems.extend(mission_run_coverage_gaps(root))
 
     if all_problems:
         print(f"\nFAIL: {len(all_problems)} tracking inconsistency(ies) — a summary row contradicting "

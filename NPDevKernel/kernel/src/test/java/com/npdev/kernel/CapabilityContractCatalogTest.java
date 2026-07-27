@@ -20,6 +20,10 @@ class CapabilityContractCatalogTest {
 
         CapabilityContract messaging = catalog.resolve("MessagingCapability");
         assertTrue(messaging.supportsOperation("publish"));
+
+        CapabilityContract externalAi = catalog.resolve("ExternalAiCapability");
+        assertTrue(externalAi.supportsOperation("submitPack"));
+        assertTrue(externalAi.supportsOperation("ingestVerdict"));
     }
 
     @Test

@@ -333,6 +333,40 @@ def tool_generate(arguments: dict[str, Any]) -> dict[str, Any]:
     return _passthrough(result)
 
 
+def tool_build_review_pack(arguments: dict[str, Any]) -> dict[str, Any]:
+    mission_id = arguments.get("mission_id")
+    if not mission_id:
+        return _text_error("mission_id is required")
+    args = ["review", "pack", "--mission-id", mission_id]
+    if arguments.get("commit"):
+        args += ["--commit", arguments["commit"]]
+    if arguments.get("repo_root"):
+        args += ["--repo-root", arguments["repo_root"]]
+    paths = arguments.get("paths")
+    if paths:
+        args += ["--paths", *paths]
+    result = run_cli(args)
+    return _passthrough(result)
+
+
+def tool_ingest_review_verdict(arguments: dict[str, Any]) -> dict[str, Any]:
+    mission_id = arguments.get("mission_id")
+    vendor_id = arguments.get("vendor_id")
+    verdict_file = arguments.get("verdict_file")
+    if not (mission_id and vendor_id and verdict_file):
+        return _text_error("mission_id, vendor_id and verdict_file are required")
+    args = [
+        "review", "ingest",
+        "--mission-id", mission_id,
+        "--vendor-id", vendor_id,
+        "--verdict-file", verdict_file,
+    ]
+    if arguments.get("pack_manifest_sha256"):
+        args += ["--pack-manifest-sha256", arguments["pack_manifest_sha256"]]
+    result = run_cli(args)
+    return _passthrough(result)
+
+
 # A directly-relevant maintainer finding should outrank an incidental doc keyword hit, so
 # knowledge-card chunks (idea 1) get a fixed relevance boost over doc/sample chunks.
 KNOWLEDGE_CARD_BOOST = 1.5
@@ -553,6 +587,51 @@ TOOLS: list[dict[str, Any]] = [
             "required": ["model", "config", "output"],
         },
     },
+    {
+        "name": "npdev_build_review_pack",
+        "description": (
+            "ADR-0009: builds a redacted, chunked external-AI review pack for one mission "
+            "(scripts/external-review/missions.json) -- no egress happens here, the pack is only "
+            "written locally for review. Fails closed if the sanitizer finds a secret-shaped pattern "
+            "or a requested path is a findings/conclusions doc. Never sends anything to a vendor."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "mission_id": {"type": "string", "description": "e.g. 'M2-SEC-ROWAUTHZ' -- see missions.json."},
+                "commit": {"type": "string", "description": "Optional: override the mission's pinned git commit."},
+                "repo_root": {"type": "string", "description": "Optional: repo root the mission's paths are relative to."},
+                "paths": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional additional/override repo-relative paths (required for M1/M6, which declare none in missions.json).",
+                },
+            },
+            "required": ["mission_id"],
+        },
+    },
+    {
+        "name": "npdev_ingest_review_verdict",
+        "description": (
+            "ADR-0009: validates a verdict JSON file (must carry recordKind:'external-ai-verdict', "
+            "noRepoAccess:true, autoApplied:false) and, only if it passes, records a RUN entry at "
+            "docs/external-ai-review/runs/<mission>.json for the external-AI-review gate. Never "
+            "auto-applies anything a verdict recommends -- it only files the record."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "mission_id": {"type": "string"},
+                "vendor_id": {"type": "string", "description": "e.g. 'openai', 'gemini', 'xai'."},
+                "verdict_file": {"type": "string", "description": "Path to the verdict JSON file."},
+                "pack_manifest_sha256": {
+                    "type": "string",
+                    "description": "Required unless the verdict file itself carries packManifestSha256.",
+                },
+            },
+            "required": ["mission_id", "vendor_id", "verdict_file"],
+        },
+    },
 ]
 
 TOOL_HANDLERS = {
@@ -566,6 +645,8 @@ TOOL_HANDLERS = {
     "npdev_check_support": tool_check_support,
     "npdev_migration_diff": tool_migration_diff,
     "npdev_generate": tool_generate,
+    "npdev_build_review_pack": tool_build_review_pack,
+    "npdev_ingest_review_verdict": tool_ingest_review_verdict,
 }
 
 

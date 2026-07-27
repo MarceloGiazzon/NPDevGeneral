@@ -1,0 +1,6 @@
+{
+  "missionId": "M7-IMPACT-CONVERT",
+  "runStatus": "NOT_RUN",
+  "notRunReason": "P6/P7 (ReviewAdminController, ReviewPackBuilder, CLI, MCP tools, model schema surface) are built and verified, but this mission has not been exercised against any real generated app's Impact Report -- no MANUAL_REVIEW instance has been built into a pack yet. Not blocked on D3 (product instance, not platform).",
+  "runAt": "2026-07-27T00:00:00Z"
+}

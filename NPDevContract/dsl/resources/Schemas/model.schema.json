@@ -304,9 +304,33 @@
       "items": {
         "$ref": "#/$defs/packRef"
       }
+    },
+    "externalAi": {
+      "$ref": "#/$defs/externalAi"
     }
   },
   "$defs": {
+    "externalAi": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "ADR-0009: app-level external-AI delegation settings. Absent entirely = denied (the platform default); no code path may send anything to a vendor without this block explicitly opting in.",
+      "properties": {
+        "egress": {
+          "type": "string",
+          "enum": ["denied", "packOnly", "apiEnabled"],
+          "default": "denied",
+          "description": "denied: no egress possible. packOnly: packs may be built and reviewed locally (e.g. air-gapped paste-transport) but never auto-sent. apiEnabled: the external-ai-http adapter may call a configured vendor."
+        },
+        "vendors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Vendor ids (e.g. \"openai\") this app has opted into. Required non-empty when egress is not \"denied\" -- SemanticValidator rejects egress-enabled with no vendor configured."
+        }
+      }
+    },
     "aggregate": {
       "type": "object",
       "required": [
@@ -761,6 +785,11 @@
         "unique": {
           "type": "boolean",
           "default": false
+        },
+        "sensitive": {
+          "type": "boolean",
+          "default": false,
+          "description": "ADR-0009: marks this field for redaction before it may appear in any external-AI review pack (docs/adr/ADR-0009-external-ai-delegation.md). Authoring-time, and specific to pack building -- independent of the platform's runtime EventRedactionPolicy family."
         },
         "connectable": {
           "type": "string",

@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://npdev.dev/schemas/external-ai-mission.schema.json",
+  "title": "NPDev External AI Mission Profile",
+  "description": "A declared unit of work an external AI may be asked to judge (ADR-0009): what pack it gets, what it must never be shown, and which case (platform dogfood or product feature) it closes. Catalog entries like M1-SEC-GENCODE / M7-IMPACT-CONVERT are instances of this shape.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["missionId", "instance", "closes", "packContents", "excluded"],
+  "properties": {
+    "missionId": {
+      "type": "string",
+      "pattern": "^M[0-9]+-[A-Z0-9-]+$",
+      "description": "Stable id, e.g. M1-SEC-GENCODE, M7-IMPACT-CONVERT."
+    },
+    "instance": {
+      "type": "string",
+      "enum": ["platform", "product", "both"],
+      "description": "platform = NPDev's own dogfood review; product = an app author's own feature use; both = the same mission shape serves either."
+    },
+    "closes": {
+      "type": "string",
+      "description": "Which inventory case this satisfies, e.g. 'E1 s.1' or 'calibration' -- free text referencing PLAN_EXTERNAL_AI_REVIEW's case inventory. A calibration mission closes nothing externally-facing; it establishes the control."
+    },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "isCalibration": {
+      "type": "boolean",
+      "default": false,
+      "description": "True for M0-CALIB-* missions run against the pre-fix parent commit of a known bug, per ADR-0009's control requirement (P4). A calibration mission's result is a yield score, not a finding."
+    },
+    "packContents": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "What the pack deliberately includes, in curator-facing terms (e.g. 'DefaultConceptGateway.java (595 ln)')."
+    },
+    "excluded": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "What the pack deliberately withholds (e.g. our own conclusions, the register, prior findings docs). Never empty for a real (non-calibration) mission -- curation without an excluded list is not curation."
+    },
+    "vendorRequirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "minVendors": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "Security missions require >=2 per the plan's multi-vendor-by-design hazard mitigation."
+        },
+        "requireLargeContext": { "type": "boolean", "default": false }
+      }
+    },
+    "gitPinned": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether the pack must be built from an explicit git revision (git show <rev>:<path>), not the working tree -- required for any mission that targets NPDev's own historical source."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["DRAFT", "ACTIVE", "RETIRED"],
+      "default": "DRAFT"
+    },
+    "sourceCommit": {
+      "type": "string",
+      "description": "Git revision this mission's platform-git paths are pinned to (only meaningful when gitPinned is true and instance is platform/both) -- e.g. a calibration mission's pre-fix parent commit. Absent for missions whose content is not git-sourced."
+    },
+    "paths": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Repo-relative paths the platform producer (scripts/external-review/build-review-pack.py) reads for this mission. Empty or absent for missions whose content is per-generated-app or per-app-runtime (M1, M6, M7) -- those are supplied via --paths at build time instead."
+    }
+  }
+}

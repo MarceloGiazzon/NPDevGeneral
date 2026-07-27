@@ -1,3 +1,6 @@
 dependencies {
     implementation project(':kernel')
+    // ADR-0009 / P2: SensitiveKeyPolicy loads the shared sensitive-key-patterns.json resource --
+    // the single source of "what is sensitive" this whole policy family now delegates to.
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
 }

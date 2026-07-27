@@ -1,0 +1,6 @@
+{
+  "missionId": "M1-SEC-GENCODE",
+  "runStatus": "NOT_RUN",
+  "notRunReason": "Blocked on ADR-0009 D3 and real vendor API keys. Also requires --paths pointing at a generated app's emitted Java (per-app content, outside this repo under D:\\WorkSpace\\NPDev\\Build) -- no such app has been generated for this mission yet.",
+  "runAt": "2026-07-26T00:00:00Z"
+}
