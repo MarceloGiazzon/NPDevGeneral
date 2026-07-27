@@ -39,6 +39,23 @@
 
 ---
 
+> ⚠️ **This file is a machine contract.** Seven consumers parse it —
+> `scripts/quality/check-register-consistency.py`, `scripts/quality/check-narrative-status-drift.py`,
+> `scripts/quality/run-script-automation-quality.ps1`, `.github/workflows/npdev-ci-validation.yml`,
+> and a comment reference in `NPDevRuntimeHost/.../SchemaLifecycleExecutor.java`.
+> Changing a heading level, a table column, or a `**Status:**` prefix can make a gate parse **zero
+> rows and still exit 0**. After ANY edit, run:
+>
+> ```
+> python scripts/quality/check-register-consistency.py
+> python scripts/quality/check-narrative-status-drift.py
+> ```
+>
+> **An item's status lives HERE and nowhere else.** Updating a status in a plan document instead will
+> NOT be caught: `check-narrative-status-drift.py` is report-only by design and exits 0 regardless.
+
+---
+
 ## 0. Status summary
 
 ### 0.0 Owner decisions executed 2026-07-22 (post CI-green)
