@@ -1,13 +1,11 @@
 # Decision briefs — C1, D4, D5, F8 (2026-07-27)
 
-> **STATUS: ACTIVE.** Written per `docs/REMAINDER_CLOSURE_PLAN.md` Phase 4 ("AI drafts, owner rules
-> — never both"). Each brief below states options, consequences, what each option unblocks, and a
-> recommendation. **None of the four verdict lines is filled in.** That is deliberate, not an
-> oversight: ADR-0009's own honesty contract lists exactly this class of call ("owner policy
-> decisions... an AI may draft the decision brief; it does not make the decision") as
-> non-delegable, and `POST_BETA0_HUMAN_ACTION_REGISTER.md` already records E5/E6/E7 the same way.
-> Fill in `Verdict:` under each brief, then propagate the answer to the document(s) named in that
-> brief's "Where this lands" line.
+> **STATUS: DECIDED (2026-07-27).** Written per `docs/REMAINDER_CLOSURE_PLAN.md` Phase 4 ("AI drafts,
+> owner rules — never both"). All four verdict lines are now filled in by the owner (T1.11,
+> `docs/TREE1_LAUNCH_UNBLOCK_PLAN.md`) and propagated to the document(s) named in each brief's "Where
+> this lands" line. One verdict (C1) names an action — making the GitHub repository public — that is
+> not yet executed as of this writing; see C1's verdict note for the distinction between the decision
+> and its execution.
 
 ---
 
@@ -56,7 +54,10 @@ already the destination ADR-0007 named.
 **Where this lands:** `docs/NPDEV_OPEN_ITEMS_REGISTER.md` §3.2 (REG-17), this brief's own D4 section,
 `docs/EXTERNAL_SECURITY_REVIEW_BRIEF.md`.
 
-**Verdict:** _(owner to fill in — (a) / (b) / (c), and if (b), who the named reviewer is)_
+**Verdict (2026-07-27):** **(a) Make the repository public.** Consistent with ADR-0007's already-ratified
+Apache-2.0 source-first posture. Execution note: flipping GitHub visibility is a separate, distinct
+action from this recorded decision — do a last skim for anything that should have been redacted
+before the switch is actually flipped (per this brief's own caveat above).
 
 ---
 
@@ -102,7 +103,9 @@ once one exists, settles (a) vs (b) directly by trying).
 **Where this lands:** `docs/adr/ADR-0009-external-ai-delegation.md` decision table (D4 row),
 `docs/NPDEV_OPEN_ITEMS_REGISTER.md` §3.2 (REG-17's own status).
 
-**Verdict:** _(owner to fill in — (a) / (b) / (c))_
+**Verdict (2026-07-27):** **(a) Automated external repro + a blind external-AI operator run closes
+REG-17.** The combination already achieved satisfies the DoD's intent even without a literal human
+third party.
 
 ---
 
@@ -134,7 +137,8 @@ pressure from this brief.
 
 **Where this lands:** `POST_BETA0_HUMAN_ACTION_REGISTER.md`'s E5 row.
 
-**Verdict:** _(owner to fill in — (a) / (b) / (c), or (a) now + (b) later)_
+**Verdict (2026-07-27):** **(a) Permanently open, with an honest label.** Record E5 as a boundary this
+project accepts it cannot close alone right now — no real users/participants exist yet.
 
 ---
 
@@ -185,7 +189,9 @@ weigh the contention/complexity cost differently.
 **Where this lands:** `docs/REG16_LNCH13_ROWLEVEL_AUTHZ_ADVERSARIAL_REVIEW.md` (LNCH13-F4's own
 entry), `docs/ACCEPTED_BOUNDARIES.md` (if (c) is chosen), `docs/ROW_LEVEL_AUTHORIZATION.md`.
 
-**Verdict:** _(owner to fill in — (a) / (b1) / (b2) / (c), or a combination)_
+**Verdict (2026-07-27):** **(c) + (b1).** Accept as a documented boundary with a named revisit
+trigger, and document the existing `expectedRowVersion` escape hatch as today's opt-in fix for a
+caller who needs the stronger guarantee. Reserve (a)/(b2) for if the revisit trigger actually fires.
 
 ---
 

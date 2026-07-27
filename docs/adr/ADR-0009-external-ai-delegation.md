@@ -2,18 +2,19 @@
 
 ## Status
 
-**APPROVED WITH CONDITIONS — ratified 2026-07-26, D3 resolved 2026-07-27** (see decision block
+**APPROVED WITH CONDITIONS — ratified 2026-07-26, D3/D4/D5 resolved 2026-07-27** (see decision block
 below, which is authoritative). Originally drafted per `PLAN_EXTERNAL_AI_REVIEW_2026-07-26.md`,
 promoted to `docs\archive/programme-history/EXTERNAL_AI_DELEGATION_PLAN.md` with `STATUS: ACTIVE` on owner approval — that
-promotion is complete, not pending. D1, D2, D3, D6, D7 are answered (D1/D2/D6/D7 on 2026-07-26, D3
-on 2026-07-27 — see the decision table); **D4 and D5 remain open**. P0-P9 are built and verified,
+promotion is complete, not pending. **All seven questions (D1-D7) are now answered** (D1/D2/D6/D7 on
+2026-07-26, D3 on 2026-07-27, D4/D5 on 2026-07-27 per `docs/DECISION_BRIEFS_2026-07.md` — see the
+decision table). P0-P9 are built and verified,
 including real vendor calls under D3's authorization (see `archive/programme-history/EXTERNAL_AI_DELEGATION_PLAN.md` and
 `archive/programme-history/REG48_50_CLOSURE_PLAN.md` for the full run history).
 
 ## Context
 
 Several of this project's own documents say, in effect, "a person outside the project must do this
-step": an independent adversarial security review (`archive/programme-history/EXTERNAL_SECURITY_REVIEW_BRIEF.md`), REG-17's
+step": an independent adversarial security review (`../EXTERNAL_SECURITY_REVIEW_BRIEF.md`), REG-17's
 third-party reproduction, the cold-start authoring test, an audit sign-off, and — the insight that
 promotes this from a maintainer script to a platform feature — the runtime's own `MANUAL_REVIEW`
 schema-impact items and the `ACCEPTED_BOUNDARIES.md` family of "stop and ask a human" boundaries in
@@ -123,7 +124,7 @@ received), left at
 Decision: [ ] APPROVED   [x] APPROVED WITH CONDITIONS   [ ] REJECTED   [ ] PENDING
 Owner: Marcelo Giazzon
 Date:  2026-07-26 (D3 resolved 2026-07-27)
-Conditions: D4/D5 remain open (see table). Real vendor network calls are now policy-authorized
+Conditions: D4/D5 resolved 2026-07-27 (see table). Real vendor network calls are now policy-authorized
             (D3) with working API keys in place (D1/D2), but each ACTUAL send still requires an
             explicit go-ahead at the moment it happens (honesty rule 6 -- egress is a publish
             action, not something a resolved policy pre-authorizes silently forever).
@@ -134,8 +135,8 @@ Conditions: D4/D5 remain open (see table). Real vendor network calls are now pol
 | D1 | Which external vendor(s)? | **ANSWERED 2026-07-26, REVISED 2026-07-26: NVIDIA Build (`nvidia`, OpenAI-compatible via `https://integrate.api.nvidia.com/v1/chat/completions`) + Google Gemini** — replaces the original "OpenAI, Google Gemini, xAI Grok" answer; owner does not hold OpenAI/xAI accounts, provided a real NVIDIA Build key (named `NVIDIABuild-Autogen-25`) and a real Gemini key instead. Down from three vendors to two — the multi-vendor mitigation (§6) still holds with two, just with a smaller sample |
 | D2 | Transport: API key or manual paste? | **ANSWERED 2026-07-26: API key integration** (`external-ai-http` is the primary transport; `external-ai-inproc` paste-transport still built as the fail-safe/offline twin, mirroring the `mail-inproc`/`mail-smtp` pair) |
 | D3 | Egress authorization for NPDev's own source | **ANSWERED 2026-07-27: approved, per the plan's own drafted recommendation** — code excerpts (the curated `packContents` a mission profile already declares) may be sent to the D1 vendors; `.env`/keys/DB dumps remain hard-blocked regardless, enforced by the sanitizer (secret-content-patterns.json) independent of this decision. Rationale unchanged from the plan: ADR-0007 already ratified Apache-2.0 source-first distribution, so this code is destined to be public — low IP risk in a vendor seeing curated excerpts of it early. This unblocks P4 (calibration) and, once P4 actually completes, P5 (M1–M6) — see the mission run records for each mission's remaining individual blockers |
-| D4 | REG-17 DoD ruling — does M4 close REG-17 or only advance it? | PENDING |
-| D5 | E5 real participants — permanently open, or schedule sessions? | PENDING |
+| D4 | REG-17 DoD ruling — does M4 close REG-17 or only advance it? | **ANSWERED 2026-07-27** (`docs/DECISION_BRIEFS_2026-07.md`): the automated external repro + blind AI-operator combination closes REG-17; no literal human third party required |
+| D5 | E5 real participants — permanently open, or schedule sessions? | **ANSWERED 2026-07-27** (`docs/DECISION_BRIEFS_2026-07.md`): permanently open, with an honest label — no real users/participants exist yet |
 | D6 | Feature scope: missions only (M1–M7), or also a general flow step? | **ANSWERED 2026-07-26: missions only** — no per-record flow-step primitive in this pass |
 | D7 | Does the product feature ship in beta1, or after NPDev's own review closes? | **ANSWERED 2026-07-26: build P0–P9 together** — owner chose not to defer P6/P7, overriding the plan's own "P0–P5 now, P6–P7 later" recommendation |
 

@@ -2,6 +2,14 @@
 
 > **STATUS: ACTIVE** — this is the one open item that cannot be closed from inside the project.
 > Prepared 2026-07-25. Hand this to a reviewer who did **not** write NPDev.
+>
+> **2026-07-27 update:** briefly misfiled to `docs/archive/programme-history/` during that day's doc
+> reorganization (the same mistake `docs/DECISION_BRIEFS_2026-07.md` had — an archive pass reading
+> zero inbound references as "history" rather than checking for `STATUS: ACTIVE"); restored here.
+> C1 (`docs/DECISION_BRIEFS_2026-07.md`) has now been decided: the repository is to be made public,
+> which is this brief's own precondition for being handed to an actual outside reviewer rather than
+> staying theoretical. As of this writing the GitHub visibility switch itself has not yet been
+> flipped — that is a distinct, separate action from the decision.
 
 ## 0. Why you are reading this
 
