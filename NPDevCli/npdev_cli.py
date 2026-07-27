@@ -180,7 +180,7 @@ def _capture_validation(model_path: Path, report: dict) -> None:
 
 def read_json(path: Path) -> dict:
     try:
-        with path.open("r", encoding="utf-8") as handle:
+        with path.open("r", encoding="utf-8-sig") as handle:
             return json.load(handle)
     except FileNotFoundError as exc:
         raise CliError(f"file not found: {path}") from exc

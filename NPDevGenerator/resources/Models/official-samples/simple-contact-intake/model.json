@@ -124,7 +124,7 @@
       "steps": [
         {
           "name": "validate-contact-message",
-          "type": "enforceInvariants",
+          "type": "invariantCheck",
           "scope": "ContactMessage",
           "invariants": [
             "NameRequired",
@@ -135,22 +135,22 @@
         {
           "name": "save-message",
           "type": "capabilityCall",
-          "cap": "persistence",
-          "op": "save",
           "args": [
             "$input"
           ],
-          "out": "$saved"
+          "capability": "persistence",
+          "operation": "save",
+          "output": "$saved"
         },
         {
           "name": "send-notification",
           "type": "capabilityCall",
-          "cap": "notification",
-          "op": "send",
           "args": [
             "$saved"
           ],
-          "out": "$delivery"
+          "capability": "notification",
+          "operation": "send",
+          "output": "$delivery"
         },
         {
           "name": "emit-contact-event",
