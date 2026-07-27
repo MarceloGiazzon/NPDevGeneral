@@ -17,8 +17,9 @@ import java.util.List;
  * {@code npdev.externalai.provider: inproc | http}, defaulting to {@code inproc} (air-gapped
  * paste-transport -- writes a pack to disk, no network egress possible) so an unconfigured app
  * cannot accidentally send anything anywhere. Setting {@code http} switches to the real
- * vendor-calling adapter (D2); vendor API keys come from env vars, never committed (D1: OpenAI,
- * Gemini, xAI). Same {@code @ConditionalOnProperty} pattern as {@link NpdevFileStoreConfig}.
+ * vendor-calling adapter (D2); vendor API keys come from env vars, never committed (D1, revised
+ * 2026-07-26: NVIDIA Build + Gemini, replacing the original OpenAI + xAI Grok answer). Same
+ * {@code @ConditionalOnProperty} pattern as {@link NpdevFileStoreConfig}.
  *
  * <p>Deliberately wired as a plain Spring bean, constructor-injected into
  * {@code com.finalexec.review.ReviewAdminController} -- not through {@code CapabilityRegistry} /
@@ -40,17 +41,14 @@ public class NpdevExternalAiConfig {
     @Bean
     @ConditionalOnProperty(name = "npdev.externalai.provider", havingValue = "http")
     public ExternalAiCapabilityContract httpExternalAiCapabilityContract(
-            @Value("${npdev.externalai.http.openai.apiKeyEnvVar:NPDEV_EXTERNALAI_OPENAI_API_KEY}") String openAiKeyEnvVar,
-            @Value("${npdev.externalai.http.openai.model:gpt-5}") String openAiModel,
+            @Value("${npdev.externalai.http.nvidia.apiKeyEnvVar:NPDEV_EXTERNALAI_NVIDIA_API_KEY}") String nvidiaKeyEnvVar,
+            @Value("${npdev.externalai.http.nvidia.model:meta/llama-3.3-70b-instruct}") String nvidiaModel,
             @Value("${npdev.externalai.http.gemini.apiKeyEnvVar:NPDEV_EXTERNALAI_GEMINI_API_KEY}") String geminiKeyEnvVar,
-            @Value("${npdev.externalai.http.gemini.model:gemini-3-pro}") String geminiModel,
-            @Value("${npdev.externalai.http.xai.apiKeyEnvVar:NPDEV_EXTERNALAI_XAI_API_KEY}") String xaiKeyEnvVar,
-            @Value("${npdev.externalai.http.xai.model:grok-4}") String xaiModel
+            @Value("${npdev.externalai.http.gemini.model:gemini-3.5-flash}") String geminiModel
     ) {
         List<ExternalAiVendorProfile> vendors = List.of(
-                ExternalAiVendorProfile.openAi(openAiKeyEnvVar, openAiModel),
-                ExternalAiVendorProfile.gemini(geminiKeyEnvVar, geminiModel),
-                ExternalAiVendorProfile.xai(xaiKeyEnvVar, xaiModel)
+                ExternalAiVendorProfile.nvidiaBuild(nvidiaKeyEnvVar, nvidiaModel),
+                ExternalAiVendorProfile.gemini(geminiKeyEnvVar, geminiModel)
         );
         return new HttpExternalAiCapabilityAdapter(vendors);
     }

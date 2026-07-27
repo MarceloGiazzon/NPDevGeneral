@@ -1,6 +1,11 @@
 {
   "missionId": "M1-SEC-GENCODE",
-  "runStatus": "NOT_RUN",
-  "notRunReason": "Blocked on ADR-0009 D3 and real vendor API keys. Also requires --paths pointing at a generated app's emitted Java (per-app content, outside this repo under D:\\WorkSpace\\NPDev\\Build) -- no such app has been generated for this mission yet.",
-  "runAt": "2026-07-26T00:00:00Z"
+  "runStatus": "RUN",
+  "packManifestSha256": "69d8126a73cf8f390a4a618d12a9e4c2e65daf85f15f761bf4f5fdfb25438145",
+  "verdictRecordKind": "external-ai-verdict",
+  "vendors": [
+    "gemini",
+    "nvidia"
+  ],
+  "runAt": "2026-07-27T04:32:17.179350+00:00"
 }

@@ -38,7 +38,7 @@ class HttpExternalAiCapabilityAdapterTest {
     void submitPackDeniesWhenNoVendorIsConfigured() {
         HttpExternalAiCapabilityAdapter adapter = new HttpExternalAiCapabilityAdapter(List.of());
         ExternalAiPackSubmission submission = new ExternalAiPackSubmission(
-                "M1-SEC-GENCODE", "openai", "c".repeat(64), "{}");
+                "M1-SEC-GENCODE", "nvidia", "c".repeat(64), "{}");
 
         ExternalAiEgressDeniedException thrown = assertThrows(
                 ExternalAiEgressDeniedException.class, () -> adapter.submitPack(submission));
@@ -48,11 +48,11 @@ class HttpExternalAiCapabilityAdapterTest {
     @Test
     void submitPackDeniesWhenApiKeyEnvVarIsUnset() {
         HttpExternalAiCapabilityAdapter adapter = new HttpExternalAiCapabilityAdapter(
-                List.of(ExternalAiVendorProfile.openAi("NPDEV_TEST_MISSING_KEY", "gpt-5")),
+                List.of(ExternalAiVendorProfile.nvidiaBuild("NPDEV_TEST_MISSING_KEY", "meta/llama-3.1-405b-instruct")),
                 HttpClient.newHttpClient(),
                 env -> null);
         ExternalAiPackSubmission submission = new ExternalAiPackSubmission(
-                "M1-SEC-GENCODE", "openai", "c".repeat(64), "{}");
+                "M1-SEC-GENCODE", "nvidia", "c".repeat(64), "{}");
 
         ExternalAiEgressDeniedException thrown = assertThrows(
                 ExternalAiEgressDeniedException.class, () -> adapter.submitPack(submission));
@@ -60,7 +60,7 @@ class HttpExternalAiCapabilityAdapterTest {
     }
 
     @Test
-    void submitPackRoundTripsAnOpenAiShapedResponse() throws IOException {
+    void submitPackRoundTripsAnOpenAiCompatibleShapedResponse() throws IOException {
         String verdictJson = "{\"recordKind\":\"external-ai-verdict\",\"noRepoAccess\":true,"
                 + "\"autoApplied\":false,\"findings\":[]}";
         server = startStubServer("/v1/chat/completions", exchange -> {
@@ -68,12 +68,12 @@ class HttpExternalAiCapabilityAdapterTest {
             writeJson(exchange, responseBody);
         });
         ExternalAiVendorProfile profile = new ExternalAiVendorProfile(
-                "openai", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions",
-                "gpt-5", "NPDEV_TEST_OPENAI_KEY", ExternalAiRequestFormat.OPENAI_CHAT);
+                "nvidia", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions",
+                "meta/llama-3.1-405b-instruct", "NPDEV_TEST_NVIDIA_KEY", ExternalAiRequestFormat.OPENAI_CHAT);
         HttpExternalAiCapabilityAdapter adapter = new HttpExternalAiCapabilityAdapter(
                 List.of(profile), HttpClient.newHttpClient(), env -> "test-key");
         ExternalAiPackSubmission submission = new ExternalAiPackSubmission(
-                "M1-SEC-GENCODE", "openai", "d".repeat(64), "{\"missionId\":\"M1-SEC-GENCODE\"}");
+                "M1-SEC-GENCODE", "nvidia", "d".repeat(64), "{\"missionId\":\"M1-SEC-GENCODE\"}");
 
         ExternalAiRunResult result = adapter.submitPack(submission);
 
@@ -81,7 +81,7 @@ class HttpExternalAiCapabilityAdapterTest {
         ExternalAiVerdictRecord record = adapter.verdictFor("M1-SEC-GENCODE").orElseThrow();
         assertEquals("external-ai-verdict", ExternalAiVerdictRecord.RECORD_KIND);
         assertEquals(verdictJson, record.verdictJson());
-        assertEquals("gpt-5", record.model());
+        assertEquals("meta/llama-3.1-405b-instruct", record.model());
     }
 
     @Test
@@ -116,12 +116,12 @@ class HttpExternalAiCapabilityAdapterTest {
             writeJson(exchange, responseBody);
         });
         ExternalAiVendorProfile profile = new ExternalAiVendorProfile(
-                "openai", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions",
-                "gpt-5", "NPDEV_TEST_OPENAI_KEY", ExternalAiRequestFormat.OPENAI_CHAT);
+                "nvidia", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions",
+                "meta/llama-3.1-405b-instruct", "NPDEV_TEST_NVIDIA_KEY", ExternalAiRequestFormat.OPENAI_CHAT);
         HttpExternalAiCapabilityAdapter adapter = new HttpExternalAiCapabilityAdapter(
                 List.of(profile), HttpClient.newHttpClient(), env -> "test-key");
         ExternalAiPackSubmission submission = new ExternalAiPackSubmission(
-                "M1-SEC-GENCODE", "openai", "f".repeat(64), "{}");
+                "M1-SEC-GENCODE", "nvidia", "f".repeat(64), "{}");
 
         assertThrows(IllegalArgumentException.class, () -> adapter.submitPack(submission));
     }

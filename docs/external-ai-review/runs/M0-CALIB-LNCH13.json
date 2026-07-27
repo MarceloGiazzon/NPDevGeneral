@@ -1,6 +1,11 @@
 {
   "missionId": "M0-CALIB-LNCH13",
-  "runStatus": "NOT_RUN",
-  "notRunReason": "Blocked on ADR-0009 D3 (egress authorization for NPDev's own source) and real vendor API keys. P4's calibration control must run before any non-calibration mission per the plan's own ordering rationale (P4 before P5 is non-negotiable).",
-  "runAt": "2026-07-26T00:00:00Z"
+  "runStatus": "RUN",
+  "packManifestSha256": "b4c64a9782ba0dfa63c877daae2334f6e874a8cc41ebbaac800d291580698325",
+  "verdictRecordKind": "external-ai-verdict",
+  "vendors": [
+    "nvidia",
+    "gemini"
+  ],
+  "runAt": "2026-07-27T03:11:29.493377+00:00"
 }

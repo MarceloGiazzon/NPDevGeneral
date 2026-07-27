@@ -2,9 +2,14 @@
 
 > **STATUS: ACTIVE** — 2026-07-27. Promoted from
 > `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\external-ai-review\PLAN_EXTERNAL_AI_REVIEW_2026-07-26.md`
-> on owner approval (D1/D2/D6/D7 answered 2026-07-26 — see §7). P0, P1, P2, P3, P6, P7, P8 are DONE
-> and verified; P4/P5 are BLOCKED on D3 + real vendor API keys; P9 is in progress (this promotion is
-> part of P9). See `docs/adr/ADR-0009-external-ai-delegation.md` for the governance record.
+> on owner approval (D1/D2/D6/D7 answered 2026-07-26, D3 answered 2026-07-27 — see §7). **All of P0-P9
+> are now DONE and verified, including P5 (M1-M6 actually run against real vendors, 2026-07-27).**
+> **P4's real calibration result: 0/4 (2 missions x 2 vendors) found their
+> target known bug.** Per this plan's own rule, both channels are recorded LOW-YIELD, not dressed up
+> as assurance — see the P4 row below. **P5's real missions found the opposite of low-yield: 3 real,
+> code-verified security gaps (REG-48/49/50) that calibration's synthetic bugs never modeled**, plus a
+> real bug in the P8 gate itself, found because M6's own audit was skeptical enough to flag it — see
+> the P5/P8 rows below and `docs/adr/ADR-0009-external-ai-delegation.md`.
 
 ## Progress as of 2026-07-27
 
@@ -14,12 +19,12 @@
 | P1 — Kernel port + adapters, default denies | **DONE** | `ExternalAiCapabilityContract` (fail-closed default, RED-first proof green); `external-ai-inproc`, `external-ai-http` adapters, both test suites green |
 | P2 — Pack core: redaction + sanitizer + chunker | **DONE** | `SensitiveKeyPolicy` consolidation (fixed a real drift bug: Trace policy was silently missing `authorization`); `secret-content-patterns.json` |
 | P3 — Platform producer | **DONE** | `scripts/external-review/build-review-pack.py` + `missions.json` (9 missions); verified live incl. a real git-pinned pack against LNCH13-F1's actual pre-fix commit |
-| P4 — Calibration control | **BLOCKED** | Needs D3 (egress authorization for NPDev's own source) + real vendor API keys. 9/9 missions have an honest `NOT_RUN` record with a reason (`docs/external-ai-review/runs/`) |
-| P5 — NPDev's own missions M1→M6 | **BLOCKED** | Same as P4 |
+| P4 — Calibration control | **DONE — LOW-YIELD result** | Both calibration missions actually run against both D1 vendors (2026-07-27): `M0-CALIB-LNCH13` x {nvidia meta/llama-3.3-70b-instruct, gemini gemini-3.5-flash}, `M0-CALIB-R3F2` x same two. **0/4 runs correctly identified their target known bug.** NVIDIA hallucinated one CRITICAL finding not grounded in the pack (M0-CALIB-LNCH13); Gemini never hallucinated but was inconsistent run-to-run about which real (non-target) issue it surfaced, including once correctly finding R3-F2's bug on the *other* mission's pack (same vulnerable code, present there because R3-F2 wasn't fixed yet at that earlier commit) -- a genuine, evidenced finding, just not a match for that mission's own target. Full reasoning in each verdict's `calibrationScore.note` (`NPDev_General__OutsideRepo\external-ai-review\packs\M0-CALIB-*\*-verdict.json`). **Per this plan's own rule: both channels are recorded low-yield for this vulnerability class, not treated as assurance for any future "no findings" result from M1-M6.** A follow-up attempt to re-calibrate against a stronger NVIDIA model found this account's actual invocation entitlements are narrower than NVIDIA Build's public `/v1/models` catalog (3 candidate models 404'd); owner accepted `meta/llama-3.3-70b-instruct` as this key's practical ceiling on 2026-07-27 and let the 0/4 result stand — see ADR-0009's "P4 addendum" section |
+| P5 — NPDev's own missions M1→M6 | **DONE — all 6 actually run, real real findings (2026-07-27)** | Real vendor calls, real code, real results — not a smoke test. **M1-SEC-GENCODE**: real generated Java sliced from the live `wmsoffice` FinalApp (`Movimento`/`LocalArmazenagem`/`CrossDocking`, all touched by real custom flows); gemini found 2 real issues (1 CONFIRMED HIGH — filed **REG-49**; 1 already-labeled MEDIUM DoS scan), nvidia found 0. **M2-SEC-ROWAUTHZ**: gemini found 1 real HIGH bug in `DefaultConceptGateway.delete()` (CONFIRMED, filed **REG-48**), nvidia found 0. **M3-SEC-TENANT**: gemini found 3 real issues (all CONFIRMED: CRITICAL+HIGH filed as **REG-50**, MEDIUM case-mismatch noted in REG-50), nvidia found 2 (same SQLi root cause as REG-50, plus one weaker LOW claim). **M4-REPRO-BLIND**: nvidia's command plan correctly flagged real ambiguities (no clone URL, no build prerequisites, Linux/PowerShell friction) — RUN, but the mission's own container-execution half is explicitly out of scope for this session (recorded via `details`/`note`, not silently implied closed). **M5-COLDSTART-DOCS**: nvidia authored a real `model.json` blind from the tutorial docs alone (zero repo access) and it passed the platform's own real validator (status: warning, only missing UI labels) — correctly matched the tutorial's actual target concept. **M6-AUDIT-VERDICT**: nvidia's audit of P0-P9's own claims vs a real evidence bundle was appropriately skeptical — distinguished "exists" from "proven to work," correctly flagged zero evidence had been given for the P2 claim. **None of the 3 real security findings were hallucinated** — every one verified by re-reading the actual source, a higher bar than trusting the vendor. Full verdicts/evidence: `NPDev_General__OutsideRepo/external-ai-review/packs/M{1,2,3,4,5,6}-*/`; run records `docs/external-ai-review/runs/M{1..6}-*.json`; findings filed at `docs/NPDEV_OPEN_ITEMS_REGISTER.md`'s new REG-48/49/50 section (OPEN — code-verified, RED-first test not yet written, per this plan's own P5 rule) |
 | P6 — Product surfaces | **DONE** | `ReviewPackBuilder` (Java, byte-identical `manifestSha256` to the Python producer — 3 golden-hash tests); `NpdevExternalAiConfig` + `ReviewAdminController` (ControlPanel page `/api/admin/review/view`, compile-verified against a real generated FinalApp — see note below); `npdev review pack\|ingest` CLI; `npdev_build_review_pack`/`npdev_ingest_review_verdict` MCP tools, tested end-to-end over real JSON-RPC; adapter-registration checklist updated (3 proof-test lists) |
 | P7 — Model schema surface | **DONE** | `sensitive` (field) + `externalAi.egress`/`vendors` (app) mirrored across all 4 `model.schema.json` copies; full Java chain (parser/AST/compiler/compiled-model/canonical-JSON writer+reader/`ModelResolver`/`SemanticValidator`); verified by the reflective `CanonicalJsonRoundTripCompletenessTest` ratchet + 5 new focused validator tests |
-| P8 — Quality gate | **DONE** | `scripts/quality/run-external-ai-gate.ps1`; `check-register-consistency.py`'s new `mission_run_coverage_gaps()`; found and fixed a real pre-existing gap in the shared AJV schema validator (draft-07 schemas silently couldn't validate) |
-| P9 — Ledgers | **IN PROGRESS** | This promotion; `docs/OPEN_GAPS_AND_ROADMAP.md` ADR-0009 row; `docs/POST_BETA0_HUMAN_ACTION_REGISTER.md` AI-delegable column; `knowledge/cards/recipe-external-ai-review-feature.json` |
+| P8 — Quality gate | **DONE — now actually proven green (2026-07-27)** | `scripts/quality/run-external-ai-gate.ps1`; `check-register-consistency.py`'s new `mission_run_coverage_gaps()`; found and fixed a real pre-existing gap in the shared AJV schema validator (draft-07 schemas silently couldn't validate). **Second real bug found running the gate for real, prompted directly by M6's own audit flagging "P8 exists but isn't proven to work":** `run-external-ai-gate.ps1`'s per-mission `Set-Content -Encoding UTF8` wrote a BOM, which the Node validator's `JSON.parse` choked on for every single mission — the gate's step 2/3 had never actually passed. Fixed both the script (`-Encoding utf8NoBOM`) and hardened `validate-json-schema.mjs`'s `readJson` to strip a leading BOM regardless of caller. Gate now genuinely exits 0 |
+| P9 — Ledgers | **DONE** | This promotion; `docs/OPEN_GAPS_AND_ROADMAP.md` ADR-0009 row; `docs/POST_BETA0_HUMAN_ACTION_REGISTER.md` AI-delegable column; `knowledge/cards/recipe-external-ai-review-feature.json`; `docs/NPDEV_OPEN_ITEMS_REGISTER.md`'s new REG-48/49/50 section |
 
 **Note on P6 verification depth.** `NpdevExternalAiConfig`/`ReviewAdminController` depend on
 `com.npdev.generated.runtime.service.RuntimeContextService`, which only exists inside an assembled
@@ -28,8 +33,9 @@ files into a previously-generated sample app (`auxscreen`), restaging the three 
 `scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars`, and running a real `compileJava` —
 `BUILD SUCCESSFUL`. The copies were removed afterward; nothing was left behind in that sample app.
 
-**D1/D2/D6/D7 answers (2026-07-26).** D1: three vendors — OpenAI, Google Gemini, xAI Grok
-(expanded from the plan's recommended two). D2: API key integration (`external-ai-http` is the
+**D1/D2/D6/D7 answers (2026-07-26).** D1: NVIDIA Build + Google Gemini (revised same day from the
+original "OpenAI, Google Gemini, xAI Grok" answer — owner supplied real NVIDIA Build and Gemini
+keys instead). D2: API key integration (`external-ai-http` is the
 primary transport; `external-ai-inproc` paste-transport still built as the offline/fail-safe twin).
 D6: missions only — no general flow-step primitive in this pass. D7: build P0–P9 together, overriding
 the plan's own "P0–P5 now, P6–P7 later" recommendation. D3, D4, D5 remain open — see
@@ -198,11 +204,11 @@ interest".
 
 ## 7. Owner decisions (D1–D7)
 
-| # | Question | Answer (2026-07-26) |
+| # | Question | Answer |
 |---|---|---|
-| **D1** | Which external model(s)? | **Three: OpenAI, Google Gemini, xAI Grok** |
+| **D1** | Which external model(s)? | **Two (revised 2026-07-26): NVIDIA Build + Google Gemini** — replaces the original "OpenAI, Google Gemini, xAI Grok" |
 | **D2** | Transport: API key or manual paste? | **API key integration** (`external-ai-http` primary; `external-ai-inproc` still built as the offline twin) |
-| **D3** | Egress authorization for **NPDev's own** source | **PENDING** — blocks P3's real (non-smoke-test) runs and all of P4/P5 |
+| **D3** | Egress authorization for **NPDev's own** source | **ANSWERED 2026-07-27: approved**, per this plan's own recommendation — code excerpts (curated `packContents`) may be sent; `.env`/keys/DB dumps stay hard-blocked by the sanitizer regardless. Real vendor calls still each need their own explicit go-ahead (honesty rule 6) |
 | **D4** | **REG-17 DoD ruling (E7)** | **PENDING** |
 | **D5** | **E5** real participants — permanently open, or schedule sessions? | **PENDING** (recorded permanently open until answered) |
 | **D6** | **Feature scope**: missions only, or also a general flow step? | **Missions only** — the flow step is explicitly deferred |

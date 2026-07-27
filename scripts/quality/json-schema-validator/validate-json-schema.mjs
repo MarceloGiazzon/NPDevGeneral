@@ -20,7 +20,11 @@ function parseArgs(argv) {
 }
 
 function readJson(filePath) {
-  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  // PowerShell's `-Encoding UTF8` writes a BOM (unlike utf8NoBOM); strip it so a caller upstream
+  // that wrote a BOM'd temp file (e.g. run-external-ai-gate.ps1's per-mission Set-Content) doesn't
+  // fail JSON.parse on a byte that isn't part of the JSON at all.
+  const raw = fs.readFileSync(filePath, "utf8");
+  return JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw);
 }
 
 function normalizeError(error) {

@@ -1,6 +1,16 @@
 {
   "missionId": "M4-REPRO-BLIND",
-  "runStatus": "NOT_RUN",
-  "notRunReason": "Blocked on ADR-0009 D3 and real vendor API keys. Also requires a clean Linux container / GH runner to execute the AI's emitted command plan, which has not been provisioned for this mission yet.",
-  "runAt": "2026-07-26T00:00:00Z"
+  "runStatus": "RUN",
+  "note": "command plan obtained from an independent, repo-blind vendor; execution on a clean Linux container/GH runner has NOT happened -- per the mission's own rule, that execution must never run in this session",
+  "packManifestSha256": "e1e550313ae09c834b20fa12a34434f4d8a6d9d23f17591f90d77f33838955bb",
+  "recordKind": "external-ai-command-plan",
+  "vendors": [
+    "nvidia"
+  ],
+  "vendor": "nvidia",
+  "model": "meta/llama-3.3-70b-instruct",
+  "details": {
+    "commandPlanPath": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\external-ai-review\\packs\\M4-REPRO-BLIND\\e1e550313ae09c834b20fa12a34434f4d8a6d9d23f17591f90d77f33838955bb-nvidia-command-plan.txt"
+  },
+  "runAt": "2026-07-27T04:52:49.702171+00:00"
 }

@@ -11,7 +11,7 @@
     "runStatus": {
       "type": "string",
       "enum": ["RUN", "NOT_RUN"],
-      "description": "RUN requires packManifestSha256 and verdictRecordKind below; NOT_RUN requires notRunReason. There is no third, silent option."
+      "description": "RUN requires packManifestSha256 and one of verdictRecordKind/recordKind below; NOT_RUN requires notRunReason. There is no third, silent option."
     },
     "notRunReason": {
       "type": "string",
@@ -26,12 +26,33 @@
     "verdictRecordKind": {
       "type": "string",
       "const": "external-ai-verdict",
-      "description": "Required when runStatus is RUN. Restates the honesty-critical literal from the verdict record itself (see external-ai-verdict.schema.json) so a run record can never point at something that reads as a human sign-off."
+      "description": "Required when runStatus is RUN and the mission produced an external-ai-verdict (M0-M3 security review, M6 audit). Restates the honesty-critical literal from the verdict record itself (see external-ai-verdict.schema.json) so a run record can never point at something that reads as a human sign-off."
+    },
+    "recordKind": {
+      "type": "string",
+      "enum": ["external-ai-coldstart-run", "external-ai-command-plan"],
+      "description": "Alternative to verdictRecordKind for RUN missions that are not a security-review verdict at all (M5 cold-start authoring, M4 command-plan) -- a distinct, equally explicit literal so these can never be mistaken for a verdict/sign-off either. Exactly one of verdictRecordKind or recordKind is required when runStatus is RUN."
+    },
+    "note": {
+      "type": "string",
+      "description": "Free-text context on this RUN that the mission's own DoD isn't fully captured by runStatus alone -- e.g. M4's command-plan is RUN (a real vendor call happened) but the mission also requires executing that plan on a clean container/GH runner, which this note records as still outstanding rather than silently implying the mission fully closed."
     },
     "vendors": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Vendor(s) this run actually used -- checked against the mission's vendorRequirements.minVendors."
+      "description": "Vendor(s) this run actually used, accumulated across every call ever ingested for this mission -- checked against the mission's vendorRequirements.minVendors."
+    },
+    "vendor": {
+      "type": "string",
+      "description": "The single vendor that produced THIS record (the most recent ingest) -- distinct from vendors above, which accumulates every vendor this mission has ever been run against."
+    },
+    "model": {
+      "type": "string",
+      "description": "The actual model identifier the platform configured and called (never a vendor's own self-report -- see build-review-pack.py's submit_pack_to_vendor)."
+    },
+    "details": {
+      "type": "object",
+      "description": "Free-form, mission-shape-specific extra context that doesn't generalize across every mission (e.g. M4's commandPlanPath, M5's validationStatus/validationErrorCount) -- kept out of named top-level fields so this schema doesn't grow one bespoke property per mission shape."
     },
     "findingsFiled": {
       "type": "array",
@@ -70,7 +91,11 @@
     "properties": { "runStatus": { "const": "RUN" } }
   },
   "then": {
-    "required": ["packManifestSha256", "verdictRecordKind"]
+    "required": ["packManifestSha256"],
+    "anyOf": [
+      { "required": ["verdictRecordKind"] },
+      { "required": ["recordKind"] }
+    ]
   },
   "else": {
     "required": ["notRunReason"]

@@ -321,7 +321,7 @@ def mission_run_coverage_gaps(root: Path) -> list[str]:
             gaps.append(
                 f"mission {mission_id} (scripts/external-review/missions.json) has no run record at "
                 f"docs/external-ai-review/runs/{mission_id}.json -- add one with runStatus RUN "
-                f"(+ packManifestSha256 + verdictRecordKind) or NOT_RUN (+ notRunReason)."
+                f"(+ packManifestSha256 + verdictRecordKind/recordKind) or NOT_RUN (+ notRunReason)."
             )
             continue
         try:
@@ -331,10 +331,11 @@ def mission_run_coverage_gaps(root: Path) -> list[str]:
             continue
         status = record.get("runStatus")
         if status == "RUN":
-            if not record.get("packManifestSha256") or not record.get("verdictRecordKind"):
+            has_record_kind = record.get("verdictRecordKind") or record.get("recordKind")
+            if not record.get("packManifestSha256") or not has_record_kind:
                 gaps.append(
                     f"docs/external-ai-review/runs/{mission_id}.json says RUN but is missing "
-                    f"packManifestSha256 or verdictRecordKind -- see external-ai-run.schema.json."
+                    f"packManifestSha256 or verdictRecordKind/recordKind -- see external-ai-run.schema.json."
                 )
         elif status == "NOT_RUN":
             if not str(record.get("notRunReason", "")).strip():

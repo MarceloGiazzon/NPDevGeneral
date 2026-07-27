@@ -1,6 +1,10 @@
 {
   "missionId": "M6-AUDIT-VERDICT",
-  "runStatus": "NOT_RUN",
-  "notRunReason": "Blocked on ADR-0009 D3 and real vendor API keys. Also requires a specific evidence bundle + explicit claim list, not yet assembled for any audit round.",
-  "runAt": "2026-07-26T00:00:00Z"
+  "runStatus": "RUN",
+  "packManifestSha256": "e945bcdb77bef5e289cd824776df5eaec2d8a28d7fe3fb9527131a110343ca7e",
+  "verdictRecordKind": "external-ai-verdict",
+  "vendors": [
+    "nvidia"
+  ],
+  "runAt": "2026-07-27T04:54:53.388724+00:00"
 }
