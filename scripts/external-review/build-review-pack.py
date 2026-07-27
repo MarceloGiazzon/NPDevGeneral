@@ -149,6 +149,109 @@ def check_forbidden_paths(paths: list[str]) -> None:
                 )
 
 
+def _git_rev_parse_head(cwd: Path) -> str | None:
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=cwd, capture_output=True, text=True, encoding="utf-8",
+    )
+    return result.stdout.strip() if result.returncode == 0 and result.stdout.strip() else None
+
+
+def _newest_commit_touching(paths: list[str]) -> tuple[str, str] | None:
+    """(commit, ISO8601 commit timestamp) of the newest commit touching any of the given
+    platform-repo-relative paths -- always run against PLATFORM_REPO_ROOT, since the generator's
+    own templates/emitters are platform source regardless of what --repo-root a mission slices."""
+    result = subprocess.run(
+        ["git", "log", "-1", "--format=%H%x09%cI", "--", *paths],
+        cwd=PLATFORM_REPO_ROOT, capture_output=True, text=True, encoding="utf-8",
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    commit, _, timestamp = result.stdout.strip().partition("\t")
+    return commit, timestamp
+
+
+# REG-51: the generator/template files whose commit history decides whether a GENERATED app's
+# already-emitted code might be stale relative to a fix (this is exactly what let REG-49 through --
+# M1's pack sliced wmsoffice's emitted Java, generated 62 minutes before the LNCH13-F1 template fix).
+GENERATOR_PROVENANCE_PATHS = [
+    "NPDevGenerator/generator/src/main/resources/npdev-templates",
+    "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters",
+]
+
+
+def _find_build_info(start: Path) -> dict[str, str] | None:
+    """Walks upward from a generated-app slice's --repo-root looking for the FinalApp root's own
+    npdev-build-info.properties (BuildInfoEmitter's output, at <appRoot>/src/main/resources/...) --
+    the generation timestamp this mission's sliced content actually came from."""
+    current = start.resolve()
+    for _ in range(12):
+        candidate = current / "src" / "main" / "resources" / "npdev-build-info.properties"
+        if candidate.is_file():
+            properties: dict[str, str] = {}
+            for line in candidate.read_text(encoding="utf-8").splitlines():
+                if "=" in line:
+                    key, _, value = line.partition("=")
+                    properties[key.strip()] = value.strip()
+            return properties
+        if current.parent == current:
+            break
+        current = current.parent
+    return None
+
+
+def resolve_provenance(repo_root: Path, commit: str | None) -> dict:
+    """REG-51: every pack records where its sliced content actually came from, and -- for a mission
+    slicing a GENERATED app's emitted code (M1/M7-shape) -- whether that generated code predates the
+    newest commit to touch the generator templates/emitters that produced it. A stale slice is exactly
+    how REG-49 became a false positive: the vendor correctly found LNCH13-F1's bug shape in code that
+    simply hadn't been regenerated since the fix landed, and nothing recorded that gap for a reviewer
+    (human or AI) to catch before scoring the finding as live."""
+    try:
+        repo_root.resolve().relative_to(PLATFORM_REPO_ROOT)
+        is_platform_source = True
+    except ValueError:
+        is_platform_source = False
+
+    if is_platform_source:
+        resolved_commit = commit or _git_rev_parse_head(PLATFORM_REPO_ROOT)
+        return {
+            "kind": "platform-git",
+            "repo": "NPDev_General",
+            "commit": resolved_commit if resolved_commit else "WORKING_TREE",
+        }
+
+    build_info = _find_build_info(repo_root)
+    newest = _newest_commit_touching(GENERATOR_PROVENANCE_PATHS)
+    source: dict = {
+        "kind": "generated-app",
+        "repo": str(repo_root),
+    }
+    if build_info is None:
+        source["provenanceVerified"] = False
+        source["provenanceNote"] = (
+            "no npdev-build-info.properties found walking up from --repo-root -- generation "
+            "timestamp unknown, staleness cannot be checked"
+        )
+        return source
+
+    generated_at = build_info.get("npdev.generator.generatedAtUtc")
+    source["generatedAtUtc"] = generated_at
+    source["generatorCommit"] = build_info.get("npdev.commit")
+    if newest is not None:
+        source["newestTemplateCommit"], source["newestTemplateCommitAt"] = newest
+    if generated_at and newest is not None:
+        try:
+            stale = datetime.fromisoformat(generated_at) < datetime.fromisoformat(newest[1])
+        except ValueError:
+            stale = None
+        source["provenanceVerified"] = stale is not None
+        source["stale"] = stale
+    else:
+        source["provenanceVerified"] = False
+        source["provenanceNote"] = "missing generatedAtUtc or no template history found; staleness cannot be checked"
+    return source
+
+
 def read_file_content(repo_root: Path, path: str, commit: str | None) -> str:
     if commit:
         result = subprocess.run(
@@ -217,10 +320,18 @@ def chunk_content(path: str, text: str, chunk_lines: int) -> list[Chunk]:
     return chunks
 
 
+# REG-51: these two describe "how stale is this pack relative to ongoing platform work as of the
+# moment it was built" -- a judgment that keeps changing as unrelated platform commits land, not a
+# property of the sliced CONTENT itself. Excluded from the hash for the same reason generatedAt is:
+# a manifestSha256 identifies what content a pack is about, not when/against-what-else it was built.
+_PROVENANCE_VOLATILE_KEYS = ("newestTemplateCommit", "newestTemplateCommitAt")
+
+
 def manifest_bytes(mission: Mission, source: dict, chunks: list[Chunk]) -> bytes:
+    stable_source = {k: v for k, v in source.items() if k not in _PROVENANCE_VOLATILE_KEYS}
     manifest_input = {
         "missionId": mission.mission_id,
-        "source": source,
+        "source": stable_source,
         "redactionPolicyVersion": REDACTION_POLICY_VERSION,
         "chunks": [
             {"chunkId": c.chunk_id, "sha256": c.sha256, "lineCount": c.line_count, "label": c.label}
@@ -257,11 +368,16 @@ def build_pack(
     for path in paths:
         chunks.extend(chunk_content(path, contents[path], chunk_lines))
 
-    source = {
-        "kind": "platform-git",
-        "repo": "NPDev_General",
-        "commit": commit if commit else "WORKING_TREE",
-    }
+    source = resolve_provenance(repo_root, commit)
+    if source.get("stale"):
+        raise BuildFailure(
+            f"REG-51: pack refused -- {repo_root} was generated at "
+            f"{source.get('generatedAtUtc')}, which predates {source.get('newestTemplateCommit')} "
+            f"({source.get('newestTemplateCommitAt')}), the newest commit to touch the generator "
+            f"templates/emitters that produced this code. Regenerate the app before building this "
+            f"pack, or this mission risks reviewing already-fixed code as if it were live (REG-49's "
+            f"exact failure mode)."
+        )
 
     first_hash = hashlib.sha256(manifest_bytes(mission, source, chunks)).hexdigest()
     second_hash = hashlib.sha256(manifest_bytes(mission, source, chunks)).hexdigest()
@@ -729,6 +845,15 @@ def ingest_verdict(
 
 
 def main(argv: list[str]) -> int:
+    # A vendor's own prose (a finding's "claim" text) can contain arbitrary Unicode (arrows, em-dashes,
+    # accented characters) that Windows' console default encoding (cp1252) cannot display -- found live
+    # when M7's real verdict crashed printing "->" as a literal U+2192 arrow. The verdict/run record are
+    # already safely written to disk by this point (UTF-8 throughout); only the console mirror needs
+    # this, so reconfigure rather than touch any file-writing path.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )

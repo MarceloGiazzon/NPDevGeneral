@@ -1,11 +1,11 @@
 {
   "missionId": "M1-SEC-GENCODE",
   "runStatus": "RUN",
-  "packManifestSha256": "69d8126a73cf8f390a4a618d12a9e4c2e65daf85f15f761bf4f5fdfb25438145",
+  "packManifestSha256": "ce87982df6edcf1911582685b83a2fe30aab6eedc7d323ed5aac953e277540d9",
   "verdictRecordKind": "external-ai-verdict",
   "vendors": [
     "gemini",
     "nvidia"
   ],
-  "runAt": "2026-07-27T04:32:17.179350+00:00"
+  "runAt": "2026-07-27T07:04:44.509811+00:00"
 }

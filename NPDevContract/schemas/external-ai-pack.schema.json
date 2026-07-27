@@ -19,13 +19,20 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["kind"],
-      "description": "Where the pack's content was pulled from -- a platform pack is git-pinned; a product pack is an app's own model/generated code.",
+      "description": "Where the pack's content was pulled from -- a platform pack is git-pinned; a product pack is an app's own model/generated code; a generated-app pack (REG-51) slices a generated FinalApp's own emitted output (e.g. mission M1/M7), which is a DIFFERENT commit's output than the platform repo's HEAD and must record its own provenance rather than being conflated with platform-git.",
       "properties": {
-        "kind": { "type": "string", "enum": ["platform-git", "product-app"] },
-        "repo": { "type": "string", "description": "platform-git only: repo-relative identity, e.g. NPDev_General." },
+        "kind": { "type": "string", "enum": ["platform-git", "product-app", "generated-app"] },
+        "repo": { "type": "string", "description": "platform-git: repo-relative identity, e.g. NPDev_General. generated-app: the absolute path the app's emitted code was sliced from." },
         "commit": { "type": "string", "description": "platform-git only: the pinned git revision (git show <rev>:<path>) -- required so a calibration mission can target a pre-fix parent commit." },
         "appId": { "type": "string", "description": "product-app only: the generated app this pack was built from." },
-        "modelVersion": { "type": "string", "description": "product-app only: the app model version/hash the pack was built against." }
+        "modelVersion": { "type": "string", "description": "product-app only: the app model version/hash the pack was built against." },
+        "generatedAtUtc": { "type": "string", "description": "generated-app only: this generated app's own npdev-build-info.properties generatedAtUtc -- when the emitted code being sliced was actually produced." },
+        "generatorCommit": { "type": "string", "description": "generated-app only: the platform commit BuildInfoEmitter resolved at generation time (may be UNKNOWN if the generator wasn't run from inside a resolvable git checkout)." },
+        "newestTemplateCommit": { "type": "string", "description": "generated-app only, EXCLUDED from manifestSha256 (a moving target, not a property of the sliced content): the newest platform commit touching the generator templates/emitters, as of when this pack was built." },
+        "newestTemplateCommitAt": { "type": "string", "description": "generated-app only, EXCLUDED from manifestSha256: ISO-8601 timestamp of newestTemplateCommit." },
+        "stale": { "type": "boolean", "description": "generated-app only: true when generatedAtUtc predates newestTemplateCommitAt -- REG-51's exact check. The builder refuses to write a pack when this is true; it should never appear as true in a written pack, only in the refusal error." },
+        "provenanceVerified": { "type": "boolean", "description": "generated-app only: whether staleness could actually be checked (both generatedAtUtc and template history were available)." },
+        "provenanceNote": { "type": "string", "description": "generated-app only: set when provenanceVerified is false, explaining what was missing." }
       }
     },
     "redactionPolicyVersion": {

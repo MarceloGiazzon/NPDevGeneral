@@ -265,13 +265,21 @@ public final class DefaultConceptGateway implements ConceptGateway {
                 effectiveContext,
                 previous
         );
+
+        // REG-48 (delete-side twin of REG-41/LNCH13-F2): authorization must run BEFORE any semantic
+        // evaluation that touches the previous record's data (evaluateRuleProfiles's concept
+        // invariants, here) -- otherwise a caller with no delete permission or no row-scope access
+        // can learn something true about the row's current state from an invariant-rejection detail
+        // thrown before authorization ever ran. The previous-record FETCH above stays (enforceRowWritable
+        // needs it); only the semantic-validation USE of that data must wait until authorization passes.
+        enforcePermission(effectiveContext, "concept.delete", request.conceptName(), "CONCEPT_DELETE", request.id());
+        enforceRowWritable(requestContext, "CONCEPT_DELETE");
+
         ConceptSemanticDecision decision = evaluateRuleProfiles(
                 requestContext,
                 ruleProfilesForWriteBeforeCommit(effectiveContext)
         );
 
-        enforcePermission(effectiveContext, "concept.delete", request.conceptName(), "CONCEPT_DELETE", request.id());
-        enforceRowWritable(requestContext, "CONCEPT_DELETE");
         store.deleteById(tenantId, request.conceptName(), request.id());
         audit(effectiveContext, "CONCEPT_DELETE", request.conceptName(), request.id(), "SUCCESS", "allowed", tenantId);
         trace(requestContext, "SUCCESS", "allowed", decision);
