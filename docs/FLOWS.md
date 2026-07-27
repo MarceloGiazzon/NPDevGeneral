@@ -124,8 +124,8 @@ Any step, regardless of kind, can additionally carry `onFailureSteps` (`withOnFa
 **A correction worth naming.** An earlier internal estimate of this list (repeated in
 `docs/EXECUTION_TREES.md`) included `PRE` as a 9th step kind. That's wrong: `PRE`/`POST` are the two
 values of the *checkpoint* field on an `INVARIANT_CHECK` step, not a step kind of their own. The real
-9th kind is `FOR_EACH`. This document is the corrected version; `EXECUTION_TREES.md` should be fixed
-to match.
+9th kind is `FOR_EACH`. This document is the corrected version; `EXECUTION_TREES.md` was fixed to
+match in the same session.
 
 ### The 23 schema-level synonyms, and how they collapse to 9
 
