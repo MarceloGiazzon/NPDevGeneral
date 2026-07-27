@@ -97,7 +97,7 @@ jobs:
         working-directory: NPDevGenerator
         timeout-minutes: 30
         run: |
-          ./gradlew :generator:test --no-daemon --console=plain
+          ./gradlew :generator:test :generator:behaviorTest --no-daemon --console=plain
 
       - name: Portable NPDev CLI smoke
         timeout-minutes: 45

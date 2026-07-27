@@ -93,7 +93,7 @@ jobs:
         timeout-minutes: 20
         run: |
           sed -i '/org\.gradle\.projectcachedir/d' gradle.properties
-          ./gradlew :generator:test --no-daemon --console=plain
+          ./gradlew :generator:test :generator:behaviorTest --no-daemon --console=plain
 
       - name: Sync RuntimeHost libs for sample generation
         timeout-minutes: 15
