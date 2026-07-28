@@ -1381,6 +1381,21 @@
       "rule": "F1",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/UniqueConstraintPass.java:220",
       "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "353258539ac2": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/DestructiveRecreationPass.java:221",
+      "why": "Same F1 class, new code: REG-58's dropIndexesReferencingColumn (fix for the index-blocks-DROP-COLUMN crash) resolves indexName via a live DatabaseMetaData.getIndexInfo() scan, then routes it through SchemaLifecycleExecutor.safeIdentifier before splicing -- THROWS on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. No caller-bound value reaches this statement unvalidated."
+    },
+    "5a22322fca96": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/DestructiveRecreationPass.java:227",
+      "why": "Same F1 class, new code: the DROP INDEX fallback in REG-58's dropIndexesReferencingColumn. Both safeTable (already validated by the caller before this method runs) and safeIndex (validated via safeIdentifier immediately above) are pre-validated identifiers, not caller-bound values."
+    },
+    "8d305072b24b": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/DestructiveRecreationPass.java:227",
+      "why": "Same F1 class, new code, same site as 5a22322fca96 (sweep matched the DROP CONSTRAINT clause and the full ALTER TABLE statement as two separate hits on one line): safeIndex is validated via safeIdentifier immediately above before splicing."
     }
   }
 }
