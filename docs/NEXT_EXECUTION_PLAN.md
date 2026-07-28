@@ -625,12 +625,27 @@ platform's own richest real aggregate model was already compliant. `BREAKING.md`
 codemod — splitting a boundary-crossing flow is a real design decision, not a mechanical rewrite,
 same "refuse rather than guess" posture as `docs/ACCEPTED_BOUNDARIES.md`'s B1).
 
-## P6.2 3.6 — Bounded contexts / multi-namespace (1–2 weeks)
+## P6.2 3.6 — Bounded contexts / multi-namespace · ✅ SCOPED 2026-07-28 (not built — that was the ask)
 
-Unblocked by 2.A. One `namespace` per model = one bounded context per app. **This decides whether
-NPDev can model a company or only a department** — a positioning question as much as a technical one.
-Scope it only after F1, because the taxonomy may reveal that per-app contexts are sufficient for the
-apps people actually build.
+Scoped, per the task's own instruction ("scope it only after F1"), not implemented — building it
+would be the 1-2 week item; deciding whether to is this one. **Decision: defer, with a stated
+trigger.** Filed as `docs/ACCEPTED_BOUNDARIES.md` B20 (matching this repo's established format for
+"deliberately not building X, here's the evidence, here's what would change the answer" — the same
+treatment B1/B4/B5 etc. already get).
+
+**Grounded in code, not assumption:** `namespace` is cosmetic today — `model.getNamespace()`'s only
+real consumers (grep-verified) are the generated app's display name, a provenance/build-info
+property, and pack-composition pass-through. No concept-naming partition, no cross-context
+reference construct, no DDD context-mapping declaration exists anywhere in the DSL. Real support
+would touch the compiler, all 4 `model.schema.json` mirrors, and every catalog emitter that assumes
+one flat concept space — genuinely the 1-2 weeks quoted, not a flag flip.
+
+**F1 is the evidence this isn't needed yet**, exactly as this task predicted it might be: WmsOffice
+(32 concepts, 13 hand-written screens — the platform's largest, richest single app) shows zero
+sub-domain pressure severe enough to want a second bounded context. Every concept lives comfortably
+in one flat vocabulary today. Revisit trigger: a real user needs one app spanning two teams'/domains'
+vocabularies badly enough to justify the cost — most likely to surface via P6.3's conversations, not
+further internal measurement.
 
 ## P6.3 ⬥ 3.2 — Tell three specific people (owner)
 
