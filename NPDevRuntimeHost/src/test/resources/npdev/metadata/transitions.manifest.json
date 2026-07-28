@@ -1,0 +1,72 @@
+{
+  "metadataManifestVersion" : "1.0.0",
+  "metadataVersion" : "1.0.0",
+  "catalog" : "transitions",
+  "sourceCatalog" : "transitions",
+  "generatedFrom" : "npdev/compiled-metadata.json",
+  "count" : 3,
+  "items" : [ {
+    "concept" : "Appointment",
+    "statusField" : "status",
+    "from" : "CheckedIn",
+    "to" : "Completed",
+    "event" : "AppointmentCompleted",
+    "guard" : "checkOutTime != null",
+    "actionLabel" : "Complete Appointment",
+    "label" : "Complete appointment",
+    "confirmationText" : "Complete this appointment and trigger downstream claim work?",
+    "successMessage" : "Appointment completed.",
+    "failureHint" : "Capture the visit check-out time before completing the appointment.",
+    "dangerLevel" : "medium",
+    "visibleWhen" : "status == 'CheckedIn'",
+    "permissionHint" : "appointments.complete",
+    "inputFormHint" : "appointment-complete",
+    "requiredPayload" : [ "checkOutTime" ],
+    "metadata" : {
+      "intent" : "complete",
+      "surface" : "primary"
+    }
+  }, {
+    "concept" : "Appointment",
+    "statusField" : "status",
+    "from" : "Scheduled",
+    "to" : "Cancelled",
+    "event" : "AppointmentCancelled",
+    "guard" : "",
+    "actionLabel" : "Cancel Appointment",
+    "label" : "Cancel appointment",
+    "confirmationText" : "Cancel this scheduled appointment?",
+    "successMessage" : "Appointment cancelled.",
+    "failureHint" : "Only scheduled appointments can be cancelled from the action menu.",
+    "dangerLevel" : "high",
+    "visibleWhen" : "status == 'Scheduled'",
+    "permissionHint" : "appointments.cancel",
+    "inputFormHint" : "appointment-cancel",
+    "requiredPayload" : [ ],
+    "metadata" : {
+      "intent" : "cancel",
+      "surface" : "secondary"
+    }
+  }, {
+    "concept" : "Appointment",
+    "statusField" : "status",
+    "from" : "Scheduled",
+    "to" : "CheckedIn",
+    "event" : "AppointmentCheckedIn",
+    "guard" : "checkInTime != null",
+    "actionLabel" : "Check In",
+    "label" : "Check in patient",
+    "confirmationText" : "Mark this appointment as checked in?",
+    "successMessage" : "Appointment checked in.",
+    "failureHint" : "Capture the patient's check-in time before retrying.",
+    "dangerLevel" : "low",
+    "visibleWhen" : "status == 'Scheduled'",
+    "permissionHint" : "appointments.checkin",
+    "inputFormHint" : "appointment-checkin",
+    "requiredPayload" : [ "checkInTime" ],
+    "metadata" : {
+      "intent" : "check-in",
+      "surface" : "primary"
+    }
+  } ]
+}

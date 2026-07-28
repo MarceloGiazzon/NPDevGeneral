@@ -55,17 +55,30 @@ class RuntimeApiEmitterMetadataManifestTest {
         Path proceduresOne = outOne.resolve("src/main/resources/npdev/metadata/procedures.manifest.json");
         Path panelsOne = outOne.resolve("src/main/resources/npdev/metadata/panels.manifest.json");
         Path actionsOne = outOne.resolve("src/main/resources/npdev/metadata/actions.manifest.json");
+        Path transitionsOne = outOne.resolve("src/main/resources/npdev/metadata/transitions.manifest.json");
         Path layoutOne = outOne.resolve("src/main/resources/npdev/metadata/layout.manifest.json");
         Path validationOne = outOne.resolve("src/main/resources/npdev/metadata/validation-hints.manifest.json");
+        Path invocationsOne = outOne.resolve("src/main/resources/npdev/metadata/invocations.manifest.json");
 
-        for (Path path : List.of(indexOne, conceptsOne, proceduresOne, panelsOne, fieldsOne, enumsOne, referencesOne, actionsOne, layoutOne, validationOne)) {
+        for (Path path : List.of(indexOne, conceptsOne, proceduresOne, panelsOne, fieldsOne, enumsOne, referencesOne, actionsOne, transitionsOne, layoutOne, validationOne, invocationsOne)) {
             assertTrue(Files.exists(path), "Expected generated metadata manifest artifact: " + path);
         }
 
         JsonNode indexRoot = MAPPER.readTree(Files.readString(indexOne));
         assertEquals("1.0.0", indexRoot.path("metadataManifestVersion").asText());
         assertEquals("1.0.0", indexRoot.path("metadataVersion").asText());
-        assertEquals(9, indexRoot.path("catalogs").size(), "Expected nine metadata manifest catalogs.");
+        assertEquals(11, indexRoot.path("catalogs").size(), "Expected eleven metadata manifest catalogs (F2.2 added transitions + invocations).");
+
+        JsonNode invocationsRoot = MAPPER.readTree(Files.readString(invocationsOne));
+        assertEquals("invocations", invocationsRoot.path("catalog").asText());
+        assertTrue(invocationsRoot.path("items").isArray(), "Expected invocations manifest items array.");
+        assertTrue(invocationsRoot.path("items").size() > 0, "Expected generated invocations manifest entries.");
+
+        JsonNode transitionsRoot = MAPPER.readTree(Files.readString(transitionsOne));
+        assertEquals("transitions", transitionsRoot.path("catalog").asText());
+        assertTrue(transitionsRoot.path("items").isArray(), "Expected transitions manifest items array.");
+        assertTrue(transitionsRoot.path("items").size() > 0,
+                "Expected generated transitions manifest entries (canonical-demo declares an Appointment lifecycle).");
 
         JsonNode actionsRoot = MAPPER.readTree(Files.readString(actionsOne));
         assertEquals("actions", actionsRoot.path("catalog").asText());

@@ -11,6 +11,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -111,6 +112,92 @@ public class PermissionAwareUiMetadataService {
         previewSupport.put("permissionAware", true);
         response.put("previewSupport", previewSupport);
         return response;
+    }
+
+    /**
+     * F2.2 (docs/FRONTEND_STRATEGY_PLAN.md &sect;2.3): the single-call UI contract for a screen --
+     * composes the SAME {@link #fields}/{@link #actions} this class already exposes individually (the
+     * anti-drift property the acceptance test pins: {@code bundle.fields == fields(...).items} for the
+     * same caller), plus the catalogs that have no per-actor filter anywhere in the platform yet
+     * (layout/enums/references/transitions/validation/invocations) passed through unfiltered from
+     * {@link RuntimeMetadataService}. Inventing a NEW permission filter for those six would be a much
+     * larger, uncosted addition than "compose the existing filters" asks for -- there is nothing
+     * existing to compose for them.
+     *
+     * <p>{@code concept} scope takes priority when both {@code conceptName} and {@code panelName} are
+     * given (the sketch's own {@code ?concept=X|?panel=Y} reads as mutually exclusive). Unscoped
+     * (both blank) returns every item of every catalog.
+     *
+     * <p>{@code modelHash} is {@link RuntimeMetadataService#schemaFingerprint()} verbatim -- the same
+     * value {@code SchemaLifecycleExecutor} stamps, per the plan's explicit "do not mint a second
+     * hash" instruction. It covers table/column/type/required/unique shape only (see that method's
+     * javadoc); F4 drift-detection is therefore precise for a field rename (the scenario it exists to
+     * catch) but under-fires for a panel/action/permission/flow/lifecycle-only edit. Accepted boundary.
+     */
+    public Map<String, Object> bundle(String conceptName, String panelName, ExecutionContext context) {
+        String concept = stringValue(conceptName);
+        String panel = stringValue(panelName);
+
+        Map<String, Object> fieldResponse = fields(concept, null, context);
+        Map<String, Object> actionResponse = actions(concept, null, context);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("schemaVersion", "npdev-ui-contract.v1");
+        response.put("modelHash", runtimeMetadataService.schemaFingerprint());
+        response.put("generatedAt", Instant.now().toString());
+        response.put("namespace", stringValue(runtimeMetadataService.overview().get("namespace")));
+        response.put("permissionAware", true);
+
+        Map<String, Object> scope = new LinkedHashMap<>();
+        if (!concept.isBlank()) {
+            scope.put("concept", concept);
+        }
+        if (!panel.isBlank()) {
+            scope.put("panel", panel);
+        }
+        response.put("scope", scope);
+
+        response.put("concept", concept.isBlank() ? null : runtimeMetadataService.concept(concept).get("concept"));
+        response.put("fields", fieldResponse.get("items"));
+        response.put("layout", rawCatalogItems("layout", concept));
+        response.put("enums", rawCatalogItems("enums", concept));
+        response.put("references", rawCatalogItems("references", concept));
+        response.put("actions", actionResponse.get("items"));
+        response.put("transitions", rawCatalogItems("transitions", concept));
+        response.put("validation", rawCatalogItems("validationHints", concept));
+        response.put("invocations", invocationItems(concept, panel));
+
+        response.put("apiBase", "/api/v1");
+        Map<String, Object> auth = new LinkedHashMap<>();
+        auth.put("scheme", "bearer");
+        auth.put("tenantHeader", "X-Tenant-Id");
+        response.put("auth", auth);
+        return response;
+    }
+
+    private List<Map<String, Object>> rawCatalogItems(String catalogName, String concept) {
+        return extractItems(runtimeMetadataService.catalog(catalogName, concept, null, null));
+    }
+
+    /** Concept scope filters the invocations catalog by its "concept" property, same as every other
+     * catalog here. Panel scope has no such property to reuse generically -- panelAction/panelRowAdd/
+     * panelRowDelete entries key on "panel" instead -- so it is filtered by hand here rather than
+     * stretching {@code RuntimeMetadataService}'s single-key concept filter to cover a second key. */
+    private List<Map<String, Object>> invocationItems(String concept, String panel) {
+        if (!concept.isBlank()) {
+            return rawCatalogItems("invocations", concept);
+        }
+        List<Map<String, Object>> all = rawCatalogItems("invocations", "");
+        if (panel.isBlank()) {
+            return all;
+        }
+        List<Map<String, Object>> filtered = new ArrayList<>();
+        for (Map<String, Object> item : all) {
+            if (panel.equalsIgnoreCase(stringValue(item.get("panel")))) {
+                filtered.add(item);
+            }
+        }
+        return filtered;
     }
 
     private ActionEvaluation evaluateActions(List<Map<String, Object>> items, ExecutionContext context) {

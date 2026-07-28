@@ -38,6 +38,11 @@
     "path" : "npdev/metadata/actions.manifest.json",
     "count" : 9
   }, {
+    "name" : "transitions",
+    "sourceCatalog" : "transitions",
+    "path" : "npdev/metadata/transitions.manifest.json",
+    "count" : 3
+  }, {
     "name" : "layout",
     "sourceCatalog" : "layout",
     "path" : "npdev/metadata/layout.manifest.json",
@@ -47,5 +52,10 @@
     "sourceCatalog" : "validation",
     "path" : "npdev/metadata/validation-hints.manifest.json",
     "count" : 34
+  }, {
+    "name" : "invocations",
+    "sourceCatalog" : "invocations",
+    "path" : "npdev/metadata/invocations.manifest.json",
+    "count" : 29
   } ]
 }

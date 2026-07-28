@@ -391,7 +391,23 @@ made by hand.
 - `medium-expense-approval` yields `flow:SubmitExpense` (`preferred:true`, 202) **and**
   `createDirect:ExpenseRequest` (`preferred:false`, `prefer:"flow:SubmitExpense"`).
 
-## 2.3 F2.2 — The bundle endpoint · **1 day**
+## 2.3 F2.2 — The bundle endpoint · **1 day** · ✅ DONE 2026-07-28
+
+> **Correction, filed the same day this shipped.** The example response below shows `transitions`
+> and `invocations` as ordinary arrays alongside `fields`/`actions`, implying they were already
+> reachable through `RuntimeMetadataService`'s generic catalog mechanism. They were not: F2.1's
+> `invocations` catalog and the pre-existing `transitions` catalog both lived in
+> `compiled-metadata.json`, but `MetadataManifestAssetEmitter` (a hardcoded 9-entry list that
+> predates F2.1) never split either one into its own `npdev/metadata/*.manifest.json` file, so there
+> was no manifest for `RuntimeMetadataService.catalog(...)` to load. Fixed as part of this task (now
+> 11 manifests, not 9) rather than treated as pre-existing infrastructure to merely "compose."
+>
+> **Also corrected:** this section implies all eight non-`fields`/`actions` catalogs would gain
+> permission-aware filtering "for free" by composing `PermissionAwareUiMetadataService`. In reality
+> that service only filters `fields` and `actions` — nothing in the platform filters
+> `layout`/`enums`/`references`/`transitions`/`validation`/`invocations` by actor. The shipped bundle
+> passes those six through unfiltered from `RuntimeMetadataService` rather than inventing six new
+> permission filters, which would be a materially larger task than "compose the existing filters."
 
 ```
 GET /api/v1/runtime/metadata/ui/bundle[?concept=X|?panel=Y]
@@ -720,8 +736,8 @@ F1  taxonomy  ★★                                    [1 day]   ← routes eve
 | Only one source tree gets searched again | **High** | Same test. It is the automated form of the mistake made by hand |
 | Bootstrapper inference wrong | **High** | `confirmed:false` default; unique-leaf matching; `unresolved` list |
 | 12th catalog breaks metadata determinism | Medium | Sort by id; `LinkedHashMap` never multi-entry `Map.of`; byte-comparison test |
-| `modelHash` duplicates an existing fingerprint | Medium | Reuse `SchemaLifecycleExecutor`'s, or document why not |
-| Bundle leaks across permission boundaries | Low / **severe** | Compose existing filters; assert two roles differ |
+| `modelHash` duplicates an existing fingerprint | Medium | **Resolved 2026-07-28**: reused verbatim via new `RuntimeMetadataService.schemaFingerprint()`; documented that it only covers schema shape, not the other 6 bundle catalogs |
+| Bundle leaks across permission boundaries | Low / **severe** | Compose existing filters (`fields`/`actions` only — the other 6 catalogs have no per-actor filter anywhere in the platform, so they carry no permission boundary to leak); assert two roles differ |
 | Live re-verify finds a 150-commit regression | Medium | That is the point. File a REG row |
 | F1 becomes a naming exercise | Medium | The ≥2/≥2 rule; no candidate without evidence |
 | The false fork persists in planning | **High** | Apply Part 0.5's replacement block **first** |
@@ -732,9 +748,11 @@ F1  taxonomy  ★★                                    [1 day]   ← routes eve
 `hand-written → contract`; candidates carry ≥2/≥2 evidence; README limitations made precise.
 
 **F2** — 12 catalogs, other 11 byte-identical, deterministic; **every path asserted against both
-source trees**; `preferred`/`prefer` correct for `medium-expense-approval`; bundle permission-filtered
-with `modelHash`; bundle arrays equal per-endpoint output; `UI_CONTRACT.md` states the multi-route
-reality and 202/async.
+source trees**; `preferred`/`prefer` correct for `medium-expense-approval`; bundle carries
+`modelHash` and permission-filters `fields`/`actions` (the only two catalogs with any per-actor
+filter in the platform — the other six are unfiltered pass-through, by design, not oversight);
+bundle arrays equal per-endpoint output; `UI_CONTRACT.md` states the multi-route reality and
+202/async.
 
 **F3** — one manifest schema, three producers; **every generated surface emits one automatically**;
 all 13 WmsOffice screens have one, ≥3 confirmed by hand; `slotOf` reserved.

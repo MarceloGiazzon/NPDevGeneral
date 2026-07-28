@@ -52,8 +52,15 @@ public final class MetadataManifestAssetEmitter {
                 new CatalogDefinition("enums", "enums", "enums.manifest.json"),
                 new CatalogDefinition("references", "references", "references.manifest.json"),
                 new CatalogDefinition("actions", "actions", "actions.manifest.json"),
+                new CatalogDefinition("transitions", "transitions", "transitions.manifest.json"),
                 new CatalogDefinition("layout", "layout", "layout.manifest.json"),
-                new CatalogDefinition("validationHints", "validation", "validation-hints.manifest.json")
+                new CatalogDefinition("validationHints", "validation", "validation-hints.manifest.json"),
+                // F2.2 (docs/NEXT_EXECUTION_PLAN.md P4.2): the invocations catalog (F2.1) was added to
+                // CompiledMetadataCanonicalJson's catalogs object but never split out here, so
+                // RuntimeMetadataService.catalog("invocations", ...) had no manifest to load -- the
+                // bundle endpoint's `invocations` array would have 404'd. Same gap existed for
+                // "transitions" (present in compiled-metadata.json before this session, never split).
+                new CatalogDefinition("invocations", "invocations", "invocations.manifest.json")
         );
 
         ArrayNode indexCatalogs = JsonNodeFactory.instance.arrayNode();

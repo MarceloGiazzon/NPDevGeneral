@@ -362,9 +362,42 @@ screens are hand-written."
   aggregate↔procedure binding exists anywhere at runtime (one templated entry per aggregate names
   this explicitly, rather than guessing a closed list); the `isStartEndpoint()` gate would have
   emitted zero flow entries (no sample sets it, and the real route has no such filter) — dropped.
-- **F2.2 bundle endpoint (1 day).** `GET /api/v1/runtime/metadata/ui/bundle?concept=X`, composing
-  the existing `PermissionAwareUiMetadataService` filters. Reuse the existing compiled-model
-  fingerprint for `modelHash`; do not mint a second hash.
+- **F2.2 bundle endpoint (1 day). ✅ DONE 2026-07-28.** `GET /api/v1/runtime/metadata/ui/bundle[?concept=X|?panel=Y]`
+  in `RuntimeUiMetadataController`, composing `PermissionAwareUiMetadataService.fields`/`actions`
+  verbatim (the anti-drift array-equality property) plus a new `bundle()` method for the rest.
+  **Two real gaps found before this could compose anything, neither invented — both closed as part
+  of this task:** the `invocations` catalog (F2.1) and the pre-existing `transitions` catalog were
+  both present in `compiled-metadata.json` but **never split into their own manifest file** by
+  `MetadataManifestAssetEmitter` (a hardcoded 9-entry `CatalogDefinition` list that predates F2.1),
+  so `RuntimeMetadataService.catalog("invocations"/"transitions", …)` had no manifest to load and the
+  bundle's arrays would have 404'd. Fixed: emitter now emits 11 manifests (`invocations.manifest.json`,
+  `transitions.manifest.json` + index entries); 3 generator tests hardcoded the old count of 9 and
+  needed updating (`RuntimeApiEmitterMetadataManifestTest`, `CanonicalDemoGenerationSmokeTest`,
+  `OfficialSamplesGenerationSmokeTest`).
+  **Scope decision, stated plainly:** the bundle's `layout`/`enums`/`references`/`transitions`/
+  `validation`/`invocations` arrays are passed through **unfiltered** — no per-actor permission filter
+  exists anywhere in the platform for those six catalogs (only `fields`/`actions` have one), so
+  inventing six new filters would be a much larger, uncosted addition than "compose the existing
+  filters" asks for. Only `fields`/`actions` are permission-aware, matching the acceptance test's own
+  scope (there is no individual filtered endpoint for the other six to diff against anyway).
+  **`modelHash` reuses `SchemaLifecycleExecutor`'s fingerprint verbatim** (new
+  `RuntimeMetadataService.schemaFingerprint()`, reading the same `schema-realization-manifest.json`),
+  per the plan's explicit instruction. Noted honestly: that fingerprint covers table/column/type/
+  required/unique shape only (`UserDatabaseDefinitionLoader#fingerprintInputs`) — it will NOT change
+  for a panel-action/permission-hint/flow/lifecycle-only edit, only a schema-shaped one. F4's drift
+  detection is therefore precise for the scenario it exists to catch (a field rename) but under-fires
+  for the other six categories — an accepted boundary, not a bug.
+  **Verified two ways:** (1) 5 new unit tests (2 in `RuntimeMetadataServiceTest`, 2 in
+  `PermissionAwareUiMetadataServiceTest`, 1 in `RuntimeUiMetadataControllerStandaloneTest`) proving
+  the catalog wiring, the anti-drift array-equality, and role-based field-visibility divergence — run
+  green inside a regenerated WmsOffice (these three test classes are excluded from the bare
+  template's `test` task by a pre-existing, unrelated `modelSpecificGeneratedAppTests` gradle list,
+  same as before this change); (2) **live REST proof against a real running WmsOffice** (32 concepts):
+  `GET .../bundle?concept=Area` returned all 8 catalog arrays correctly concept-scoped (5 fields, 5
+  layout, 5 enums, 1 reference, 7 validation hints, 7 invocations incl. `createDirect:Area`), and
+  `bundle.fields`/`bundle.actions` were byte-for-byte equal to the individual `/fields`/`/actions`
+  endpoints' own output for the same JWT-authenticated caller — the exact anti-drift assertion the
+  plan's acceptance criterion names.
 - **F2.3 docs + schema + agent prompt (2 days).** `UI_CONTRACT.md` (~80% drafted in
   `FRONTEND_STRATEGY_PLAN.md`), `schemas/ui-contract.schema.json`, `docs/ai/UI_GENERATION_PROMPT.md`.
 
