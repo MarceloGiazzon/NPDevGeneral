@@ -1486,6 +1486,191 @@
       "rule": "A5",
       "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/schemaevolution/TypeChangeMatrix.java:163",
       "why": "Value coercion, not an authorization verdict -- same reasoning as rule A1, one module over. ComputedExpression catches NumberFormatException around Double.parseDouble to answer 'is this text numeric?'; TypeChangeMatrix catches it while parsing a SQL type's (precision,scale) and returns null meaning 'unparseable type'. No security decision is being answered. Verified 2026-07-25."
+    },
+    "a14cf8245aad": {
+      "rule": "G1",
+      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/scheduling/ScheduledEventSql.java:14",
+      "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at GeneratedCrudRuntimeSupport.java is now orphaned by the move, not removed."
+    },
+    "a0cbb960dd28": {
+      "rule": "G1",
+      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:45",
+      "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at GeneratedCrudRuntimeSupport.java is now orphaned by the move, not removed."
+    },
+    "883024b7a535": {
+      "rule": "G1",
+      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:50",
+      "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at GeneratedCrudRuntimeSupport.java is now orphaned by the move, not removed."
+    },
+    "44619779b178": {
+      "rule": "F3",
+      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:45",
+      "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
+    },
+    "7979b82c0ab4": {
+      "rule": "F3",
+      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:50",
+      "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
+    },
+    "dff2157b4dce": {
+      "rule": "H1",
+      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/reflection/ObjectFieldSupport.java:109",
+      "why": "Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
+    },
+    "63ae7e7fdf9c": {
+      "rule": "H1",
+      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/reflection/ObjectFieldSupport.java:136",
+      "why": "Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
+    },
+    "bd3b4d930984": {
+      "rule": "H1",
+      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/scheduling/ScheduledEventSupport.java:154",
+      "why": "Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
+    },
+    "f852053b3e18": {
+      "rule": "H1",
+      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/schemaexpr/SchemaExpressionSupport.java:161",
+      "why": "Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
+    },
+    "998aa61f0e6e": {
+      "rule": "A1",
+      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/valuecoercion/ValueCoercionSupport.java:62,83,104,128",
+      "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
+    },
+    "59c22549e912": {
+      "rule": "A1",
+      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/valuecoercion/ValueCoercionSupport.java:161,297",
+      "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
+    },
+    "c16cd24f559a": {
+      "rule": "A1",
+      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/valuecoercion/ValueCoercionSupport.java:199,231,248",
+      "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
+    },
+    "59c1c41de9db": {
+      "rule": "B2",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaHistoryStore.java:85",
+      "why": "Schema/DDL engine. The physical schema is a property of the DATABASE, not of a tenant: all tenants share one set of tables, so a tenant predicate here would be meaningless. These endpoints are separately admin-gated. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "1e961cd9176b": {
+      "rule": "B2",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaHistoryStore.java:101",
+      "why": "Schema/DDL engine. The physical schema is a property of the DATABASE, not of a tenant: all tenants share one set of tables, so a tenant predicate here would be meaningless. These endpoints are separately admin-gated. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "c058ebf511fd": {
+      "rule": "B2",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/UniqueConstraintPass.java:184",
+      "why": "Schema/DDL engine. The physical schema is a property of the DATABASE, not of a tenant: all tenants share one set of tables, so a tenant predicate here would be meaningless. These endpoints are separately admin-gated. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "ec22dcc92a18": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/BackfillPass.java:233",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "652d49cd8245": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/BackfillPass.java:238",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "06669f8f718e": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/BackfillPass.java:244",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "402e73a6fe06": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/BackfillPass.java:244",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "1ca035c21147": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/ColumnRenamePass.java:135",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "20dbccb57889": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/ColumnRenamePass.java:136",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "5201501bc467": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/ColumnRenamePass.java:136",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "aa82591dc1cb": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/DestructiveRecreationPass.java:145,166",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "80d0e607cea2": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/DestructiveRecreationPass.java:145,166",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "f4646d0700ea": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/DestructiveRecreationPass.java:155,224",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "13c599f55252": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/DestructiveRecreationPass.java:170",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "dec4ee0ab2fe": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/PlatformColumnPass.java:119",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "390fd25b8ec0": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/PlatformColumnPass.java:124",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "467a5260dec8": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/PlatformColumnPass.java:124",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "f753634a3b56": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/TableRenamePass.java:55",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "212d1bac50d6": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/TypeWideningPass.java:82",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "8d7e23cc9154": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/TypeWideningPass.java:82",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "778a07592bc8": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/TypeWideningPass.java:83",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "10c1082bfdbd": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/TypeWideningPass.java:83",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "a10df5ef1f6a": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/UniqueConstraintPass.java:220",
+      "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "a6ca046b6d20": {
+      "rule": "H2",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaHistoryStore.java:92,109",
+      "why": "Schema, diagnostic or build-metadata path: the swallowed failure yields 'this optional detail is unavailable', not a security answer. No caller treats the result as an authorization decision. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "7fbebbb33e24": {
+      "rule": "H2",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaHistoryStore.java:186,327",
+      "why": "Schema, diagnostic or build-metadata path: the swallowed failure yields 'this optional detail is unavailable', not a security answer. No caller treats the result as an authorization decision. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
     }
   }
 }

@@ -130,6 +130,24 @@ even though they sit in the same package. ONE_PLAN §4.2 asks specifically wheth
 scope by tenant *in the key*; clearing them here would answer Round 5's question by assumption. They are
 routed, not cleared.
 
+### 2.2 2026-07-28 — relocation re-triage after the god-file decomposition (`DSL2_AND_DECOMPOSITION_PLAN.md` 2.B.2-2.B.5)
+
+The allowlist's fingerprint is `sha1(pattern|relative_file_path|normalized_text)` — it includes the
+**file path**, by design (editing the code should resurface a hit; the design does not distinguish
+that from *moving* the code). Splitting `GeneratedCrudRuntimeSupport.java` (2.B.3) and
+`SchemaLifecycleExecutor.java` (2.B.4) into many new files therefore orphaned every existing verdict
+on the moved lines and made the sweep report them as brand-new hits — 12 hits from the 2.B.3 split, 25
+from 2.B.4's (2.B.2 and 2.B.5 introduced none, by inspection of their diffs). Each one was checked
+against the pre-split commit (`git show <pre-split-sha>:<old-path>`) to confirm byte-identical code at
+its old location, then re-cleared under the **same rule** its old entry already carried (A1, F3, G1,
+H1 for the 2.B.3 files; B2, F1, H2 for the 2.B.4 files) — this is a location update to an existing
+verdict, not a fresh judgment call, and no new rule or reasoning was invented. The old,
+now-orphaned entries at `GeneratedCrudRuntimeSupport.java`/`SchemaLifecycleExecutor.java` line numbers
+were left in place rather than deleted (harmless: they simply never match anything again). Any future
+god-file split (2.B.5 already done; any later ones) should expect the same mechanical churn and follow
+the same process: confirm byte-identical content at the old location, then re-clear under the
+established rule rather than re-deriving one.
+
 ---
 
 ## 3. (i) The one genuine finding — REG-43
