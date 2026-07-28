@@ -1,5 +1,8 @@
 package com.finalexec.db;
 
+import com.finalexec.db.schemastate.DesiredColumn;
+import com.finalexec.db.schemastate.DesiredSchema;
+import com.finalexec.db.schemastate.DesiredTable;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.DropColumn;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.DropTable;
@@ -124,7 +127,8 @@ final class DestructiveRecreationPass {
                     // narrowed column is acknowledged lost by the token, and a cast can fail
                     // per-row (e.g. a too-long VARCHAR value) -- simpler and more honest to drop
                     // and recreate empty than attempt a partially-successful cast.
-                    executeNarrowTypeDropAndRecreate(connection, narrowType.table(), narrowType.column(), narrowType.toType());
+                    boolean requiredByModel = isColumnRequiredByModel(manifest, narrowType.table(), narrowType.column());
+                    executeNarrowTypeDropAndRecreate(connection, narrowType.table(), narrowType.column(), narrowType.toType(), requiredByModel);
                     applied.add("NARROW_TYPE " + narrowType.table() + "." + narrowType.column() + " -> " + narrowType.toType());
                 }
                 // UNKNOWN items never reach here -- the caller only takes this path when
@@ -161,9 +165,24 @@ final class DestructiveRecreationPass {
         }
     }
 
+    /** REG-61(a): does the model declare this column required (⇒ NOT NULL)? Looked up from the
+     * manifest rather than carried on {@link NarrowType} itself, since that delta-item shape is
+     * shared with migration-plan generation and impact reporting -- adding a field there would
+     * ripple beyond this one consumer. Absent table/column (should not happen for an item this
+     * pass is about to act on) is treated as not-required, matching the pre-fix behavior exactly. */
+    private static boolean isColumnRequiredByModel(SchemaLifecycleExecutor.SchemaManifest manifest, String table, String column) {
+        DesiredSchema desired = DesiredSchemaFactory.fromManifest(manifest);
+        DesiredTable desiredTable = desired.tables().get(table.toLowerCase(Locale.ROOT));
+        if (desiredTable == null) {
+            return false;
+        }
+        DesiredColumn desiredColumn = desiredTable.columns().get(column.toLowerCase(Locale.ROOT));
+        return desiredColumn != null && !desiredColumn.nullable();
+    }
+
     // Package-private (not private), matching TypeWideningPass#attemptInPlaceTypeWidenings's own
     // precedent, so it is directly unit-testable against a real H2 DataSource.
-    static void executeNarrowTypeDropAndRecreate(Connection connection, String table, String column, String newType)
+    static void executeNarrowTypeDropAndRecreate(Connection connection, String table, String column, String newType, boolean requiredByModel)
             throws SQLException {
         String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
         String safeColumn = SchemaLifecycleExecutor.safeIdentifier(column);
@@ -185,9 +204,27 @@ final class DestructiveRecreationPass {
                 "ALTER TABLE " + safeTable + " DROP COLUMN " + safeColumn)) {
             drop.executeUpdate();
         }
+        // REG-61(a): re-apply NOT NULL directly when it is safe to -- a table with zero existing
+        // rows can go straight to the model's declared required-ness, skipping the backfill dance
+        // BackfillPass would otherwise demand on the very next boot for a column it sees as newly
+        // nullable. A non-empty table cannot: adding a NOT NULL column with no default fails
+        // outright against any existing row, so it is added nullable exactly as before, and
+        // BackfillPass's existing TIGHTEN_NOT_NULL detection converges it once a default is
+        // declared (or, for a UNIQUE-constrained column with more than one affected row, refuses
+        // by name -- see REG-61(b)).
+        String nullability = requiredByModel && isTableEmpty(connection, safeTable) ? " NOT NULL" : "";
         try (PreparedStatement add = connection.prepareStatement(
-                "ALTER TABLE " + safeTable + " ADD COLUMN " + safeColumn + " " + safeType)) {
+                "ALTER TABLE " + safeTable + " ADD COLUMN " + safeColumn + " " + safeType + nullability)) {
             add.executeUpdate();
+        }
+    }
+
+    /** {@code safeTable} is already {@link SchemaLifecycleExecutor#safeIdentifier}-validated by every
+     * caller before it reaches here -- never build this query from a raw, unvalidated identifier. */
+    private static boolean isTableEmpty(Connection connection, String safeTable) throws SQLException {
+        try (PreparedStatement count = connection.prepareStatement("SELECT COUNT(*) FROM " + safeTable);
+                ResultSet resultSet = count.executeQuery()) {
+            return resultSet.next() && resultSet.getLong(1) == 0L;
         }
     }
 
