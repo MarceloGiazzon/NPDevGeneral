@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CompiledMetadataCanonicalJsonTest {
@@ -124,6 +125,67 @@ class CompiledMetadataCanonicalJsonTest {
                 "Expected derived-field validation metadata for Patient.chartLabel.");
         assertTrue(findValidation(validation, "flowInvariantRef", "Appointment", "PositiveDuration"),
                 "Expected flow invariant reference metadata for PositiveDuration.");
+
+        JsonNode invocations = root.path("catalogs").path("invocations");
+        assertTrue(invocations.isArray(), "Expected invocations catalog array.");
+        // 4 concepts x (list + pagedQuery + exportCsv + read + create/update/delete) = 4x7 = 28,
+        // plus 1 flow (CreateAppointment) -- canonical-demo declares no file fields/panels/aggregates.
+        assertEquals(29, invocations.size(), "Expected 29 invocation entries for canonical-demo.");
+
+        JsonNode flowEntry = findBy(invocations, "id", "flow:CreateAppointment");
+        assertTrue(flowEntry != null, "Expected a flow:CreateAppointment invocation entry.");
+        assertEquals("Appointment", flowEntry.path("concept").asText());
+        assertEquals("create", flowEntry.path("intent").asText());
+        assertEquals("POST", flowEntry.path("method").asText());
+        assertEquals("/api/v1/flows/CreateAppointment/execute", flowEntry.path("path").asText());
+        assertEquals("/api/flows/CreateAppointment/execute", flowEntry.path("pathAliases").path(0).asText());
+        assertTrue(flowEntry.path("preferred").asBoolean(), "A flow entry is always preferred.");
+        assertEquals(200, flowEntry.path("execution").path("statusOnComplete").asInt());
+        assertEquals(202, flowEntry.path("execution").path("statusOnWaiting").asInt());
+        JsonNode inputFields = flowEntry.path("body").path("inputFields");
+        assertTrue(inputFields.isArray() && inputFields.size() > 0,
+                "Expected CreateAppointment's inputFields to be derived from its own concept (Appointment), "
+                        + "since this model declares no flow.inputSchema.");
+        assertTrue(findBy(inputFields, "fieldPath", "Appointment.providerId") != null,
+                "Expected a non-id Appointment field among CreateAppointment's derived input fields.");
+
+        // Appointment.create is flow-backed (CreateAppointment) -- the direct route must say so.
+        JsonNode createDirectAppointment = findBy(invocations, "id", "createDirect:Appointment");
+        assertTrue(createDirectAppointment != null, "Expected a createDirect:Appointment invocation entry.");
+        assertEquals("POST", createDirectAppointment.path("method").asText());
+        assertFalse(createDirectAppointment.path("preferred").asBoolean(),
+                "createDirect:Appointment must be non-preferred: Appointment.create is flow-backed.");
+        assertEquals("flow:CreateAppointment", createDirectAppointment.path("prefer").asText());
+        assertTrue(!createDirectAppointment.path("preferReason").asText().isBlank(),
+                "Expected a non-blank preferReason explaining the flow-bypass risk.");
+
+        // Patient has no flow backing any of its CRUD modes -- its direct routes must be preferred.
+        JsonNode createDirectPatient = findBy(invocations, "id", "createDirect:Patient");
+        assertTrue(createDirectPatient != null, "Expected a createDirect:Patient invocation entry.");
+        assertTrue(createDirectPatient.path("preferred").asBoolean(),
+                "createDirect:Patient must be preferred: Patient.create has no flow backing it.");
+        assertTrue(createDirectPatient.path("prefer").isMissingNode(),
+                "A preferred entry must not carry a prefer pointer.");
+
+        JsonNode readPatient = findBy(invocations, "id", "read:Patient");
+        assertTrue(readPatient != null, "Expected a read:Patient invocation entry.");
+        assertEquals("GET", readPatient.path("method").asText());
+        assertTrue(readPatient.path("path").asText().endsWith("/{id}"),
+                "Expected the read entry's path to carry an {id} path variable.");
+
+        JsonNode pagedQueryPatient = findBy(invocations, "id", "pagedQuery:Patient");
+        assertTrue(pagedQueryPatient != null, "Expected a pagedQuery:Patient invocation entry.");
+        assertEquals("/api/v1/concepts/Patient/page", pagedQueryPatient.path("path").asText());
+
+        // Determinism: id-ordering + no orderKey leakage (same discipline as every other catalog).
+        List<String> ids = new java.util.ArrayList<>();
+        for (JsonNode entry : invocations) {
+            ids.add(entry.path("id").asText());
+            assertTrue(entry.path("orderKey").isMissingNode(), "orderKey must never leak into the final JSON.");
+        }
+        List<String> sortedIds = new java.util.ArrayList<>(ids);
+        sortedIds.sort(String::compareTo);
+        assertEquals(sortedIds, ids, "Invocation entries must be sorted by id.");
     }
 
     private static JsonNode findBy(JsonNode arrayNode, String fieldName, String value) {
