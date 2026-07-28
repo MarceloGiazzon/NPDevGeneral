@@ -55,10 +55,10 @@ class DslCapabilityPolicyTest {
                         {
                           "name":"save",
                           "type":"capabilityCall",
-                          "cap":"persistence",
-                          "op":"save",
+                          "capability":"persistence",
+                          "operation":"save",
                           "args":["$input"],
-                          "out":"$saved",
+                          "output":"$saved",
                           "policy":{
                             "retryCount":3,
                             "retryDelayMs":500,
@@ -122,8 +122,8 @@ class DslCapabilityPolicyTest {
                         {
                           "name":"save",
                           "type":"capabilityCall",
-                          "cap":"persistence",
-                          "op":"save",
+                          "capability":"persistence",
+                          "operation":"save",
                           "args":["$input"],
                           "policy":{"retryCount":0}
                         }

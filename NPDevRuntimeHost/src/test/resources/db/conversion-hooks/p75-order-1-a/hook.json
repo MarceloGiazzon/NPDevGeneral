@@ -1,0 +1,5 @@
+{
+  "id": "p75-order-1-a",
+  "claims": ["ADD_REQUIRED_COLUMN:p75_order:col_a"],
+  "description": "P7.5 fixture: first of two hooks proving ascending-id execution order."
+}

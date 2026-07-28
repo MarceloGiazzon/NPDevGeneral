@@ -29,6 +29,15 @@ import java.util.Set;
  * access; the generator never has one). Pure, fully-unit-testable: {@link #compute} takes only
  * already-in-memory objects and returns a value, no I/O.
  *
+ * <p><b>SER-P9.2 (kept deliberately, not part of the dead {@code com.finalexec.npdev.migration.*}
+ * lineage SER-P9.1 retired -- a different design, still useful).</b> This is the OFFLINE half of a
+ * two-surface pair: {@code Build-NpdevApp.ps1 -PlanOnly} runs this class (model vs. the PREVIOUS
+ * MODEL -- an estimate, no database contacted, safe before anything is even deployed).
+ * {@code -ImpactOnly} (SER-P6.4, {@code com.finalexec.db.SchemaImpactFacade}) is model vs. the LIVE
+ * DATABASE -- the truth, with real row counts, but the target must already be reachable. Neither
+ * replaces the other: {@code -PlanOnly} for a quick pre-authoring sanity check, {@code -ImpactOnly}
+ * before an actual deploy.
+ *
  * <h2>Design decision: (A) share, not (B) duplicate</h2>
  * This class deliberately reuses, rather than re-derives, three things that already exist:
  * <ol>

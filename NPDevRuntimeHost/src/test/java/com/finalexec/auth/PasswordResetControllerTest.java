@@ -196,6 +196,57 @@ class PasswordResetControllerTest {
         assertTrue(mailAdapter.deliveries().isEmpty());
     }
 
+    /**
+     * REG-39 layer 2: a stale identity-pack copy (no {@code token_version} column) must surface the
+     * confirm step as a distinct {@code identity_pack_schema_error}, not the generic
+     * {@code password_reset_failed} it used to collapse into via {@code bumpTokenVersion}'s
+     * best-effort swallow. The credential update itself still succeeds -- only the revocation bump fails.
+     */
+    @Test
+    void confirmAgainstStaleIdentityPackSurfacesSchemaErrorNotGenericFailure() throws Exception {
+        String url = "jdbc:h2:mem:" + getClass().getSimpleName() + "Stale" + System.nanoTime() + ";DB_CLOSE_DELAY=-1";
+        DataSource staleDataSource = new SingleConnectionUrlDataSource(url);
+        try (Connection c = staleDataSource.getConnection(); Statement s = c.createStatement()) {
+            // No token_version column -- the pre-LNCH-4 shape.
+            s.execute("CREATE TABLE identity_users (id UUID PRIMARY KEY, username VARCHAR(120), "
+                    + "email VARCHAR(200), active BOOLEAN, tenant_id VARCHAR(120))");
+            s.execute("CREATE TABLE identity_password_reset_tokens (id UUID PRIMARY KEY, user_id UUID, "
+                    + "token_hash VARCHAR(64), expires_at TIMESTAMP, used_at TIMESTAMP, tenant_id VARCHAR(120))");
+            s.execute("CREATE TABLE usuarios (id UUID PRIMARY KEY, user_id UUID, senha_hash VARCHAR(200), "
+                    + "tenant_id VARCHAR(120))");
+            s.execute("INSERT INTO identity_users VALUES ('" + USER_ID + "','ada','ada@example.com',TRUE,'"
+                    + TENANT + "')");
+            s.execute("INSERT INTO usuarios VALUES (RANDOM_UUID(), '" + USER_ID + "', '"
+                    + PasswordHasher.hash("old-password") + "', '" + TENANT + "')");
+        }
+        CapabilityRegistry registry = new CapabilityRegistry();
+        registry.register("mail", "EmailCapability", "mail-inproc", mailAdapter);
+        PasswordResetController controller = new PasswordResetController(
+                staleDataSource, registry, new RegistryCapabilityDispatcher(registry),
+                "usuarios", "user_id", "senha_hash", ""
+        );
+
+        var requestResp = controller.requestReset(new PasswordResetController.RequestResetRequest("ada", TENANT), null);
+        assertEquals(200, requestResp.getStatusCode().value());
+        String token = extractToken((String) mailAdapter.deliveries().get(0).get("body"));
+
+        var confirmResp = controller.confirmReset(
+                new PasswordResetController.ConfirmResetRequest(token, "brand-new-password", TENANT));
+
+        assertEquals(500, confirmResp.getStatusCode().value());
+        assertEquals("identity_pack_schema_error", confirmResp.getBody().get("error"));
+
+        try (Connection c = staleDataSource.getConnection();
+             PreparedStatement ps = c.prepareStatement("SELECT senha_hash FROM usuarios WHERE user_id = ?")) {
+            ps.setObject(1, USER_ID);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next());
+                assertTrue(PasswordHasher.verify("brand-new-password", rs.getString(1)),
+                        "the credential update itself must still have committed before the revocation bump failed");
+            }
+        }
+    }
+
     private static String extractToken(String body) {
         String marker = "code is: ";
         int idx = body.indexOf(marker);

@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://npdev.dev/schemas/external-ai-verdict.schema.json",
+  "title": "NPDev External AI Verdict",
+  "description": "The structured response ingested from an external AI (ADR-0009). recordKind is fixed to the literal 'external-ai-verdict' precisely so it can never be confused with, or laundered into, 'independent-human-review' or a sign-off in any ledger, knowledge card, or generated artefact -- the honesty contract's rule 1, enforced structurally rather than left to prose convention.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "recordKind", "missionId", "packManifestSha256", "vendor", "model", "receivedAt",
+    "noRepoAccess", "autoApplied", "findings", "shown", "notShown"
+  ],
+  "properties": {
+    "recordKind": {
+      "type": "string",
+      "const": "external-ai-verdict",
+      "description": "Always this literal. Never 'independent-human-review', never 'sign-off' -- see ADR-0009 honesty rule 1."
+    },
+    "missionId": { "type": "string", "pattern": "^M[0-9]+-[A-Z0-9-]+$" },
+    "packManifestSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Ties this verdict to the exact external-ai-pack it was rendered against -- provenance that never launders an AI answer detached from what it actually saw."
+    },
+    "vendor": { "type": "string", "description": "e.g. 'anthropic', 'openai' -- the vendor identity, recorded verbatim in the status string per ADR-0009." },
+    "model": { "type": "string", "description": "e.g. 'claude-opus-5' -- the specific model, not just the vendor." },
+    "receivedAt": { "type": "string", "description": "ISO-8601 timestamp the verdict was ingested." },
+    "noRepoAccess": {
+      "type": "boolean",
+      "const": true,
+      "description": "Structural assertion of ADR-0009's hard invariant: this model had no filesystem, repo, shell, or network access to the host. Always true; a verdict record where this could be false should never exist."
+    },
+    "autoApplied": {
+      "type": "boolean",
+      "const": false,
+      "description": "Structural assertion of honesty rule 5: findings are filed, never auto-applied. Always false."
+    },
+    "isCalibration": {
+      "type": "boolean",
+      "default": false,
+      "description": "True when this verdict is a P4 calibration run (M0-CALIB-*), scored found/missed/hallucinated rather than filed as a live finding."
+    },
+    "calibrationScore": {
+      "type": "object",
+      "description": "Present when isCalibration is true, or when a non-calibration mission's 'no findings' result must travel with the channel's known yield (honesty rule 4).",
+      "additionalProperties": false,
+      "properties": {
+        "knownBugFound": { "type": "boolean" },
+        "hallucinatedFindingCount": { "type": "integer", "minimum": 0 },
+        "note": { "type": "string", "description": "e.g. 'channel recorded low-yield -- found neither known bug'." }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "May be empty -- an empty array is a 'no findings' result, which per honesty rule 4 is only meaningful alongside a calibrationScore.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["findingId", "severity", "claim"],
+        "properties": {
+          "findingId": { "type": "string" },
+          "severity": {
+            "type": "string",
+            "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
+          },
+          "claim": { "type": "string", "description": "The reviewer's claim, verbatim or lightly cleaned -- never rewritten to sound more confirmed than stated." },
+          "evidenceChunkIds": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Which pack chunks the claim references, so a human can locate and attempt local reproduction."
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["LOW", "MEDIUM", "HIGH"]
+          }
+        }
+      }
+    },
+    "shown": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Restates the pack's shown[] at ingestion time -- what this specific verdict was rendered against."
+    },
+    "notShown": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Restates the pack's notShown[] -- the declared limitation travels with the verdict, not just the pack."
+    }
+  }
+}

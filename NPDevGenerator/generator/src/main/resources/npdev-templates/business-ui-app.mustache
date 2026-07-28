@@ -110,8 +110,31 @@
       .trim();
   }
 
+  // NOTE: text() coalesces null/undefined to "". It does NOT escape anything, despite reading like
+  // it might -- never concatenate its result into innerHTML. Use setEmptyState() below, or a
+  // textContent assignment, so escaping is done by the DOM rather than by remembering to.
   function text(value) {
     return value === null || value === undefined ? "" : String(value);
+  }
+
+  // REG-16-resid Round 3 (R3-F1). Replaces a container's contents with one "empty state" message,
+  // built through the DOM so the message can never be parsed as markup.
+  //
+  // Every empty/loading/error placeholder below used to assign a hand-built
+  //   "<div class='empty'>" + message + "</div>"
+  // string straight into container.innerHTML.
+  // Three of those concatenated text(error.message) -- a message the SERVER composes, and the server
+  // echoes request data into it ("Unknown field for X: ...") -- and one concatenated the user's own
+  // raw filter string. Those are XSS sinks. They were only ever self-inflicted, because nothing
+  // restores a filter from the URL and the error is the caller's own -- but that is a property of
+  // today's feature set, not of the code. Removing the sink outright means the next feature that
+  // renders a server-authored message here cannot quietly reintroduce it.
+  function setEmptyState(container, message) {
+    container.innerHTML = "";
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = text(message);
+    container.appendChild(empty);
   }
 
   // Tiny boolean-expression evaluator for visibleWhen/enabledWhen/readonlyWhen/requiredWhen.
@@ -3199,9 +3222,9 @@
     }
 
     async function loadOptionsAndCurrent() {
-      list.innerHTML = "<div class='empty'>Loading…</div>";
+      setEmptyState(list, "Loading…");
       if (!reference.endpointBase || !reference.anchorField) {
-        list.innerHTML = "<div class='empty'>Reference metadata is incomplete.</div>";
+        setEmptyState(list, "Reference metadata is incomplete.");
         return;
       }
       const params = new URLSearchParams();
@@ -3217,7 +3240,7 @@
         });
         rows = Array.isArray(payload.content) ? payload.content : [];
       } catch (error) {
-        list.innerHTML = "<div class='empty'>" + text(error.message) + "</div>";
+        setEmptyState(list, text(error.message));
         return;
       }
       if (recordId && reference.bondEndpointBase && reference.bondFieldName) {
@@ -3234,7 +3257,7 @@
       syncHidden();
       list.innerHTML = "";
       if (rows.length === 0) {
-        list.innerHTML = "<div class='empty'>No records available to link.</div>";
+        setEmptyState(list, "No records available to link.");
         return;
       }
       rows.forEach(function (row) {
@@ -3494,7 +3517,7 @@
 
     const grid = document.createElement("div");
     grid.className = "image-select-grid";
-    grid.innerHTML = "<div class='empty'>Loading…</div>";
+    setEmptyState(grid, "Loading…");
     wrapper.appendChild(grid);
 
     const current = text(value);
@@ -3509,7 +3532,7 @@
 
     async function loadOptions() {
       if (!reference.endpointBase || !reference.targetIdField) {
-        grid.innerHTML = "<div class='empty'>Reference metadata is incomplete.</div>";
+        setEmptyState(grid, "Reference metadata is incomplete.");
         return;
       }
       const params = new URLSearchParams();
@@ -3522,7 +3545,7 @@
         const rows = Array.isArray(payload.content) ? payload.content : [];
         grid.innerHTML = "";
         if (rows.length === 0) {
-          grid.innerHTML = "<div class='empty'>No records available.</div>";
+          setEmptyState(grid, "No records available.");
           return;
         }
         rows.forEach(function (row) {
@@ -3543,7 +3566,7 @@
           state.referenceLabels[referenceCacheKey(reference, id)] = { status: "resolved", label: cardLabel, row: row };
         });
       } catch (error) {
-        grid.innerHTML = "<div class='empty'>" + text(error.message) + "</div>";
+        setEmptyState(grid, text(error.message));
       }
     }
 
@@ -3577,10 +3600,10 @@
 
     async function loadPickerRows(filter) {
       if (!reference.endpointBase || !reference.targetIdField) {
-        tableWrapper.innerHTML = "<div class='empty'>Reference metadata is incomplete.</div>";
+        setEmptyState(tableWrapper, "Reference metadata is incomplete.");
         return;
       }
-      tableWrapper.innerHTML = "<div class='empty'>Loading…</div>";
+      setEmptyState(tableWrapper, "Loading…");
       const params = new URLSearchParams();
       params.set("page", "0");
       params.set("size", "30");
@@ -3598,8 +3621,7 @@
         const rows = Array.isArray(payload.content) ? payload.content : [];
         tableWrapper.innerHTML = "";
         if (rows.length === 0) {
-          tableWrapper.innerHTML = "<div class='empty'>" +
-            (normalizedFilter ? "No matches for “" + normalizedFilter + "”" : "No records found.") + "</div>";
+          setEmptyState(tableWrapper, (normalizedFilter ? "No matches for “" + normalizedFilter + "”" : "No records found."));
           return;
         }
         const table = document.createElement("table");
@@ -3635,7 +3657,7 @@
         table.appendChild(tbody);
         tableWrapper.appendChild(table);
       } catch (error) {
-        tableWrapper.innerHTML = "<div class='empty'>" + text(error.message) + "</div>";
+        setEmptyState(tableWrapper, text(error.message));
         setStatus(error.message, true);
       }
     }

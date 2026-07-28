@@ -180,7 +180,7 @@ def _capture_validation(model_path: Path, report: dict) -> None:
 
 def read_json(path: Path) -> dict:
     try:
-        with path.open("r", encoding="utf-8") as handle:
+        with path.open("r", encoding="utf-8-sig") as handle:
             return json.load(handle)
     except FileNotFoundError as exc:
         raise CliError(f"file not found: {path}") from exc
@@ -204,7 +204,10 @@ def validate_json_schema(schema: Path, instance: Path) -> dict:
         npm = shutil.which("npm.cmd" if os.name == "nt" else "npm") or shutil.which("npm")
         if not npm:
             raise CliError("npm is required to install the canonical JSON Schema validator dependencies")
-        subprocess.run([npm, "--prefix", str(validator_root), "install", "--silent"], cwd=root, check=True)
+        # Run `npm install` FROM the validator dir (cwd), not `--prefix <dir>` from the repo root:
+        # `--prefix` sets where node_modules lands but npm still reads package.json from cwd, so with
+        # cwd=repo-root (which has no package.json) npm ENOENTs on Windows (D:\...\package.json). REG-33.
+        subprocess.run([npm, "install", "--silent"], cwd=validator_root, check=True)
     completed = subprocess.run(
         [
             "node",
@@ -583,6 +586,88 @@ def migrate_legacy_model(args: argparse.Namespace) -> None:
     print(str(target))
 
 
+def run_migrate_dsl2(args: argparse.Namespace) -> int:
+    """2.A.3 (docs/DSL2_AND_DECOMPOSITION_PLAN.md): rewrite flowStep.type spellings and field
+    aliases to their DSL 2.0 canonical form, across one or more files/directories. Dry-run by
+    default (reports what would change); pass --write to apply. See dsl_v2_migration.py's module
+    docstring for the full design: idempotent, structural (never a blind key-value replace), and
+    refuses to touch anything it detects as a serialized compiled-model fixture rather than a raw
+    authored document.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from dsl_v2_migration import migrate_document  # local import: keep this optional dependency
+
+    inputs = [Path(p).expanduser().resolve() for p in args.input]
+    files: list[Path] = []
+    for p in inputs:
+        if p.is_dir():
+            files.extend(sorted(p.rglob("*.json")))
+        elif p.is_file():
+            files.append(p)
+        else:
+            print(f"npdev migrate dsl-2: input not found: {p}", file=sys.stderr)
+            return 2
+
+    changed_count = 0
+    compiled_skipped_count = 0
+    ambiguous_count = 0
+    unchanged_count = 0
+    invalid_count = 0
+    report_entries = []
+
+    for f in files:
+        try:
+            doc = read_json(f)
+        except CliError as exc:
+            invalid_count += 1
+            print(f"  [SKIP] {f}: {exc}", file=sys.stderr)
+            continue
+        if not isinstance(doc, dict):
+            continue
+
+        result = migrate_document(doc)
+        report_entries.append({
+            "file": str(f),
+            "changed": result.changed,
+            "isCompiled": result.is_compiled,
+            "changes": result.changes,
+            "ambiguities": result.ambiguities,
+        })
+
+        if result.is_compiled:
+            compiled_skipped_count += 1
+            continue
+        if result.ambiguities:
+            ambiguous_count += 1
+            for a in result.ambiguities:
+                print(f"  [AMBIGUOUS] {f}: {a}")
+        if result.changed:
+            changed_count += 1
+            verb = "CHANGED" if args.write else "WOULD CHANGE"
+            for c in result.changes:
+                print(f"  [{verb}] {f}: {c}")
+            if args.write:
+                f.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+        else:
+            unchanged_count += 1
+
+    print(
+        f"\n{len(files)} file(s) scanned: {changed_count} changed, {compiled_skipped_count} "
+        f"compiled-model (skipped), {ambiguous_count} with ambiguities left untouched, "
+        f"{unchanged_count} already canonical, {invalid_count} invalid JSON (skipped)"
+    )
+    if not args.write and changed_count > 0:
+        print("Dry run -- pass --write to apply.")
+
+    if args.report:
+        report_path = Path(args.report).expanduser()
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report_entries, indent=2) + "\n", encoding="utf-8")
+        print(f"Report written: {report_path}")
+
+    return 1 if invalid_count > 0 else 0
+
+
 def write_temp_model(model: dict, target: Path) -> Path:
     temp = target.parent / (target.name + ".validation.tmp")
     temp.parent.mkdir(parents=True, exist_ok=True)
@@ -622,6 +707,43 @@ DEFAULT_DB_DEFINITION = {
         "scope": "NpdevOwnedLogicalStoresOnly",
     },
 }
+
+
+def run_review_pack(args: argparse.Namespace) -> None:
+    """ADR-0009 / P6: shells out to the platform pack producer -- one implementation, not a second
+    copy of the chunk/sanitize/manifest algorithm inside the CLI itself."""
+    root = repo_root()
+    script = root / "scripts" / "external-review" / "build-review-pack.py"
+    if not script.exists():
+        raise CliError(f"pack producer not found: {script}")
+    command = [sys.executable, str(script), "--mission-id", args.mission_id]
+    if args.commit:
+        command += ["--commit", args.commit]
+    if args.paths:
+        command += ["--paths", *args.paths]
+    if args.repo_root:
+        command += ["--repo-root", args.repo_root]
+    if args.output_dir:
+        command += ["--output-dir", args.output_dir]
+    subprocess.run(command, cwd=root, check=True)
+
+
+def run_review_ingest(args: argparse.Namespace) -> None:
+    """ADR-0009 / P6: shells out to the platform producer's --ingest-verdict-file mode -- the single
+    place the honesty-field validation (recordKind/noRepoAccess/autoApplied) lives on the Python side."""
+    root = repo_root()
+    script = root / "scripts" / "external-review" / "build-review-pack.py"
+    if not script.exists():
+        raise CliError(f"pack producer not found: {script}")
+    command = [
+        sys.executable, str(script),
+        "--mission-id", args.mission_id,
+        "--ingest-verdict-file", args.verdict_file,
+        "--vendor-id", args.vendor_id,
+    ]
+    if args.pack_manifest_sha256:
+        command += ["--pack-manifest-sha256", args.pack_manifest_sha256]
+    subprocess.run(command, cwd=root, check=True)
 
 
 def run_generate(args: argparse.Namespace) -> None:
@@ -898,6 +1020,17 @@ def build_parser() -> argparse.ArgumentParser:
     migrate_legacy.add_argument("--input", required=True)
     migrate_legacy.add_argument("--output", required=True)
 
+    migrate_dsl2 = migrate_sub.add_parser("dsl-2")
+    migrate_dsl2.add_argument(
+        "--input", required=True, nargs="+",
+        help="one or more files or directories (searched recursively for *.json) to migrate",
+    )
+    migrate_dsl2.add_argument(
+        "--write", action="store_true",
+        help="apply changes in place; without this flag, reports what would change and exits",
+    )
+    migrate_dsl2.add_argument("--report", help="write a JSON report of every file's outcome to this path")
+
     migration = subparsers.add_parser("migration")
     migration_sub = migration.add_subparsers(dest="migration_command")
     migration_diff = migration_sub.add_parser("diff")
@@ -932,6 +1065,24 @@ def build_parser() -> argparse.ArgumentParser:
     report = subparsers.add_parser("report")
     report_sub = report.add_subparsers(dest="report_command")
     report_sub.add_parser("bootstrap")
+
+    review = subparsers.add_parser("review")
+    review_sub = review.add_subparsers(dest="review_command")
+    review_pack = review_sub.add_parser("pack")
+    review_pack.add_argument("--mission-id", required=True)
+    review_pack.add_argument("--commit", help="override the mission's pinned commit")
+    review_pack.add_argument("--paths", nargs="*", help="additional/override repo-relative paths")
+    review_pack.add_argument("--repo-root")
+    review_pack.add_argument("--output-dir")
+
+    review_ingest = review_sub.add_parser("ingest")
+    review_ingest.add_argument("--mission-id", required=True)
+    review_ingest.add_argument("--vendor-id", required=True)
+    review_ingest.add_argument("--verdict-file", required=True)
+    review_ingest.add_argument(
+        "--pack-manifest-sha256",
+        help="required unless the verdict file itself carries packManifestSha256",
+    )
     return parser
 
 
@@ -955,6 +1106,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "migrate" and args.migrate_command == "legacy-model":
             migrate_legacy_model(args)
             return 0
+        if args.command == "migrate" and args.migrate_command == "dsl-2":
+            return run_migrate_dsl2(args)
         if args.command == "migration" and args.migration_command == "diff":
             run_migration_diff(args)
             return 0
@@ -969,6 +1122,12 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "report" and args.report_command == "bootstrap":
             run_report_bootstrap()
+            return 0
+        if args.command == "review" and args.review_command == "pack":
+            run_review_pack(args)
+            return 0
+        if args.command == "review" and args.review_command == "ingest":
+            run_review_ingest(args)
             return 0
         parser.print_help()
         return 2

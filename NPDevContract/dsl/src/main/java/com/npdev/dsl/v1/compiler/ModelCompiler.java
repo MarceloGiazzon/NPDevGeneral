@@ -2,6 +2,7 @@ package com.npdev.dsl.v1.compiler;
 
 import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.DocumentAst;
+import com.npdev.dsl.v1.ast.ExternalAiAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.FileMetadataAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
@@ -89,6 +90,7 @@ import com.npdev.dsl.v1.compiled.CompiledAutoPanel;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelComputed;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelSurface;
 import com.npdev.dsl.v1.compiled.CompiledDocument;
+import com.npdev.dsl.v1.compiled.CompiledExternalAi;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPanelDataSource;
@@ -242,7 +244,8 @@ public final class ModelCompiler {
                         toCompiledPresentationMetadata(f.getUi()),
                         f.getConnectable(),
                         f.getRenamedFrom(),
-                        toCompiledFileMetadata(f.getFile())
+                        toCompiledFileMetadata(f.getFile()),
+                        f.isSensitive()
                 ));
 
                 if (f.isRequired()) {
@@ -559,8 +562,17 @@ public final class ModelCompiler {
                 guidePages,
                 aggregates,
                 autoPanels,
-                documents
+                documents,
+                toCompiledExternalAi(modelAst.getExternalAi())
         );
+    }
+
+    /** ADR-0009: compiles the app-level externalAi block, or null if the model declares none. */
+    private static CompiledExternalAi toCompiledExternalAi(ExternalAiAst externalAiAst) {
+        if (externalAiAst == null) {
+            return null;
+        }
+        return new CompiledExternalAi(externalAiAst.getEgress(), externalAiAst.getVendors());
     }
 
     private static CompiledDocument compileDocument(DocumentAst documentAst) {

@@ -52,6 +52,19 @@ public interface ConceptGatewaySemanticPolicy {
         return true;
     }
 
+    /**
+     * REG-42 (LNCH13-F3, REG-16-resid Round 2 follow-up): does this concept declare an
+     * {@code access.read} row-level rule at all? {@link DefaultConceptGateway#query} uses this to
+     * decide whether {@code total}/{@code hasMore} need recomputing against the row-scoped result
+     * set (an extra query cost) instead of trusting the store's pre-row-scope count -- a caller
+     * whose {@code access.read} excludes most of a tenant's rows must not learn the tenant's full
+     * row count via pagination metadata. {@code false} (the default) means no extra cost for a
+     * concept that declares no read scope at all.
+     */
+    default boolean hasRowReadScope(String conceptName) {
+        return false;
+    }
+
     static ConceptGatewaySemanticPolicy noop() {
         return NOOP;
     }

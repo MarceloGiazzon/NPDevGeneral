@@ -2,4 +2,8 @@ dependencies {
     implementation project(':kernel')
 
     testImplementation 'com.h2database:h2:2.2.224'
+    // REG-36 was a POSTGRES-specific failure (btree index-entry size limit) in a module that, alone
+    // among the *-postgres adapters, had never been tested against Postgres -- its one test runs H2 in
+    // PostgreSQL compatibility mode, which does not enforce that limit. That is why the bug shipped.
+    testImplementation project(':adapters:postgres-test-support')
 }

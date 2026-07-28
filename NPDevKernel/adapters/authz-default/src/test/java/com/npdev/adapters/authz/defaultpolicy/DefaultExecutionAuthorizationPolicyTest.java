@@ -141,4 +141,46 @@ class DefaultExecutionAuthorizationPolicyTest {
         assertFalse(policy.canReadAdminOps(operator));
         assertTrue(policy.canReadAdminOps(admin));
     }
+
+    @Test
+    void reg45ResumeRequiresTheOriginatingActorNotJustTheTenant() {
+        // REG-45. resumeExecution hands back the ExecutionResult, which carries the flow's accumulated
+        // state -- records the flow read under the ORIGINAL actor's row-level access.read scope. So
+        // "same tenant" was not a sufficient gate: a colleague holding RESUME_EXECUTIONS could resume
+        // someone else's suspended flow and be handed data they could not have read directly.
+        DefaultExecutionAuthorizationPolicy policy =
+                new DefaultExecutionAuthorizationPolicy(new DefaultTenantIsolationPolicy());
+
+        FlowInstance startedByA = FlowInstance.start(
+                "exec-a", "FlowA", "corr-a", "tenant-a", "actor-a", Map.of(), 1000L);
+
+        ExecutionContext actorA = ExecutionContext.of("tenant-a", "actor-a").withRoles(Set.of("OPERATOR"));
+        ExecutionContext actorB = ExecutionContext.of("tenant-a", "actor-b").withRoles(Set.of("OPERATOR"));
+
+        assertTrue(policy.canResumeExecution(actorA, startedByA),
+                "the originating actor must still be able to resume their own flow");
+        assertFalse(policy.canResumeExecution(actorB, startedByA),
+                "a different actor in the SAME tenant must not resume it, even holding RESUME_EXECUTIONS");
+    }
+
+    @Test
+    void reg45AnInstanceWithNoRecordedActorStaysTenantScopedOnly() {
+        // FlowInstance normalises a blank actorId to null -- what a flow started anonymously, by the
+        // cron scheduler, or before this field was populated looks like. Requiring equality against
+        // null would make every one of those permanently unresumable, turning a data-scoping fix into
+        // an availability regression for exactly the stuck flows an operator most needs to recover.
+        DefaultExecutionAuthorizationPolicy policy =
+                new DefaultExecutionAuthorizationPolicy(new DefaultTenantIsolationPolicy());
+
+        FlowInstance ownerless = FlowInstance.start(
+                "exec-c", "FlowC", "corr-c", "tenant-a", null, Map.of(), 1000L);
+
+        ExecutionContext operator = ExecutionContext.of("tenant-a", "actor-b").withRoles(Set.of("OPERATOR"));
+        ExecutionContext otherTenant = ExecutionContext.of("tenant-b", "actor-b").withRoles(Set.of("OPERATOR"));
+
+        assertTrue(policy.canResumeExecution(operator, ownerless),
+                "no recorded owner means there is no owner for actor-scoping to protect");
+        assertFalse(policy.canResumeExecution(otherTenant, ownerless),
+                "...but tenant isolation still applies");
+    }
 }

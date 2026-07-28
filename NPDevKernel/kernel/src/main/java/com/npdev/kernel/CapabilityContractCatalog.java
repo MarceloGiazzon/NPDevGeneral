@@ -71,6 +71,20 @@ public final class CapabilityContractCatalog {
                         new CapabilityOperationContract("verify", List.of("signedDocument"), List.of("verificationResult"))
                 )
         ));
+        // ADR-0009: external AI delegation -- sibling of PersistenceCapability. The port's own
+        // default (ExternalAiCapabilityContract.submitPack) denies egress by throwing; only a
+        // concrete, opted-in adapter (external-ai-inproc / external-ai-http) may override it.
+        catalog.register(new CapabilityContract(
+                "ExternalAiCapability",
+                List.of(
+                        new CapabilityOperationContract("submitPack", List.of("pack"), List.of("runResult")),
+                        new CapabilityOperationContract(
+                                "ingestVerdict",
+                                List.of("missionId", "vendorId", "verdictJson"),
+                                List.of("verdictRecord")
+                        )
+                )
+        ));
         return catalog;
     }
 

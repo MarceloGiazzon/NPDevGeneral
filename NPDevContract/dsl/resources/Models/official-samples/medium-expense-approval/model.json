@@ -267,7 +267,7 @@
       "steps": [
         {
           "name": "validate-expense",
-          "type": "validate",
+          "type": "invariantCheck",
           "scope": "ExpenseRequest",
           "invariants": [
             "EmployeeEmailRequired",
@@ -279,7 +279,7 @@
           "type": "createConcept",
           "scope": "ExpenseRequest",
           "input": "$input",
-          "out": "$saved"
+          "output": "$saved"
         },
         {
           "name": "emit-expense-submitted",
@@ -289,37 +289,37 @@
         },
         {
           "name": "approval-gate",
-          "type": "if",
+          "type": "branch",
           "condition": "$saved.needsManagerApproval == true",
           "then": [
             {
               "name": "await-approval",
-              "type": "waitForEvent",
+              "type": "awaitEvent",
               "awaitEvent": "ExpenseApproved",
-              "as": "approval",
               "match": {
                 "correlation": true
-              }
+              },
+              "awaitRef": "approval"
             },
             {
               "name": "notify-approval",
-              "type": "callCapability",
-              "cap": "notification",
-              "op": "send",
+              "type": "capabilityCall",
               "args": [
                 "$approval"
               ],
-              "out": "$notification"
+              "capability": "notification",
+              "operation": "send",
+              "output": "$notification"
             },
             {
               "name": "publish-webhook",
-              "type": "callCapability",
-              "cap": "webhook",
-              "op": "post",
+              "type": "capabilityCall",
               "args": [
                 "$approval"
               ],
-              "out": "$webhookResult"
+              "capability": "webhook",
+              "operation": "post",
+              "output": "$webhookResult"
             },
             {
               "name": "return-approval",

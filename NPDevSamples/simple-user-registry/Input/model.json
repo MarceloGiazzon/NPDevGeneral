@@ -106,7 +106,7 @@
       "steps": [
         {
           "name": "validate-user",
-          "type": "enforceInvariants",
+          "type": "invariantCheck",
           "scope": "User",
           "invariants": [
             "EmailRequired",
@@ -117,12 +117,12 @@
         {
           "name": "save-user",
           "type": "capabilityCall",
-          "cap": "persistence",
-          "op": "save",
           "args": [
             "$input"
           ],
-          "out": "$saved"
+          "capability": "persistence",
+          "operation": "save",
+          "output": "$saved"
         },
         {
           "name": "emit-user-created",

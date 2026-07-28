@@ -99,7 +99,6 @@ $uiBoundary = Read-JsonFile $uiBoundaryPath
 $componentLineThreshold = 300
 
 $activeAllowed = @($uiBoundary.surfaceClassifications.allowed)
-$deferred = @($uiBoundary.surfaceClassifications.deferred)
 $activeComponentLineCounts = @(
     foreach ($relativePath in $activeAllowed) {
         if (-not ([string]$relativePath).EndsWith(".tsx")) {
@@ -136,10 +135,16 @@ $customJsonSyncIsolatedOrRemoved =
 $workbenchPath = Join-Path $workspaceRoot "NPDevEditor/ui-react/src/workbench/ReactWorkbenchApp.tsx"
 $workbenchSource = Get-Content -Raw -LiteralPath $workbenchPath
 $removedDeferredRoutes = @()
+# T1.4 (docs/TREE1_LAUNCH_UNBLOCK_PLAN.md): all 32 files ui-boundary.json used to classify "deferred"
+# were deleted outright (git rm), not just left unrouted -- so `deferred` is now permanently empty and
+# membership-in-`deferred` can no longer be the signal. Check the physical absence of these two named
+# panels directly instead: that is still direct evidence a previously-shipped unused panel route was
+# actually removed, which is what this check has always existed to prove.
 foreach ($panel in @("BusinessWorkspacePanel", "RuntimeRefreshPanel")) {
-    $isDeferred = @($deferred | Where-Object { [string]$_ -match [regex]::Escape($panel + ".tsx") }).Count -eq 1
+    $panelPath = Join-Path $workspaceRoot ("NPDevEditor/ui-react/src/" + $panel + ".tsx")
+    $wasRemoved = -not (Test-Path -LiteralPath $panelPath -PathType Leaf)
     $isRouted = $workbenchSource -match [regex]::Escape($panel)
-    if ($isDeferred -and -not $isRouted) {
+    if ($wasRemoved -and -not $isRouted) {
         $removedDeferredRoutes += $panel
     }
 }

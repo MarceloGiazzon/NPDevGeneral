@@ -237,14 +237,16 @@ class DslGrammarEvolutionTest {
                     {
                       "name": "CreateDraftClaim",
                       "trigger": { "type": "event", "event": "AppointmentCompleted" },
-                      "action": {
-                        "type": "create",
-                        "concept": "InsuranceClaim",
-                        "map": {
-                          "appointmentId": "$event.appointmentId",
-                          "status": "Draft"
+                      "actions": [
+                        {
+                          "type": "create",
+                          "concept": "InsuranceClaim",
+                          "map": {
+                            "appointmentId": "$event.appointmentId",
+                            "status": "Draft"
+                          }
                         }
-                      }
+                      ]
                     }
                   ]
                 }
@@ -309,15 +311,17 @@ class DslGrammarEvolutionTest {
                       "name": "NotifyOnAppointmentCompleted",
                       "trigger": { "type": "event", "event": "AppointmentCompleted" },
                       "condition": "$event.status == \\"Completed\\"",
-                      "action": {
-                        "type": "callCapability",
-                        "capability": "AuditNotifier",
-                        "operation": "send",
-                        "map": {
-                          "appointmentId": "$event.appointmentId",
-                          "status": "$event.status"
+                      "actions": [
+                        {
+                          "type": "callCapability",
+                          "capability": "AuditNotifier",
+                          "operation": "send",
+                          "map": {
+                            "appointmentId": "$event.appointmentId",
+                            "status": "$event.status"
+                          }
                         }
-                      }
+                      ]
                     }
                   ]
                 }
@@ -467,14 +471,16 @@ class DslGrammarEvolutionTest {
                       "name": "CreateDraftClaim",
                       "trigger": { "type": "event", "event": "AppointmentCompleted" },
                       "condition": "$event.nonExisting == \\"Completed\\"",
-                      "action": {
-                        "type": "create",
-                        "concept": "InsuranceClaim",
-                        "map": {
-                          "appointmentId": "$event.appointmentId",
-                          "status": "Draft"
+                      "actions": [
+                        {
+                          "type": "create",
+                          "concept": "InsuranceClaim",
+                          "map": {
+                            "appointmentId": "$event.appointmentId",
+                            "status": "Draft"
+                          }
                         }
-                      }
+                      ]
                     }
                   ]
                 }

@@ -11,7 +11,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -164,7 +163,7 @@ public final class DefaultTraceRedactionPolicy implements TraceRedactionPolicy {
         if (value == null) {
             return null;
         }
-        if (isSensitiveKey(key)) {
+        if (SensitiveKeyPolicy.isSensitiveKey(key)) {
             return MASKED;
         }
         if (value instanceof String text) {
@@ -199,23 +198,13 @@ public final class DefaultTraceRedactionPolicy implements TraceRedactionPolicy {
         if (value == null) {
             return null;
         }
-        if (isSensitiveKey(key)) {
+        if (SensitiveKeyPolicy.isSensitiveKey(key)) {
             return MASKED;
         }
-        if (value.contains("@")) {
+        if (SensitiveKeyPolicy.looksLikeSensitiveValue(value)) {
             return MASKED;
         }
         return value;
-    }
-
-    private static boolean isSensitiveKey(String key) {
-        if (key == null) {
-            return false;
-        }
-        String normalized = key.toLowerCase(Locale.ROOT);
-        return normalized.contains("password")
-                || normalized.contains("token")
-                || normalized.contains("secret");
     }
 
     private static boolean hasDebugRole(ExecutionContext requester) {

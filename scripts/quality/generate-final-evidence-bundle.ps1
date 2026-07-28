@@ -66,7 +66,7 @@ if (Test-Path -Path $bundleRootFull) {
 New-Item -ItemType Directory -Force -Path $reportBundleRoot | Out-Null
 
 $schemaValidationReportPath = "scripts/reports/out/required-report-schema-validation-report.json"
-pwsh -NoProfile -File scripts/quality/validate-report-schemas.ps1 -RunId $RunId -ReportPath $schemaValidationReportPath | Out-Null
+pwsh -NoProfile -File scripts/quality/validate-report-schemas.ps1 -RunId $RunId -ReportPath $schemaValidationReportPath -RequireAllMaturityReports | Out-Null
 $schemaValidationReport = Read-JsonFile $schemaValidationReportPath
 
 $artifacts = @()
@@ -91,9 +91,14 @@ foreach ($entry in New-RequiredReportRegistry) {
 }
 
 $missing = @($artifacts | Where-Object { $_.bytes -eq 0 })
-$failed = @($artifacts | Where-Object { $_.overallStatus -ne "passed" })
-$schemaInvalid = @($schemaValidationReport.reports | Where-Object { [string]$_.schemaStatus -ne "passed" })
-$overallStatus = if ($missing.Count -eq 0 -and $failed.Count -eq 0 -and $schemaInvalid.Count -eq 0) { "passed" } else { "failed" }
+$failed = @($artifacts | Where-Object { $_.bytes -gt 0 -and $_.overallStatus -ne "passed" })
+# REG-32: scope schema-invalid to reports that actually EXIST here (mirrors validate-report-schemas.ps1
+# -- a report with schemaStatus "not-run" was never produced, which is the $missing precondition
+# above, not a schema defect).
+$schemaInvalid = @($schemaValidationReport.reports | Where-Object { [bool]$_.exists -and [string]$_.schemaStatus -ne "passed" })
+$hasCheckFailure = ($failed.Count -gt 0) -or ($schemaInvalid.Count -gt 0)
+$hasPreconditionGap = ($missing.Count -gt 0)
+$overallStatus = if ($hasCheckFailure) { "failed" } elseif ($hasPreconditionGap) { "precondition-unmet" } else { "passed" }
 $manifest = [pscustomobject]@{
     schemaVersion = "npdev-final-evidence-bundle-manifest.v1"
     runId = $RunId
@@ -120,8 +125,14 @@ pwsh -NoProfile -File scripts/quality/Invoke-JsonSchemaValidation.ps1 `
     -InstancePath $ManifestPath `
     -ReportPath $schemaValidationPath | Out-Null
 
-if ($overallStatus -ne "passed") {
+# EXIT CODES (REG-3 pattern): 0 passed, 2 PRECONDITION-UNMET (required reports never generated --
+# not a defect), 1 CHECK-FAILED (an existing report is schema-invalid or its own status is failed).
+if ($overallStatus -eq "failed") {
     Write-Error ("Final evidence bundle generation failed. Manifest: " + $ManifestPath)
+}
+if ($overallStatus -eq "precondition-unmet") {
+    Write-Host ("PRECONDITION-UNMET: " + $missing.Count + " of " + $artifacts.Count + " required reports were never generated (producers not run). Manifest: " + $ManifestPath)
+    exit 2
 }
 
 Write-Host ("Final evidence bundle generated. Manifest: " + $ManifestPath)

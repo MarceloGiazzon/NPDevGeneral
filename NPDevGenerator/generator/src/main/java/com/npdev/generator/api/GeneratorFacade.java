@@ -19,6 +19,7 @@ import com.npdev.generator.emitters.RuntimeAuthPropertiesEmitter;
 import com.npdev.generator.emitters.RuntimeLogPropertiesEmitter;
 import com.npdev.generator.emitters.ServiceEmitter;
 import com.npdev.generator.emitters.TrustedSourceEmitter;
+import com.npdev.generator.dbconfig.ConversionHookEmitter;
 import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
 import com.npdev.generator.dbconfig.SchemaRealizationEmitter;
 import com.npdev.generator.dbconfig.DatabaseEngine;
@@ -168,6 +169,12 @@ public final class GeneratorFacade {
             List<String> migrationPlanDestructiveItemStableStrings,
             String destructiveAcknowledgmentToken
     ) throws Exception {
+        // REG-44: fail BEFORE emitting anything. A model that declares row-level access rules while
+        // crud.kernelControlled is false would generate an app that silently enforces neither them nor
+        // any coarse CRUD permission check -- see UnenforceableAccessRuleCheck for why that is an error
+        // rather than a warning, and why the check cannot live in SemanticValidator.
+        UnenforceableAccessRuleCheck.verify(model, settingResolver);
+
         boolean kernelControlled = settingResolver.value(NpdevSettings.CRUD_KERNEL_CONTROLLED, SettingTarget.app());
         String superUserRole = settingResolver.value(NpdevSettings.SECURITY_SUPER_USER_ROLE, SettingTarget.app());
         boolean internalTablesEnabled = settingResolver.value(NpdevSettings.INTERNAL_TABLES, SettingTarget.app());
@@ -212,6 +219,9 @@ public final class GeneratorFacade {
 
         new SchemaRealizationEmitter().emit(model, outRoot, databasePlan, modelSourcePath,
                 migrationPlanDestructiveItemStableStrings, destructiveAcknowledgmentToken);
+        // SER-P7.2: operator-authored conversion hooks (definition/migrations/<ordinal>-<slug>/), opt-in
+        // -- a no-op when the app declares none.
+        new ConversionHookEmitter().emit(modelSourcePath, outRoot);
         new GeneratedFolderSignatureEmitter().emit(outRoot);
     }
 

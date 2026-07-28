@@ -315,8 +315,10 @@ public final class FinalAppAssembler {
 
     private static boolean isGeneratedMigrationArtifactPath(Path relative) {
         String normalized = relative.toString().replace('\\', '/');
+        // SER-P9.1: the db/migration-plans/ entry was here to stop stale residue from the dead
+        // com.finalexec.npdev.migration.* lineage leaking into freshly assembled apps; that lineage
+        // is deleted now, so there is nothing left to skip it for.
         return normalized.startsWith("src/main/resources/db/migration/")
-                || normalized.startsWith("src/main/resources/db/migration-plans/")
                 || normalized.startsWith("src/main/resources/db/schema-snapshots/");
     }
 

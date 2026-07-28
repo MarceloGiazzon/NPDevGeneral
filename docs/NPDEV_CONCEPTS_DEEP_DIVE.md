@@ -183,6 +183,10 @@ the saved record back to whoever called the flow.*
 - Every call needs the `X-Api-Key` header (default `dev-key`, configurable in `config.json`
   under `trialDefaults.apiKey`).
 
+**Going deeper:** `waitForEvent` above is the entry point to a full durable workflow engine — a flow
+paused on it survives a JVM restart and resumes exactly where it left off, with event correlation,
+compensation on failure, and resumable loops. See `docs/FLOWS.md` for the complete mechanics.
+
 ---
 
 ## 3. Capability — a verb your app needs but doesn't implement itself

@@ -67,19 +67,6 @@ class FlowForEachValidationTest {
     }
 
     @Test
-    void loopAliasCompilesToForEach() throws Exception {
-        String json = modelJson("""
-            [
-              { "name": "sum-orders", "type": "loop", "collection": "input.orders", "itemKey": "order",
-                "steps": [ { "name": "return-item", "type": "return", "value": "order" } ]
-              }
-            ]
-            """);
-        List<String> errors = validate(json);
-        assertTrue(errors.isEmpty(), "unexpected errors: " + errors);
-    }
-
-    @Test
     void emptyLoopBodyIsRejectedAtSchemaLevel() {
         assertThrows(ModelSchemaValidationException.class, () -> new JsonModelParser().parse(
                 MAPPER.readTree(modelJson("""
@@ -104,7 +91,7 @@ class FlowForEachValidationTest {
             [
               { "name": "sum-orders", "type": "forEach", "collection": "input.orders", "itemKey": "order",
                 "steps": [
-                  { "name": "wait-for-approval", "type": "await", "awaitEvent": "OrderApproved", "awaitRef": "approval" }
+                  { "name": "wait-for-approval", "type": "awaitEvent", "awaitEvent": "OrderApproved", "awaitRef": "approval" }
                 ]
               }
             ]

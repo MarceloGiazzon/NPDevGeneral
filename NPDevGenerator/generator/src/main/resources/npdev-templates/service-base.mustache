@@ -191,13 +191,19 @@ public class {{entityName}}ServiceBase {
 {{#codaAllowed}}
         codaHook.ifPresent(hook -> hook.beforeCreate("{{conceptName}}", createPayload, crudCtx));
 {{/codaAllowed}}
-{{#hasCreateFlow}}
-        enforceWithCreateFlow(crudCtx, generatedId, createPayload);
-{{/hasCreateFlow}}
-{{^hasCreateFlow}}
+        // LNCH-13/REG-16-resid R2: enforceWithConceptGateway now runs BEFORE any create flow, not
+        // only when no create flow is declared, so a declared access.write row-level rule -- and the
+        // coarse invariant/lifecycle rule profiles -- are checked, and can DENY, before a flow's own
+        // side effects (notifications, external calls) ever run. Without this, a concept combining a
+        // custom create flow with access.write got ZERO row-level write enforcement on this endpoint:
+        // enforceWithCreateFlow only calls kernelRunner.execute(...), never conceptGateway.save(...),
+        // and the later saveWithIntegrityMapping(e) persists straight through conceptStore, bypassing
+        // ConceptGatewaySemanticPolicy.isRowWritable entirely.
 {{#kernelControlled}}
         enforceWithConceptGateway("{{conceptName}}", generatedId, createPayload);
 {{/kernelControlled}}
+{{#hasCreateFlow}}
+        enforceWithCreateFlow(crudCtx, generatedId, createPayload);
 {{/hasCreateFlow}}
 
         {{entityName}} e = new {{entityName}}();
@@ -260,13 +266,14 @@ public class {{entityName}}ServiceBase {
 {{#codaAllowed}}
         codaHook.ifPresent(hook -> hook.beforeUpdate("{{conceptName}}", id, updatePayload, crudCtx));
 {{/codaAllowed}}
-{{#hasUpdateFlow}}
-        enforceWithUpdateFlow(crudCtx, id, updatePayload);
-{{/hasUpdateFlow}}
-{{^hasUpdateFlow}}
+        // LNCH-13/REG-16-resid R2: see the create-path note above -- runs BEFORE any update flow,
+        // not only in its absence, so a declared access.write row-level rule is checked against the
+        // record's PREVIOUS state before the flow's own side effects run.
 {{#kernelControlled}}
         enforceWithConceptGateway("{{conceptName}}", id, updatePayload);
 {{/kernelControlled}}
+{{#hasUpdateFlow}}
+        enforceWithUpdateFlow(crudCtx, id, updatePayload);
 {{/hasUpdateFlow}}
 {{#hasFileFields}}
         // HARDEN-GC-P2: snapshot the pre-update value(s) BEFORE applyUpdateFields mutates
@@ -322,13 +329,14 @@ public class {{entityName}}ServiceBase {
 {{#codaAllowed}}
         codaHook.ifPresent(hook -> hook.beforeDelete("{{conceptName}}", id, crudCtx));
 {{/codaAllowed}}
-{{#hasDeleteFlow}}
-        enforceWithDeleteFlow(crudCtx, id);
-{{/hasDeleteFlow}}
-{{^hasDeleteFlow}}
+        // LNCH-13/REG-16-resid R2: see the create-path note above -- runs BEFORE any delete flow,
+        // not only in its absence, so a declared access.write row-level rule is checked before the
+        // flow's own side effects run.
 {{#kernelControlled}}
         enforceDeleteWithConceptGateway("{{conceptName}}", id);
 {{/kernelControlled}}
+{{#hasDeleteFlow}}
+        enforceWithDeleteFlow(crudCtx, id);
 {{/hasDeleteFlow}}
         deleteWithIntegrityMapping(id);
 {{#hasFileFields}}
@@ -359,25 +367,104 @@ public class {{entityName}}ServiceBase {
 
 {{#manyToManyBonds}}
     public List<Object> list{{capName}}Members(UUID id) {
+{{#kernelControlled}}
+        runtimeSupport.checkCrudPermission("{{conceptName}}", "READ", generatedCrudExecutionContext());
+{{/kernelControlled}}
+        requireReadableBondSource(id);
         return runtimeSupport.listBondMembers("{{conceptName}}", id, "{{name}}");
     }
 
     @Transactional
     public void add{{capName}}Member(UUID id, Object targetAnchor) {
+        enforceBondMembershipWrite(id);
         runtimeSupport.addBondMember("{{conceptName}}", id, "{{name}}", targetAnchor);
+{{#kernelControlled}}
+        runtimeSupport.auditCrudMutation("{{conceptName}}", "UPDATE", String.valueOf(id), "ALLOW", generatedCrudExecutionContext());
+{{/kernelControlled}}
     }
 
     @Transactional
     public void remove{{capName}}Member(UUID id, Object targetAnchor) {
+        enforceBondMembershipWrite(id);
         runtimeSupport.removeBondMember("{{conceptName}}", id, "{{name}}", targetAnchor);
+{{#kernelControlled}}
+        runtimeSupport.auditCrudMutation("{{conceptName}}", "UPDATE", String.valueOf(id), "ALLOW", generatedCrudExecutionContext());
+{{/kernelControlled}}
     }
 
     @Transactional
     public void replace{{capName}}Members(UUID id, List<?> targetAnchors) {
+        enforceBondMembershipWrite(id);
         runtimeSupport.replaceBondMembers("{{conceptName}}", id, "{{name}}", targetAnchors);
+{{#kernelControlled}}
+        runtimeSupport.auditCrudMutation("{{conceptName}}", "UPDATE", String.valueOf(id), "ALLOW", generatedCrudExecutionContext());
+{{/kernelControlled}}
     }
 
 {{/manyToManyBonds}}
+{{#hasManyToManyBonds}}
+    /**
+     * REG-16-resid Round 3 (R3-F2). The many-to-many bond endpoints above shipped with NO
+     * authorization of any kind: no coarse {@code checkCrudPermission}, no row-level
+     * {@code access.write} gate, no tenant predicate (the junction SQL keys on the source id alone),
+     * and no audit -- while create/update/delete on the very same concept had all four. Any
+     * authenticated caller holding a record id could rewrite that record's relationships regardless
+     * of write scope, which is LNCH13-F1's class of bug on a surface LNCH13-F1 did not cover.
+     *
+     * <p>The gate is the SOURCE record's write authorization, not the junction row's: a junction row
+     * has no owner of its own, and "may I change what this record is linked to" is exactly "may I
+     * write this record". Routing through the gateway also supplies the tenant check for free --
+     * {@code authorizeWrite} resolves the record within the caller's tenant, so a cross-tenant id
+     * fails there rather than needing a tenant column the junction table does not have.
+     */
+    private void enforceBondMembershipWrite(UUID id) {
+{{#kernelControlled}}
+        runtimeSupport.checkCrudPermission("{{conceptName}}", "UPDATE", generatedCrudExecutionContext());
+{{/kernelControlled}}
+        if (conceptGateway == null) {
+            throw new IllegalStateException("ConceptGateway is required for generated bond mutations.");
+        }
+        try {
+            conceptGateway.authorizeWrite(
+                    new ConceptReadRequest(CONCEPT_NAME, String.valueOf(id), currentTenantId()),
+                    generatedCrudExecutionContext()
+            );
+        } catch (ConceptGatewaySemanticException exception) {
+            throw new GeneratedCrudRuntimeSupport.InvariantViolationException(List.of(
+                    new GeneratedCrudRuntimeSupport.InvariantViolationDetail(
+                            exception.code(),
+                            CONCEPT_NAME,
+                            "conceptGateway",
+                            null,
+                            exception.getMessage(),
+                            false
+                    )
+            ));
+        }
+    }
+
+    /**
+     * Reading a record's bond members discloses its relationships, so it needs the same scope the
+     * record itself needs. {@code findByIdFromConceptStore} goes through the gateway, so this
+     * enforces tenant isolation AND row-level {@code access.read} -- and a denied row is reported as
+     * absent, matching how every other read on this surface treats one.
+     */
+    private void requireReadableBondSource(UUID id) {
+        if (findByIdFromConceptStore(id).isEmpty()) {
+            throw new GeneratedCrudRuntimeSupport.InvariantViolationException(List.of(
+                    new GeneratedCrudRuntimeSupport.InvariantViolationDetail(
+                            "not_found",
+                            CONCEPT_NAME,
+                            "conceptGateway",
+                            null,
+                            CONCEPT_NAME + " was not found",
+                            false
+                    )
+            ));
+        }
+    }
+
+{{/hasManyToManyBonds}}
     public static final class UniqueViolation extends RuntimeException {
         public UniqueViolation(String message) {
             super(message);
@@ -579,10 +666,13 @@ public class {{entityName}}ServiceBase {
 
 {{#hasCreateFlow}}
     /**
-     * Flow-CRUD wrapper integration: the core mutation step delegates to this declared Flow's own
-     * steps instead of the default {@code conceptGateway.save(...)}. Permission/tenant/idempotency/
-     * audit around this call are unchanged from the standard path (see createFromSource) -- this
-     * Flow must not assume it owns any of that; crudCtx is already verified by the time this runs.
+     * Flow-CRUD wrapper integration: runs this declared Flow's own steps as an ADDITIONAL business-logic
+     * step alongside the standard mutation path -- NOT instead of it. {@code createFromSource} always
+     * calls {@code enforceWithConceptGateway} first (LNCH-13/REG-16-resid R2: row-level access.write and
+     * the invariant/lifecycle rule profiles must be checked, and able to DENY, before this Flow's own
+     * side effects -- notifications, external calls -- ever run). Permission/tenant/idempotency/audit
+     * around this call are unchanged from the standard path (see createFromSource) -- this Flow must not
+     * assume it owns any of that; crudCtx is already verified by the time this runs.
      */
     private void enforceWithCreateFlow(ExecutionContext crudCtx, UUID generatedId, Map<String, Object> createPayload) {
         Map<String, Object> flowInput = new LinkedHashMap<>(createPayload);

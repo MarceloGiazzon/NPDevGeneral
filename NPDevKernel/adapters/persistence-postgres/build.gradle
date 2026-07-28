@@ -2,4 +2,10 @@ dependencies {
     implementation project(':kernel')
     implementation project(':core')
     implementation project(':dsl')
+
+    // REG-50: this adapter's own metadata-unavailable fallback needed a real Postgres server to
+    // prove against (the REG-36 lesson -- H2-in-PG-mode does not enforce everything a real engine
+    // does), and until now this was the one *-postgres adapter with real-catalog-lookup logic that
+    // had never been tested against Postgres at all.
+    testImplementation project(':adapters:postgres-test-support')
 }

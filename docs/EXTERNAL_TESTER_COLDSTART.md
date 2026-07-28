@@ -35,7 +35,7 @@ Point the agent at the repo and these files **only** — resist adding context:
 - `docs/GETTING_STARTED.md` — orientation.
 - The MCP toolbox (`NPDevMcp` server: `npdev_search_examples`, `npdev_search_fix`,
   `npdev_check_support`, the validate→fix→generate loop) — for REG-13's AI-authoring path.
-- `docs/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` — the structured friction log to fill in.
+- `docs/archive/programme-history/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` — the structured friction log to fill in.
 
 **Do NOT give them:** this file, the open-items register, the LNCH-1 plans, the retrospective, or any
 "here's how it really works" summary. If they can't find it in the four docs above + the tool output,
@@ -48,7 +48,7 @@ that gap **is** a finding.
 > You are evaluating a low-code platform called NPDev that you have never seen. Your job is to be an
 > honest first-time user and record exactly where you get stuck — the friction is the deliverable, not
 > a working app. Do three things, in order, and keep a running friction log using the template at
-> `docs/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` (one entry per point of confusion, dead end, or
+> `docs/archive/programme-history/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` (one entry per point of confusion, dead end, or
 > assumption you had to make):
 >
 > **Task A — Author an app with the tools (REG-13).** Using only the NPDev MCP tools and the docs in
@@ -79,5 +79,5 @@ Feed the friction logs back as **new, dated findings** in `docs/LAUNCH_READINESS
 register if they rise to real bugs) — do not silently fix them mid-session; the record of what a
 stranger hit is the value. Then REG-13/REG-14/REG-17 can move from "never done" to DONE with evidence.
 
-*Companion: `docs/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` (the log format) ·
+*Companion: `docs/archive/programme-history/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` (the log format) ·
 `docs/NPDEV_OPEN_ITEMS_REGISTER.md` §2.5/§2.6/§3.2 (the items this closes).*

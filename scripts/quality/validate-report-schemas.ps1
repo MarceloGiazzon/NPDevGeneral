@@ -107,8 +107,13 @@ $requiredReports = New-RequiredReportRegistry
 $results = @($requiredReports | ForEach-Object { Invoke-RequiredReportSchemaValidation $_ $validationRoot })
 $missing = @($results | Where-Object { $_.required -and -not $_.exists })
 $failed = @($results | Where-Object { $_.required -and $_.exists -and $_.reportStatus -ne "passed" })
-$schemaInvalid = @($results | Where-Object { $_.required -and $_.schemaStatus -ne "passed" })
-$overallStatus = if ($missing.Count -eq 0 -and $failed.Count -eq 0 -and $schemaInvalid.Count -eq 0) { "passed" } else { "failed" }
+# REG-32: a report that was never generated has schemaStatus "not-run", not "invalid" -- only an
+# EXISTING report that fails schema validation is a genuine defect. Scoping this to $_.exists keeps
+# "never produced" (precondition-unmet) from being counted as "produced but wrong" (check-failed).
+$schemaInvalid = @($results | Where-Object { $_.required -and $_.exists -and $_.schemaStatus -ne "passed" })
+$hasCheckFailure = ($failed.Count -gt 0) -or ($schemaInvalid.Count -gt 0)
+$hasPreconditionGap = ($missing.Count -gt 0)
+$overallStatus = if ($hasCheckFailure) { "failed" } elseif ($hasPreconditionGap) { "precondition-unmet" } else { "passed" }
 
 $report = [pscustomobject]@{
     schemaVersion = "npdev-required-report-schema-validation-report.v1"
@@ -127,8 +132,14 @@ $report = [pscustomobject]@{
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ReportPath) | Out-Null
 $report | ConvertTo-Json -Depth 40 | Set-Content -Path $ReportPath -Encoding UTF8
 
-if ($overallStatus -ne "passed") {
+# EXIT CODES (REG-3 pattern): 0 passed, 2 PRECONDITION-UNMET (required reports never generated --
+# not a defect), 1 CHECK-FAILED (an existing report is schema-invalid or its own status is failed).
+if ($overallStatus -eq "failed") {
     Write-Error ("Required report schema validation failed. Report: " + $ReportPath)
+}
+if ($overallStatus -eq "precondition-unmet") {
+    Write-Host ("PRECONDITION-UNMET: " + $missing.Count + " of " + $requiredReports.Count + " required reports were never generated (producers not run). Report: " + $ReportPath)
+    exit 2
 }
 
 Write-Host ("Required report schema validation passed. Report: " + $ReportPath)

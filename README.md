@@ -1,98 +1,123 @@
 # NPDev
 
-NPDev is evolving into a human-centered AI development system where users can create freely while the platform keeps truth, evidence, customization, and release status visible.
+**NPDev is spec-driven development for business applications.** You write a specification in
+domain language; NPDev derives a complete, deterministic system — database schema and its
+migrations, REST API, authorization, and long-running business processes — as Spring Boot source
+you own outright.
 
-The current architectural doctrine is defined in:
+Concretely: you author a JSON model (concepts, fields, flows, panels, authorization rules), and
+`npdev generate app` produces a real Gradle/Spring Boot project — not a scaffold you fill in, a
+working application with a database schema, a REST API, row-level authorization, and a generic
+admin UI already wired up. You then build and run it like any other Spring Boot app.
 
-```text
-docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md
+## What it generates
+
+| Layer | Generated |
+|---|---|
+| Entities, persistence, REST API, OpenAPI | ✅ |
+| Schema migrations + evolution planning | ✅ |
+| Row-level authorization, tenant isolation | ✅ |
+| Durable flows, events, orchestration | ✅ |
+| Auth, JWT, password reset, ControlPanel | ✅ |
+| Docker + compose + Caddy | ✅ |
+| Generic CRUD admin UI | ✅ |
+| **Custom business screens** | ❌ **hand-written against the generated API** |
+
+## Three things this does that most CRUD generators don't
+
+**Schema evolution that preserves data.** Change your model — rename a field, split a concept,
+narrow a type — and NPDev diffs the new shape against the live database and emits a migration
+plan, not a drop-and-recreate. Renames need to be declared (a rename and a drop+add look
+identical in a pure shape diff), but a declared rename keeps the data. See
+`docs/DATABASES_AND_MIGRATIONS.md`.
+
+**A durable workflow engine.** A flow can pause on `awaitEvent` — waiting for an approval, a
+webhook, a reply — and survive a JVM restart while it waits; a durable suspend/resume mechanism
+finds it and continues exactly where it left off, days later if needed. A failure mid-flow
+compensates already-completed steps (a saga, not a rollback), and that compensation itself
+survives a crash mid-unwind. See `docs/FLOWS.md`.
+
+**AI-authored specs against a schema-constrained validator.** The model is a JSON document with a
+JSON Schema and a semantic validator that rejects an invalid spec before anything is generated —
+which makes it a tractable target for an LLM to author directly, with real, structured feedback
+instead of a runtime crash three steps later. See `docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md`.
+
+## Quickstart
+
+Requires Java 17 and (for the Docker path) Docker. Clone the repo, then from its root:
+
+```sh
+# Validate a real, checked-in sample model
+./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json
+
+# Generate a complete Spring Boot app from it
+./npdev generate app \
+  --model NPDevContract/dsl/resources/Models/canonical-demo/model.json \
+  --config NPDevContract/dsl/resources/Models/canonical-demo/config.json \
+  --output /path/outside/this/repo/canonical-demo-app
 ```
 
-Related Architecture Decision Records:
+(On Windows, use `npdev.bat` with the same arguments.) The output directory is a complete,
+buildable Spring Boot project — a `docker-compose.yml` (with an optional Caddy TLS-terminating
+`proxy` profile) is generated alongside it. To run it:
 
-```text
-docs/adr/ADR-0002-box-object-truth-model.md
-docs/adr/ADR-0003-code-bearing-panel-procedure-objects.md
+```sh
+cd /path/outside/this/repo/canonical-demo-app
+cp .env.example .env    # set NPDEV_AUTH_APIKEYS at minimum
+docker compose up
 ```
 
-## Core direction
+Full deployment options (Postgres-first production path, env-var reference, the mail-catcher
+profile) are in `docs/DEPLOYMENT.md`. `docs/GETTING_STARTED.md` covers the portable CLI in more
+depth (`npdev normalize ai-model`, `npdev report bootstrap`); `docs/NPDEV_CONCEPTS_DEEP_DIVE.md`
+is the author-facing tour of concepts, flows, capabilities, panels, and events.
 
-NPDev's new vision is:
+## Honest limitations
 
-```text
-Simple by default.
-Deep when needed.
-Personalizable everywhere.
-Truthful always.
-Restrictive only at release time.
-```
+- **Custom business screens are hand-written.** NPDev generates a generic CRUD admin UI against
+  the REST API it also generates; a polished, bespoke frontend is not generated and has to be
+  built against that API like any other client.
+- **One bounded context per model.** A single JSON model compiles to a single deployable app; it
+  is not a multi-service/microservice generator.
+- **Pre-1.0 and deliberately unstable.** See "Stability policy" below and `BREAKING.md`.
+- **Windows-first tooling.** Development scripts (`scripts/**/*.ps1`) assume PowerShell; the
+  portable `npdev`/`npdev.bat` CLI and CI both also run on Linux, but the day-to-day maintainer
+  workflow is Windows-first today.
 
-The system is based on Boxes and code-bearing Objects.
+## Stability policy (pre-1.0)
 
-Boxes provide structure, ownership, truth, evidence, and release boundaries.
+NPDev is pre-1.0 and **deliberately unstable**. The model DSL, generated code layout, and internal
+APIs will change without deprecation cycles.
 
-Panel Objects and Procedure Objects are the primary places where users directly code.
+We do this on purpose. NPDev models are machine-authored — an agent writes them from your
+specification. A breaking DSL change costs one regeneration, not a migration project. We would
+rather fix a design mistake than carry it for a decade.
 
-Panel Objects support frontend resources:
+Every breaking change ships with:
+  • a `npdev migrate` codemod that rewrites existing models automatically
+  • a one-line entry in `BREAKING.md`
+  • the reason it was worth breaking
 
-```text
-HTML
-CSS
-JavaScript
-assets
-```
+If you need frozen APIs today, NPDev is not ready for you yet. We will freeze at 1.0, and not one
+release before.
 
-Procedure Objects support backend resources:
+## License and status
 
-```text
-Java source files
-Java tests
-service logic
-```
+Apache-2.0 (see `LICENSE`). Pre-1.0; current tag `beta1.1`.
 
-The generator must integrate these user-authored resources into the final generated application while preserving protected customizations.
+## Future direction: Box/Object/Truth
 
-## Correct hierarchy
+The platform's longer-term architectural direction — Boxes as the unit of structure/ownership/
+release, code-bearing Panel/Procedure Objects, and a T0–T6 truth-classification ladder — is
+described in `docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md` (see also
+`docs/adr/ADR-0002-box-object-truth-model.md`, `docs/adr/ADR-0003-code-bearing-panel-procedure-objects.md`).
 
-```text
-Application Box
-  Module Box
-    Entity Box
-      Rule Box
-    Integration Box
-      Rule Box
-    Panel Object
-    Procedure Object
-    Rule Box
-    Evidence Box
-  Application-level Rule Box
-  Application-level Integration Box
-  Evidence Box
-  Release Box
-```
-
-## Truth principle
-
-Truth classification must protect freedom, not block it.
-
-Users can create freely at low truth levels.
-
-NPDev becomes strict only when promoting claims to tested, evidence-backed, release-approved, or tag-safe status.
-
-## Phase 0 check
-
-Run:
-
-```powershell
-& 'C:\Program Files (x86)\PowerShell\7\pwsh.exe' `
-  -NoProfile `
-  -ExecutionPolicy Bypass `
-  -File 'D:\WorkSpace\NPDev\NPDev_General\scripts\quality\run-box-vision-doc-check.ps1' `
-  -WorkspaceRoot 'D:\WorkSpace\NPDev\NPDev_General'
-```
-
-Expected report:
-
-```text
-scripts\reports\out\box-vision-doc-check-report.json
-```
+**Status, precisely:** the Box/Object hierarchy itself (`Application Box` → `Module Box` →
+`Entity Box`/`Rule Box`/`Evidence Box`, code-bearing Panel/Procedure Objects) is **not
+implemented** — `"box"` appears zero times in the model schema. The **truth** half is partially
+real today, independent of Boxes: a `T0`–`T6` truth-level ladder exists on every concept, a bond
+(concept-to-concept reference) pointing at a less-true concept raises a warning at authoring time,
+and a release-gate validator hard-blocks promoting a concept whose reachable dependencies haven't
+earned the required truth level yet (`NPDevContract/docs/BONDS.md`, Phase 6). What's not built yet
+is the Box hierarchy that would organize this platform-wide, and code-bearing Panel/Procedure
+Objects as the primary authored surface — both are the vision doc's subject, not this README's.

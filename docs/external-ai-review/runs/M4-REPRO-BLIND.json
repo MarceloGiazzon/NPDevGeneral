@@ -1,0 +1,18 @@
+{
+  "missionId": "M4-REPRO-BLIND",
+  "runStatus": "RUN",
+  "note": "command plan obtained from an independent, repo-blind vendor 2026-07-27; container-execution half run 2026-07-27 per docs/REG48_50_CLOSURE_PLAN.md C1 (owner-approved follow-up, superseding this mission's original single-session caveat): a clean eclipse-temurin:17-jdk Docker container had neither git nor curl preinstalled (friction #1); a genuinely anonymous 'git clone' of the real origin URL failed with a credential prompt, and GET https://api.github.com/repos/MarceloGiazzon/NPDevGeneral confirmed 404 for unauthenticated access -- the repository is PRIVATE. No external third party can clone it at all without being explicitly granted access, a more fundamental blocker than anything the AI's own command plan anticipated (it could not have known this, having no repo access). Repro halted here rather than using this session's own authenticated credentials, which no genuine third party would have. See docs/LAUNCH_READINESS_GAPS.md's REG-17 update for the filed finding.",
+  "packManifestSha256": "e1e550313ae09c834b20fa12a34434f4d8a6d9d23f17591f90d77f33838955bb",
+  "recordKind": "external-ai-command-plan",
+  "vendors": [
+    "nvidia"
+  ],
+  "vendor": "nvidia",
+  "model": "meta/llama-3.3-70b-instruct",
+  "details": {
+    "commandPlanPath": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\external-ai-review\\packs\\M4-REPRO-BLIND\\e1e550313ae09c834b20fa12a34434f4d8a6d9d23f17591f90d77f33838955bb-nvidia-command-plan.txt",
+    "containerExecutionAttemptedAt": "2026-07-27T07:10:00Z",
+    "containerExecutionBlocker": "repository is private -- anonymous clone fails, GitHub API returns 404 for unauthenticated access"
+  },
+  "runAt": "2026-07-27T04:52:49.702171+00:00"
+}

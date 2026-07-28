@@ -15,7 +15,6 @@ import com.npdev.dsl.v1.compiled.CompiledReferenceSemantics;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.compiled.CompiledStateTransition;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
-import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityRegistry;
 import com.npdev.kernel.CapabilityResult;
@@ -39,6 +38,21 @@ import com.npdev.kernel.ports.RuntimeInvariantEngineFactory;
 import com.npdev.kernel.security.PermissionDecision;
 import com.npdev.kernel.security.PermissionRequirement;
 import com.npdev.kernel.security.PermissionSubject;
+import com.npdev.runtime.support.crud.bonds.BondRuntimeShape;
+import com.npdev.runtime.support.crud.valuecoercion.DslTypeCoercionSupport;
+import com.npdev.runtime.support.crud.orchestration.EventCapabilityOrchestration;
+import com.npdev.runtime.support.crud.orchestration.EventCreateOrchestration;
+import com.npdev.runtime.support.crud.orchestration.EventScheduleOrchestration;
+import com.npdev.runtime.support.crud.orchestration.OrchestrationActionExecutionResult;
+import com.npdev.runtime.support.crud.orchestration.OrchestrationExecutionClaim;
+import com.npdev.runtime.support.crud.orchestration.RuntimeOrchestration;
+import com.npdev.runtime.support.crud.orchestration.RuntimeOrchestrationAction;
+import com.npdev.runtime.support.crud.orchestration.ScheduledEventRecord;
+import com.npdev.runtime.support.crud.scheduling.ScheduledEventSql;
+import com.npdev.runtime.support.crud.uniqueness.CompoundUniqueFieldLookup;
+import com.npdev.runtime.support.crud.uniqueness.CompoundUniqueValueLookup;
+import com.npdev.runtime.support.crud.uniqueness.UniqueFieldLookup;
+import com.npdev.runtime.support.crud.uniqueness.UniqueValueLookup;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -57,8 +71,6 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -79,10 +91,58 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import static com.npdev.runtime.support.crud.bonds.BondNamingSupport.normalizeTenantForBondCheck;
+import static com.npdev.runtime.support.crud.bonds.BondNamingSupport.referenceTargetName;
+import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.asBoolean;
+import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.readPathValue;
+import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.resolveConditionValue;
+import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.resolveStateMachineGuardValue;
+import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.valuesEqual;
+import static com.npdev.runtime.support.crud.executioncontext.PayloadClaimsSupport.asNonBlankString;
+import static com.npdev.runtime.support.crud.executioncontext.PayloadClaimsSupport.extractCurrentId;
+import static com.npdev.runtime.support.crud.executioncontext.PayloadClaimsSupport.immutablePayload;
+import static com.npdev.runtime.support.crud.executioncontext.PayloadClaimsSupport.parseRoles;
+import static com.npdev.runtime.support.crud.executioncontext.PayloadClaimsSupport.toPayloadMap;
+import static com.npdev.runtime.support.crud.orchestration.OrchestrationSupport.coerceMappedValue;
+import static com.npdev.runtime.support.crud.orchestration.OrchestrationSupport.extractResultAdapterId;
+import static com.npdev.runtime.support.crud.orchestration.OrchestrationSupport.resolveOrchestrationSubjectId;
+import static com.npdev.runtime.support.crud.orchestration.OrchestrationSupport.serializePayloadForIdempotency;
+import static com.npdev.runtime.support.crud.reflection.ObjectFieldSupport.extractVersion;
+import static com.npdev.runtime.support.crud.reflection.ObjectFieldSupport.hasMapKey;
+import static com.npdev.runtime.support.crud.reflection.ObjectFieldSupport.isLifecycleMissing;
+import static com.npdev.runtime.support.crud.reflection.ObjectFieldSupport.readLifecycleToken;
+import static com.npdev.runtime.support.crud.reflection.ObjectFieldSupport.readLifecycleValue;
+import static com.npdev.runtime.support.crud.reflection.ObjectFieldSupport.readObjectValue;
+import static com.npdev.runtime.support.crud.schemaexpr.SchemaExpressionSupport.cloneSchemaDefaultValue;
+import static com.npdev.runtime.support.crud.schemaexpr.SchemaExpressionSupport.evaluateSchemaExpression;
+import static com.npdev.runtime.support.crud.scheduling.ScheduledEventSupport.buildScheduleEvidencePayload;
+import static com.npdev.runtime.support.crud.scheduling.ScheduledEventSupport.buildScheduleKey;
+import static com.npdev.runtime.support.crud.scheduling.ScheduledEventSupport.nullToEmpty;
+import static com.npdev.runtime.support.crud.scheduling.ScheduledEventSupport.sanitizeScheduleLimit;
+import static com.npdev.runtime.support.crud.scheduling.ScheduledEventSupport.sanitizeScheduleOffset;
+import static com.npdev.runtime.support.crud.scheduling.ScheduledEventSupport.toScheduledEventRecord;
+import static com.npdev.runtime.support.crud.sqlnaming.SqlNamingSupport.columnName;
+import static com.npdev.runtime.support.crud.sqlnaming.SqlNamingSupport.existsByIdSql;
+import static com.npdev.runtime.support.crud.sqlnaming.SqlNamingSupport.fetchCurrentStatusSql;
+import static com.npdev.runtime.support.crud.sqlnaming.SqlNamingSupport.tableName;
+import static com.npdev.runtime.support.crud.uniqueness.InvariantMessageSupport.collectUniqueInvariantRefs;
+import static com.npdev.runtime.support.crud.uniqueness.InvariantMessageSupport.extractFieldPath;
+import static com.npdev.runtime.support.crud.uniqueness.InvariantMessageSupport.extractPathFromMessage;
+import static com.npdev.runtime.support.crud.uniqueness.InvariantMessageSupport.inferInvariantFromMessage;
+import static com.npdev.runtime.support.crud.valuecoercion.DslTypeCoercionSupport.normalizeByDslType;
+import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.normalizeType;
+import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.readPayloadValue;
+import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.referenceValuesEqual;
+import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toBoolean;
+import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toInteger;
+import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toLong;
+import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toOffsetDateTime;
+import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toTimestamp;
+import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toUuid;
+import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.writeObjectValue;
 
 /**
  * Runtime support for generated CRUD services.
@@ -92,70 +152,14 @@ import java.util.logging.Logger;
  */
 public final class GeneratedCrudRuntimeSupport {
     private static final Logger LOG = Logger.getLogger(GeneratedCrudRuntimeSupport.class.getName());
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final Pattern FIELD_PATH_PATTERN = Pattern.compile("'([^']+)'");
+    public static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String CLAIMS_ATTRIBUTE = "npdev.auth.claims";
-    private static final String SCHEDULE_TABLE = "npdev_scheduled_event";
+    public static final String SCHEDULE_TABLE = "npdev_scheduled_event";
     private static final String SCHEDULE_STATUS_PENDING = "PENDING";
     private static final String SCHEDULE_STATUS_PROCESSING = "PROCESSING";
     private static final String SCHEDULE_STATUS_PROCESSED = "PROCESSED";
     private static final String SCHEDULE_STATUS_FAILED = "FAILED";
     private static final int DEFAULT_SCHEDULE_DELAY_SECONDS = 60;
-    private static final int DEFAULT_SCHEDULE_PAGE_SIZE = 100;
-    private static final Set<String> VALUE_BEHAVIOR_FUNCTIONS =
-            Set.of("concat", "coalesce", "trim", "uppercase", "lowercase");
-
-    /**
-     * LNCH-15: {@code concat}/{@code coalesce}/{@code trim}/{@code uppercase}/{@code lowercase}
-     * as {@link ComputedExpression.ExprFunction}s, so schema default/derived expressions route
-     * through the same unified grammar as invariants instead of this class's own hand-rolled
-     * literal/identifier/call evaluator (see {@link #evaluateSchemaExpression}). Behavior is
-     * identical to {@link #applyValueBehaviorFunction} -- kept as the implementation both this
-     * registry and the legacy fallback path share, rather than duplicating the logic twice.
-     */
-    private static final ComputedExpression.FunctionRegistry SCHEMA_EXPRESSION_FUNCTIONS =
-            ComputedExpression.FunctionRegistry.of(VALUE_BEHAVIOR_FUNCTIONS.stream().collect(
-                    java.util.stream.Collectors.toMap(
-                            name -> name,
-                            name -> (ComputedExpression.ExprFunction) (args, vars) -> applyValueBehaviorFunction(
-                                    name, args.stream().map(arg -> arg.eval(vars)).toList())
-                    )));
-
-    @FunctionalInterface
-    public interface UniqueValueLookup {
-        boolean exists(
-                String entityName,
-                String fieldName,
-                Object value,
-                UUID excludeId,
-                Map<String, Object> payload
-        );
-    }
-
-    @FunctionalInterface
-    public interface UniqueFieldLookup<ID> {
-        boolean exists(String fieldName, Object value, ID excludeId);
-    }
-
-    /** LIFT-UNIQUE-P3: existence check for a compound-unique invariant's field group, at the
-     * concept-name level (mirrors {@link RuntimeInvariantEngineFactory.CompoundUniqueValueLookup}). */
-    @FunctionalInterface
-    public interface CompoundUniqueValueLookup {
-        boolean exists(
-                String entityName,
-                List<String> fieldNames,
-                List<Object> values,
-                UUID excludeId,
-                Map<String, Object> payload
-        );
-    }
-
-    /** LIFT-UNIQUE-P3: existence check for a compound-unique invariant's field group, scoped to
-     * a single generated service's own store (mirrors {@link UniqueFieldLookup}). */
-    @FunctionalInterface
-    public interface CompoundUniqueFieldLookup<ID> {
-        boolean exists(List<String> fieldNames, List<Object> values, ID excludeId);
-    }
 
     public record InvariantViolationDetail(
             String code,
@@ -543,10 +547,6 @@ public final class GeneratedCrudRuntimeSupport {
         }
     }
 
-    private static String normalizeTenantForBondCheck(String tenantId) {
-        return tenantId == null || tenantId.isBlank() ? "default" : tenantId.trim();
-    }
-
     public UUID ensureGeneratedId(Map<String, Object> payload) {
         if (payload == null) {
             return UUID.randomUUID();
@@ -628,21 +628,6 @@ public final class GeneratedCrudRuntimeSupport {
                     "Record was modified by another request. expected=" + expected + " actual=" + actual,
                     true
             )));
-        }
-    }
-
-    private static Long extractVersion(Object source) {
-        Object raw = readObjectValue(source, "version");
-        if (raw == null) {
-            return null;
-        }
-        if (raw instanceof Number number) {
-            return number.longValue();
-        }
-        try {
-            return Long.parseLong(String.valueOf(raw).trim());
-        } catch (NumberFormatException ignored) {
-            return null;
         }
     }
 
@@ -1562,18 +1547,6 @@ public final class GeneratedCrudRuntimeSupport {
         return OrchestrationActionExecutionResult.failed("failed", "capability_failed");
     }
 
-    private static String extractResultAdapterId(Object value) {
-        if (!(value instanceof Map<?, ?> map)) {
-            return null;
-        }
-        Object adapterId = map.get("adapterId");
-        if (adapterId == null) {
-            return null;
-        }
-        String text = String.valueOf(adapterId).trim();
-        return text.isEmpty() ? null : text;
-    }
-
     private OrchestrationActionExecutionResult executeScheduleOrchestrationAction(
             RuntimeOrchestration orchestration,
             RuntimeOrchestrationAction runtimeAction,
@@ -1771,34 +1744,6 @@ public final class GeneratedCrudRuntimeSupport {
         return keys.isEmpty() ? List.of() : List.copyOf(keys);
     }
 
-    private static String resolveOrchestrationSubjectId(Map<String, Object> eventPayload) {
-        if (eventPayload == null || eventPayload.isEmpty()) {
-            return null;
-        }
-        for (String key : List.of("recordId", "entityId", "id", "claimId")) {
-            Object value = readPayloadValue(eventPayload, key);
-            if (value == null) {
-                continue;
-            }
-            String text = String.valueOf(value).trim();
-            if (!text.isEmpty()) {
-                return key + "=" + text;
-            }
-        }
-        return null;
-    }
-
-    private static String serializePayloadForIdempotency(Map<String, Object> eventPayload) {
-        if (eventPayload == null || eventPayload.isEmpty()) {
-            return "payload=empty";
-        }
-        try {
-            return "payload=" + OBJECT_MAPPER.writeValueAsString(eventPayload);
-        } catch (Exception ignored) {
-            return "payload=" + eventPayload.toString();
-        }
-    }
-
     private Map<String, Object> resolveCreatePayload(
             EventCreateOrchestration orchestration,
             EventEnvelope envelope,
@@ -1899,90 +1844,6 @@ public final class GeneratedCrudRuntimeSupport {
         return asBoolean(resolveConditionValue(condition, eventPayload));
     }
 
-    private static Object resolveConditionValue(String rawToken, Map<String, Object> eventPayload) {
-        if (rawToken == null) {
-            return null;
-        }
-        String token = rawToken.trim();
-        if (token.isEmpty()) {
-            return null;
-        }
-        if ("$event".equals(token)) {
-            return eventPayload;
-        }
-        if (token.startsWith("$event.")) {
-            return readPathValue(eventPayload, token.substring("$event.".length()));
-        }
-        if ((token.startsWith("\"") && token.endsWith("\""))
-                || (token.startsWith("'") && token.endsWith("'"))) {
-            return token.length() >= 2 ? token.substring(1, token.length() - 1) : "";
-        }
-        if ("null".equalsIgnoreCase(token)) {
-            return null;
-        }
-        if ("true".equalsIgnoreCase(token)) {
-            return true;
-        }
-        if ("false".equalsIgnoreCase(token)) {
-            return false;
-        }
-        if (token.matches("-?\\d+")) {
-            try {
-                return Long.parseLong(token);
-            } catch (NumberFormatException ignored) {
-                // Fall through to direct payload lookup.
-            }
-        }
-        if (token.matches("-?\\d+\\.\\d+")) {
-            try {
-                return Double.parseDouble(token);
-            } catch (NumberFormatException ignored) {
-                // Fall through to direct payload lookup.
-            }
-        }
-        Object direct = readPayloadValue(eventPayload, token);
-        if (direct != null) {
-            return direct;
-        }
-        return null;
-    }
-
-    private static boolean valuesEqual(Object left, Object right) {
-        if (left instanceof Number leftNumber && right instanceof Number rightNumber) {
-            return Double.compare(leftNumber.doubleValue(), rightNumber.doubleValue()) == 0;
-        }
-        if (left instanceof Boolean leftBool && right instanceof Boolean rightBool) {
-            return leftBool.equals(rightBool);
-        }
-        return Objects.equals(left, right);
-    }
-
-    private static boolean asBoolean(Object value) {
-        if (value == null) {
-            return false;
-        }
-        if (value instanceof Boolean bool) {
-            return bool;
-        }
-        if (value instanceof Number number) {
-            return number.doubleValue() != 0.0d;
-        }
-        if (value instanceof String text) {
-            String normalized = text.trim();
-            if (normalized.isEmpty()) {
-                return false;
-            }
-            if ("true".equalsIgnoreCase(normalized)) {
-                return true;
-            }
-            if ("false".equalsIgnoreCase(normalized)) {
-                return false;
-            }
-            return true;
-        }
-        return true;
-    }
-
     private Map<String, Object> resolveMappedValues(
             Map<String, String> mapping,
             Map<String, Object> eventPayload
@@ -2033,27 +1894,6 @@ public final class GeneratedCrudRuntimeSupport {
         return trimmed;
     }
 
-    private static Object readPathValue(Map<String, Object> root, String path) {
-        if (root == null || root.isEmpty() || path == null || path.isBlank()) {
-            return null;
-        }
-        Object current = root;
-        String[] segments = path.split("\\.");
-        for (String segment : segments) {
-            if (segment == null || segment.isBlank()) {
-                return null;
-            }
-            if (!(current instanceof Map<?, ?> rawMap)) {
-                return null;
-            }
-            current = readMapValue(mapWithStringKeys(rawMap), segment);
-            if (current == null) {
-                return null;
-            }
-        }
-        return current;
-    }
-
     private String resolveCapabilityType(String capabilityName) {
         if (capabilityName == null || capabilityName.isBlank()) {
             return null;
@@ -2087,32 +1927,6 @@ public final class GeneratedCrudRuntimeSupport {
             }
         }
         return null;
-    }
-
-    private static Object coerceMappedValue(CompiledField field, Object value) {
-        if (field == null) {
-            return value;
-        }
-        String type = normalizeType(field.getDslType());
-        return switch (type) {
-            case "uuid", "reference" -> {
-                UUID uuid = toUuid(value);
-                yield uuid == null ? value : uuid;
-            }
-            case "int" -> {
-                Integer parsed = toInteger(value);
-                yield parsed == null ? value : parsed;
-            }
-            case "long" -> {
-                Long parsed = toLong(value);
-                yield parsed == null ? value : parsed;
-            }
-            case "boolean" -> {
-                Boolean parsed = toBoolean(value);
-                yield parsed == null ? value : parsed;
-            }
-            default -> value;
-        };
     }
 
     private boolean existsByUniqueFields(EventCreateOrchestration orchestration, Map<String, Object> payload) {
@@ -2507,286 +2321,6 @@ public final class GeneratedCrudRuntimeSupport {
         }
     }
 
-    static final class ScheduledEventSql {
-        private ScheduledEventSql() {
-        }
-
-        static String selectDue(boolean forceDue) {
-            return "SELECT id, schedule_key, orchestration_name, action_index, source_event_name, source_event_id, "
-                    + "trigger_correlation_id, event_name, due_at, status, attempt_count, created_at, updated_at, "
-                    + "processed_at, payload "
-                    + "FROM " + SCHEDULE_TABLE + " "
-                    + "WHERE status = ? "
-                    + (forceDue ? "" : "AND due_at <= ? ")
-                    + "ORDER BY due_at ASC, created_at ASC "
-                    + "LIMIT ?";
-        }
-
-        static String claim() {
-            return "UPDATE " + SCHEDULE_TABLE + " "
-                    + "SET status = ?, updated_at = ? "
-                    + "WHERE id = ? AND status = ?";
-        }
-
-        static String markProcessed() {
-            return "UPDATE " + SCHEDULE_TABLE + " "
-                    + "SET status = ?, attempt_count = attempt_count + 1, "
-                    + "processed_at = ?, updated_at = ? "
-                    + "WHERE id = ?";
-        }
-
-        static String markFailed() {
-            return "UPDATE " + SCHEDULE_TABLE + " "
-                    + "SET status = ?, attempt_count = attempt_count + 1, updated_at = ? "
-                    + "WHERE id = ?";
-        }
-
-        static String insert() {
-            return "INSERT INTO " + SCHEDULE_TABLE + " ("
-                    + "id, schedule_key, orchestration_name, action_index, source_event_name, source_event_id, "
-                    + "trigger_correlation_id, event_name, due_at, payload, status, attempt_count, created_at, updated_at"
-                    + ") VALUES ("
-                    + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?"
-                    + ")";
-        }
-    }
-
-    private static ScheduledEventRecord toScheduledEventRecord(ResultSet row) throws SQLException {
-        UUID id = toUuid(row.getObject("id"));
-        String scheduleKey = asNonBlankString(row.getObject("schedule_key"));
-        String orchestrationName = asNonBlankString(row.getObject("orchestration_name"));
-        Integer actionIndex = toInteger(row.getObject("action_index"));
-        String sourceEventName = asNonBlankString(row.getObject("source_event_name"));
-        String sourceEventId = asNonBlankString(row.getObject("source_event_id"));
-        String correlationId = asNonBlankString(row.getObject("trigger_correlation_id"));
-        String eventName = asNonBlankString(row.getObject("event_name"));
-        OffsetDateTime dueAt = toOffsetDateTime(row.getObject("due_at"));
-        String status = asNonBlankString(row.getObject("status"));
-        Integer attemptCount = toInteger(row.getObject("attempt_count"));
-        OffsetDateTime createdAt = toOffsetDateTime(row.getObject("created_at"));
-        OffsetDateTime updatedAt = toOffsetDateTime(row.getObject("updated_at"));
-        OffsetDateTime processedAt = toOffsetDateTime(row.getObject("processed_at"));
-        Map<String, Object> payload = toMapPayload(row.getObject("payload"));
-        if (id == null || eventName == null || status == null) {
-            return null;
-        }
-        return new ScheduledEventRecord(
-                id,
-                scheduleKey,
-                orchestrationName,
-                actionIndex == null ? 0 : actionIndex,
-                sourceEventName,
-                sourceEventId,
-                correlationId,
-                eventName,
-                dueAt,
-                status,
-                attemptCount == null ? 0 : attemptCount,
-                createdAt,
-                updatedAt,
-                processedAt,
-                payload
-        );
-    }
-
-    private static String buildScheduleKey(
-            String orchestrationName,
-            int actionIndex,
-            EventEnvelope envelope,
-            Map<String, Object> eventPayload
-    ) {
-        String normalizedOrchestration = normalize(orchestrationName);
-        String sourceEvent = envelope == null ? "" : normalize(envelope.eventName());
-        String sourceEventId = envelope == null ? "" : nullToEmpty(envelope.eventId());
-        String correlationId = envelope == null ? "" : nullToEmpty(envelope.correlationId());
-        String subject = resolveOrchestrationSubjectId(eventPayload);
-        if (subject == null || subject.isBlank()) {
-            subject = serializePayloadForIdempotency(eventPayload);
-        }
-        if (sourceEventId.isBlank()) {
-            sourceEventId = sourceEvent + ":" + correlationId + ":" + subject;
-        }
-        return normalizedOrchestration + ":" + actionIndex + ":" + sourceEvent + ":" + sourceEventId;
-    }
-
-    private static int sanitizeScheduleLimit(Integer limit) {
-        if (limit == null || limit <= 0) {
-            return DEFAULT_SCHEDULE_PAGE_SIZE;
-        }
-        return Math.min(1000, limit);
-    }
-
-    private static int sanitizeScheduleOffset(Integer offset) {
-        if (offset == null || offset < 0) {
-            return 0;
-        }
-        return offset;
-    }
-
-    private static String nullToEmpty(String value) {
-        return value == null ? "" : value;
-    }
-
-    private static Map<String, Object> buildScheduleEvidencePayload(Object... keyValues) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        if (keyValues == null || keyValues.length == 0) {
-            return payload;
-        }
-        int length = keyValues.length - (keyValues.length % 2);
-        for (int index = 0; index < length; index += 2) {
-            Object key = keyValues[index];
-            Object value = keyValues[index + 1];
-            if (!(key instanceof String textKey) || textKey.isBlank() || value == null) {
-                continue;
-            }
-            payload.put(textKey, value);
-        }
-        return payload;
-    }
-
-    private static Map<String, Object> toMapPayload(Object payloadValue) {
-        if (payloadValue == null) {
-            return Map.of();
-        }
-        if (payloadValue instanceof Map<?, ?> rawMap) {
-            Map<String, Object> map = mapWithStringKeys(rawMap);
-            return map.isEmpty() ? Map.of() : Map.copyOf(map);
-        }
-        if (payloadValue instanceof JsonNode jsonNode) {
-            Object converted = OBJECT_MAPPER.convertValue(jsonNode, Object.class);
-            if (converted instanceof Map<?, ?> convertedMap) {
-                Map<String, Object> map = mapWithStringKeys(convertedMap);
-                return map.isEmpty() ? Map.of() : Map.copyOf(map);
-            }
-            return Map.of();
-        }
-        String jsonText = String.valueOf(payloadValue).trim();
-        if (jsonText.isEmpty()) {
-            return Map.of();
-        }
-        try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> parsed = OBJECT_MAPPER.readValue(jsonText, Map.class);
-            return parsed == null || parsed.isEmpty() ? Map.of() : Map.copyOf(parsed);
-        } catch (Exception ignored) {
-            return Map.of();
-        }
-    }
-
-    private record EventCreateOrchestration(
-            String targetConcept,
-            String targetTable,
-            Map<String, CompiledField> fieldsByName,
-            Map<String, String> fieldMap,
-            List<String> uniqueFields
-    ) {
-    }
-
-    private record EventCapabilityOrchestration(
-            String capabilityName,
-            String capabilityType,
-            String adapterId,
-            String operation,
-            Map<String, String> fieldMap
-    ) {
-    }
-
-    private record EventScheduleOrchestration(
-            String eventName,
-            long delaySeconds,
-            Map<String, String> fieldMap
-    ) {
-    }
-
-    private record RuntimeOrchestration(
-            String name,
-            String eventName,
-            String condition,
-            List<RuntimeOrchestrationAction> actions
-    ) {
-    }
-
-    private record RuntimeOrchestrationAction(
-            int index,
-            String type,
-            EventCreateOrchestration createAction,
-            EventCapabilityOrchestration capabilityAction,
-            EventScheduleOrchestration scheduleAction
-    ) {
-    }
-
-    private record ScheduledEventRecord(
-            UUID id,
-            String scheduleKey,
-            String orchestrationName,
-            int actionIndex,
-            String sourceEventName,
-            String sourceEventId,
-            String correlationId,
-            String eventName,
-            OffsetDateTime dueAt,
-            String status,
-            int attemptCount,
-            OffsetDateTime createdAt,
-            OffsetDateTime updatedAt,
-            OffsetDateTime processedAt,
-            Map<String, Object> payload
-    ) {
-        private ScheduledEventRecord {
-            payload = payload == null || payload.isEmpty()
-                    ? Map.of()
-                    : Map.copyOf(new LinkedHashMap<>(payload));
-        }
-
-        Map<String, Object> toMap() {
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("id", id == null ? null : id.toString());
-            out.put("scheduleKey", scheduleKey);
-            out.put("orchestration", orchestrationName);
-            out.put("actionIndex", actionIndex);
-            out.put("sourceEventName", sourceEventName);
-            out.put("sourceEventId", sourceEventId);
-            out.put("correlationId", correlationId);
-            out.put("eventName", eventName);
-            out.put("dueAt", dueAt == null ? null : dueAt.toString());
-            out.put("status", status);
-            out.put("attemptCount", attemptCount);
-            out.put("createdAt", createdAt == null ? null : createdAt.toString());
-            out.put("updatedAt", updatedAt == null ? null : updatedAt.toString());
-            out.put("processedAt", processedAt == null ? null : processedAt.toString());
-            out.put("payload", payload);
-            return out;
-        }
-    }
-
-    private record OrchestrationActionExecutionResult(
-            boolean success,
-            String status,
-            String reason
-    ) {
-        static OrchestrationActionExecutionResult succeeded(String status, String reason) {
-            return new OrchestrationActionExecutionResult(true, status, reason);
-        }
-
-        static OrchestrationActionExecutionResult failed(String status, String reason) {
-            return new OrchestrationActionExecutionResult(false, status, reason);
-        }
-    }
-
-    private record OrchestrationExecutionClaim(
-            boolean acquired,
-            List<String> keys,
-            String duplicateKey
-    ) {
-        static OrchestrationExecutionClaim acquired(List<String> keys) {
-            return new OrchestrationExecutionClaim(true, keys == null ? List.of() : List.copyOf(keys), null);
-        }
-
-        static OrchestrationExecutionClaim duplicate(String duplicateKey) {
-            return new OrchestrationExecutionClaim(false, List.of(), duplicateKey);
-        }
-    }
-
     private ExecutionContext resolveCurrentExecutionContext() {
         try {
             RequestAttributes requestAttributes = RequestContextHolder.getRequestAttributes();
@@ -2834,69 +2368,9 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     private boolean isTokenRevoked(Object rawTokenVersion, String tenantId, String actorId) {
-        if (rawTokenVersion == null) {
-            return false;
-        }
-        int claimedVersion;
-        try {
-            claimedVersion = Integer.parseInt(String.valueOf(rawTokenVersion));
-        } catch (NumberFormatException malformed) {
-            return false;
-        }
-        return claimedVersion != IdentityRoleLookup.tokenVersion(dataSource, tenantId, actorId);
-    }
-
-    private static Set<String> parseRoles(Object rawRoles) {
-        if (!(rawRoles instanceof Collection<?> collection) || collection.isEmpty()) {
-            return Set.of();
-        }
-        Set<String> roles = new LinkedHashSet<>();
-        for (Object role : collection) {
-            String normalized = asNonBlankString(role);
-            if (normalized != null) {
-                roles.add(normalized.toUpperCase(Locale.ROOT));
-            }
-        }
-        return roles.isEmpty() ? Set.of() : Set.copyOf(roles);
-    }
-
-    private static String asNonBlankString(Object value) {
-        if (value == null) {
-            return null;
-        }
-        String text = String.valueOf(value).trim();
-        return text.isEmpty() ? null : text;
-    }
-
-    private static UUID extractCurrentId(Object payload) {
-        if (!(payload instanceof Map<?, ?> map)) {
-            return null;
-        }
-        Object id = map.get("__id");
-        if (id instanceof UUID uuid) {
-            return uuid;
-        }
-        return null;
-    }
-
-    private static Map<String, Object> toPayloadMap(Object payload, Map<String, Object> fallback) {
-        if (!(payload instanceof Map<?, ?> map)) {
-            return fallback;
-        }
-        Map<String, Object> typed = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> entry : map.entrySet()) {
-            if (entry.getKey() instanceof String key) {
-                typed.put(key, entry.getValue());
-            }
-        }
-        return immutablePayload(typed);
-    }
-
-    private static Map<String, Object> immutablePayload(Map<String, Object> payload) {
-        if (payload == null || payload.isEmpty()) {
-            return Map.of();
-        }
-        return java.util.Collections.unmodifiableMap(new LinkedHashMap<>(payload));
+        // REG-23: delegate to the single shared decision point (IdentityRoleLookup.isTokenRevoked) so
+        // both claim->context paths agree, including the config-driven rejection of legacy tv-less tokens.
+        return IdentityRoleLookup.isTokenRevoked(rawTokenVersion, dataSource, tenantId, actorId);
     }
 
     private Map<String, Object> normalizePayloadForValidation(
@@ -2924,7 +2398,7 @@ public final class GeneratedCrudRuntimeSupport {
             if (rawValue == null) {
                 continue;
             }
-            Object normalizedValue = normalizeFieldValue(field, rawValue);
+            Object normalizedValue = DslTypeCoercionSupport.normalizeFieldValue(field, rawValue);
             normalized.put(field.getName(), normalizedValue);
         }
         return immutablePayload(normalized);
@@ -2938,75 +2412,7 @@ public final class GeneratedCrudRuntimeSupport {
                 return normalizeByDslType(anchor.getDslType(), rawValue);
             }
         }
-        return normalizeFieldValue(field, rawValue);
-    }
-
-    private static Object normalizeFieldValue(CompiledField field, Object rawValue) {
-        String dslType = normalizeType(field == null ? null : field.getDslType());
-        if ("uuid".equals(dslType) || "reference".equals(dslType)) {
-            UUID uuid = toUuid(rawValue);
-            return uuid == null ? rawValue : uuid;
-        }
-        if (!"object".equals(dslType) && !"array".equals(dslType)) {
-            return rawValue;
-        }
-        return toJavaJsonValue(rawValue);
-    }
-
-    private static Object normalizeByDslType(String dslType, Object rawValue) {
-        if (rawValue == null) {
-            return null;
-        }
-        String normalized = normalizeType(dslType);
-        return switch (normalized) {
-            case "uuid", "reference" -> toUuid(rawValue);
-            case "int", "integer" -> toInteger(rawValue);
-            case "long" -> toLong(rawValue);
-            case "boolean" -> toBoolean(rawValue);
-            case "date" -> rawValue instanceof LocalDate ? rawValue : String.valueOf(rawValue).trim();
-            case "datetime" -> {
-                OffsetDateTime dateTime = toOffsetDateTime(rawValue);
-                yield dateTime == null ? rawValue : dateTime;
-            }
-            default -> rawValue instanceof String text ? text.trim() : rawValue;
-        };
-    }
-
-    private static Object toJavaJsonValue(Object value) {
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof JsonNode jsonNode) {
-            return OBJECT_MAPPER.convertValue(jsonNode, Object.class);
-        }
-        if (value instanceof String text) {
-            String candidate = text.trim();
-            if (candidate.startsWith("{") || candidate.startsWith("[")) {
-                try {
-                    return OBJECT_MAPPER.readValue(candidate, Object.class);
-                } catch (Exception ignored) {
-                    return value;
-                }
-            }
-            return value;
-        }
-        if (value instanceof Map<?, ?> map) {
-            Map<String, Object> converted = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                if (entry.getKey() instanceof String key) {
-                    converted.put(key, toJavaJsonValue(entry.getValue()));
-                }
-            }
-            return converted;
-        }
-        if (value instanceof Collection<?> collection) {
-            List<Object> converted = new ArrayList<>();
-            for (Object item : collection) {
-                converted.add(toJavaJsonValue(item));
-            }
-            return converted;
-        }
-        return value;
+        return DslTypeCoercionSupport.normalizeFieldValue(field, rawValue);
     }
 
     private Map<String, Object> materializeEntityValues(
@@ -3098,216 +2504,6 @@ public final class GeneratedCrudRuntimeSupport {
                 return;
             }
         }
-    }
-
-    private static Object cloneSchemaDefaultValue(Object value) {
-        if (value == null) {
-            return null;
-        }
-        return OBJECT_MAPPER.convertValue(value, Object.class);
-    }
-
-    private static Object evaluateSchemaExpression(String expression, Map<String, Object> values) {
-        String trimmed = expression == null ? "" : expression.trim();
-        if (trimmed.isBlank()) {
-            return null;
-        }
-        // LNCH-15: try the unified ComputedExpression grammar first (concat/coalesce/trim/
-        // uppercase/lowercase via SCHEMA_EXPRESSION_FUNCTIONS). Falls through to this method's
-        // own legacy evaluator -- kept as a defensive safety net, not deleted -- for anything it
-        // doesn't recognize, so a malformed expression still yields null at record-save time
-        // instead of throwing.
-        try {
-            return ComputedExpression.evaluate(trimmed, values, SCHEMA_EXPRESSION_FUNCTIONS);
-        } catch (ComputedExpression.ExpressionException ignored) {
-            // fall through to the legacy evaluator below
-        }
-        if (isQuotedLiteral(trimmed)) {
-            return trimmed.substring(1, trimmed.length() - 1);
-        }
-        if ("null".equalsIgnoreCase(trimmed)) {
-            return null;
-        }
-        if ("true".equalsIgnoreCase(trimmed)) {
-            return Boolean.TRUE;
-        }
-        if ("false".equalsIgnoreCase(trimmed)) {
-            return Boolean.FALSE;
-        }
-        Object numeric = parseNumericLiteral(trimmed);
-        if (numeric != null) {
-            return numeric;
-        }
-        if (trimmed.matches("[A-Za-z_][A-Za-z0-9_]*")) {
-            return readMapValue(values, trimmed);
-        }
-
-        int openParen = trimmed.indexOf('(');
-        if (openParen <= 0 || !trimmed.endsWith(")") || !isBalancedValueExpression(trimmed)) {
-            return null;
-        }
-
-        String functionName = trimmed.substring(0, openParen).trim();
-        if (!VALUE_BEHAVIOR_FUNCTIONS.contains(normalize(functionName))) {
-            return null;
-        }
-        List<String> args = splitTopLevelArguments(trimmed.substring(openParen + 1, trimmed.length() - 1));
-        if (args == null) {
-            return null;
-        }
-        List<Object> resolvedArgs = new ArrayList<>();
-        for (String arg : args) {
-            resolvedArgs.add(evaluateSchemaExpression(arg, values));
-        }
-        return applyValueBehaviorFunction(functionName, resolvedArgs);
-    }
-
-    private static Object applyValueBehaviorFunction(String functionName, List<Object> args) {
-        String normalized = normalize(functionName);
-        return switch (normalized) {
-            case "concat" -> {
-                if (args.isEmpty() || args.stream().anyMatch(Objects::isNull)) {
-                    yield null;
-                }
-                StringBuilder out = new StringBuilder();
-                for (Object arg : args) {
-                    out.append(String.valueOf(arg));
-                }
-                yield out.toString();
-            }
-            case "coalesce" -> {
-                for (Object arg : args) {
-                    if (!isMissingValue(arg)) {
-                        yield arg;
-                    }
-                }
-                yield null;
-            }
-            case "trim" -> args.size() == 1 && args.get(0) != null ? String.valueOf(args.get(0)).trim() : null;
-            case "uppercase" -> args.size() == 1 && args.get(0) != null
-                    ? String.valueOf(args.get(0)).toUpperCase(Locale.ROOT)
-                    : null;
-            case "lowercase" -> args.size() == 1 && args.get(0) != null
-                    ? String.valueOf(args.get(0)).toLowerCase(Locale.ROOT)
-                    : null;
-            default -> null;
-        };
-    }
-
-    private static boolean isQuotedLiteral(String value) {
-        if (value == null || value.length() < 2) {
-            return false;
-        }
-        return (value.startsWith("\"") && value.endsWith("\""))
-                || (value.startsWith("'") && value.endsWith("'"));
-    }
-
-    private static Object parseNumericLiteral(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        try {
-            if (value.contains(".")) {
-                return Double.parseDouble(value);
-            }
-            long parsed = Long.parseLong(value);
-            if (parsed >= Integer.MIN_VALUE && parsed <= Integer.MAX_VALUE) {
-                return (int) parsed;
-            }
-            return parsed;
-        } catch (NumberFormatException ignored) {
-            return null;
-        }
-    }
-
-    private static boolean isBalancedValueExpression(String expression) {
-        int depth = 0;
-        boolean inSingle = false;
-        boolean inDouble = false;
-        for (int index = 0; index < expression.length(); index++) {
-            char current = expression.charAt(index);
-            if (current == '\'' && !inDouble) {
-                inSingle = !inSingle;
-                continue;
-            }
-            if (current == '"' && !inSingle) {
-                inDouble = !inDouble;
-                continue;
-            }
-            if (inSingle || inDouble) {
-                continue;
-            }
-            if (current == '(') {
-                depth++;
-            } else if (current == ')') {
-                depth--;
-                if (depth < 0) {
-                    return false;
-                }
-            }
-        }
-        return depth == 0 && !inSingle && !inDouble;
-    }
-
-    private static List<String> splitTopLevelArguments(String argsBody) {
-        List<String> args = new ArrayList<>();
-        if (argsBody == null) {
-            return args;
-        }
-        StringBuilder current = new StringBuilder();
-        int depth = 0;
-        boolean inSingle = false;
-        boolean inDouble = false;
-        for (int index = 0; index < argsBody.length(); index++) {
-            char currentChar = argsBody.charAt(index);
-            if (currentChar == '\'' && !inDouble) {
-                inSingle = !inSingle;
-                current.append(currentChar);
-                continue;
-            }
-            if (currentChar == '"' && !inSingle) {
-                inDouble = !inDouble;
-                current.append(currentChar);
-                continue;
-            }
-            if (!inSingle && !inDouble) {
-                if (currentChar == '(') {
-                    depth++;
-                } else if (currentChar == ')') {
-                    depth--;
-                    if (depth < 0) {
-                        return null;
-                    }
-                } else if (currentChar == ',' && depth == 0) {
-                    String candidate = current.toString().trim();
-                    if (candidate.isEmpty()) {
-                        return null;
-                    }
-                    args.add(candidate);
-                    current.setLength(0);
-                    continue;
-                }
-            }
-            current.append(currentChar);
-        }
-        if (depth != 0 || inSingle || inDouble) {
-            return null;
-        }
-        String tail = current.toString().trim();
-        if (!tail.isEmpty()) {
-            args.add(tail);
-        }
-        return args;
-    }
-
-    private static boolean isMissingValue(Object value) {
-        if (value == null) {
-            return true;
-        }
-        if (value instanceof String text) {
-            return text.trim().isEmpty();
-        }
-        return false;
     }
 
     private List<String> validateFieldTypesAndReferences(CompiledConcept entity, Map<String, Object> payload) {
@@ -3680,22 +2876,6 @@ public final class GeneratedCrudRuntimeSupport {
         );
     }
 
-    private static Set<String> collectUniqueInvariantRefs(CompiledConcept entity) {
-        Set<String> out = new java.util.HashSet<>();
-        if (entity == null || entity.getInvariants() == null) {
-            return out;
-        }
-        entity.getInvariants().forEach(invariant -> {
-            if (invariant == null || invariant.getRef() == null || invariant.getRef().isBlank()) {
-                return;
-            }
-            if ("unique".equalsIgnoreCase(invariant.getType())) {
-                out.add(normalize(invariant.getRef()));
-            }
-        });
-        return out;
-    }
-
     private InvariantViolationDetail toInvariantViolation(
             String concept,
             InvariantEngine.Violation violation,
@@ -3721,49 +2901,7 @@ public final class GeneratedCrudRuntimeSupport {
         );
     }
 
-    private static String extractFieldPath(InvariantEngine.Violation violation) {
-        if (violation == null || violation.details() == null || violation.details().isEmpty()) {
-            return null;
-        }
-        Object explicit = violation.details().get("fieldPath");
-        if (explicit instanceof String path && !path.isBlank()) {
-            return path;
-        }
-        Object fallback = violation.details().get("field");
-        if (fallback instanceof String field && !field.isBlank()) {
-            return field;
-        }
-        return null;
-    }
-
-    private static String extractPathFromMessage(String message) {
-        if (message == null || message.isBlank()) {
-            return null;
-        }
-        Matcher matcher = FIELD_PATH_PATTERN.matcher(message);
-        while (matcher.find()) {
-            String candidate = matcher.group(1);
-            if (candidate != null && !candidate.isBlank()) {
-                return candidate.trim();
-            }
-        }
-        return null;
-    }
-
-    private static String inferInvariantFromMessage(String path, String message) {
-        if (path != null && !path.isBlank() && message != null && message.contains("required nested field")) {
-            return "required(" + path + ")";
-        }
-        if (path != null && !path.isBlank() && message != null && message.contains("required field")) {
-            return "required(" + path + ")";
-        }
-        if (path != null && !path.isBlank() && message != null && message.contains("unique constraint")) {
-            return "unique(" + path + ")";
-        }
-        return "schema_validation";
-    }
-
-    private static Map<String, Object> mapWithStringKeys(Map<?, ?> rawMap) {
+    public static Map<String, Object> mapWithStringKeys(Map<?, ?> rawMap) {
         Map<String, Object> out = new HashMap<>();
         for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
             if (entry.getKey() instanceof String key) {
@@ -3773,23 +2911,7 @@ public final class GeneratedCrudRuntimeSupport {
         return out;
     }
 
-    private static boolean hasMapKey(Map<String, Object> map, String key) {
-        if (map == null || map.isEmpty() || key == null) {
-            return false;
-        }
-        if (map.containsKey(key)) {
-            return true;
-        }
-        String normalized = normalize(key);
-        for (String candidate : map.keySet()) {
-            if (normalize(candidate).equals(normalized)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static Object readMapValue(Map<String, Object> map, String key) {
+    public static Object readMapValue(Map<String, Object> map, String key) {
         if (map == null || map.isEmpty() || key == null) {
             return null;
         }
@@ -3800,92 +2922,6 @@ public final class GeneratedCrudRuntimeSupport {
         for (Map.Entry<String, Object> entry : map.entrySet()) {
             if (normalize(entry.getKey()).equals(normalized)) {
                 return entry.getValue();
-            }
-        }
-        return null;
-    }
-
-    private static void copyIfPresent(
-            Map<String, Object> target,
-            String key,
-            Object source,
-            Map<String, Object> fallbackPayload
-    ) {
-        if (target == null || key == null || key.isBlank()) {
-            return;
-        }
-        Object value = readLifecycleValue(source, fallbackPayload, key);
-        if (value != null) {
-            target.put(key, value);
-        }
-    }
-
-    private static Object readLifecycleValue(Object source, Map<String, Object> fallbackPayload, String key) {
-        Object direct = readObjectValue(source, key);
-        if (direct != null) {
-            return direct;
-        }
-        if (fallbackPayload == null || fallbackPayload.isEmpty()) {
-            return null;
-        }
-        Object fallback = readPayloadValue(fallbackPayload, key);
-        if (fallback != null) {
-            return fallback;
-        }
-        if ("id".equalsIgnoreCase(key)) {
-            return readPayloadValue(fallbackPayload, "__id");
-        }
-        return null;
-    }
-
-    private static Object readObjectValue(Object source, String fieldName) {
-        if (source == null || fieldName == null || fieldName.isBlank()) {
-            return null;
-        }
-        if (source instanceof Map<?, ?> map) {
-            return readMapValue(mapWithStringKeys(map), fieldName);
-        }
-
-        try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> mapped = OBJECT_MAPPER.convertValue(source, Map.class);
-            Object mappedValue = readMapValue(mapped, fieldName);
-            if (mappedValue != null) {
-                return mappedValue;
-            }
-        } catch (IllegalArgumentException ignored) {
-            // Continue with reflective access when mapping fails for proxies.
-        }
-
-        String suffix = fieldName.substring(0, 1).toUpperCase(Locale.ROOT) + fieldName.substring(1);
-        for (String accessor : List.of("get" + suffix, "is" + suffix)) {
-            try {
-                java.lang.reflect.Method method = source.getClass().getMethod(accessor);
-                return method.invoke(source);
-            } catch (Exception ignored) {
-                // Keep trying alternatives.
-            }
-        }
-
-        java.lang.reflect.Field field = findField(source.getClass(), fieldName);
-        if (field == null) {
-            return null;
-        }
-        try {
-            field.setAccessible(true);
-            return field.get(source);
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private static java.lang.reflect.Field findField(Class<?> type, String fieldName) {
-        Class<?> current = type;
-        while (current != null) {
-            try {
-                return current.getDeclaredField(fieldName);
-            } catch (NoSuchFieldException ignored) {
-                current = current.getSuperclass();
             }
         }
         return null;
@@ -3974,17 +3010,6 @@ public final class GeneratedCrudRuntimeSupport {
         return Optional.ofNullable(found);
     }
 
-    private static String referenceTargetName(CompiledField referenceField) {
-        if (referenceField == null) {
-            return "";
-        }
-        CompiledReferenceSemantics semantics = referenceField.getReferenceSemantics();
-        if (semantics != null && semantics.getTarget() != null && !semantics.getTarget().isBlank()) {
-            return semantics.getTarget();
-        }
-        return referenceField.getReferenceTarget();
-    }
-
     private BondRuntimeShape requireBondRuntimeShape(String sourceConceptName, String fieldName) {
         CompiledConcept sourceEntity = requireEntity(sourceConceptName);
         CompiledField sourceField = null;
@@ -4033,18 +3058,6 @@ public final class GeneratedCrudRuntimeSupport {
         }
     }
 
-    private record BondRuntimeShape(
-            CompiledConcept sourceEntity,
-            CompiledField sourceField,
-            CompiledConcept targetEntity,
-            CompiledField sourceIdField,
-            CompiledField targetAnchorField,
-            String junctionTable,
-            String sourceColumn,
-            String targetColumn
-    ) {
-    }
-
     private void applyEntityFields(String entityName, Object source, Object target, boolean patchMode) {
         if (target == null) {
             return;
@@ -4060,178 +3073,6 @@ public final class GeneratedCrudRuntimeSupport {
             }
             writeObjectValue(target, field.getName(), materialized.get(field.getName()));
         }
-    }
-
-    private static void writeObjectValue(Object target, String fieldName, Object value) {
-        if (target == null || fieldName == null || fieldName.isBlank()) {
-            return;
-        }
-
-        String suffix = fieldName.substring(0, 1).toUpperCase(Locale.ROOT) + fieldName.substring(1);
-        String setterName = "set" + suffix;
-        for (java.lang.reflect.Method method : target.getClass().getMethods()) {
-            if (!setterName.equals(method.getName()) || method.getParameterCount() != 1) {
-                continue;
-            }
-            Class<?> parameterType = method.getParameterTypes()[0];
-            Object coercedValue = coerceWriteValue(parameterType, value);
-            if (coercedValue == null && value != null) {
-                continue;
-            }
-            if (coercedValue == null && parameterType.isPrimitive()) {
-                continue;
-            }
-            try {
-                method.invoke(target, coercedValue);
-                return;
-            } catch (Exception ignored) {
-                // Fall back to field access below.
-            }
-        }
-
-        java.lang.reflect.Field field = findField(target.getClass(), fieldName);
-        if (field == null) {
-            return;
-        }
-        Object coercedValue = coerceWriteValue(field.getType(), value);
-        if (coercedValue == null && value != null) {
-            return;
-        }
-        if (coercedValue == null && field.getType().isPrimitive()) {
-            return;
-        }
-        try {
-            field.setAccessible(true);
-            field.set(target, coercedValue);
-        } catch (Exception ignored) {
-            // Ignore write failures; generated services remain the main behavior owner.
-        }
-    }
-
-    private static Object coerceWriteValue(Class<?> targetType, Object value) {
-        if (value == null) {
-            return null;
-        }
-        Class<?> boxedTargetType = boxType(targetType);
-        if (boxedTargetType.isAssignableFrom(value.getClass())) {
-            return value;
-        }
-        if (JsonNode.class.isAssignableFrom(boxedTargetType)) {
-            try {
-                return OBJECT_MAPPER.valueToTree(value);
-            } catch (IllegalArgumentException ignored) {
-                return null;
-            }
-        }
-        if (UUID.class.equals(boxedTargetType)) {
-            return toUuid(value);
-        }
-        if (LocalDate.class.equals(boxedTargetType)) {
-            return toLocalDate(value);
-        }
-        if (LocalDateTime.class.equals(boxedTargetType)) {
-            return toLocalDateTime(value);
-        }
-        if (OffsetDateTime.class.equals(boxedTargetType)) {
-            return toOffsetDateTime(value);
-        }
-        if (Long.class.equals(boxedTargetType)) {
-            return toLong(value);
-        }
-        if (Integer.class.equals(boxedTargetType)) {
-            return toInteger(value);
-        }
-        if (Double.class.equals(boxedTargetType)) {
-            return toDouble(value);
-        }
-        if (Float.class.equals(boxedTargetType)) {
-            Double d = toDouble(value);
-            return d == null ? null : Float.valueOf(d.floatValue());
-        }
-        if (Short.class.equals(boxedTargetType)) {
-            Integer i = toInteger(value);
-            return i == null ? null : Short.valueOf(i.shortValue());
-        }
-        if (Byte.class.equals(boxedTargetType)) {
-            Integer i = toInteger(value);
-            return i == null ? null : Byte.valueOf(i.byteValue());
-        }
-        if (Boolean.class.equals(boxedTargetType)) {
-            return toBoolean(value);
-        }
-        if (java.math.BigDecimal.class.equals(boxedTargetType)) {
-            return toBigDecimal(value);
-        }
-        if (java.math.BigInteger.class.equals(boxedTargetType)) {
-            java.math.BigDecimal bigDecimal = toBigDecimal(value);
-            return bigDecimal == null ? null : bigDecimal.toBigInteger();
-        }
-        return null;
-    }
-
-    private static LocalDate toLocalDate(Object value) {
-        if (value instanceof LocalDate localDate) {
-            return localDate;
-        }
-        if (value instanceof java.sql.Date sqlDate) {
-            return sqlDate.toLocalDate();
-        }
-        if (value instanceof String text) {
-            try {
-                return LocalDate.parse(text.trim(), DateTimeFormatter.ISO_LOCAL_DATE);
-            } catch (DateTimeParseException ignored) {
-                return null;
-            }
-        }
-        return null;
-    }
-
-    private static LocalDateTime toLocalDateTime(Object value) {
-        if (value instanceof LocalDateTime localDateTime) {
-            return localDateTime;
-        }
-        if (value instanceof OffsetDateTime offsetDateTime) {
-            return offsetDateTime.toLocalDateTime();
-        }
-        if (value instanceof String text) {
-            try {
-                return LocalDateTime.parse(text.trim(), DateTimeFormatter.ISO_DATE_TIME);
-            } catch (DateTimeParseException ignored) {
-                return null;
-            }
-        }
-        return null;
-    }
-
-    private static Class<?> boxType(Class<?> type) {
-        if (type == null || !type.isPrimitive()) {
-            return type == null ? Object.class : type;
-        }
-        if (type == int.class) {
-            return Integer.class;
-        }
-        if (type == long.class) {
-            return Long.class;
-        }
-        if (type == boolean.class) {
-            return Boolean.class;
-        }
-        if (type == double.class) {
-            return Double.class;
-        }
-        if (type == float.class) {
-            return Float.class;
-        }
-        if (type == short.class) {
-            return Short.class;
-        }
-        if (type == byte.class) {
-            return Byte.class;
-        }
-        if (type == char.class) {
-            return Character.class;
-        }
-        return type;
     }
 
     private boolean existsById(CompiledConcept entity, UUID id) {
@@ -4305,13 +3146,6 @@ public final class GeneratedCrudRuntimeSupport {
         } catch (Exception ignored) {
             return false;
         }
-    }
-
-    private static boolean referenceValuesEqual(Object left, Object right) {
-        if (left == null || right == null) {
-            return false;
-        }
-        return left.equals(right) || String.valueOf(left).equalsIgnoreCase(String.valueOf(right));
     }
 
     private boolean resourceHasConflict(
@@ -4534,196 +3368,7 @@ public final class GeneratedCrudRuntimeSupport {
         return excludeIdValue;
     }
 
-    private static Object readPayloadValue(Map<String, Object> payload, String fieldName) {
-        if (payload == null || payload.isEmpty() || fieldName == null) {
-            return null;
-        }
-        if (payload.containsKey(fieldName)) {
-            return payload.get(fieldName);
-        }
-        String normalized = normalize(fieldName);
-        for (Map.Entry<String, Object> entry : payload.entrySet()) {
-            if (entry.getKey() != null && normalize(entry.getKey()).equals(normalized)) {
-                return entry.getValue();
-            }
-        }
-        return null;
-    }
-
-    private static Integer toInteger(Object value) {
-        if (value instanceof Integer i) {
-            return i;
-        }
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        if (value instanceof String raw) {
-            String trimmed = raw.trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            try {
-                return Integer.parseInt(trimmed);
-            } catch (NumberFormatException ignored) {
-                return null;
-            }
-        }
-        return null;
-    }
-
-    private static Long toLong(Object value) {
-        if (value instanceof Long l) {
-            return l;
-        }
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
-        if (value instanceof String raw) {
-            String trimmed = raw.trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            try {
-                return Long.parseLong(trimmed);
-            } catch (NumberFormatException ignored) {
-                return null;
-            }
-        }
-        return null;
-    }
-
-    private static Double toDouble(Object value) {
-        if (value instanceof Double d) {
-            return d;
-        }
-        if (value instanceof Number number) {
-            return number.doubleValue();
-        }
-        if (value instanceof String raw) {
-            String trimmed = raw.trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            try {
-                return Double.parseDouble(trimmed);
-            } catch (NumberFormatException ignored) {
-                return null;
-            }
-        }
-        return null;
-    }
-
-    private static java.math.BigDecimal toBigDecimal(Object value) {
-        if (value instanceof java.math.BigDecimal bd) {
-            return bd;
-        }
-        if (value instanceof java.math.BigInteger bi) {
-            return new java.math.BigDecimal(bi);
-        }
-        if (value instanceof Number number) {
-            return new java.math.BigDecimal(number.toString());
-        }
-        if (value instanceof String raw) {
-            String trimmed = raw.trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            try {
-                return new java.math.BigDecimal(trimmed);
-            } catch (NumberFormatException ignored) {
-                return null;
-            }
-        }
-        return null;
-    }
-
-    private static Boolean toBoolean(Object value) {
-        if (value instanceof Boolean bool) {
-            return bool;
-        }
-        if (value instanceof String raw) {
-            String trimmed = raw.trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            if ("true".equalsIgnoreCase(trimmed)) {
-                return Boolean.TRUE;
-            }
-            if ("false".equalsIgnoreCase(trimmed)) {
-                return Boolean.FALSE;
-            }
-        }
-        return null;
-    }
-
-    private static UUID toUuid(Object value) {
-        if (value instanceof UUID uuid) {
-            return uuid;
-        }
-        if (value instanceof String raw) {
-            try {
-                return UUID.fromString(raw.trim());
-            } catch (IllegalArgumentException ignored) {
-                return null;
-            }
-        }
-        return null;
-    }
-
-    private static OffsetDateTime toOffsetDateTime(Object value) {
-        if (value instanceof OffsetDateTime offsetDateTime) {
-            return offsetDateTime;
-        }
-        if (value instanceof LocalDateTime localDateTime) {
-            return localDateTime.atZone(ZoneId.systemDefault()).toOffsetDateTime();
-        }
-        if (value instanceof java.sql.Timestamp timestamp) {
-            return timestamp.toInstant().atOffset(ZoneOffset.UTC);
-        }
-        if (value instanceof java.time.Instant instant) {
-            return instant.atOffset(ZoneOffset.UTC);
-        }
-        if (value instanceof String raw) {
-            String candidate = raw.trim();
-            if (candidate.isEmpty()) {
-                return null;
-            }
-            try {
-                java.time.temporal.TemporalAccessor parsed = DateTimeFormatter.ISO_DATE_TIME.parseBest(
-                        candidate,
-                        OffsetDateTime::from,
-                        LocalDateTime::from
-                );
-                if (parsed instanceof OffsetDateTime offsetDateTime) {
-                    return offsetDateTime;
-                }
-                if (parsed instanceof LocalDateTime localDateTime) {
-                    return localDateTime.atZone(ZoneId.systemDefault()).toOffsetDateTime();
-                }
-                return null;
-            } catch (DateTimeParseException ignored) {
-                return null;
-            }
-        }
-        return null;
-    }
-
-    private static Timestamp toTimestamp(OffsetDateTime value) {
-        return value == null ? null : Timestamp.from(value.toInstant());
-    }
-
-    private static String normalizeType(String dslType) {
-        if (dslType == null || dslType.isBlank()) {
-            return "";
-        }
-        String normalized = dslType.trim().toLowerCase(Locale.ROOT);
-        if ("integer".equals(normalized)) {
-            return "int";
-        }
-        return normalized;
-    }
-
-    private static String normalize(String value) {
+    public static String normalize(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
 
@@ -4850,74 +3495,6 @@ public final class GeneratedCrudRuntimeSupport {
         return asBoolean(resolveStateMachineGuardValue(condition, payload, previousStatus, nextStatus));
     }
 
-    private static Object resolveStateMachineGuardValue(
-            String rawToken,
-            Map<String, Object> payload,
-            String previousStatus,
-            String nextStatus
-    ) {
-        if (rawToken == null) {
-            return null;
-        }
-        String token = rawToken.trim();
-        if (token.isEmpty()) {
-            return null;
-        }
-        if ("$payload".equals(token) || "$current".equals(token)) {
-            return payload;
-        }
-        if (token.startsWith("$payload.")) {
-            return readPathValue(payload, token.substring("$payload.".length()));
-        }
-        if (token.startsWith("$current.")) {
-            return readPathValue(payload, token.substring("$current.".length()));
-        }
-        if ("$next".equals(token)) {
-            return nextStatus;
-        }
-        if ("$previous".equals(token)) {
-            return previousStatus;
-        }
-        if ((token.startsWith("\"") && token.endsWith("\""))
-                || (token.startsWith("'") && token.endsWith("'"))) {
-            return token.length() >= 2 ? token.substring(1, token.length() - 1) : "";
-        }
-        if ("null".equalsIgnoreCase(token)) {
-            return null;
-        }
-        if ("true".equalsIgnoreCase(token)) {
-            return true;
-        }
-        if ("false".equalsIgnoreCase(token)) {
-            return false;
-        }
-        if (token.matches("-?\\d+")) {
-            try {
-                return Long.parseLong(token);
-            } catch (NumberFormatException ignored) {
-                // Fall through to direct payload lookup.
-            }
-        }
-        if (token.matches("-?\\d+\\.\\d+")) {
-            try {
-                return Double.parseDouble(token);
-            } catch (NumberFormatException ignored) {
-                // Fall through to direct payload lookup.
-            }
-        }
-        Object direct = readPayloadValue(payload, token);
-        if (direct != null) {
-            return direct;
-        }
-        if ("previousStatus".equals(token)) {
-            return previousStatus;
-        }
-        if ("nextStatus".equals(token)) {
-            return nextStatus;
-        }
-        return null;
-    }
-
     private CompiledStateTransition findLifecycleTransition(
             CompiledLifecycle lifecycle,
             String previousStatus,
@@ -4965,64 +3542,6 @@ public final class GeneratedCrudRuntimeSupport {
         } catch (Exception ignored) {
             return null;
         }
-    }
-
-    private static String readLifecycleToken(Object value) {
-        if (value == null) {
-            return null;
-        }
-        String text = String.valueOf(value).trim();
-        return text.isEmpty() ? null : text;
-    }
-
-    private static boolean isLifecycleMissing(Object value) {
-        if (value == null) {
-            return true;
-        }
-        if (value instanceof String text) {
-            return text.isBlank();
-        }
-        return false;
-    }
-
-    private static String tableName(CompiledConcept entity) {
-        return SqlIdentifierSupport.tableName(entity);
-    }
-
-    private static String columnName(CompiledField field) {
-        return SqlIdentifierSupport.columnName(field);
-    }
-
-    private static String columnName(CompiledField field, String fallbackName) {
-        String column = columnName(field);
-        return column == null || column.isBlank()
-                ? SqlIdentifierSupport.safeSqlIdentifier(fallbackName)
-                : column;
-    }
-
-    private static String columnName(CompiledConcept entity, String fieldName) {
-        if (entity != null && fieldName != null) {
-            for (CompiledField field : entity.getFields()) {
-                if (field != null && fieldName.equalsIgnoreCase(field.getName())) {
-                    return columnName(field);
-                }
-            }
-        }
-        return SqlIdentifierSupport.safeSqlIdentifier(fieldName);
-    }
-
-    static String existsByIdSql(CompiledConcept entity, CompiledField idField) {
-        return "SELECT 1 FROM " + tableName(entity)
-                + " WHERE CAST(" + columnName(idField) + " AS VARCHAR) = :id";
-    }
-
-    static String fetchCurrentStatusSql(CompiledConcept entity, CompiledField idField, String statusColumn) {
-        return "SELECT " + statusColumn + " FROM " + tableName(entity)
-                + " WHERE CAST(" + columnName(idField) + " AS VARCHAR) = :id";
-    }
-
-    private static String truncateIdentifier(String value) {
-        return SqlIdentifierSupport.safeSqlIdentifier(value);
     }
 
     // -------------------------------------------------------------------------

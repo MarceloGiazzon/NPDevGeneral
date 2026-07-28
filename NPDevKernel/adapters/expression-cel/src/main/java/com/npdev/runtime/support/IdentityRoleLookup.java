@@ -7,6 +7,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.logging.Logger;
 
 /**
  * Resolves the roles assigned to an actor in the built-in identity pack
@@ -20,6 +21,8 @@ import java.util.Set;
  * are absent ({@code internal.tables=false}). Never throws.</p>
  */
 public final class IdentityRoleLookup {
+
+    private static final Logger LOG = Logger.getLogger(IdentityRoleLookup.class.getName());
 
     private static final String ROLE_QUERY = """
             SELECT r.name
@@ -66,7 +69,66 @@ public final class IdentityRoleLookup {
                 return resultSet.wasNull() ? 0 : version;
             }
         } catch (SQLException exception) {
+            // REG-39: this method's "never throws" contract stays (it's on the hot per-request
+            // claim-to-context path, both here and in GeneratedCrudRuntimeSupport, so making it throw
+            // would ripple into every caller) -- but a schema mismatch (stale built-in-pack copy
+            // missing token_version) must not fail SILENTLY the way it did for WmsOffice. Log it
+            // loudly; StartupValidator already fails the app at boot for this specific case, so
+            // reaching here at all means that check was bypassed or the drift is in a column it
+            // doesn't yet cover.
+            if (isSchemaMismatch(exception)) {
+                LOG.severe("token_version lookup failed: identity pack schema mismatch (see "
+                        + "docs/CONFIGURATION.md#identity-pack-freshness-checked-at-boot) -- "
+                        + exception.getMessage());
+            }
             return 0;
+        }
+    }
+
+    private static boolean isSchemaMismatch(SQLException exception) {
+        String state = exception.getSQLState();
+        return state != null && state.startsWith("42");
+    }
+
+    /** REG-23: config property (JVM system property, bridged from Spring by RuntimeHost at boot) — an
+     * ISO-8601 instant after which legacy tokens with NO {@code tv} claim are rejected. Unset/blank =
+     * today's lenient behavior. */
+    public static final String REJECT_TVLESS_AFTER_PROPERTY = "npdev.auth.jwt.reject-tokens-without-tv-after";
+
+    /**
+     * REG-23: THE single revocation decision point, called by BOTH claim->context paths (RuntimeHost
+     * {@code IdentityAwareContextResolver} and {@link GeneratedCrudRuntimeSupport}) so they can never
+     * diverge. A token WITH a {@code tv} claim is revoked when its version no longer matches the stored
+     * {@code token_version}. A token WITHOUT a {@code tv} claim (legacy, pre-{@code tv}) is NOT revoked
+     * -- backward compatible -- UNTIL the operator sets {@link #REJECT_TVLESS_AFTER_PROPERTY} to a past
+     * instant (chosen {@code >= } the max token lifetime after {@code tv} shipped, so no legitimate
+     * tv-less token can still exist), after which every tv-less token is rejected. Never throws; a
+     * malformed cutover fails OPEN (treated as unset) — {@code StartupValidator} rejects a malformed
+     * value at boot so it never reaches here.
+     */
+    public static boolean isTokenRevoked(Object rawTokenVersion, DataSource dataSource, String tenantId, String actorId) {
+        if (rawTokenVersion == null) {
+            return rejectTvlessTokensNow();
+        }
+        int claimedVersion;
+        try {
+            claimedVersion = Integer.parseInt(String.valueOf(rawTokenVersion));
+        } catch (NumberFormatException malformed) {
+            return false;
+        }
+        return claimedVersion != tokenVersion(dataSource, tenantId, actorId);
+    }
+
+    private static boolean rejectTvlessTokensNow() {
+        String configured = System.getProperty(REJECT_TVLESS_AFTER_PROPERTY);
+        if (configured == null || configured.isBlank()) {
+            return false;
+        }
+        try {
+            java.time.Instant cutover = java.time.Instant.parse(configured.trim());
+            return !java.time.Instant.now().isBefore(cutover);
+        } catch (java.time.format.DateTimeParseException malformed) {
+            return false;
         }
     }
 

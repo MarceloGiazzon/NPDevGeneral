@@ -62,7 +62,19 @@ public final class CompiledModelCanonicalJson {
         root.set("aggregates", toAggregates(model));
         root.set("autoPanels", toAutoPanels(model));
         root.set("documents", toDocuments(model));
+        root.set("externalAi", toExternalAi(model));
         return root;
+    }
+
+    private static ObjectNode toExternalAi(CompiledModel model) {
+        CompiledExternalAi externalAi = model.getExternalAi();
+        if (externalAi == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("egress", safe(externalAi.getEgress()));
+        node.set("vendors", toStringArray(externalAi.getVendors()));
+        return node;
     }
 
     private static ArrayNode toDocuments(CompiledModel model) {
@@ -203,6 +215,7 @@ public final class CompiledModelCanonicalJson {
                 fieldNode.put("id", field.isId());
                 fieldNode.put("required", field.isRequired());
                 fieldNode.put("unique", field.isUnique());
+                fieldNode.put("sensitive", field.isSensitive());
                 fieldNode.set("enumValues", toStringArray(field.getEnumValues()));
                 fieldNode.set("enumOptions", toEnumOptions(field.getEnumOptions()));
                 fieldNode.put("referenceTarget", safe(field.getReferenceTarget()));

@@ -73,6 +73,13 @@ final class SchemaRealizationEmitterAdditiveColumnsTest {
                 "a NULLABLE bond column must now be additive-eligible (LNCH-1 P5 5.3): " + additiveSql);
         assertTrue(additiveSql.contains("ADD CONSTRAINT") && additiveSql.contains("FOREIGN KEY (" + customerIdColumn + ")"),
                 "a nullable bond added via the additive path must get its own FK constraint: " + additiveSql);
+        // REG-38: R__ is a Flyway *repeatable* migration -- it re-runs whenever its checksum changes
+        // (i.e. after any model edit). On H2 the additive FK was emitted as a bare ADD CONSTRAINT with
+        // no guard, so the re-run failed with "Constraint already exists" and refused the boot. The H2
+        // path must be idempotent the way the Postgres path already is: DROP CONSTRAINT IF EXISTS then ADD.
+        assertTrue(additiveSql.contains("DROP CONSTRAINT IF EXISTS fk_orders_" + customerIdColumn),
+                "H2 additive FK must be idempotent (DROP CONSTRAINT IF EXISTS before ADD) so the repeatable "
+                + "migration can re-run against an existing DB: " + additiveSql);
         assertFalse(additiveSql.contains("ADD COLUMN IF NOT EXISTS " + ownerIdColumn),
                 "a REQUIRED bond column must still be excluded from the additive script: " + additiveSql);
 
@@ -160,6 +167,65 @@ final class SchemaRealizationEmitterAdditiveColumnsTest {
         }
         assertTrue(containsText(manifest.path("businessTableColumns").path("orders"), "version"),
                 "the full column set must still declare 'version'");
+    }
+
+    /**
+     * REG-40 tactical hotfix (Part II of the schema-engine rebuild plan): the R__ repeatable
+     * migration currently emits ONLY {@code ALTER TABLE ... ADD COLUMN} statements, so a brand-new
+     * concept added to the model never gets a table on an upgrade against an already-existing
+     * database -- boot fails with "Table not found". Every {@code CREATE TABLE} the platform emits
+     * is already {@code CREATE TABLE IF NOT EXISTS} (idempotent), so the R__ script can safely also
+     * carry the business-table (and junction-table) CREATE TABLE blocks: a no-op on databases that
+     * already have them, self-healing on databases that don't. This test pins that the R__ file
+     * contains a CREATE TABLE IF NOT EXISTS for every business table, positioned BEFORE any ALTER
+     * TABLE statement (so a brand-new table exists before its additive columns/constraints run
+     * against it).
+     */
+    @Test
+    void additiveScriptCreatesMissingBusinessTablesBeforeAnyAlterTable() throws Exception {
+        CompiledConcept customer = new CompiledConcept(
+                "Customer", "Customer", "customers",
+                List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("name", "string", "String", false, true, false)
+                )
+        );
+        CompiledField customerId = new CompiledField(
+                "customerId", "string", "String", false, false, false, List.of(), "Customer");
+        CompiledConcept order = new CompiledConcept(
+                "Order", "Order", "orders",
+                List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("name", "string", "String", false, true, false),
+                        customerId
+                )
+        );
+        CompiledModel model = new CompiledModel("test", "1.0.0", "1.0.0", Map.of(
+                order.getName(), order,
+                customer.getName(), customer
+        ));
+
+        Path outRoot = tempDir.resolve("app");
+        new SchemaRealizationEmitter().emit(model, outRoot, plan(), tempDir.resolve("model.json"));
+
+        String additiveSql = Files.readString(outRoot.resolve(
+                "src/main/resources/db/schema-realization/R__npdev_schema_additive_columns.sql"));
+
+        int customersCreateAt = additiveSql.indexOf("CREATE TABLE IF NOT EXISTS customers");
+        int ordersCreateAt = additiveSql.indexOf("CREATE TABLE IF NOT EXISTS orders");
+        int firstAlterAt = additiveSql.indexOf("ALTER TABLE");
+
+        assertTrue(customersCreateAt >= 0,
+                "R__ must self-heal a missing 'customers' table (REG-40): " + additiveSql);
+        assertTrue(ordersCreateAt >= 0,
+                "R__ must self-heal a missing 'orders' table (REG-40): " + additiveSql);
+        assertTrue(firstAlterAt >= 0, "fixture expects at least one additive ALTER TABLE: " + additiveSql);
+        assertTrue(customersCreateAt < firstAlterAt,
+                "'customers' CREATE TABLE must be emitted before any ALTER TABLE, so a brand-new "
+                        + "table exists before its additive columns run against it: " + additiveSql);
+        assertTrue(ordersCreateAt < firstAlterAt,
+                "'orders' CREATE TABLE must be emitted before any ALTER TABLE, so a brand-new "
+                        + "table exists before its additive columns run against it: " + additiveSql);
     }
 
     private static boolean containsText(JsonNode array, String value) {
