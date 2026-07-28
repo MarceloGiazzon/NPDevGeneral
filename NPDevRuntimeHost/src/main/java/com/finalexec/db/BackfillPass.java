@@ -6,6 +6,7 @@ import com.npdev.dsl.v1.schemaevolution.RenameResolution;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -50,7 +51,12 @@ final class BackfillPass {
      *   <li><b>Pass 1 (read-only):</b> for every table, find required, additive-eligible columns
      *       missing from the live database. A column with a declared literal default is queued for
      *       backfill; one without (no default, or only an expression default -- v1 only backfills
-     *       literals) is queued as a refusal. Nothing is written to the database in this pass.</li>
+     *       literals) is queued as a refusal. REG-61(b): a column that DOES have a literal default
+     *       but is also UNIQUE-constrained, with more than one row that would receive that same
+     *       value, is queued as its own named refusal instead -- a flat literal cannot satisfy
+     *       uniqueness across more than one row, and letting it proceed would only trade this
+     *       refusal for a confusing duplicate-key failure once {@code UniqueConstraintPass} re-adds
+     *       the constraint later in the same boot. Nothing is written to the database in this pass.</li>
      *   <li>If ANY refusal was queued, throw before this method applies any backfill of its own --
      *       every pending backfill in this same boot is left un-backfilled, and the stored fingerprint
      *       is left stale so a fixed retry re-attempts cleanly. (Post-remediation-R2 this method runs
@@ -86,24 +92,56 @@ final class BackfillPass {
         // live-introspection loop. Proven equivalent at P4.6a.
         List<PendingBackfill> pending = new ArrayList<>();
         List<String> refusals = new ArrayList<>();
-        for (BackfillItem item : backfillItemsFromDiff(dataSource, manifest)) {
-            String table = item.table();   // model-case
-            String column = item.column(); // model-case
-            if (item.refusal()) {
-                boolean hasExpressionDefault = manifest.businessTableExpressionDefaultColumns()
-                        .getOrDefault(table, List.of()).contains(column);
-                refusals.add(table + "." + column + (hasExpressionDefault
-                        ? " (an expression default is declared, but only literal defaults are backfilled "
-                                + "automatically in v1 -- declare a literal default or make the field optional)"
-                        : " (no default declared -- declare a literal default or make the field optional)"));
-            } else {
+        // REG-61(b): a literal default writes the SAME value into every affected row, so it cannot
+        // satisfy a UNIQUE constraint once more than one row needs it -- confirmed live on WmsOffice
+        // (identity_roles.name, 5 rows; identity_users.username, 6 rows), where the backfill
+        // "succeeded" only to have UniqueConstraintPass fail with a confusing duplicate-key error on
+        // the SAME boot. Collected separately from `refusals` (which means "no default at all") and
+        // given its own named diagnostic, matching the bond-column refusal precedent below.
+        List<String> uniqueBackfillRefusals = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection()) {
+            for (BackfillItem item : backfillItemsFromDiff(dataSource, manifest)) {
+                String table = item.table();   // model-case
+                String column = item.column(); // model-case
+                if (item.refusal()) {
+                    boolean hasExpressionDefault = manifest.businessTableExpressionDefaultColumns()
+                            .getOrDefault(table, List.of()).contains(column);
+                    refusals.add(table + "." + column + (hasExpressionDefault
+                            ? " (an expression default is declared, but only literal defaults are backfilled "
+                                    + "automatically in v1 -- declare a literal default or make the field optional)"
+                            : " (no default declared -- declare a literal default or make the field optional)"));
+                    continue;
+                }
                 String literalDefaultJson = manifest.businessTableColumnDefaultLiterals()
                         .getOrDefault(table, Map.of()).get(column);
                 String sqlType = manifest.businessTableColumnTypes().getOrDefault(table, Map.of()).get(column);
+                if (isUniqueConstrained(manifest, table, column)) {
+                    long affectedRows = countAffectedRows(connection, table, column);
+                    if (affectedRows > 1) {
+                        uniqueBackfillRefusals.add(table + "." + column + " (" + affectedRows + " existing row(s) "
+                                + "would all receive the SAME literal default " + literalDefaultJson + ", which "
+                                + "cannot satisfy the declared uniqueness -- a per-row-unique default is not "
+                                + "expressible in v1)");
+                        continue;
+                    }
+                }
                 pending.add(new PendingBackfill(table, column, sqlType, literalDefaultJson));
             }
+        } catch (SQLException exception) {
+            throw new IllegalStateException(
+                    "Failed inspecting live database for unique-constrained required-field backfills", exception);
         }
 
+        if (!uniqueBackfillRefusals.isEmpty()) {
+            SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification, null, null, "REFUSED");
+            throw new IllegalStateException("Schema change adds new required, UNIQUE-constrained field(s) to "
+                    + "table(s) with more than one existing row, but the declared literal default cannot express a "
+                    + "per-row-unique value (LNCH-1 Phase 5 / REG-61): " + uniqueBackfillRefusals + ". Backfill these "
+                    + "column(s) out-of-band before the next boot -- e.g. UPDATE <table> SET <column> = "
+                    + "'<prefix>-' || CAST(id AS VARCHAR(36)) WHERE <column> IS NULL, then ALTER TABLE <table> "
+                    + "ALTER COLUMN <column> SET NOT NULL -- or make the field optional. See "
+                    + "docs/SCHEMA_EVOLUTION.md#new-required-fields.");
+        }
         if (!refusals.isEmpty()) {
             SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification, null, null, "REFUSED");
             throw new IllegalStateException("Schema change adds new required field(s) to table(s) with existing "
@@ -202,6 +240,37 @@ final class BackfillPass {
             }
         }
         return null;
+    }
+
+    /** REG-61(b): is {@code column} part of ANY unique constraint the model declares on {@code table}
+     * (single-field or compound)? A flat literal backfill cannot satisfy uniqueness once more than
+     * one row needs it, regardless of whether the constraint is single- or multi-column. */
+    private static boolean isUniqueConstrained(SchemaLifecycleExecutor.SchemaManifest manifest, String table, String column) {
+        for (SchemaLifecycleExecutor.UniqueConstraintDecl decl : manifest.businessTableUniqueConstraints().getOrDefault(table, List.of())) {
+            for (String declColumn : decl.columns()) {
+                if (declColumn.equalsIgnoreCase(column)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** REG-61(b): how many rows would receive the SAME literal default if this column were backfilled
+     * now. If the column already exists live (crash-recovery / TIGHTEN_NOT_NULL case), only the
+     * currently-NULL rows are affected; if it does not exist yet (ADD_REQUIRED_COLUMN case), every
+     * row in the table would be, since none of them have a value for it. */
+    private static long countAffectedRows(Connection connection, String table, String column) throws SQLException {
+        String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
+        boolean columnExistsLive = SchemaLifecycleExecutor.readActualColumns(connection.getMetaData(), table).stream()
+                .anyMatch(column::equalsIgnoreCase);
+        String sql = columnExistsLive
+                ? "SELECT COUNT(*) FROM " + safeTable + " WHERE " + SchemaLifecycleExecutor.safeIdentifier(column) + " IS NULL"
+                : "SELECT COUNT(*) FROM " + safeTable;
+        try (PreparedStatement statement = connection.prepareStatement(sql);
+                ResultSet resultSet = statement.executeQuery()) {
+            return resultSet.next() ? resultSet.getLong(1) : 0L;
+        }
     }
 
     /** Case-insensitive membership: {@code lowerTarget} is already lower-cased (the diff canonicalises
