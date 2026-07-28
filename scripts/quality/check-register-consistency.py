@@ -252,6 +252,7 @@ LEDGER_EXCLUSIONS = {
     "LNCH1_PLATFORM_COLUMN_PLAN.md": "Executed plan (marked HISTORICAL). Same: task tables, not tracked items.",
     "REGISTER_CLOSURE_PLAN.md": "Executed plan (marked HISTORICAL). Tables restate register items; the register itself is the checked source.",
     "FRONTEND_STRATEGY_PLAN.md": "Proposed, not-yet-started roadmap (STATUS: ACTIVE, F1-F6 gated on scheduling). Its F1..F6 table is an effort/priority estimate, not a status ledger of tracked open/closed items -- there is nothing yet to cross-check a detail section against.",
+    "OPEN_ITEMS.md": "2.E ledger migration prototype (docs/NEXT_EXECUTION_PLAN.md Part 5, ledger/README.md). A GENERATED projection of ledger/items/*.yml, not hand-editable prose -- a summary-vs-detail contradiction is structurally impossible (both come from the SAME single `status` field in the same YAML file, rendered by the same script). Its own drift check is `python scripts/quality/generate_open_items.py --check` (exact-byte comparison against the source YAML), a stronger guarantee than this script's regex-based cross-check. Excluded here, not added to `checked`, until the full register migrates and this file's source (ledger/items/*.yml) becomes the actual authority.",
 }
 
 # Adversarial-review findings documents are excluded as a CLASS, not one by one: their tables are

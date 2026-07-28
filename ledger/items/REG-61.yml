@@ -1,0 +1,28 @@
+id: REG-61
+title: Narrow-type recreate loses NOT NULL; no per-row-unique default expressible for a required UNIQUE column
+type: GAP
+severity: HIGH
+status: DONE
+opened: 2026-07-28
+closed: 2026-07-28
+verification: UNIT_TESTED
+source: Split from REG-59 during its live-recovery filing, 2026-07-28
+surface: runtimehost/schema-lifecycle
+files:
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/DestructiveRecreationPass.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/BackfillPass.java
+detail: |
+  Both needs carried verbatim from REG-59's filing, both fixed. (a)
+  DestructiveRecreationPass.executeNarrowTypeDropAndRecreate now looks up the model's declared
+  required-ness for the narrowed column (via DesiredSchemaFactory) and re-applies NOT NULL directly
+  when the table is currently empty -- a zero-row table no longer needs the backfill dance at all. A
+  non-empty table still adds the column nullable exactly as before, leaving (b)'s refusal as the
+  correct next line of defense. New DestructiveRecreationPassRequiredColumnPreservationTest (3/3).
+  (b) BackfillPass now detects required + UNIQUE-constrained (single- or compound-field) + more
+  than one row that would receive the same literal, and refuses by name (table.column, affected row
+  count, a documented recovery recipe generalizing the out-of-band SQL WmsOffice used) instead of
+  proceeding to a confusing duplicate-key failure once UniqueConstraintPass re-adds the constraint
+  later. Did NOT invent a per-row-unique default expression language, per the plan's own scope
+  decision. New BackfillPassUniqueColumnRefusalTest (2/2), RED-first. docs/SCHEMA_EVOLUTION.md
+  documents the new refusal case and recipe. Full com.finalexec.db suite 273/273, no regression.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-61

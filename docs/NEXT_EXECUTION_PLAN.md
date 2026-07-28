@@ -550,7 +550,7 @@ re-deriving this by hand.
 
 ---
 
-# Part 5 — 🔵 2.E Ledger migration (3 days) — unblocks 3.4
+# Part 5 — 🔵 2.E Ledger migration (3 days) — unblocks 3.4 · 🟡 PROTOTYPE shipped 2026-07-28, full migration NOT done
 
 Prose register → `ledger/items/*.yml` + generated `docs/OPEN_ITEMS.md`.
 
@@ -559,24 +559,37 @@ status lives in prose. Four drift instances in two days (§2.D, 2.F, 3.3, REG-59
 problem — it is a format problem. YAML rows make Part 2's gates ~20 lines instead of regex-over-prose,
 and make REG-59's contradiction structurally impossible (`status: OPEN` cannot be struck through).
 
-```yaml
-# ledger/items/REG-61.yml
-id: REG-61
-title: Narrow-type recreate loses NOT NULL; no per-row-unique default expressible
-type: GAP
-severity: HIGH
-status: OPEN
-opened: 2026-07-28
-source: split from REG-59 (WmsOffice live recovery)
-surface: runtimehost/schema-lifecycle
-files: [NPDevRuntimeHost/.../db/DestructiveRecreationPass.java, .../BackfillPass.java]
-verification: NOT_VERIFIED
-evidence: ledger/evidence/REG-61/
-```
+**What actually shipped, honestly scoped — a proof of concept, not the migration:** `ledger/README.md`
+(schema + rationale), `scripts/quality/generate_open_items.py` (validates + renders
+`docs/OPEN_ITEMS.md` from `ledger/items/*.yml`, `--check` mode for CI), and **9 of ~106 total
+entries migrated** (`REG-54` through `REG-62` — this session's own work, chosen because I could
+verify their fidelity against the source register precisely, having written them). Proven: schema
+validation genuinely rejects a bad value (RED test: `status: CLOSED` → exit 2, naming the exact file
+and field); `--check` is genuinely idempotent (GREEN after regenerating); the new
+`docs/OPEN_ITEMS.md` needed a `LEDGER_EXCLUSIONS` entry in `check-register-consistency.py`
+(it's ledger-shaped and the coverage-gap check correctly caught it) — added, with the reasoning that
+its own drift check (`--check`, exact-byte comparison) is a *stronger* guarantee than the prose
+register's regex-based cross-check, not a weaker one.
 
-Also unwires the **13 process docs currently hard-wired into gates** — a finished programme's closure
-plan should not be a runtime dependency of CI. **Completing this unblocks 3.4** (archive those 13),
-which then becomes a 30-minute task.
+**What did NOT ship, stated plainly rather than silently claimed:**
+- **~97 entries remain prose-only** — the rest of `NPDEV_OPEN_ITEMS_REGISTER.md`, all 19 of
+  `OPEN_GAPS_AND_ROADMAP.md`, all 24 of `LAUNCH_READINESS_GAPS.md`. Migrating them is mechanical
+  (one YAML file per row) but was not attempted here — bulk-transcribing ~100 entries whose detail
+  sections run to thousands of words each (see REG-58's own prose row) risked fidelity errors far
+  outweighing what a 9-entry proof of concept needed to establish.
+- **The T1/T2 rules and `ledger_coverage_gaps` still read the PROSE register**, not
+  `ledger/items/*.yml`. Repointing them now — before migration is complete — would make the gate
+  blind to the 90%+ of items still only in prose. `docs/NPDEV_OPEN_ITEMS_REGISTER.md` remains
+  authoritative.
+- **"The 13 process docs currently hard-wired into gates"** (this plan's own phrase) were not
+  identified. `check-register-consistency.py`'s actual document set is 3 checked ledgers + 4 named
+  exclusions (`LEDGER_EXCLUSIONS`) — nowhere close to 13 by any reading found in this repo's current
+  scripts. This claim likely refers to something in `OPEN_GAPS_AND_ROADMAP.md`'s own §3.4 (a
+  cross-document reference this plan's own line 12 gestures at), not investigated this round.
+- **Cutover (retiring the prose register, switching gates to `ledger/items/*.yml` as the sole
+  source) is a separate, later decision** — not attempted, and should not be attempted casually:
+  this is the platform's core governance mechanism, read by every quality gate that ran throughout
+  today's entire session.
 
 ---
 
