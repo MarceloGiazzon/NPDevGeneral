@@ -148,6 +148,20 @@ god-file split (2.B.5 already done; any later ones) should expect the same mecha
 the same process: confirm byte-identical content at the old location, then re-clear under the
 established rule rather than re-deriving one.
 
+**Superseded 2026-07-28 (`docs/POST_PUBLIC_PLAN.md` P3.1) — this is now structurally fixed, not just
+documented.** `Hit.fingerprint()` no longer hashes in the relative file path (pattern + normalised
+matched text only); moving code to a new file no longer orphans its verdict at all, so the manual
+"check byte-identical, re-clear under the same rule" dance above is no longer needed for a pure move.
+All 333 existing entries were migrated to the new content-only fingerprint (a script matched every
+hit under both the old and new formula by `(file, line, pattern, snippet)` identity, then re-keyed
+the allowlist — 275 entries after 31 same-content-different-location merges and 29 genuinely orphaned
+entries left untouched). Proven RED-first: temporarily moved `ValueCoercionSupport.java` to a new
+directory, confirmed all 10 of its hits still matched cleared (0 needing triage), moved it back. The
+sweep now also **reports** (never fails) when a cleared hit's current file isn't mentioned in its
+entry's `where` text — a real code move surfaces as an informational note so `where` can be kept
+honest, not as a re-triage demand. `path` in each entry stays informational prose describing where a
+reviewer actually looked, same as before.
+
 ---
 
 ## 3. (i) The one genuine finding — REG-43

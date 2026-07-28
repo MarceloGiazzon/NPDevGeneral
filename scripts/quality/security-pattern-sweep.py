@@ -113,15 +113,22 @@ class Hit:
         return self.path.relative_to(self.root).as_posix()
 
     def fingerprint(self) -> str:
-        """Identity = pattern + file + normalised matched text.
+        """Identity = pattern + normalised matched text. Deliberately NOT file- or line-based.
 
-        Deliberately NOT line-based: a triage verdict must survive the file being reformatted
-        or a method moving. Whitespace is collapsed so indentation changes do not orphan a
-        verdict either. Editing the matched code itself DOES invalidate the verdict -- which
-        is correct, because the thing that was judged safe has changed.
+        2026-07-28 (docs/POST_PUBLIC_PLAN.md P3.1): this used to also hash in the relative file
+        path, which meant a pure code MOVE (a god-file split, e.g. T2.B.3/T2.B.4) silently
+        orphaned every existing verdict on the moved lines -- the sweep then reported
+        already-triaged, unchanged code as brand-new untriaged hits (37 of them, for real, on
+        PR #5). A triage verdict is a judgment about a SHAPE of code, not about which file
+        happens to contain it right now, so the file path was never actually part of the
+        thing being judged -- dropping it is a correction, not a loosening. Line number was
+        already excluded for the same reason (survives reformatting); whitespace is collapsed
+        so indentation changes do not orphan a verdict either. Editing the matched code itself
+        still DOES invalidate the verdict -- correct, because the thing that was judged safe
+        has changed. `path` stays informational-only in the allowlist (see `report_moves`).
         """
         normalised = re.sub(r"\s+", " ", self.snippet).strip()
-        stamp = hashlib.sha1(f"{self.pattern}|{self.rel}|{normalised}".encode()).hexdigest()
+        stamp = hashlib.sha1(f"{self.pattern}|{normalised}".encode()).hexdigest()
         return stamp[:12]
 
 
@@ -777,7 +784,36 @@ def main(argv: list[str]) -> int:
         file=sys.stderr,
     )
 
+    moves = report_moves(hits, cleared)
+    if moves:
+        print(f"\n{len(moves)} cleared hit(s) now live at a path their allowlist entry doesn't "
+              "mention -- informational only, NOT a failure (docs/POST_PUBLIC_PLAN.md P3.1: "
+              "fingerprints survive file moves by design now; this just flags that `where` is "
+              "stale prose worth a follow-up edit, not a re-triage):", file=sys.stderr)
+        for hit, entry_where in moves:
+            print(f"  {hit.rel}:{hit.line} ({hit.pattern}, fingerprint {hit.fingerprint()}) "
+                  f"-- allowlist `where` says: {entry_where}", file=sys.stderr)
+
     return 1 if (args.fail_on_new and shown) else 0
+
+
+def report_moves(hits: list[Hit], cleared: dict[str, dict]) -> list[tuple[Hit, str]]:
+    """Cleared hits whose current file isn't mentioned in their allowlist entry's `where`.
+
+    Purely informational (never fails the build): since the fingerprint (P3.1) no longer
+    includes the file path, a cleared hit surviving a code move is now the EXPECTED, silent
+    case. This just surfaces it so `where` -- free prose describing where the reviewer actually
+    looked -- can be kept honest without anyone needing to notice a git diff moved the code.
+    """
+    moved: list[tuple[Hit, str]] = []
+    for hit in hits:
+        entry = cleared.get(hit.fingerprint())
+        if entry is None:
+            continue
+        where = entry.get("where", "")
+        if hit.rel not in where:
+            moved.append((hit, where))
+    return moved
 
 
 if __name__ == "__main__":
