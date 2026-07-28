@@ -1396,6 +1396,21 @@
       "rule": "F1",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/DestructiveRecreationPass.java:227",
       "why": "Same F1 class, new code, same site as 5a22322fca96 (sweep matched the DROP CONSTRAINT clause and the full ALTER TABLE statement as two separate hits on one line): safeIndex is validated via safeIdentifier immediately above before splicing."
+    },
+    "4a4cbe226e64": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/DestructiveRecreationPass.java:217",
+      "why": "REG-61(a): the ADD COLUMN statement now carries a nullability suffix. safeTable/safeColumn/safeType are the same pre-existing, already-cleared identifiers this site has always used; the new `nullability` token is not caller data at all -- it is a compile-time-fixed literal this method itself picks (either the empty string or the literal \" NOT NULL\"), never derived from any external or model-author input."
+    },
+    "a019ea86d6b3": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/BackfillPass.java:268",
+      "why": "REG-61(b): new countAffectedRows helper. safeTable and the inline SchemaLifecycleExecutor.safeIdentifier(column) both route through safeIdentifier, which THROWS on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing, before ever reaching the SQL string."
+    },
+    "1ff53d71a3bd": {
+      "rule": "B2",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/BackfillPass.java:268",
+      "why": "REG-61(b): countAffectedRows counts rows for a boot-time schema-migration refusal decision (does a literal-default backfill collide with a UNIQUE constraint), the same class of schema-lifecycle count already covered by B2 (SchemaLifecycleExecutor, ImpactReport, SchemaDeltaReport, et al.) -- not a tenant-scoped business-data read. Deliberately global rather than per-tenant (see the method's own javadoc): conservative, never unsafe, since a global count can only refuse a case a per-tenant count would have allowed."
     }
   }
 }
