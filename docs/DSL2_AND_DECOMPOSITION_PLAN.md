@@ -832,6 +832,16 @@ of grep-based pre-checking alone.
 - [x] Every commit a pure move; every bug found filed separately (REG-54/REG-55 above) — **Part 3
       (2.B.2-2.B.5) is now fully done.**
 
+**Decision recorded (2026-07-28, `docs/POST_PUBLIC_PLAN.md` P3.2) so it isn't re-litigated: three
+files remain above the ~800-line smell threshold** — `GeneratedCrudRuntimeSupport` (3,651),
+`KernelRunner` (3,071), `SchemaLifecycleExecutor` (2,120) — each for the documented reasons above
+(instance-state coupling, mustache-template qualified-name references, or genuinely-cohesive
+sequencer logic shared with same-package files). The plan's own wording was explicit that ≤800 is
+"not a hard gate; a smell threshold." **Do not chase a second decomposition pass now** — it is pure
+cost until something needs to change inside one of these files. Revisit
+`GeneratedCrudRuntimeSupport` (the largest remaining) only when frontend contract work
+(`docs/FRONTEND_STRATEGY_PLAN.md` F2/F3) touches panel row operations.
+
 ---
 
 *Companions: `docs/EXECUTION_TREES.md` (the map, incl. §0.1 CORE track) ·
