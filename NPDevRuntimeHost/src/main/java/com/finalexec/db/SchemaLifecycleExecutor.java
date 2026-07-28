@@ -201,15 +201,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         return facts;
     }
 
-    /**
-     * LNCH-1 Phase 4 (task 4.4). Self-bootstrapped exactly like {@link #METADATA_TABLE} -- a plain
-     * {@code CREATE TABLE IF NOT EXISTS} this class issues itself, NOT routed through the
-     * generator's {@code internalTables} catalog (confirmed: {@code npdev_schema_metadata}, which
-     * this table sits alongside, is not part of that catalog either). Every fingerprint-mismatch
-     * pass through {@link #beforeMigrate} -- safe (additive/rename/widening) or destructive --
-     * leaves exactly one row here.
-     */
-    private static final String HISTORY_TABLE = "npdev_schema_history";
+    // npdev_schema_history's HISTORY_TABLE constant (self-bootstrapped alongside METADATA_TABLE,
+    // NOT routed through the generator's internalTables catalog) moved to SchemaHistoryStore
+    // alongside the read/write machinery that is its only user (T2.B.4 pure mechanical split).
 
     /**
      * REG-39 layer 3: optional so every existing {@code SchemaLifecycleExecutor*Test}'s {@code new
@@ -354,14 +348,14 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         List<String> problems = findExternalSchemaIncompatibilities(dataSource, manifest);
         String fromFingerprint = readFingerprint(dataSource);
         if (!problems.isEmpty()) {
-            writeHistoryRow(dataSource, fromFingerprint, manifest.schemaFingerprint(), null, null, null, "EXTERNAL_REFUSED");
+            SchemaHistoryStore.writeHistoryRow(dataSource, fromFingerprint, manifest.schemaFingerprint(), null, null, null, "EXTERNAL_REFUSED");
             throw new IllegalStateException("This app declares schemaLifecycle.ownership=ExternallyManaged "
                     + "(NPDev does not own this database's schema and will never issue DDL against it), but the "
                     + "live schema cannot serve this build's model. Incompatibilities: " + problems + ". Either "
                     + "alter the external schema by hand to match the model, or fix the model to match the "
                     + "external schema -- see docs/SCHEMA_EVOLUTION.md#external-unmanaged-database.");
         }
-        writeHistoryRow(dataSource, fromFingerprint, manifest.schemaFingerprint(), null, null, null, "EXTERNAL_VERIFIED");
+        SchemaHistoryStore.writeHistoryRow(dataSource, fromFingerprint, manifest.schemaFingerprint(), null, null, null, "EXTERNAL_VERIFIED");
         System.out.println("NPDev schema lifecycle: ownership=ExternallyManaged -- verified the live schema is "
                 + "compatible with this build's model; no schema DDL issued.");
     }
@@ -571,7 +565,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed fast-forwarding the schema fingerprint for a manually-marked-done migration", exception);
         }
-        writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), null, null, null, "MANUALLY_MARKED_DONE");
+        SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), null, null, null, "MANUALLY_MARKED_DONE");
         MigrationMarkStore.consume(dataSource, mark.id());
         System.out.println("NPDev schema lifecycle: fingerprint manually marked done (operator: " + mark.markedBy()
                 + (mark.note() == null || mark.note().isBlank() ? "" : ", note: " + mark.note()) + ") -- fast-forwarded "
@@ -660,7 +654,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             // build requires before trusting the match.
             List<String> missing = findSchemaAheadMissingColumns(dataSource, manifest);
             if (!missing.isEmpty()) {
-                writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), null, null, null, "REFUSED");
+                SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), null, null, null, "REFUSED");
                 throw new IllegalStateException("Stored schema fingerprint matches this build, but the live "
                         + "database is missing column(s) this build requires: " + missing + ". This usually means "
                         + "a NEWER build already migrated this database (e.g. an upgrade was attempted and then "
@@ -716,9 +710,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // RENAME_DETECTED, TYPE_CHANGE_DETECTED, DESTRUCTIVE) uniformly, not just the one case that
         // motivated it. A MANUALLY_MARKED_DONE mark for this exact fingerprint already short-circuited
         // above (D4: a mark is checked before this branch is ever reached), so it can never trip this.
-        Optional<HistoryPoint> aheadOfBuild = databaseMigratedPastThisBuild(dataSource, manifest);
+        Optional<SchemaHistoryStore.HistoryPoint> aheadOfBuild = SchemaHistoryStore.databaseMigratedPastThisBuild(dataSource, manifest);
         if (aheadOfBuild.isPresent()) {
-            writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), null, null, null, "REFUSED");
+            SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), null, null, null, "REFUSED");
             throw new IllegalStateException("This database was migrated PAST this build. Schema history shows "
                     + "fingerprint " + aheadOfBuild.get().toFingerprint() + " was successfully applied at "
                     + aheadOfBuild.get().appliedAtUtc() + " (epoch ms), newer than this build's own target ("
@@ -745,7 +739,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     + manifest.schemaFingerprint() + " but every difference is a new non-bond column on an "
                     + "already-existing table; skipping destructive recreation (handled by the additive repeatable migration).");
             // R2 (F1): required-field backfill/refusal moved to the single afterMigrate call site.
-            writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
+            SchemaHistoryStore.writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
             return DestructiveRecreation.safeAdditiveOutcome();
         }
         if (classification == SchemaChangeClassification.RENAME_DETECTED) {
@@ -761,7 +755,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 System.out.println("NPDev schema lifecycle: in-place field rename(s) fully resolved the fingerprint "
                         + "diff (residual classification SAFE_ADDITIVE); skipping destructive recreation.");
                 // R2 (F1): required-field backfill/refusal moved to the single afterMigrate call site.
-                writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
+                SchemaHistoryStore.writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
                 return DestructiveRecreation.safeAdditiveOutcome();
             }
             if (residual == SchemaChangeClassification.TYPE_CHANGE_DETECTED) {
@@ -779,7 +773,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                             + "resolved the fingerprint diff (residual classification SAFE_ADDITIVE); skipping "
                             + "destructive recreation.");
                     // R2 (F1): required-field backfill/refusal moved to the single afterMigrate call site.
-                    writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
+                    SchemaHistoryStore.writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
                     return DestructiveRecreation.safeAdditiveOutcome();
                 }
             }
@@ -814,7 +808,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 System.out.println("NPDev schema lifecycle: in-place field rename(s) fully resolved the "
                         + "fingerprint diff (residual classification SAFE_ADDITIVE); skipping destructive recreation.");
                 // R2 (F1): required-field backfill/refusal moved to the single afterMigrate call site.
-                writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
+                SchemaHistoryStore.writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
                 return DestructiveRecreation.safeAdditiveOutcome();
             }
             if (residual == SchemaChangeClassification.TYPE_CHANGE_DETECTED) {
@@ -826,7 +820,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                             + "resolved the fingerprint diff (residual classification SAFE_ADDITIVE); skipping "
                             + "destructive recreation.");
                     // R2 (F1): required-field backfill/refusal moved to the single afterMigrate call site.
-                    writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
+                    SchemaHistoryStore.writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification);
                     return DestructiveRecreation.safeAdditiveOutcome();
                 }
             }
@@ -845,14 +839,14 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // Idempotent no-op (and writes no history) when nothing is currently unresolved.
         conversionHooksAppliedLastDecision = ConversionHookRunner.run(dataSource, manifest,
                 (label, outcome, details) ->
-                        insertRawHistoryRow(dataSource, stored, manifest.schemaFingerprint(), label, details, outcome));
+                        SchemaHistoryStore.insertRawHistoryRow(dataSource, stored, manifest.schemaFingerprint(), label, details, outcome));
 
         // LNCH-1 P5 (5.3): a required bond/FK field missing from an existing, populated table is
         // intercepted HERE, before SchemaDeltaReport ever runs -- independently re-derived per
         // table (not relying on classify()'s short-circuit-to-DESTRUCTIVE aggregate value), so it
         // is caught with a dedicated, itemized refusal instead of falling into SchemaDeltaReport's
         // generic UNKNOWN item kind.
-        refuseIfRequiredBondColumnMissing(dataSource, manifest, stored, classificationForFallthrough);
+        BackfillPass.refuseIfRequiredBondColumnMissing(dataSource, manifest, stored, classificationForFallthrough);
 
         // LNCH-1 Phase 4 (task 4.3): everything below replaces the old blanket whole-schema-wipe
         // fallback with itemized, surgical destruction wherever the residual diff cleanly supports
@@ -869,7 +863,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             System.out.println("NPDev schema lifecycle: every residual destructive item was resolved by a "
                     + "conversion hook; no acknowledgment token required. Fingerprint changed from " + stored
                     + " to " + manifest.schemaFingerprint() + ".");
-            writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classificationForFallthrough);
+            SchemaHistoryStore.writeAppliedHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classificationForFallthrough);
             return DestructiveRecreation.safeAdditiveOutcome();
         }
         String expectedToken = DestructiveAckToken.compute(manifest.schemaFingerprint(), report.stableStrings());
@@ -896,7 +890,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         boolean blanketAuthorized = manifest.destructiveAllowed();
 
         if (!tokenMatches && !blanketAuthorized) {
-            writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classificationForFallthrough,
+            SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classificationForFallthrough,
                     report, providedToken.isBlank() ? null : providedToken, "REFUSED");
             throw new IllegalStateException((impactReportText != null ? impactReportText + "\n" : "")
                     + "Schema fingerprint changed from " + stored + " to "
@@ -939,7 +933,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 }
             }
             if (!droppedTables.isEmpty() || hasUnknown) {
-                writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classificationForFallthrough,
+                SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classificationForFallthrough,
                         report, providedToken.isBlank() ? null : providedToken, "REFUSED");
                 StringBuilder reasons = new StringBuilder();
                 if (!droppedTables.isEmpty()) {
@@ -1109,7 +1103,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         Collections.sort(affectedTables);
         SchemaDropSnapshotWriter.snapshotBeforeDrop(dataSource, affectedTables);
 
-        String historyId = insertPendingHistoryRow(dataSource, stored, manifest.schemaFingerprint(),
+        String historyId = SchemaHistoryStore.insertPendingHistoryRow(dataSource, stored, manifest.schemaFingerprint(),
                 classification, report, ackTokenUsed);
 
         List<String> applied = new ArrayList<>();
@@ -1139,7 +1133,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     + applied.size() + "/" + report.items().size() + " item(s) applied before failure: "
                     + applied + ")", exception);
         }
-        markHistoryRowApplied(dataSource, historyId);
+        SchemaHistoryStore.markHistoryRowApplied(dataSource, historyId);
         System.out.println("NPDev schema lifecycle: surgical destructive changes applied: " + applied);
         return new DestructiveRecreation(true, false, List.copyOf(affectedTables));
     }
@@ -1167,7 +1161,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             throws SQLException {
         String safeTable = safeIdentifier(table);
         String safeColumn = safeIdentifier(column);
-        String safeType = safeSqlType(newType);
+        String safeType = TypeWideningPass.safeSqlType(newType);
         try (PreparedStatement drop = connection.prepareStatement(
                 "ALTER TABLE " + safeTable + " DROP COLUMN " + safeColumn)) {
             drop.executeUpdate();
@@ -1210,7 +1204,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         Collections.reverse(tables);
         SchemaDropSnapshotWriter.snapshotBeforeDrop(dataSource, tables);
 
-        String historyId = insertPendingHistoryRow(dataSource, stored, manifest.schemaFingerprint(),
+        String historyId = SchemaHistoryStore.insertPendingHistoryRow(dataSource, stored, manifest.schemaFingerprint(),
                 classification, report, ackTokenUsed);
 
         List<String> dropped = new ArrayList<>();
@@ -1239,7 +1233,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             // History row deliberately left at PARTIAL-CRASH -- see executeSurgicalDestruction's note.
             throw new IllegalStateException("Failed destructive schema recreation", exception);
         }
-        markHistoryRowApplied(dataSource, historyId);
+        SchemaHistoryStore.markHistoryRowApplied(dataSource, historyId);
         return new DestructiveRecreation(true, false, List.copyOf(dropped));
     }
 
@@ -1283,15 +1277,15 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             // SER-P4.3: the rename work-list (new -> old) now comes from the canonical SchemaDiff --
             // proven byte-identical to the former RenameResolution over live introspection (P4.3a).
             List<Map.Entry<String, String>> work = new ArrayList<>(
-                    tableRenamesFromDiff(dataSource, manifest).entrySet());
+                    TableRenamePass.tableRenamesFromDiff(dataSource, manifest).entrySet());
             // R4 (F5): write-before-execute the whole pass as one audit row with per-item detail.
             List<String> itemDetails = new ArrayList<>();
             for (Map.Entry<String, String> pair : work) {
                 itemDetails.add("RENAME_TABLE " + pair.getValue() + " -> " + pair.getKey());
             }
-            recordStepPass(dataSource, manifest, "TABLE_RENAME", itemDetails, () -> {
+            SchemaHistoryStore.recordStepPass(dataSource, manifest, "TABLE_RENAME", itemDetails, () -> {
                 for (Map.Entry<String, String> pair : work) {
-                    executeRenameTable(connection, pair.getValue(), pair.getKey());
+                    TableRenamePass.executeRenameTable(connection, pair.getValue(), pair.getKey());
                     renamed.add(pair.getValue() + " -> " + pair.getKey());
                 }
             });
@@ -1300,39 +1294,6 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         }
         if (!renamed.isEmpty()) {
             System.out.println("NPDev schema lifecycle: applied in-place table renames: " + renamed);
-        }
-    }
-
-    /** SER-P4.3: the table-rename work-list (new -&gt; old) derived from the canonical {@link
-     * com.finalexec.db.schemastate.SchemaDiff} -- the {@code RENAME_TABLE} items the engine resolves.
-     * Proven equal to the bespoke {@link RenameResolution} result before it replaces it. */
-    private static Map<String, String> tableRenamesFromDiff(DataSource dataSource, SchemaManifest manifest) {
-        com.finalexec.db.schemastate.CurrentSchema current =
-                new com.finalexec.db.schemastate.CurrentSchemaReader().read(dataSource);
-        com.finalexec.db.schemastate.SchemaDiff diff = new com.finalexec.db.schemastate.SchemaDiffEngine()
-                .diff(DesiredSchemaFactory.fromManifest(manifest),
-                        ShadowParityProbe.scopeToOwnedBusinessTables(current, manifest));
-        Map<String, String> renames = new LinkedHashMap<>();
-        for (com.finalexec.db.schemastate.SchemaDiffItem di : diff.items()) {
-            if (di.safetyClass() == com.finalexec.db.schemastate.SafetyClass.SAFE_RENAME
-                    && di.itemKey().startsWith("RENAME_TABLE:")) {
-                renames.put(di.after(), di.before()); // after = new name, before = old name
-            }
-        }
-        return renames;
-    }
-
-    /**
-     * Table-rename DDL (§6.1): {@code ALTER TABLE ... RENAME TO ...} is identical on both Postgres
-     * and H2 (unlike column rename, which differs per engine) -- confirmed via the real H2
-     * integration test {@code SchemaLifecycleExecutorTableRenameTest} before being trusted here.
-     */
-    private static void executeRenameTable(Connection connection, String oldTable, String newTable) throws SQLException {
-        String safeOld = safeIdentifier(oldTable);
-        String safeNew = safeIdentifier(newTable);
-        String sql = "ALTER TABLE " + safeOld + " RENAME TO " + safeNew;
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.executeUpdate();
         }
     }
 
@@ -1402,7 +1363,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // SER-P4.4: the whole plan -- the renames to apply, the tables deferred to the destructive path,
         // and the stale-marker warnings -- is now derived from the canonical SchemaDiff (proven equal to
         // the former RenameResolution loop at P4.4a), not a second live introspection.
-        ColumnRenamePlan derived = columnRenamesFromDiff(dataSource, manifest);
+        ColumnRenamePass.ColumnRenamePlan derived = ColumnRenamePass.columnRenamesFromDiff(dataSource, manifest);
         for (String warning : derived.staleWarnings()) {
             System.out.println(warning);
         }
@@ -1417,9 +1378,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             for (ColumnRename r : plan) {
                 itemDetails.add("RENAME_COLUMN " + r.table() + "." + r.oldName() + " -> " + r.newName());
             }
-            recordStepPass(dataSource, manifest, "COLUMN_RENAME", itemDetails, () -> {
+            SchemaHistoryStore.recordStepPass(dataSource, manifest, "COLUMN_RENAME", itemDetails, () -> {
                 for (ColumnRename r : plan) {
-                    executeRenameColumn(connection, manifest.engine(), r.table(), r.oldName(), r.newName());
+                    ColumnRenamePass.executeRenameColumn(connection, manifest.engine(), r.table(), r.oldName(), r.newName());
                     renamed.add(r.table() + "." + r.oldName() + " -> " + r.newName());
                 }
             });
@@ -1432,117 +1393,6 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         if (!derived.skipped().isEmpty()) {
             System.out.println("NPDev schema lifecycle: tables left for the destructive path (rename did not "
                     + "fully explain the diff): " + derived.skipped());
-        }
-    }
-
-    /** The column-rename pass's whole plan, derived from the canonical diff (SER-P4.4). */
-    private record ColumnRenamePlan(List<String[]> renames, List<String> skipped, List<String> staleWarnings) {
-    }
-
-    /**
-     * SER-P4.4: the column-rename plan derived from the canonical {@link com.finalexec.db.schemastate.SchemaDiff}
-     * instead of a second live introspection + {@link RenameResolution} pass.
-     * <ul>
-     *   <li><b>renames</b> ({@code {table, old, new}}) -- the {@code RENAME_COLUMN} items the engine
-     *       resolves, on tables that pass the SAME per-table eligibility gate the bespoke pass applied (a
-     *       table whose remaining missing columns are not all additive-eligible is deferred whole to the
-     *       destructive path, so none of its renames are applied here). Applying an eligible rename is
-     *       unconditional even when the column ALSO has a type change: {@code beforeMigrate} runs
-     *       {@code attemptInPlaceTypeWidenings} immediately afterward against the new name, and a residual
-     *       narrowing simply re-classifies the table onto the destructive path (whose pre-drop snapshot
-     *       captures data under the already-renamed column) -- no incorrect persisted state.</li>
-     *   <li><b>skipped</b> -- those ineligible tables, for the operator log.</li>
-     *   <li><b>staleWarnings</b> -- R6 (F7): a declared rename whose OLD and NEW columns are BOTH absent
-     *       live explained nothing (a stale {@code renamedFrom} marker can turn a rename into a drop).</li>
-     * </ul>
-     */
-    private static ColumnRenamePlan columnRenamesFromDiff(DataSource dataSource, SchemaManifest manifest) {
-        com.finalexec.db.schemastate.CurrentSchema current =
-                new com.finalexec.db.schemastate.CurrentSchemaReader().read(dataSource);
-        com.finalexec.db.schemastate.SchemaDiff diff = new com.finalexec.db.schemastate.SchemaDiffEngine()
-                .diff(DesiredSchemaFactory.fromManifest(manifest),
-                        ShadowParityProbe.scopeToOwnedBusinessTables(current, manifest));
-        // Per table: the resolved renames (old->new) and the remaining-missing (added) columns. A
-        // RENAME_COLUMN item is the rename; an ADD_(REQUIRED_)COLUMN item is a column absent live and not
-        // rename-explained -- exactly the bespoke pass's remainingMissing.
-        Map<String, List<String[]>> renamesByTable = new LinkedHashMap<>();
-        Map<String, Set<String>> missingByTable = new LinkedHashMap<>();
-        for (com.finalexec.db.schemastate.SchemaDiffItem di : diff.items()) {
-            if (di.safetyClass() == com.finalexec.db.schemastate.SafetyClass.SAFE_RENAME
-                    && di.itemKey().startsWith("RENAME_COLUMN:")) {
-                renamesByTable.computeIfAbsent(di.table(), t -> new ArrayList<>())
-                        .add(new String[] {di.before(), di.after()});
-            } else if (di.itemKey().startsWith("ADD_COLUMN:") || di.itemKey().startsWith("ADD_REQUIRED_COLUMN:")) {
-                missingByTable.computeIfAbsent(di.table(), t -> new LinkedHashSet<>()).add(di.column());
-            }
-        }
-
-        List<String[]> renames = new ArrayList<>();
-        List<String> skipped = new ArrayList<>();
-        for (Map.Entry<String, List<String[]>> entry : renamesByTable.entrySet()) {
-            String table = entry.getKey();
-            Set<String> additive = new LinkedHashSet<>(
-                    manifest.businessTableAdditiveColumns().getOrDefault(table, List.of()));
-            Set<String> remainingMissing = missingByTable.getOrDefault(table, Set.of());
-            if (!additive.containsAll(remainingMissing)) {
-                skipped.add(table + " (a remaining expected column is neither renamed-in nor "
-                        + "additive-eligible -- remainingMissing=" + remainingMissing + ")");
-                continue;
-            }
-            for (String[] oldNew : entry.getValue()) {
-                renames.add(new String[] {table, oldNew[0], oldNew[1]});
-            }
-        }
-
-        // R6 (F7): the stale-marker warning, now checked against the live CurrentSchema (the full column
-        // set the diff read) rather than a separate readActualColumns call.
-        List<String> staleWarnings = new ArrayList<>();
-        for (Map.Entry<String, Map<String, String>> tableRenames : manifest.businessTableRenamedColumns().entrySet()) {
-            String table = tableRenames.getKey();
-            Map<String, String> declaredRenames = tableRenames.getValue();
-            if (declaredRenames.isEmpty()
-                    || manifest.businessTableColumns().getOrDefault(table, List.of()).isEmpty()) {
-                continue;
-            }
-            com.finalexec.db.schemastate.CurrentTable liveTable = current.tables().get(table.toLowerCase(Locale.ROOT));
-            Set<String> liveColumns = liveTable == null ? Set.of() : liveTable.columns().keySet();
-            if (liveColumns.isEmpty()) {
-                continue; // brand-new table -- nothing live to rename
-            }
-            for (Map.Entry<String, String> declared : declaredRenames.entrySet()) {
-                String newName = declared.getKey();
-                String oldName = declared.getValue();
-                if (oldName != null && !oldName.isBlank()
-                        && !liveColumns.contains(oldName.toLowerCase(Locale.ROOT))
-                        && !liveColumns.contains(newName.toLowerCase(Locale.ROOT))) {
-                    staleWarnings.add("NPDev schema lifecycle: WARNING -- declared rename '" + oldName
-                            + "' -> '" + newName + "' on table '" + table + "' explains nothing: neither the "
-                            + "old nor the new column exists live. A stale renamedFrom marker (e.g. a second "
-                            + "rename that never updated the marker to the immediately-previous name) can turn "
-                            + "a rename into a destructive drop -- see docs/SCHEMA_EVOLUTION.md#marker-lifecycle.");
-                }
-            }
-        }
-        return new ColumnRenamePlan(renames, skipped, staleWarnings);
-    }
-
-    /**
-     * Dialect-specific rename-column DDL (§6.1): Postgres uses {@code RENAME COLUMN}, H2 uses
-     * {@code ALTER COLUMN ... RENAME TO}. {@code manifest.engine()} is one of exactly
-     * {@code "InMemory"}, {@code "H2Local"}, {@code "H2Server"}, {@code "Postgres"} -- and by the
-     * time this is called {@code migrate()} has already returned early for InMemory (no physical
-     * database), so only the two H2 variants and Postgres are ever seen here.
-     */
-    private static void executeRenameColumn(Connection connection, String engine, String table, String oldName, String newName)
-            throws SQLException {
-        String safeTable = safeIdentifier(table);
-        String safeOld = safeIdentifier(oldName);
-        String safeNew = safeIdentifier(newName);
-        String sql = "Postgres".equals(engine)
-                ? "ALTER TABLE " + safeTable + " RENAME COLUMN " + safeOld + " TO " + safeNew
-                : "ALTER TABLE " + safeTable + " ALTER COLUMN " + safeOld + " RENAME TO " + safeNew;
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.executeUpdate();
         }
     }
 
@@ -1576,7 +1426,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // SER-P4.5: which shared columns safely widen (and which tables defer whole to the destructive
         // path under the per-table all-or-nothing rule) is derived from the canonical SchemaDiff, not a
         // second live introspection. Proven byte-identical at P4.5a.
-        WideningPlan derived = wideningPlanFromDiff(dataSource, manifest);
+        TypeWideningPass.WideningPlan derived = TypeWideningPass.wideningPlanFromDiff(dataSource, manifest);
         List<Widening> plan = new ArrayList<>();
         for (String[] entry : derived.widened()) {
             String table = entry[0];
@@ -1593,9 +1443,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             for (Widening w : plan) {
                 itemDetails.add("WIDEN " + w.table() + "." + w.column() + " " + w.fromType() + " -> " + w.toType());
             }
-            recordStepPass(dataSource, manifest, "TYPE_WIDENING", itemDetails, () -> {
+            SchemaHistoryStore.recordStepPass(dataSource, manifest, "TYPE_WIDENING", itemDetails, () -> {
                 for (Widening w : plan) {
-                    executeWidenColumnType(connection, manifest.engine(), w.table(), w.column(), w.toType());
+                    TypeWideningPass.executeWidenColumnType(connection, manifest.engine(), w.table(), w.column(), w.toType());
                     widened.add(w.table() + "." + w.column() + " -> " + w.toType());
                 }
             });
@@ -1616,300 +1466,14 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         }
     }
 
-    /** The type-widening pass's plan derived from the canonical diff (SER-P4.5): the shared columns that
-     * safely widen (each {@code {table, column, fromType}}) and the tables deferred whole to the
-     * destructive path (per-table all-or-nothing: a table with ANY non-widening type change -- a
-     * DESTRUCTIVE_NARROW_TYPE item -- widens nothing). */
-    private record WideningPlan(List<String[]> widened, Set<String> skippedTables) {
-    }
-
-    private static WideningPlan wideningPlanFromDiff(DataSource dataSource, SchemaManifest manifest) {
-        com.finalexec.db.schemastate.CurrentSchema current =
-                new com.finalexec.db.schemastate.CurrentSchemaReader().read(dataSource);
-        com.finalexec.db.schemastate.SchemaDiff diff = new com.finalexec.db.schemastate.SchemaDiffEngine()
-                .diff(DesiredSchemaFactory.fromManifest(manifest),
-                        ShadowParityProbe.scopeToOwnedBusinessTables(current, manifest));
-        Map<String, List<String[]>> widenColsByTable = new LinkedHashMap<>(); // table -> [{column, fromType}]
-        Set<String> narrowTables = new LinkedHashSet<>();
-        for (com.finalexec.db.schemastate.SchemaDiffItem di : diff.items()) {
-            if (di.safetyClass() == com.finalexec.db.schemastate.SafetyClass.SAFE_WIDEN) {
-                widenColsByTable.computeIfAbsent(di.table(), t -> new ArrayList<>())
-                        .add(new String[] {di.column(), di.before()});
-            } else if (di.safetyClass() == com.finalexec.db.schemastate.SafetyClass.DESTRUCTIVE_NARROW_TYPE) {
-                narrowTables.add(di.table());
-            }
-        }
-        // Every table with a type diff (widen and/or narrow); a narrow anywhere on it defers the whole table.
-        Set<String> typeDiffTables = new LinkedHashSet<>(widenColsByTable.keySet());
-        typeDiffTables.addAll(narrowTables);
-        List<String[]> widened = new ArrayList<>();
-        Set<String> skippedTables = new LinkedHashSet<>();
-        for (String table : typeDiffTables) {
-            if (narrowTables.contains(table)) {
-                skippedTables.add(table);
-            } else {
-                for (String[] colFrom : widenColsByTable.getOrDefault(table, List.of())) {
-                    widened.add(new String[] {table, colFrom[0], colFrom[1]});
-                }
-            }
-        }
-        return new WideningPlan(widened, skippedTables);
-    }
-
-    /**
-     * Dialect-specific widen-column-type DDL (§6.1, confirmed against a real H2 instance before
-     * being trusted here -- see {@code SchemaLifecycleExecutorTypeWideningIntegrationTest}):
-     * Postgres uses {@code ALTER COLUMN ... TYPE}, H2 uses {@code ALTER COLUMN ... SET DATA TYPE}.
-     * No {@code USING} clause is added for Postgres -- open question, not testable this session (no
-     * Postgres instance available; see the phase evidence note) -- add one only if a real Postgres
-     * run against one of the matrix's pairs proves it necessary.
-     */
-    private static void executeWidenColumnType(Connection connection, String engine, String table, String column, String newType)
-            throws SQLException {
-        String safeTable = safeIdentifier(table);
-        String safeColumn = safeIdentifier(column);
-        String safeType = safeSqlType(newType);
-        String sql = "Postgres".equals(engine)
-                ? "ALTER TABLE " + safeTable + " ALTER COLUMN " + safeColumn + " TYPE " + safeType
-                : "ALTER TABLE " + safeTable + " ALTER COLUMN " + safeColumn + " SET DATA TYPE " + safeType;
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.executeUpdate();
-        }
-    }
-
-    /**
-     * Guardrail 11's identifier-safety discipline, applied to the SQL TYPE portion of a widening
-     * ALTER statement: a type string comes from the manifest, which is generator-controlled today
-     * (a fixed {@code SqlTypeSupport} mapping) but is still author-adjacent input, not a literal
-     * this class invented -- reject anything that isn't a bare word optionally followed by
-     * {@code (n)} or {@code (p,s)}.
-     */
-    private static String safeSqlType(String sqlType) {
-        String value = sqlType == null ? "" : sqlType.trim();
-        if (!value.matches("[A-Za-z_][A-Za-z0-9_ ]*(\\(\\d+(,\\s?\\d+)?\\))?")) {
-            throw new IllegalStateException("Unsafe SQL type in schema realization manifest: " + sqlType);
-        }
-        return value;
-    }
-
     // ------------------------------------------------------------------------------------------
     // LNCH-1 Phase 5: data pre-checks and literal backfills.
     // ------------------------------------------------------------------------------------------
 
-    /**
-     * LNCH-1 P5 (5.2). Called by {@link #beforeMigrate} at every point classification (after
-     * Phases 1-3's rename/widening attempts) settles on {@code SAFE_ADDITIVE} as the residual --
-     * BEFORE that method returns {@link DestructiveRecreation#safeAdditiveOutcome()} and therefore
-     * BEFORE {@link #migrate}'s {@code flyway.migrate()} call ever runs the R__ repeatable additive
-     * migration.
-     *
-     * <p><b>Why this must run ahead of Flyway, not after (see the class-level design note this
-     * phase adds near {@link #beforeMigrate}):</b> {@code appendAdditiveColumns} (generator-side)
-     * unconditionally emits {@code ADD COLUMN IF NOT EXISTS} for every additive-eligible column,
-     * including required ones with no viable backfill -- if this method let that migration run
-     * first and only refused afterward, a refused required-field addition would still leave a
-     * nullable column sitting in the live database ("never add it in the first place" is the
-     * plan's explicit requirement). So this method:
-     * <ol>
-     *   <li><b>Pass 1 (read-only):</b> for every table, find required, additive-eligible columns
-     *       missing from the live database. A column with a declared literal default is queued for
-     *       backfill; one without (no default, or only an expression default -- v1 only backfills
-     *       literals) is queued as a refusal. Nothing is written to the database in this pass.</li>
-     *   <li>If ANY refusal was queued, throw before this method applies any backfill of its own --
-     *       every pending backfill in this same boot is left un-backfilled, and the stored fingerprint
-     *       is left stale so a fixed retry re-attempts cleanly. (Post-remediation-R2 this method runs
-     *       from {@code afterMigrate}, i.e. AFTER {@code flyway.migrate()}, so on a real boot
-     *       {@code appendAdditiveColumns}'s {@code ADD COLUMN IF NOT EXISTS} may already have added the
-     *       column NULLABLE before this refusal -- harmless: it stays nullable and untightened until a
-     *       fixed model backfills it. The direct-call unit tests bypass {@code flyway.migrate()}, so
-     *       there the column is genuinely never added.)</li>
-     *   <li><b>Pass 2 (apply):</b> only reached when every required column has a literal default.
-     *       For each: {@code ADD COLUMN IF NOT EXISTS} (nullable) -&gt; {@code UPDATE ... SET c = ?
-     *       WHERE c IS NULL} (the literal, bound as a JDBC parameter -- never string-interpolated
-     *       into SQL text, see {@link #decodeLiteralDefault}) -&gt; {@code ALTER COLUMN SET NOT
-     *       NULL} (skipped if already NOT NULL, so crash-recovery re-runs converge instead of
-     *       erroring). When Flyway's R__ migration runs afterward, its {@code ADD COLUMN IF NOT
-     *       EXISTS} for this same column observes it already present -- a harmless no-op.</li>
-     * </ol>
-     *
-     * <p>Idempotent by construction: live columns/nullability are read fresh from
-     * {@link DatabaseMetaData} on every call, so a crash between two backfilled columns (or between
-     * the ADD/UPDATE/SET-NOT-NULL steps of one column) converges cleanly on the next boot -- see
-     * {@code SchemaLifecycleExecutorRequiredFieldBackfillCrashRecoveryTest}.
-     */
-    private void applyRequiredFieldBackfills(DataSource dataSource, SchemaManifest manifest, String stored,
-            SchemaChangeClassification classification) {
-        record PendingBackfill(String table, String column, String sqlType, String literalDefaultJson) {
-        }
-        // SER-P4.6: which additive-eligible required columns need a literal-default backfill (pending) or
-        // have no literal default and so refuse the boot (refusal) is derived from the canonical SchemaDiff
-        // -- covering the missing case (ADD_REQUIRED_COLUMN) AND the crash-recovery half-applied case
-        // (TIGHTEN_NOT_NULL: present-but-nullable; a converged present+NOT NULL column produces no diff
-        // item and is correctly skipped). Each diff item's lower-cased name is resolved back to its
-        // model-case table/column so the emitted DDL and refusal messages are byte-identical to the former
-        // live-introspection loop. Proven equivalent at P4.6a.
-        List<PendingBackfill> pending = new ArrayList<>();
-        List<String> refusals = new ArrayList<>();
-        for (BackfillItem item : backfillItemsFromDiff(dataSource, manifest)) {
-            String table = item.table();   // model-case
-            String column = item.column(); // model-case
-            if (item.refusal()) {
-                boolean hasExpressionDefault = manifest.businessTableExpressionDefaultColumns()
-                        .getOrDefault(table, List.of()).contains(column);
-                refusals.add(table + "." + column + (hasExpressionDefault
-                        ? " (an expression default is declared, but only literal defaults are backfilled "
-                                + "automatically in v1 -- declare a literal default or make the field optional)"
-                        : " (no default declared -- declare a literal default or make the field optional)"));
-            } else {
-                String literalDefaultJson = manifest.businessTableColumnDefaultLiterals()
-                        .getOrDefault(table, Map.of()).get(column);
-                String sqlType = manifest.businessTableColumnTypes().getOrDefault(table, Map.of()).get(column);
-                pending.add(new PendingBackfill(table, column, sqlType, literalDefaultJson));
-            }
-        }
-
-        if (!refusals.isEmpty()) {
-            writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification, null, null, "REFUSED");
-            throw new IllegalStateException("Schema change adds new required field(s) to table(s) with existing "
-                    + "data, but no literal default is available to backfill automatically (LNCH-1 Phase 5): "
-                    + refusals + ". Declare a literal 'default' on the field, or make it optional -- see "
-                    + "docs/SCHEMA_EVOLUTION.md#new-required-fields.");
-        }
-        if (pending.isEmpty()) {
-            return;
-        }
-        List<String> backfilled = new ArrayList<>();
-        // R4 (F5): one write-before-execute audit row for the whole required-field backfill pass.
-        List<String> itemDetails = new ArrayList<>();
-        for (PendingBackfill item : pending) {
-            itemDetails.add("BACKFILL " + item.table() + "." + item.column() + " DEFAULT " + item.literalDefaultJson());
-        }
-        try {
-            recordStepPass(dataSource, manifest, "REQUIRED_BACKFILL", itemDetails, () -> {
-                try (Connection connection = dataSource.getConnection()) {
-                    for (PendingBackfill item : pending) {
-                        addBackfillAndTightenColumn(connection, item.table(), item.column(),
-                                item.sqlType(), item.literalDefaultJson());
-                        backfilled.add(item.table() + "." + item.column());
-                    }
-                }
-            });
-        } catch (SQLException exception) {
-            throw new IllegalStateException("Failed applying required-field backfill(s) (" + backfilled.size() + "/"
-                    + pending.size() + " applied before failure: " + backfilled + ")", exception);
-        }
-        System.out.println("NPDev schema lifecycle: added and backfilled new required column(s) to their declared "
-                + "literal default, then enforced NOT NULL (LNCH-1 Phase 5): " + backfilled);
-    }
-
-    /** One required-field backfill decision derived from the canonical diff (SER-P4.6), in model-case:
-     * an additive-eligible required column that needs a literal-default backfill ({@code refusal=false},
-     * from a NEEDS_BACKFILL item) or has no literal default and so refuses the boot ({@code refusal=true},
-     * from a NEEDS_HOOK item). Covers the MISSING case (ADD_REQUIRED_COLUMN) and the crash-recovery
-     * half-applied case (TIGHTEN_NOT_NULL: present-but-nullable); platform repair (TIGHTEN_PLATFORM) and
-     * required bonds (non-additive) are OTHER passes and excluded. */
-    private record BackfillItem(String table, String column, boolean refusal) {
-    }
-
-    private static List<BackfillItem> backfillItemsFromDiff(DataSource dataSource, SchemaManifest manifest) {
-        com.finalexec.db.schemastate.CurrentSchema current =
-                new com.finalexec.db.schemastate.CurrentSchemaReader().read(dataSource);
-        com.finalexec.db.schemastate.SchemaDiff diff = new com.finalexec.db.schemastate.SchemaDiffEngine()
-                .diff(DesiredSchemaFactory.fromManifest(manifest),
-                        ShadowParityProbe.scopeToOwnedBusinessTables(current, manifest));
-        List<BackfillItem> items = new ArrayList<>();
-        for (com.finalexec.db.schemastate.SchemaDiffItem di : diff.items()) {
-            String key = di.itemKey();
-            if (!key.startsWith("ADD_REQUIRED_COLUMN:") && !key.startsWith("TIGHTEN_NOT_NULL:")) {
-                continue;
-            }
-            // The diff canonicalises names to lower-case; resolve back to the manifest's model-case so the
-            // emitted DDL and refusal messages stay byte-identical to the former loop.
-            String modelTable = resolveModelTable(manifest, di.table());
-            if (modelTable == null) {
-                continue;
-            }
-            String modelColumn = resolveModelColumn(manifest, modelTable, di.column());
-            if (modelColumn == null) {
-                continue;
-            }
-            // This pass only converts additive-eligible required columns; required bonds (non-additive)
-            // and platform columns are refused / repaired by separate passes.
-            if (!containsIgnoreCase(manifest.businessTableRequiredColumns().getOrDefault(modelTable, List.of()), di.column())
-                    || !containsIgnoreCase(manifest.businessTableAdditiveColumns().getOrDefault(modelTable, List.of()), di.column())) {
-                continue;
-            }
-            if (di.safetyClass() == com.finalexec.db.schemastate.SafetyClass.NEEDS_BACKFILL) {
-                items.add(new BackfillItem(modelTable, modelColumn, false));
-            } else if (di.safetyClass() == com.finalexec.db.schemastate.SafetyClass.NEEDS_HOOK) {
-                items.add(new BackfillItem(modelTable, modelColumn, true));
-            }
-        }
-        return items;
-    }
-
-    /** The manifest table whose lower-cased name equals {@code lowerTable} (the diff's canonical form). */
-    private static String resolveModelTable(SchemaManifest manifest, String lowerTable) {
-        for (String table : manifest.businessTableColumns().keySet()) {
-            if (table.toLowerCase(Locale.ROOT).equals(lowerTable)) {
-                return table;
-            }
-        }
-        return null;
-    }
-
-    /** The model-case column of {@code modelTable} whose lower-cased name equals {@code lowerColumn}. */
-    private static String resolveModelColumn(SchemaManifest manifest, String modelTable, String lowerColumn) {
-        for (String column : manifest.businessTableColumns().getOrDefault(modelTable, List.of())) {
-            if (column.toLowerCase(Locale.ROOT).equals(lowerColumn)) {
-                return column;
-            }
-        }
-        return null;
-    }
-
-    /** Case-insensitive membership: {@code lowerTarget} is already lower-cased (the diff canonicalises
-     * column names); the model-case manifest list entries are lower-cased for the comparison. */
-    private static boolean containsIgnoreCase(List<String> values, String lowerTarget) {
-        for (String value : values) {
-            if (value != null && value.toLowerCase(Locale.ROOT).equals(lowerTarget)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * {@code ADD COLUMN IF NOT EXISTS} (nullable) -&gt; bound-parameter {@code UPDATE ... WHERE c
-     * IS NULL} -&gt; {@code SET NOT NULL} (skipped if already so). Every step idempotent-by-check
-     * for crash recovery -- see {@link #applyRequiredFieldBackfills}'s class-level note.
-     *
-     * <p>No engine dialect branch is needed here (unlike rename/widen): {@code ADD COLUMN IF NOT
-     * EXISTS} and {@code ALTER COLUMN ... SET NOT NULL} are both identical syntax on H2 and
-     * Postgres, confirmed against a real H2 instance.
-     */
-    private static void addBackfillAndTightenColumn(Connection connection, String table, String column,
-            String sqlType, String literalDefaultJson) throws SQLException {
-        String safeTable = safeIdentifier(table);
-        String safeColumn = safeIdentifier(column);
-        String safeType = safeSqlType(sqlType);
-        try (PreparedStatement add = connection.prepareStatement(
-                "ALTER TABLE " + safeTable + " ADD COLUMN IF NOT EXISTS " + safeColumn + " " + safeType)) {
-            add.executeUpdate();
-        }
-        Object literalValue = decodeLiteralDefault(literalDefaultJson);
-        try (PreparedStatement update = connection.prepareStatement(
-                "UPDATE " + safeTable + " SET " + safeColumn + " = ? WHERE " + safeColumn + " IS NULL")) {
-            update.setObject(1, literalValue);
-            update.executeUpdate();
-        }
-        if (!isColumnNotNull(connection, table, column)) {
-            try (PreparedStatement notNull = connection.prepareStatement(
-                    "ALTER TABLE " + safeTable + " ALTER COLUMN " + safeColumn + " SET NOT NULL")) {
-                notNull.executeUpdate();
-            }
-        }
-    }
+    // LNCH-1 P5 (5.2): the required-field backfill pass (applyRequiredFieldBackfills + its BackfillItem
+    // plan derivation and DDL helpers) moved verbatim to BackfillPass (T2.B.4 pure mechanical split) --
+    // it was private and not directly unit-tested (only reached via afterMigrate below, which calls
+    // BackfillPass.applyRequiredFieldBackfills(...)).
 
     /**
      * Relaxes {@code NOT NULL} for every shared, live column whose field is no longer declared
@@ -1985,7 +1549,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             for (Relaxation r : plan) {
                 itemDetails.add("RELAX_NOT_NULL " + r.table() + "." + r.column());
             }
-            recordStepPass(dataSource, manifest, "RELAX_NOT_NULL", itemDetails, () -> {
+            SchemaHistoryStore.recordStepPass(dataSource, manifest, "RELAX_NOT_NULL", itemDetails, () -> {
                 for (Relaxation r : plan) {
                     executeDropNotNull(connection, r.table(), r.column());
                     relaxed.add(r.table() + "." + r.column());
@@ -2066,7 +1630,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 itemDetails.add("TIGHTEN_PLATFORM_COLUMN " + item.table() + "." + item.column()
                         + " DEFAULT " + item.platformDefault());
             }
-            recordStepPass(dataSource, manifest, "TIGHTEN_PLATFORM_COLUMNS", itemDetails, () -> {
+            SchemaHistoryStore.recordStepPass(dataSource, manifest, "TIGHTEN_PLATFORM_COLUMNS", itemDetails, () -> {
                 for (Tightening item : plan) {
                     executeBackfillAndSetNotNull(connection, item.table(), item.column(), item.platformDefault());
                     tightened.add(item.table() + "." + item.column());
@@ -2147,23 +1711,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         return columns;
     }
 
-    /**
-     * Decodes a manifest-carried literal default (JSON-encoded by the generator, see
-     * {@code SchemaRealizationEmitter#columnDefaultLiterals}) back to a typed Java value
-     * (String/Integer/Double/Boolean/null) for use as a JDBC bound parameter -- deliberately never
-     * string-interpolated into SQL text (guardrail 11's identifier-safety discipline extended to
-     * VALUE safety, per the plan).
-     */
-    private static Object decodeLiteralDefault(String literalDefaultJson) {
-        try {
-            return OBJECT_MAPPER.readValue(literalDefaultJson, Object.class);
-        } catch (Exception exception) {
-            throw new IllegalStateException(
-                    "Failed decoding literal default from schema realization manifest: " + literalDefaultJson, exception);
-        }
-    }
-
-    private static boolean isColumnNotNull(Connection connection, String table, String column) throws SQLException {
+    /** Package-private (not private): reused by {@link BackfillPass} and {@link PlatformColumnPass}
+     * (T2.B.4 split), following this class's own precedent for shared live-introspection helpers. */
+    static boolean isColumnNotNull(Connection connection, String table, String column) throws SQLException {
         DatabaseMetaData metadata = connection.getMetaData();
         for (String candidate : List.of(table.toLowerCase(Locale.ROOT), table.toUpperCase(Locale.ROOT))) {
             try (ResultSet resultSet = metadata.getColumns(null, null, candidate, null)) {
@@ -2179,73 +1729,10 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         return false;
     }
 
-    /**
-     * LNCH-1 P5 (5.3). Called by {@link #beforeMigrate} unconditionally, once Phases 1-3's rename/
-     * widening attempts have run their course but BEFORE {@link SchemaDeltaReport} (Phase 4's
-     * destructive-report machinery) is ever invoked. Independently re-derives, per table, the
-     * residual missing-column set (live columns vs. manifest-expected, minus anything explained by
-     * a declared rename) -- the SAME computation {@link SchemaDeltaReport} makes, deliberately not
-     * trusting {@link #classify}'s aggregate return value (which short-circuits to
-     * {@code DESTRUCTIVE} the moment ANY table looks bad, without evaluating the rest) so this check
-     * is correct regardless of what else is happening on other tables in the same boot.
-     *
-     * <p>A required column that is missing AND not additive-eligible is -- after the LNCH-1 P5
-     * (5.3) change to {@code isAdditiveEligible} -- necessarily a REQUIRED bond/FK field (the only
-     * remaining reason a required column can fail additive-eligibility; a plain required field is
-     * always additive-eligible and is {@link #applyRequiredFieldBackfills}'s concern instead). A
-     * bond has no literal-default backfill possible in v1 (its "default" would need to reference an
-     * existing row's actual key), so this always refuses -- intercepting the case with a dedicated,
-     * itemized message BEFORE {@link SchemaDeltaReport} would otherwise have to fall back to its
-     * generic {@code Unknown} item kind for it (moving it out of that bucket, per the plan).
-     */
-    private void refuseIfRequiredBondColumnMissing(DataSource dataSource, SchemaManifest manifest, String stored,
-            SchemaChangeClassification classification) {
-        List<String> violations = new ArrayList<>();
-        try (Connection connection = dataSource.getConnection()) {
-            DatabaseMetaData metadata = connection.getMetaData();
-            for (Map.Entry<String, List<String>> entry : manifest.businessTableColumns().entrySet()) {
-                String table = entry.getKey();
-                List<String> requiredColumns = manifest.businessTableRequiredColumns().getOrDefault(table, List.of());
-                if (requiredColumns.isEmpty()) {
-                    continue;
-                }
-                Set<String> actualColumns = readActualColumns(metadata, table);
-                if (actualColumns.isEmpty()) {
-                    continue; // brand-new table -- nothing missing, nothing to refuse
-                }
-                Set<String> expected = new LinkedHashSet<>(entry.getValue());
-                Set<String> extraInDb = new LinkedHashSet<>(actualColumns);
-                extraInDb.removeAll(expected);
-                Set<String> missingInDb = new LinkedHashSet<>(expected);
-                missingInDb.removeAll(actualColumns);
-                if (missingInDb.isEmpty()) {
-                    continue;
-                }
-                // REG-6: "a required column missing AND not additive-eligible is a required bond" is
-                // no longer re-derived inline here — it is ColumnFacts.bond(), computed once per column.
-                Map<String, ColumnFacts> facts = columnFactsFor(manifest, table);
-                Map<String, String> renames = manifest.businessTableRenamedColumns().getOrDefault(table, Map.of());
-                RenameResolution.Result resolution = RenameResolution.resolve(missingInDb, extraInDb, renames);
-                for (String column : resolution.remainingMissing()) {
-                    ColumnFacts columnFacts = facts.get(column);
-                    if (columnFacts != null && columnFacts.bond()) {
-                        violations.add(table + "." + column);
-                    }
-                }
-            }
-        } catch (SQLException exception) {
-            throw new IllegalStateException("Failed inspecting live database for required bond field additions", exception);
-        }
-        if (violations.isEmpty()) {
-            return;
-        }
-        writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification, null, null, "REFUSED");
-        throw new IllegalStateException("Schema change adds new required bond/reference field(s) to table(s) with "
-                + "existing data: " + violations + ". A required bond has no automatic literal-default backfill in "
-                + "v1 (its value would need to reference an existing row's actual key) -- make the field optional, "
-                + "or use the itemized destructive-acknowledgment path (LNCH-1 Phase 4) to recreate the table -- see "
-                + "docs/SCHEMA_EVOLUTION.md#new-required-fields.");
-    }
+    // LNCH-1 P5 (5.3): the required-bond refusal check (refuseIfRequiredBondColumnMissing) moved
+    // verbatim to BackfillPass (T2.B.4 pure mechanical split) -- it was private and not directly
+    // unit-tested (only reached via beforeMigrateDecision below, which calls
+    // BackfillPass.refuseIfRequiredBondColumnMissing(...)).
 
     /**
      * LNCH-1 P5 (5.1). Called by {@link #afterMigrate} on every boot (cheap, idempotent -- an
@@ -2314,7 +1801,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             // every other refusal's "from_fingerprint" history-row convention.
             // R4 (F5): record the violation messages as items_json with a UNIQUE_PRECHECK label,
             // instead of an empty, classification-less REFUSED row.
-            insertRawHistoryRow(dataSource, readFingerprint(dataSource), manifest.schemaFingerprint(),
+            SchemaHistoryStore.insertRawHistoryRow(dataSource, readFingerprint(dataSource), manifest.schemaFingerprint(),
                     "UNIQUE_PRECHECK", violationMessages, "REFUSED");
             throw new IllegalStateException("Schema change adds new unique constraint(s), but existing data "
                     + "violates them (LNCH-1 Phase 5). Resolve the duplicate row(s) first, or relax the constraint: "
@@ -2769,78 +2256,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         return missing;
     }
 
-    /** REG-8 Trigger C: {@code npdev_schema_history}'s {@code (to_fingerprint, applied_at_utc)} pair
-     * for the most recent row matching a query -- either a specific target fingerprint or the whole
-     * table. */
-    private record HistoryPoint(String toFingerprint, long appliedAtUtc) {
-    }
-
-    /**
-     * REG-8 Trigger C (D4). Returns the history point that proves this database was migrated PAST
-     * this build, or empty if nothing indicates that.
-     *
-     * <p>Deliberately NOT "does history contain a row for {@code stored} newer than THIS build's own
-     * fingerprint" -- every ordinary forward upgrade would trip that (the current {@code stored}
-     * value, by construction, always has a matching history row once any prior boot has gone through
-     * the mismatch branch, INCLUDING a perfectly legitimate upgrade). The actual signal is narrower
-     * and matches the register's own framing ("newer than what this build LAST WROTE"): has THIS
-     * build's OWN target fingerprint ever been reached before (a row with {@code to_fingerprint =
-     * manifest.schemaFingerprint()})? If never, this is a legitimate first-time deploy of this
-     * fingerprint -- nothing to compare against, and Trigger C stays silent. If it HAS been reached
-     * before, but a LATER row exists whose {@code to_fingerprint} differs, some other build has since
-     * moved this exact database past the point this build itself last owned it.
-     */
-    private static Optional<HistoryPoint> databaseMigratedPastThisBuild(DataSource dataSource, SchemaManifest manifest) {
-        Optional<Long> lastReachedByThisBuild = latestOutcomeTimestamp(dataSource, manifest.schemaFingerprint());
-        if (lastReachedByThisBuild.isEmpty()) {
-            return Optional.empty();
-        }
-        Optional<HistoryPoint> latestOverall = latestOutcomeOverall(dataSource);
-        if (latestOverall.isPresent()
-                && latestOverall.get().appliedAtUtc() > lastReachedByThisBuild.get()
-                && !manifest.schemaFingerprint().equals(latestOverall.get().toFingerprint())) {
-            return latestOverall;
-        }
-        return Optional.empty();
-    }
-
-    /** {@code APPLIED}/{@code MANUALLY_MARKED_DONE} are the outcomes that represent a REAL, recorded
-     * advance of this database's schema state -- as opposed to {@code REFUSED}/{@code PARTIAL-CRASH}
-     * (nothing durably changed) or the {@code EXTERNAL_*} outcomes (REG-7.1's read-only ownership
-     * mode, which never writes {@code npdev_schema_metadata} and is not part of this fingerprint-
-     * pointer lifecycle at all). */
-    private static Optional<Long> latestOutcomeTimestamp(DataSource dataSource, String toFingerprint) {
-        try (Connection connection = dataSource.getConnection()) {
-            ensureHistoryTable(connection);
-            try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT applied_at_utc FROM " + HISTORY_TABLE + " WHERE to_fingerprint = ? AND outcome IN ("
-                            + "'APPLIED', 'MANUALLY_MARKED_DONE') ORDER BY applied_at_utc DESC")) {
-                statement.setString(1, toFingerprint);
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    return resultSet.next() ? Optional.of(resultSet.getLong(1)) : Optional.empty();
-                }
-            }
-        } catch (SQLException exception) {
-            return Optional.empty();
-        }
-    }
-
-    private static Optional<HistoryPoint> latestOutcomeOverall(DataSource dataSource) {
-        try (Connection connection = dataSource.getConnection()) {
-            ensureHistoryTable(connection);
-            try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT to_fingerprint, applied_at_utc FROM " + HISTORY_TABLE + " WHERE outcome IN ("
-                            + "'APPLIED', 'MANUALLY_MARKED_DONE') ORDER BY applied_at_utc DESC")) {
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    return resultSet.next()
-                            ? Optional.of(new HistoryPoint(resultSet.getString(1), resultSet.getLong(2)))
-                            : Optional.empty();
-                }
-            }
-        } catch (SQLException exception) {
-            return Optional.empty();
-        }
-    }
+    // REG-8 Trigger C: HistoryPoint / databaseMigratedPastThisBuild / latestOutcomeTimestamp /
+    // latestOutcomeOverall moved verbatim to SchemaHistoryStore (T2.B.4 pure mechanical split);
+    // beforeMigrateDecision below calls SchemaHistoryStore.databaseMigratedPastThisBuild(...).
 
     private static Set<String> lowerCased(Collection<String> values) {
         Set<String> normalized = new LinkedHashSet<>();
@@ -2956,7 +2374,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // fingerprint-MATCH boot: a legacy app that converged with an old-bug nullable-but-required
         // column must not suddenly refuse on a routine restart (healing legacy drift is out of scope).
         if (fingerprintChanged) {
-            applyRequiredFieldBackfills(dataSource, manifest, storedAtBootStart, null);
+            BackfillPass.applyRequiredFieldBackfills(dataSource, manifest, storedAtBootStart, null);
         }
         // LNCH-1 P5 (5.1): runs on every boot, after flyway.migrate() has already applied the R__
         // additive-columns migration, so a unique constraint declared alongside a brand-new column
@@ -2998,7 +2416,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // bug). writeAppliedHistoryRow self-ensures the table and never lets a history-write failure
         // block the boot.
         if (storedAtBootStart == null || storedAtBootStart.isBlank()) {
-            writeAppliedHistoryRow(dataSource, null, manifest.schemaFingerprint(), null);
+            SchemaHistoryStore.writeAppliedHistoryRow(dataSource, null, manifest.schemaFingerprint(), null);
         }
     }
 
@@ -3130,224 +2548,13 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         }
     }
 
-    /**
-     * LNCH-1 Phase 4 (task 4.4). Idempotent, self-bootstrapped exactly like {@link #METADATA_TABLE}
-     * -- called at the top of every history write so a fresh app (no prior destructive/rename/
-     * widening pass) still gets the table before its first row.
-     */
-    private static void ensureHistoryTable(Connection connection) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(
-                "CREATE TABLE IF NOT EXISTS " + HISTORY_TABLE
-                        + " (id TEXT PRIMARY KEY, applied_at_utc BIGINT NOT NULL, from_fingerprint TEXT, "
-                        + "to_fingerprint TEXT, classification TEXT, items_json TEXT, ack_token_used TEXT, "
-                        + "outcome TEXT NOT NULL)"
-        )) {
-            statement.executeUpdate();
-        }
-    }
-
-    /**
-     * Every destructive item's {@link SchemaDeltaItem#displayString()}, JSON-serialized as a
-     * plain array of strings -- already in {@link SchemaDeltaReport}'s deterministic sorted order,
-     * so this column's content is itself order-independent for the same underlying diff. Uses the
-     * DISPLAY form (not the hashed stable string) so a {@code DROP_TABLE} row keeps its human-facing
-     * row-count metadata in {@code items_json}, even though that count is out of the ack-token hash
-     * (LNCH-1 remediation F2).
-     */
-    private static String itemsJson(SchemaDeltaReport report) {
-        try {
-            return OBJECT_MAPPER.writeValueAsString(report == null ? List.of() : report.displayStrings());
-        } catch (Exception exception) {
-            return "[]";
-        }
-    }
-
-    /**
-     * The single, shared INSERT used by every history-row writer below. A broken write is caught
-     * and logged here, never propagated -- a history-table failure (unreachable metadata table,
-     * disk full) must never mask or replace the actual migration outcome (a thrown refusal, or a
-     * successfully-applied change) -- "if the metadata table is reachable" per the plan.
-     *
-     * @return the row's generated id, or {@code null} if the write itself failed (callers must
-     *         treat a {@code null} id as "there is no row to later update").
-     */
-    private static String insertHistoryRow(
-            DataSource dataSource,
-            String fromFingerprint,
-            String toFingerprint,
-            SchemaChangeClassification classification,
-            SchemaDeltaReport report,
-            String ackTokenUsed,
-            String outcome
-    ) {
-        String id = UUID.randomUUID().toString();
-        try (Connection connection = dataSource.getConnection()) {
-            ensureHistoryTable(connection);
-            try (PreparedStatement statement = connection.prepareStatement(
-                    "INSERT INTO " + HISTORY_TABLE + " (id, applied_at_utc, from_fingerprint, to_fingerprint, "
-                            + "classification, items_json, ack_token_used, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-            )) {
-                statement.setString(1, id);
-                statement.setLong(2, System.currentTimeMillis());
-                statement.setString(3, fromFingerprint);
-                statement.setString(4, toFingerprint);
-                statement.setString(5, classification == null ? null : classification.name());
-                statement.setString(6, itemsJson(report));
-                if (ackTokenUsed == null || ackTokenUsed.isBlank()) {
-                    statement.setNull(7, Types.VARCHAR);
-                } else {
-                    statement.setString(7, ackTokenUsed);
-                }
-                statement.setString(8, outcome);
-                statement.executeUpdate();
-            }
-            return id;
-        } catch (Exception exception) {
-            System.out.println("NPDev schema lifecycle: failed writing npdev_schema_history row (continuing -- "
-                    + "a broken history write must never block or mask the actual migration outcome): "
-                    + exception.getMessage());
-            return null;
-        }
-    }
-
-    /** REFUSED / arbitrary-outcome one-shot write (no later update). Used by refusals ("nothing
-     * was attempted, so INSERT directly with outcome = REFUSED", per the plan) and by the safe
-     * (additive/rename/widening) paths, where write-then-immediately-mark-applied is fine since
-     * those steps are individually idempotent-by-check -- no crash-window concern. */
-    private static void writeHistoryRow(
-            DataSource dataSource,
-            String fromFingerprint,
-            String toFingerprint,
-            SchemaChangeClassification classification,
-            SchemaDeltaReport report,
-            String ackTokenUsed,
-            String outcome
-    ) {
-        insertHistoryRow(dataSource, fromFingerprint, toFingerprint, classification, report, ackTokenUsed, outcome);
-    }
-
-    /** Safe-path (SAFE_ADDITIVE / RENAME_DETECTED / TYPE_CHANGE_DETECTED-resolved-by-widening)
-     * history row: no destructive items to report (an empty items list), no acknowledgment token,
-     * outcome APPLIED directly -- see {@link #writeHistoryRow}'s javadoc for why a single INSERT is
-     * sufficient here. */
-    private static void writeAppliedHistoryRow(
-            DataSource dataSource,
-            String fromFingerprint,
-            String toFingerprint,
-            SchemaChangeClassification classification
-    ) {
-        insertHistoryRow(dataSource, fromFingerprint, toFingerprint, classification, null, null, "APPLIED");
-    }
-
-    /** Destructive-path PENDING write ("write-before-execute", §2.4): inserted with
-     * {@code outcome = 'PARTIAL-CRASH'} before any DDL runs. */
-    private static String insertPendingHistoryRow(
-            DataSource dataSource,
-            String fromFingerprint,
-            String toFingerprint,
-            SchemaChangeClassification classification,
-            SchemaDeltaReport report,
-            String ackTokenUsed
-    ) {
-        return insertHistoryRow(dataSource, fromFingerprint, toFingerprint, classification, report, ackTokenUsed, "PARTIAL-CRASH");
-    }
-
-    /** Destructive-path "update-after" (§2.4): flips a PARTIAL-CRASH row to APPLIED once every
-     * item in the pass has executed successfully. A {@code null} id (the pending insert itself
-     * failed) is a safe no-op -- there is no row to update. */
-    private static void markHistoryRowApplied(DataSource dataSource, String historyId) {
-        if (historyId == null) {
-            return;
-        }
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(
-                     "UPDATE " + HISTORY_TABLE + " SET outcome = ? WHERE id = ?")) {
-            statement.setString(1, "APPLIED");
-            statement.setString(2, historyId);
-            statement.executeUpdate();
-        } catch (SQLException exception) {
-            System.out.println("NPDev schema lifecycle: failed updating npdev_schema_history outcome to APPLIED "
-                    + "for row " + historyId + " (the DDL itself already succeeded -- only the audit row write "
-                    + "failed): " + exception.getMessage());
-        }
-    }
-
-    /** A DDL action that may throw {@link SQLException}, for {@link #recordStepPass}. */
-    @FunctionalInterface
-    private interface SqlRunnable {
-        void run() throws SQLException;
-    }
-
-    /** {@code items_json} for a plain list of human-readable step-item strings (the per-pass
-     * write-before-execute rows, LNCH-1 remediation R4 / F5), rather than a {@link SchemaDeltaReport}. */
-    private static String itemsJson(List<String> itemDetails) {
-        try {
-            return OBJECT_MAPPER.writeValueAsString(itemDetails == null ? List.of() : itemDetails);
-        } catch (Exception exception) {
-            return "[]";
-        }
-    }
-
-    /**
-     * LNCH-1 remediation R4 (F5): write-before-execute history for a single mutating PASS (a batch of
-     * renames/relaxations/widenings/backfills). Semantics per plan §2.4: if {@code itemDetails} is
-     * empty, run and write NOTHING (no noise rows on no-op boots); otherwise insert one
-     * {@code PARTIAL-CRASH} row (classification = {@code stepName}, {@code items_json} = the item
-     * detail list) BEFORE running the DDL, then flip it to {@code APPLIED} after every item executes.
-     * A crash mid-pass leaves the row at {@code PARTIAL-CRASH} -- an accurate record that this pass
-     * did not finish. The from-fingerprint is read live (still the pre-boot value at this point, since
-     * {@code afterMigrate} writes the new one only at the very end).
-     */
-    private void recordStepPass(DataSource dataSource, SchemaManifest manifest, String stepName,
-            List<String> itemDetails, SqlRunnable ddl) throws SQLException {
-        if (itemDetails == null || itemDetails.isEmpty()) {
-            return;
-        }
-        String from = readFingerprint(dataSource);
-        String historyId = insertStepPendingRow(dataSource, from, manifest.schemaFingerprint(), stepName, itemDetails);
-        ddl.run();
-        markHistoryRowApplied(dataSource, historyId);
-    }
-
-    /** Inserts a {@code PARTIAL-CRASH} history row carrying a raw step name (classification) and a
-     * raw item-detail list (items_json), for {@link #recordStepPass}. Follows {@link #insertHistoryRow}'s
-     * broken-write-never-propagates discipline: a failed audit write returns {@code null} (a safe
-     * no-op for the later {@link #markHistoryRowApplied}) and never blocks the DDL it records. */
-    private static String insertStepPendingRow(DataSource dataSource, String fromFingerprint,
-            String toFingerprint, String stepName, List<String> itemDetails) {
-        return insertRawHistoryRow(dataSource, fromFingerprint, toFingerprint, stepName, itemDetails, "PARTIAL-CRASH");
-    }
-
-    /** Like {@link #insertHistoryRow} but writes a RAW classification string (a step name or a
-     * pre-check label, not a {@link SchemaChangeClassification} enum) and a raw item-detail list --
-     * used by {@link #recordStepPass} (PARTIAL-CRASH) and by the unique-precheck refusal (REFUSED),
-     * both LNCH-1 remediation R4 / F5. Same broken-write-never-propagates discipline. */
-    private static String insertRawHistoryRow(DataSource dataSource, String fromFingerprint,
-            String toFingerprint, String classificationText, List<String> itemDetails, String outcome) {
-        String id = UUID.randomUUID().toString();
-        try (Connection connection = dataSource.getConnection()) {
-            ensureHistoryTable(connection);
-            try (PreparedStatement statement = connection.prepareStatement(
-                    "INSERT INTO " + HISTORY_TABLE + " (id, applied_at_utc, from_fingerprint, to_fingerprint, "
-                            + "classification, items_json, ack_token_used, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-            )) {
-                statement.setString(1, id);
-                statement.setLong(2, System.currentTimeMillis());
-                statement.setString(3, fromFingerprint);
-                statement.setString(4, toFingerprint);
-                statement.setString(5, classificationText);
-                statement.setString(6, itemsJson(itemDetails));
-                statement.setNull(7, Types.VARCHAR);
-                statement.setString(8, outcome);
-                statement.executeUpdate();
-            }
-            return id;
-        } catch (Exception exception) {
-            System.out.println("NPDev schema lifecycle: failed writing npdev_schema_history detail row (continuing -- "
-                    + "a broken history write must never block the actual migration): " + exception.getMessage());
-            return null;
-        }
-    }
+    // LNCH-1 Phase 4 (task 4.4) / R4 (F5): ensureHistoryTable, itemsJson (both overloads),
+    // insertHistoryRow, writeHistoryRow, writeAppliedHistoryRow, insertPendingHistoryRow,
+    // markHistoryRowApplied, SqlRunnable, recordStepPass, insertStepPendingRow, insertRawHistoryRow
+    // and the npdev_schema_history HISTORY_TABLE constant all moved verbatim to SchemaHistoryStore
+    // (T2.B.4 pure mechanical split) -- callers throughout this class now go through
+    // SchemaHistoryStore.writeHistoryRow(...) / .writeAppliedHistoryRow(...) / .recordStepPass(...) /
+    // .insertRawHistoryRow(...) / .insertPendingHistoryRow(...) / .markHistoryRowApplied(...).
 
     private static String readFingerprint(DataSource dataSource) {
         try (Connection connection = dataSource.getConnection();
