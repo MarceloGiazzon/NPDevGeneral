@@ -5,9 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.schemaevolution.DestructiveAckToken;
 import com.npdev.dsl.v1.schemaevolution.RenameResolution;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem;
-import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.DropColumn;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.DropTable;
-import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.NarrowType;
 import com.npdev.dsl.v1.schemaevolution.SqlTypeNormalization;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.schemaevolution.TypeChangeMatrix;
@@ -15,7 +13,6 @@ import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.Configuration;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Component;
@@ -26,7 +23,6 @@ import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -37,7 +33,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 
 /**
  * ColumnFacts directive (REG-6, 2026-07-22): any NEW pass added to this executor MUST answer
@@ -91,8 +86,10 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * {@code version BIGINT NOT NULL DEFAULT 0}, {@code row_version BIGINT NOT NULL DEFAULT 0} and
      * {@code tenant_id VARCHAR(120) NOT NULL DEFAULT 'default'}. Co-located with (and REG-6-guarded
      * against) {@link #PLATFORM_MANAGED_COLUMNS} so the two cannot silently drift.
+     *
+     * <p>Package-private (not private): reused by {@link PlatformColumnPass} (T2.B.4 split).
      */
-    private static final List<String> REPAIRABLE_PLATFORM_COLUMNS =
+    static final List<String> REPAIRABLE_PLATFORM_COLUMNS =
             List.of("version", "row_version", "tenant_id");
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -345,7 +342,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * real H2 {@link DataSource}, following every other destructive/verification pass in this class.
      */
     void verifyExternallyManagedSchemaCompatible(DataSource dataSource, SchemaManifest manifest) {
-        List<String> problems = findExternalSchemaIncompatibilities(dataSource, manifest);
+        List<String> problems = ExternalSchemaVerification.findExternalSchemaIncompatibilities(dataSource, manifest);
         String fromFingerprint = readFingerprint(dataSource);
         if (!problems.isEmpty()) {
             SchemaHistoryStore.writeHistoryRow(dataSource, fromFingerprint, manifest.schemaFingerprint(), null, null, null, "EXTERNAL_REFUSED");
@@ -360,188 +357,11 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 + "compatible with this build's model; no schema DDL issued.");
     }
 
-    /**
-     * REG-7.1 (D5): the read-only compatibility check itself. Returns one itemized, human-readable
-     * problem string per incompatibility; empty when the live schema fully satisfies this build's model.
-     *
-     * <p><b>SER-P5.2 — full-shape, not column-shape.</b> This used to check only table existence, column
-     * existence and column type, so an external schema that matched every column NAME but violated the
-     * model's nullability or uniqueness assumptions verified "compatible" and failed later at runtime.
-     * It now also checks <b>nullability</b> (both fatal directions — see
-     * {@link #appendExternalNullabilityProblem}) and <b>unique constraints</b> the model declares
-     * ({@link #appendExternalUniqueProblems}), sourcing those facts from the canonical
-     * {@code CurrentSchema}/{@code DesiredSchema} pair rather than a second hand-rolled introspection
-     * (REG-6: one notion of "does the live schema match", never a second, drifting one).
-     *
-     * <p><b>Still not checked (deferred):</b> foreign keys and indexes. The manifest carries no explicit
-     * FK/index lists (the P0.2 asymmetry — they are derived at generation), so the desired side cannot yet
-     * express them; {@code CurrentSchemaReader} already reads them for when it can. Until then an external
-     * schema missing a bond's FK or an index verifies clean.
-     */
-    private static List<String> findExternalSchemaIncompatibilities(DataSource dataSource, SchemaManifest manifest) {
-        List<String> problems = new ArrayList<>();
-        // SER-P5.2: the FULL-SHAPE facts (nullability, uniques) come from the canonical CurrentSchema +
-        // DesiredSchema -- the same models classify/SchemaDeltaReport/the Impact Report consume -- so this
-        // verification is no longer a second, drifting notion of "does the live schema match" (REG-6).
-        // Read once, outside the metadata loop below.
-        com.finalexec.db.schemastate.CurrentSchema fullCurrent =
-                new com.finalexec.db.schemastate.CurrentSchemaReader().read(dataSource);
-        com.finalexec.db.schemastate.DesiredSchema fullDesired = DesiredSchemaFactory.fromManifest(manifest);
-        try (Connection connection = dataSource.getConnection()) {
-            DatabaseMetaData metadata = connection.getMetaData();
-            for (Map.Entry<String, List<String>> entry : manifest.businessTableColumns().entrySet()) {
-                String table = entry.getKey();
-                Set<String> live = readActualColumns(metadata, table);
-                if (live.isEmpty()) {
-                    problems.add(table + " (table missing)");
-                    continue;
-                }
-                String tableKey = table.toLowerCase(Locale.ROOT);
-                com.finalexec.db.schemastate.CurrentTable liveTable = fullCurrent.tables().get(tableKey);
-                com.finalexec.db.schemastate.DesiredTable desiredTable = fullDesired.tables().get(tableKey);
-                Map<String, String> expectedTypes = manifest.businessTableColumnTypes().getOrDefault(table, Map.of());
-                Map<String, String> actualTypes = readActualColumnTypes(metadata, table);
-                for (String column : entry.getValue()) {
-                    String normalized = column.toLowerCase(Locale.ROOT);
-                    if (!live.contains(normalized)) {
-                        problems.add(table + "." + column + " (column missing)");
-                        continue;
-                    }
-                    String expectedType = normalizeSqlType(expectedTypes.get(column));
-                    String actualType = normalizeSqlType(actualTypes.get(column));
-                    if (expectedType != null && actualType != null && !expectedType.equals(actualType)) {
-                        problems.add(table + "." + column + " (type mismatch: model expects " + expectedType
-                                + ", live schema has " + actualType + ")");
-                    }
-                    appendExternalNullabilityProblem(problems, table, column, liveTable, desiredTable, normalized);
-                }
-                appendExternalUniqueProblems(problems, table, liveTable, desiredTable);
-                appendExternalForeignKeyAndIndexProblems(problems, table, liveTable, manifest);
-            }
-        } catch (SQLException exception) {
-            problems.add("(failed introspecting live schema: " + exception.getMessage() + ")");
-        }
-        return problems;
-    }
-
-    /**
-     * SER-P5.2: the nullability half of the full-shape {@code ExternallyManaged} check. Two genuinely
-     * fatal directions, each reported with the reason it breaks at RUNTIME (this path refuses a boot, so
-     * it must not flag a difference that would in fact work):
-     * <ul>
-     *   <li><b>model requires NOT NULL, live is nullable</b> — the app can read a {@code null} into a
-     *       field its model says always has a value.</li>
-     *   <li><b>live is NOT NULL with NO default, model treats it as optional</b> — an insert that omits
-     *       the column fails outright. The {@code no default} qualifier matters: a live {@code NOT NULL
-     *       DEFAULT …} column is perfectly safe for an optional model field, so it is NOT flagged.</li>
-     * </ul>
-     */
-    private static void appendExternalNullabilityProblem(List<String> problems, String table, String column,
-            com.finalexec.db.schemastate.CurrentTable liveTable,
-            com.finalexec.db.schemastate.DesiredTable desiredTable, String columnKey) {
-        if (liveTable == null || desiredTable == null) {
-            return;
-        }
-        com.finalexec.db.schemastate.CurrentColumn liveColumn = liveTable.columns().get(columnKey);
-        com.finalexec.db.schemastate.DesiredColumn desiredColumn = desiredTable.columns().get(columnKey);
-        if (liveColumn == null || desiredColumn == null) {
-            return;
-        }
-        if (!desiredColumn.nullable() && liveColumn.nullable()) {
-            problems.add(table + "." + column + " (nullability mismatch: the model requires a value (NOT NULL) "
-                    + "but the live column is nullable)");
-        } else if (desiredColumn.nullable() && !liveColumn.nullable()
-                && liveColumn.defaultValueNormalized() == null) {
-            problems.add(table + "." + column + " (nullability mismatch: the live column is NOT NULL with no "
-                    + "default but the model treats it as optional -- an insert that omits it will fail)");
-        }
-    }
-
-    /**
-     * SER-P5.2: the uniqueness half. A unique invariant the MODEL declares but the live schema does not
-     * enforce is a silent data-integrity hole (the app assumes uniqueness nothing guarantees). A live
-     * unique constraint the model does NOT declare is deliberately tolerated — an externally-managed
-     * schema is allowed to be stricter than the model. A primary key covering exactly the same columns
-     * satisfies the requirement.
-     */
-    private static void appendExternalUniqueProblems(List<String> problems, String table,
-            com.finalexec.db.schemastate.CurrentTable liveTable,
-            com.finalexec.db.schemastate.DesiredTable desiredTable) {
-        if (liveTable == null || desiredTable == null) {
-            return;
-        }
-        for (com.finalexec.db.schemastate.DesiredUniqueConstraint wanted : desiredTable.uniques()) {
-            boolean satisfied = sameColumnSet(liveTable.primaryKeyColumns(), wanted.columns());
-            for (com.finalexec.db.schemastate.CurrentUniqueConstraint live : liveTable.uniques()) {
-                satisfied = satisfied || sameColumnSet(live.columns(), wanted.columns());
-            }
-            if (!satisfied) {
-                problems.add(table + " (missing unique constraint on " + wanted.columns()
-                        + ": the model declares this combination unique but the live schema does not enforce it)");
-            }
-        }
-    }
-
-    /**
-     * SER-G8: the foreign-key and index half of the full-shape {@code ExternallyManaged} check — the last
-     * dimension P5.2 could not cover until the manifest carried explicit FK/index lists.
-     *
-     * <p><b>Missing-only, matched by column set.</b> A live schema is allowed to have EXTRA FKs and extra
-     * indexes (an external DBA's performance indexes, and every engine's implicit PK/unique-backing index);
-     * only something the MODEL declares and the live schema lacks is reported. Matching deliberately
-     * ignores constraint/index NAMES — they are engine-generated ({@code PRIMARY_KEY_5} on H2,
-     * {@code widgets_pkey} on Postgres) and would produce pure noise. A unique constraint or primary key
-     * over the same columns satisfies a declared index.
-     */
-    private static void appendExternalForeignKeyAndIndexProblems(List<String> problems, String table,
-            com.finalexec.db.schemastate.CurrentTable liveTable, SchemaManifest manifest) {
-        if (liveTable == null) {
-            return;
-        }
-        for (ForeignKeyDecl wanted : manifest.businessTableForeignKeys().getOrDefault(table, List.of())) {
-            boolean satisfied = false;
-            for (com.finalexec.db.schemastate.CurrentForeignKey live : liveTable.foreignKeys()) {
-                satisfied = satisfied || (sameColumnSet(live.columns(), wanted.columns())
-                        && live.referencedTable() != null
-                        && live.referencedTable().equalsIgnoreCase(wanted.referencedTable()));
-            }
-            if (!satisfied) {
-                problems.add(table + " (missing foreign key on " + wanted.columns() + " -> "
-                        + wanted.referencedTable() + ": the model declares this bond but the live schema "
-                        + "does not enforce referential integrity for it)");
-            }
-        }
-        for (IndexDecl wanted : manifest.businessTableIndexes().getOrDefault(table, List.of())) {
-            boolean satisfied = sameColumnSet(liveTable.primaryKeyColumns(), wanted.columns());
-            for (com.finalexec.db.schemastate.CurrentIndex live : liveTable.indexes()) {
-                satisfied = satisfied || (sameColumnSet(live.columns(), wanted.columns())
-                        && (!wanted.unique() || live.unique()));
-            }
-            for (com.finalexec.db.schemastate.CurrentUniqueConstraint live : liveTable.uniques()) {
-                satisfied = satisfied || sameColumnSet(live.columns(), wanted.columns());
-            }
-            if (!satisfied) {
-                problems.add(table + " (missing " + (wanted.unique() ? "unique " : "") + "index on "
-                        + wanted.columns() + ": the model declares it but the live schema does not have it)");
-            }
-        }
-    }
-
-    /** Order-insensitive, case-insensitive column-set equality for constraint comparison. */
-    private static boolean sameColumnSet(List<String> a, List<String> b) {
-        if (a == null || b == null || a.size() != b.size()) {
-            return false;
-        }
-        Set<String> left = new LinkedHashSet<>();
-        for (String value : a) {
-            left.add(value == null ? "" : value.toLowerCase(Locale.ROOT));
-        }
-        Set<String> right = new LinkedHashSet<>();
-        for (String value : b) {
-            right.add(value == null ? "" : value.toLowerCase(Locale.ROOT));
-        }
-        return left.equals(right);
-    }
+    // REG-7.1 (D5) / SER-P5.2 / SER-G8: findExternalSchemaIncompatibilities (+ its
+    // appendExternalNullabilityProblem/appendExternalUniqueProblems/appendExternalForeignKeyAndIndexProblems/
+    // sameColumnSet helpers) moved verbatim to ExternalSchemaVerification (T2.B.4 pure mechanical split) --
+    // verifyExternallyManagedSchemaCompatible above calls
+    // ExternalSchemaVerification.findExternalSchemaIncompatibilities(...).
 
     /**
      * REG-7.2: applies an operator-recorded "mark done" -- fast-forwards the stored fingerprint
@@ -900,7 +720,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     + ". Set the generated manifest's destructiveAcknowledgment to this token, or submit it via "
                     + "the ControlPanel schema-migration screen on the currently running app (LNCH-1 Phase 6), to "
                     + "proceed -- see docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes."
-                    + agreementCheckSuffix(manifest, report));
+                    + DestructiveRecreationPass.agreementCheckSuffix(manifest, report));
         }
 
         // LNCH-1 hardening X4.4 (ratified 2026-07-20). Dropping a CONCEPT destroys an entire table's
@@ -962,7 +782,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                         + ". Set the generated manifest's destructiveAcknowledgment to this token, or submit it via "
                         + "the ControlPanel schema-migration screen on the currently running app, to proceed -- see "
                         + "docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes."
-                        + agreementCheckSuffix(manifest, report));
+                        + DestructiveRecreationPass.agreementCheckSuffix(manifest, report));
             }
         }
 
@@ -997,12 +817,12 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                         + "deprecated; switch to the itemized acknowledgment token (expected: " + expectedToken
                         + ") -- see docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes.");
             }
-            DestructiveRecreation result = executeSurgicalDestruction(dataSource, manifest, stored,
+            DestructiveRecreation result = DestructiveRecreationPass.executeSurgicalDestruction(dataSource, manifest, stored,
                     classificationForFallthrough, report, tokenMatches ? effectiveToken : null);
             // Only a token-authorized pass may consume somebody's pending acknowledgment row -- a
             // blanket-authorized pass did not use it and must leave it available.
             if (tokenMatches) {
-                consumePendingAcknowledgmentIfAny(dataSource, pendingAcknowledgment);
+                DestructiveRecreationPass.consumePendingAcknowledgmentIfAny(dataSource, pendingAcknowledgment);
             }
             return result;
         }
@@ -1024,218 +844,18 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 + "dropped and recreated: ALL DATA IN THIS APP'S TABLES WILL BE LOST (a pre-drop snapshot is written "
                 + "first -- see runtime-data/schema-snapshot-before-drop/). Authorized by an itemized acknowledgment "
                 + "token. Full report: " + report.stableStrings());
-        DestructiveRecreation result = executeWholeSchemaWipe(dataSource, manifest, stored, classificationForFallthrough,
-                report, effectiveToken);
-        consumePendingAcknowledgmentIfAny(dataSource, pendingAcknowledgment);
+        DestructiveRecreation result = DestructiveRecreationPass.executeWholeSchemaWipe(dataSource, manifest, stored,
+                classificationForFallthrough, report, effectiveToken);
+        DestructiveRecreationPass.consumePendingAcknowledgmentIfAny(dataSource, pendingAcknowledgment);
         return result;
     }
 
-    /** Consume-on-use (see {@link PendingSchemaAcknowledgmentStore}'s class javadoc): only called
-     * AFTER a destructive pass has fully applied, never before -- so a crash mid-destructive still
-     * finds the same pending row available to authorize a retry on the next boot. A {@code null}
-     * acknowledgment (the static manifest field alone authorized this pass, or the deprecated
-     * blanket flag did) is a no-op. */
-    private static void consumePendingAcknowledgmentIfAny(
-            DataSource dataSource, PendingSchemaAcknowledgmentStore.PendingAcknowledgment pendingAcknowledgment
-    ) {
-        if (pendingAcknowledgment != null) {
-            PendingSchemaAcknowledgmentStore.consume(dataSource, pendingAcknowledgment.id());
-        }
-    }
-
-    /**
-     * LNCH-1 Phase 6 (task 6.3): the "friendlier" agreement-check enrichment. The token-mismatch
-     * refusal above already correctly blocks regardless -- this method changes nothing about that
-     * decision, it only enriches the REFUSAL MESSAGE when there is something more specific to say.
-     * {@code manifest.planItemStableStrings()} is the destructive-item stable strings a migration
-     * plan computed at GENERATION time (see {@code MigrationPlanEmitter}, populated only when a
-     * future {@code Build-NpdevApp.ps1 -PlanOnly}/{@code -Upgrade} passed
-     * {@code --schemaMigrationPlanOut}; empty for every app generated without that flag). When it is
-     * non-empty AND differs from what THIS report independently found live at BOOT time, an operator
-     * is very likely looking at model/database drift since the plan was generated (the classic stale-
-     * artifact problem) -- printing both lists side by side turns an opaque "wrong token" refusal
-     * into "here is exactly what changed out from under your plan." When the two lists already agree
-     * (or no plan-derived list is available at all -- the common case today, since Phase 6's CLI
-     * wiring is opt-in), this returns {@code ""} and the refusal message is unchanged from Phase 4.
-     */
-    private static String agreementCheckSuffix(SchemaManifest manifest, SchemaDeltaReport report) {
-        List<String> planned = manifest.planItemStableStrings();
-        if (planned == null || planned.isEmpty()) {
-            return "";
-        }
-        List<String> plannedSorted = new ArrayList<>(planned);
-        Collections.sort(plannedSorted);
-        List<String> actualSorted = new ArrayList<>(report.stableStrings());
-        Collections.sort(actualSorted);
-        if (plannedSorted.equals(actualSorted)) {
-            return "";
-        }
-        return " NOTE (LNCH-1 Phase 6 agreement check): the migration plan reviewed/acknowledged at "
-                + "generation time expected these destructive item(s): " + plannedSorted
-                + " -- but the live database at boot actually needs: " + actualSorted
-                + ". This usually means the model was edited again after the plan was generated, or the "
-                + "target database has drifted from the state the plan assumed. Regenerate the plan "
-                + "against the current model and database before acknowledging.";
-    }
-
-    /**
-     * LNCH-1 Phase 4 (task 4.3): the NEW default destructive path -- executes ONLY the tables/
-     * columns the itemized {@link SchemaDeltaReport} actually names, gated on a matching
-     * {@link com.npdev.dsl.v1.schemaevolution.DestructiveAckToken}. Snapshots only the affected
-     * tables (§2.6 answer 1) via the existing {@link SchemaDropSnapshotWriter#snapshotBeforeDrop}
-     * -- no new "table-subset" overload needed, it already accepts an arbitrary table list.
-     *
-     * <p>Write-before-execute, update-after (§2.4 crash semantics): the history row is inserted
-     * with {@code outcome = 'PARTIAL-CRASH'} BEFORE any DDL runs, and only updated to
-     * {@code 'APPLIED'} after every item has executed successfully. If the JVM dies mid-loop, the
-     * row is left exactly as inserted -- an accurate record that this pass crashed partway
-     * through, not a false claim either way.
-     */
-    private DestructiveRecreation executeSurgicalDestruction(
-            DataSource dataSource,
-            SchemaManifest manifest,
-            String stored,
-            SchemaChangeClassification classification,
-            SchemaDeltaReport report,
-            String ackTokenUsed
-    ) {
-        List<String> affectedTables = new ArrayList<>(report.affectedTables());
-        Collections.sort(affectedTables);
-        SchemaDropSnapshotWriter.snapshotBeforeDrop(dataSource, affectedTables);
-
-        String historyId = SchemaHistoryStore.insertPendingHistoryRow(dataSource, stored, manifest.schemaFingerprint(),
-                classification, report, ackTokenUsed);
-
-        List<String> applied = new ArrayList<>();
-        try (Connection connection = dataSource.getConnection()) {
-            for (SchemaDeltaItem item : report.items()) {
-                if (item instanceof DropColumn dropColumn) {
-                    executeDropColumn(connection, dropColumn.table(), dropColumn.column());
-                    applied.add("DROP_COLUMN " + dropColumn.table() + "." + dropColumn.column());
-                } else if (item instanceof DropTable dropTable) {
-                    executeDropTableCascade(connection, dropTable.table());
-                    applied.add("DROP_TABLE " + dropTable.table());
-                } else if (item instanceof NarrowType narrowType) {
-                    // Drop-and-recreate, not a casting ALTER COLUMN TYPE: per the plan, data in a
-                    // narrowed column is acknowledged lost by the token, and a cast can fail
-                    // per-row (e.g. a too-long VARCHAR value) -- simpler and more honest to drop
-                    // and recreate empty than attempt a partially-successful cast.
-                    executeNarrowTypeDropAndRecreate(connection, narrowType.table(), narrowType.column(), narrowType.toType());
-                    applied.add("NARROW_TYPE " + narrowType.table() + "." + narrowType.column() + " -> " + narrowType.toType());
-                }
-                // UNKNOWN items never reach here -- the caller only takes this path when
-                // report.hasOnlyNamedDestructiveKinds() is true.
-            }
-        } catch (SQLException exception) {
-            // Deliberately NOT updating the history row here -- it stays at PARTIAL-CRASH, which is
-            // the correct, honest record of a half-applied surgical pass (§2.4).
-            throw new IllegalStateException("Failed applying surgical destructive schema changes ("
-                    + applied.size() + "/" + report.items().size() + " item(s) applied before failure: "
-                    + applied + ")", exception);
-        }
-        SchemaHistoryStore.markHistoryRowApplied(dataSource, historyId);
-        System.out.println("NPDev schema lifecycle: surgical destructive changes applied: " + applied);
-        return new DestructiveRecreation(true, false, List.copyOf(affectedTables));
-    }
-
-    private static void executeDropColumn(Connection connection, String table, String column) throws SQLException {
-        String safeTable = safeIdentifier(table);
-        String safeColumn = safeIdentifier(column);
-        try (PreparedStatement statement = connection.prepareStatement(
-                "ALTER TABLE " + safeTable + " DROP COLUMN " + safeColumn)) {
-            statement.executeUpdate();
-        }
-    }
-
-    private static void executeDropTableCascade(Connection connection, String table) throws SQLException {
-        String safeTable = safeIdentifier(table);
-        // Same CASCADE rationale as the whole-schema path (see executeWholeSchemaWipe): drops any
-        // dependent FK constraint along with the table; it does not touch a referencing table's rows.
-        try (PreparedStatement statement = connection.prepareStatement(
-                "DROP TABLE IF EXISTS " + safeTable + " CASCADE")) {
-            statement.executeUpdate();
-        }
-    }
-
-    private static void executeNarrowTypeDropAndRecreate(Connection connection, String table, String column, String newType)
-            throws SQLException {
-        String safeTable = safeIdentifier(table);
-        String safeColumn = safeIdentifier(column);
-        String safeType = TypeWideningPass.safeSqlType(newType);
-        try (PreparedStatement drop = connection.prepareStatement(
-                "ALTER TABLE " + safeTable + " DROP COLUMN " + safeColumn)) {
-            drop.executeUpdate();
-        }
-        try (PreparedStatement add = connection.prepareStatement(
-                "ALTER TABLE " + safeTable + " ADD COLUMN " + safeColumn + " " + safeType)) {
-            add.executeUpdate();
-        }
-    }
-
-    /**
-     * The OLD destructive path (pre-Phase-4 behavior, unchanged DDL), now reached ONLY when the
-     * residual diff includes an {@code UNKNOWN} item the surgical path cannot explain. Same
-     * write-before-execute/update-after history lifecycle as the surgical path.
-     *
-     * <p><b>LNCH-1 hardening X1 (finding X-B1):</b> this path used to ALSO be reached whenever
-     * authorization came solely from the deprecated blanket {@code destructiveAllowed} flag, even
-     * when every item in the report was surgically executable. That was a critical regression: this
-     * method drops the tables the NEW manifest lists, so a dropped concept's orphaned table survived
-     * while every still-modelled concept's data was destroyed. The authorization source no longer
-     * influences which execution path runs -- only the presence of an {@code UNKNOWN} item does.
-     *
-     * <p><b>LNCH-1 closeout C1 (finding C-B1):</b> the authorization source no longer selects the
-     * path, but it does still gate it. Because this method destroys EVERY manifest-listed table's
-     * data, it now requires the itemized acknowledgment token exactly as a concept drop does -- the
-     * blanket flag alone is refused before we get here. Callers may therefore rely on
-     * {@code acknowledgmentToken} being non-null.
-     */
-    private DestructiveRecreation executeWholeSchemaWipe(
-            DataSource dataSource,
-            SchemaManifest manifest,
-            String stored,
-            SchemaChangeClassification classification,
-            SchemaDeltaReport report,
-            String ackTokenUsed
-    ) {
-        List<String> tables = new ArrayList<>();
-        tables.addAll(manifest.businessTables());
-        tables.addAll(manifest.internalTables());
-        Collections.reverse(tables);
-        SchemaDropSnapshotWriter.snapshotBeforeDrop(dataSource, tables);
-
-        String historyId = SchemaHistoryStore.insertPendingHistoryRow(dataSource, stored, manifest.schemaFingerprint(),
-                classification, report, ackTokenUsed);
-
-        List<String> dropped = new ArrayList<>();
-        try (Connection connection = dataSource.getConnection()) {
-            for (String table : tables) {
-                if (table == null || table.isBlank()) {
-                    continue;
-                }
-                String safeTable = safeIdentifier(table);
-                // CASCADE, not a precise FK-aware drop order: the manifest lists tables in
-                // declaration order, which does not generally match the dependency order a
-                // referencing table (e.g. notes.project_ref -> projects) requires -- dropping the
-                // referenced table first throws ("depends on it") on both H2 and Postgres. CASCADE
-                // drops the dependent FK constraint along with the table; it does not touch the
-                // referencing table's ROWS (those are gone anyway, the referencing table is itself
-                // in this same drop list during a full destructive recreate).
-                try (PreparedStatement statement = connection.prepareStatement("DROP TABLE IF EXISTS " + safeTable + " CASCADE")) {
-                    statement.executeUpdate();
-                    dropped.add(safeTable);
-                }
-            }
-            System.out.println("NPDev destructive schema recreation dropped manifest-listed NPDev-owned tables: " + dropped);
-            System.out.println("NPDev destructive schema recreation stored fingerprint: " + stored);
-            System.out.println("NPDev destructive schema recreation generated fingerprint: " + manifest.schemaFingerprint());
-        } catch (SQLException exception) {
-            // History row deliberately left at PARTIAL-CRASH -- see executeSurgicalDestruction's note.
-            throw new IllegalStateException("Failed destructive schema recreation", exception);
-        }
-        SchemaHistoryStore.markHistoryRowApplied(dataSource, historyId);
-        return new DestructiveRecreation(true, false, List.copyOf(dropped));
-    }
+    // LNCH-1 Phase 4/6 (tasks 4.3, 6.3) / hardening X1 / closeout C1: consumePendingAcknowledgmentIfAny,
+    // agreementCheckSuffix, executeSurgicalDestruction (+ its executeDropColumn/executeDropTableCascade/
+    // executeNarrowTypeDropAndRecreate DDL helpers) and executeWholeSchemaWipe all moved verbatim to
+    // DestructiveRecreationPass (T2.B.4 pure mechanical split) -- beforeMigrateDecision above/below calls
+    // DestructiveRecreationPass.executeSurgicalDestruction(...) / .executeWholeSchemaWipe(...) /
+    // .consumePendingAcknowledgmentIfAny(...) / .agreementCheckSuffix(...).
 
     /** Backward-compatible convenience: true only for the SAFE_ADDITIVE classification. */
     boolean isSafeAdditiveChange(DataSource dataSource, SchemaManifest manifest) {
@@ -1563,109 +1183,18 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         }
     }
 
-    /** The platform default for a {@link #REPAIRABLE_PLATFORM_COLUMNS} entry, as a bound parameter
-     * value (never string-concatenated into DDL). */
-    private static Object platformColumnDefault(String column) {
-        return switch (column) {
-            case "version", "row_version" -> 0L;
-            case "tenant_id" -> "default";
-            default -> throw new IllegalStateException("No platform default is defined for column: " + column);
-        };
-    }
-
     /**
      * LNCH-1 T1 (finding T-B1), Half B -- the repair half. Restores {@code NOT NULL} on the
      * platform-managed columns of any table where it is missing, backfilling existing NULLs to the
-     * fixed platform default first.
-     *
-     * <p><b>Why this is needed at all:</b> Half A (the exclusion in
-     * {@link #relaxNoLongerRequiredColumns}) only stops the bleeding. Every app already upgraded by a
-     * build carrying the old behaviour has permanently nullable {@code version}, {@code row_version}
-     * and {@code tenant_id}, and nothing else would ever put them back.
-     *
-     * <p><b>Why it is safe to run unconditionally,</b> in the same place and for the same reason the
-     * relax pass does (before {@link #classify} ever sees the table): tightening a platform column
-     * whose default is fixed and known can never lose data -- the only writes are "give the rows that
-     * have no value the value they would have been created with" and "re-assert a constraint the
-     * generator's own fresh CREATE TABLE always emits". Leaving it to a later phase would also mean
-     * the very next boot re-relaxed it.
-     *
-     * <p><b>Idempotent by construction,</b> exactly like {@link #addBackfillAndTightenColumn}: live
-     * nullability is re-read via {@link #isColumnNotNull} on every call, so an already-strict column
-     * is a no-op and produces no history row (see {@link #recordStepPass}'s empty-list contract --
-     * no noise rows on converged boots).
-     *
-     * <p>A table whose platform column is <em>absent entirely</em> (a very old app) is not this
-     * pass's concern -- the additive migration adds it. Only live, nullable columns are touched.
+     * fixed platform default first. Body moved to {@link PlatformColumnPass#tightenPlatformColumns}
+     * (T2.B.4 pure mechanical split); this thin wrapper keeps the method's existing package-private
+     * signature (and the direct-unit-testability its javadoc has always promised) unchanged.
      *
      * <p>Package-private (not private) so it is directly unit-testable against a real H2
      * {@link DataSource}, following {@link #relaxNoLongerRequiredColumns}'s own precedent.
      */
     void tightenPlatformColumns(DataSource dataSource, SchemaManifest manifest) {
-        record Tightening(String table, String column, Object platformDefault) {
-        }
-        List<Tightening> plan = new ArrayList<>();
-        List<String> tightened = new ArrayList<>();
-        try (Connection connection = dataSource.getConnection()) {
-            DatabaseMetaData metadata = connection.getMetaData();
-            for (String table : manifest.businessTableColumns().keySet()) {
-                Set<String> actualColumns = readActualColumns(metadata, table);
-                if (actualColumns.isEmpty()) {
-                    continue; // brand-new table -- V1's CREATE TABLE IF NOT EXISTS emits it strict already
-                }
-                for (String column : REPAIRABLE_PLATFORM_COLUMNS) {
-                    if (!actualColumns.contains(column)) {
-                        continue; // absent entirely -- the additive migration's job, not this pass's
-                    }
-                    if (isColumnNotNull(connection, table, column)) {
-                        continue; // already strict -- idempotent no-op
-                    }
-                    plan.add(new Tightening(table, column, platformColumnDefault(column)));
-                }
-            }
-            // R4 (F5): one write-before-execute audit row for the whole repair pass -- the audit trail
-            // must show that a repair happened, not merely that the columns are strict now.
-            List<String> itemDetails = new ArrayList<>();
-            for (Tightening item : plan) {
-                itemDetails.add("TIGHTEN_PLATFORM_COLUMN " + item.table() + "." + item.column()
-                        + " DEFAULT " + item.platformDefault());
-            }
-            SchemaHistoryStore.recordStepPass(dataSource, manifest, "TIGHTEN_PLATFORM_COLUMNS", itemDetails, () -> {
-                for (Tightening item : plan) {
-                    executeBackfillAndSetNotNull(connection, item.table(), item.column(), item.platformDefault());
-                    tightened.add(item.table() + "." + item.column());
-                }
-            });
-        } catch (SQLException exception) {
-            throw new IllegalStateException("Failed restoring NOT NULL on platform-managed column(s)", exception);
-        }
-        if (!tightened.isEmpty()) {
-            System.out.println("NPDev schema lifecycle: restored NOT NULL on platform-managed column(s) "
-                    + "relaxed by an earlier build (LNCH-1 T-B1 repair): " + tightened);
-        }
-    }
-
-    /**
-     * Bound-parameter {@code UPDATE ... WHERE c IS NULL} -&gt; {@code SET NOT NULL}, for
-     * {@link #tightenPlatformColumns}. The same two trailing steps as
-     * {@link #addBackfillAndTightenColumn} (there is no {@code ADD COLUMN} step here: this pass only
-     * ever runs against a column already proven live), and needs no engine dialect branch for the
-     * same reason that method documents -- {@code ALTER COLUMN ... SET NOT NULL} is identical syntax
-     * on H2 and Postgres.
-     */
-    private static void executeBackfillAndSetNotNull(Connection connection, String table, String column,
-            Object platformDefault) throws SQLException {
-        String safeTable = safeIdentifier(table);
-        String safeColumn = safeIdentifier(column);
-        try (PreparedStatement update = connection.prepareStatement(
-                "UPDATE " + safeTable + " SET " + safeColumn + " = ? WHERE " + safeColumn + " IS NULL")) {
-            update.setObject(1, platformDefault);
-            update.executeUpdate();
-        }
-        try (PreparedStatement notNull = connection.prepareStatement(
-                "ALTER TABLE " + safeTable + " ALTER COLUMN " + safeColumn + " SET NOT NULL")) {
-            notNull.executeUpdate();
-        }
+        PlatformColumnPass.tightenPlatformColumns(dataSource, manifest);
     }
 
     /**
@@ -1734,198 +1263,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     // unit-tested (only reached via beforeMigrateDecision below, which calls
     // BackfillPass.refuseIfRequiredBondColumnMissing(...)).
 
-    /**
-     * LNCH-1 P5 (5.1). Called by {@link #afterMigrate} on every boot (cheap, idempotent -- an
-     * empty {@code businessTableUniqueConstraints} manifest, the common case pre-Phase-5, returns
-     * immediately). Runs strictly AFTER {@code flyway.migrate()} has already applied the R__
-     * additive-columns migration, so a unique constraint declared alongside a brand-new nullable
-     * column always finds that column already present (new rows' NULLs never collide under
-     * standard SQL unique-constraint semantics, so no dirty-data pre-check is even needed for that
-     * case). For a constraint newly declared on an ALREADY-EXISTING column, pre-checks live data
-     * for duplicate tuples (tenant-scoped or global, per {@link UniqueConstraintDecl#tenantScoped}
-     * -- matching {@code SchemaRealizationEmitter#appendBusinessTable}'s fresh-CREATE rule) before
-     * applying the constraint.
-     *
-     * <p><b>All-or-nothing per boot, same shape as {@link #applyRequiredFieldBackfills}:</b> pass 1
-     * checks every declared constraint (read-only); if ANY table has violating data, throws before
-     * applying ANY constraint this boot (so a clean table's constraint is not partially applied
-     * while a dirty table's still needs attention -- consistent, easy-to-reason-about all-or-
-     * nothing semantics). Pass 2 applies every clean, not-yet-applied constraint.
-     *
-     * <p>Idempotent by construction: {@link #constraintExists} re-checks
-     * {@code INFORMATION_SCHEMA.TABLE_CONSTRAINTS} fresh on every call (not the same-boot pending
-     * list only), so a crash between two constraint applications converges on the next boot without
-     * re-attempting an already-applied constraint or erroring on a duplicate-name ADD CONSTRAINT.
-     */
-    private static void applyUniqueConstraints(DataSource dataSource, SchemaManifest manifest) {
-        if (manifest.businessTableUniqueConstraints().isEmpty()) {
-            return;
-        }
-        record PendingUniqueConstraint(String table, UniqueConstraintDecl decl) {
-        }
-        List<String> violationMessages = new ArrayList<>();
-        List<PendingUniqueConstraint> toApply = new ArrayList<>();
-        try (Connection connection = dataSource.getConnection()) {
-            DatabaseMetaData metadata = connection.getMetaData();
-            for (Map.Entry<String, List<UniqueConstraintDecl>> entry : manifest.businessTableUniqueConstraints().entrySet()) {
-                String table = entry.getKey();
-                Set<String> liveColumns = readActualColumns(metadata, table);
-                if (liveColumns.isEmpty()) {
-                    continue; // table not created yet this boot -- nothing to check/apply
-                }
-                for (UniqueConstraintDecl decl : entry.getValue()) {
-                    if (!liveColumns.containsAll(decl.columns())) {
-                        continue; // a declared column doesn't exist live yet -- nothing to apply this boot
-                    }
-                    if (constraintExists(connection, table, decl.name())) {
-                        continue; // already applied -- idempotent no-op
-                    }
-                    List<String> duplicateKeys = findDuplicateKeys(connection, table, decl);
-                    if (!duplicateKeys.isEmpty()) {
-                        List<String> sample = duplicateKeys.size() > 20 ? duplicateKeys.subList(0, 20) : duplicateKeys;
-                        violationMessages.add("table '" + table + "' unique constraint on ("
-                                + String.join(", ", decl.columns()) + ")"
-                                + (decl.tenantScoped() ? " [tenant-scoped]" : " [global]") + " has "
-                                + duplicateKeys.size() + " violating tuple(s), e.g.: " + sample);
-                        continue;
-                    }
-                    toApply.add(new PendingUniqueConstraint(table, decl));
-                }
-            }
-        } catch (SQLException exception) {
-            throw new IllegalStateException("Failed checking existing data against new unique constraint(s)", exception);
-        }
-        if (!violationMessages.isEmpty()) {
-            // Fingerprint not yet written this boot (afterMigrate's own write happens after this
-            // call returns) -- readFingerprint still reports the pre-this-attempt value, matching
-            // every other refusal's "from_fingerprint" history-row convention.
-            // R4 (F5): record the violation messages as items_json with a UNIQUE_PRECHECK label,
-            // instead of an empty, classification-less REFUSED row.
-            SchemaHistoryStore.insertRawHistoryRow(dataSource, readFingerprint(dataSource), manifest.schemaFingerprint(),
-                    "UNIQUE_PRECHECK", violationMessages, "REFUSED");
-            throw new IllegalStateException("Schema change adds new unique constraint(s), but existing data "
-                    + "violates them (LNCH-1 Phase 5). Resolve the duplicate row(s) first, or relax the constraint: "
-                    + violationMessages + " -- see docs/SCHEMA_EVOLUTION.md#tightened-uniqueness.");
-        }
-        if (toApply.isEmpty()) {
-            return;
-        }
-        List<String> applied = new ArrayList<>();
-        try (Connection connection = dataSource.getConnection()) {
-            for (PendingUniqueConstraint pending : toApply) {
-                executeAddUniqueConstraint(connection, pending.table(), pending.decl());
-                applied.add(pending.table() + "." + pending.decl().name());
-            }
-        } catch (SQLException exception) {
-            throw new IllegalStateException("Failed applying new unique constraint(s) (" + applied.size() + "/"
-                    + toApply.size() + " applied before failure: " + applied + ")", exception);
-        }
-        System.out.println("NPDev schema lifecycle: applied new unique constraint(s): " + applied);
-    }
-
-    private static boolean constraintExists(Connection connection, String table, String constraintName) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
-                        + "WHERE UPPER(CONSTRAINT_NAME) = UPPER(?) AND UPPER(TABLE_NAME) = UPPER(?)")) {
-            statement.setString(1, constraintName);
-            statement.setString(2, table);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                if (resultSet.next()) {
-                    return true;
-                }
-            }
-        }
-        return indexExists(connection, table, constraintName);
-    }
-
-    /**
-     * Ordinary (non-anchor) unique fields are bootstrapped by {@code SchemaRealizationEmitter} as a
-     * plain {@code CREATE UNIQUE INDEX IF NOT EXISTS ux_<table>_<column>} -- not an
-     * {@code ADD CONSTRAINT} -- under the exact same {@code ux_...} name this class later tries to
-     * {@code ADD CONSTRAINT} with (see {@link #executeAddUniqueConstraint}). {@code
-     * INFORMATION_SCHEMA.TABLE_CONSTRAINTS} only lists true constraints, not plain indexes, so on
-     * Postgres a same-named index from V1's bootstrap is invisible to the check above and {@code ADD
-     * CONSTRAINT} then collides with the index's underlying relation --
-     * {@code ERROR: relation "ux_..." already exists}, fatal on Postgres (H2 tolerates the duplicate
-     * name and silently no-ops, which is why this was missed until the first real Postgres boot).
-     * {@link DatabaseMetaData#getIndexInfo} is standard JDBC metadata and portable across engines, so
-     * it closes the gap without engine-specific SQL.
-     */
-    private static boolean indexExists(Connection connection, String table, String indexName) throws SQLException {
-        DatabaseMetaData metadata = connection.getMetaData();
-        for (String candidate : List.of(table.toLowerCase(Locale.ROOT), table.toUpperCase(Locale.ROOT))) {
-            try (ResultSet resultSet = metadata.getIndexInfo(null, null, candidate, false, false)) {
-                while (resultSet.next()) {
-                    String existingIndexName = resultSet.getString("INDEX_NAME");
-                    if (existingIndexName != null && existingIndexName.equalsIgnoreCase(indexName)) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
-     * {@code GROUP BY ... HAVING COUNT(*) > 1}, tenant-scoped or global per {@link
-     * UniqueConstraintDecl#tenantScoped}. Rows where any declared unique column is {@code NULL} are
-     * excluded -- standard SQL unique-constraint semantics never treat NULL-vs-NULL as a collision,
-     * so a naive {@code GROUP BY} (which DOES treat NULLs as equal) would otherwise over-report.
-     */
-    private static List<String> findDuplicateKeys(Connection connection, String table, UniqueConstraintDecl decl) throws SQLException {
-        String safeTable = safeIdentifier(table);
-        List<String> groupColumns = new ArrayList<>();
-        if (decl.tenantScoped()) {
-            groupColumns.add("tenant_id");
-        }
-        List<String> notNullColumns = new ArrayList<>();
-        for (String column : decl.columns()) {
-            String safeColumn = safeIdentifier(column);
-            groupColumns.add(safeColumn);
-            notNullColumns.add(safeColumn);
-        }
-        String columnList = String.join(", ", groupColumns);
-        StringBuilder sql = new StringBuilder("SELECT ").append(columnList).append(", COUNT(*) FROM ").append(safeTable);
-        if (!notNullColumns.isEmpty()) {
-            sql.append(" WHERE ");
-            for (int i = 0; i < notNullColumns.size(); i++) {
-                if (i > 0) {
-                    sql.append(" AND ");
-                }
-                sql.append(notNullColumns.get(i)).append(" IS NOT NULL");
-            }
-        }
-        sql.append(" GROUP BY ").append(columnList).append(" HAVING COUNT(*) > 1");
-        List<String> duplicates = new ArrayList<>();
-        try (PreparedStatement statement = connection.prepareStatement(sql.toString());
-             ResultSet resultSet = statement.executeQuery()) {
-            while (resultSet.next()) {
-                List<String> values = new ArrayList<>();
-                for (int i = 1; i <= groupColumns.size(); i++) {
-                    values.add(String.valueOf(resultSet.getObject(i)));
-                }
-                duplicates.add("(" + String.join(", ", values) + ")");
-            }
-        }
-        return duplicates;
-    }
-
-    private static void executeAddUniqueConstraint(Connection connection, String table, UniqueConstraintDecl decl) throws SQLException {
-        String safeTable = safeIdentifier(table);
-        String safeConstraint = safeIdentifier(decl.name());
-        List<String> columns = new ArrayList<>();
-        if (decl.tenantScoped()) {
-            columns.add("tenant_id");
-        }
-        for (String column : decl.columns()) {
-            columns.add(safeIdentifier(column));
-        }
-        String sql = "ALTER TABLE " + safeTable + " ADD CONSTRAINT " + safeConstraint
-                + " UNIQUE (" + String.join(", ", columns) + ")";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.executeUpdate();
-        }
-    }
+    // LNCH-1 P5 (5.1): applyUniqueConstraints (+ constraintExists/indexExists/findDuplicateKeys/
+    // executeAddUniqueConstraint) moved verbatim to UniqueConstraintPass (T2.B.4 pure mechanical
+    // split) -- afterMigrate below calls UniqueConstraintPass.applyUniqueConstraints(...).
 
     /**
      * Classifies a fingerprint mismatch by inspecting every already-existing business table against
@@ -2381,7 +1721,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // always finds that column already present. Deliberately BEFORE the fingerprint write below
         // -- a refusal here (dirty data violating a newly-declared constraint) must leave the stored
         // fingerprint stale, so the next boot re-attempts instead of silently accepting the drift.
-        applyUniqueConstraints(dataSource, manifest);
+        UniqueConstraintPass.applyUniqueConstraints(dataSource, manifest);
         try (Connection connection = dataSource.getConnection()) {
             try (PreparedStatement statement = connection.prepareStatement(
                     "CREATE TABLE IF NOT EXISTS " + METADATA_TABLE
@@ -2576,178 +1916,12 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         return readFingerprint(dataSource);
     }
 
+    /** {@code public static} entry point kept on the executor -- called externally as
+     *  {@code SchemaLifecycleExecutor.loadManifest()} by {@code StorageSummaryController} and
+     *  {@code SchemaImpactFacade}. Body (the JSON-tree walking helpers) moved verbatim to
+     *  {@link SchemaManifestLoader#load} (T2.B.4 pure mechanical split). */
     public static SchemaManifest loadManifest() {
-        try {
-            ClassPathResource resource = new ClassPathResource("npdev/db/schema-realization-manifest.json");
-            if (!resource.exists()) {
-                return null;
-            }
-            JsonNode root = OBJECT_MAPPER.readTree(resource.getInputStream());
-            JsonNode lifecycle = root.path("schemaLifecycle");
-            return new SchemaManifest(
-                    root.path("engine").asText(""),
-                    root.path("storageMode").asText(""),
-                    root.path("physicalDatabase").asBoolean(false),
-                    root.path("schemaFingerprint").asText(""),
-                    strings(root.path("internalTables")),
-                    strings(root.path("businessTables")),
-                    stringListMap(root.path("businessTableColumns")),
-                    stringListMap(root.path("businessTableAdditiveColumns")),
-                    stringMapMap(root.path("businessTableColumnTypes")),
-                    stringMapMap(root.path("businessTableRenamedColumns")),
-                    stringMap(root.path("businessTableRenames")),
-                    lifecycle.path("allowDestructiveRecreate").asBoolean(false),
-                    lifecycle.path("strategy").asText(""),
-                    lifecycle.path("scope").asText(""),
-                    lifecycle.path("destructiveRecreateConfirmation").asText(""),
-                    // LNCH-1 Phase 4 (task 4.2/4.3): the itemized destructive-acknowledgment token.
-                    // Absent from every manifest emitted before this phase (and from every real
-                    // manifest until Phase 6 wires -AcknowledgeDestructive into the emitter) --
-                    // asText("") correctly defaults to "", which never equals a real computed
-                    // token, so pre-Phase-6 apps are unaffected until an author opts in.
-                    root.path("destructiveAcknowledgment").asText(""),
-                    // LNCH-1 Phase 5. Absent from every manifest emitted before this phase --
-                    // each parser defaults to an empty map/list, so pre-Phase-5 apps are unaffected
-                    // (no required-column/default/unique-constraint data means the new executor
-                    // steps below all find nothing to do and no-op cleanly).
-                    stringListMap(root.path("businessTableRequiredColumns")),
-                    stringMapMap(root.path("businessTableColumnDefaultLiterals")),
-                    stringListMap(root.path("businessTableExpressionDefaultColumns")),
-                    uniqueConstraintListMap(root.path("businessTableUniqueConstraints")),
-                    // LNCH-1 Phase 6 (task 6.3): the destructive-item stable strings from a migration
-                    // plan computed at generation time (see SchemaRealizationEmitter#emit's 5-arg
-                    // overload) -- empty when no plan was computed this generation pass (the ordinary
-                    // case for every app until a future Build-NpdevApp.ps1 -PlanOnly/-Upgrade wires
-                    // --schemaMigrationPlanOut through). Absent from every manifest emitted before
-                    // this phase -- strings() defaults to an empty list, so pre-Phase-6 apps are
-                    // unaffected (the agreement-check enrichment below simply has nothing to compare).
-                    strings(root.path("migrationPlanItemStableStrings")),
-                    // REG-7.1: absent from every manifest emitted before this field existed --
-                    // asText("NpdevManaged") defaults to today's only behavior, so a pre-existing
-                    // manifest is unaffected (same pattern as destructiveAcknowledgment above).
-                    lifecycle.path("ownership").asText("NpdevManaged"),
-                    // SER-G8: the model's declared FKs/indexes. Absent from every manifest emitted
-                    // before G8 -- both helpers default to an empty map, so a pre-G8 app behaves exactly
-                    // as it did (nothing to verify, nothing to diff).
-                    foreignKeyListMap(root.path("businessTableForeignKeys")),
-                    indexListMap(root.path("businessTableIndexes"))
-            );
-        } catch (Exception exception) {
-            throw new IllegalStateException("Failed loading schema realization manifest", exception);
-        }
-    }
-
-    /** SER-G8: parses {@code {"table":[{"columns":[..],"referencedTable":"t","referencedColumns":[..]}]}}. */
-    private static Map<String, List<ForeignKeyDecl>> foreignKeyListMap(JsonNode object) {
-        Map<String, List<ForeignKeyDecl>> result = new LinkedHashMap<>();
-        if (object == null || !object.isObject()) {
-            return Map.copyOf(result);
-        }
-        object.fields().forEachRemaining(entry -> {
-            List<ForeignKeyDecl> decls = new ArrayList<>();
-            if (entry.getValue().isArray()) {
-                for (JsonNode node : entry.getValue()) {
-                    List<String> columns = strings(node.path("columns"));
-                    String referencedTable = node.path("referencedTable").asText("");
-                    if (columns.isEmpty() || referencedTable.isBlank()) {
-                        continue;
-                    }
-                    decls.add(new ForeignKeyDecl(columns, referencedTable, strings(node.path("referencedColumns"))));
-                }
-            }
-            if (!decls.isEmpty()) {
-                result.put(entry.getKey(), List.copyOf(decls));
-            }
-        });
-        return Map.copyOf(result);
-    }
-
-    /** SER-G8: parses {@code {"table":[{"columns":[..],"unique":true}]}}. */
-    private static Map<String, List<IndexDecl>> indexListMap(JsonNode object) {
-        Map<String, List<IndexDecl>> result = new LinkedHashMap<>();
-        if (object == null || !object.isObject()) {
-            return Map.copyOf(result);
-        }
-        object.fields().forEachRemaining(entry -> {
-            List<IndexDecl> decls = new ArrayList<>();
-            if (entry.getValue().isArray()) {
-                for (JsonNode node : entry.getValue()) {
-                    List<String> columns = strings(node.path("columns"));
-                    if (!columns.isEmpty()) {
-                        decls.add(new IndexDecl(columns, node.path("unique").asBoolean(false)));
-                    }
-                }
-            }
-            if (!decls.isEmpty()) {
-                result.put(entry.getKey(), List.copyOf(decls));
-            }
-        });
-        return Map.copyOf(result);
-    }
-
-    private static List<String> strings(JsonNode array) {
-        if (array == null || !array.isArray()) {
-            return List.of();
-        }
-        List<String> out = new ArrayList<>();
-        for (JsonNode item : array) {
-            String value = item.asText("").trim();
-            if (!value.isBlank()) {
-                out.add(value);
-            }
-        }
-        return List.copyOf(out);
-    }
-
-    private static Map<String, List<String>> stringListMap(JsonNode object) {
-        if (object == null || !object.isObject()) {
-            return Map.of();
-        }
-        Map<String, List<String>> out = new LinkedHashMap<>();
-        object.fields().forEachRemaining(field -> out.put(field.getKey(), strings(field.getValue())));
-        return Map.copyOf(out);
-    }
-
-    private static Map<String, Map<String, String>> stringMapMap(JsonNode object) {
-        if (object == null || !object.isObject()) {
-            return Map.of();
-        }
-        Map<String, Map<String, String>> out = new LinkedHashMap<>();
-        object.fields().forEachRemaining(field -> out.put(field.getKey(), stringMap(field.getValue())));
-        return Map.copyOf(out);
-    }
-
-    private static Map<String, String> stringMap(JsonNode object) {
-        if (object == null || !object.isObject()) {
-            return Map.of();
-        }
-        Map<String, String> out = new LinkedHashMap<>();
-        object.fields().forEachRemaining(field -> out.put(field.getKey(), field.getValue().asText("")));
-        return Map.copyOf(out);
-    }
-
-    /**
-     * LNCH-1 P5 (5.1): table -> its declared unique constraints (name/columns/tenant-scoping), as
-     * emitted by {@code SchemaRealizationEmitter#collectUniqueConstraints}.
-     */
-    private static Map<String, List<UniqueConstraintDecl>> uniqueConstraintListMap(JsonNode object) {
-        if (object == null || !object.isObject()) {
-            return Map.of();
-        }
-        Map<String, List<UniqueConstraintDecl>> out = new LinkedHashMap<>();
-        object.fields().forEachRemaining(entry -> {
-            List<UniqueConstraintDecl> declarations = new ArrayList<>();
-            for (JsonNode item : entry.getValue()) {
-                String name = item.path("name").asText("");
-                boolean tenantScoped = item.path("tenantScoped").asBoolean(true);
-                List<String> columns = strings(item.path("columns"));
-                if (!name.isBlank() && !columns.isEmpty()) {
-                    declarations.add(new UniqueConstraintDecl(name, columns, tenantScoped));
-                }
-            }
-            out.put(entry.getKey(), List.copyOf(declarations));
-        });
-        return Map.copyOf(out);
+        return SchemaManifestLoader.load();
     }
 
     /**
