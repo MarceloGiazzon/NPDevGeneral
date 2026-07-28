@@ -535,33 +535,53 @@ cd NPDevGenerator ; .\gradlew :generator:test :generator:behaviorTest --console=
 ```
 Grep for `@Disabled` on workbench tests — a disabled acceptance test is how "DONE" quietly decays.
 
-## F5-V.2 ★ Live re-verification, both aggregates · **4 hr**
+## F5-V.2 ★ Live re-verification, both aggregates · **4 hr** — **DONE 2026-07-28**
 
-Every "verified live" claim dates to **2026-07-12**; ~150 commits have landed since, including
-REG-48/50/52/53 — all touching paths the commit boundary uses. Use `rebuild-app` then
-`verify-in-browser` (WmsOffice, tenant `default`, `admin`/`admin123`, `127.0.0.1` not `localhost`).
+Every "verified live" claim dated **2026-07-12**; ~150 commits had landed since, including
+REG-48/50/52/53 — all touching paths the commit boundary uses. Re-verified live against WmsOffice,
+tenant `trial`, a freshly re-created `admin`/`admin123` account (the original identity data was
+wiped by an unrelated REG-58/REG-59 destructive-migration recovery earlier the same session — see
+`docs/NPDEV_OPEN_ITEMS_REGISTER.md`), `127.0.0.1` not `localhost`.
 
-| # | Step | Proves |
-|---|---|---|
-| 1 | Header renders with status chip | HeaderRegion + lifecycle |
-| 2 | Select parent row → band renders for that row only | P4 BandRegion + cascade |
-| 3 | Edit band cell → ~450 ms → computed update, **caret holds** | C4/C7 |
-| 4 | Edit second region → only it is dirty | C8 |
-| 5 | Revert one region → other survives | C8 |
-| 6 | Band picker multi-select returns rows | C6 |
-| 7 | Invoke procedure → draft patched, not persisted | P6 |
-| 8 | Advance state → action rail changes | AW-P5 |
-| 9 | Terminal state → read-only | C9 |
-| 10 | Commit → reload → tree persisted incl. bands | P6 cascade |
-| 11 | **Delete band row, commit, reload** | **REG-48 on the aggregate cascade** |
+**Correction:** the real generated Aggregate Workbench pages are `npdev-workbench/ExpedicaoWorkbench.html`
+/ `RecebimentoWorkbench.html`, not `centro-trabalho.html` (a separate, older hand-authored console
+with no draft/commit model — this doc already correctly filed it under "hand-written operator
+console" above; a prior AI session's carried-over context had mislabeled it, now corrected).
 
-> **Step 11 matters most.** REG-48 reordered `enforcePermission`/`enforceRowWritable` ahead of
-> `evaluateRuleProfiles` in `DefaultConceptGateway.delete()`. `AggregateRuntime.commit()` cascades
-> through that gateway. The fix was verified on the concept path; **nobody re-ran the aggregate
-> cascade against it.**
+| # | Step | Proves | Result |
+|---|---|---|---|
+| 1 | Header renders with status chip | HeaderRegion + lifecycle | ✅ PASS |
+| 2 | Select parent row → band renders for that row only | P4 BandRegion + cascade | ✅ PASS |
+| 3 | Edit band cell → ~450 ms → computed update, **caret holds** | C4/C7 | ⛔ not testable — WmsOffice declares no `recompute` |
+| 4 | Edit second region → only it is dirty | C8 | ✅ PASS |
+| 5 | Revert one region → other survives | C8 | ✅ PASS |
+| 6 | Band picker multi-select returns rows | C6 | ⛔ not testable — no nested `collections`/`bandPickers` declared |
+| 7 | Invoke procedure → draft patched, not persisted | P6 | ⛔ not testable — no `transaction.metadata.actions` declared |
+| 8 | Advance state → action rail changes | AW-P5 | ✅ PASS |
+| 9 | Terminal state → read-only | C9 | ✅ PASS |
+| 10 | Commit → reload → tree persisted incl. bands | P6 cascade | ✅ PASS |
+| 11 | **Delete band row, commit, reload** | **REG-48 on the aggregate cascade** | ✅ **PASS** |
 
-Evidence → `..\NPDev_General__OutsideRepo\aw-reverify-2026-07\`. Failures become REG rows, not
-patches-in-place.
+**7/11 PASS; 3/11 couldn't be exercised** because WmsOffice's currently-deployed model doesn't
+declare the features those three steps need — a model-authoring gap on this one app, not a platform
+regression (the underlying `recompute`/`bandPickers`/`actions` mechanisms are exercised elsewhere in
+the corpus). None of the 11 steps produced a genuine failure.
+
+> **Step 11 mattered most, and it held.** REG-48 reordered `enforcePermission`/`enforceRowWritable`
+> ahead of `evaluateRuleProfiles` in `DefaultConceptGateway.delete()`. `AggregateRuntime.commit()`
+> cascades through that gateway; this was the first re-run of that exact cascade against the fix,
+> and the first live check since the repo went public. Deleted a Recebimento `lotes` band row,
+> committed, reloaded (real page reload, not SPA state) — row stayed gone. Independently confirmed
+> server-side: `GET /api/recebimento_lotes/<deleted-id>` → 404, `GET /api/recebimento_lotes` →
+> exactly the 2 surviving rows, root record untouched.
+
+Incidental finding (not a formal step, not a regression in scope here): the post-commit "Saved."
+message is unobservable — `commitDraft()`'s success handler sets it then immediately calls
+`render()`, which rebuilds `#app` (including a fresh blank message span) before a user could see it.
+Filed as REG-60 (low severity, cosmetic).
+
+Evidence → `..\NPDev_General__OutsideRepo\aw-reverify-2026-07\` (`RESULTS.md` + the 4 ScrapForAI
+routine files used).
 
 ## F5-V.3 Status header · **1 hr**
 
