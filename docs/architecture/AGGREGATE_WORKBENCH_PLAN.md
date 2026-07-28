@@ -5,10 +5,14 @@
 > (`cd3cbcf`, closed DONE by `7e1096e` — FK auto-Prompt was already-implemented, `selectorRef`
 > owner-descoped), AW-P3 (`ff4acba` — folded `computed[]` into `recompute:`, closed the DOM-weight
 > risk), AW-P5 (`0762536` — per-state `allowedActions` gating), reconciled by `88e28a1`. Kept as the
-> authoritative design record (ADRs + phase contracts below are still the reference). Known
-> residual: a live re-verification is due given ~180 commits since 2026-07-12 (including the REG-48
-> `delete()` reordering) — see `docs/FRONTEND_STRATEGY_PLAN.md` F5-V.2, specifically the band-row
-> delete-cascade check.
+> authoritative design record (ADRs + phase contracts below are still the reference). **Live
+> re-verification DONE 2026-07-28** (`docs/FRONTEND_STRATEGY_PLAN.md` F5-V.2): the REG-48 `delete()`
+> reordering holds up through `AggregateRuntime.commit()`'s cascade-delete of a band row (server-side
+> confirmed, not just DOM) — 7/11 scenario steps passed live against WmsOffice's
+> `ExpedicaoWorkbench.html`/`RecebimentoWorkbench.html`, 3/11 not exercisable because WmsOffice's own
+> model doesn't declare `recompute`/`bandPickers`/`actions` (an authoring gap on that one app, not a
+> platform regression). One low-severity cosmetic finding filed (REG-60: post-commit confirmation
+> message gets wiped by a subsequent re-render).
 
 Companion to [ADR-0004](../adr/ADR-0004-aggregate-workbench.md) (aggregate + workbench substrate) and
 [ADR-0005](../adr/ADR-0005-auto-panel-patterns.md) (the AutoPanel authoring tier). The ADRs record
