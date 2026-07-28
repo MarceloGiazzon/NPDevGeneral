@@ -1,0 +1,16 @@
+{
+  "database": {
+    "engine": "H2Local",
+    "databaseName": "durable_workflow_demo",
+    "username": "sa",
+    "password": "",
+    "createInternalTables": true,
+    "createBusinessTables": true
+  },
+  "schemaLifecycle": {
+    "strategy": "KeepExistingIfCompatible",
+    "allowDestructiveRecreate": false,
+    "destructiveRecreateConfirmation": "",
+    "scope": "NpdevOwnedTablesOnly"
+  }
+}
