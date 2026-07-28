@@ -46,6 +46,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -446,13 +447,254 @@ def check_plan_status_banners(root: Path, verbose: bool) -> list[str]:
     return problems
 
 
+# ---------------------------------------------------------------------------
+# Rules T1 + T2 (docs/NEXT_EXECUTION_PLAN.md P2.1): close the tree/ledger drift class, not just the
+# instances found by hand on 2026-07-28 (2.F, 3.3, REG-59, and a fourth found WHILE BUILDING this
+# rule -- 3.5's REG-4 blocker). Same shape as `check()` above -- a summary-shaped claim contradicting
+# its own detail -- pointed at a fourth document (T1) and at a shape `check()` does not cover: a
+# struck row whose OWN verdict sentence still argues open (T2).
+# ---------------------------------------------------------------------------
+
+# Rule T1: phrases EXECUTION_TREES.md has actually used to write up an item as pending, proven
+# against two REAL 2026-07-28 instances, not guessed broad -- add a phrase only when a real instance
+# proves it belongs, same discipline as CLOSED_WORDS/OPEN_WORDS above.
+#   3.3 / REG-40: "currently fails" + "Not yet scheduled" while REG-40 had been CLOSED since 2026-07-24.
+#   3.5 / REG-4:  "still unresolved" while REG-4 had been CLOSED since 2026-07-21 -- found WHILE
+#                 BUILDING this rule, a fourth live instance of the exact class this rule exists for.
+TREE_PENDING_PHRASES = (
+    "still unresolved",
+    "not yet scheduled",
+    "currently fails",
+    "not yet started",
+    "not yet implemented",
+)
+TREE_REG_MENTION = re.compile(r"\bREG-\d+\b")
+# A tree bullet line, e.g. "├─ 3.3  ..." or, nested, "│    ├─ 2.B.4 ...".
+TREE_BULLET = re.compile(r"^\s*[│\s]*[├└]─")
+
+
+def tree_ledger_agreement_text(doc_name: str, lines: list[str], register_summary: dict) -> list[str]:
+    """Rule T1 core: does any REG-nn mention in `lines` (an EXECUTION_TREES.md-shaped document) read
+    as pending work, in a block the register says is CLOSED?
+
+    A "block" is the mention's own line plus up to the next 6 lines, stopped early at a blank line or
+    the next tree bullet -- an approximation of "this item's write-up" that needs no real tree parser.
+    Only the FIRST mention of each id is used for the block scan (subsequent mentions of an id already
+    flagged, or already cleared, are not re-scanned) -- this is a report-once convenience, not a
+    correctness requirement.
+    """
+    gaps: list[str] = []
+    reported: set[str] = set()
+    for number, line in enumerate(lines, start=1):
+        for match in TREE_REG_MENTION.finditer(line):
+            reg_id = match.group(0)
+            if reg_id in reported:
+                continue
+            entry = register_summary.get(reg_id)
+            if entry is None or entry[1] != "closed":
+                continue  # register doesn't track it, or it agrees the item is open: nothing to contradict
+            block_lines = [line]
+            for later in lines[number:number + 6]:
+                if not later.strip() or TREE_BULLET.match(later):
+                    break
+                block_lines.append(later)
+            block_text = " ".join(block_lines).lower()
+            hit = next((p for p in TREE_PENDING_PHRASES if p in block_text), None)
+            if hit:
+                reported.add(reg_id)
+                gaps.append(
+                    f"{doc_name}:{number}: {reg_id} is CLOSED in NPDEV_OPEN_ITEMS_REGISTER.md but is "
+                    f"still written up here as pending work (matched {hit!r}). Fix: update this "
+                    f"entry to reflect the register's CLOSED status, or correct the register if it "
+                    f"is the one that is wrong."
+                )
+    return gaps
+
+
+def tree_ledger_agreement_gaps(root: Path) -> list[str]:
+    register_path = root / "docs" / "NPDEV_OPEN_ITEMS_REGISTER.md"
+    tree_path = root / "docs" / "EXECUTION_TREES.md"
+    if not register_path.exists() or not tree_path.exists():
+        return []
+    summary, _detail, _sectioned = parse(register_path, "strikethrough")
+    lines = tree_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    return tree_ledger_agreement_text(tree_path.name, lines, summary)
+
+
+# Rule T2: a struck (closed) row whose own verdict sentence still argues open. Scoped to the row's
+# FIRST bold run AFTER its id -- the verdict sentence, e.g. "**DONE (2026-07-28).**" -- rather than
+# the whole row or all its bold runs. Measured directly against this corpus before shipping: a naive
+# whole-row (or all-bold-runs) scan for these phrases produces FOUR false positives --
+#   REG-16:  "...so no launch surface remains unreviewed" (plain prose, not the verdict)
+#   REG-17:  "...run remains an optional nice-to-have" (plain prose, not the verdict)
+#   REG-52:  "filed separately per the closure plan" (the FROM column, not Status, and not bolded)
+#   REG-59 (post-P1.4-fix): "**Platform-level gap filed as REG-61 ..., not covered by this row's DONE
+#            marker:**" -- a LATER bold run, deliberately pointing at the new REG-61 follow-up
+# all while the row itself is legitimately CLOSED. The real 2026-07-28 REG-59 bug had the
+# contradiction IN the lead bold verdict ("**DONE for WmsOffice ...; the underlying platform gap is
+# FILED, not fixed.**"), so scoping to that first run catches the real case without the four false ones.
+T2_PHRASES = (
+    re.compile(r"\bnot fixed\b", re.IGNORECASE),
+    re.compile(r"\bfiled\b", re.IGNORECASE),
+    re.compile(r"\bremains\b", re.IGNORECASE),
+    re.compile(r"\bstill open\b", re.IGNORECASE),
+)
+BOLD_RUN = re.compile(r"\*\*(.+?)\*\*")
+
+
+def strikethrough_contradiction_text(doc_name: str, lines: list[str]) -> list[str]:
+    gaps: list[str] = []
+    for number, line in enumerate(lines, start=1):
+        row = SUMMARY_ROW.match(line)
+        if not row or not row.group("struck"):
+            continue
+        item = row.group("id")
+        verdict_runs = [b for b in BOLD_RUN.findall(line) if b.strip() != item]
+        if not verdict_runs:
+            continue
+        verdict_text = verdict_runs[0]
+        for pattern in T2_PHRASES:
+            found = pattern.search(verdict_text)
+            if found:
+                gaps.append(
+                    f"{doc_name}:{number}: {item} is struck through (closed) but its own verdict "
+                    f"sentence ({verdict_text.strip()[:80]!r}) contains {found.group(0)!r}, which "
+                    f"reads as still open. Fix: reword the verdict, or split it like REG-59/REG-61 "
+                    f"(docs/NEXT_EXECUTION_PLAN.md P1.4) -- a WmsOffice-local DONE stays struck, a "
+                    f"platform-level OPEN follow-up gets its own unstruck row."
+                )
+                break
+    return gaps
+
+
+def strikethrough_contradiction_gaps(root: Path) -> list[str]:
+    register_path = root / "docs" / "NPDEV_OPEN_ITEMS_REGISTER.md"
+    if not register_path.exists():
+        return []
+    lines = register_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    return strikethrough_contradiction_text(register_path.name, lines)
+
+
+SYNTHETIC_T1_STALE = """\
+├─ 9.1  Fix REG-99 (synthetic fixture, not a real tree item)
+│        → User impact is high: this currently fails. Not yet scheduled.
+"""
+SYNTHETIC_T1_FIXED = """\
+├─ 9.1  Fix REG-99 (synthetic fixture, not a real tree item)
+│        ✅ DONE 2026-07-01 -- REG-99 is CLOSED in the register.
+"""
+SYNTHETIC_T1_REGISTER = {"REG-99": (1, "closed")}
+
+SYNTHETIC_T2_STALE = """\
+| ~~**REG-98**~~ | synthetic fixture | HIGH | **DONE for X; the underlying gap is FILED, not fixed.** More prose. |
+"""
+SYNTHETIC_T2_FIXED = """\
+| ~~**REG-98**~~ | synthetic fixture | HIGH | **DONE for X.** The platform gap is filed as REG-97 (OPEN). |
+"""
+
+
+def calibrate(root: Path) -> int:
+    """Required controls for T1/T2 before either ships as blocking -- same standard this repo already
+    holds `check-narrative-status-drift.py` to. Prefers real git revisions where one exists (T1's
+    REG-40/REG-4 instances, both real and both in this repo's own history); falls back to a small
+    synthetic fixture only where no single real revision isolates the mechanism cleanly.
+    """
+    ok = True
+
+    def report(label: str, findings: list[str], expect_fire: bool) -> None:
+        nonlocal ok
+        fired = bool(findings)
+        passed = fired == expect_fire
+        ok = ok and passed
+        print(f"  [{'PASS' if passed else 'FAIL'}] {label} ({'fired' if fired else 'silent'})")
+        for f in findings:
+            print(f"           {f}")
+
+    print("Calibration -- Rules T1/T2 must catch the real 2026-07-28 instances before shipping:")
+
+    register_path = root / "docs" / "NPDEV_OPEN_ITEMS_REGISTER.md"
+    tree_path = root / "docs" / "EXECUTION_TREES.md"
+
+    def git_show(path: Path) -> str | None:
+        try:
+            return subprocess.run(
+                ["git", "show", f"HEAD:{path.relative_to(root).as_posix()}"],
+                cwd=root, capture_output=True, encoding="utf-8", errors="replace", check=True,
+            ).stdout
+        except subprocess.CalledProcessError as exc:
+            print(f"  ERROR: could not read HEAD revision of {path.name}: {exc.stderr}", file=sys.stderr)
+            return None
+
+    head_register_summary = None
+    head_register_text = git_show(register_path)
+    if head_register_text is not None:
+        # Reuse parse()'s line-based logic against the HEAD text by writing it through the same
+        # summary-extraction pass parse() uses (duplicated minimally: parse() takes a Path, not text).
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
+            tmp.write(head_register_text)
+            tmp_path = Path(tmp.name)
+        try:
+            head_register_summary, _, _ = parse(tmp_path, "strikethrough")
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    head_tree_text = git_show(tree_path)
+    if head_tree_text is not None and head_register_summary is not None:
+        report(
+            "Rule T1 vs. EXECUTION_TREES.md @ HEAD (pre-fix: 3.3/REG-40 + 3.5/REG-4, real git revision)",
+            tree_ledger_agreement_text(f"{tree_path.name}@HEAD", head_tree_text.splitlines(), head_register_summary),
+            expect_fire=True,
+        )
+    report(
+        "Rule T1 vs. the working tree (post-fix)",
+        tree_ledger_agreement_gaps(root),
+        expect_fire=False,
+    )
+
+    if head_register_text is not None:
+        report(
+            "Rule T2 vs. NPDEV_OPEN_ITEMS_REGISTER.md @ HEAD (pre-fix REG-59, real git revision)",
+            strikethrough_contradiction_text(f"{register_path.name}@HEAD", head_register_text.splitlines()),
+            expect_fire=True,
+        )
+    report(
+        "Rule T2 vs. the working tree (post-fix REG-59/REG-61 split)",
+        strikethrough_contradiction_gaps(root),
+        expect_fire=False,
+    )
+
+    report("Rule T1 vs. synthetic 'currently fails / not yet scheduled' fixture (mechanism control)",
+           tree_ledger_agreement_text("<synthetic>", SYNTHETIC_T1_STALE.splitlines(), SYNTHETIC_T1_REGISTER),
+           expect_fire=True)
+    report("Rule T1 vs. the corrected synthetic fixture",
+           tree_ledger_agreement_text("<synthetic>", SYNTHETIC_T1_FIXED.splitlines(), SYNTHETIC_T1_REGISTER),
+           expect_fire=False)
+    report("Rule T2 vs. synthetic 'FILED, not fixed' fixture (mechanism control)",
+           strikethrough_contradiction_text("<synthetic>", SYNTHETIC_T2_STALE.splitlines()),
+           expect_fire=True)
+    report("Rule T2 vs. the corrected synthetic fixture",
+           strikethrough_contradiction_text("<synthetic>", SYNTHETIC_T2_FIXED.splitlines()),
+           expect_fire=False)
+
+    if not ok:
+        print("\nFAIL: at least one control did not behave as required -- T1/T2 do not ship as "
+              "blocking until they do (docs/NEXT_EXECUTION_PLAN.md P2.1).", file=sys.stderr)
+        return 1
+    print("\nOK: all T1/T2 controls behave correctly.")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--root", default=".", help="repo root (default: cwd)")
     parser.add_argument("--verbose", action="store_true", help="also print consistent/skipped counts")
+    parser.add_argument("--calibrate", action="store_true", help="run the T1/T2 required controls and exit")
     args = parser.parse_args(argv)
 
     root = Path(args.root).resolve()
+    if args.calibrate:
+        return calibrate(root)
     # Each document declares status its own way -- made explicit rather than guessed.
     targets = [
         (root / "docs" / "NPDEV_OPEN_ITEMS_REGISTER.md", "strikethrough"),
@@ -475,6 +717,14 @@ def main(argv: list[str]) -> int:
     all_problems.extend(ledger_coverage_gaps(root))
     all_problems.extend(mission_run_coverage_gaps(root))
     all_problems.extend(provenance_audit_gaps(root))
+    # Rules T1+T2 (docs/NEXT_EXECUTION_PLAN.md P2.1): tree-vs-ledger and strikethrough-vs-own-verdict
+    # cross-checks, calibrated (see `--calibrate`) against the real 2026-07-28 drift instances.
+    t1 = tree_ledger_agreement_gaps(root)
+    t2 = strikethrough_contradiction_gaps(root)
+    print(f"  EXECUTION_TREES.md vs. register (Rule T1): {len(t1)} contradiction(s)")
+    print(f"  NPDEV_OPEN_ITEMS_REGISTER.md strikethrough-vs-verdict (Rule T2): {len(t2)} contradiction(s)")
+    all_problems.extend(t1)
+    all_problems.extend(t2)
 
     if all_problems:
         print(f"\nFAIL: {len(all_problems)} tracking inconsistency(ies) — a summary row contradicting "
