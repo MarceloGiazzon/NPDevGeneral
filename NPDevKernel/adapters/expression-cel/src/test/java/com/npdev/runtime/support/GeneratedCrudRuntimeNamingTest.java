@@ -9,6 +9,7 @@ import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.kernel.KernelRunner;
 import com.npdev.kernel.ports.EventBus;
 import com.npdev.kernel.ports.InvariantEngine;
+import com.npdev.runtime.support.crud.sqlnaming.SqlNamingSupport;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
@@ -21,15 +22,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class GeneratedCrudRuntimeNamingTest {
 
     @Test
-    void runtimeBusinessTableAndColumnNamesUseSqlIdentifierSupport() throws Exception {
+    void runtimeBusinessTableAndColumnNamesUseSqlIdentifierSupport() {
         CompiledConcept product = productConcept();
         CompiledField sku = product.getFields().stream()
                 .filter(field -> "skuId".equals(field.getName()))
                 .findFirst()
                 .orElseThrow();
 
-        assertEquals("catalog_products", invokeStaticString("tableName", CompiledConcept.class, product));
-        assertEquals("sku_id", invokeStaticString("columnName", CompiledField.class, sku));
+        assertEquals("catalog_products", SqlNamingSupport.tableName(product));
+        assertEquals("sku_id", SqlNamingSupport.columnName(sku));
     }
 
     @Test
@@ -65,7 +66,7 @@ class GeneratedCrudRuntimeNamingTest {
         CompiledConcept order = orderConceptWithCustomId();
         CompiledField orderId = order.getFields().get(0);
 
-        String sql = GeneratedCrudRuntimeSupport.existsByIdSql(order, orderId);
+        String sql = SqlNamingSupport.existsByIdSql(order, orderId);
 
         assertEquals("SELECT 1 FROM orders WHERE CAST(order_id AS VARCHAR) = :id", sql);
     }
@@ -75,15 +76,9 @@ class GeneratedCrudRuntimeNamingTest {
         CompiledConcept order = orderConceptWithCustomId();
         CompiledField orderId = order.getFields().get(0);
 
-        String sql = GeneratedCrudRuntimeSupport.fetchCurrentStatusSql(order, orderId, "status");
+        String sql = SqlNamingSupport.fetchCurrentStatusSql(order, orderId, "status");
 
         assertEquals("SELECT status FROM orders WHERE CAST(order_id AS VARCHAR) = :id", sql);
-    }
-
-    private static String invokeStaticString(String methodName, Class<?> parameterType, Object argument) throws Exception {
-        Method method = GeneratedCrudRuntimeSupport.class.getDeclaredMethod(methodName, parameterType);
-        method.setAccessible(true);
-        return (String) method.invoke(null, argument);
     }
 
     private static CompiledConcept productConcept() {
