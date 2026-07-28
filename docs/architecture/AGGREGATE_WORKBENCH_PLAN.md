@@ -1,5 +1,15 @@
 # Aggregate Workbench & AutoPanels — Implementation Plan
 
+> **STATUS: EXECUTED.** All phases delivered 2026-07-11…2026-07-25 — P0/P1/P4/P6/P7/Polish (this
+> doc's own 2026-07-12 reconciliation, below) plus the three that were PARTIAL there: AW-P2
+> (`cd3cbcf`, closed DONE by `7e1096e` — FK auto-Prompt was already-implemented, `selectorRef`
+> owner-descoped), AW-P3 (`ff4acba` — folded `computed[]` into `recompute:`, closed the DOM-weight
+> risk), AW-P5 (`0762536` — per-state `allowedActions` gating), reconciled by `88e28a1`. Kept as the
+> authoritative design record (ADRs + phase contracts below are still the reference). Known
+> residual: a live re-verification is due given ~180 commits since 2026-07-12 (including the REG-48
+> `delete()` reordering) — see `docs/FRONTEND_STRATEGY_PLAN.md` F5-V.2, specifically the band-row
+> delete-cascade check.
+
 Companion to [ADR-0004](../adr/ADR-0004-aggregate-workbench.md) (aggregate + workbench substrate) and
 [ADR-0005](../adr/ADR-0005-auto-panel-patterns.md) (the AutoPanel authoring tier). The ADRs record
 the *decisions*; this document is the *executable plan*: phases, contracts, files touched, and
@@ -7,10 +17,9 @@ acceptance criteria to make NPDev generate the WmsOffice receiving/shipping scre
 a reusable **AutoPanel** — with the multi-level editor as the Transaction surface of an
 aggregate-bound AutoPanel.
 
-Status: **Reconciled 2026-07-12** — P0, P1, P4, P6, P7, and Polish are DONE (verified live, all
-committed). P2, P3, P5 are PARTIAL: their schema/DSL/validation layers are committed, but each has a
-specific remaining generator/runtime wiring gap called out in its section below (not a full re-run —
-just the missing slice). See §5 for per-phase evidence (commit hashes, file paths).
+Status (historical, 2026-07-12 reconciliation): P0, P1, P4, P6, P7, and Polish are DONE (verified
+live, all committed). P2, P3, P5 were PARTIAL at that point — see the STATUS header above for how
+each closed afterward. See §5 for per-phase evidence (commit hashes, file paths).
 
 > **Realignment note.** This plan was originally workbench-first. Per ADR-0005 the primary authoring
 > surface is now the **AutoPanel** (a slim, concept/aggregate-bound pattern that the generator
