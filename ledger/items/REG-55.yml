@@ -1,0 +1,26 @@
+id: REG-55
+title: Sandboxed plugin overload resolution matched by arg count only, not type -- "Ambiguous" false positive
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-27
+closed: 2026-07-28
+verification: UNIT_TESTED
+source: T2.B.4 live rehearsal, 2026-07-27; seen 3 times before being fixed while building the CORE C-3 durable-workflow demo
+surface: kernel/sandboxed-plugin-execution
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/plugin/SandboxedPluginExecutionEngine.java
+detail: |
+  SandboxedPluginExecutionEngine.resolveOperation matched a candidate handler method by name +
+  parameter count only, so PostgresPersistenceCapabilityAdapter's two 2-argument save overloads
+  (save(Object,Object) and save(TenantScope,Object)) always threw "Ambiguous," regardless of the
+  actual runtime argument types -- in the real call path adaptCallForHandler enriches a 1-arg save
+  into 2 args by prepending the concept name as a String, which is never a TenantScope, so exactly
+  one overload was ever actually legal. Fix: resolveOperation now disambiguates same-name/
+  same-argCount candidates by checking which ones the actual argument values are assignable to
+  (boxing primitives first); falls back to the original errors only when that doesn't narrow to
+  exactly one method. RED->GREEN: new
+  SandboxedPluginExecutionEngineTest#disambiguatesOverloadsBySameArgCountByActualArgumentType,
+  confirmed RED against the pre-fix code, GREEN after. Full NPDevRuntimeHost suite 404/0, no
+  regression.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-55

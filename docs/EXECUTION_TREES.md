@@ -234,10 +234,15 @@ TREE 2 — BIG
 │    │    F6  Coverage roadmap — build only what F1 proves recurs          [gated -- F1 found
 │    │        nothing recurs yet, so F6 has nothing to build until that changes]
 │
-├─ 2.E  Ledger migration: prose register → ledger/items/*.yml       [3 days]
-│    │    Unwires the 13 process docs currently hard-wired into gates.
-│    │    docs/OPEN_ITEMS.md becomes GENERATED, never hand-edited.
-│    └─ Unblocks 3.4.
+├─ 2.E  Ledger migration 🟡 PROTOTYPE 2026-07-28, full migration not done  [3 days]
+│    │    ledger/README.md + scripts/quality/generate_open_items.py shipped, proven
+│    │    (RED/GREEN schema validation, idempotent --check). Only 9/~106 entries
+│    │    migrated (REG-54..62, this session's own -- verifiable fidelity). ~97
+│    │    entries remain prose-only; NPDEV_OPEN_ITEMS_REGISTER.md stays authoritative.
+│    │    Gates NOT repointed at ledger/items/*.yml yet -- would blind them to the 90%+
+│    │    still in prose. "13 process docs hard-wired into gates" not identified;
+│    │    the actual gate's document set is 3 checked + 4 named exclusions.
+│    └─ 3.4 stays blocked -- full migration + cutover is a separate, later decision.
 │
 └─ 2.F  Durable-workflow demo app  ✅ DONE 2026-07-28 (0384966, CORE C-3)
          NPDevSamples/durable-workflow-demo + NPDevSamples/scripts/run-durable-resume-demo.ps1

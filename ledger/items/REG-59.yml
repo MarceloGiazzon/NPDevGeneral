@@ -1,0 +1,29 @@
+id: REG-59
+title: WmsOffice live database recovery record (REG-58 fix re-verification) -- recovery only, NOT the platform gap
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-07-28
+closed: 2026-07-28
+verification: VERIFIED_LIVE
+source: Found and resolved-on-live-data while re-verifying the REG-58 fix against WmsOffice's real, partially-migrated database, 2026-07-28
+surface: runtimehost/schema-lifecycle
+detail: |
+  THIS ROW COVERS THE MANUAL RECOVERY PERFORMED AGAINST WMSOFFICE'S REAL DATABASE ONLY -- it does
+  not cover the platform gap that recovery exposed; that gap is filed separately, OPEN, as REG-61.
+  DestructiveRecreationPass.executeNarrowTypeDropAndRecreate's ADD COLUMN never re-applies NOT NULL
+  even when the model declares the field required. BackfillPass DOES catch this on the next clean
+  boot (refuses to boot rather than silently leaving columns nullable) unless the model declares a
+  literal default to backfill with -- so the exposure window is only during a crashed/interrupted
+  boot, not permanent, correcting this filing's own first-draft framing. The deeper gap: the
+  sanctioned recovery mechanism (a literal default, backfilled via one UPDATE) cannot satisfy a
+  UNIQUE constraint across more than one existing row -- confirmed live (identity_roles.name 5
+  rows, identity_users.username 6 rows, both tenant-scoped unique). Resolved on WmsOffice's live
+  database via direct out-of-band SQL (not a model or platform-code change): backfilled all 18
+  blocked columns (flat placeholder for 16 non-unique, per-row-unique placeholder for the 2 unique
+  ones), then ALTER COLUMN ... SET NOT NULL directly. Verified via Impact-Only.ps1: verdict SAFE, 0
+  destructive/0 attention, then a real boot succeeded (/actuator/health UP). Consequence: WmsOffice's
+  identity/user data for its then-existing 6 users/5 roles are now placeholder values, not original
+  data -- the destructive DDL had already committed before backfill-refusal was reached, so this was
+  already true before the manual recovery; recovery only unblocked the boot.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-59

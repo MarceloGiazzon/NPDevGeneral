@@ -1,0 +1,24 @@
+id: REG-60
+title: Aggregate Workbench post-commit "Saved." confirmation is wiped by the next render before a user can see it
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-07-28
+closed: 2026-07-28
+verification: VERIFIED_LIVE
+source: Found during F5-V.2 live Aggregate Workbench re-verification, 2026-07-28
+surface: generator/workbench-page-template
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache
+detail: |
+  commitDraft()'s success handler set msg.className="msg ok" on the CURRENT render's message
+  element, then immediately called render(), which rebuilds #app from scratch -- including a
+  fresh, blank <span class="msg"> -- wiping the confirmation before a user could ever see it.
+  invokeAction()'s success handler had the identical shape, so it was fixed too. Fix: a
+  module-level pendingMsg variable, set by the success handlers instead of mutating the doomed
+  message element directly; render() now applies any pending message to the freshly-created
+  <span class="msg"> before clearing it. Verified live (not just unit-tested): WmsOffice
+  regenerated + rebuilt, ExpedicaoWorkbench.html, real browser via ScrapForAI -- logged in as
+  trial/admin, opened a real PreExpedicao record, clicked Save, DOM readback + screenshot confirm
+  the green "Saved." text is visible next to the Save button after the re-render.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-60

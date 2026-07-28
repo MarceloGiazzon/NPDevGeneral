@@ -1,0 +1,27 @@
+id: REG-62
+title: allowedActions is an untyped, unvalidated CSV-in-metadata escape hatch -- a typo silently drops an action-rail button
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-07-28
+verification: NOT_VERIFIED
+source: Investigated while closing F5-R1, 2026-07-28
+surface: dsl/autopanel-lifecycle
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java
+detail: |
+  allowedActions (per-lifecycle-state action-rail gating, AW-P5) is authored today as a
+  comma-separated string inside a lifecycle state's generic metadata map
+  (AutoPanelExpander.java:310), not a typed schema field, and nothing validates an entry resolves
+  to a real declared action -- a typo silently yields a missing button in production, same class as
+  REG-52/REG-53. Investigation found the natural fix (typed array + validate against declared
+  actions) is blocked on a real prerequisite gap: AutoPanelSurfaceAst has no actions field at all --
+  an AutoPanel section's action list lives inside that surface's own untyped metadata, the same
+  escape hatch allowedActions itself uses. JSON Schema alone cannot validate against a per-model
+  dynamic set of action names, so typing the array without resolving the action side first would
+  look done without fixing the actual failure mode. Fix, when picked up: give AutoPanel section
+  actions a typed AST home first, then add the typed allowedActions array (all 4 model.schema.json
+  mirrors) plus a cross-reference check, likely in PanelValidation.validateAutoPanels (which already
+  has both the concept's lifecycle and the AutoPanel's surfaces in scope). Not urgent: 0 of 27
+  corpus models use allowedActions at all.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-62

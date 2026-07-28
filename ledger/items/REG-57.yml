@@ -1,0 +1,28 @@
+id: REG-57
+title: H2's default 500ms WRITE_DELAY can lose committed flow-instance checkpoints across a hard kill
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-07-28
+closed: 2026-07-28
+verification: VERIFIED_LIVE
+source: Found while building the CORE C-3 durable-workflow demo, 2026-07-28
+surface: generator/database-config
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/UserDatabaseDefinitionLoader.java
+detail: |
+  Ack-ordering was eliminated first, by code: flowInstanceStore.update(waiting) is a plain blocking
+  call on a fully synchronous, single-threaded servlet call chain, no thread hop or async layer
+  anywhere between the kernel and the JDBC statement. That leaves physical durability: H2's MVStore
+  defaults to a 500ms WRITE_DELAY, buffering committed writes in memory before flushing to disk,
+  and this was not set anywhere in the repo. A hard kill inside that window loses however many
+  commits landed since the last flush even though each JDBC call had already returned success --
+  a contiguous tail of at least three commits lost together (a signature consistent with a
+  time-windowed buffer loss, not one dropped write). Fix: ;WRITE_DELAY=0 added to the H2 JDBC URL
+  construction (UserDatabaseDefinitionLoader.jdbcUrl, both H2_LOCAL and H2_SERVER branches -- the
+  only production call site), forcing a physical flush on every commit. Postgres unaffected (COMMIT
+  is synchronous to WAL there). RED->GREEN, freshly reproduced: with the fix reverted and the
+  demo's workaround sleep removed, run-durable-resume-demo.ps1 reproduced the exact failure fresh;
+  with the fix restored, 3/3 clean passes. Plus UserDatabaseDefinitionLoaderWriteDelayTest (2/2).
+  The 5-second sleep workaround was deleted from run-durable-resume-demo.ps1.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-57
