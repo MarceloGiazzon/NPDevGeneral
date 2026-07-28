@@ -259,7 +259,14 @@ final class BackfillPass {
     /** REG-61(b): how many rows would receive the SAME literal default if this column were backfilled
      * now. If the column already exists live (crash-recovery / TIGHTEN_NOT_NULL case), only the
      * currently-NULL rows are affected; if it does not exist yet (ADD_REQUIRED_COLUMN case), every
-     * row in the table would be, since none of them have a value for it. */
+     * row in the table would be, since none of them have a value for it.
+     *
+     * <p>Deliberately counts globally, not per-tenant, even though the unique constraints this
+     * project generates are typically tenant-scoped (a collision only actually needs two rows in
+     * the SAME tenant). A global count is conservative, never unsafe: it can only refuse a case a
+     * per-tenant count would have allowed, never the reverse. Scoring per-tenant would need to know
+     * whether THIS constraint is tenant-scoped and then take a per-tenant max, which is unnecessary
+     * complexity beyond what the register's filed scope asks for. */
     private static long countAffectedRows(Connection connection, String table, String column) throws SQLException {
         String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
         boolean columnExistsLive = SchemaLifecycleExecutor.readActualColumns(connection.getMetaData(), table).stream()
