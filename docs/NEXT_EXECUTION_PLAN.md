@@ -40,41 +40,43 @@
 | F5-V.2 | live re-verify **7/11**, step 11 (REG-48 cascade) PASSED |
 | Gates | register-consistency OK, **12/12** planning docs declare status |
 
-## 0.2 Open
+## 0.2 Open (updated 2026-07-28, end of day — Part 1/2/3 fully executed)
 
-**Five REG rows:** REG-54 (LOW) · REG-56 (MED) · REG-57 (MED) · REG-60 (LOW) · + a residual
-currently hidden inside a closed row (Part 1.4).
+**All five REG rows CLOSED same day:** REG-54, REG-56, REG-57, REG-59/61 split, REG-60. See Part 3
+below for each fix's evidence; nothing in the five-REG backlog remains open.
 
-**EXECUTION_TREES:** 2.CD (F1–F6) · 2.E · 3.2 ⬥ · 3.6 · 3.7 · two stale entries (Part 1).
+**EXECUTION_TREES still open:** 2.CD (F1–F6) · 2.E · 3.2 ⬥ · 3.6 · 3.7. (3.5's stale REG-4 blocker,
+found and fixed during P2.1, is UNBLOCKED-but-not-scheduled, not one of the "three genuinely
+blocked" items — see the header note above.)
 
-## 0.3 ★ What the demo actually proves — and what it does not
+## 0.3 ★ What the demo proved, and now proves in full (updated 2026-07-28)
 
-MEASURED. The shipped demo flow is:
+MEASURED, as originally written. The demo flow this plan was written against was:
 
 ```
 SubmitExpense: invariantCheck → createConcept → emitEvent → branch( awaitEvent → return )
 ```
 
-**There is no `capabilityCall` step in it**, and the runner sleeps **5 seconds** before the kill.
-Both are deliberate, and both are disclosed honestly — the runner carries a 7-line comment naming
-REG-57 and calling the sleep *"a deliberate workaround so the demo exercises the INTENDED
-durable-resume path rather than this separate, real, filed gap — it is not padding for its own
-sake,"* and `Input/README.md` references the REGs.
+**There was no `capabilityCall` step in it**, and the runner slept **5 seconds** before the kill.
+Both were deliberate, disclosed workarounds around REG-56 and REG-57 respectively.
 
-That disclosure is the right call. But the consequence should be stated plainly in this plan:
+**Both are now closed, and both workarounds are gone:**
+- REG-57 fixed (H2 `WRITE_DELAY=0`, root-caused — see P3.1) → the 5-second sleep is deleted from
+  `run-durable-resume-demo.ps1`; **3/3 clean** with it gone.
+- REG-56 fixed (`ExecutionContext.resuming`, root-caused — see P3.2) → the `notify-approval`
+  `capabilityCall` step is back in the demo's model; **3/3 clean** across a real kill+restart with it
+  present, `NPDEV-PLUGIN-SANDBOX :: phase=finish status=SUCCESS` confirmed in the log.
 
-> **The public showcase demonstrates a narrower path than the engine claims.** It avoids REG-56 by
-> omitting the capability call, and REG-57 by waiting. Closing REG-56 and REG-57 is what lets the
-> demo *add the capability step back* and *drop the sleep* — and that, not the register row, is the
-> real completion criterion for both.
+The completion criterion this plan set for both (P3.1/P3.2) is met. The public showcase now
+demonstrates the engine's full path, not a narrowed one.
 
 ---
 
-# Part 1 — 🔴 Immediate corrections (~1 hour)
+# Part 1 — 🔴 Immediate corrections (~1 hour) ✅ DONE 2026-07-28
 
 **Do first. Every item here is something the repo currently asserts that is false.**
 
-## P1.1 Push the 5 unpushed commits · ⚡ 2 min
+## P1.1 Push the 5 unpushed commits · ⚡ 2 min ✅ DONE
 
 MEASURED — `git log origin/beta1-vision-spine..HEAD` = 5, including **`07af4b9` the REG-58 fix**
 (drop indexes referencing a narrowed column before `DROP COLUMN`).
@@ -82,7 +84,7 @@ MEASURED — `git log origin/beta1-vision-spine..HEAD` = 5, including **`07af4b9
 The repo is public. A HIGH-severity migration-crash fix that exists only on your laptop is not
 shipped. `git push`.
 
-## P1.2 `EXECUTION_TREES.md` 2.F is stale · ⚡ 5 min
+## P1.2 `EXECUTION_TREES.md` 2.F is stale · ⚡ 5 min ✅ DONE
 
 Still reads:
 
@@ -102,7 +104,7 @@ Still reads:
             Closing REG-56/57 → re-add the capability step, drop the sleep.
 ```
 
-## P1.3 `EXECUTION_TREES.md` 3.3 is stale · ⚡ 5 min
+## P1.3 `EXECUTION_TREES.md` 3.3 is stale · ⚡ 5 min ✅ DONE
 
 Still reads *"User impact is high: 'add a new entity to an existing app' **currently fails**. Not yet
 scheduled."*
@@ -111,7 +113,7 @@ MEASURED: `~~**REG-40**~~ | CLOSED (2026-07-24, SER-P9)`, and `DATABASES_AND_MIG
 the fix twice (lines 416, 513). **That sentence would send someone to fix a fixed bug.** Mark
 3.3 ✅ DONE, delete the claim.
 
-## P1.4 ★ REG-59 is struck through while its own text says the gap is open · S 30 min
+## P1.4 ★ REG-59 is struck through while its own text says the gap is open · S 30 min ✅ DONE
 
 MEASURED. The row is `~~**REG-59**~~` — strikethrough, which in this register means **CLOSED**. Its
 status text opens:
@@ -150,7 +152,7 @@ way forward.
     boot failure after the first is fixed.
 - Cross-link both directions.
 
-## P1.5 REG-58's own text is now stale · ⚡ 2 min
+## P1.5 REG-58's own text is now stale · ⚡ 2 min ✅ DONE
 
 It ends: *"the live database is still sitting at its backed-up, partially-migrated (8/26) state as of
 this filing."* REG-59 superseded that — the DB was recovered, backfilled, `ALTER COLUMN ... SET NOT
@@ -159,9 +161,9 @@ sentence pointing at REG-59.
 
 ---
 
-# Part 2 — 🟡 Close the drift class, not the instances (1 day)
+# Part 2 — 🟡 Close the drift class, not the instances (1 day) ✅ DONE 2026-07-28
 
-## P2.1 Tree-vs-ledger cross-check
+## P2.1 Tree-vs-ledger cross-check ✅ DONE — shipped as Rules T1+T2, calibrated, wired in blocking
 
 Three stale-tree instances in two days — §2.D (fixed by hand in P1.1 of the last plan), 2.F, 3.3 —
 plus REG-59's strikethrough contradiction. `check-register-consistency.py` covers the three ledgers
@@ -185,9 +187,9 @@ false-positive risk because it compares two machine-readable markers, not prose.
 
 ---
 
-# Part 3 — 🟡 The five open REG rows
+# Part 3 — 🟡 The five open REG rows ✅ ALL FIVE CLOSED 2026-07-28
 
-## P3.1 ★★ REG-57 — re-rate to HIGH and fix (2–3 days)
+## P3.1 ★★ REG-57 — re-rate to HIGH and fix (2–3 days) ✅ DONE — root cause: H2 WRITE_DELAY (not ordering)
 
 **Currently MEDIUM. It should be HIGH, and the reason is the core promise.**
 
@@ -229,7 +231,7 @@ The filing's 3/3-vs-1/1 empirical result is the calibration.
 **Completion criterion:** **delete the 5-second sleep from `run-durable-resume-demo.ps1`** and have
 it still pass. That is the honest proof, not a green unit test.
 
-## P3.2 ★ REG-56 — capabilityCall fails on cross-JVM resume (2–3 days)
+## P3.2 ★ REG-56 — capabilityCall fails on cross-JVM resume (2–3 days) ✅ DONE — root cause: resume lost the flow's own role
 
 MEASURED: a `capabilityCall` step (`notification`/`send`, `notification-inproc`) executed while
 resuming an `awaitEvent`-parked flow throws `CAPABILITY_FAILED` **only when the resuming process is a
@@ -252,7 +254,7 @@ about. Fix the observability first; the root cause may then be obvious.
 **Completion criterion:** **add the `capabilityCall` step back into the demo flow** and have the
 runner pass across a real restart.
 
-## P3.3 REG-60 — cosmetic, but on the showcase surface · ⚡ 1 hr
+## P3.3 REG-60 — cosmetic, but on the showcase surface · ⚡ 1 hr ✅ DONE
 
 `commitDraft()` sets `msg.className="msg ok"` then immediately calls `render()`, which rebuilds
 `#app` including a fresh blank message span — so the "Saved." confirmation is never visible.
@@ -262,13 +264,13 @@ LOW severity, but it is on the Aggregate Workbench, which is the thing you point
 render the confirmation after `render()`, or have `render()` preserve a pending message. One-line
 class of change; verify in-browser.
 
-## P3.4 REG-54 — dead private methods · ⚡ 30 min
+## P3.4 REG-54 — dead private methods · ⚡ 30 min ✅ DONE
 
 `worse(...)` and `hasTypeChange(...)` in `SchemaLifecycleExecutor` have zero callers since SER-P4.8
 switched `classify()` to `ClassificationReducer`. Three test doc-comments still reference them as
 live. Delete both; fix the comments. Trivial, and it removes a false trail for the next reader.
 
-## P3.5 REG-61 — the platform gap split out of REG-59 (see P1.4) · M 2 days
+## P3.5 REG-61 — the platform gap split out of REG-59 (see P1.4) · M 2 days ✅ DONE (a)+(b)
 
 **(a) Preserve `NOT NULL` on narrow-type recreate.** Small, mechanical, high value: a zero-row table
 then needs no backfill dance at all.
@@ -438,20 +440,24 @@ friction in the existing `NON_AUTHOR_FRICTION_LOG_TEMPLATE.md`.
 # Part 7 — Sequencing
 
 ```
-DAY 1 (~2 hr)   P1.1 push  🔴  ← the REG-58 fix is not public yet
-                P1.2 2.F stale · P1.3 3.3 stale · P1.5 REG-58 sentence
-                P1.4 split REG-59 → REG-61 OPEN/HIGH  ★
+DAY 1 (~2 hr) ✅ DONE   P1.1 push  🔴 · P1.2 2.F stale · P1.3 3.3 stale · P1.5 REG-58 sentence
+                        P1.4 split REG-59 → REG-61 OPEN/HIGH  ★
 
-DAY 2           P2.1 tree-vs-ledger gate (Rules T1+T2, calibrated)  ← closes the drift CLASS
-                P3.4 REG-54 dead methods · P3.3 REG-60 cosmetic
+DAY 2 ✅ DONE           P2.1 tree-vs-ledger gate (Rules T1+T2, calibrated) -- found a 4th stale
+                        instance (3.5/REG-4) while building it, fixed same day
+                        P3.4 REG-54 dead methods · P3.3 REG-60 cosmetic
 
-WEEK 1          P3.1 REG-57 durability/ack ordering  ★★  [2-3 d]
-                P3.2 REG-56 cross-JVM capability     ★   [2-3 d]
-                  └─► completion = demo re-adds capabilityCall AND drops the 5s sleep
+WEEK 1 ✅ DONE          P3.1 REG-57 durability/ack ordering  ★★ -- root cause: H2 WRITE_DELAY, not
+                        ordering (ordering was eliminated by tracing code). 3/3 clean, sleep removed.
+                        P3.2 REG-56 cross-JVM capability     ★  -- root cause: resume lost the
+                        flow's own authorized role (ExecutionContext.resuming). 3/3 clean,
+                        capabilityCall step restored.
+                        P3.5 REG-61 (a)+(b) also done same day (NOT NULL preservation + named
+                        UNIQUE-backfill refusal) -- pulled forward from Week 2, same subsystem as
+                        REG-58/59 so doing it right after was cheaper than context-switching back.
 
-WEEK 2          P4.1 F1 taxonomy ★★ [1 d]  ← run preflight-accessors.py first
+WEEK 2 (next)   P4.1 F1 taxonomy ★★ [1 d]  ← run preflight-accessors.py first
                 P4.2 F2 contract substrate [5 d]
-                P3.5 REG-61 (a)+(b)  [2 d]   (parallel — different subsystem)
 
 WEEK 3          P4.3 F3 provenance [4 d]
                 P4.4 F4 impact gate ★★ [2 d]  → the money demo
@@ -487,8 +493,8 @@ sleep.
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| REG-57 is H2-only and gets deprioritised | **Medium** | H2Local is the default dev engine **and the demo's engine**. Fix it, and state the Postgres finding explicitly either way |
-| REG-56 root cause resists tracing again | **Medium** | First step is *observability*, not a fix — `CAPABILITY_FAILED` with no cause is itself the defect |
+| ~~REG-57 is H2-only and gets deprioritised~~ | RESOLVED | Fixed: `WRITE_DELAY=0` at the URL level (both H2_LOCAL/H2_SERVER); Postgres confirmed unaffected (synchronous WAL commit, no analogous parameter) |
+| ~~REG-56 root cause resists tracing again~~ | RESOLVED | Root cause found without needing new observability first: a live `PermissionDebugConfig` log line already showed the mismatched roles directly |
 | `invocations` drifts from real routes | **High** | The dual-tree path-assertion test; `extract-routes.py` emits the fixture |
 | Only one source tree gets searched again | **High** | Same test — it is the automated form of a mistake made twice by hand |
 | F5-R1/R2 ship without a `BREAKING.md` entry | Medium | They missed the 2.A window; they are standalone breaking changes now. Still codemod-free (0/27) |
@@ -497,15 +503,19 @@ sleep.
 
 ## Definition of done
 
-**Part 1** — pushed; 2.F and 3.3 marked DONE with the stale claims deleted; REG-61 filed OPEN/HIGH;
-REG-58 cross-links REG-59.
+**Part 1 — ✅ DONE.** Pushed; 2.F and 3.3 marked DONE with the stale claims deleted; REG-59 split,
+REG-61 filed OPEN/HIGH (then fixed, see Part 3); REG-58 cross-links REG-59.
 
-**Part 2** — Rules T1+T2 calibrated RED→GREEN, wired blocking; the pre-fix tree fires on REG-59, 2.F
-and 3.3.
+**Part 2 — ✅ DONE.** Rules T1+T2 calibrated RED→GREEN (both real-git-history AND synthetic
+controls), wired blocking via the existing `check-register-consistency.py` invocation; the pre-fix
+tree fires on REG-59, 2.F, 3.3, **and a 4th instance found while building it (3.5/REG-4)**.
 
-**Part 3** — REG-57 fixed and **the demo passes with the 5s sleep deleted**; REG-56 fixed and **the
-demo passes with a `capabilityCall` step restored**; REG-54/60 closed; REG-61 (a)+(b) with a named
-refusal and a documented recovery recipe.
+**Part 3 — ✅ DONE, all five REG rows.** REG-57 fixed and **the demo passes with the 5s sleep
+deleted (3/3)**; REG-56 fixed and **the demo passes with a `capabilityCall` step restored (3/3)**;
+REG-54/60 closed; REG-61 (a)+(b) with a named refusal and a documented recovery recipe. Every fix
+root-caused by tracing real code, not guessed; every fix has a fast unit-test regression guard plus
+live/integration proof; full relevant test suites green throughout (NPDevKernel:kernel 163/163,
+com.finalexec.db 273/273).
 
 **Part 4** — `SCREEN_TAXONOMY.md` covering all five apps; 12 catalogs with every path asserted against
 both trees; bundle permission-filtered with `modelHash`; one manifest with three producers and every
