@@ -250,6 +250,7 @@ LEDGER_EXCLUSIONS = {
     "LNCH1_CLOSEOUT_PLAN.md": "Executed plan (marked HISTORICAL). Its tables are task checklists, not a status ledger of record.",
     "LNCH1_PLATFORM_COLUMN_PLAN.md": "Executed plan (marked HISTORICAL). Same: task tables, not tracked items.",
     "REGISTER_CLOSURE_PLAN.md": "Executed plan (marked HISTORICAL). Tables restate register items; the register itself is the checked source.",
+    "FRONTEND_STRATEGY_PLAN.md": "Proposed, not-yet-started roadmap (STATUS: ACTIVE, F1-F6 gated on scheduling). Its F1..F6 table is an effort/priority estimate, not a status ledger of tracked open/closed items -- there is nothing yet to cross-check a detail section against.",
 }
 
 # Adversarial-review findings documents are excluded as a CLASS, not one by one: their tables are
