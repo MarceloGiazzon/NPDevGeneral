@@ -6,11 +6,15 @@ import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.DropTable;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.NarrowType;
 
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 
 import javax.sql.DataSource;
 
@@ -157,11 +161,26 @@ final class DestructiveRecreationPass {
         }
     }
 
-    private static void executeNarrowTypeDropAndRecreate(Connection connection, String table, String column, String newType)
+    // Package-private (not private), matching TypeWideningPass#attemptInPlaceTypeWidenings's own
+    // precedent, so it is directly unit-testable against a real H2 DataSource.
+    static void executeNarrowTypeDropAndRecreate(Connection connection, String table, String column, String newType)
             throws SQLException {
         String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
         String safeColumn = SchemaLifecycleExecutor.safeIdentifier(column);
         String safeType = TypeWideningPass.safeSqlType(newType);
+        // REG-58: a plain DROP COLUMN fails when a unique index/constraint still references this
+        // column (H2: "Column may be referenced by ..."; Postgres would refuse similarly). Every
+        // ux_<table>_<column>-style index SchemaRealizationEmitter bootstraps is exactly this shape
+        // for any field the model declares unique -- confirmed live on
+        // identity_password_reset_tokens.token_hash, and several of the OTHER columns in this same
+        // narrow-type batch (identity_users.username/email, produtos.codigo, ruas.codigo) are
+        // equally likely unique-constrained business keys, so this is not a one-off. Not fixing the
+        // OTHER side of the constraint lifecycle here deliberately: UniqueConstraintPass.
+        // applyUniqueConstraints already runs on every boot's afterMigrate and re-adds any declared
+        // constraint it finds missing (constraintExists returns false once the index backing it is
+        // gone), so dropping the blocking index/constraint here is enough -- recreating it would be
+        // redundant with, and could race, that existing idempotent pass.
+        dropIndexesReferencingColumn(connection, table, safeTable, column);
         try (PreparedStatement drop = connection.prepareStatement(
                 "ALTER TABLE " + safeTable + " DROP COLUMN " + safeColumn)) {
             drop.executeUpdate();
@@ -169,6 +188,46 @@ final class DestructiveRecreationPass {
         try (PreparedStatement add = connection.prepareStatement(
                 "ALTER TABLE " + safeTable + " ADD COLUMN " + safeColumn + " " + safeType)) {
             add.executeUpdate();
+        }
+    }
+
+    /**
+     * Finds every index (unique or not -- any index referencing the column would equally block the
+     * DROP COLUMN below) that references {@code column} on {@code table}, via portable
+     * {@link DatabaseMetaData#getIndexInfo} rather than assuming the {@code ux_<table>_<column>}
+     * naming convention {@code UniqueConstraintPass} happens to use today -- a future naming change
+     * or a hand-declared index would otherwise silently reopen this exact bug. Drops each one found;
+     * a table can have more than one index touching the same column (composite + single-column), so
+     * this collects distinct index names first rather than dropping mid-iteration over a live
+     * {@code ResultSet}.
+     */
+    private static void dropIndexesReferencingColumn(Connection connection, String table, String safeTable, String column)
+            throws SQLException {
+        DatabaseMetaData metadata = connection.getMetaData();
+        LinkedHashSet<String> indexNames = new LinkedHashSet<>();
+        for (String candidate : List.of(table.toLowerCase(Locale.ROOT), table.toUpperCase(Locale.ROOT))) {
+            try (ResultSet resultSet = metadata.getIndexInfo(null, null, candidate, false, false)) {
+                while (resultSet.next()) {
+                    String indexName = resultSet.getString("INDEX_NAME");
+                    String indexColumn = resultSet.getString("COLUMN_NAME");
+                    if (indexName != null && indexColumn != null && indexColumn.equalsIgnoreCase(column)) {
+                        indexNames.add(indexName);
+                    }
+                }
+            }
+        }
+        for (String indexName : indexNames) {
+            String safeIndex = SchemaLifecycleExecutor.safeIdentifier(indexName);
+            try (PreparedStatement dropIndex = connection.prepareStatement("DROP INDEX IF EXISTS " + safeIndex)) {
+                dropIndex.executeUpdate();
+            } catch (SQLException indexDropFailed) {
+                // A true named CONSTRAINT (not a plain index) needs ALTER TABLE ... DROP CONSTRAINT
+                // instead of DROP INDEX on some engines -- fall back rather than fail the whole pass.
+                try (PreparedStatement dropConstraint = connection.prepareStatement(
+                        "ALTER TABLE " + safeTable + " DROP CONSTRAINT IF EXISTS " + safeIndex)) {
+                    dropConstraint.executeUpdate();
+                }
+            }
         }
     }
 
