@@ -92,13 +92,6 @@ private final EventBus eventBus;
     private static final long CIRCUIT_OPEN_DURATION_MS = 30_000L;
     private static final int BULKHEAD_MAX_CONCURRENT = 10;
     private static final int IDEMPOTENCY_RESULT_MAX_CHARS = 16_384;
-    private static final String AWAIT_STATE_KEY = "_npdev.await";
-    private static final String AWAIT_FIELD_EVENT_NAME = "awaitEventName";
-    private static final String AWAIT_FIELD_MATCH_CORRELATION = "matchCorrelation";
-    private static final String AWAIT_FIELD_PAYLOAD_MATCH_REFS = "payloadMatchRefs";
-    private static final String AWAIT_FIELD_STEP_INDEX = "stepIndex";
-    private static final String AWAIT_FIELD_STEP_NAME = "stepName";
-    private static final String AWAIT_FIELD_AWAIT_REF = "awaitRef";
     private static final String FLOW_RESUME_IDEMPOTENCY_CAPABILITY = "__flow_resume";
 
     public KernelRunner withEventSchemaProvider(EventSchemaProvider provider) {
@@ -1887,8 +1880,8 @@ private final EventBus eventBus;
                                 awaitRef = "awaitedEvent";
                             }
                             state.put(
-                                    AWAIT_STATE_KEY,
-                                    buildAwaitState(
+                                    FlowStateCodec.AWAIT_STATE_KEY,
+                                    FlowStateCodec.buildAwaitState(
                                             step,
                                             traceStepIndex,
                                             awaitRef
@@ -1930,7 +1923,7 @@ private final EventBus eventBus;
                         if (awaitRef.isBlank()) {
                             awaitRef = "awaitedEvent";
                         }
-                        state.remove(AWAIT_STATE_KEY);
+                        state.remove(FlowStateCodec.AWAIT_STATE_KEY);
                         state.put(awaitRef, awaited.payload());
                         state.put(awaitRef + "Envelope", awaited);
                         state.put("last", awaited.payload());
@@ -2509,35 +2502,20 @@ private final EventBus eventBus;
         );
     }
 
-    private static Map<String, Object> buildAwaitState(
-            FlowStepDefinition step,
-            int stepIndex,
-            String awaitRef
-    ) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put(AWAIT_FIELD_EVENT_NAME, step.getAwaitEventName());
-        out.put(AWAIT_FIELD_MATCH_CORRELATION, step.isAwaitMatchCorrelation());
-        out.put(AWAIT_FIELD_PAYLOAD_MATCH_REFS, Map.copyOf(step.getAwaitPayloadMatchRefs()));
-        out.put(AWAIT_FIELD_STEP_INDEX, Math.max(0, stepIndex));
-        out.put(AWAIT_FIELD_STEP_NAME, step.getName());
-        out.put(AWAIT_FIELD_AWAIT_REF, normalizeAwaitRef(awaitRef));
-        return Map.copyOf(out);
-    }
-
     private WaitCriteria resolveWaitCriteria(FlowInstance waitingInstance) {
         if (waitingInstance == null) {
             return new WaitCriteria(null, true, Map.of(), -1, "awaitedEvent");
         }
-        Object rawWaitState = waitingInstance.state().get(AWAIT_STATE_KEY);
+        Object rawWaitState = waitingInstance.state().get(FlowStateCodec.AWAIT_STATE_KEY);
         if (rawWaitState instanceof Map<?, ?> waitMap) {
-            String eventName = Objects.toString(waitMap.get(AWAIT_FIELD_EVENT_NAME), waitingInstance.waitingForEventName());
-            boolean matchCorrelation = parseBoolean(waitMap.get(AWAIT_FIELD_MATCH_CORRELATION), true);
-            int stepIndex = parseInt(waitMap.get(AWAIT_FIELD_STEP_INDEX), waitingInstance.currentStepIndex());
-            String awaitRef = normalizeAwaitRef(Objects.toString(waitMap.get(AWAIT_FIELD_AWAIT_REF), "awaitedEvent"));
+            String eventName = Objects.toString(waitMap.get(FlowStateCodec.AWAIT_FIELD_EVENT_NAME), waitingInstance.waitingForEventName());
+            boolean matchCorrelation = FlowStateCodec.parseBoolean(waitMap.get(FlowStateCodec.AWAIT_FIELD_MATCH_CORRELATION), true);
+            int stepIndex = FlowStateCodec.parseInt(waitMap.get(FlowStateCodec.AWAIT_FIELD_STEP_INDEX), waitingInstance.currentStepIndex());
+            String awaitRef = FlowStateCodec.normalizeAwaitRef(Objects.toString(waitMap.get(FlowStateCodec.AWAIT_FIELD_AWAIT_REF), "awaitedEvent"));
             return new WaitCriteria(
                     eventName,
                     matchCorrelation,
-                    parseStringMap(waitMap.get(AWAIT_FIELD_PAYLOAD_MATCH_REFS)),
+                    FlowStateCodec.parseStringMap(waitMap.get(FlowStateCodec.AWAIT_FIELD_PAYLOAD_MATCH_REFS)),
                     stepIndex,
                     awaitRef
             );
@@ -2549,62 +2527,6 @@ private final EventBus eventBus;
                 waitingInstance.currentStepIndex(),
                 "awaitedEvent"
         );
-    }
-
-    private static Map<String, String> parseStringMap(Object rawValue) {
-        if (!(rawValue instanceof Map<?, ?> rawMap) || rawMap.isEmpty()) {
-            return Map.of();
-        }
-        Map<String, String> out = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
-            if (entry == null || entry.getKey() == null || entry.getValue() == null) {
-                continue;
-            }
-            String key = String.valueOf(entry.getKey()).trim();
-            String value = String.valueOf(entry.getValue()).trim();
-            if (key.isBlank() || value.isBlank()) {
-                continue;
-            }
-            out.put(key, value);
-        }
-        return out.isEmpty() ? Map.of() : Map.copyOf(out);
-    }
-
-    private static boolean parseBoolean(Object rawValue, boolean defaultValue) {
-        if (rawValue == null) {
-            return defaultValue;
-        }
-        if (rawValue instanceof Boolean bool) {
-            return bool;
-        }
-        String text = String.valueOf(rawValue).trim();
-        if (text.isBlank()) {
-            return defaultValue;
-        }
-        return Boolean.parseBoolean(text);
-    }
-
-    private static int parseInt(Object rawValue, int defaultValue) {
-        if (rawValue == null) {
-            return defaultValue;
-        }
-        if (rawValue instanceof Number number) {
-            return number.intValue();
-        }
-        String text = String.valueOf(rawValue).trim();
-        if (text.isBlank()) {
-            return defaultValue;
-        }
-        try {
-            return Integer.parseInt(text);
-        } catch (NumberFormatException ignored) {
-            return defaultValue;
-        }
-    }
-
-    private static String normalizeAwaitRef(String awaitRef) {
-        String normalized = normalizeRef(awaitRef);
-        return normalized.isBlank() ? "awaitedEvent" : normalized;
     }
 
     private FlowInstance applyResumeBackoff(FlowInstance instance, String errorCode, long nowEpochMs) {
@@ -4038,7 +3960,7 @@ CapabilityCall call = new CapabilityCall(
                 step.isAwaitMatchCorrelation(),
                 step.getAwaitPayloadMatchRefs(),
                 0,
-                normalizeAwaitRef(step.getAwaitRef())
+                FlowStateCodec.normalizeAwaitRef(step.getAwaitRef())
         );
         return findAwaitedEvent(
                 waitCriteria,
@@ -4249,7 +4171,7 @@ CapabilityCall call = new CapabilityCall(
         return args;
     }
 
-    private static String normalizeRef(String value) {
+    static String normalizeRef(String value) {
         if (value == null || value.isBlank()) {
             return "";
         }
@@ -4346,7 +4268,7 @@ CapabilityCall call = new CapabilityCall(
     ) {
         private WaitCriteria {
             payloadMatchRefs = payloadMatchRefs == null ? Map.of() : Map.copyOf(payloadMatchRefs);
-            awaitRef = normalizeAwaitRef(awaitRef);
+            awaitRef = FlowStateCodec.normalizeAwaitRef(awaitRef);
         }
     }
 
