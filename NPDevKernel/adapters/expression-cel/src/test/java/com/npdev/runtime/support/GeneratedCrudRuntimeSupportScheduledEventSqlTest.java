@@ -3,6 +3,8 @@ package com.npdev.runtime.support;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.npdev.runtime.support.crud.scheduling.ScheduledEventSql;
+
 import java.util.List;
 import java.util.Locale;
 
@@ -12,12 +14,12 @@ final class GeneratedCrudRuntimeSupportScheduledEventSqlTest {
     @Test
     void scheduledEventSqlIsNotPostgresOnly() {
         List<String> statements = List.of(
-                GeneratedCrudRuntimeSupport.ScheduledEventSql.selectDue(false),
-                GeneratedCrudRuntimeSupport.ScheduledEventSql.selectDue(true),
-                GeneratedCrudRuntimeSupport.ScheduledEventSql.claim(),
-                GeneratedCrudRuntimeSupport.ScheduledEventSql.markProcessed(),
-                GeneratedCrudRuntimeSupport.ScheduledEventSql.markFailed(),
-                GeneratedCrudRuntimeSupport.ScheduledEventSql.insert()
+                ScheduledEventSql.selectDue(false),
+                ScheduledEventSql.selectDue(true),
+                ScheduledEventSql.claim(),
+                ScheduledEventSql.markProcessed(),
+                ScheduledEventSql.markFailed(),
+                ScheduledEventSql.insert()
         );
 
         String combined = String.join("\n", statements);
