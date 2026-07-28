@@ -1,10 +1,11 @@
 # DSL 2.0 + God-File Decomposition — Execution Plan
 
-> **STATUS: Parts 2 and 3 DONE (2026-07-27/28).** Part 1 (R1/T1.6, merge `beta1-vision-spine` to
-> `main` + tag `beta1.2`) is the one item still open, blocked on `gh auth login` (owner action,
-> not a code task) — see §0.2. Written 2026-07-27 against `beta1-vision-spine` @ `8bc3715` (+
-> T1.15 in flight). Covers the **remaining TREE 1 items** and **TREE 2 items 2.A and 2.B** from
-> `docs/EXECUTION_TREES.md`.
+> **STATUS: DONE (2026-07-28).** All three parts complete: Part 1 (R1/T1.6) merged
+> `beta1-vision-spine` to `main` (`89eb945`, PR #5, both gates green) and tagged `beta1.2`; Parts 2
+> (DSL 2.0) and 3 (decomposition) closed out 2026-07-27. `gh auth login` (the blocker through most
+> of this session) was unblocked via a PAT supplied by the owner. Written 2026-07-27 against
+> `beta1-vision-spine` @ `8bc3715` (+ T1.15 in flight). Covers the **remaining TREE 1 items** and
+> **TREE 2 items 2.A and 2.B** from `docs/EXECUTION_TREES.md`.
 >
 > **Staged outside the repo** while T1.15 (SemanticValidator split) is in flight. Move in with:
 > ```powershell
