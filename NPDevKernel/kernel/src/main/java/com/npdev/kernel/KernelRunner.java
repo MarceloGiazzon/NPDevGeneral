@@ -70,12 +70,12 @@ private final EventBus eventBus;
     private final FlowDefinitionProvider flowDefinitionProvider;
     private final CapabilityDispatcher capabilityDispatcher;
     private final ExecutionTracer executionTracer;
-    private final EventStore eventStore;
+    final EventStore eventStore;
     final FlowInstanceStore flowInstanceStore;
     private final CorrelationOwnershipStore correlationOwnershipStore;
     private final CircuitBreakerStateStore circuitBreakerStateStore;
     private final BulkheadStore bulkheadStore;
-    private final IdempotencyStore idempotencyStore;
+    final IdempotencyStore idempotencyStore;
     private final CapabilityPolicyOverrides capabilityPolicyOverrides;
     private final JsonCodec jsonCodec;
     private final SchemaValidator schemaValidator;
@@ -85,14 +85,10 @@ private final EventBus eventBus;
     private final IdProvider idProvider;
     private final ThreadLocal<String> currentFlowContext = new ThreadLocal<>();
     private static final Object UNRESOLVED = new Object();
-    private static final long RESUME_BASE_DELAY_MS = 5_000L;
-    private static final long RESUME_MAX_DELAY_MS = 300_000L;
-    private static final int RESUME_MAX_ATTEMPTS = 20;
     private static final int CIRCUIT_FAILURE_THRESHOLD = 5;
     private static final long CIRCUIT_OPEN_DURATION_MS = 30_000L;
     private static final int BULKHEAD_MAX_CONCURRENT = 10;
     private static final int IDEMPOTENCY_RESULT_MAX_CHARS = 16_384;
-    private static final String FLOW_RESUME_IDEMPOTENCY_CAPABILITY = "__flow_resume";
 
     public KernelRunner withEventSchemaProvider(EventSchemaProvider provider) {
         this.eventSchemaProvider = provider == null ? EventSchemaProvider.noop() : provider;
@@ -687,7 +683,7 @@ private final EventBus eventBus;
             eventStore.append(envelope);
         }
         eventBus.publish(envelope);
-        resumeWaitingExecutionsFor(envelope, null, effectiveCorrelationId, effectiveContext);
+        ResumeCoordinator.resumeWaitingExecutionsFor(this, envelope, null, effectiveCorrelationId, effectiveContext);
         return envelope;
     }
 
@@ -917,7 +913,7 @@ private final EventBus eventBus;
         if (lookupCorrelationId == null) {
             lookupCorrelationId = eventEnvelope.correlationId();
         }
-        return resumeWaitingExecutionsFor(eventEnvelope, null, lookupCorrelationId, ExecutionContext.anonymous());
+        return ResumeCoordinator.resumeWaitingExecutionsFor(this, eventEnvelope, null, lookupCorrelationId, ExecutionContext.anonymous());
     }
 
     public int resumeAllWaitingExecutions() {
@@ -925,91 +921,7 @@ private final EventBus eventBus;
     }
 
     public int resumeAllWaitingExecutions(int limit) {
-        if (eventStore == null) {
-            return 0;
-        }
-        int batchSize = limit <= 0 ? 500 : limit;
-        long now = nowEpochMillis();
-        List<FlowInstance> waitingSnapshot = flowInstanceStore.findAllWaiting(batchSize * 4);
-        if (waitingSnapshot == null || waitingSnapshot.isEmpty()) {
-            return 0;
-        }
-
-        Set<String> tenants = new LinkedHashSet<>();
-        for (FlowInstance instance : waitingSnapshot) {
-            if (instance == null) {
-                continue;
-            }
-            tenants.add(normalizeTenantOrDefault(instance.tenantId()));
-        }
-        if (tenants.isEmpty()) {
-            return 0;
-        }
-
-        List<FlowInstance> eligible = new ArrayList<>();
-        for (String tenant : tenants) {
-            eligible.addAll(flowInstanceStore.findWaitingEligibleToResume(tenant, now, batchSize));
-        }
-        eligible = eligible.stream()
-                .sorted(Comparator
-                        .comparingLong((FlowInstance instance) -> instance.nextEligibleResumeAtEpochMs() == null
-                                ? 0L
-                                : instance.nextEligibleResumeAtEpochMs())
-                        .thenComparing(Comparator.comparingLong(FlowInstance::updatedAtEpochMs).reversed())
-                        .thenComparing(FlowInstance::executionId))
-                .limit(batchSize)
-                .toList();
-        if (eligible.isEmpty()) {
-            return 0;
-        }
-
-        int resumedCount = 0;
-        for (FlowInstance waitingInstance : eligible) {
-            if (waitingInstance == null || waitingInstance.status() != FlowInstanceStatus.WAITING_EVENT) {
-                continue;
-            }
-            WaitCriteria waitCriteria = resolveWaitCriteria(waitingInstance);
-            if (waitCriteria.awaitEventName() == null || waitCriteria.awaitEventName().isBlank()) {
-                FlowInstance latest = flowInstanceStore.findByExecutionId(waitingInstance.executionId())
-                        .orElse(waitingInstance);
-                persistResumeBackoff(latest, "missing_event", nowEpochMillis());
-                continue;
-            }
-
-            if (findAwaitedEventForInstance(waitingInstance, waitCriteria, false).isEmpty()) {
-                FlowInstance latest = flowInstanceStore.findByExecutionId(waitingInstance.executionId())
-                        .orElse(waitingInstance);
-                persistResumeBackoff(latest, "missing_event", nowEpochMillis());
-                continue;
-            }
-
-            try {
-                // Resume under the waiting instance's own tenant/actor. The awaited event is
-                // tenant-scoped, so resuming with an anonymous context would look it up under the
-                // default tenant and never match a tenant-scoped event, leaving the flow stuck.
-                ExecutionResult result = resumeExecution(
-                        waitingInstance.executionId(),
-                        ExecutionContext.of(waitingInstance.tenantId(), waitingInstance.actorId())
-                );
-                if (result.getStatus() == ExecutionStatus.WAITING_EVENT) {
-                    FlowInstance latest = flowInstanceStore.findByExecutionId(waitingInstance.executionId())
-                            .orElse(waitingInstance);
-                    persistResumeBackoff(latest, "missing_event", nowEpochMillis());
-                } else {
-                    resumedCount++;
-                }
-            } catch (RuntimeException runtimeException) {
-                FlowInstance latest = flowInstanceStore.findByExecutionId(waitingInstance.executionId())
-                        .orElse(waitingInstance);
-                persistResumeBackoff(
-                        latest,
-                        "exception:" + runtimeException.getClass().getSimpleName(),
-                        nowEpochMillis()
-                );
-            }
-        }
-
-        return resumedCount;
+        return ResumeCoordinator.resumeAllWaitingExecutions(this, limit);
     }
 
     public void onEventPersisted(EventEnvelope eventEnvelope) {
@@ -1672,7 +1584,7 @@ private final EventBus eventBus;
                             ));
                         }
                         eventBus.publish(envelope);
-                        resumeWaitingExecutionsFor(envelope, executionId, envelope.correlationId(), effectiveContext);
+                        ResumeCoordinator.resumeWaitingExecutionsFor(this, envelope, executionId, envelope.correlationId(), effectiveContext);
                         emittedEvents.add(envelope);
                         state.put("lastEvent", envelope);
                         state.put("causationId", executionId);
@@ -1792,7 +1704,7 @@ private final EventBus eventBus;
                             ));
                         }
                         eventBus.publish(envelope);
-                        resumeWaitingExecutionsFor(envelope, executionId, envelope.correlationId(), effectiveContext);
+                        ResumeCoordinator.resumeWaitingExecutionsFor(this, envelope, executionId, envelope.correlationId(), effectiveContext);
                         emittedEvents.add(envelope);
                         state.put("lastEvent", envelope);
                         state.put("causationId", executionId);
@@ -2186,276 +2098,6 @@ private final EventBus eventBus;
         return null;
     }
 
-    private FlowEngine.ResumeOutcome resumeWaitingExecutionsFor(
-            EventEnvelope envelope,
-            String currentExecutionId,
-            String lookupCorrelationId,
-            ExecutionContext resumeExecutionContext
-    ) {
-        if (envelope == null) {
-            return FlowEngine.ResumeOutcome.noMatch();
-        }
-        long now = nowEpochMillis();
-        List<FlowInstance> waitingInstances = collectWaitingCandidates(lookupCorrelationId, envelope.eventName());
-        if (waitingInstances.isEmpty()) {
-            return FlowEngine.ResumeOutcome.noMatch();
-        }
-
-        int matchedWaiters = 0;
-        int resumedWaiters = 0;
-        List<String> resumedExecutionIds = new ArrayList<>();
-        for (FlowInstance instance : waitingInstances) {
-            if (instance == null) {
-                continue;
-            }
-            if (currentExecutionId != null && currentExecutionId.equals(instance.executionId())) {
-                continue;
-            }
-            if (!instance.isResumeEligible(now)) {
-                continue;
-            }
-            if (!matchesWaitingResumeCriteria(instance, envelope)) {
-                continue;
-            }
-            matchedWaiters++;
-            try {
-                ExecutionResult result = resumeExecution(
-                        instance.executionId(),
-                        resumeExecutionContext == null ? ExecutionContext.anonymous() : resumeExecutionContext
-                );
-                if (result.getStatus() == ExecutionStatus.WAITING_EVENT) {
-                    // Event-driven mismatches must be a no-op. Backoff is only for scheduled scans.
-                    continue;
-                }
-                resumedWaiters++;
-                resumedExecutionIds.add(instance.executionId());
-            } catch (RuntimeException runtimeException) {
-                FlowInstance latest = flowInstanceStore.findByExecutionId(instance.executionId()).orElse(instance);
-                persistResumeBackoff(
-                        latest,
-                        "exception:" + runtimeException.getClass().getSimpleName(),
-                        nowEpochMillis()
-                );
-            }
-        }
-
-        if (matchedWaiters == 0 && resumedWaiters == 0) {
-            return FlowEngine.ResumeOutcome.noMatch();
-        }
-        return new FlowEngine.ResumeOutcome(matchedWaiters, resumedWaiters, resumedExecutionIds);
-    }
-
-    private List<FlowInstance> collectWaitingCandidates(String correlationId, String eventName) {
-        Map<String, FlowInstance> byExecutionId = new LinkedHashMap<>();
-        String normalizedCorrelationId = normalizeCorrelationId(correlationId);
-        if (normalizedCorrelationId != null) {
-            for (FlowInstance instance : flowInstanceStore.findWaitingByCorrelation(normalizedCorrelationId)) {
-                if (instance != null) {
-                    byExecutionId.put(instance.executionId(), instance);
-                }
-            }
-        }
-        if (eventName != null && !eventName.isBlank()) {
-            for (FlowInstance instance : flowInstanceStore.findWaitingByEvent(eventName)) {
-                if (instance != null) {
-                    byExecutionId.put(instance.executionId(), instance);
-                }
-            }
-        }
-        if (byExecutionId.isEmpty()) {
-            return List.of();
-        }
-        return byExecutionId.values().stream()
-                .sorted(Comparator.comparingLong(FlowInstance::updatedAtEpochMs).thenComparing(FlowInstance::executionId))
-                .toList();
-    }
-
-    private boolean matchesWaitingResumeCriteria(FlowInstance waitingInstance, EventEnvelope envelope) {
-        if (waitingInstance == null || envelope == null) {
-            return false;
-        }
-        if (waitingInstance.status() != FlowInstanceStatus.WAITING_EVENT) {
-            return false;
-        }
-        if (!sameTenant(envelope.tenantId(), waitingInstance.tenantId())) {
-            return false;
-        }
-        WaitCriteria waitCriteria = resolveWaitCriteria(waitingInstance);
-        if (waitCriteria.awaitEventName() == null || waitCriteria.awaitEventName().isBlank()) {
-            return false;
-        }
-        if (!waitCriteria.awaitEventName().equals(envelope.eventName())) {
-            return false;
-        }
-        if (waitCriteria.stepIndex() >= 0 && waitingInstance.currentStepIndex() != waitCriteria.stepIndex()) {
-            return false;
-        }
-        if (waitCriteria.matchCorrelation() && !matchesCorrelation(envelope, waitingInstance.correlationId())) {
-            return false;
-        }
-        if (!matchesAwaitPayload(
-                waitCriteria.payloadMatchRefs(),
-                envelope,
-                waitingInstance.state(),
-                waitingInstance.state().get("input")
-        )) {
-            return false;
-        }
-        return !isResumeEventAlreadyProcessed(
-                waitingInstance.tenantId(),
-                waitingInstance.executionId(),
-                envelope.eventId()
-        );
-    }
-
-    private Optional<EventEnvelope> findAwaitedEventForInstance(
-            FlowInstance waitingInstance,
-            WaitCriteria waitCriteria,
-            boolean markProcessed
-    ) {
-        if (waitingInstance == null) {
-            return Optional.empty();
-        }
-        return findAwaitedEvent(
-                waitCriteria,
-                waitingInstance.executionId(),
-                waitingInstance.correlationId(),
-                waitingInstance.tenantId(),
-                waitingInstance.state(),
-                waitingInstance.state().get("input"),
-                markProcessed
-        );
-    }
-
-    private Optional<EventEnvelope> findAwaitedEvent(
-            WaitCriteria waitCriteria,
-            String executionId,
-            String correlationId,
-            String tenantId,
-            Map<String, Object> state,
-            Object input,
-            boolean markProcessed
-    ) {
-        if (eventStore == null || waitCriteria == null) {
-            return Optional.empty();
-        }
-        String eventName = waitCriteria.awaitEventName();
-        if (eventName == null || eventName.isBlank()) {
-            return Optional.empty();
-        }
-        String effectiveTenantId = normalizeTenantOrDefault(tenantId);
-        List<EventEnvelope> candidates = waitCriteria.matchCorrelation()
-                ? eventStore.read(eventName, correlationId, effectiveTenantId)
-                : eventStore.readByEventName(eventName, effectiveTenantId);
-        Map<String, Object> effectiveState = state == null ? Map.of() : state;
-        for (EventEnvelope candidate : candidates) {
-            if (candidate == null) {
-                continue;
-            }
-            if (waitCriteria.matchCorrelation() && !matchesCorrelation(candidate, correlationId)) {
-                continue;
-            }
-            if (!matchesAwaitPayload(waitCriteria.payloadMatchRefs(), candidate, effectiveState, input)) {
-                continue;
-            }
-            if (isResumeEventAlreadyProcessed(tenantId, executionId, candidate.eventId())) {
-                continue;
-            }
-            if (markProcessed) {
-                markResumeEventProcessed(tenantId, executionId, candidate.eventId());
-            }
-            return Optional.of(candidate);
-        }
-        return Optional.empty();
-    }
-
-    private boolean isResumeEventAlreadyProcessed(String tenantId, String executionId, String eventId) {
-        if (eventId == null || eventId.isBlank() || executionId == null || executionId.isBlank()) {
-            return false;
-        }
-        return idempotencyStore.find(
-                normalizeTenantOrDefault(tenantId),
-                FLOW_RESUME_IDEMPOTENCY_CAPABILITY,
-                executionId,
-                eventId
-        ).isPresent();
-    }
-
-    private void markResumeEventProcessed(String tenantId, String executionId, String eventId) {
-        if (eventId == null || eventId.isBlank() || executionId == null || executionId.isBlank()) {
-            return;
-        }
-        if (isResumeEventAlreadyProcessed(tenantId, executionId, eventId)) {
-            return;
-        }
-        idempotencyStore.saveSuccess(
-                normalizeTenantOrDefault(tenantId),
-                FLOW_RESUME_IDEMPOTENCY_CAPABILITY,
-                executionId,
-                eventId,
-                "{\"status\":\"PROCESSED\"}",
-                nowEpochMillis()
-        );
-    }
-
-    private WaitCriteria resolveWaitCriteria(FlowInstance waitingInstance) {
-        if (waitingInstance == null) {
-            return new WaitCriteria(null, true, Map.of(), -1, "awaitedEvent");
-        }
-        Object rawWaitState = waitingInstance.state().get(FlowStateCodec.AWAIT_STATE_KEY);
-        if (rawWaitState instanceof Map<?, ?> waitMap) {
-            String eventName = Objects.toString(waitMap.get(FlowStateCodec.AWAIT_FIELD_EVENT_NAME), waitingInstance.waitingForEventName());
-            boolean matchCorrelation = FlowStateCodec.parseBoolean(waitMap.get(FlowStateCodec.AWAIT_FIELD_MATCH_CORRELATION), true);
-            int stepIndex = FlowStateCodec.parseInt(waitMap.get(FlowStateCodec.AWAIT_FIELD_STEP_INDEX), waitingInstance.currentStepIndex());
-            String awaitRef = FlowStateCodec.normalizeAwaitRef(Objects.toString(waitMap.get(FlowStateCodec.AWAIT_FIELD_AWAIT_REF), "awaitedEvent"));
-            return new WaitCriteria(
-                    eventName,
-                    matchCorrelation,
-                    FlowStateCodec.parseStringMap(waitMap.get(FlowStateCodec.AWAIT_FIELD_PAYLOAD_MATCH_REFS)),
-                    stepIndex,
-                    awaitRef
-            );
-        }
-        return new WaitCriteria(
-                waitingInstance.waitingForEventName(),
-                true,
-                Map.of(),
-                waitingInstance.currentStepIndex(),
-                "awaitedEvent"
-        );
-    }
-
-    private FlowInstance applyResumeBackoff(FlowInstance instance, String errorCode, long nowEpochMs) {
-        if (instance == null) {
-            throw new IllegalArgumentException("instance must be non-null");
-        }
-        long delayMs = resumeDelayMillis(instance.resumeAttemptCount() + 1);
-        long nextEligible = nowEpochMs + delayMs;
-        return instance.markResumeFailure(errorCode, nowEpochMs, nextEligible, RESUME_MAX_ATTEMPTS);
-    }
-
-    private FlowInstance persistResumeBackoff(FlowInstance instance, String errorCode, long nowEpochMs) {
-        FlowInstance updated = applyResumeBackoff(instance, errorCode, nowEpochMs);
-        flowInstanceStore.update(updated);
-        emitOperationalFailureEvent(updated);
-        return updated;
-    }
-
-    private static long resumeDelayMillis(int nextAttempt) {
-        int exponent = Math.max(0, nextAttempt - 1);
-        long multiplier;
-        if (exponent >= 20) {
-            multiplier = 1L << 20;
-        } else {
-            multiplier = 1L << exponent;
-        }
-        long computed = RESUME_BASE_DELAY_MS * multiplier;
-        if (computed < 0) {
-            return RESUME_MAX_DELAY_MS;
-        }
-        return Math.min(computed, RESUME_MAX_DELAY_MS);
-    }
-
     private static FlowInstanceStatus resolveFailureTerminalStatus(ExecutionResult failure) {
         if (failure == null || failure.getStatus() == null) {
             return FlowInstanceStatus.FAILED;
@@ -2481,7 +2123,7 @@ private final EventBus eventBus;
         };
     }
 
-    private void emitOperationalFailureEvent(FlowInstance instance) {
+    void emitOperationalFailureEvent(FlowInstance instance) {
         if (instance == null) {
             return;
         }
@@ -3841,7 +3483,7 @@ CapabilityCall call = new CapabilityCall(
         );
     }
 
-    private EventEnvelope awaitEvent(
+    EventEnvelope awaitEvent(
             FlowStepDefinition step,
             Map<String, Object> state,
             String defaultCorrelationId,
@@ -3858,7 +3500,8 @@ CapabilityCall call = new CapabilityCall(
                 0,
                 FlowStateCodec.normalizeAwaitRef(step.getAwaitRef())
         );
-        return findAwaitedEvent(
+        return ResumeCoordinator.findAwaitedEvent(
+                this,
                 waitCriteria,
                 executionId,
                 currentCorrelationId,
@@ -3869,7 +3512,7 @@ CapabilityCall call = new CapabilityCall(
         ).orElse(null);
     }
 
-    private static boolean matchesCorrelation(EventEnvelope event, String correlationId) {
+    static boolean matchesCorrelation(EventEnvelope event, String correlationId) {
         if (correlationId == null || correlationId.isBlank()) {
             return true;
         }
@@ -3885,7 +3528,7 @@ CapabilityCall call = new CapabilityCall(
         return matchesAwaitPayload(step.getAwaitPayloadMatchRefs(), event, state, input);
     }
 
-    private static boolean matchesAwaitPayload(
+    static boolean matchesAwaitPayload(
             Map<String, String> payloadMatchRefs,
             EventEnvelope event,
             Map<String, Object> state,
@@ -4128,7 +3771,7 @@ CapabilityCall call = new CapabilityCall(
         correlationOwnershipStore.claimCorrelation(effectiveCorrelationId, effectiveTenantId);
     }
 
-    private static boolean sameTenant(String eventTenantId, String instanceTenantId) {
+    static boolean sameTenant(String eventTenantId, String instanceTenantId) {
         if (eventTenantId == null || eventTenantId.isBlank()) {
             return true;
         }
@@ -4144,25 +3787,25 @@ CapabilityCall call = new CapabilityCall(
      * let a caller-supplied value of arbitrary length reach eight btree indexes across four tables --
      * see {@link CorrelationIds} for why that fails, and why it rejects rather than digests.
      */
-    private static String normalizeCorrelationId(String correlationId) {
+    static String normalizeCorrelationId(String correlationId) {
         return CorrelationIds.require(correlationId);
     }
 
-    private static String normalizeTenantOrDefault(String tenantId) {
+    static String normalizeTenantOrDefault(String tenantId) {
         if (tenantId == null || tenantId.isBlank()) {
             return ExecutionContext.anonymous().tenantId();
         }
         return tenantId.trim();
     }
 
-    private record WaitCriteria(
+    record WaitCriteria(
             String awaitEventName,
             boolean matchCorrelation,
             Map<String, String> payloadMatchRefs,
             int stepIndex,
             String awaitRef
     ) {
-        private WaitCriteria {
+        WaitCriteria {
             payloadMatchRefs = payloadMatchRefs == null ? Map.of() : Map.copyOf(payloadMatchRefs);
             awaitRef = FlowStateCodec.normalizeAwaitRef(awaitRef);
         }
