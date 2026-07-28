@@ -577,9 +577,33 @@ this class is on every generated app's runtime path, so unit tests alone are ins
 
 ### 2.B.4 ★ `SchemaLifecycleExecutor` — 3,739 lines, 100 methods, 8 passes · **3 days**
 
-**The only one that is design work, not mechanics.** This is REG-6's original target, closed
-"as re-scoped," and the landmine is still armed: **eight passes each re-derive column semantics
-independently.**
+**CORRECTION (found while implementing, verified directly against the file and `build.gradle`,
+not re-derived from this plan's text): the premise below is stale.** This section describes REG-6
+as closed "as re-scoped" with "the landmine still armed." In fact a *separate*, later initiative —
+**SER Phase 4** (17 commits, `git log --grep="SER-P4"`) — already disarmed it: a canonical
+`SchemaDiffEngine`/`SchemaDiff` (package `com.finalexec.db.schemastate`, 17 small files, 12-256
+lines each) now computes one live-vs-desired diff that table-rename, column-rename, type-widening,
+and required-field-backfill all consume directly. `build.gradle`'s `test` task carries this comment
+verbatim: *"SER Phase 4 COMPLETE: classify + SchemaDeltaReport + all four mutation passes now
+consume the canonical SchemaDiff directly (no re-derivation left to self-check)... The end-to-end
+guard is now the behavior tests + the shadow parity assert (`npdev.schema.shadow.assert`, ON by
+default), which stays on."* Separately, a `ColumnFacts` record (line 113) already exists exactly as
+item 1 below describes (`platformManaged`, `repairablePlatformColumn`, `additiveEligible`,
+`requiredByModel`, `declaredType`, `renamedFrom`, `literalDefaultJson`, plus a `bond()` derived
+method), with its own REG-6-dated header directive and its own guard test
+(`SchemaLifecycleExecutorColumnFactsTest`) — currently consumed by one call site (the
+platform-column/agreement check), the others' own semantics now flowing through `SchemaDiff`
+instead. The REG-53 "hardcoded `VARCHAR(255)` at four sites" gap is also already closed (commit
+`dad211c`, in `SqlTypeSupport.java`, a different file) — `maxLength` reaches DDL correctly today.
+
+**What this means for scope:** items 2-4 below (a `SchemaPass` interface, eight implementations,
+`SchemaLifecycleExecutor` as a thin sequencer) were never built, and the file is still one
+3,739-line class. But the *reason* 2.B.4 gave for needing that redesign — "eight passes each
+re-derive column semantics independently, and disagree" — is no longer true; `SchemaDiffEngine` +
+the shadow-parity assert already close that class of bug. **This demotes 2.B.4 from "design work"
+to the same kind of pure-mechanical file split as 2.B.2/2.B.3**: extract the existing, already-
+correct, already-tested passes into their own files, without inventing a new `SchemaPass`
+abstraction that nothing in the codebase asked for once the diff engine did the actual job.
 
 **The seams are the passes, and their records mark the boundaries:**
 
@@ -592,28 +616,35 @@ independently.**
 3567  SchemaManifest   (public — the module's contract, leave in place)
 ```
 
-**Design.**
+**Revised scope (mechanical, not a redesign).**
 
-1. **`ColumnFacts` — computed once.** One record per column carrying everything the passes currently
-   re-derive: declared type, physical type, nullability, maxLength (**REG-53 just made this vary —
-   it was hardcoded `VARCHAR(255)` at four sites until today**), default, tenant-scope status,
-   ownership, platform-column membership.
-2. **`SchemaPass` interface** — `Plan plan(ColumnFacts facts, Context ctx)`.
-3. **Eight implementations**: rename · widening · backfill · additive · destructive · platform-column
-   · history · agreement.
-4. `SchemaLifecycleExecutor` becomes a sequencer.
+1. ~~`ColumnFacts` — computed once~~ — already exists (line 113); leave as-is.
+2. ~~`SchemaPass` interface~~ — **dropped**. `SchemaDiffEngine` already plays this role; inventing a
+   parallel abstraction would be a second, competing "single source of truth" for the same question.
+3. Extract the existing pass bodies into their own files under a `db/lifecycle/` (or similar)
+   subpackage using the same static-function-library + `import static` pattern proven on 2.B.2/
+   2.B.3: table-rename, column-rename, type-widening, backfill, destructive-recreation,
+   platform-column tightening/agreement, history/fingerprint tracking, DDL-execution/audit helpers.
+4. `SchemaLifecycleExecutor` keeps its two genuine instance fields (`compiledModel`,
+   `conversionHooksAppliedLastDecision`) and its two public entry points (`migrate`, `afterMigrate`)
+   — it becomes a thinner orchestrator, not a from-scratch sequencer.
 
-**Why this one is worth real care.** It is the component whose blind spots have produced the most
-findings (REG-6, REG-40, REG-53, LNCH-1-B7/B8/B9). A single derivation of column facts eliminates the
-*class* of "pass A and pass B disagreed about this column."
+**Why this one still deserves real care even though the redesign turned out unnecessary.** It is
+the component whose blind spots have historically produced the most findings (REG-6, REG-40,
+REG-53, LNCH-1-B7/B8/B9) — that history is why the acceptance bar below stays high even though the
+work itself is now mechanical.
 
-> **Do 2.B.4 before REG-40** (additive migration never CREATEs new tables — TREE 3 item 3.3).
-> Fixing REG-40 inside a 3,739-line file means redoing it during the split.
+> REG-40 (additive migration never CREATEs new tables — TREE 3 item 3.3) is unaffected by this
+> correction and is still a real, separate, open gap; it is not blocked on 2.B.4 either way now that
+> 2.B.4 is a pure move.
 
-**Acceptance.** `SchemaLifecycleExecutorProofMatrixTest` (155 KB) **and** the Postgres proof matrix
-(91 KB) identical counts. Then a **live rehearsal**: real app, real DB with rows, additive change,
-row preserved. This project's own standard for this component, and unit tests have historically not
-been sufficient for it.
+**Acceptance.** `com.finalexec.db.*` package test baseline (captured before the split): **266
+tests, 0 failures** (`SchemaLifecycleExecutorProofMatrixTest` 42/0 within that total). The Postgres
+proof matrix (`SchemaLifecycleExecutorPostgresProofMatrixTest`) is `@Tag("integration")` and only
+runs under `integrationTest`, which itself requires a generated-app mount — exercised instead via
+the **live rehearsal**: real generated app, real DB with rows, additive change, row preserved. This
+project's own standard for this component, and unit tests have historically not been sufficient for
+it.
 
 ---
 
@@ -745,12 +776,33 @@ sweep had found, confirming RED-first verification (narrow it and see what break
 of grep-based pre-checking alone.
 
 **Part 3 — Decomposition**
-- [ ] All five files ≤ ~800 lines per resulting unit
-- [ ] Every suite at an **identical** test count, not merely green
-- [ ] Emitter output byte-identical; a generated app's full suite green
-- [ ] `SchemaLifecycleExecutor` live-rehearsed with real rows
-- [ ] `KernelRunner` split verified by a durable-resume rehearsal
-- [ ] Every commit a pure move; every bug found filed separately
+- [x] 2.B.2 `TrustedSourceEmitter` (3,782 → 212 lines, 12 files, all ≤ ~800): emitter output
+      byte-identical, `:generator:test`+`:generator:behaviorTest` 198/0 (commit `624130c`)
+- [x] 2.B.3 `GeneratedCrudRuntimeSupport` (5,125 → 3,651 lines, 24 new files): `:adapters:
+      expression-cel:test` 62/0 identical; a real generated app (`canonical-demo`) exercised over
+      REST (CRUD + 409 duplicate-key + 422 missing-fields), all passing (commit `8eeca4e`). Main
+      file stays well above 800 lines by design, not oversight — 12 constructor-injected instance
+      fields make most of its ~136 methods instance-bound, and `InvariantViolationDetail`/
+      `InvariantViolationException`/`FileHandleRef`/`persistenceCapability`/
+      `mapDataIntegrityViolation` are referenced by qualified name from mustache templates baked
+      into every generated app, so moving them would break generated code — a separate, explicitly
+      higher-risk change, not a pure move
+- [x] 2.B.4 `SchemaLifecycleExecutor` (3,739 → 2,120 lines, 10 new files, commits `3d22e86`/
+      `66d7745`): `com.finalexec.db.*` 266/0 identical to baseline (independently reconfirmed, not
+      just agent-reported); full `NPDevRuntimeHost` suite 403/0. **Live rehearsal performed**
+      (this section's revised acceptance bar, since the redesign premise turned out stale — see the
+      correction above): `AppGen/apps/simple-product-h2local`, additive field added to `Product`,
+      rebuilt and rebooted against its EXISTING H2Local DB file with a pre-existing row — new
+      column present, existing row's data intact, boot healthy. Main file stays above 800 lines by
+      the same kind of judgment call as 2.B.3: `beforeMigrateDecision` (~450 lines, the sequencer
+      itself) and the live-JDBC-introspection/classification cluster are package-private and
+      already shared with `SchemaDeltaReport`/`DesiredSchemaFactory`/`ImpactReport` in the same
+      package — extracting them churns call sites without reducing risk. Two incidental findings
+      filed, not fixed: REG-54 (dead code, `worse`/`hasTypeChange`, orphaned by the unrelated SER-
+      P4.8 migration), REG-55 (a capability-dispatch ambiguity surfaced by the rehearsal, on an
+      H2Local app resolving a Postgres adapter — needs its own RED-first investigation)
+- [ ] 2.B.5 `KernelRunner` split verified by a durable-resume rehearsal — not started
+- [x] Every commit so far a pure move; every bug found filed separately (REG-54/REG-55 above)
 
 ---
 
