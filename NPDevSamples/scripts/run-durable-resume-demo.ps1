@@ -116,13 +116,14 @@ if ($status -ne "WAITING_EVENT") {
 Ok "Flow parked on awaitEvent, as expected."
 
 Info "=== Step 3: KILL the process (not a graceful shutdown) ==="
-# REG-57 (docs/NPDEV_OPEN_ITEMS_REGISTER.md): a hard kill landing within roughly the first second
-# after the WAITING_EVENT response can catch the on-disk H2Local database before that checkpoint
-# is physically durable -- empirically confirmed (3/3 failures with ~0s delay, 1/1 clean with 5s).
-# Root cause not yet traced to a specific layer (H2's own file engine is the leading suspect; see
-# the filing). This delay is a deliberate workaround so the demo exercises the INTENDED durable-
-# resume path rather than this separate, real, filed gap -- it is not padding for its own sake.
-Start-Sleep -Seconds 5
+# REG-57 (docs/NPDEV_OPEN_ITEMS_REGISTER.md): FIXED 2026-07-28. H2's MVStore defaulted to a 500ms
+# WRITE_DELAY, buffering committed writes before flushing to disk -- a hard kill inside that window
+# could lose however many commits landed since the last flush, even though the JDBC call had already
+# returned and the caller was already told WAITING_EVENT. Root-caused (not ordering -- traced the
+# full synchronous call chain from KernelRunner's WAITING_EVENT branch to the HTTP response, no
+# thread hop exists) and fixed by adding WRITE_DELAY=0 to the H2 JDBC URL
+# (UserDatabaseDefinitionLoader.jdbcUrl). No more deliberate delay needed before the kill -- this is
+# the whole point of the fix.
 Stop-Process -Id $proc1.Id -Force
 Start-Sleep -Seconds 2
 $stillRunning = Get-Process -Id $proc1.Id -ErrorAction SilentlyContinue
