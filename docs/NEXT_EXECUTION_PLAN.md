@@ -595,12 +595,35 @@ register's regex-based cross-check, not a weaker one.
 
 # Part 6 — 🔵 Unblocked but unscheduled
 
-## P6.1 3.7 — Aggregate transactional boundary (2–3 days)
+## P6.1 3.7 — Aggregate transactional boundary (2–3 days) · ✅ DONE 2026-07-28
 
-Unblocked by 2.B.5. DDD's core rule: *one aggregate = one transaction = one consistency boundary.*
-`aggregates` carry `ownership` but **nothing enforces** that a flow may not write two aggregate roots
-in one transaction. Enforcing it in `SemanticValidator` (post-split: the relevant `*Validation`
-class) makes the construct **load-bearing instead of descriptive**, and it is cheap.
+Shipped. `AggregateValidation.ownedConceptToAggregate(ModelAst)` (new) maps every aggregate's root
+concept plus every `owned` (not `referenced`) collection concept, recursively, to its aggregate name
+— `referenced` collections are excluded by design, since a reference is a normal cross-aggregate
+pointer in DDD, not a boundary to cross. `FlowValidation.validateAggregateTransactionalBoundary`
+(new) walks each flow's steps (recursing through `branch`/`foreach` nesting) collecting the `scope`
+of every `createConcept`/`updateConcept`/`createEntity`/`updateEntity` step, maps each to its owning
+aggregate via the helper above, and errors naming the flow and every distinct aggregate it touches
+when that set has more than one member.
+
+**Scope, stated rather than assumed complete:** only the four alias step types are traced, via their
+required `scope` field — the one reliable, statically-resolvable concept-write signal. A raw
+`capability: persistence, operation: save|delete` step (also legal, per the pre-existing
+`hasPersistenceSemantics` check) is **not** traced: its target concept lives in opaque `input`/`args`,
+not a structured field, so it cannot be resolved without runtime argument evaluation this validator
+does not do.
+
+**Verified 3 ways, not just unit-tested:** (1) new
+`AggregateTransactionalBoundaryValidationTest` (`NPDevContract/dsl`), RED-confirmed by temporarily
+disabling the new call and watching exactly the expected test fail (the other two, which assert
+*absence* of an error, correctly stayed green — proving the RED was real, not a broken fixture);
+(2) full `:dsl:test`, `:generator:test`, `:generator:behaviorTest` — green, so no existing
+git-tracked sample/golden model in this repo crosses an aggregate boundary; (3) WmsOffice's real,
+currently-deployed model (2 real aggregates, `Expedicao`/`Recebimento`) validated directly via
+`:NPDevContract:dsl:validateModel` — 0 errors, 0 aggregate-boundary diagnostics, confirming the
+platform's own richest real aggregate model was already compliant. `BREAKING.md` entry added (no
+codemod — splitting a boundary-crossing flow is a real design decision, not a mechanical rewrite,
+same "refuse rather than guess" posture as `docs/ACCEPTED_BOUNDARIES.md`'s B1).
 
 ## P6.2 3.6 — Bounded contexts / multi-namespace (1–2 weeks)
 

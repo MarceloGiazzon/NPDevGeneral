@@ -87,7 +87,7 @@ arguably the hardest thing in the repo and the least visible.
 | **C-4** | Split `KernelRunner` into step-kind classes; make `FlowEngine`'s implementation findable | TREE 2 · 2.B.5 | 1 wk | structural |
 | **C-5** | Promote the flow/orchestration adversarial review out of `archive/` and cite it from `FLOWS.md` | TREE 1 · T1.10 | ⚡ | evidence |
 | **C-6** | Collapse the 14 synonym `flowStep.type` values (23 → 9, matching the 9 real kinds) | TREE 2 · 2.A.1 | in 2.A | DSL clarity |
-| **C-7** | Aggregate transactional boundary enforcement (one aggregate = one transaction) | TREE 3 · 3.7 | ⛔ 2.B.5 | DDD correctness |
+| **C-7** | Aggregate transactional boundary enforcement (one aggregate = one transaction) | TREE 3 · 3.7 | ✅ DONE 2026-07-28 | DDD correctness |
 
 **Recommended minimum this month: C-1 + C-2 + C-5** — that is one day plus fifteen minutes, and it
 converts the platform's least-visible strength into something an evaluator can find. **C-3 is the
@@ -312,9 +312,11 @@ TREE 3 — BLOCKED
 │
 ├─ 3.7  Aggregate transactional boundary enforcement (the core DDD rule:
 │        one aggregate = one transaction = one consistency boundary)
-│        ✅ UNBLOCKED — 2.B.5 (KernelRunner split, CORE C-4) is DONE 2026-07-28.
-│        → Today `aggregates` carry `ownership` but nothing enforces it. Enforcing it
-│          makes the construct load-bearing instead of descriptive. Not yet scheduled.
+│        ✅ DONE 2026-07-28 (docs/NEXT_EXECUTION_PLAN.md P6.1). AggregateValidation +
+│        FlowValidation now reject a flow whose concept-mutation steps touch two
+│        different aggregates' owned concepts. RED-confirmed test, full dsl/generator
+│        suites green, WmsOffice's real 2-aggregate model validated clean (0 diagnostics).
+│        BREAKING.md entry filed (no codemod -- a real design decision, not a rewrite).
 │
 └─ 3.8  Agent-driven frontend generation, productized
          ⛔ BLOCKED BY: 2.CD (the whole contract path, F1-F6) — see docs/FRONTEND_STRATEGY_PLAN.md
