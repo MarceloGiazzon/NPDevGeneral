@@ -212,9 +212,10 @@ TREE 2 — BIG
 └─ 2.F  Durable-workflow demo app  ✅ DONE 2026-07-28 (0384966, CORE C-3)
          NPDevSamples/durable-workflow-demo + NPDevSamples/scripts/run-durable-resume-demo.ps1
          Park on awaitEvent → hard kill → new JVM → publish → same execution resumes. One command.
-         ⚠️ Currently demonstrates a narrower path than the engine: no capabilityCall step
-            (REG-56) and a 5s pre-kill delay (REG-57). Both disclosed in the runner.
-            Closing REG-56/57 → re-add the capability step, drop the sleep.
+         ✅ REG-57 CLOSED 2026-07-28: the 5s pre-kill delay is gone (H2 WRITE_DELAY=0 fix,
+            root-caused not guessed -- see register). 3/3 clean with the sleep removed.
+         ⚠️ Still narrower than the engine: no capabilityCall step (REG-56, open).
+            Closing REG-56 → re-add the capability step.
 ```
 
 ### Estimate calibration
