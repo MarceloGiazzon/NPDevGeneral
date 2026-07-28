@@ -19,8 +19,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * LNCH-1 Phase 3 prerequisite fix. Before this fix, {@code normalizeSqlType} stripped EVERYTHING
  * from the first {@code '('} onward before comparing types ({@code "VARCHAR(255)"} and
- * {@code "VARCHAR(20)"} both normalized to the bare string {@code "VARCHAR"}), so
- * {@code hasTypeChange()} -- and therefore {@code classify()} -- was blind to any VARCHAR-length
+ * {@code "VARCHAR(20)"} both normalized to the bare string {@code "VARCHAR"}), so the
+ * {@code hasTypeChange()} helper it used at the time (since removed as dead code, REG-54;
+ * {@code classify()} now goes through {@code ClassificationReducer}) -- and therefore
+ * {@code classify()} -- was blind to any VARCHAR-length
  * or NUMERIC-precision-only change: neither widening nor narrowing was detected, and a table with
  * ONLY that kind of diff was misclassified SAFE_ADDITIVE (i.e. "nothing to do") even though a
  * narrowing (e.g. VARCHAR(255) -> VARCHAR(20)) could silently truncate existing data the moment
