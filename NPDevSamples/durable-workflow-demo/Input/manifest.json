@@ -1,0 +1,25 @@
+{
+  "id": "durable-workflow-demo",
+  "title": "Durable Workflow Demo",
+  "complexity": "medium",
+  "mainFlow": "SubmitExpense",
+  "purpose": "CORE C-3 (docs/EXECUTION_TREES.md, docs/POST_PUBLIC_PLAN.md P4.2): the runnable proof that a flow parked on awaitEvent survives a real process restart and resumes to completion from persisted state alone -- not just an in-process resume() call.",
+  "businessStory": "A team submits an expense that persists immediately and waits for manager approval. The application process is killed and restarted while it waits -- simulating a deploy, a crash, or a container restart -- and the SAME execution resumes and completes once the approval event arrives, days later if needed.",
+  "features": [
+    "concept",
+    "conceptGateway",
+    "invariants",
+    "persistence",
+    "awaitEvent",
+    "branch",
+    "durable-resume-across-process-restart"
+  ],
+  "inputFiles": [
+    "Requests/submit-expense.json",
+    "Requests/publish-approval-event.json"
+  ],
+  "walkthrough": [
+    "Run scripts/run-durable-resume-demo.ps1 -- it generates, builds, boots, submits, kills the process, restarts it, publishes the approval event, and confirms the same execution completed.",
+    "Read the script's printed timeline for the exact sequence and evidence."
+  ]
+}

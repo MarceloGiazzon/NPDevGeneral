@@ -248,6 +248,48 @@ class SandboxedPluginExecutionEngineTest {
         }
     }
 
+    /**
+     * REG-55 (found during the T2.B.4/T2.B.5 live rehearsals, docs/NPDEV_OPEN_ITEMS_REGISTER.md):
+     * {@code resolveOperation} used to match a candidate handler method by name + parameter COUNT
+     * only, so a handler exposing two same-name, same-arg-count overloads (the real-world case:
+     * {@code PostgresPersistenceCapabilityAdapter.save(Object,Object)} and
+     * {@code save(TenantScope,Object)}) always threw "Ambiguous sandboxed plugin operation" --
+     * regardless of the actual runtime argument types, which in the real bug (a String concept
+     * name enriched in by {@code adaptCallForHandler}) could only ever match the {@code Object}
+     * overload, never the {@code TenantScope} one. This reproduces that exact overload shape
+     * against a two-argument call and confirms the engine now resolves it instead of throwing.
+     */
+    @Test
+    void disambiguatesOverloadsBySameArgCountByActualArgumentType() {
+        try (SandboxedPluginExecutionEngine engine = new SandboxedPluginExecutionEngine(
+                250,
+                allowAllPolicy(),
+                new InMemorySummaryStore()
+        )) {
+            CapabilityCall call = new CapabilityCall(
+                    "persistence",
+                    "PersistenceCapability",
+                    "repository",
+                    "save",
+                    List.of("SomeConcept", Map.of("id", "row-1"))
+            );
+
+            SandboxedPluginExecutionResult result = engine.execute(
+                    contribution("repository"),
+                    realizationSummary("persistence-package", "repository"),
+                    call,
+                    Map.of(),
+                    new TwoArgOverloadHandler()
+            );
+
+            assertEquals(SandboxedPluginExecutionResult.Status.SUCCESS, result.status(),
+                    () -> "REG-55: expected the (Object,Object) overload to resolve unambiguously, got: " + result);
+            assertEquals("generic", ((Map<?, ?>) result.value()).get("via"),
+                    "REG-55: a String concept name is never a TenantScopeMarker, so only the (Object,Object) "
+                            + "overload should ever have matched");
+        }
+    }
+
     @Test
     void maliciousPluginVectorsRemainContained() {
         // filesystem access outside sandbox should be blocked
@@ -340,6 +382,23 @@ class SandboxedPluginExecutionEngineTest {
     static final class FailingHandler {
         public Object send(Object payload) {
             throw new IllegalStateException("simulated plugin failure");
+        }
+    }
+
+    /** REG-55 fixture: a marker type standing in for {@code TenantScope}, which a plain String
+     * argument (the enriched concept name) is never an instance of. */
+    static final class TenantScopeMarker {
+    }
+
+    /** REG-55 fixture: the exact overload shape of {@code PostgresPersistenceCapabilityAdapter}'s
+     * {@code save} -- two 2-argument overloads differing only in the first parameter's type. */
+    static final class TwoArgOverloadHandler {
+        public Object save(Object conceptName, Object entity) {
+            return Map.of("via", "generic", "conceptName", conceptName, "entity", entity);
+        }
+
+        public Object save(TenantScopeMarker scope, Object entity) {
+            return Map.of("via", "scoped", "entity", entity);
         }
     }
 
