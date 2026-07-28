@@ -158,8 +158,23 @@ it has no literal default), never silently left permanently nullable.
   for a bond (its value would have to reference an existing row's actual key). Make the field
   optional, or use the [acknowledged destructive path](#acknowledging-destructive-changes) to
   recreate the table.
+- The field is declared **unique** (single- or compound-field) and **more than one existing row**
+  would receive the backfill (REG-61(b)): a literal default writes the SAME value into every
+  affected row, so it cannot satisfy uniqueness once more than one row needs it — proceeding would
+  only trade this refusal for a confusing duplicate-key failure once the unique constraint is
+  applied later in the same boot. There is no model-level `default` mechanism expressive enough for
+  "a value unique per row" (e.g. derived from the row's own id), so v1 refuses by name instead of
+  guessing one. **Recovery recipe** (out-of-band SQL, run once before the next boot):
+  ```sql
+  -- Repeat per named column, using a value guaranteed unique per row (here: the row's own id).
+  ALTER TABLE <table> ADD COLUMN IF NOT EXISTS <column> <type>;
+  UPDATE <table> SET <column> = '<prefix>-' || CAST(id AS VARCHAR(36)) WHERE <column> IS NULL;
+  ALTER TABLE <table> ALTER COLUMN <column> SET NOT NULL;
+  ```
+  Then retry the boot: it sees the column already converged and moves on. (This is exactly what
+  WmsOffice's live recovery did for `identity_roles.name` / `identity_users.username`, generalized.)
 
-Either refusal names every offending `table.column` and tells you exactly what to change; the
+Every refusal names every offending `table.column` and tells you exactly what to change; the
 stored fingerprint is left stale so a fixed retry re-attempts cleanly.
 
 ## Tightened uniqueness
