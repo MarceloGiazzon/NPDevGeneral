@@ -103,6 +103,8 @@ public final class CompiledModelCanonicalJsonReader {
             documents.add(toDocument(node));
         }
 
+        CompiledExternalAi externalAi = toExternalAi(root.get("externalAi"));
+
         return new CompiledModel(
                 namespace,
                 dslVersion,
@@ -121,8 +123,17 @@ public final class CompiledModelCanonicalJsonReader {
                 guidePages,
                 aggregates,
                 autoPanels,
-                documents
+                documents,
+                externalAi
         );
+    }
+
+    /** ADR-0009: reads the optional app-level externalAi block; null if absent. */
+    private static CompiledExternalAi toExternalAi(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        return new CompiledExternalAi(optionalText(node, "egress"), toStringList(node.get("vendors")));
     }
 
     private static CompiledDocument toDocument(JsonNode node) {
@@ -299,7 +310,8 @@ public final class CompiledModelCanonicalJsonReader {
                 toPresentationMetadata(node.get("ui")),
                 optionalText(node, "connectable"),
                 optionalText(node, "renamedFrom"),
-                toFileMetadata(node.get("file"))
+                toFileMetadata(node.get("file")),
+                booleanValue(node, "sensitive")
         );
     }
 

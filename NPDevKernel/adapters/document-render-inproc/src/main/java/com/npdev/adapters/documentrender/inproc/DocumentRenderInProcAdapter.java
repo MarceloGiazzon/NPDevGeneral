@@ -15,6 +15,34 @@ import java.io.IOException;
  */
 public final class DocumentRenderInProcAdapter implements DocumentRenderContract {
 
+    /**
+     * REG-16-resid Round 6 (R6-F3): refuse to fetch anything while rendering, except inline
+     * {@code data:} URIs.
+     *
+     * <p>OpenHTMLtoPDF resolves external resources by default — {@code <img src="http://…">}, remote
+     * stylesheets, {@code @import}, remote fonts. Rendering happens <b>inside the server</b>, so any
+     * such fetch is a server-side request: an SSRF reaching internal hosts and cloud metadata
+     * endpoints, and with {@code file:} URIs a local-file read.</p>
+     *
+     * <p><b>Nothing exploitable reaches this today</b>, and that was verified rather than assumed:
+     * {@code DocumentRenderController} is the only caller, it composes the HTML itself, and it
+     * HTML-escapes every record value, so no record can contribute a tag. But this class is a public
+     * adapter behind a general {@code render(html, options)} contract — the first feature that renders
+     * author-supplied or templated HTML gets SSRF for free unless the policy lives here, at the point
+     * where the fetch would happen, rather than in whatever calls it.</p>
+     *
+     * <p>Returning {@code null} makes the renderer skip the resource and carry on, so a document that
+     * references something external still renders (without it) instead of failing outright.</p>
+     */
+    private static final com.openhtmltopdf.extend.FSUriResolver DENY_EXTERNAL_URIS = (baseUri, uri) -> {
+        if (uri == null || uri.isBlank()) {
+            return null;
+        }
+        // data: is inline bytes -- no request leaves the process, so it stays allowed and keeps
+        // embedded logos/images working for any future templated document.
+        return uri.regionMatches(true, 0, "data:", 0, 5) ? uri : null;
+    };
+
     @Override
     public byte[] render(String html, RenderOptions options) {
         if (html == null || html.isBlank()) {
@@ -26,6 +54,7 @@ public final class DocumentRenderInProcAdapter implements DocumentRenderContract
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             PdfRendererBuilder builder = new PdfRendererBuilder();
             builder.useFastMode();
+            builder.useUriResolver(DENY_EXTERNAL_URIS);
             builder.withHtmlContent(withPageRule, null);
             builder.toStream(out);
             builder.run();

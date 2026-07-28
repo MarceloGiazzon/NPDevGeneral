@@ -1165,7 +1165,7 @@
       "steps": [
         {
           "name": "validate-dining-order",
-          "type": "validate",
+          "type": "invariantCheck",
           "scope": "DiningOrder",
           "invariants": [
             "DiningOrderTenantRequired",
@@ -1177,7 +1177,7 @@
           "type": "createConcept",
           "scope": "DiningOrder",
           "input": "$input",
-          "out": "$saved"
+          "output": "$saved"
         },
         {
           "name": "return-dining-order",

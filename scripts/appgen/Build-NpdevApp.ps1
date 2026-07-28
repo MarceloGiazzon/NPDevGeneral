@@ -40,6 +40,12 @@ param(
   # web-asset/ops-toolbox/info-page steps -- with a script-friendly exit code (1 if any destructive
   # item is present, 0 otherwise). A full generation pass still happens (cheap, local, touches
   # nothing live) -- see this switch's usage below for why an honest plan needs one anyway.
+  # SER-P9.2: this is the OFFLINE estimate -- model vs. the PREVIOUS MODEL, no database contacted, no
+  # row counts, safe to run with nothing deployed yet. Kept deliberately (not part of the SER-P9.1
+  # dead-lineage retirement) because that offline capability has no live-database equivalent.
+  # Contrast -ImpactOnly (SER-P6.4): model vs. the LIVE DATABASE -- the truth, with real row counts,
+  # but the target must already be reachable. Use -PlanOnly for a quick pre-authoring sanity check;
+  # use -ImpactOnly before an actual deploy.
   [switch]$PlanOnly,
   # -Upgrade: same plan computation/printing as -PlanOnly, but does NOT exit early -- the script
   # continues through its normal steps (this IS the real upgrade). Additionally captures the
@@ -48,6 +54,13 @@ param(
   # fresh-install plan), and echoes migration-plan.json outside the wiped tree so it survives the
   # NEXT wipe too.
   [switch]$Upgrade,
+  # SER-P6.4 (Surface 2). -ImpactOnly: build the jar, then run it ONCE against the app's configured
+  # live database with npdev.schema.lifecycle.mode=REPORT_ONLY. Prints the impact table (what will
+  # change, how many rows) and EXITS with the app's verdict code (0 safe/no-changes, 2 needs-attention,
+  # 3 destructive) WITHOUT applying anything. Contrast with -PlanOnly = model-vs-previous-MODEL
+  # (offline, no DB needed); -ImpactOnly = model-vs-LIVE-DATABASE (the GeneXus impact; the target
+  # database must already be reachable -- this script does not start it for you).
+  [switch]$ImpactOnly,
   # -AcknowledgeDestructive <token>: threads the token into the generator's new
   # --destructiveAcknowledgment flag (LNCH-1 P6 task 6.2b), landing it verbatim in the generated
   # manifest's destructiveAcknowledgment key -- the value SchemaLifecycleExecutor's Phase 4
@@ -761,6 +774,34 @@ exit 0
 '@
 Set-Content -LiteralPath (Join-Path $OpsDir 'Start-App.ps1') -Value $StartApp -Encoding UTF8
 
+# SER-P6.4 (Surface 2): sibling of Build-App.ps1/Start-App.ps1 -- same jar-lookup pattern as
+# Start-App.ps1, but runs the jar ONCE in the FOREGROUND (not Start-Process/backgrounded) so this
+# script can capture the app's own verdict exit code and propagate it. Deliberately does NOT call
+# Start-Environment.ps1 -- -ImpactOnly is a pre-deploy check against the TARGET's already-live
+# database, not a fresh local boot. npdev.schema.lifecycle.mode=REPORT_ONLY makes
+# SchemaLifecycleExecutor compute + print the impact report and System.exit before any DDL/write and
+# before the web server binds a port, so nothing long-running is left behind.
+$ImpactOnlyApp = @'
+$ErrorActionPreference = 'Stop'
+$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') | ConvertFrom-Json
+$jar = Get-ChildItem -LiteralPath $plan.appRoot -Recurse -Filter 'FinalExec-*.jar' -ErrorAction SilentlyContinue |
+       Where-Object { $_.FullName -like '*\build\libs\*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
+if ($null -eq $jar) { Write-Host 'Runnable jar not found. Run Build-App.ps1 first.' -ForegroundColor Red; exit 1 }
+Write-Host "Computing schema impact for $($plan.appName) against its configured live database (zero writes)..."
+$javaArgs = @("-Dnpdev.schema.lifecycle.mode=REPORT_ONLY", '-jar', $jar.FullName,
+              "--server.port=$($plan.serverPort)", "--spring.profiles.active=$($plan.springProfiles)")
+& java @javaArgs
+$code = $LASTEXITCODE
+switch ($code) {
+  0 { Write-Host "Impact: NO_CHANGES/SAFE (exit 0)." -ForegroundColor Green }
+  2 { Write-Host "Impact: NEEDS_ATTENTION (exit 2) -- review the table above." -ForegroundColor Yellow }
+  3 { Write-Host "Impact: DESTRUCTIVE (exit 3) -- review the table above; an acknowledgment token is required to deploy." -ForegroundColor Red }
+  default { Write-Host "Impact check did not complete cleanly (exit $code) -- see output above." -ForegroundColor Red }
+}
+exit $code
+'@
+Set-Content -LiteralPath (Join-Path $OpsDir 'Impact-Only.ps1') -Value $ImpactOnlyApp -Encoding UTF8
+
 $StopApp = @'
 $ErrorActionPreference = 'Stop'
 $pidFile = Join-Path $PSScriptRoot 'app.pid'
@@ -971,5 +1012,14 @@ if (-not $GenerateOnly) {
   Write-Host "  & '$OpsDir\Build-App.ps1'"
   Write-Host "  & '$OpsDir\Start-App.ps1'"
   Write-Host "  & '$OpsDir\Test-App.ps1'"
+  Write-Host "  & '$OpsDir\Impact-Only.ps1'   (pre-deploy: impact vs. the live database, zero writes)"
+}
+if ($ImpactOnly) {
+  if ($GenerateOnly) { Write-Host '-ImpactOnly has no effect combined with -GenerateOnly (no jar would exist to run).' -ForegroundColor Yellow; exit 1 }
+  Write-Step "-ImpactOnly: building $AppId, then running it once against its live database in REPORT_ONLY mode (zero writes)..."
+  & (Join-Path $OpsDir 'Build-App.ps1')
+  if ($LASTEXITCODE -ne 0) { Write-Host 'Build failed; cannot compute impact.' -ForegroundColor Red; exit $LASTEXITCODE }
+  & (Join-Path $OpsDir 'Impact-Only.ps1')
+  exit $LASTEXITCODE
 }
 exit 0

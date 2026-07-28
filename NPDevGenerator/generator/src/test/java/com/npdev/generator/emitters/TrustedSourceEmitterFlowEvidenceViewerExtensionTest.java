@@ -6,23 +6,37 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 class TrustedSourceEmitterFlowEvidenceViewerExtensionTest {
+    // 2.B.2: TrustedSourceEmitter.java was split into several sibling files under this same
+    // package (trusted-source manifest/policy/template classes) -- the generated-source text this
+    // test greps for now lives across that whole family, not in TrustedSourceEmitter.java alone.
     private static String trustedSourceEmitterSource() throws IOException {
         List<Path> candidates = List.of(
-                Path.of("src/main/java/com/npdev/generator/emitters/TrustedSourceEmitter.java"),
-                Path.of("generator/src/main/java/com/npdev/generator/emitters/TrustedSourceEmitter.java"),
-                Path.of("NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/TrustedSourceEmitter.java")
+                Path.of("src/main/java/com/npdev/generator/emitters"),
+                Path.of("generator/src/main/java/com/npdev/generator/emitters"),
+                Path.of("NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters")
         );
 
         for (Path candidate : candidates) {
-            if (Files.exists(candidate)) {
-                return Files.readString(candidate);
+            if (Files.isDirectory(candidate)) {
+                StringBuilder combined = new StringBuilder();
+                try (Stream<Path> files = Files.list(candidate)) {
+                    List<Path> javaFiles = files
+                            .filter(path -> path.getFileName().toString().endsWith(".java"))
+                            .sorted()
+                            .toList();
+                    for (Path javaFile : javaFiles) {
+                        combined.append(Files.readString(javaFile)).append('\n');
+                    }
+                }
+                return combined.toString();
             }
         }
 
-        throw new IOException("Could not locate TrustedSourceEmitter.java. Tried: " + candidates);
+        throw new IOException("Could not locate the com.npdev.generator.emitters source directory. Tried: " + candidates);
     }
 
     @Test

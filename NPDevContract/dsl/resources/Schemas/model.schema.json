@@ -304,9 +304,37 @@
       "items": {
         "$ref": "#/$defs/packRef"
       }
+    },
+    "externalAi": {
+      "$ref": "#/$defs/externalAi"
     }
   },
   "$defs": {
+    "externalAi": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "ADR-0009: app-level external-AI delegation settings. Absent entirely = denied (the platform default); no code path may send anything to a vendor without this block explicitly opting in.",
+      "properties": {
+        "egress": {
+          "type": "string",
+          "enum": [
+            "denied",
+            "packOnly",
+            "apiEnabled"
+          ],
+          "default": "denied",
+          "description": "denied: no egress possible. packOnly: packs may be built and reviewed locally (e.g. air-gapped paste-transport) but never auto-sent. apiEnabled: the external-ai-http adapter may call a configured vendor."
+        },
+        "vendors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Vendor ids (e.g. \"openai\") this app has opted into. Required non-empty when egress is not \"denied\" -- SemanticValidator rejects egress-enabled with no vendor configured."
+        }
+      }
+    },
     "aggregate": {
       "type": "object",
       "required": [
@@ -762,6 +790,11 @@
           "type": "boolean",
           "default": false
         },
+        "sensitive": {
+          "type": "boolean",
+          "default": false,
+          "description": "ADR-0009: marks this field for redaction before it may appear in any external-AI review pack (docs/adr/ADR-0009-external-ai-delegation.md). Authoring-time, and specific to pack building -- independent of the platform's runtime EventRedactionPolicy family."
+        },
         "connectable": {
           "type": "string",
           "enum": [
@@ -954,7 +987,10 @@
               "items": {
                 "properties": {
                   "type": {
-                    "enum": ["object", "enum"]
+                    "enum": [
+                      "object",
+                      "enum"
+                    ]
                   }
                 },
                 "required": [
@@ -1321,7 +1357,10 @@
         },
         "formPresentation": {
           "type": "string",
-          "enum": ["modal", "standard"]
+          "enum": [
+            "modal",
+            "standard"
+          ]
         },
         "defaultSort": {
           "type": "string",
@@ -1425,8 +1464,17 @@
         },
         "tenantScope": {
           "oneOf": [
-            { "type": "string", "minLength": 1 },
-            { "type": "array", "items": { "type": "string", "minLength": 1 } }
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
           ]
         }
       },
@@ -1806,7 +1854,8 @@
       "type": "object",
       "required": [
         "name",
-        "trigger"
+        "trigger",
+        "actions"
       ],
       "properties": {
         "name": {
@@ -1820,9 +1869,6 @@
         "trigger": {
           "$ref": "#/$defs/orchestrationTrigger"
         },
-        "action": {
-          "$ref": "#/$defs/orchestrationAction"
-        },
         "actions": {
           "type": "array",
           "minItems": 1,
@@ -1831,18 +1877,6 @@
           }
         }
       },
-      "anyOf": [
-        {
-          "required": [
-            "action"
-          ]
-        },
-        {
-          "required": [
-            "actions"
-          ]
-        }
-      ],
       "additionalProperties": false
     },
     "orchestrationTrigger": {
@@ -1868,7 +1902,8 @@
     "orchestrationAction": {
       "type": "object",
       "required": [
-        "type"
+        "type",
+        "map"
       ],
       "properties": {
         "type": {
@@ -1883,15 +1918,7 @@
           "type": "string",
           "minLength": 1
         },
-        "targetConcept": {
-          "type": "string",
-          "minLength": 1
-        },
         "capability": {
-          "type": "string",
-          "minLength": 1
-        },
-        "capabilityName": {
           "type": "string",
           "minLength": 1
         },
@@ -1899,15 +1926,7 @@
           "type": "string",
           "minLength": 1
         },
-        "op": {
-          "type": "string",
-          "minLength": 1
-        },
         "event": {
-          "type": "string",
-          "minLength": 1
-        },
-        "eventName": {
           "type": "string",
           "minLength": 1
         },
@@ -1933,28 +1952,8 @@
             "type": "string",
             "minLength": 1
           }
-        },
-        "fieldMap": {
-          "type": "object",
-          "minProperties": 1,
-          "additionalProperties": {
-            "type": "string",
-            "minLength": 1
-          }
         }
       },
-      "anyOf": [
-        {
-          "required": [
-            "map"
-          ]
-        },
-        {
-          "required": [
-            "fieldMap"
-          ]
-        }
-      ],
       "allOf": [
         {
           "if": {
@@ -1965,17 +1964,8 @@
             }
           },
           "then": {
-            "anyOf": [
-              {
-                "required": [
-                  "concept"
-                ]
-              },
-              {
-                "required": [
-                  "targetConcept"
-                ]
-              }
+            "required": [
+              "concept"
             ]
           }
         },
@@ -1988,35 +1978,9 @@
             }
           },
           "then": {
-            "allOf": [
-              {
-                "anyOf": [
-                  {
-                    "required": [
-                      "capability"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "capabilityName"
-                    ]
-                  }
-                ]
-              },
-              {
-                "anyOf": [
-                  {
-                    "required": [
-                      "operation"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "op"
-                    ]
-                  }
-                ]
-              }
+            "required": [
+              "capability",
+              "operation"
             ]
           }
         },
@@ -2031,17 +1995,8 @@
           "then": {
             "allOf": [
               {
-                "anyOf": [
-                  {
-                    "required": [
-                      "event"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "eventName"
-                    ]
-                  }
+                "required": [
+                  "event"
                 ]
               },
               {
@@ -2072,6 +2027,8 @@
     "flowHook": {
       "type": "object",
       "required": [
+        "position",
+        "targetStep",
         "steps"
       ],
       "properties": {
@@ -2082,18 +2039,7 @@
             "after"
           ]
         },
-        "at": {
-          "type": "string",
-          "enum": [
-            "before",
-            "after"
-          ]
-        },
         "targetStep": {
-          "type": "string",
-          "minLength": 1
-        },
-        "target": {
           "type": "string",
           "minLength": 1
         },
@@ -2105,36 +2051,6 @@
           }
         }
       },
-      "allOf": [
-        {
-          "anyOf": [
-            {
-              "required": [
-                "position"
-              ]
-            },
-            {
-              "required": [
-                "at"
-              ]
-            }
-          ]
-        },
-        {
-          "anyOf": [
-            {
-              "required": [
-                "targetStep"
-              ]
-            },
-            {
-              "required": [
-                "target"
-              ]
-            }
-          ]
-        }
-      ],
       "additionalProperties": false
     },
     "flowStep": {
@@ -2150,29 +2066,18 @@
         "type": {
           "type": "string",
           "enum": [
-            "validate",
-            "invariant",
-            "enforceInvariants",
-            "capability",
+            "invariantCheck",
             "capabilityCall",
-            "callCapability",
             "generatedAction",
-            "generated_action",
-            "event",
             "emitEvent",
             "scheduleEvent",
             "return",
             "branch",
-            "if",
-            "await",
             "awaitEvent",
-            "waitForEvent",
             "createConcept",
             "updateConcept",
-            "assign",
-            "evaluateInvariant",
-            "forEach",
-            "loop"
+            "map",
+            "forEach"
           ]
         },
         "checkpoint": {
@@ -2204,15 +2109,7 @@
           "type": "string",
           "minLength": 1
         },
-        "cap": {
-          "type": "string",
-          "minLength": 1
-        },
         "operation": {
-          "type": "string",
-          "minLength": 1
-        },
-        "op": {
           "type": "string",
           "minLength": 1
         },
@@ -2221,10 +2118,6 @@
           "minLength": 1
         },
         "output": {
-          "type": "string",
-          "minLength": 1
-        },
-        "out": {
           "type": "string",
           "minLength": 1
         },
@@ -2288,10 +2181,6 @@
           "type": "string",
           "minLength": 1
         },
-        "as": {
-          "type": "string",
-          "minLength": 1
-        },
         "match": {
           "$ref": "#/$defs/awaitMatch"
         },
@@ -2346,11 +2235,7 @@
           "if": {
             "properties": {
               "type": {
-                "enum": [
-                  "validate",
-                  "invariant",
-                  "enforceInvariants"
-                ]
+                "const": "invariantCheck"
               }
             }
           },
@@ -2373,28 +2258,14 @@
           "if": {
             "properties": {
               "type": {
-                "enum": [
-                  "capability",
-                  "capabilityCall",
-                  "callCapability"
-                ]
+                "const": "capabilityCall"
               }
             }
           },
           "then": {
-            "anyOf": [
-              {
-                "required": [
-                  "capability",
-                  "operation"
-                ]
-              },
-              {
-                "required": [
-                  "cap",
-                  "op"
-                ]
-              }
+            "required": [
+              "capability",
+              "operation"
             ]
           }
         },
@@ -2402,10 +2273,7 @@
           "if": {
             "properties": {
               "type": {
-                "enum": [
-                  "generatedAction",
-                  "generated_action"
-                ]
+                "const": "generatedAction"
               }
             }
           },
@@ -2420,7 +2288,6 @@
             "properties": {
               "type": {
                 "enum": [
-                  "event",
                   "emitEvent",
                   "scheduleEvent"
                 ]
@@ -2460,10 +2327,7 @@
           "if": {
             "properties": {
               "type": {
-                "enum": [
-                  "branch",
-                  "if"
-                ]
+                "const": "branch"
               }
             }
           },
@@ -2534,11 +2398,7 @@
           "if": {
             "properties": {
               "type": {
-                "enum": [
-                  "await",
-                  "awaitEvent",
-                  "waitForEvent"
-                ]
+                "const": "awaitEvent"
               }
             }
           },
@@ -2566,10 +2426,7 @@
           "if": {
             "properties": {
               "type": {
-                "enum": [
-                  "forEach",
-                  "loop"
-                ]
+                "const": "forEach"
               }
             }
           },

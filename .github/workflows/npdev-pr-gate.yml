@@ -93,7 +93,14 @@ jobs:
         timeout-minutes: 20
         run: |
           sed -i '/org\.gradle\.projectcachedir/d' gradle.properties
-          ./gradlew :generator:test --no-daemon --console=plain
+          ./gradlew :generator:test :generator:behaviorTest --no-daemon --console=plain
+
+      - name: Editor unit tests
+        working-directory: NPDevEditor/ui-react
+        timeout-minutes: 10
+        run: |
+          npm ci
+          npm run test
 
       - name: Sync RuntimeHost libs for sample generation
         timeout-minutes: 15

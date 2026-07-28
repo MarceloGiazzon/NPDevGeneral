@@ -1,0 +1,11 @@
+{
+  "missionId": "M7-IMPACT-CONVERT",
+  "runStatus": "RUN",
+  "packManifestSha256": "0a55cb414c16dac3d705879e2e8e80b546926d1562236d2d4e2a8e802a3dbe85",
+  "verdictRecordKind": "external-ai-verdict",
+  "vendors": [
+    "nvidia"
+  ],
+  "runAt": "2026-07-27T08:10:20.474507+00:00",
+  "note": "Backing pack has provenanceVerified=false (source.provenanceNote: 'no npdev-build-info.properties found walking up from --repo-root -- generation timestamp unknown, staleness cannot be checked'). Per this mission's own profile (scripts/external-review/missions.json), the platform's build-review-pack.py is explicitly NOT the sanctioned builder for M7 (a product/P6-P7 feature meant to run via com.finalexec.review inside a generated app against that app's own live Impact Report) -- this RUN used the platform tool as a placeholder since that product feature does not exist yet, so provenance staleness genuinely cannot be checked against a real generated app. Disclosed here (docs/REMAINDER_CLOSURE_PLAN.md 3.4's provenance_audit_gaps check) rather than left only in external pack evidence."
+}

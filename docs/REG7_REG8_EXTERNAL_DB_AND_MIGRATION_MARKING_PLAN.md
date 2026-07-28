@@ -1,5 +1,8 @@
 # REG-7 + REG-8 → Features: External-DB Ownership, Migration Marking, Collision Detection
 
+> **STATUS: HISTORICAL** — last changed 2026-07-22; its completion state has **not** been re-verified. Treat nothing here as an open commitment: check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (authoritative) or `docs/archive/programme-history/OPEN_ITEMS_SNAPSHOT.md` before acting on any item.
+
+
 > **Status:** APPROVED PLAN — not started.
 > **Written:** 2026-07-21, against commit `25b4e20` (branch `beta1-vision-spine`). Working tree clean
 > except this file.
@@ -54,7 +57,7 @@ existing acknowledgment-token / pending-store machinery rather than inventing ne
    REG-7 and REG-8 as limits **today**; this plan rewrites those two paragraphs into feature docs.
 3. `docs/NPDEV_OPEN_ITEMS_REGISTER.md` §1.7 (REG-7) and §1.8 (REG-8) — the boundary rationale and the
    register's own "how to fix (if ever)" notes, which this plan supersedes.
-4. `docs/LNCH1_PROGRAMME_RETROSPECTIVE.md` §5 (why fixes to this subsystem create new findings) and §6
+4. `docs/archive/programme-history/LNCH1_PROGRAMME_RETROSPECTIVE.md` §5 (why fixes to this subsystem create new findings) and §6
    (the working discipline — reproduce RED first, live > suite, fixtures mirror production).
 5. The four executor methods this plan touches, read in full before editing (see §2 orientation).
 
@@ -342,6 +345,6 @@ proof-matrix guarantee** — that is the one hard invariant across all of them.
 ---
 
 *Companion documents: `docs/NPDEV_OPEN_ITEMS_REGISTER.md` §1.7/§1.8 (the boundaries this converts) ·
-`docs/SCHEMA_EVOLUTION.md` (the contract this extends) · `docs/LNCH1_PROGRAMME_RETROSPECTIVE.md`
+`docs/SCHEMA_EVOLUTION.md` (the contract this extends) · `docs/archive/programme-history/LNCH1_PROGRAMME_RETROSPECTIVE.md`
 (why this subsystem needs the guardrails in §3) · `docs/REGISTER_CLOSURE_PLAN.md` (the sibling plan
 for the other open items).*

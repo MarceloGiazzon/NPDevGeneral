@@ -46,6 +46,7 @@
 
 | ID | Title | Category | Status | Priority | Est. size |
 |---|---|---|---|---|---|
+| ADR-0009 | External AI delegation: governed delegation of a human-judgment step to an external AI (redacted pack in -> vendor -> structured verdict out -> filed, never auto-applied). Kernel port + inproc/http adapters, Python + Java pack producers (byte-identical manifest hash, parity-verified), model schema surface (`sensitive`, `externalAi.egress`), ControlPanel/CLI/MCP surfaces, quality gate | New platform feature | **DONE — all of P0-P9 verified (2026-07-26/27), including P5 (M1-M6) actually run against real vendors, not just unblocked.** P4's calibration control: 0/4 runs (2 missions x NVIDIA + Gemini) found their target known bug -- both channels recorded LOW-YIELD per the plan's own rule. P5's real missions found the opposite: 3 real, code-verified security gaps (filed **REG-48/49/50** in `NPDEV_OPEN_ITEMS_REGISTER.md`, none hallucinated) that calibration's synthetic bugs never modeled, plus a real bug in the P8 gate itself (BOM-encoding bug silently failing every mission's schema check) found because M6's own audit was skeptical enough to flag "P8 exists but isn't proven to work" -- gate now genuinely green. D4/D5 remain open (owner-only decisions, no AI substitute -- ADR-0009 itself says an AI may draft the brief but must never make these calls).** See `docs/adr/ADR-0009-external-ai-delegation.md`. | P2 | L |
 | LNCH-1-B7 | Concept drop previewed and acknowledged but never executed (classify() ignored orphan tables) | Runtime/plan incoherence | DONE (fixed 2026-07-20; ownership-gated drop + 5 proof-matrix scenarios) | P2 | M |
 | LNCH-1-B6 | Migration advisory lock (pg_advisory_lock / H2 equivalent) for multi-instance deployments; lock scope = the migrate(Flyway) entry | Runtime robustness | **DONE (delivered 2026-07-22 as REG-7.3, `docs/REG7_REG8_EXTERNAL_DB_AND_MIGRATION_MARKING_PLAN.md`) — a claim row, not the advisory lock this row originally scoped.** Owner decision: detect-and-refuse now (a self-bootstrapped single-row claim in `npdev_schema_migration_claim`, PK-constrained, taken at the top of `migrate(Flyway, SchemaManifest)` and released in a `finally`; a held claim refuses the boot naming the holder; `POST /api/admin/schema-migration/clear-claim` clears a crashed holder), add the real lock later only if collisions prove frequent. Honest residual: a true near-simultaneous-insert race remains theoretically possible, and the claim is only attempted on an upgrade/repeat boot (skipped on a genuinely virgin database, to avoid self-bootstrapping a table before `flyway.migrate()` ever runs — a real bug found and fixed via live rehearsal during implementation). See `docs/SCHEMA_EVOLUTION.md#collision-detection`. | P4 | M |
 | LNCH-1-B8 | A failed `-Upgrade` run silently degrades the NEXT plan to "Fresh install -- no previous compiled model to diff against" instead of erroring | Tooling footgun (silent wrong output) | DONE (fixed 2026-07-21, closeout C4: durable compiled-model snapshot + refuse-don't-degrade; it also exited **0**, the "safe to proceed" gate signal) | P3 | S |
@@ -66,10 +67,10 @@
 | ARCH-8b | Flow field-default application not applied | Runtime footgun | DONE | P3 | M |
 | ARCH-10b | Panel dataSource `orderBy` unapplied | Runtime bug | DONE | P3 | S |
 | BOND-B2 | Duplicate anchor-resolution in FlywayEmitter | Tech debt | DONE (moot) | P3 | S |
-| BOND-B4 | ReleaseGateValidator not CI-wired | Test/CI | PARTIAL (needs your CI-trigger call) | P3 | S |
+| BOND-B4 | ReleaseGateValidator not CI-wired | Test/CI | **DONE (2026-07-23)** — `ReleaseGateValidatorTest` runs inside `:NPDevContract:dsl:check`, which `npdev-pr-gate.yml` executes on every PR (confirmed green on `beta1-vision-spine`, run `29965541583`). No separate CI step needed; the validator is exercised on every PR. | P3 | S |
 | BOND-B6 | Cross-pack bond untested end-to-end | Test coverage | DONE | P3 | M |
 | BOND-B7 | Pack table-name convention untested | Test coverage | DONE | P4 | S |
-| AW-P2 | selectors[]/bandPickers unification + FK auto-Prompt wiring | Feature | PARTIAL (picker unification DONE; FK auto-Prompt re-scoped out) | P4 | S |
+| AW-P2 | selectors[]/bandPickers unification + FK auto-Prompt wiring | Feature | DONE (2026-07-24, owner-confirmed; selectorRef descoped to an optional P4 follow-up) | P4 | S |
 | AW-P3 | computed[] client evaluator vs recompute: procedure | Feature | DONE (folded via warning, not evaluator) | P4 | S |
 | AW-P5 | Per-state allowedActions gating | Feature | DONE | P4 | S |
 | AW-DisplayAll | Validate `display:all` DOM weight / virtualization | Perf risk | DONE (mode never built — moot) | P4 | M |
@@ -257,7 +258,12 @@
   reimplementation — confirmed.
 
 ### BOND-B4 — Wire ReleaseGateValidator into the test suite / CI — mostly DONE, one finding needs your call
-- **Status:** PARTIAL (test coverage DONE; CI-trigger question open) · **Priority:** P3 · **Category:** Test/CI
+- **Status:** DONE (2026-07-23) · **Priority:** P3 · **Category:** Test/CI
+- **Closure (2026-07-23):** the CI-trigger question this section left open on 2026-07-12 is answered:
+  `ReleaseGateValidatorTest` runs inside `:NPDevContract:dsl:check`, which `npdev-pr-gate.yml` executes
+  on every PR (confirmed green on `beta1-vision-spine`). *Corrected 2026-07-25: this Status line still
+  read `PARTIAL` from 2026-07-12 while the summary row had been updated to DONE — found by
+  `scripts/quality/check-register-consistency.py` on its first run.*
 - **What was done 2026-07-12:** `ReleaseGateValidatorTest` extended with the 3 planned cases
   (`releaseGatePassesWhenAllDependenciesMeetTarget`, `semanticValidatorDoesNotBlockOnTruthEdgeViolation`,
   `bondClosureIncludesTransitiveDependencies`) — `:NPDevContract:dsl:check` green (4/4 tests, one
@@ -315,6 +321,9 @@
 > lives in `docs/architecture/AGGREGATE_WORKBENCH_PLAN.md` §5, updated alongside this reconciliation.
 
 ### AW-RECONCILE — Reconcile phase-status markers against committed code ✅ DONE (2026-07-12)
+
+**Status:** DONE (2026-07-12). Recorded on its own line, not only in the heading, so the register
+self-check can cross-read it against the summary table (the checker looks for `**Status:**`).
 - **Result:** P0 slice 2 DONE (`887ab34` compiled layer, `f57b84c` `AggregateApiController` +
   `AggregateRuntime` nested-read — the plan's proposed `AggregateController`/`RuntimeApiEmitter`
   names never landed; a hand-written RuntimeHost controller satisfies the acceptance criterion
@@ -351,8 +360,17 @@
 - **Verify:** `autoPanels:[{concept:"Cliente"}]` → working list+detail+form applet — confirmed live
   (Expedicao/Recebimento AutoPanels, P7 evidence).
 
-### AW-P2 — Unify `selectors[]`/`bandPickers` + FK auto-Prompt wiring (re-scoped) — PARTIAL, narrowed scope confirmed
-- **Status:** PARTIAL (the picker-unification half is DONE; the FK auto-Prompt half is correctly
+### AW-P2 — Unify `selectors[]`/`bandPickers` + FK auto-Prompt wiring (re-scoped) ✅ DONE (2026-07-24)
+- **Status:** DONE · **Priority:** P4 · **Category:** Feature
+- **Closure (2026-07-24, owner-confirmed):** Both in-scope halves are landed. (1) The
+  picker-unification half was done 2026-07-13 (below). (2) The **FK auto-Prompt** half is confirmed
+  **already implemented** — code-grounded at `FieldWidgetDefaults.defaultWidget` (a reference field
+  with no explicit widget resolves to `LOOKUP`, i.e. the picker) → `business-ui-app.mustache`'s
+  `createLookupInput`, so every FK field auto-renders a working browse/pick dialog with zero authoring.
+  The original "FK fields lack a Prompt" premise was wrong (documented below). The only residual — an
+  opt-in `field.ui.selectorRef` hook for a *custom, filtered, `selectors[]`-declared* picker — was
+  **owner-descoped** as an optional P4 follow-up, not part of AW-P2's closure.
+- **Prior status (superseded):** PARTIAL (the picker-unification half is DONE; the FK auto-Prompt half is correctly
   scoped-out below, not abandoned) · **Priority:** P4 · **Category:** Feature
 - **Key finding that reframes this item:** `bandPickers.<band>.panel` was **already** able to
   reference a `selectors[]`-expanded panel with zero code changes — `expandSelector` compiles a
@@ -459,10 +477,31 @@
   — only single-selected-row band rendering exists. Confirmed 2026-07-13.
 
 ### AW-Deferred — WMS surfaces intentionally stubbed (boundary)
-- **Status:** BOUNDARY · **Priority:** —
-- **What:** `Imprimir` (report generation), `Add Doctos`/NFe attach (file-upload — see ARCH-upload),
-  `Histórico` viewer. Currently stub actions, not implementations. Out of scope for the current
-  primitive; revisit when report-generation and file-upload primitives exist.
+- **Status:** BOUNDARY (except `Add Doctos`, now DONE below) · **Priority:** —
+- **What:** `Imprimir` (report generation) and `Histórico` viewer remain stub actions (out of scope for
+  the current primitive; revisit when report-generation exists). **`Add Doctos`/NFe attach — DONE
+  (ARCH-upload P6, 2026-07-24), see below.**
+
+### ARCH-upload P6 — WmsOffice `Add Doctos`/NFe attach ✅ DONE (2026-07-24)
+- **Status:** DONE · **Priority:** P4 · **Category:** Feature (app-scope, layer 2)
+- **What was done, per the GeneXus reference:** the GeneXus source-of-truth (`WmsLabs_Mod_GX17.xml`)
+  models outbound documents as `DoctoSaida` with a `DoctoSaidaBlob` ("Arquivo") + `DoctoSaidaArquivoNome`
+  attached to a load. Mirrored in NPDev with **zero platform change**: added an `arquivo` field
+  (`type: file`, `contentTypes: [application/xml, text/xml, application/pdf]`, `maxSizeBytes: 10 MB`) to
+  the existing `DocumentoFiscal` (NF-e) concept in the WmsOffice app definition (layer 2). The generator
+  auto-emits the FileHandle column + the business-UI upload/download widget (`createFileInput`); the
+  pre-existing `FileUploadController`/`FileStore` primitive handles storage, tenant-isolated.
+- **Verified live (fresh H2 DB, tenant `default`):** `POST /api/files/DocumentoFiscal/arquivo` (XML)
+  returned a tenant-prefixed FileHandle (`key: default/…`, `sizeBytes: 104`); `GET /api/files?storeId=&key=`
+  returned **byte-identical** content; a disallowed `image/gif` upload was rejected **415** (the field's
+  `contentTypes` restriction is enforced). App boots healthy with the field wired.
+- **Byproducts (filed):** this rebuild surfaced two real platform bugs — **REG-38** (additive-migration
+  constraint idempotency on H2; **found + fixed + verified**) and **REG-40** (additive migration never
+  CREATEs new tables → new-concept upgrade against an existing DB fails; filed). Login on the reused DB
+  was blocked by **REG-39** (WmsOffice's private identity-pack copy had drifted pre-LNCH-4, missing
+  `token_version`); fixed by syncing the app's pack to the platform, login re-verified live.
+- **Scope note:** the app definition is layer 2 (not this git repo); only the docs/register updates land
+  here. No platform code changed for the feature itself.
 
 ---
 
@@ -534,7 +573,7 @@ All in the working tree at capture; confirm committed. Full root-cause narrative
 | ARCH-13 *(lifted 2026-07-13, LIFT-ROWOPS-P1–P4)* | The standalone declared `panel{}` (Tier 2) had no generic create-row/delete-row (only per-row update). Now: a `panelDataSource` can declare `rowOps: [add, delete]` (+ optional `addFormFields`), validated by `SemanticValidator`; `PanelRuntime.createRow`/`deleteRow` write through `ConceptGateway` with parent-FK injection for nested dataSources and tenant enforcement via the same `DefaultConceptGateway` fallback every other panel write already used; the generated declared-panel UI renders a header add-row form + per-row delete button for any dataSource with `rowOps` set (both the declared-fieldBindings and generic-JSON render paths); the editor's panel designer authors the whole `dataSources[]` array (previously not exposed at all, not just missing rowOps). Corrects this roadmap's original premise that the Workbench had a portable `rowOps` shape to reuse — it didn't; see LIFT-ROWOPS's §4 correction note in [BOUNDARY_LIFT_ROADMAP.md](BOUNDARY_LIFT_ROADMAP.md). |
 | ARCH-compound-unique *(lifted 2026-07-13, LIFT-UNIQUE-P1–P3)* | Compound (multi-field) `unique` invariants were rejected by the generator (`SemanticValidator.java:363` threw "compound unique … not supported yet"). Now: schema/DSL accept an ordered `fields[]` on a `unique` invariant (`CompiledInvariant` carries the list); `SchemaRealizationEmitter` emits a tenant-scoped composite `UNIQUE` constraint; `CelInvariantEngine` evaluates a compound rule at runtime with a pluggable `CompoundUniqueValueLookup` (InMemory pre-check via the generated service's `ConceptStore` scan; JDBC enforcement via the DB constraint + the already constraint-name-agnostic `mapDataIntegrityViolation`); the invariant editor and the 409 response body already supported this generically once the server-side gate was lifted. |
 | ARCH-6 *(lifted 2026-07-13, LIFT-EXPR-P1–P3)* | Invariant `expression` grammar (`CelInvariantEngine`) was hand-rolled: top-level `\|\|`/`&&` over fixed atoms, no parens, no unary `!`, no arithmetic. `ComputedExpression` (`com.npdev.dsl.v1.expr`) is now boolean-complete (parens/`!`/`null`/dotted paths/`evaluateBoolean`) and `CelInvariantEngine.evaluateExpression` tries it first for every invariant, falling back to the legacy atom matcher only for CEL-specific syntax it can't parse (`.matches()`, `.uniqueBy()`, `.all()`/`.exists()` quantifiers, `conflicts()`/`overlapsProvider()`, `scope.exists()`, `[*]` wildcards) — a strict superset, not a replacement, since those forms have no ComputedExpression equivalent. `SemanticValidator` now statically checks boolean-shape + unknown-field references for the ComputedExpression-parseable subset at `validateModel` time. |
-| ARCH-upload *(lifted 2026-07-13, LIFT-UPLOAD-P1–P5; P6 WMS wiring deferred)* | No server-side multipart / file-upload primitive existed (0 `multipart`/`MultipartFile` refs). Now: kernel `FileStoreContract` port + `file-store-inproc` filesystem adapter (tenant-prefixed, path-traversal-safe, streaming — the `file-store-objectstore` S3 half deferred, needs external SDK/infra this session couldn't provision); schema/DSL `file` field type (`contentTypes`/`maxSizeBytes`/`multiple`, maps to a JSON handle column, forbids `unique`/`reference`); `FileUploadController` (`POST/GET/DELETE /api/files`) validates type/size and enforces tenant isolation via the handle key's tenant prefix; generated forms get a real upload/download widget; the editor authors `file` fields. Verified genuinely live: `TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest` generates, compiles, and boots a real FinalApp with all of this wired in (caught and fixed a missing adapter-jar entry in the test's own build list before it passed). |
+| ARCH-upload *(lifted 2026-07-13, LIFT-UPLOAD-P1–P5; P6 WMS wiring deferred)* | No server-side multipart / file-upload primitive existed (0 `multipart`/`MultipartFile` refs). Now: kernel `FileStoreContract` port + `file-store-inproc` filesystem adapter (tenant-prefixed, path-traversal-safe, streaming — the `file-store-objectstore` S3 half was **later delivered** (2026-07, `S3ObjectStoreFileStoreAdapter` + a MinIO Testcontainers live test + a unit test) — so only ARCH-upload's **P6 WMS wiring** remains deferred, and that is app-scope, not a platform gap); schema/DSL `file` field type (`contentTypes`/`maxSizeBytes`/`multiple`, maps to a JSON handle column, forbids `unique`/`reference`); `FileUploadController` (`POST/GET/DELETE /api/files`) validates type/size and enforces tenant isolation via the handle key's tenant prefix; generated forms get a real upload/download widget; the editor authors `file` fields. Verified genuinely live: `TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest` generates, compiles, and boots a real FinalApp with all of this wired in (caught and fixed a missing adapter-jar entry in the test's own build list before it passed). |
 | ARCH-loop *(lifted 2026-07-13, LIFT-LOOP-P1–P5)* | Flows had `branch`/`if` but no iteration (Procedures already looped via `forEach`/`loop` → `FOR_EACH`). Now: a `forEach` flow step (`collection`/`itemKey`/nested `steps`/`maxLoopIterations`) compiles, validates (itemKey can't shadow reserved flow state or its own collection root or an enclosing loop's itemKey; nested `await` rejected — durable resume of an in-flight await *inside* an iteration is deferred), and executes durably: `KernelRunner.executeForEachStep` treats the whole loop as one atomic top-level step position, checkpointing iteration progress into `state` via the existing `StepProgressRecorder` without advancing the outer step index, so a crash mid-loop resumes at the right iteration with no duplicated side effects — proven by a genuine crash simulation (freezing the executing thread forever right after a durable checkpoint write, then resuming on a brand-new `KernelRunner` sharing only the store). `CompiledModelFlowDefinitionProvider` projects it for generated apps (confirmed live: a `forEach` flow boots inside a real packaged FinalApp); the flow builder gained the first nested step-list editor in `ui-react` (`branch`'s `then` had never been rendered either) for authoring the loop body inline. |
 
 ---
@@ -571,8 +610,8 @@ All in the working tree at capture; confirm committed. Full root-cause narrative
   editor UI at all (not just missing arity checks / a missing template).
 - **2026-07-13** — LIFT-UPLOAD-P1–P5 lifted **ARCH-upload**, moved §6 → §7 (P6 WMS wiring deferred,
   app-side model out of this session's reach). New `file-store-inproc` filesystem adapter (the
-  `file-store-objectstore` S3 half deliberately deferred — unverifiable without external
-  infrastructure); `file` field type; `FileUploadController` multipart endpoints; generated-form and
+  `file-store-objectstore` S3 half was **later delivered** — `S3ObjectStoreFileStoreAdapter` + MinIO
+  live test; only P6 WMS wiring remains); `file` field type; `FileUploadController` multipart endpoints; generated-form and
   editor UI. Caught a real regression via `TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest`
   (a test that generates+compiles+boots a real FinalApp): the new adapter jar wasn't in that test's
   own hardcoded build list, so the generated app failed to compile until fixed — genuine live

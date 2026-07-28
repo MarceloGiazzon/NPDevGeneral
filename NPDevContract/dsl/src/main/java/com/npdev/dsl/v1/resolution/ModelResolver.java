@@ -105,7 +105,8 @@ public final class ModelResolver {
                 source.getAutoPanels(),
                 source.getSelectors(),
                 resolvedDocuments,
-                source.getParserWarnings()
+                source.getParserWarnings(),
+                source.getExternalAi()
         );
         return ResolvedModel.from(resolvedAst);
     }

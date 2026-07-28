@@ -1,0 +1,11 @@
+{
+  "missionId": "M0-CALIB-R3F2",
+  "runStatus": "RUN",
+  "packManifestSha256": "f20324621b9d073b69501a63913e5ac9b0747b2c020fe5f3d5841d2347d7b6c1",
+  "verdictRecordKind": "external-ai-verdict",
+  "vendors": [
+    "nvidia",
+    "gemini"
+  ],
+  "runAt": "2026-07-27T03:14:23.453627+00:00"
+}

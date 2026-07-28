@@ -6,10 +6,27 @@
     {
       "name": "User",
       "fields": [
-        { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "email", "type": "string", "required": true },
-        { "name": "name", "type": "string", "required": false },
-        { "name": "enabled", "type": "boolean", "required": false }
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "required": false
+        }
       ]
     }
   ],
@@ -17,18 +34,30 @@
     {
       "name": "persistence",
       "type": "PersistenceCapability",
-      "operations": ["save", "findById"]
+      "operations": [
+        "save",
+        "findById"
+      ]
     }
   ],
   "bindings": [
-    { "capability": "persistence", "adapter": "inmemory" },
-    { "capability": "eventBus", "adapter": "inproc" }
+    {
+      "capability": "persistence",
+      "adapter": "inmemory"
+    },
+    {
+      "capability": "eventBus",
+      "adapter": "inproc"
+    }
   ],
   "events": [
     {
       "name": "EmailVerified",
       "payload": [
-        { "name": "email", "type": "string" }
+        {
+          "name": "email",
+          "type": "string"
+        }
       ]
     }
   ],
@@ -43,19 +72,21 @@
         {
           "name": "save-user",
           "type": "capabilityCall",
-          "cap": "persistence",
-          "op": "save",
-          "args": ["$input"],
-          "out": "$saved"
+          "args": [
+            "$input"
+          ],
+          "capability": "persistence",
+          "operation": "save",
+          "output": "$saved"
         },
         {
           "name": "await-email",
           "type": "awaitEvent",
           "awaitEvent": "EmailVerified",
-          "as": "approval",
           "match": {
             "correlation": true
-          }
+          },
+          "awaitRef": "approval"
         },
         {
           "name": "return-user",

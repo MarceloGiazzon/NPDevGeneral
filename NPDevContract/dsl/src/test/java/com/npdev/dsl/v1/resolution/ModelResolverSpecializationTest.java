@@ -235,7 +235,7 @@ class ModelResolverSpecializationTest {
                       "name": "SubmitInvoice",
                       "concept": "Invoice",
                       "steps": [
-                        { "name": "pre-check", "type": "invariant", "scope": "Invoice" },
+                        { "name": "pre-check", "type": "invariantCheck", "scope": "Invoice" },
                         { "name": "return-base", "type": "return", "value": "$input" }
                       ]
                     },
@@ -249,7 +249,7 @@ class ModelResolverSpecializationTest {
                           "steps": [
                             {
                               "name": "emit-medical",
-                              "type": "event",
+                              "type": "emitEvent",
                               "event": "MedicalInvoiceCreated",
                               "payload": "$input"
                             }
@@ -279,7 +279,7 @@ class ModelResolverSpecializationTest {
                           "steps": [
                             {
                               "name": "emit-medical",
-                              "type": "event",
+                              "type": "emitEvent",
                               "event": "MedicalInvoiceCreated",
                               "payload": "$input"
                             }
@@ -291,7 +291,7 @@ class ModelResolverSpecializationTest {
                       "name": "SubmitInvoice",
                       "concept": "Invoice",
                       "steps": [
-                        { "name": "pre-check", "type": "invariant", "scope": "Invoice" },
+                        { "name": "pre-check", "type": "invariantCheck", "scope": "Invoice" },
                         { "name": "return-base", "type": "return", "value": "$input" }
                       ]
                     }

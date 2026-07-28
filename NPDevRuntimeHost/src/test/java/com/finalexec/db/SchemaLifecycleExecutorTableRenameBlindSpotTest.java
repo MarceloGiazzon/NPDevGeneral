@@ -23,22 +23,21 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * LNCH-1 P2 (2.5) VERIFY step: proves, against a real H2 database, that {@code classify()} as it
- * stood before this phase is completely blind to a concept (table) rename -- it only ever loops
- * over {@code manifest.businessTableColumns().keySet()} (tables declared under their CURRENT
- * name), so a table renamed live-DB-side that no longer appears under any current name is simply
- * never visited. The live-but-unvisited OLD table is silently left in place with its data intact
- * but permanently orphaned, while {@code classify()} reports {@code SAFE_ADDITIVE} (or better) as
- * if nothing were wrong -- worse than the pre-Phase-1 field-rename gap, which was at least
- * classified as destructive.
+ * LNCH-1 P2 (2.5) VERIFY step, updated at SER-P4.8: this originally pinned {@code classify()}'s
+ * blindness to a concept (table) rename -- the old per-manifest-table loop only ever visited
+ * {@code manifest.businessTableColumns().keySet()} (tables under their CURRENT name), so a table
+ * renamed live-DB-side that no longer appears under any current name was never visited, left
+ * orphaned with its data, and reported {@code SAFE_ADDITIVE} as if nothing were wrong.
  *
- * <p>Part 1 ({@link #classifyAloneIsBlindToAnOrphanedRenamedTable()}) calls {@code classify()}
- * directly, WITHOUT the new {@link SchemaLifecycleExecutor#attemptInPlaceTableRenames} step, and
- * pins today's actual (buggy, pre-fix) behavior described above. Part 2
- * ({@link #attemptInPlaceTableRenamesClosesTheBlindSpotBeforeClassifyRuns()}) proves the fix: once
- * {@code attemptInPlaceTableRenames} runs first (as {@link SchemaLifecycleExecutor#beforeMigrate}
- * now always does ahead of classification), the table is no longer orphaned and {@code classify()}
- * correctly reports the residual diff.
+ * <p>SER-P4.8 switched {@code classify()}'s column-level decision to the desired-vs-current
+ * {@code SchemaDiffEngine}, which models a declared table rename as a {@code SAFE_RENAME}. The blind
+ * spot is therefore CLOSED even in isolation: Part 1
+ * ({@link #classifyAloneNowDetectsAnOrphanedRenamedTable()}) now proves {@code classify()} ALONE
+ * reports the pending rename ({@code RENAME_DETECTED}) rather than being blind to the orphaned old
+ * table. The live path is unaffected -- {@link SchemaLifecycleExecutor#beforeMigrate} still applies
+ * {@link SchemaLifecycleExecutor#attemptInPlaceTableRenames} first, so by the time classify runs
+ * live there is no residual, exactly as Part 2
+ * ({@link #attemptInPlaceTableRenamesClosesTheBlindSpotBeforeClassifyRuns()}) proves ({@code SAFE_ADDITIVE}).
  */
 class SchemaLifecycleExecutorTableRenameBlindSpotTest {
 
@@ -59,7 +58,7 @@ class SchemaLifecycleExecutorTableRenameBlindSpotTest {
     }
 
     @Test
-    void classifyAloneIsBlindToAnOrphanedRenamedTable() throws SQLException {
+    void classifyAloneNowDetectsAnOrphanedRenamedTable() throws SQLException {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE gadgets (id BIGINT PRIMARY KEY, name VARCHAR(50), version BIGINT)");
             statement.execute("INSERT INTO gadgets (id, name, version) VALUES (1, 'alpha', 1)");
@@ -72,21 +71,20 @@ class SchemaLifecycleExecutorTableRenameBlindSpotTest {
         SchemaLifecycleExecutor.SchemaChangeClassification classification =
                 executor.classify(dataSource, manifest);
 
-        // THIS is the blind spot: the manifest declares the concept renamed (widgets was gadgets),
-        // "widgets" does not exist live yet, so classify()'s per-manifest-table loop calls
-        // readActualColumns(metadata, "widgets"), gets nothing back, and -- per its own "table
-        // doesn't exist yet, V1's CREATE TABLE IF NOT EXISTS handles it" comment -- treats this as
-        // a brand-new table and simply `continue`s. "gadgets" is never enumerated by this loop at
-        // all (it only iterates manifest.businessTableColumns().keySet(), which contains "widgets",
-        // not "gadgets"), so its existence, and its row of data, are invisible to classify().
-        assertEquals(SchemaLifecycleExecutor.SchemaChangeClassification.SAFE_ADDITIVE, classification,
-                "pre-fix blind spot: classify() alone reports SAFE_ADDITIVE even though the "
-                        + "renamed-from table still exists live with data and was never examined");
+        // SER-P4.8: the blind spot is CLOSED. classify() now decides column-level changes via the
+        // desired-vs-current SchemaDiffEngine, which sees BOTH sides of the schema: desired "widgets"
+        // (renamed-from "gadgets") and the live orphaned "gadgets". The declared rename resolves to a
+        // single SAFE_RENAME item, so classify() reports RENAME_DETECTED -- the pending rename -- rather
+        // than the old loop's SAFE_ADDITIVE blindness. classify() is read-only, so it does not itself
+        // apply the rename; the live path applies it via attemptInPlaceTableRenames first (Part 2).
+        assertEquals(SchemaLifecycleExecutor.SchemaChangeClassification.RENAME_DETECTED, classification,
+                "blind spot closed: classify() alone now detects the declared table rename of an "
+                        + "orphaned live table instead of reporting SAFE_ADDITIVE");
 
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
-            assertTrue(hasTable(metadata, "gadgets"), "the old table must still be sitting there, unexamined");
-            assertFalse(hasTable(metadata, "widgets"), "the new table must not exist yet -- nothing renamed it");
+            assertTrue(hasTable(metadata, "gadgets"), "classify is read-only -- the old table is still there, now SEEN not ignored");
+            assertFalse(hasTable(metadata, "widgets"), "classify does not apply the rename itself -- the new table does not exist yet");
         }
     }
 

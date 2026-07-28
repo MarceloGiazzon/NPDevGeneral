@@ -58,6 +58,26 @@ public final class DefaultExecutionAuthorizationPolicy implements ExecutionAutho
         return tenantIsolationPolicy.sameTenant(requester.tenantId(), query.tenantId());
     }
 
+    /**
+     * REG-45: resuming a suspended flow requires the same tenant <b>and the originating actor</b>.
+     *
+     * <p>Tenant scoping alone was not enough. {@code resumeExecution} returns the resulting
+     * {@code ExecutionResult}, which carries the flow's accumulated state — records the flow read
+     * under the <em>original</em> actor's row-level {@code access.read} scope. So any holder of
+     * {@code RESUME_EXECUTIONS} could resume a colleague's suspended flow and be handed data they
+     * could not have read directly. The row-level scoping LNCH-13 enforces on the concept surface had
+     * no equivalent on the execution surface; this is it.</p>
+     *
+     * <p><b>An instance with no recorded actor stays tenant-scoped only.</b> {@code FlowInstance}
+     * normalises a blank {@code actorId} to null, which is what a flow started anonymously, by the
+     * cron scheduler, or before this field was populated looks like. Requiring equality against null
+     * would make every one of those permanently unresumable — turning a data-scoping fix into an
+     * availability regression for exactly the stuck flows an operator most needs to recover. Where
+     * there is no owner to protect, there is nothing for actor-scoping to add.</p>
+     *
+     * <p>Only the HTTP resume endpoint consults this policy. The kernel's event-driven and scheduler
+     * resume paths do not, so background recovery is unaffected — verified before tightening it.</p>
+     */
     @Override
     public boolean canResumeExecution(ExecutionContext requester, FlowInstance instance) {
         if (!isRequesterAuthorized(requester)
@@ -65,7 +85,14 @@ public final class DefaultExecutionAuthorizationPolicy implements ExecutionAutho
                 || instance == null) {
             return false;
         }
-        return tenantIsolationPolicy.sameTenant(requester.tenantId(), instance.tenantId());
+        if (!tenantIsolationPolicy.sameTenant(requester.tenantId(), instance.tenantId())) {
+            return false;
+        }
+        String owner = instance.actorId();
+        if (owner == null || owner.isBlank()) {
+            return true;
+        }
+        return owner.equals(requester.actorId());
     }
 
     @Override

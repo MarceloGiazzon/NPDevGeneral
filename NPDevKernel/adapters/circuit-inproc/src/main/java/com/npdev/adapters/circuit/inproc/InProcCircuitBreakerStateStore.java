@@ -3,6 +3,7 @@ package com.npdev.adapters.circuit.inproc;
 import com.npdev.kernel.capability.CapabilityOpKey;
 import com.npdev.kernel.capability.CircuitBreakerState;
 import com.npdev.kernel.capability.CircuitBreakerStateSummary;
+import com.npdev.kernel.capability.CircuitBreakerTransitions;
 import com.npdev.kernel.ports.CircuitBreakerStateStore;
 
 import java.util.Comparator;
@@ -31,6 +32,22 @@ public final class InProcCircuitBreakerStateStore implements CircuitBreakerState
     public void reset(CapabilityOpKey key) {
         Objects.requireNonNull(key, "key");
         states.remove(key);
+    }
+
+    /**
+     * REG-37: {@code compute} holds the bin lock for this key across the read, the decision and the
+     * write, so N concurrent failures produce exactly N increments. The previous get-then-put by the
+     * caller could lose all but one of a burst.
+     *
+     * <p>Note {@code current} arrives as {@code null} for an unseen key, where {@link #get} would have
+     * substituted {@code closed()} -- {@link CircuitBreakerTransitions#afterFailure} treats the two
+     * identically, which is why it takes a nullable state.</p>
+     */
+    @Override
+    public CircuitBreakerState recordFailure(CapabilityOpKey key, long nowMs, int openAfterFailures, long openMs) {
+        Objects.requireNonNull(key, "key");
+        return states.compute(key,
+                (unused, current) -> CircuitBreakerTransitions.afterFailure(current, nowMs, openAfterFailures, openMs));
     }
 
     @Override

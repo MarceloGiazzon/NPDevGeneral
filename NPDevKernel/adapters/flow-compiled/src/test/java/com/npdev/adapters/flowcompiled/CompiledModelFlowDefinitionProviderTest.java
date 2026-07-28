@@ -73,8 +73,8 @@ class CompiledModelFlowDefinitionProviderTest {
                         }
                       },
                       "steps": [
-                        { "name":"validate", "type":"enforceInvariants", "scope":"User", "invariants":["EmailRequired","EmailUnique"] },
-                        { "name":"save", "type":"capabilityCall", "cap":"persistence", "op":"save", "args":["$input"], "out":"$saved" },
+                        { "name":"validate", "type":"invariantCheck", "scope":"User", "invariants":["EmailRequired","EmailUnique"] },
+                        { "name":"save", "type":"capabilityCall", "capability":"persistence", "operation":"save", "args":["$input"], "output":"$saved" },
                         { "name":"emit", "type":"emitEvent", "event":"UserCreated", "from":"$saved" },
                         { "name":"ret", "type":"return", "value":"$saved" }
                       ]
@@ -232,8 +232,8 @@ class CompiledModelFlowDefinitionProviderTest {
                       "name": "SubmitExpense",
                       "input": { "concept":"ExpenseRequest", "mode":"create" },
                       "steps": [
-                        { "name":"create-expense", "type":"createConcept", "scope":"ExpenseRequest", "input":"$input", "out":"$created" },
-                        { "name":"update-expense", "type":"updateConcept", "scope":"ExpenseRequest", "input":"$created", "out":"$updated" },
+                        { "name":"create-expense", "type":"createConcept", "scope":"ExpenseRequest", "input":"$input", "output":"$created" },
+                        { "name":"update-expense", "type":"updateConcept", "scope":"ExpenseRequest", "input":"$created", "output":"$updated" },
                         { "name":"ret", "type":"return", "value":"$updated" }
                       ]
                     }
@@ -330,7 +330,7 @@ class CompiledModelFlowDefinitionProviderTest {
                       "name": "CreateUser",
                       "input": { "concept":"User", "mode":"create" },
                       "steps": [
-                        { "type":"capabilityCall", "cap":"persistence", "op":"save", "args":["$input"], "out":"$saved" }
+                        { "type":"capabilityCall", "capability":"persistence", "operation":"save", "args":["$input"], "output":"$saved" }
                       ]
                     }
                   ]
@@ -491,7 +491,7 @@ class CompiledModelFlowDefinitionProviderTest {
                       "name":"CreateUser",
                       "input": { "concept":"User", "mode":"create" },
                       "steps": [
-                        { "type":"capabilityCall", "cap":"persistence", "op":"save", "args":["$input"], "out":"$saved" },
+                        { "type":"capabilityCall", "capability":"persistence", "operation":"save", "args":["$input"], "output":"$saved" },
                         { "type":"return", "value":"$saved" }
                       ]
                     }

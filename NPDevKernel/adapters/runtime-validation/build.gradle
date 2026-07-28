@@ -1,5 +1,7 @@
 dependencies {
     implementation project(':kernel')
+    // LEDGER-1: boot-time persistence-binding check reads the compiled model's flow steps.
+    implementation project(':dsl')
 
     // Spring interfaces used by these health indicators (compileOnly keeps adapter lightweight)
     compileOnly 'org.springframework:spring-context:6.1.12'

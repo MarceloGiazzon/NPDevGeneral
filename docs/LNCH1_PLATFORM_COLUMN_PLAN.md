@@ -1,5 +1,8 @@
 # LNCH-1 Platform-Column Plan — Closing the Last Four Findings
 
+> **STATUS: HISTORICAL** — last changed 2026-07-21; its completion state has **not** been re-verified. Treat nothing here as an open commitment: check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` (authoritative) or `docs/archive/programme-history/OPEN_ITEMS_SNAPSHOT.md` before acting on any item.
+
+
 > **Status:** APPROVED PLAN — not started
 > **Written:** 2026-07-21, verified against the working tree at commit `a49af58` (branch `beta1-vision-spine`)
 > **Origin:** an independent review of the completed LNCH-1 **closeout** round
@@ -658,7 +661,7 @@ do not rename `scenario.name`).
 ---
 
 *Companion documents: `docs/LNCH1_SCHEMA_EVOLUTION_PLAN.md` (original 9-phase build) ·
-`docs/LNCH1_REMEDIATION_PLAN.md` (R0–R9) · `docs/LNCH1_HARDENING_PLAN.md` (X0–X9) ·
+`docs/archive/programme-history/LNCH1_REMEDIATION_PLAN.md` (R0–R9) · `docs/archive/programme-history/LNCH1_HARDENING_PLAN.md` (X0–X9) ·
 `docs/LNCH1_CLOSEOUT_PLAN.md` (C0–C8) · `docs/SCHEMA_EVOLUTION.md` (user-facing contract) ·
 `..\NPDev_General__OutsideRepo\lnch1-evidence\hardening-verification-ledger.md` (the tiebreaker) ·
 `..\NPDev_General__OutsideRepo\lnch1-evidence\platcol-final.md` (T0–T9 final record).*

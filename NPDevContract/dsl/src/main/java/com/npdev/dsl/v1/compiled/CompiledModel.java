@@ -22,6 +22,7 @@ public final class CompiledModel {
     private final List<CompiledAggregate> aggregates;
     private final List<CompiledAutoPanel> autoPanels;
     private final List<CompiledDocument> documents;
+    private final CompiledExternalAi externalAi;
 
     public CompiledModel(String namespace, String version, Map<String, ? extends CompiledEntity> entitiesByName) {
         this(namespace, "1.0.0", version, entitiesByName, List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
@@ -198,6 +199,33 @@ public final class CompiledModel {
             List<CompiledAutoPanel> autoPanels,
             List<CompiledDocument> documents
     ) {
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                documents, null);
+    }
+
+    /** ADR-0009: canonical constructor, adds {@code externalAi} (app-level egress settings). */
+    public CompiledModel(
+            String namespace,
+            String dslVersion,
+            String version,
+            Map<String, ? extends CompiledEntity> entitiesByName,
+            List<CompiledDomainType> domainTypes,
+            List<CompiledCapability> capabilities,
+            List<CompiledCapabilityBinding> bindings,
+            List<CompiledEvent> events,
+            List<CompiledFlow> flows,
+            List<CompiledOrchestration> orchestrationRules,
+            List<CompiledQuery> queries,
+            List<CompiledRuleProfile> ruleProfiles,
+            List<CompiledProcedure> procedures,
+            List<CompiledPanel> panels,
+            List<CompiledGuidePage> guidePages,
+            List<CompiledAggregate> aggregates,
+            List<CompiledAutoPanel> autoPanels,
+            List<CompiledDocument> documents,
+            CompiledExternalAi externalAi
+    ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
         this.version = version;
@@ -220,6 +248,7 @@ public final class CompiledModel {
         this.aggregates = new ArrayList<>(aggregates);
         this.autoPanels = new ArrayList<>(autoPanels);
         this.documents = new ArrayList<>(documents);
+        this.externalAi = externalAi;
     }
 
     public String getNamespace() { return namespace; }
@@ -316,6 +345,11 @@ public final class CompiledModel {
 
     public List<CompiledDocument> getDocuments() {
         return Collections.unmodifiableList(documents);
+    }
+
+    /** ADR-0009: app-level external-AI delegation settings, or null if the model declares none (denied by default). */
+    public CompiledExternalAi getExternalAi() {
+        return externalAi;
     }
 
     public Optional<CompiledFlow> findFlow(String flowName) {

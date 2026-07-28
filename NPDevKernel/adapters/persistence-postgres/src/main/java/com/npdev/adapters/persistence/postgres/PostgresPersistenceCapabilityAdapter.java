@@ -5,7 +5,10 @@ import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledLifecycle;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.kernel.ports.PersistenceCapabilityContract;
+import com.npdev.kernel.ports.TenantScope;
+import com.npdev.kernel.ports.TenantScopedPersistenceCapabilityContract;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -40,7 +43,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * database columns for the target table. This prevents accidental SQL generation
  * from stale or non-canonical field names.
  */
-public final class PostgresPersistenceCapabilityAdapter implements PersistenceCapabilityContract {
+public final class PostgresPersistenceCapabilityAdapter
+        implements PersistenceCapabilityContract, TenantScopedPersistenceCapabilityContract {
 
     private final DataSource dataSource;
     private final CompiledModel compiledModel;
@@ -389,17 +393,187 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
         return !(Boolean) exists(concept, field, value);
     }
 
+
+    // ---------------------------------------------------------------------------------------------
+    // REG-46: the tenant-scoped port. The tenant is prepended by RegistryCapabilityDispatcher from the
+    // flow's authenticated state -- it is never one of the model author's declared step arguments.
+    //
+    // Scoping is applied only when the table actually HAS a tenant_id column, decided from the live
+    // catalog the adapter already reads. Internal or shared tables without one keep working exactly as
+    // before, and no statement gains a predicate the database would reject.
+    // ---------------------------------------------------------------------------------------------
+
+    private static final String TENANT_COLUMN = "tenant_id";
+
+    /**
+     * REG-50(a): a genuine metadata-query failure must never be treated the same as "this table
+     * legitimately has no tenant_id column" -- the latter falls back to the unscoped overload by
+     * design (internal/shared tables), the former must fail closed instead. Owner's decision: a
+     * tri-state (not blanket fail-closed for every metadata failure everywhere), matching REG-43's
+     * precedent that blanket fail-closed bricks apps/tables that were never meant to be scoped.
+     */
+    private static void enforceMetadataAvailableForTenantScoping(TableColumns tableColumns, String table, String operation) {
+        if (tableColumns.queryFailed()) {
+            throw new IllegalStateException(
+                    "Cannot verify tenant scoping for table " + table + " (" + operation + "): "
+                            + "table-metadata query failed, so whether this table has a tenant_id "
+                            + "column is unknown -- refusing rather than silently falling back to "
+                            + "an unscoped operation.");
+        }
+    }
+
+    @Override
+    public Object save(TenantScope scope, Object entity) {
+        return save(stampTenant(entity, scope.tenantId()));
+    }
+
+    @Override
+    public Object findById(TenantScope scope, Object concept, Object id) {
+        if (id == null) {
+            return null;
+        }
+        String table = tableName(concept);
+        try (Connection c = dataSource.getConnection()) {
+            TableColumns tableColumns = resolveTableColumns(c, table);
+            enforceMetadataAvailableForTenantScoping(tableColumns, table, "findById");
+            if (!tableColumns.hasColumn(TENANT_COLUMN)) {
+                return findById(concept, id);
+            }
+            String idColumn = resolveIdColumn(table, tableColumns);
+            String sql = "select * from " + table + " where " + idColumn + " = ? and "
+                    + tableColumns.columnName(TENANT_COLUMN) + " = ?";
+            try (PreparedStatement ps = c.prepareStatement(sql)) {
+                ps.setObject(1, coerceValueForColumn(idColumn, id));
+                ps.setString(2, scope.tenantId());
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? rowToMap(rs) : null;
+                }
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException(
+                    "Postgres persistence findById failed for table " + table + ": " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Object query(TenantScope scope, Object concept, Object criteria) {
+        // query() already builds an equality predicate per criterion, so scoping is just one more
+        // criterion -- which also means it goes through the same column-resolution and binding path
+        // rather than a second, hand-written one that could drift from it.
+        return query(concept, withTenantCriterion(concept, criteria, scope.tenantId()));
+    }
+
+    @Override
+    public Object delete(TenantScope scope, Object concept, Object id) {
+        if (id == null) {
+            return false;
+        }
+        String table = tableName(concept);
+        try (Connection c = dataSource.getConnection()) {
+            TableColumns tableColumns = resolveTableColumns(c, table);
+            enforceMetadataAvailableForTenantScoping(tableColumns, table, "delete");
+            if (!tableColumns.hasColumn(TENANT_COLUMN)) {
+                return delete(concept, id);
+            }
+            String idColumn = resolveIdColumn(table, tableColumns);
+            String sql = "delete from " + table + " where " + idColumn + " = ? and "
+                    + tableColumns.columnName(TENANT_COLUMN) + " = ?";
+            try (PreparedStatement ps = c.prepareStatement(sql)) {
+                ps.setObject(1, coerceValueForColumn(idColumn, id));
+                ps.setString(2, scope.tenantId());
+                return ps.executeUpdate() > 0;
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException(
+                    "Postgres persistence delete failed for table " + table + ": " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Object exists(TenantScope scope, Object concept, Object field, Object value) {
+        String table = tableName(concept);
+        String fieldName = Objects.toString(field, "").trim();
+        if (fieldName.isBlank()) {
+            return false;
+        }
+        try (Connection connection = dataSource.getConnection()) {
+            TableColumns tableColumns = resolveTableColumns(connection, table);
+            enforceMetadataAvailableForTenantScoping(tableColumns, table, "exists");
+            if (!tableColumns.hasColumn(TENANT_COLUMN)) {
+                return exists(concept, field, value);
+            }
+            String column = resolveCriteriaColumn(table, fieldName, tableColumns);
+            String sql = "select 1 from " + table + " where " + column + " = ? and "
+                    + tableColumns.columnName(TENANT_COLUMN) + " = ? limit 1";
+            try (PreparedStatement ps = connection.prepareStatement(sql)) {
+                ps.setObject(1, coerceValueForColumn(column, value));
+                ps.setString(2, scope.tenantId());
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next();
+                }
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException(
+                    "Postgres persistence exists failed for table " + table + ": " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Object unique(TenantScope scope, Object concept, Object field, Object value) {
+        // Deliberately tenant-scoped: "is this value free?" must be asked of the caller's OWN rows.
+        // Asking globally would both leak the existence of another tenant's row and refuse a value
+        // this tenant is entitled to use.
+        return !(Boolean) exists(scope, concept, field, value);
+    }
+
+    /** Forces the tenant onto a save payload so a caller cannot write into another tenant. */
+    private static Object stampTenant(Object entity, String tenantId) {
+        if (!(entity instanceof Map<?, ?> source) || tenantId == null || tenantId.isBlank()) {
+            return entity;
+        }
+        Map<String, Object> stamped = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : source.entrySet()) {
+            stamped.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        stamped.put("tenantId", tenantId);
+        stamped.put(TENANT_COLUMN, tenantId);
+        return stamped;
+    }
+
+    /** Adds the tenant as one more equality criterion, when the table carries the column. */
+    private Object withTenantCriterion(Object concept, Object criteria, String tenantId) {
+        String table = tableName(concept);
+        try (Connection connection = dataSource.getConnection()) {
+            if (!resolveTableColumns(connection, table).hasColumn(TENANT_COLUMN)) {
+                return criteria;
+            }
+        } catch (SQLException ignored) {
+            return criteria;
+        }
+        Map<String, Object> scoped = new LinkedHashMap<>(criteriaMap(criteria));
+        scoped.put(TENANT_COLUMN, tenantId);
+        return scoped;
+    }
+
     private TableColumns resolveTableColumns(Connection connection, String table) {
         return tableColumnsCache.computeIfAbsent(table.toLowerCase(Locale.ROOT), ignored -> loadTableColumns(connection, table));
     }
 
     private static TableColumns loadTableColumns(Connection connection, String table) {
+        DatabaseMetaData metaData;
         try {
-            DatabaseMetaData metaData = connection.getMetaData();
-            if (metaData == null) {
-                return TableColumns.unavailable();
-            }
+            metaData = connection.getMetaData();
+        } catch (SQLException exception) {
+            // REG-50(a): the metadata query itself could not even start -- a genuine failure, not
+            // "this table has no columns". Must never be treated the same as the latter for a
+            // tenant-scoped table's fallback check.
+            return TableColumns.queryFailedResult();
+        }
+        if (metaData == null) {
+            return TableColumns.queryFailedResult();
+        }
 
+        try {
             TableColumns columns = readColumns(metaData, null, table);
             if (!columns.isEmpty()) {
                 return columns;
@@ -414,10 +588,14 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
             if (!columns.isEmpty()) {
                 return columns;
             }
-        } catch (SQLException ignored) {
-            // fallback below
+        } catch (SQLException exception) {
+            // REG-50(a): the catalog query threw mid-read -- also a genuine failure, distinct from
+            // all three case variants legitimately returning zero columns (a real "no such table").
+            return TableColumns.queryFailedResult();
         }
 
+        // All three case variants queried successfully and genuinely found zero columns -- a real
+        // "no such table", not a failure. Legitimate for a table that was never tenant-scoped.
         return TableColumns.unavailable();
     }
 
@@ -480,9 +658,15 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
 
     private static Map<String, Object> normalizeCriteria(String table, Map<String, Object> runtimeCriteria, TableColumns tableColumns) {
         if (!tableColumns.isAvailable()) {
+            // REG-50(b): metadata is unavailable, so there is no catalog to cross-check a derived
+            // column name against -- route through the SAME whitelist "Runtime/generated SQL"
+            // identifiers already use elsewhere in the platform (SqlIdentifierSupport, per
+            // docs/REG16_POSTGRES_ADAPTER_SQL_ADVERSARIAL_REVIEW.md's "two independent whitelists"),
+            // not a third, bespoke one. safeSqlIdentifier coerces to [a-z0-9_]+ and enforces
+            // Postgres's 63-char identifier limit; a hostile field name can never reach SQL text.
             LinkedHashMap<String, Object> dbCriteria = new LinkedHashMap<>();
             for (Map.Entry<String, Object> entry : runtimeCriteria.entrySet()) {
-                dbCriteria.put(toDbColumn(entry.getKey()), entry.getValue());
+                dbCriteria.put(SqlIdentifierSupport.safeSqlIdentifier(entry.getKey()), entry.getValue());
             }
             return dbCriteria;
         }
@@ -508,7 +692,8 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
 
     private static String resolveCriteriaColumn(String table, String runtimeField, TableColumns tableColumns) {
         if (!tableColumns.isAvailable()) {
-            return toDbColumn(runtimeField);
+            // REG-50(b): see normalizeCriteria's identical comment above.
+            return SqlIdentifierSupport.safeSqlIdentifier(runtimeField);
         }
 
         String column = resolveColumn(table, runtimeField, tableColumns);
@@ -561,9 +746,11 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
     }
 
     private static Map<String, Object> dbColumnRecord(Map<String, Object> runtimeRecord) {
+        // REG-50(b): same unavailable-metadata fallback as normalizeCriteria/resolveCriteriaColumn --
+        // same whitelist, same reasoning.
         LinkedHashMap<String, Object> dbRecord = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : runtimeRecord.entrySet()) {
-            dbRecord.put(toDbColumn(entry.getKey()), entry.getValue());
+            dbRecord.put(SqlIdentifierSupport.safeSqlIdentifier(entry.getKey()), entry.getValue());
         }
         return dbRecord;
     }
@@ -973,11 +1160,30 @@ public final class PostgresPersistenceCapabilityAdapter implements PersistenceCa
 
     private static final class TableColumns {
         private final boolean available;
+        // REG-50(a): tri-state -- distinguishes "queried the catalog successfully, this table
+        // genuinely has zero/no such columns" (available=false, queryFailed=false -- a legitimate
+        // state for a table that was never meant to be tenant-scoped) from "the metadata query
+        // itself threw/couldn't run" (queryFailed=true -- a transient failure that must never be
+        // silently treated the same as the first case for a table that SHOULD be tenant-scoped).
+        private final boolean queryFailed;
         private final Map<String, String> columnsByLowerName = new LinkedHashMap<>();
         private final Map<String, String> columnsByRuntimeFieldLowerName = new LinkedHashMap<>();
 
         private TableColumns(boolean available) {
+            this(available, false);
+        }
+
+        private TableColumns(boolean available, boolean queryFailed) {
             this.available = available;
+            this.queryFailed = queryFailed;
+        }
+
+        static TableColumns queryFailedResult() {
+            return new TableColumns(false, true);
+        }
+
+        boolean queryFailed() {
+            return queryFailed;
         }
 
         static TableColumns unavailable() {

@@ -5,9 +5,13 @@ import com.finalexec.db.JdbcBusinessConceptStore;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledConceptAccess;
 import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.dsl.v1.compiled.CompiledLifecycle;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledStateMachineState;
+import com.npdev.dsl.v1.compiled.CompiledStateTransition;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGatewayAccessDeniedException;
+import com.npdev.kernel.concepts.ConceptGatewaySemanticException;
 import com.npdev.kernel.concepts.ConceptGatewaySemanticPolicy;
 import com.npdev.kernel.concepts.ConceptListRequest;
 import com.npdev.kernel.concepts.ConceptReadRequest;
@@ -33,6 +37,7 @@ import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
@@ -57,6 +62,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RowLevelAuthorizationAttackTest {
 
     private static final String CONCEPT = "Order";
+    private static final String TICKET = "Ticket";
     private static final String TENANT = "clinic-a";
     private static final ExecutionContext USER_A = ExecutionContext.of(TENANT, "user-a");
     private static final ExecutionContext USER_B = ExecutionContext.of(TENANT, "user-b");
@@ -108,6 +114,11 @@ class RowLevelAuthorizationAttackTest {
         assertEquals(1, page.items().size(), "user B's query page must contain only their own row");
         assertFalse(page.items().stream().anyMatch(r -> aId.equals(r.id())),
                 "user A's row must never surface in user B's query page");
+        // REG-42 (LNCH13-F3, REG-16-resid Round 2 follow-up): pagination metadata must be
+        // row-scoped too, not only the items array -- otherwise B learns via `total` that a row
+        // exists that B cannot see, even though the items list correctly hides it.
+        assertEquals(1, page.total(), "total must reflect only rows user B can read, not the tenant's full row count");
+        assertFalse(page.hasMore(), "hasMore must be false once every row B can read has been returned");
     }
 
     @ParameterizedTest(name = "{0}")
@@ -138,6 +149,187 @@ class RowLevelAuthorizationAttackTest {
         assertEquals("ROW_SCOPE_DENIED", denied.code());
     }
 
+    /**
+     * REG-16-resid R3 / R3-F2 (HIGH) — the RUNTIME half of the many-to-many bond authorization fix.
+     *
+     * <p>Every generated app emits four HTTP endpoints per many-to-many bond
+     * ({@code GET/POST/DELETE/PUT /{id}/{bond}...}) that mutate a junction table. They shipped with
+     * <b>no authorization at all</b>: no coarse permission check, no row-level {@code access.write}
+     * gate, no tenant predicate (the junction SQL keys on the source id alone) and no audit — while
+     * create/update/delete on the very same concept had all four. Any authenticated caller holding a
+     * record id could rewrite that record's relationships regardless of write scope.</p>
+     *
+     * <p>The fix routes those endpoints through the new {@link ConceptGateway#authorizeWrite}, which
+     * asks "may this actor write this record?" without writing it. This test proves the new method
+     * genuinely denies — a structural assertion that the generated service calls it could not.</p>
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("adapters")
+    void userBCannotAuthorizeAWriteAgainstUserARow(Supplier<ConceptStore> storeFactory) {
+        DefaultConceptGateway gateway = gatewayOver(storeFactory.get());
+        String aId = seedRow(gateway, USER_A);
+
+        ConceptGatewayAccessDeniedException denied = assertThrows(
+                ConceptGatewayAccessDeniedException.class,
+                () -> gateway.authorizeWrite(new ConceptReadRequest(CONCEPT, aId, null), USER_B),
+                "user B must not be authorized to write user A's row, so its bond members are out of reach too");
+        assertEquals("ROW_SCOPE_DENIED", denied.code());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("adapters")
+    void authorizeWriteAllowsTheRowsOwnerAndPersistsNothing(Supplier<ConceptStore> storeFactory) {
+        // The other half of the contract, and the half a deny-everything implementation would fail:
+        // the owner must pass, and the check must have NO side effect -- the whole reason it exists
+        // is that a junction-table mutation has no concept row to save.
+        ConceptStore store = storeFactory.get();
+        DefaultConceptGateway gateway = gatewayOver(store);
+        String aId = seedRow(gateway, USER_A);
+        var before = gateway.read(new ConceptReadRequest(CONCEPT, aId, null), USER_A).orElseThrow();
+
+        gateway.authorizeWrite(new ConceptReadRequest(CONCEPT, aId, null), USER_A);
+
+        var after = gateway.read(new ConceptReadRequest(CONCEPT, aId, null), USER_A).orElseThrow();
+        assertEquals(before.data(), after.data(), "authorizeWrite must not modify the record it checks");
+    }
+
+    /**
+     * REG-16-resid R2 / LNCH13-F1 — the RUNTIME half of the CRITICAL fix.
+     *
+     * <p>{@code ServiceBaseFlowRowLevelAuthzTest} proves the generated service now EMITS
+     * {@code enforceWithConceptGateway(...)} before {@code enforceWithCreateFlow(...)}. That is a
+     * structural assertion over generated source: it shows the call is there and ordered, but it cannot
+     * show that the call actually DENIES, nor that it denies BEFORE the flow's side effects run. This
+     * test closes that gap by executing the exact sequence the fixed template emits — gateway enforcement
+     * first, flow second — and asserting the denial happens and the flow never ran.
+     *
+     * <p>Why this matters more than usual: {@code docs/ROW_LEVEL_AUTHORIZATION.md}'s own history records
+     * that the READ-side twin of this bug went undetected until live E2E testing. This bug class is known
+     * to survive tests that only inspect shape, so the fix deserves a behavioural proof.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("adapters")
+    void flowBackedCreateIsDeniedBeforeTheFlowRuns(Supplier<ConceptStore> storeFactory) {
+        DefaultConceptGateway gateway = gatewayOver(storeFactory.get());
+        String forgedId = UUID.randomUUID().toString();
+        AtomicBoolean flowRan = new AtomicBoolean(false);
+
+        // The generated createFromSource for a flow-backed concept now does, in this order:
+        //   enforceWithConceptGateway(...)  -> gateway.save(...)   <-- must deny here
+        //   enforceWithCreateFlow(...)      -> kernelRunner.execute(...)  <-- must never be reached
+        ConceptGatewayAccessDeniedException denied = assertThrows(
+                ConceptGatewayAccessDeniedException.class,
+                () -> {
+                    gateway.save(new ConceptWriteRequest(CONCEPT, forgedId, null,
+                            Map.of("id", forgedId, "ownerId", "user-a", "note", "planted-by-b")), USER_B);
+                    flowRan.set(true); // stands in for the declared create Flow's own steps
+                },
+                "a flow-backed create must still be row-scope denied -- before the fix this endpoint "
+                        + "called only the flow and persisted straight through conceptStore");
+        assertEquals("ROW_SCOPE_DENIED", denied.code());
+        assertFalse(flowRan.get(),
+                "the flow's side effects (notifications, external calls) must never run for a write the "
+                        + "row-level rule denies -- enforcement precedes the flow, it does not follow it");
+    }
+
+    /** REG-16-resid R2 / LNCH13-F1: the update twin — denial is evaluated against the record's PREVIOUS
+     *  state, so a non-owner cannot update a row by supplying a payload that claims ownership. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("adapters")
+    void flowBackedUpdateIsDeniedBeforeTheFlowRuns(Supplier<ConceptStore> storeFactory) {
+        DefaultConceptGateway gateway = gatewayOver(storeFactory.get());
+        String aId = seedRow(gateway, USER_A);
+        AtomicBoolean flowRan = new AtomicBoolean(false);
+
+        ConceptGatewayAccessDeniedException denied = assertThrows(
+                ConceptGatewayAccessDeniedException.class,
+                () -> {
+                    gateway.save(new ConceptWriteRequest(CONCEPT, aId, null,
+                            Map.of("id", aId, "ownerId", "user-b", "note", "hijacked-by-b")), USER_B);
+                    flowRan.set(true);
+                },
+                "a flow-backed update must be denied on the PREVIOUS owner, not the payload's claim");
+        assertEquals("ROW_SCOPE_DENIED", denied.code());
+        assertFalse(flowRan.get(), "the update flow must never run for a denied write");
+    }
+
+    /**
+     * REG-41 (LNCH13-F2, REG-16-resid Round 2 follow-up): {@code DefaultConceptGateway.save()} used
+     * to run lifecycle-transition validation against the PREVIOUS record before the coarse
+     * {@code concept.write} permission and row-level {@code access.write} checks. Since that
+     * validation failure's detail map includes the row's actual current status ({@code "from"}), an
+     * actor with NO write access to the row at all could learn its current lifecycle state by simply
+     * submitting an unreachable target status and reading the resulting error -- authorization must
+     * gate BEFORE any semantic work touches another actor's data, not after.
+     *
+     * <p>Ticket starts life {@code OPEN} (declared initial state); the only declared transition is
+     * {@code OPEN -> CLOSED}. User B (who does not own the row) submits {@code status: "ARCHIVED"} --
+     * a declared state with no transition path from {@code OPEN}, which {@code
+     * validateLifecycleTransition} would reject with the row's real current status in the exception
+     * detail if it ever ran. It must never run for B: the row-scope denial must fire first.</p>
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("ticketAdapters")
+    void unauthorizedWriteIsRowScopeDeniedBeforeLifecycleValidationLeaksTheRowsStatus(Supplier<ConceptStore> storeFactory) {
+        DefaultConceptGateway gateway = ticketGatewayOver(storeFactory.get());
+        String aId = UUID.randomUUID().toString();
+        gateway.save(new ConceptWriteRequest(TICKET, aId, null,
+                Map.of("id", aId, "ownerId", USER_A.actorId(), "status", "OPEN")), USER_A);
+
+        RuntimeException thrown = assertThrows(RuntimeException.class,
+                () -> gateway.save(new ConceptWriteRequest(TICKET, aId, null,
+                        Map.of("id", aId, "ownerId", "user-a", "status", "ARCHIVED")), USER_B),
+                "user B must not be able to write user A's Ticket, regardless of the payload's status");
+
+        assertTrue(thrown instanceof ConceptGatewayAccessDeniedException,
+                "row-scope authorization must deny BEFORE lifecycle validation ever runs -- got "
+                        + thrown.getClass().getSimpleName() + ": " + thrown.getMessage());
+        assertEquals("ROW_SCOPE_DENIED", ((ConceptGatewayAccessDeniedException) thrown).code());
+        assertFalse(thrown.getMessage() != null && thrown.getMessage().contains("OPEN"),
+                "the denial must not leak the row's actual current status: " + thrown.getMessage());
+        assertFalse(thrown instanceof ConceptGatewaySemanticException,
+                "must not be the lifecycle-validation exception -- that would mean authorization ran "
+                        + "too late, after already touching user A's row data");
+    }
+
+    /**
+     * REG-48 (delete-side twin of REG-41 / LNCH13-F2): {@code DefaultConceptGateway.delete()} runs
+     * {@code evaluateRuleProfiles} (concept invariants) against the row's CURRENT data BEFORE
+     * {@code enforcePermission}/{@code enforceRowWritable}. A concept-level invariant's rejection
+     * detail (its name/expression) reveals something true about the row's current state to a caller
+     * who has not yet been authorized to touch it at all -- the same class of leak REG-41 closed for
+     * {@code save()}, never applied to {@code delete()}.
+     *
+     * <p>{@code Vault.locked} models a "must be unlocked before deletion" invariant
+     * ({@code locked == 'false'}). The row is seeded directly through the store (bypassing the
+     * gateway, since the gateway's own create path would reject seeding a locked vault under the
+     * same invariant) in a LOCKED state. User B, who owns nothing here, attempts to delete it: before
+     * the fix, the invariant evaluates against the real data and denies with
+     * {@code CONCEPT_INVARIANT_REJECTED} -- telling B the vault is currently locked -- before
+     * authorization ever runs. After the fix, authorization must deny first with
+     * {@code ROW_SCOPE_DENIED}, and the invariant must never be reached for an unauthorized caller.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("vaultAdapters")
+    void unauthorizedDeleteIsRowScopeDeniedBeforeInvariantValidationLeaksTheRowsLockedState(Supplier<ConceptStore> storeFactory) {
+        ConceptStore store = storeFactory.get();
+        DefaultConceptGateway gateway = vaultGatewayOver(store);
+        String aId = seedLockedVault(store, USER_A);
+
+        RuntimeException thrown = assertThrows(RuntimeException.class,
+                () -> gateway.delete(new ConceptReadRequest(VAULT, aId, null), USER_B),
+                "user B must not be able to delete user A's Vault, regardless of its locked state");
+
+        assertTrue(thrown instanceof ConceptGatewayAccessDeniedException,
+                "row-scope authorization must deny BEFORE invariant validation ever runs -- got "
+                        + thrown.getClass().getSimpleName() + ": " + thrown.getMessage());
+        assertEquals("ROW_SCOPE_DENIED", ((ConceptGatewayAccessDeniedException) thrown).code());
+        assertFalse(thrown instanceof ConceptGatewaySemanticException,
+                "must not be the invariant-rejection exception -- that would mean authorization ran "
+                        + "too late, after already evaluating a rule against user A's row data, leaking "
+                        + "that the vault is currently locked to a caller with zero access to it");
+    }
+
     @ParameterizedTest(name = "{0}")
     @MethodSource("adapters")
     void userBCannotDeleteUserARow(Supplier<ConceptStore> storeFactory) {
@@ -153,6 +345,142 @@ class RowLevelAuthorizationAttackTest {
     }
 
     // --- helpers -----------------------------------------------------------------------------
+
+    private static final String VAULT = "Vault";
+
+    static Stream<Arguments> vaultAdapters() {
+        return Stream.of(
+                Arguments.of(Named.of("InMemory adapter", (Supplier<ConceptStore>) RowLevelAuthorizationAttackTest::newInMemoryVaultStore)),
+                Arguments.of(Named.of("JDBC/H2 adapter", (Supplier<ConceptStore>) RowLevelAuthorizationAttackTest::newJdbcVaultStore))
+        );
+    }
+
+    private static DefaultConceptGateway vaultGatewayOver(ConceptStore store) {
+        ConceptGatewaySemanticPolicy policy = RuntimeConceptGatewaySemanticPolicies.fromCompiledModel(vaultModel());
+        return new DefaultConceptGateway(
+                store,
+                PermissionEvaluator.allowAll(),
+                TenantIsolationPolicy.STRICT_EQUALS,
+                AuditLogStore.noop(),
+                policy,
+                com.npdev.kernel.concepts.ConceptGatewayTraceSink.noop()
+        );
+    }
+
+    private static CompiledModel vaultModel() {
+        CompiledConcept vault = new CompiledConcept(
+                VAULT, VAULT, "vaults",
+                List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("ownerId", "string", "String", false, true, false),
+                        new CompiledField("locked", "string", "String", false, true, false)
+                ),
+                List.of("locked == 'false'"),
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                new CompiledConceptAccess(null, "ownerId == $user.id")
+        );
+        return new CompiledModel("row.level.attack.vault", "1.0.0", "1.0.0", Map.of(vault.getName(), vault));
+    }
+
+    /** Seeds a LOCKED vault directly through the store, bypassing the gateway -- the gateway's own
+     *  create path would itself reject seeding a locked row under the same invariant this test needs
+     *  to already be violated when the (unauthorized) delete attempt runs. */
+    private static String seedLockedVault(ConceptStore store, ExecutionContext owner) {
+        String id = UUID.randomUUID().toString();
+        store.save(new ConceptRecord(VAULT, id, TENANT, Map.of("id", id, "ownerId", owner.actorId(), "locked", "true")));
+        return id;
+    }
+
+    private static ConceptStore newInMemoryVaultStore() {
+        return new InMemoryConceptStore(vaultModel());
+    }
+
+    private static ConceptStore newJdbcVaultStore() {
+        try {
+            String url = "jdbc:h2:mem:row-level-attack-vault-" + System.nanoTime() + ";DB_CLOSE_DELAY=-1";
+            DataSource dataSource = new SingleConnectionUrlDataSource(url);
+            try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+                statement.execute(
+                        "CREATE TABLE vaults (id UUID NOT NULL, owner_id VARCHAR(255), locked VARCHAR(20), "
+                                + "tenant_id VARCHAR(120) NOT NULL, PRIMARY KEY (id))");
+            }
+            return new JdbcBusinessConceptStore(dataSource, vaultModel());
+        } catch (SQLException exception) {
+            throw new IllegalStateException("failed to build H2-backed JDBC concept store", exception);
+        }
+    }
+
+    static Stream<Arguments> ticketAdapters() {
+        return Stream.of(
+                Arguments.of(Named.of("InMemory adapter", (Supplier<ConceptStore>) RowLevelAuthorizationAttackTest::newInMemoryTicketStore)),
+                Arguments.of(Named.of("JDBC/H2 adapter", (Supplier<ConceptStore>) RowLevelAuthorizationAttackTest::newJdbcTicketStore))
+        );
+    }
+
+    private static DefaultConceptGateway ticketGatewayOver(ConceptStore store) {
+        ConceptGatewaySemanticPolicy policy = RuntimeConceptGatewaySemanticPolicies.fromCompiledModel(ticketModel());
+        return new DefaultConceptGateway(
+                store,
+                PermissionEvaluator.allowAll(),
+                TenantIsolationPolicy.STRICT_EQUALS,
+                AuditLogStore.noop(),
+                policy,
+                com.npdev.kernel.concepts.ConceptGatewayTraceSink.noop()
+        );
+    }
+
+    private static CompiledModel ticketModel() {
+        CompiledLifecycle lifecycle = new CompiledLifecycle(
+                "status",
+                List.of(
+                        new CompiledStateMachineState("OPEN", "Open", true, false, Map.of()),
+                        new CompiledStateMachineState("CLOSED", "Closed", false, false, Map.of()),
+                        new CompiledStateMachineState("ARCHIVED", "Archived", false, true, Map.of())
+                ),
+                List.of(new CompiledStateTransition("OPEN", "CLOSED", List.of()))
+        );
+        CompiledConcept ticket = new CompiledConcept(
+                TICKET, TICKET, "tickets",
+                List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("ownerId", "string", "String", false, true, false),
+                        new CompiledField("status", "string", "String", false, true, false)
+                ),
+                List.of(),
+                List.of(),
+                lifecycle,
+                null,
+                null,
+                null,
+                List.of(),
+                new CompiledConceptAccess(null, "ownerId == $user.id")
+        );
+        return new CompiledModel("row.level.attack.ticket", "1.0.0", "1.0.0", Map.of(ticket.getName(), ticket));
+    }
+
+    private static ConceptStore newInMemoryTicketStore() {
+        return new InMemoryConceptStore(ticketModel());
+    }
+
+    private static ConceptStore newJdbcTicketStore() {
+        try {
+            String url = "jdbc:h2:mem:row-level-attack-ticket-" + System.nanoTime() + ";DB_CLOSE_DELAY=-1";
+            DataSource dataSource = new SingleConnectionUrlDataSource(url);
+            try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+                statement.execute(
+                        "CREATE TABLE tickets (id UUID NOT NULL, owner_id VARCHAR(255), status VARCHAR(255), "
+                                + "tenant_id VARCHAR(120) NOT NULL, PRIMARY KEY (id))");
+            }
+            return new JdbcBusinessConceptStore(dataSource, ticketModel());
+        } catch (SQLException exception) {
+            throw new IllegalStateException("failed to build H2-backed JDBC concept store", exception);
+        }
+    }
 
     private static DefaultConceptGateway gatewayOver(ConceptStore store) {
         ConceptGatewaySemanticPolicy policy = RuntimeConceptGatewaySemanticPolicies.fromCompiledModel(orderModel());

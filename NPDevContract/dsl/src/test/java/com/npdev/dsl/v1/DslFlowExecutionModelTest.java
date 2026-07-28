@@ -45,13 +45,13 @@ class DslFlowExecutionModelTest {
                       "input": { "concept": "Invoice", "mode": "update" },
                       "steps": [
                         {
-                          "type": "if",
+                          "type": "branch",
                           "condition": "$input.needsApproval == true",
                           "then": [
                             {
                               "type": "awaitEvent",
                               "awaitEvent": "GovernmentApproved",
-                              "as": "approval",
+                              "awaitRef": "approval",
                               "match": {
                                 "correlation": true,
                                 "payload": { "receipt": "$input.id" }
@@ -118,7 +118,7 @@ class DslFlowExecutionModelTest {
                       "input": { "concept": "Invoice", "mode": "update" },
                       "steps": [
                         { "name": "bad-branch", "type": "branch", "condition": "$input.id != null", "then": [] },
-                        { "name": "bad-await", "type": "await", "awaitEvent": "GovernmentApproved" }
+                        { "name": "bad-await", "type": "awaitEvent", "awaitEvent": "GovernmentApproved" }
                       ]
                     }
                   ]

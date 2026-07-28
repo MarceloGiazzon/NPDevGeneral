@@ -93,6 +93,7 @@ Only checked when `npdev.auth.enabled` (default `true`).
 | `npdev.auth.jwt.public-key-path` | token verification (both shapes) | Required; placeholder-rejected; **the key file must actually be readable** or startup fails fast with a `#authentication`-linked message (was: opaque per-request `jwt_public_key_not_found`). |
 | `npdev.auth.jwt.private-key-path` | token *signing* (`LoginController`) | **Optional** — blank = verify-only. If set, the file **must be readable** or startup fails fast with a `#authentication`-linked message. (Before REG-9 a set-but-missing path crashed the whole context with a raw Spring placeholder / `NoSuchFileException` at bean creation; a blank path *also* crashed, making verify-only impossible.) |
 | `npdev.auth.jwt.expiry-seconds` | token signing | No (defaults to `28800`, i.e. 8 hours) |
+| `npdev.auth.jwt.reject-tokens-without-tv-after` | token revocation (both claim→context paths) | **Optional (default off).** An ISO-8601 instant (e.g. `2026-08-01T00:00:00Z`); once reached, legacy JWTs carrying **no `tv` (token-version) claim** are rejected. Set it to `≥ max token lifetime` after the `tv` feature shipped, so no legitimate tv-less token can still exist. Unset/blank = today's lenient behavior. A malformed value fails startup fast. (REG-23) |
 
 `StartupValidator` also rejects obviously-placeholder values for `issuer`/`audience`/
 `public-key-path` — anything containing `example.com`, `your-auth-provider`, `changeme`,
@@ -112,6 +113,7 @@ internal hyphens, so `NPDEV_AUTH_JWT_ISSUER` / `NPDEV_AUTH_JWT_AUDIENCE` bind as
 | `npdev.auth.jwt.issuer` | `NPDEV_AUTH_JWT_ISSUER` |
 | `npdev.auth.jwt.audience` | `NPDEV_AUTH_JWT_AUDIENCE` |
 | `npdev.auth.jwt.public-key-path` | `NPDEV_AUTH_JWT_PUBLICKEYPATH` |
+| `npdev.auth.jwt.reject-tokens-without-tv-after` | `NPDEV_AUTH_JWT_REJECTTOKENSWITHOUTTVAFTER` |
 | `npdev.auth.jwt.private-key-path` | `NPDEV_AUTH_JWT_PRIVATEKEYPATH` |
 
 Login also needs to know which table/columns hold credentials (defaults match the identity pack's
@@ -184,6 +186,35 @@ value here fails later, at first use, not at boot:
 | `NPDEV_FILESTORE_PROVIDER` | `inproc` (default) or `objectstore` (S3/MinIO-compatible). |
 | `NPDEV_FILESTORE_OBJECTSTORE_BUCKET` / `_ENDPOINT` / `_REGION` / `_ACCESSKEYID` / `_SECRETACCESSKEY` | Required when `NPDEV_FILESTORE_PROVIDER=objectstore`. See `docs/DEPLOYMENT.md`. |
 | `NPDEV_MAIL_SMTP_HOST` | SMTP host when the `mail-smtp` adapter is bound instead of `mail-inproc`. See `docs/EMAIL_NOTIFICATIONS.md`. |
+
+## Persistence capability binding (checked at boot)
+
+A model whose flows persist data — `createConcept`/`updateConcept`/`saveConcept` steps, or a direct
+`persistence.*` capability call — must declare a `persistence` binding in `model.json`'s `bindings`
+array (see `docs/NPDEV_USER_MANUAL.md` section 5.1 for the `capabilities`/`bindings` block shape). A
+binding can legitimately come from a built-in pack instead of the model's own `bindings` array, so
+model *validation* cannot assume its absence is an error — but a generated app that reaches runtime
+with flows that persist and **no bound adapter for `persistence`** (neither `persistence-inproc` for
+dev nor `persistence-postgres` for prod) refuses to boot with an `IllegalStateException` naming the
+offending flow, instead of failing opaquely on the first `createConcept` call (LEDGER-1).
+
+## Identity pack freshness (checked at boot)
+
+An app can carry its **own copy** of a built-in pack (a local `$ref` under its model root) instead of
+composing `NPDevContract/packs/<alias>/pack.json` fresh at every generation (the normal path, via
+`BuiltinPackComposer`). When the platform's pack later gains a field that platform code then reads
+**unconditionally**, every app whose copy predates that addition breaks at runtime — and breaks
+*misleadingly*: a missing-column `SQLException` gets caught by generic error handling and reported as
+something else entirely (REG-39 — a stale copy of the identity pack's `token_version` column made
+`LoginController` fail every login with `invalid_credentials`, not a schema error).
+
+If the generated model declares an `identity::User` concept (i.e. this app uses the built-in identity
+pack, by whatever mechanism), `StartupValidator` requires it to carry the `tokenVersion` field the
+platform's identity pack has had since LNCH-4. A stale copy refuses to boot with an
+`IllegalStateException` naming the missing field and the fix (regenerate so the app composes the
+platform's current pack, or update a locally-committed copy to match) — instead of surfacing later as an
+unrelated-looking auth failure. An app that doesn't use the identity pack at all has no `identity::User`
+concept and skips this check entirely.
 
 ## Where these come from
 

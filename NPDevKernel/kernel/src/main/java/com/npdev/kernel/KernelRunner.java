@@ -30,7 +30,6 @@ import com.npdev.kernel.ports.ExecutionTracer;
 import com.npdev.kernel.ports.SchemaValidator;
 import com.npdev.kernel.ports.EventSchemaProvider;
 import com.npdev.kernel.ports.PermissionEvaluator;
-import com.npdev.kernel.procedures.ProcedureExecutionLimits;
 import com.npdev.kernel.schema.SchemaObject;
 import com.npdev.kernel.trace.FlowTrace;
 import com.npdev.kernel.trace.FlowTraceMeta;
@@ -64,42 +63,31 @@ import java.util.logging.Logger;
 public final class KernelRunner implements FlowEngine {
 
     
-    private static final Logger LOG = Logger.getLogger(KernelRunner.class.getName());
-private final EventBus eventBus;
-    private final InvariantEngine invariantEngine;
+    static final Logger LOG = Logger.getLogger(KernelRunner.class.getName());
+final EventBus eventBus;
+    final InvariantEngine invariantEngine;
     private final FlowDefinitionProvider flowDefinitionProvider;
     private final CapabilityDispatcher capabilityDispatcher;
     private final ExecutionTracer executionTracer;
-    private final EventStore eventStore;
-    private final FlowInstanceStore flowInstanceStore;
+    final EventStore eventStore;
+    final FlowInstanceStore flowInstanceStore;
     private final CorrelationOwnershipStore correlationOwnershipStore;
     private final CircuitBreakerStateStore circuitBreakerStateStore;
     private final BulkheadStore bulkheadStore;
-    private final IdempotencyStore idempotencyStore;
+    final IdempotencyStore idempotencyStore;
     private final CapabilityPolicyOverrides capabilityPolicyOverrides;
     private final JsonCodec jsonCodec;
-    private final SchemaValidator schemaValidator;
-    private EventSchemaProvider eventSchemaProvider = EventSchemaProvider.noop();
+    final SchemaValidator schemaValidator;
+    EventSchemaProvider eventSchemaProvider = EventSchemaProvider.noop();
     private PermissionEvaluator permissionEvaluator = PermissionEvaluator.allowAll();
     private final MetricsSink metricsSink;
     private final IdProvider idProvider;
     private final ThreadLocal<String> currentFlowContext = new ThreadLocal<>();
     private static final Object UNRESOLVED = new Object();
-    private static final long RESUME_BASE_DELAY_MS = 5_000L;
-    private static final long RESUME_MAX_DELAY_MS = 300_000L;
-    private static final int RESUME_MAX_ATTEMPTS = 20;
     private static final int CIRCUIT_FAILURE_THRESHOLD = 5;
     private static final long CIRCUIT_OPEN_DURATION_MS = 30_000L;
     private static final int BULKHEAD_MAX_CONCURRENT = 10;
     private static final int IDEMPOTENCY_RESULT_MAX_CHARS = 16_384;
-    private static final String AWAIT_STATE_KEY = "_npdev.await";
-    private static final String AWAIT_FIELD_EVENT_NAME = "awaitEventName";
-    private static final String AWAIT_FIELD_MATCH_CORRELATION = "matchCorrelation";
-    private static final String AWAIT_FIELD_PAYLOAD_MATCH_REFS = "payloadMatchRefs";
-    private static final String AWAIT_FIELD_STEP_INDEX = "stepIndex";
-    private static final String AWAIT_FIELD_STEP_NAME = "stepName";
-    private static final String AWAIT_FIELD_AWAIT_REF = "awaitRef";
-    private static final String FLOW_RESUME_IDEMPOTENCY_CAPABILITY = "__flow_resume";
 
     public KernelRunner withEventSchemaProvider(EventSchemaProvider provider) {
         this.eventSchemaProvider = provider == null ? EventSchemaProvider.noop() : provider;
@@ -605,7 +593,7 @@ private final EventBus eventBus;
         );
     }
 
-    private PermissionDecision evaluatePermission(ExecutionContext context, PermissionRequirement requirement) {
+    PermissionDecision evaluatePermission(ExecutionContext context, PermissionRequirement requirement) {
         PermissionDecision decision = permissionEvaluator.evaluate(toPermissionSubject(context), requirement);
         if (decision == null) {
             return PermissionDecision.deny(FailureCodes.FORBIDDEN, "Permission denied");
@@ -694,7 +682,7 @@ private final EventBus eventBus;
             eventStore.append(envelope);
         }
         eventBus.publish(envelope);
-        resumeWaitingExecutionsFor(envelope, null, effectiveCorrelationId, effectiveContext);
+        ResumeCoordinator.resumeWaitingExecutionsFor(this, envelope, null, effectiveCorrelationId, effectiveContext);
         return envelope;
     }
 
@@ -924,7 +912,7 @@ private final EventBus eventBus;
         if (lookupCorrelationId == null) {
             lookupCorrelationId = eventEnvelope.correlationId();
         }
-        return resumeWaitingExecutionsFor(eventEnvelope, null, lookupCorrelationId, ExecutionContext.anonymous());
+        return ResumeCoordinator.resumeWaitingExecutionsFor(this, eventEnvelope, null, lookupCorrelationId, ExecutionContext.anonymous());
     }
 
     public int resumeAllWaitingExecutions() {
@@ -932,91 +920,7 @@ private final EventBus eventBus;
     }
 
     public int resumeAllWaitingExecutions(int limit) {
-        if (eventStore == null) {
-            return 0;
-        }
-        int batchSize = limit <= 0 ? 500 : limit;
-        long now = nowEpochMillis();
-        List<FlowInstance> waitingSnapshot = flowInstanceStore.findAllWaiting(batchSize * 4);
-        if (waitingSnapshot == null || waitingSnapshot.isEmpty()) {
-            return 0;
-        }
-
-        Set<String> tenants = new LinkedHashSet<>();
-        for (FlowInstance instance : waitingSnapshot) {
-            if (instance == null) {
-                continue;
-            }
-            tenants.add(normalizeTenantOrDefault(instance.tenantId()));
-        }
-        if (tenants.isEmpty()) {
-            return 0;
-        }
-
-        List<FlowInstance> eligible = new ArrayList<>();
-        for (String tenant : tenants) {
-            eligible.addAll(flowInstanceStore.findWaitingEligibleToResume(tenant, now, batchSize));
-        }
-        eligible = eligible.stream()
-                .sorted(Comparator
-                        .comparingLong((FlowInstance instance) -> instance.nextEligibleResumeAtEpochMs() == null
-                                ? 0L
-                                : instance.nextEligibleResumeAtEpochMs())
-                        .thenComparing(Comparator.comparingLong(FlowInstance::updatedAtEpochMs).reversed())
-                        .thenComparing(FlowInstance::executionId))
-                .limit(batchSize)
-                .toList();
-        if (eligible.isEmpty()) {
-            return 0;
-        }
-
-        int resumedCount = 0;
-        for (FlowInstance waitingInstance : eligible) {
-            if (waitingInstance == null || waitingInstance.status() != FlowInstanceStatus.WAITING_EVENT) {
-                continue;
-            }
-            WaitCriteria waitCriteria = resolveWaitCriteria(waitingInstance);
-            if (waitCriteria.awaitEventName() == null || waitCriteria.awaitEventName().isBlank()) {
-                FlowInstance latest = flowInstanceStore.findByExecutionId(waitingInstance.executionId())
-                        .orElse(waitingInstance);
-                persistResumeBackoff(latest, "missing_event", nowEpochMillis());
-                continue;
-            }
-
-            if (findAwaitedEventForInstance(waitingInstance, waitCriteria, false).isEmpty()) {
-                FlowInstance latest = flowInstanceStore.findByExecutionId(waitingInstance.executionId())
-                        .orElse(waitingInstance);
-                persistResumeBackoff(latest, "missing_event", nowEpochMillis());
-                continue;
-            }
-
-            try {
-                // Resume under the waiting instance's own tenant/actor. The awaited event is
-                // tenant-scoped, so resuming with an anonymous context would look it up under the
-                // default tenant and never match a tenant-scoped event, leaving the flow stuck.
-                ExecutionResult result = resumeExecution(
-                        waitingInstance.executionId(),
-                        ExecutionContext.of(waitingInstance.tenantId(), waitingInstance.actorId())
-                );
-                if (result.getStatus() == ExecutionStatus.WAITING_EVENT) {
-                    FlowInstance latest = flowInstanceStore.findByExecutionId(waitingInstance.executionId())
-                            .orElse(waitingInstance);
-                    persistResumeBackoff(latest, "missing_event", nowEpochMillis());
-                } else {
-                    resumedCount++;
-                }
-            } catch (RuntimeException runtimeException) {
-                FlowInstance latest = flowInstanceStore.findByExecutionId(waitingInstance.executionId())
-                        .orElse(waitingInstance);
-                persistResumeBackoff(
-                        latest,
-                        "exception:" + runtimeException.getClass().getSimpleName(),
-                        nowEpochMillis()
-                );
-            }
-        }
-
-        return resumedCount;
+        return ResumeCoordinator.resumeAllWaitingExecutions(this, limit);
     }
 
     public void onEventPersisted(EventEnvelope eventEnvelope) {
@@ -1063,12 +967,12 @@ private final EventBus eventBus;
             // LNCH-17: a crash mid-compensation leaves the instance RUNNING (resumeExecution
             // already accepts that status for crash recovery) with this marker still set --
             // finish compensating instead of re-running the flow's normal forward step loop.
-            if (Boolean.TRUE.equals(state.get(COMPENSATION_ACTIVE_KEY))) {
+            if (Boolean.TRUE.equals(state.get(CompensationRunner.COMPENSATION_ACTIVE_KEY))) {
                 flowOutcome = StepOutcome.FAILED;
-                Object storedNextIndex = state.get(COMPENSATION_NEXT_INDEX_KEY);
+                Object storedNextIndex = state.get(CompensationRunner.COMPENSATION_NEXT_INDEX_KEY);
                 int resumeIndex = storedNextIndex instanceof Number number ? number.intValue() : -1;
-                runCompensations(flow, input, state, resumeIndex, traceMeta, stepTraces, executionId, correlationId, currentInstance, executionContext);
-                FlowInstance failed = finalizeCompensatedFailure(currentInstance[0], state, nowEpochMillis());
+                CompensationRunner.runCompensations(this, flow, input, state, resumeIndex, traceMeta, stepTraces, executionId, correlationId, currentInstance, executionContext);
+                FlowInstance failed = CompensationRunner.finalizeCompensatedFailure(currentInstance[0], state, nowEpochMillis());
                 flowInstanceStore.update(failed);
                 currentInstance[0] = failed;
                 emitOperationalFailureEvent(failed);
@@ -1146,10 +1050,10 @@ private final EventBus eventBus;
                     // crash-resume path uses, so there is exactly one place that decides the
                     // terminal FlowInstanceStatus/FailureInfo shape either way.
                     FlowInstance failed;
-                    if (hasAnyOnFailure(flow)) {
-                        beginCompensation(state, resolveFailureTerminalStatus(failure), failure.getFailureInfo());
-                        runCompensations(flow, input, state, marker - 1, traceMeta, stepTraces, executionId, correlationId, currentInstance, executionContext);
-                        failed = finalizeCompensatedFailure(currentInstance[0], state, nowEpochMillis());
+                    if (CompensationRunner.hasAnyOnFailure(flow)) {
+                        CompensationRunner.beginCompensation(state, resolveFailureTerminalStatus(failure), failure.getFailureInfo());
+                        CompensationRunner.runCompensations(this, flow, input, state, marker - 1, traceMeta, stepTraces, executionId, correlationId, currentInstance, executionContext);
+                        failed = CompensationRunner.finalizeCompensatedFailure(currentInstance[0], state, nowEpochMillis());
                     } else {
                         failed = switch (resolveFailureTerminalStatus(failure)) {
                             case FAILED_PERMANENT -> currentInstance[0].markFailedPermanent(
@@ -1195,10 +1099,10 @@ private final EventBus eventBus;
             // (StepProgressRecorder only advances it after a step completes), so steps
             // 0..currentStepIndex()-1 are exactly the ones that finished before this exception.
             FlowInstance failed;
-            if (hasAnyOnFailure(flow)) {
-                beginCompensation(state, FlowInstanceStatus.FAILED, failureInfo);
-                runCompensations(flow, input, state, currentInstance[0].currentStepIndex() - 1, traceMeta, stepTraces, executionId, correlationId, currentInstance, executionContext);
-                failed = finalizeCompensatedFailure(currentInstance[0], state, nowEpochMillis());
+            if (CompensationRunner.hasAnyOnFailure(flow)) {
+                CompensationRunner.beginCompensation(state, FlowInstanceStatus.FAILED, failureInfo);
+                CompensationRunner.runCompensations(this, flow, input, state, currentInstance[0].currentStepIndex() - 1, traceMeta, stepTraces, executionId, correlationId, currentInstance, executionContext);
+                failed = CompensationRunner.finalizeCompensatedFailure(currentInstance[0], state, nowEpochMillis());
             } else {
                 failed = currentInstance[0].markFailed(state, nowEpochMillis(), failureInfo);
             }
@@ -1220,7 +1124,7 @@ private final EventBus eventBus;
         }
     }
 
-    private StepExecutionOutcome executeSteps(
+    StepExecutionOutcome executeSteps(
             FlowDefinition flow,
             List<FlowStepDefinition> steps,
             Object input,
@@ -1247,743 +1151,76 @@ private final EventBus eventBus;
             );
             Map<String, Object> stateBefore = new LinkedHashMap<>(state);
             Map<String, Object> stepInfo = new LinkedHashMap<>();
+            StepExecutionRequest req = new StepExecutionRequest(
+                    flow,
+                    step,
+                    input,
+                    state,
+                    emittedEvents,
+                    traceMeta,
+                    stepTraces,
+                    executionId,
+                    defaultCorrelationId,
+                    stepIndexOffset,
+                    progressRecorder,
+                    effectiveContext,
+                    traceStepIndex,
+                    stepStartedAt,
+                    stateBefore,
+                    stepInfo
+            );
             try {
                 switch (step.getType()) {
                     case INVARIANT_CHECK -> {
-                        Object payload = resolveReference(step.getInputRef(), state, input);
-                        String conceptName = resolveInvariantConceptName(step, flow);
-                        List<String> invariantRefs = step.getInvariants();
-                        stepInfo.put("checkpoint", step.getCheckpoint() == null ? null : step.getCheckpoint().name());
-                        stepInfo.put("requestedInvariantRefs", invariantRefs == null ? List.of() : List.copyOf(invariantRefs));
-                        if (invariantRefs == null || invariantRefs.isEmpty()) {
-                            InvariantEngine.Violation missingRefsViolation = new InvariantEngine.Violation(
-                                    "MODEL_INVALID",
-                                    "Invariant step must declare explicit invariant refs or be compiled with scope expansion",
-                                    "<none>",
-                                    conceptName,
-                                    flow.getName(),
-                                    step.getName(),
-                                    traceStepIndex,
-                                    Map.of("stepType", "INVARIANT_CHECK")
-                            );
-                            traceFailedStep(
-                                    traceMeta,
-                                    step,
-                                    traceStepIndex,
-                                    stepStartedAt,
-                                    stateBefore,
-                                    state,
-                                    stepInfo,
-                                    List.of(missingRefsViolation),
-                                    null,
-                                    stepTraces
-                            );
-                            return StepExecutionOutcome.failed(ExecutionResult.invariantFailed(
-                                    flow.getName(),
-                                    List.of(missingRefsViolation),
-                                    emittedEvents,
-                                    "Invariant checkpoint failed at step: " + step.getName(),
-                                    executionId,
-                                    Objects.toString(state.get("correlationId"), defaultCorrelationId),
-                                    executionId
-                            ));
-                        }
-
-                        InvariantEngine.InvariantEvaluationResult evalResult = invariantEngine.evaluate(
-                                new InvariantEngine.InvariantEvaluationRequest(
-                                        conceptName,
-                                        payload,
-                                        invariantRefs,
-                                        new InvariantEngine.EvaluationMetadata(
-                                                flow.getName(),
-                                                step.getName(),
-                                                traceStepIndex,
-                                                Objects.requireNonNull(step.getCheckpoint(), "Invariant checkpoint is required"),
-                                                Objects.toString(state.get("correlationId"), defaultCorrelationId)
-                                        ),
-                                        state
-                                )
-                        );
-                        List<InvariantEngine.Violation> violations = enrichInvariantViolations(
-                                evalResult.violations(),
-                                conceptName,
-                                flow.getName(),
-                                step.getName(),
-                                traceStepIndex,
-                                invariantRefs
-                        );
-                        if (!violations.isEmpty()) {
-                            traceFailedStep(
-                                    traceMeta,
-                                    step,
-                                    traceStepIndex,
-                                    stepStartedAt,
-                                    stateBefore,
-                                    state,
-                                    stepInfo,
-                                    violations,
-                                    null,
-                                    stepTraces
-                            );
-                            return StepExecutionOutcome.failed(ExecutionResult.invariantFailed(
-                                    flow.getName(),
-                                    violations,
-                                    emittedEvents,
-                                    "Invariant checkpoint failed at step: " + step.getName(),
-                                    executionId,
-                                    Objects.toString(state.get("correlationId"), defaultCorrelationId),
-                                    executionId
-                            ));
+                        StepExecutionOutcome outcome = InvariantCheckStep.execute(this, req);
+                        if (outcome != null) {
+                            return outcome;
                         }
                     }
                     case CAPABILITY_CALL -> {
-                        List<Object> args = resolveArgs(step, state, input);
-
-                        PermissionDecision capabilityDecision = evaluatePermission(
-                                effectiveContext,
-                                new PermissionRequirement("capability.invoke", "capability", step.getCapability())
-                        );
-                        if (!capabilityDecision.allowed()) {
-                            CapabilityError capabilityError = new CapabilityError(
-                                    "CAPABILITY_PERMISSION_DENIED",
-                                    capabilityDecision.message().isBlank()
-                                            ? "Capability invocation denied"
-                                            : capabilityDecision.message(),
-                                    CapabilityErrorKind.AUTH,
-                                    Map.of(
-                                            "capability", step.getCapability(),
-                                            "operation", step.getOperation(),
-                                            "adapterId", step.getCapabilityAdapterId(),
-                                            "permissionCode", capabilityDecision.code()
-                                    )
-                            );
-                            traceFailedStep(
-                                    traceMeta,
-                                    step,
-                                    traceStepIndex,
-                                    stepStartedAt,
-                                    stateBefore,
-                                    state,
-                                    stepInfo,
-                                    List.of(),
-                                    capabilityError,
-                                    stepTraces
-                            );
-                            return StepExecutionOutcome.failed(ExecutionResult.capabilityFailed(
-                                    flow.getName(),
-                                    emittedEvents,
-                                    step.getName(),
-                                    traceStepIndex,
-                                    step.getCapability(),
-                                    step.getOperation(),
-                                    step.getCapabilityAdapterId(),
-                                    capabilityError,
-                                    executionId,
-                                    Objects.toString(state.get("correlationId"), defaultCorrelationId),
-                                    executionId
-                            ));
+                        StepExecutionOutcome outcome = CapabilityCallStep.execute(this, req);
+                        if (outcome != null) {
+                            return outcome;
                         }
-
-                        // Capability contract validation: input shape must be validated before dispatch.
-                        List<InputValidationError> capabilityInputErrors = validateInput(step.getCapabilityInputSchema(),
-                                args == null || args.isEmpty() ? null : args.get(0));
-                        if (!capabilityInputErrors.isEmpty()) {
-                            CapabilityError capabilityError = new CapabilityError(
-                                    "CAPABILITY_CONTRACT_INPUT_INVALID",
-                                    "Capability input validation failed",
-                                    CapabilityErrorKind.CONTRACT,
-                                    Map.of(
-                                            "capability", step.getCapability(),
-                                            "operation", step.getOperation(),
-                                            "adapterId", step.getCapabilityAdapterId(),
-                                            "validationErrors", capabilityInputErrors
-                                    )
-                            );
-                            traceFailedStep(
-                                    traceMeta,
-                                    step,
-                                    traceStepIndex,
-                                    stepStartedAt,
-                                    stateBefore,
-                                    state,
-                                    stepInfo,
-                                    List.of(),
-                                    capabilityError,
-                                    stepTraces
-                            );
-                            return StepExecutionOutcome.failed(ExecutionResult.capabilityFailed(
-                                    flow.getName(),
-                                    emittedEvents,
-                                    step.getName(),
-                                    traceStepIndex,
-                                    step.getCapability(),
-                                    step.getOperation(),
-                                    step.getCapabilityAdapterId(),
-                                    capabilityError,
-                                    executionId,
-                                    Objects.toString(state.get("correlationId"), defaultCorrelationId),
-                                    executionId
-                            ));
-                        }
-
-                        String correlationId = Objects.toString(state.get("correlationId"), null);
-                        stepInfo.put("capability", step.getCapability());
-                        stepInfo.put("operation", step.getOperation());
-                        stepInfo.put("adapterId", step.getCapabilityAdapterId());
-                        CapabilityExecutionPolicy policy = step.getCapabilityExecutionPolicy() == null
-                                ? CapabilityExecutionPolicy.defaults()
-                                : step.getCapabilityExecutionPolicy();
-                        EffectiveCapabilityPolicy effectivePolicy = resolveEffectiveCapabilityPolicy(
-                                step,
-                                policy,
-                                normalizeTenantOrDefault(effectiveContext.tenantId())
-                        );
-                        stepInfo.put("retryCount", effectivePolicy.retryMaxAttempts());
-                        stepInfo.put("retryDelayMs", effectivePolicy.retryBaseDelayMs());
-                        stepInfo.put("retryMaxDelayMs", effectivePolicy.retryMaxDelayMs());
-                        stepInfo.put("timeoutMs", effectivePolicy.timeoutMs());
-                        stepInfo.put("circuitOpenAfterFailures", effectivePolicy.circuitOpenAfterFailures());
-                        stepInfo.put("circuitOpenMs", effectivePolicy.circuitOpenMs());
-                        stepInfo.put("bulkheadMaxConcurrent", effectivePolicy.bulkheadMaxConcurrent());
-                        stepInfo.put("cacheIdempotencyFailures", effectivePolicy.cacheIdempotencyFailures());
-                        stepInfo.put("failureClassification",
-                                policy.failureClassification() == null ? null : policy.failureClassification().name());
-
-                        String idempotencyKey = resolveIdempotencyKey(policy, state, input);
-                        if (idempotencyKey != null) {
-                            stepInfo.put("idempotencyKey", idempotencyKey);
-                        }
-
-                        CapabilityResult capabilityResult = invokeCapabilityWithPolicy(
-                                step,
-                                args,
-                                state,
-                                correlationId,
-                                idempotencyKey,
-                                policy,
-                                effectivePolicy,
-                                stepInfo,
-                                normalizeTenantOrDefault(effectiveContext.tenantId())
-                        );
-                        if (!capabilityResult.ok()) {
-                            CapabilityError capabilityError = capabilityResult.error();
-                            if (capabilityError == null) {
-                                capabilityError = new CapabilityError(
-                                        "CAPABILITY_RESULT_INVALID",
-                                        "Capability dispatcher returned failed result without error",
-                                        CapabilityErrorKind.PERMANENT,
-                                        Map.of(
-                                                "capability", step.getCapability(),
-                                                "operation", step.getOperation(),
-                                                "adapterId", step.getCapabilityAdapterId()
-                                        )
-                                );
-                            } else {
-                                CapabilityErrorKind overriddenKind = policy.applyFailureClassification(capabilityError.kind());
-                                if (overriddenKind != capabilityError.kind()) {
-                                    capabilityError = new CapabilityError(
-                                            capabilityError.code(),
-                                            capabilityError.message(),
-                                            overriddenKind,
-                                            capabilityError.details()
-                                    );
-                                }
-                            }
-                            // A database integrity violation (a bond/FK to a missing row, or a unique
-                            // conflict) is a caller CONTRACT failure, not a system error. The persistence
-                            // adapter surfaces it with a stable message signature; recover the CONTRACT
-                            // classification here in case an intermediate sandbox/dispatch wrapper widened
-                            // it to a generic kind (which would otherwise report system_exception).
-                            capabilityError = reclassifyIntegrityViolation(capabilityError);
-                            traceFailedStep(
-                                    traceMeta,
-                                    step,
-                                    traceStepIndex,
-                                    stepStartedAt,
-                                    stateBefore,
-                                    state,
-                                    stepInfo,
-                                    List.of(),
-                                    capabilityError,
-                                    stepTraces
-                            );
-                            return StepExecutionOutcome.failed(ExecutionResult.capabilityFailed(
-                                    flow.getName(),
-                                    emittedEvents,
-                                    step.getName(),
-                                    traceStepIndex,
-                                    step.getCapability(),
-                                    step.getOperation(),
-                                    step.getCapabilityAdapterId(),
-                                    capabilityError,
-                                    executionId,
-                                    Objects.toString(state.get("correlationId"), defaultCorrelationId),
-                                    executionId
-                            ));
-                        }
-                        Object output = capabilityResult.value();
-
-                        // Capability contract validation: output shape must be validated after dispatch.
-                        List<InputValidationError> capabilityOutputErrors = validateInput(step.getCapabilityOutputSchema(), output);
-                        if (!capabilityOutputErrors.isEmpty()) {
-                            CapabilityError capabilityError = new CapabilityError(
-                                    "CAPABILITY_CONTRACT_OUTPUT_INVALID",
-                                    "Capability output validation failed",
-                                    CapabilityErrorKind.CONTRACT,
-                                    Map.of(
-                                            "capability", step.getCapability(),
-                                            "operation", step.getOperation(),
-                                            "adapterId", step.getCapabilityAdapterId(),
-                                            "validationErrors", capabilityOutputErrors
-                                    )
-                            );
-                            traceFailedStep(
-                                    traceMeta,
-                                    step,
-                                    traceStepIndex,
-                                    stepStartedAt,
-                                    stateBefore,
-                                    state,
-                                    stepInfo,
-                                    List.of(),
-                                    capabilityError,
-                                    stepTraces
-                            );
-                            return StepExecutionOutcome.failed(ExecutionResult.capabilityFailed(
-                                    flow.getName(),
-                                    emittedEvents,
-                                    step.getName(),
-                                    traceStepIndex,
-                                    step.getCapability(),
-                                    step.getOperation(),
-                                    step.getCapabilityAdapterId(),
-                                    capabilityError,
-                                    executionId,
-                                    Objects.toString(state.get("correlationId"), defaultCorrelationId),
-                                    executionId
-                            ));
-                        }
-
-
-                        String outputRef = normalizeRef(step.getOutputRef());
-                        if (!outputRef.isBlank()) {
-                            state.put(outputRef, output);
-                        }
-                        state.put("last", output);
                     }
                     case EMIT_EVENT -> {
-                        Object eventPayload = buildEventPayload(step, state, input);
-                        if (step.getEventName() != null) {
-                            java.util.Optional<com.npdev.kernel.schema.SchemaObject> eventSchemaOpt = eventSchemaProvider.findEventPayloadSchema(step.getEventName());
-                            if (eventSchemaOpt.isPresent()) {
-                                List<InputValidationError> errors = schemaValidator.validate(eventSchemaOpt.get(), eventPayload);
-                                if (errors != null && !errors.isEmpty()) {
-                                    traceFailedStep(
-                                            traceMeta,
-                                            step,
-                                            traceStepIndex,
-                                            stepStartedAt,
-                                            stateBefore,
-                                            state,
-                                            stepInfo,
-                                            List.of(),
-                                            null,
-                                            stepTraces
-                                    );
-                                    String currentCorrelationId = Objects.toString(state.get("correlationId"), defaultCorrelationId);
-                                    return StepExecutionOutcome.failed(ExecutionResult.eventPayloadInvalid(
-                                            flow.getName(),
-                                            emittedEvents,
-                                            step.getName(),
-                                            traceStepIndex,
-                                            step.getEventName(),
-                                            errors,
-                                            executionId,
-                                            currentCorrelationId,
-                                            executionId
-                                    ));
-                                }
-                            }
+                        StepExecutionOutcome outcome = EmitEventStep.execute(this, req);
+                        if (outcome != null) {
+                            return outcome;
                         }
-                        Map<String, Object> envelopePayload = toEventPayloadMap(eventPayload);
-                        String currentCorrelationId = Objects.toString(state.get("correlationId"), defaultCorrelationId);
-                        String currentCausationId = executionId;
-                        EventEnvelope envelope = newEnvelope(
-                                nextId("event"),
-                                Objects.requireNonNull(step.getEventName(), "eventName is required"),
-                                currentCorrelationId,
-                                currentCausationId,
-                                envelopePayload,
-                                Map.of(
-                                        "flow", flow.getName(),
-                                        "step", step.getName(),
-                                        "stepIndex", traceStepIndex
-                                ),
-                                flow.getName(),
-                                traceStepIndex,
-                                effectiveContext.tenantId(),
-                                effectiveContext.actorId()
-                        );
-                        if (eventStore == null) {
-                            traceFailedStep(
-                                    traceMeta,
-                                    step,
-                                    traceStepIndex,
-                                    stepStartedAt,
-                                    stateBefore,
-                                    state,
-                                    stepInfo,
-                                    List.of(),
-                                    null,
-                                    stepTraces
-                            );
-                            return StepExecutionOutcome.failed(ExecutionResult.eventPersistFailed(
-                                    flow.getName(),
-                                    emittedEvents,
-                                    step.getName(),
-                                    traceStepIndex,
-                                    step.getEventName(),
-                                    "EventStore is required for emitEvent but was not configured",
-                                    executionId,
-                                    currentCorrelationId,
-                                    executionId
-                            ));
-                        }
-                        try {
-                            eventStore.append(envelope);
-                        } catch (RuntimeException runtimeException) {
-                            traceFailedStep(
-                                    traceMeta,
-                                    step,
-                                    traceStepIndex,
-                                    stepStartedAt,
-                                    stateBefore,
-                                    state,
-                                    stepInfo,
-                                    List.of(),
-                                    null,
-                                    stepTraces
-                            );
-                            return StepExecutionOutcome.failed(ExecutionResult.eventPersistFailed(
-                                    flow.getName(),
-                                    emittedEvents,
-                                    step.getName(),
-                                    traceStepIndex,
-                                    step.getEventName(),
-                                    runtimeException.getMessage() == null
-                                            ? "EventStore append failed"
-                                            : runtimeException.getMessage(),
-                                    executionId,
-                                    currentCorrelationId,
-                                    executionId
-                            ));
-                        }
-                        eventBus.publish(envelope);
-                        resumeWaitingExecutionsFor(envelope, executionId, envelope.correlationId(), effectiveContext);
-                        emittedEvents.add(envelope);
-                        state.put("lastEvent", envelope);
-                        state.put("causationId", executionId);
-                        stepInfo.put("emittedEventName", envelope.eventName());
-                        stepInfo.put("emittedEventId", envelope.eventId());
                     }
                     case SCHEDULE_EVENT -> {
-                        Object eventPayload = buildEventPayload(step, state, input);
-                        if (step.getEventName() != null) {
-                            java.util.Optional<com.npdev.kernel.schema.SchemaObject> eventSchemaOpt = eventSchemaProvider.findEventPayloadSchema(step.getEventName());
-                            if (eventSchemaOpt.isPresent()) {
-                                List<InputValidationError> errors = schemaValidator.validate(eventSchemaOpt.get(), eventPayload);
-                                if (errors != null && !errors.isEmpty()) {
-                                    traceFailedStep(
-                                            traceMeta,
-                                            step,
-                                            traceStepIndex,
-                                            stepStartedAt,
-                                            stateBefore,
-                                            state,
-                                            stepInfo,
-                                            List.of(),
-                                            null,
-                                            stepTraces
-                                    );
-                                    String currentCorrelationId = Objects.toString(state.get("correlationId"), defaultCorrelationId);
-                                    return StepExecutionOutcome.failed(ExecutionResult.eventPayloadInvalid(
-                                            flow.getName(),
-                                            emittedEvents,
-                                            step.getName(),
-                                            traceStepIndex,
-                                            step.getEventName(),
-                                            errors,
-                                            executionId,
-                                            currentCorrelationId,
-                                            executionId
-                                    ));
-                                }
-                            }
+                        StepExecutionOutcome outcome = ScheduleEventStep.execute(this, req);
+                        if (outcome != null) {
+                            return outcome;
                         }
-                        Map<String, Object> envelopePayload = toEventPayloadMap(eventPayload);
-                        String currentCorrelationId = Objects.toString(state.get("correlationId"), defaultCorrelationId);
-                        String currentCausationId = executionId;
-                        long safeDelaySeconds = step.getDelaySeconds() == null ? 0L : Math.max(0L, step.getDelaySeconds());
-                        long scheduledForEpochMs = nowEpochMillis() + (safeDelaySeconds * 1000L);
-                        EventEnvelope envelope = newEnvelope(
-                                nextId("event"),
-                                Objects.requireNonNull(step.getEventName(), "eventName is required"),
-                                currentCorrelationId,
-                                currentCausationId,
-                                envelopePayload,
-                                Map.of(
-                                        "flow", flow.getName(),
-                                        "step", step.getName(),
-                                        "stepIndex", traceStepIndex,
-                                        "deliveryMode", "scheduled",
-                                        "delaySeconds", safeDelaySeconds,
-                                        "scheduledForEpochMs", scheduledForEpochMs
-                                ),
-                                flow.getName(),
-                                traceStepIndex,
-                                effectiveContext.tenantId(),
-                                effectiveContext.actorId()
-                        );
-                        if (eventStore == null) {
-                            traceFailedStep(
-                                    traceMeta,
-                                    step,
-                                    traceStepIndex,
-                                    stepStartedAt,
-                                    stateBefore,
-                                    state,
-                                    stepInfo,
-                                    List.of(),
-                                    null,
-                                    stepTraces
-                            );
-                            return StepExecutionOutcome.failed(ExecutionResult.eventPersistFailed(
-                                    flow.getName(),
-                                    emittedEvents,
-                                    step.getName(),
-                                    traceStepIndex,
-                                    step.getEventName(),
-                                    "EventStore is required for scheduleEvent but was not configured",
-                                    executionId,
-                                    currentCorrelationId,
-                                    executionId
-                            ));
-                        }
-                        try {
-                            eventStore.append(envelope);
-                        } catch (RuntimeException runtimeException) {
-                            traceFailedStep(
-                                    traceMeta,
-                                    step,
-                                    traceStepIndex,
-                                    stepStartedAt,
-                                    stateBefore,
-                                    state,
-                                    stepInfo,
-                                    List.of(),
-                                    null,
-                                    stepTraces
-                            );
-                            return StepExecutionOutcome.failed(ExecutionResult.eventPersistFailed(
-                                    flow.getName(),
-                                    emittedEvents,
-                                    step.getName(),
-                                    traceStepIndex,
-                                    step.getEventName(),
-                                    runtimeException.getMessage() == null
-                                            ? "Scheduled event append failed"
-                                            : runtimeException.getMessage(),
-                                    executionId,
-                                    currentCorrelationId,
-                                    executionId
-                            ));
-                        }
-                        eventBus.publish(envelope);
-                        resumeWaitingExecutionsFor(envelope, executionId, envelope.correlationId(), effectiveContext);
-                        emittedEvents.add(envelope);
-                        state.put("lastEvent", envelope);
-                        state.put("causationId", executionId);
-                        stepInfo.put("emittedEventName", envelope.eventName());
-                        stepInfo.put("emittedEventId", envelope.eventId());
-                        stepInfo.put("deliveryMode", "scheduled");
-                        stepInfo.put("delaySeconds", safeDelaySeconds);
-                        stepInfo.put("scheduledForEpochMs", scheduledForEpochMs);
                     }
                     case BRANCH -> {
-                        boolean branchResult = evaluateCondition(step.getCondition(), state, input);
-                        stepInfo.put("branchResult", branchResult ? "then" : "else");
-                        List<FlowStepDefinition> nestedSteps = branchResult ? step.getThenSteps() : step.getElseSteps();
-                        if (!nestedSteps.isEmpty()) {
-                            StepExecutionOutcome nested = executeSteps(
-                                    flow,
-                                    nestedSteps,
-                                    input,
-                                    state,
-                                    emittedEvents,
-                                    traceMeta,
-                                    stepTraces,
-                                    executionId,
-                                    defaultCorrelationId,
-                                    stepIndexOffset,
-                                    progressRecorder,
-                                    effectiveContext
-                            );
-                            if (nested.failedResult() != null) {
-                                ExecutionResult nestedFailure = nested.failedResult();
-                                traceFailedStep(
-                                        traceMeta,
-                                        step,
-                                        traceStepIndex,
-                                        stepStartedAt,
-                                        stateBefore,
-                                        state,
-                                        stepInfo,
-                                        nestedFailure.getInvariantViolations(),
-                                        nestedFailure.getCapabilityError(),
-                                        stepTraces
-                                );
-                                return nested;
-                            }
-                            if (nested.returned()) {
-                                traceSuccessfulStep(
-                                        traceMeta,
-                                        step,
-                                        traceStepIndex,
-                                        stepStartedAt,
-                                        stateBefore,
-                                        state,
-                                        stepInfo,
-                                        stepTraces
-                                );
-                                progressRecorder.onStepCompleted(traceStepIndex + 1, state);
-                                return nested;
-                            }
+                        StepExecutionOutcome outcome = BranchStep.execute(this, req);
+                        if (outcome != null) {
+                            return outcome;
                         }
                     }
                     case FOR_EACH -> {
-                        StepExecutionOutcome loopFailure = executeForEachStep(
-                                flow, step, input, state, emittedEvents, traceMeta, stepTraces,
-                                executionId, defaultCorrelationId, traceStepIndex, progressRecorder, effectiveContext,
-                                stepStartedAt, stateBefore, stepInfo
-                        );
-                        if (loopFailure != null) {
-                            return loopFailure;
+                        StepExecutionOutcome outcome = ForEachStep.execute(this, req);
+                        if (outcome != null) {
+                            return outcome;
                         }
                     }
                     case AWAIT_EVENT -> {
-                        EventEnvelope awaited = awaitEvent(
-                                step,
-                                state,
-                                defaultCorrelationId,
-                                input,
-                                effectiveContext.tenantId(),
-                                executionId
-                        );
-                        stepInfo.put("awaitedEventName", step.getAwaitEventName());
-                        if (awaited == null) {
-                            String waitingCorrelationId = Objects.toString(state.get("correlationId"), defaultCorrelationId);
-                            String awaitRef = normalizeRef(step.getAwaitRef());
-                            if (awaitRef.isBlank()) {
-                                awaitRef = "awaitedEvent";
-                            }
-                            state.put(
-                                    AWAIT_STATE_KEY,
-                                    buildAwaitState(
-                                            step,
-                                            traceStepIndex,
-                                            awaitRef
-                                    )
-                            );
-                            stepInfo.put("awaitedEventStatus", "WAITING");
-                            traceFailedStep(
-                                    traceMeta,
-                                    step,
-                                    traceStepIndex,
-                                    stepStartedAt,
-                                    stateBefore,
-                                    state,
-                                    stepInfo,
-                                    List.of(),
-                                    null,
-                                    stepTraces
-                            );
-                            return StepExecutionOutcome.failed(ExecutionResult.waitingEvent(
-                                    flow.getName(),
-                                    emittedEvents,
-                                    step.getName(),
-                                    traceStepIndex,
-                                    step.getAwaitEventName(),
-                                    waitingCorrelationId,
-                                    "Awaited event not found for step: " + step.getName()
-                                            + " eventName=" + step.getAwaitEventName()
-                                            + " correlationId=" + waitingCorrelationId
-                                            + " matchCorrelation=" + step.isAwaitMatchCorrelation()
-                                            + " payloadMatchRefs=" + step.getAwaitPayloadMatchRefs(),
-                                    executionId,
-                                    waitingCorrelationId,
-                                    executionId
-                            ));
+                        StepExecutionOutcome outcome = AwaitEventStep.execute(this, req);
+                        if (outcome != null) {
+                            return outcome;
                         }
-                        stepInfo.put("awaitedEventFoundEventId", awaited.eventId());
-
-                        String awaitRef = normalizeRef(step.getAwaitRef());
-                        if (awaitRef.isBlank()) {
-                            awaitRef = "awaitedEvent";
-                        }
-                        state.remove(AWAIT_STATE_KEY);
-                        state.put(awaitRef, awaited.payload());
-                        state.put(awaitRef + "Envelope", awaited);
-                        state.put("last", awaited.payload());
-                        state.put("lastEvent", awaited);
-                        state.put("causationId", awaited.eventId());
                     }
                     case MAP -> {
-                        Object mappedValue = resolveReference(step.getMapFromRef(), state, input);
-                        String mapToRef = normalizeRef(step.getMapToRef());
-                        if (mapToRef.isBlank()) {
-                            traceFailedStep(
-                                    traceMeta,
-                                    step,
-                                    traceStepIndex,
-                                    stepStartedAt,
-                                    stateBefore,
-                                    state,
-                                    stepInfo,
-                                    List.of(),
-                                    null,
-                                    stepTraces
-                            );
-                            return StepExecutionOutcome.failed(ExecutionResult.failed(
-                                    flow.getName(),
-                                    List.of(),
-                                    emittedEvents,
-                                    "Map step missing output target: " + step.getName(),
-                                    executionId,
-                                    Objects.toString(state.get("correlationId"), defaultCorrelationId),
-                                    executionId
-                            ));
+                        StepExecutionOutcome outcome = MapStep.execute(this, req);
+                        if (outcome != null) {
+                            return outcome;
                         }
-                        state.put(mapToRef, mappedValue);
-                        state.put("last", mappedValue);
-                        stepInfo.put("mapFromRef", step.getMapFromRef());
-                        stepInfo.put("mapToRef", step.getMapToRef());
                     }
                     case RETURN -> {
-                        Object returnValue = resolveReference(step.getReturnRef(), state, input);
-                        state.put("last", returnValue);
-                        stepInfo.put("returnRef", step.getReturnRef());
-                        traceSuccessfulStep(
-                                traceMeta,
-                                step,
-                                traceStepIndex,
-                                stepStartedAt,
-                                stateBefore,
-                                state,
-                                stepInfo,
-                                stepTraces
-                        );
-                        progressRecorder.onStepCompleted(traceStepIndex + 1, state);
-                        return StepExecutionOutcome.returned(returnValue);
+                        return ReturnStep.execute(this, req);
                     }
                     default -> {
                         stepInfo.put("unsupportedType", String.valueOf(step.getType()));
@@ -2044,599 +1281,9 @@ private final EventBus eventBus;
         return StepExecutionOutcome.continueFlow();
     }
 
-    /**
-     * LIFT-LOOP-P2: durable {@code forEach} execution. The loop occupies exactly one flat
-     * step-trace position (like any other atomic step -- MAP, CAPABILITY_CALL, ...); it does
-     * <b>not</b> extend the flat step-index space the way {@code BRANCH}'s nested then/else steps
-     * do, and deliberately doesn't try to make each nested step within an iteration individually
-     * resumable (nested {@code AWAIT_EVENT} is rejected by {@code SemanticValidator} at compile
-     * time for exactly this reason). Instead, durability is at iteration granularity: after each
-     * iteration's nested steps all succeed, progress (the next iteration index to run) is folded
-     * into {@code state} under a step-scoped key and checkpointed via {@code progressRecorder}
-     * <i>without</i> advancing the outer step index -- so a crash mid-loop resumes by re-entering
-     * this same {@code forEach} step and skipping iterations already recorded as done, rather than
-     * re-running the whole collection from item 0. A capability call inside the loop body still
-     * gets its own existing per-call idempotency (via {@code CapabilityExecutionPolicy
-     * .idempotencyKeyField()}); an author whose key expression varies per item (e.g. references the
-     * loop's {@code itemKey}) gets correct at-most-once behavior even for the iteration that was
-     * mid-flight at crash time and gets partially re-run.
-     *
-     * @return a failed {@link StepExecutionOutcome} to return from the caller's switch, or
-     *         {@code null} if the loop completed and the caller should fall through to the normal
-     *         success bookkeeping at the bottom of {@link #executeSteps}.
-     */
-    private StepExecutionOutcome executeForEachStep(
-            FlowDefinition flow,
-            FlowStepDefinition step,
-            Object input,
-            Map<String, Object> state,
-            List<EventEnvelope> emittedEvents,
-            FlowTraceMeta traceMeta,
-            List<StepTrace> stepTraces,
-            String executionId,
-            String defaultCorrelationId,
-            int traceStepIndex,
-            StepProgressRecorder progressRecorder,
-            ExecutionContext effectiveContext,
-            long stepStartedAt,
-            Map<String, Object> stateBefore,
-            Map<String, Object> stepInfo
-    ) {
-        Object collectionValue = resolveReference(step.getCollectionRef(), state, input);
-        Iterable<?> iterable = toIterable(collectionValue);
-        if (iterable == null) {
-            traceFailedStep(traceMeta, step, traceStepIndex, stepStartedAt, stateBefore, state, stepInfo,
-                    List.of(), null, stepTraces);
-            return StepExecutionOutcome.failed(ExecutionResult.failed(
-                    flow.getName(),
-                    List.of(),
-                    emittedEvents,
-                    "forEach step " + step.getName() + " requires an iterable collection at "
-                            + step.getCollectionRef(),
-                    executionId,
-                    Objects.toString(state.get("correlationId"), defaultCorrelationId),
-                    executionId
-            ));
-        }
-        List<Object> items = new ArrayList<>();
-        for (Object item : iterable) {
-            items.add(item);
-        }
-        int cap = step.getMaxLoopIterations() != null
-                ? step.getMaxLoopIterations()
-                : ProcedureExecutionLimits.DEFAULT_MAX_LOOP_ITERATIONS;
-        if (items.size() > cap) {
-            traceFailedStep(traceMeta, step, traceStepIndex, stepStartedAt, stateBefore, state, stepInfo,
-                    List.of(), null, stepTraces);
-            return StepExecutionOutcome.failed(ExecutionResult.failed(
-                    flow.getName(),
-                    List.of(),
-                    emittedEvents,
-                    "forEach step " + step.getName() + " exceeded maxLoopIterations=" + cap,
-                    executionId,
-                    Objects.toString(state.get("correlationId"), defaultCorrelationId),
-                    executionId
-            ));
-        }
-
-        String progressKey = "__forEachProgress." + step.getName();
-        int startIndex = state.get(progressKey) instanceof Number n ? n.intValue() : 0;
-        String itemKey = step.getItemKey();
-        boolean hadPreviousItemValue = state.containsKey(itemKey);
-        Object previousItemValue = state.get(itemKey);
-
-        try {
-            for (int i = startIndex; i < items.size(); i++) {
-                state.put(itemKey, items.get(i));
-                List<StepTrace> loopIterationTraces = new ArrayList<>();
-                StepExecutionOutcome nested = executeSteps(
-                        flow,
-                        step.getLoopSteps(),
-                        input,
-                        state,
-                        emittedEvents,
-                        traceMeta,
-                        loopIterationTraces,
-                        executionId,
-                        defaultCorrelationId,
-                        0,
-                        NOOP_STEP_PROGRESS_RECORDER,
-                        effectiveContext
-                );
-                stepTraces.addAll(loopIterationTraces);
-                if (nested.failedResult() != null) {
-                    ExecutionResult nestedFailure = nested.failedResult();
-                    traceFailedStep(traceMeta, step, traceStepIndex, stepStartedAt, stateBefore, state, stepInfo,
-                            nestedFailure.getInvariantViolations(), nestedFailure.getCapabilityError(), stepTraces);
-                    return StepExecutionOutcome.failed(ExecutionResult.failed(
-                            flow.getName(),
-                            nestedFailure.getInvariantViolations(),
-                            emittedEvents,
-                            "forEach step " + step.getName() + " failed at iteration " + i + ": "
-                                    + nestedFailure.getError(),
-                            executionId,
-                            Objects.toString(state.get("correlationId"), defaultCorrelationId),
-                            executionId
-                    ));
-                }
-                // Checkpoint at the SAME (not +1) step index -- the loop itself hasn't finished,
-                // so a crash-and-resume here must re-enter this forEach step, not skip past it.
-                state.put(progressKey, i + 1);
-                progressRecorder.onStepCompleted(traceStepIndex, state);
-            }
-        } finally {
-            if (hadPreviousItemValue) {
-                state.put(itemKey, previousItemValue);
-            } else {
-                state.remove(itemKey);
-            }
-            state.remove(progressKey);
-        }
-        stepInfo.put("collectionSize", items.size());
-        return null;
-    }
-
-    private static final StepProgressRecorder NOOP_STEP_PROGRESS_RECORDER = (nextStepIndex, currentState) -> { };
-
-    // LNCH-17: reserved flow-state keys used to durably checkpoint a compensation run in
-    // progress, so a crash mid-compensation resumes (via the same RUNNING-status recovery path
-    // LIFT-LOOP-P2 already uses for forEach) and finishes running the remaining compensations
-    // exactly once, rather than silently leaving some rolled back and some not. Flat strings/
-    // primitives only (no FailureInfo object stored directly) since flow state must survive a
-    // JDBC-backed FlowInstanceStore's JSON round trip.
-    private static final String COMPENSATION_ACTIVE_KEY = "__npdev_compensating__";
-    private static final String COMPENSATION_NEXT_INDEX_KEY = "__npdev_compensationNextIndex__";
-    private static final String COMPENSATION_TERMINAL_STATUS_KEY = "__npdev_compensationTerminalStatus__";
-    private static final String COMPENSATION_ERROR_KIND_KEY = "__npdev_compensationErrorKind__";
-    private static final String COMPENSATION_ERROR_CODE_KEY = "__npdev_compensationErrorCode__";
-    private static final String COMPENSATION_ERROR_MESSAGE_KEY = "__npdev_compensationErrorMessage__";
-
-    /** Whether any top-level step in this flow declares compensation -- lets every failure path
-     * skip compensation entirely (zero extra durable writes, zero behavior change) for the vast
-     * majority of flows that don't use this feature. */
-    private static boolean hasAnyOnFailure(FlowDefinition flow) {
-        for (FlowStepDefinition step : flow.getSteps()) {
-            if (!step.getOnFailureSteps().isEmpty()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /** Stamps the flow state with what a compensation run needs to remember to finalize
-     * correctly later, whether that happens in this same call or after a crash-and-resume. */
-    private static void beginCompensation(Map<String, Object> state, FlowInstanceStatus terminalStatus, FailureInfo failureInfo) {
-        state.put(COMPENSATION_ACTIVE_KEY, Boolean.TRUE);
-        state.put(COMPENSATION_TERMINAL_STATUS_KEY, terminalStatus.name());
-        state.put(COMPENSATION_ERROR_KIND_KEY, failureInfo.kind().name());
-        state.put(COMPENSATION_ERROR_CODE_KEY, failureInfo.code());
-        state.put(COMPENSATION_ERROR_MESSAGE_KEY, failureInfo.message());
-    }
-
-    /**
-     * Runs declared {@code onFailure} steps for every top-level step from {@code startIndex} down
-     * to 0 that has them, in reverse completion order (the saga-compensation pattern the spec
-     * doc recommends) -- best-effort: a compensation block that itself throws is logged and
-     * skipped, not allowed to abort compensating earlier steps too. Durably checkpoints after
-     * each top-level step's compensation (mirroring {@code StepProgressRecorder}'s per-step
-     * checkpoint), so a crash here resumes from the next uncompensated step, not from scratch.
-     */
-    private void runCompensations(
-            FlowDefinition flow,
-            Object input,
-            Map<String, Object> state,
-            int startIndex,
-            FlowTraceMeta traceMeta,
-            List<StepTrace> stepTraces,
-            String executionId,
-            String correlationId,
-            FlowInstance[] currentInstance,
-            ExecutionContext executionContext
-    ) {
-        for (int index = startIndex; index >= 0; index--) {
-            FlowStepDefinition step = flow.getSteps().get(index);
-            if (!step.getOnFailureSteps().isEmpty()) {
-                try {
-                    executeSteps(
-                            flow,
-                            step.getOnFailureSteps(),
-                            input,
-                            state,
-                            new ArrayList<>(),
-                            traceMeta,
-                            stepTraces,
-                            executionId,
-                            correlationId,
-                            0,
-                            NOOP_STEP_PROGRESS_RECORDER,
-                            executionContext
-                    );
-                } catch (RuntimeException compensationException) {
-                    LOG.warning(String.format(
-                            "Compensation for step '%s' in flow '%s' (execution %s) failed: %s",
-                            step.getName(), flow.getName(), executionId, compensationException.getMessage()
-                    ));
-                }
-            }
-            state.put(COMPENSATION_NEXT_INDEX_KEY, index - 1);
-            FlowInstance checkpoint = currentInstance[0].markRunning(currentInstance[0].currentStepIndex(), state, nowEpochMillis());
-            flowInstanceStore.update(checkpoint);
-            currentInstance[0] = checkpoint;
-        }
-        state.remove(COMPENSATION_ACTIVE_KEY);
-        state.remove(COMPENSATION_NEXT_INDEX_KEY);
-    }
-
-    /** Reads back what {@link #beginCompensation} stamped, clears it, and applies the terminal
-     * status the original failure would have gotten had compensation not run at all. */
-    private static FlowInstance finalizeCompensatedFailure(FlowInstance instance, Map<String, Object> state, long nowEpochMs) {
-        String terminalStatusName = String.valueOf(state.remove(COMPENSATION_TERMINAL_STATUS_KEY));
-        ErrorKind kind = ErrorKind.valueOf(String.valueOf(state.remove(COMPENSATION_ERROR_KIND_KEY)));
-        String code = String.valueOf(state.remove(COMPENSATION_ERROR_CODE_KEY));
-        String message = String.valueOf(state.remove(COMPENSATION_ERROR_MESSAGE_KEY));
-        FailureInfo failureInfo = FailureInfo.of(kind, code, message);
-        return switch (FlowInstanceStatus.valueOf(terminalStatusName)) {
-            case FAILED_PERMANENT -> instance.markFailedPermanent(state, nowEpochMs, failureInfo);
-            case STUCK -> instance.markStuck(state, nowEpochMs, failureInfo);
-            default -> instance.markFailed(state, nowEpochMs, failureInfo);
-        };
-    }
-
-    private static Iterable<?> toIterable(Object value) {
-        if (value instanceof Iterable<?> iterable) {
-            return iterable;
-        }
-        if (value != null && value.getClass().isArray()) {
-            List<Object> items = new ArrayList<>();
-            int length = java.lang.reflect.Array.getLength(value);
-            for (int index = 0; index < length; index++) {
-                items.add(java.lang.reflect.Array.get(value, index));
-            }
-            return items;
-        }
-        return null;
-    }
-
-    private FlowEngine.ResumeOutcome resumeWaitingExecutionsFor(
-            EventEnvelope envelope,
-            String currentExecutionId,
-            String lookupCorrelationId,
-            ExecutionContext resumeExecutionContext
-    ) {
-        if (envelope == null) {
-            return FlowEngine.ResumeOutcome.noMatch();
-        }
-        long now = nowEpochMillis();
-        List<FlowInstance> waitingInstances = collectWaitingCandidates(lookupCorrelationId, envelope.eventName());
-        if (waitingInstances.isEmpty()) {
-            return FlowEngine.ResumeOutcome.noMatch();
-        }
-
-        int matchedWaiters = 0;
-        int resumedWaiters = 0;
-        List<String> resumedExecutionIds = new ArrayList<>();
-        for (FlowInstance instance : waitingInstances) {
-            if (instance == null) {
-                continue;
-            }
-            if (currentExecutionId != null && currentExecutionId.equals(instance.executionId())) {
-                continue;
-            }
-            if (!instance.isResumeEligible(now)) {
-                continue;
-            }
-            if (!matchesWaitingResumeCriteria(instance, envelope)) {
-                continue;
-            }
-            matchedWaiters++;
-            try {
-                ExecutionResult result = resumeExecution(
-                        instance.executionId(),
-                        resumeExecutionContext == null ? ExecutionContext.anonymous() : resumeExecutionContext
-                );
-                if (result.getStatus() == ExecutionStatus.WAITING_EVENT) {
-                    // Event-driven mismatches must be a no-op. Backoff is only for scheduled scans.
-                    continue;
-                }
-                resumedWaiters++;
-                resumedExecutionIds.add(instance.executionId());
-            } catch (RuntimeException runtimeException) {
-                FlowInstance latest = flowInstanceStore.findByExecutionId(instance.executionId()).orElse(instance);
-                persistResumeBackoff(
-                        latest,
-                        "exception:" + runtimeException.getClass().getSimpleName(),
-                        nowEpochMillis()
-                );
-            }
-        }
-
-        if (matchedWaiters == 0 && resumedWaiters == 0) {
-            return FlowEngine.ResumeOutcome.noMatch();
-        }
-        return new FlowEngine.ResumeOutcome(matchedWaiters, resumedWaiters, resumedExecutionIds);
-    }
-
-    private List<FlowInstance> collectWaitingCandidates(String correlationId, String eventName) {
-        Map<String, FlowInstance> byExecutionId = new LinkedHashMap<>();
-        String normalizedCorrelationId = normalizeCorrelationId(correlationId);
-        if (normalizedCorrelationId != null) {
-            for (FlowInstance instance : flowInstanceStore.findWaitingByCorrelation(normalizedCorrelationId)) {
-                if (instance != null) {
-                    byExecutionId.put(instance.executionId(), instance);
-                }
-            }
-        }
-        if (eventName != null && !eventName.isBlank()) {
-            for (FlowInstance instance : flowInstanceStore.findWaitingByEvent(eventName)) {
-                if (instance != null) {
-                    byExecutionId.put(instance.executionId(), instance);
-                }
-            }
-        }
-        if (byExecutionId.isEmpty()) {
-            return List.of();
-        }
-        return byExecutionId.values().stream()
-                .sorted(Comparator.comparingLong(FlowInstance::updatedAtEpochMs).thenComparing(FlowInstance::executionId))
-                .toList();
-    }
-
-    private boolean matchesWaitingResumeCriteria(FlowInstance waitingInstance, EventEnvelope envelope) {
-        if (waitingInstance == null || envelope == null) {
-            return false;
-        }
-        if (waitingInstance.status() != FlowInstanceStatus.WAITING_EVENT) {
-            return false;
-        }
-        if (!sameTenant(envelope.tenantId(), waitingInstance.tenantId())) {
-            return false;
-        }
-        WaitCriteria waitCriteria = resolveWaitCriteria(waitingInstance);
-        if (waitCriteria.awaitEventName() == null || waitCriteria.awaitEventName().isBlank()) {
-            return false;
-        }
-        if (!waitCriteria.awaitEventName().equals(envelope.eventName())) {
-            return false;
-        }
-        if (waitCriteria.stepIndex() >= 0 && waitingInstance.currentStepIndex() != waitCriteria.stepIndex()) {
-            return false;
-        }
-        if (waitCriteria.matchCorrelation() && !matchesCorrelation(envelope, waitingInstance.correlationId())) {
-            return false;
-        }
-        if (!matchesAwaitPayload(
-                waitCriteria.payloadMatchRefs(),
-                envelope,
-                waitingInstance.state(),
-                waitingInstance.state().get("input")
-        )) {
-            return false;
-        }
-        return !isResumeEventAlreadyProcessed(
-                waitingInstance.tenantId(),
-                waitingInstance.executionId(),
-                envelope.eventId()
-        );
-    }
-
-    private Optional<EventEnvelope> findAwaitedEventForInstance(
-            FlowInstance waitingInstance,
-            WaitCriteria waitCriteria,
-            boolean markProcessed
-    ) {
-        if (waitingInstance == null) {
-            return Optional.empty();
-        }
-        return findAwaitedEvent(
-                waitCriteria,
-                waitingInstance.executionId(),
-                waitingInstance.correlationId(),
-                waitingInstance.tenantId(),
-                waitingInstance.state(),
-                waitingInstance.state().get("input"),
-                markProcessed
-        );
-    }
-
-    private Optional<EventEnvelope> findAwaitedEvent(
-            WaitCriteria waitCriteria,
-            String executionId,
-            String correlationId,
-            String tenantId,
-            Map<String, Object> state,
-            Object input,
-            boolean markProcessed
-    ) {
-        if (eventStore == null || waitCriteria == null) {
-            return Optional.empty();
-        }
-        String eventName = waitCriteria.awaitEventName();
-        if (eventName == null || eventName.isBlank()) {
-            return Optional.empty();
-        }
-        String effectiveTenantId = normalizeTenantOrDefault(tenantId);
-        List<EventEnvelope> candidates = waitCriteria.matchCorrelation()
-                ? eventStore.read(eventName, correlationId, effectiveTenantId)
-                : eventStore.readByEventName(eventName, effectiveTenantId);
-        Map<String, Object> effectiveState = state == null ? Map.of() : state;
-        for (EventEnvelope candidate : candidates) {
-            if (candidate == null) {
-                continue;
-            }
-            if (waitCriteria.matchCorrelation() && !matchesCorrelation(candidate, correlationId)) {
-                continue;
-            }
-            if (!matchesAwaitPayload(waitCriteria.payloadMatchRefs(), candidate, effectiveState, input)) {
-                continue;
-            }
-            if (isResumeEventAlreadyProcessed(tenantId, executionId, candidate.eventId())) {
-                continue;
-            }
-            if (markProcessed) {
-                markResumeEventProcessed(tenantId, executionId, candidate.eventId());
-            }
-            return Optional.of(candidate);
-        }
-        return Optional.empty();
-    }
-
-    private boolean isResumeEventAlreadyProcessed(String tenantId, String executionId, String eventId) {
-        if (eventId == null || eventId.isBlank() || executionId == null || executionId.isBlank()) {
-            return false;
-        }
-        return idempotencyStore.find(
-                normalizeTenantOrDefault(tenantId),
-                FLOW_RESUME_IDEMPOTENCY_CAPABILITY,
-                executionId,
-                eventId
-        ).isPresent();
-    }
-
-    private void markResumeEventProcessed(String tenantId, String executionId, String eventId) {
-        if (eventId == null || eventId.isBlank() || executionId == null || executionId.isBlank()) {
-            return;
-        }
-        if (isResumeEventAlreadyProcessed(tenantId, executionId, eventId)) {
-            return;
-        }
-        idempotencyStore.saveSuccess(
-                normalizeTenantOrDefault(tenantId),
-                FLOW_RESUME_IDEMPOTENCY_CAPABILITY,
-                executionId,
-                eventId,
-                "{\"status\":\"PROCESSED\"}",
-                nowEpochMillis()
-        );
-    }
-
-    private static Map<String, Object> buildAwaitState(
-            FlowStepDefinition step,
-            int stepIndex,
-            String awaitRef
-    ) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put(AWAIT_FIELD_EVENT_NAME, step.getAwaitEventName());
-        out.put(AWAIT_FIELD_MATCH_CORRELATION, step.isAwaitMatchCorrelation());
-        out.put(AWAIT_FIELD_PAYLOAD_MATCH_REFS, Map.copyOf(step.getAwaitPayloadMatchRefs()));
-        out.put(AWAIT_FIELD_STEP_INDEX, Math.max(0, stepIndex));
-        out.put(AWAIT_FIELD_STEP_NAME, step.getName());
-        out.put(AWAIT_FIELD_AWAIT_REF, normalizeAwaitRef(awaitRef));
-        return Map.copyOf(out);
-    }
-
-    private WaitCriteria resolveWaitCriteria(FlowInstance waitingInstance) {
-        if (waitingInstance == null) {
-            return new WaitCriteria(null, true, Map.of(), -1, "awaitedEvent");
-        }
-        Object rawWaitState = waitingInstance.state().get(AWAIT_STATE_KEY);
-        if (rawWaitState instanceof Map<?, ?> waitMap) {
-            String eventName = Objects.toString(waitMap.get(AWAIT_FIELD_EVENT_NAME), waitingInstance.waitingForEventName());
-            boolean matchCorrelation = parseBoolean(waitMap.get(AWAIT_FIELD_MATCH_CORRELATION), true);
-            int stepIndex = parseInt(waitMap.get(AWAIT_FIELD_STEP_INDEX), waitingInstance.currentStepIndex());
-            String awaitRef = normalizeAwaitRef(Objects.toString(waitMap.get(AWAIT_FIELD_AWAIT_REF), "awaitedEvent"));
-            return new WaitCriteria(
-                    eventName,
-                    matchCorrelation,
-                    parseStringMap(waitMap.get(AWAIT_FIELD_PAYLOAD_MATCH_REFS)),
-                    stepIndex,
-                    awaitRef
-            );
-        }
-        return new WaitCriteria(
-                waitingInstance.waitingForEventName(),
-                true,
-                Map.of(),
-                waitingInstance.currentStepIndex(),
-                "awaitedEvent"
-        );
-    }
-
-    private static Map<String, String> parseStringMap(Object rawValue) {
-        if (!(rawValue instanceof Map<?, ?> rawMap) || rawMap.isEmpty()) {
-            return Map.of();
-        }
-        Map<String, String> out = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
-            if (entry == null || entry.getKey() == null || entry.getValue() == null) {
-                continue;
-            }
-            String key = String.valueOf(entry.getKey()).trim();
-            String value = String.valueOf(entry.getValue()).trim();
-            if (key.isBlank() || value.isBlank()) {
-                continue;
-            }
-            out.put(key, value);
-        }
-        return out.isEmpty() ? Map.of() : Map.copyOf(out);
-    }
-
-    private static boolean parseBoolean(Object rawValue, boolean defaultValue) {
-        if (rawValue == null) {
-            return defaultValue;
-        }
-        if (rawValue instanceof Boolean bool) {
-            return bool;
-        }
-        String text = String.valueOf(rawValue).trim();
-        if (text.isBlank()) {
-            return defaultValue;
-        }
-        return Boolean.parseBoolean(text);
-    }
-
-    private static int parseInt(Object rawValue, int defaultValue) {
-        if (rawValue == null) {
-            return defaultValue;
-        }
-        if (rawValue instanceof Number number) {
-            return number.intValue();
-        }
-        String text = String.valueOf(rawValue).trim();
-        if (text.isBlank()) {
-            return defaultValue;
-        }
-        try {
-            return Integer.parseInt(text);
-        } catch (NumberFormatException ignored) {
-            return defaultValue;
-        }
-    }
-
-    private static String normalizeAwaitRef(String awaitRef) {
-        String normalized = normalizeRef(awaitRef);
-        return normalized.isBlank() ? "awaitedEvent" : normalized;
-    }
-
-    private FlowInstance applyResumeBackoff(FlowInstance instance, String errorCode, long nowEpochMs) {
-        if (instance == null) {
-            throw new IllegalArgumentException("instance must be non-null");
-        }
-        long delayMs = resumeDelayMillis(instance.resumeAttemptCount() + 1);
-        long nextEligible = nowEpochMs + delayMs;
-        return instance.markResumeFailure(errorCode, nowEpochMs, nextEligible, RESUME_MAX_ATTEMPTS);
-    }
-
-    private FlowInstance persistResumeBackoff(FlowInstance instance, String errorCode, long nowEpochMs) {
-        FlowInstance updated = applyResumeBackoff(instance, errorCode, nowEpochMs);
-        flowInstanceStore.update(updated);
-        emitOperationalFailureEvent(updated);
-        return updated;
-    }
-
-    private static long resumeDelayMillis(int nextAttempt) {
-        int exponent = Math.max(0, nextAttempt - 1);
-        long multiplier;
-        if (exponent >= 20) {
-            multiplier = 1L << 20;
-        } else {
-            multiplier = 1L << exponent;
-        }
-        long computed = RESUME_BASE_DELAY_MS * multiplier;
-        if (computed < 0) {
-            return RESUME_MAX_DELAY_MS;
-        }
-        return Math.min(computed, RESUME_MAX_DELAY_MS);
-    }
+    // LIFT-LOOP-P2 forEach execution now lives in ForEachStep (see its class javadoc for the
+    // durable-checkpoint rationale this comment used to carry).
+    static final StepProgressRecorder NOOP_STEP_PROGRESS_RECORDER = (nextStepIndex, currentState) -> { };
 
     private static FlowInstanceStatus resolveFailureTerminalStatus(ExecutionResult failure) {
         if (failure == null || failure.getStatus() == null) {
@@ -2663,7 +1310,7 @@ private final EventBus eventBus;
         };
     }
 
-    private void emitOperationalFailureEvent(FlowInstance instance) {
+    void emitOperationalFailureEvent(FlowInstance instance) {
         if (instance == null) {
             return;
         }
@@ -2729,7 +1376,7 @@ private final EventBus eventBus;
         }
     }
 
-    private static String resolveInvariantConceptName(FlowStepDefinition step, FlowDefinition flow) {
+    static String resolveInvariantConceptName(FlowStepDefinition step, FlowDefinition flow) {
         String scope = step.getInvariantScope();
         if (scope != null && !scope.isBlank()) {
             return scope;
@@ -2768,7 +1415,7 @@ private final EventBus eventBus;
         return CapabilityErrorKind.PERMANENT;
     }
 
-    private EffectiveCapabilityPolicy resolveEffectiveCapabilityPolicy(
+    EffectiveCapabilityPolicy resolveEffectiveCapabilityPolicy(
             FlowStepDefinition step,
             CapabilityExecutionPolicy basePolicy,
             String tenantId
@@ -2839,7 +1486,7 @@ private final EventBus eventBus;
         return Math.min(computed, Math.max(policy.retryBaseDelayMs(), policy.retryMaxDelayMs()));
     }
 
-    private static CapabilityError reclassifyIntegrityViolation(CapabilityError error) {
+    static CapabilityError reclassifyIntegrityViolation(CapabilityError error) {
         if (error == null
                 || error.kind() == CapabilityErrorKind.CONTRACT
                 || !isIntegrityViolationMessage(error.message())) {
@@ -2866,7 +1513,7 @@ private final EventBus eventBus;
                 || normalized.contains("unique constraint");
     }
 
-    private CapabilityResult invokeCapabilityWithPolicy(
+    CapabilityResult invokeCapabilityWithPolicy(
             FlowStepDefinition step,
             List<Object> args,
             Map<String, Object> state,
@@ -3383,45 +2030,20 @@ private final EventBus eventBus;
         if (error == null) {
             return;
         }
-        CircuitBreakerState current = circuitBreakerStateStore.get(key);
         if (!isCircuitFailure(error.kind())) {
+            CircuitBreakerState current = circuitBreakerStateStore.get(key);
             if (current != null && current.state() != CircuitState.CLOSED) {
                 circuitBreakerStateStore.reset(key);
             }
             return;
         }
 
-        int failures = current == null ? 1 : Math.max(1, current.consecutiveFailures() + 1);
-        if (current != null && current.state() == CircuitState.HALF_OPEN) {
-            failures = Math.max(1, failures);
-        }
-        int effectiveFailureThreshold = Math.max(1, circuitOpenAfterFailures);
-        long effectiveOpenMs = Math.max(0L, circuitOpenMs);
-        if (failures >= effectiveFailureThreshold || (current != null && current.state() == CircuitState.HALF_OPEN)) {
-            circuitBreakerStateStore.put(
-                    key,
-                    new CircuitBreakerState(
-                            CircuitState.OPEN,
-                            failures,
-                            now,
-                            now,
-                            now + effectiveOpenMs,
-                            0
-                    )
-            );
-            return;
-        }
-        circuitBreakerStateStore.put(
-                key,
-                new CircuitBreakerState(
-                        CircuitState.CLOSED,
-                        failures,
-                        0L,
-                        now,
-                        0L,
-                        0
-                )
-        );
+        // REG-37: the increment and the open/closed decision now happen INSIDE the store, under a
+        // lock it owns. This used to be get() -> compute here -> put(), which is a read-modify-write
+        // race: concurrent failures both read the same count, both write count+1, and the breaker
+        // opens late under exactly the load it exists for. The rule itself lives in
+        // CircuitBreakerTransitions so both backends provably apply the same one.
+        circuitBreakerStateStore.recordFailure(key, now, circuitOpenAfterFailures, circuitOpenMs);
     }
 
     private static boolean isCircuitFailure(CapabilityErrorKind kind) {
@@ -3809,7 +2431,7 @@ CapabilityCall call = new CapabilityCall(
         }
     }
 
-    private static String resolveIdempotencyKey(
+    static String resolveIdempotencyKey(
             CapabilityExecutionPolicy policy,
             Map<String, Object> state,
             Object input
@@ -3843,7 +2465,7 @@ CapabilityCall call = new CapabilityCall(
         return Map.copyOf(out);
     }
 
-    private void traceSuccessfulStep(
+    void traceSuccessfulStep(
             FlowTraceMeta traceMeta,
             FlowStepDefinition step,
             int traceStepIndex,
@@ -3870,7 +2492,7 @@ CapabilityCall call = new CapabilityCall(
         executionTracer.onStepEnd(traceMeta, stepTrace);
     }
 
-    private void traceFailedStep(
+    void traceFailedStep(
             FlowTraceMeta traceMeta,
             FlowStepDefinition step,
             int traceStepIndex,
@@ -3927,7 +2549,7 @@ CapabilityCall call = new CapabilityCall(
         return List.copyOf(changed);
     }
 
-    private List<InputValidationError> validateInput(SchemaObject inputSchema, Object input) {
+    List<InputValidationError> validateInput(SchemaObject inputSchema, Object input) {
         if (inputSchema == null) {
             return List.of();
         }
@@ -3938,7 +2560,7 @@ CapabilityCall call = new CapabilityCall(
         return List.copyOf(errors);
     }
 
-    private static long nowEpochMillis() {
+    static long nowEpochMillis() {
         return System.currentTimeMillis();
     }
 
@@ -3949,7 +2571,7 @@ CapabilityCall call = new CapabilityCall(
         }
     }
 
-    private static List<InvariantEngine.Violation> enrichInvariantViolations(
+    static List<InvariantEngine.Violation> enrichInvariantViolations(
             List<InvariantEngine.Violation> violations,
             String conceptName,
             String flowName,
@@ -4018,7 +2640,7 @@ CapabilityCall call = new CapabilityCall(
         return List.copyOf(enriched);
     }
 
-    private static EventEnvelope newEnvelope(
+    static EventEnvelope newEnvelope(
             String id,
             String eventName,
             String correlationId,
@@ -4048,7 +2670,7 @@ CapabilityCall call = new CapabilityCall(
         );
     }
 
-    private EventEnvelope awaitEvent(
+    EventEnvelope awaitEvent(
             FlowStepDefinition step,
             Map<String, Object> state,
             String defaultCorrelationId,
@@ -4063,9 +2685,10 @@ CapabilityCall call = new CapabilityCall(
                 step.isAwaitMatchCorrelation(),
                 step.getAwaitPayloadMatchRefs(),
                 0,
-                normalizeAwaitRef(step.getAwaitRef())
+                FlowStateCodec.normalizeAwaitRef(step.getAwaitRef())
         );
-        return findAwaitedEvent(
+        return ResumeCoordinator.findAwaitedEvent(
+                this,
                 waitCriteria,
                 executionId,
                 currentCorrelationId,
@@ -4076,7 +2699,7 @@ CapabilityCall call = new CapabilityCall(
         ).orElse(null);
     }
 
-    private static boolean matchesCorrelation(EventEnvelope event, String correlationId) {
+    static boolean matchesCorrelation(EventEnvelope event, String correlationId) {
         if (correlationId == null || correlationId.isBlank()) {
             return true;
         }
@@ -4092,7 +2715,7 @@ CapabilityCall call = new CapabilityCall(
         return matchesAwaitPayload(step.getAwaitPayloadMatchRefs(), event, state, input);
     }
 
-    private static boolean matchesAwaitPayload(
+    static boolean matchesAwaitPayload(
             Map<String, String> payloadMatchRefs,
             EventEnvelope event,
             Map<String, Object> state,
@@ -4116,7 +2739,7 @@ CapabilityCall call = new CapabilityCall(
         return true;
     }
 
-    private static Object buildEventPayload(FlowStepDefinition step, Map<String, Object> state, Object input) {
+    static Object buildEventPayload(FlowStepDefinition step, Map<String, Object> state, Object input) {
         if (step.getEventDataRefs() != null && !step.getEventDataRefs().isEmpty()) {
             Map<String, Object> payload = new LinkedHashMap<>();
             for (Map.Entry<String, String> entry : step.getEventDataRefs().entrySet()) {
@@ -4127,7 +2750,7 @@ CapabilityCall call = new CapabilityCall(
         return resolveReference(step.getPayloadRef(), state, input);
     }
 
-    private static Map<String, Object> toEventPayloadMap(Object rawPayload) {
+    static Map<String, Object> toEventPayloadMap(Object rawPayload) {
         if (rawPayload == null) {
             return Map.of();
         }
@@ -4141,7 +2764,7 @@ CapabilityCall call = new CapabilityCall(
         return Map.of("value", rawPayload);
     }
 
-    private static boolean evaluateCondition(String expression, Map<String, Object> state, Object input) {
+    static boolean evaluateCondition(String expression, Map<String, Object> state, Object input) {
         if (expression == null || expression.isBlank()) {
             return false;
         }
@@ -4212,7 +2835,7 @@ CapabilityCall call = new CapabilityCall(
                 || "null".equalsIgnoreCase(text));
     }
 
-    private static Object resolveReference(String reference, Map<String, Object> state, Object input) {
+    static Object resolveReference(String reference, Map<String, Object> state, Object input) {
         Object resolved = resolveReferenceStrict(reference, state, input);
         if (resolved == UNRESOLVED) {
             return reference;
@@ -4260,7 +2883,7 @@ CapabilityCall call = new CapabilityCall(
         return current;
     }
 
-    private static List<Object> resolveArgs(FlowStepDefinition step, Map<String, Object> state, Object input) {
+    static List<Object> resolveArgs(FlowStepDefinition step, Map<String, Object> state, Object input) {
         List<String> argRefs = step.getArgsRefs();
         if (argRefs == null || argRefs.isEmpty()) {
             Object single = resolveReference(step.getInputRef(), state, input);
@@ -4274,7 +2897,7 @@ CapabilityCall call = new CapabilityCall(
         return args;
     }
 
-    private static String normalizeRef(String value) {
+    static String normalizeRef(String value) {
         if (value == null || value.isBlank()) {
             return "";
         }
@@ -4305,7 +2928,7 @@ CapabilityCall call = new CapabilityCall(
         return nextId("correlation");
     }
 
-    private String nextId(String scope) {
+    String nextId(String scope) {
         String normalizedScope = (scope == null || scope.isBlank()) ? "default" : scope;
         String id = idProvider.nextId(normalizedScope);
         if (id == null || id.isBlank()) {
@@ -4335,7 +2958,7 @@ CapabilityCall call = new CapabilityCall(
         correlationOwnershipStore.claimCorrelation(effectiveCorrelationId, effectiveTenantId);
     }
 
-    private static boolean sameTenant(String eventTenantId, String instanceTenantId) {
+    static boolean sameTenant(String eventTenantId, String instanceTenantId) {
         if (eventTenantId == null || eventTenantId.isBlank()) {
             return true;
         }
@@ -4345,53 +2968,55 @@ CapabilityCall call = new CapabilityCall(
         return eventTenantId.equals(instanceTenantId);
     }
 
-    private static String normalizeCorrelationId(String correlationId) {
-        if (correlationId == null) {
-            return null;
-        }
-        String trimmed = correlationId.trim();
-        return trimmed.isBlank() ? null : trimmed;
+    /**
+     * REG-47: this is the single chokepoint every correlation id passes through on its way into
+     * durable state, so it is where the length bound belongs. It used to only {@code trim()}, which
+     * let a caller-supplied value of arbitrary length reach eight btree indexes across four tables --
+     * see {@link CorrelationIds} for why that fails, and why it rejects rather than digests.
+     */
+    static String normalizeCorrelationId(String correlationId) {
+        return CorrelationIds.require(correlationId);
     }
 
-    private static String normalizeTenantOrDefault(String tenantId) {
+    static String normalizeTenantOrDefault(String tenantId) {
         if (tenantId == null || tenantId.isBlank()) {
             return ExecutionContext.anonymous().tenantId();
         }
         return tenantId.trim();
     }
 
-    private record WaitCriteria(
+    record WaitCriteria(
             String awaitEventName,
             boolean matchCorrelation,
             Map<String, String> payloadMatchRefs,
             int stepIndex,
             String awaitRef
     ) {
-        private WaitCriteria {
+        WaitCriteria {
             payloadMatchRefs = payloadMatchRefs == null ? Map.of() : Map.copyOf(payloadMatchRefs);
-            awaitRef = normalizeAwaitRef(awaitRef);
+            awaitRef = FlowStateCodec.normalizeAwaitRef(awaitRef);
         }
     }
 
     @FunctionalInterface
-    private interface StepProgressRecorder {
+    interface StepProgressRecorder {
         void onStepCompleted(int nextStepIndex, Map<String, Object> state);
     }
 
-    private record StepExecutionOutcome(
+    record StepExecutionOutcome(
             boolean returned,
             Object returnValue,
             ExecutionResult failedResult
     ) {
-        private static StepExecutionOutcome continueFlow() {
+        static StepExecutionOutcome continueFlow() {
             return new StepExecutionOutcome(false, null, null);
         }
 
-        private static StepExecutionOutcome returned(Object value) {
+        static StepExecutionOutcome returned(Object value) {
             return new StepExecutionOutcome(true, value, null);
         }
 
-        private static StepExecutionOutcome failed(ExecutionResult result) {
+        static StepExecutionOutcome failed(ExecutionResult result) {
             return new StepExecutionOutcome(false, null, result);
         }
     }
@@ -4402,7 +3027,7 @@ CapabilityCall call = new CapabilityCall(
     ) {
     }
 
-    private record EffectiveCapabilityPolicy(
+    record EffectiveCapabilityPolicy(
             int retryMaxAttempts,
             long retryBaseDelayMs,
             long retryMaxDelayMs,

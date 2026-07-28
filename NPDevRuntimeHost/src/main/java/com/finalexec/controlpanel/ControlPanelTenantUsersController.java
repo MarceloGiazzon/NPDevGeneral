@@ -1,6 +1,8 @@
 package com.finalexec.controlpanel;
 
+import com.finalexec.auth.IdentityPackSchemaException;
 import com.finalexec.auth.PasswordHasher;
+import com.finalexec.auth.SqlSchemaErrors;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityRegistry;
@@ -161,6 +163,13 @@ public class ControlPanelTenantUsersController {
             // without one (see PasswordResetController's self-service flow for the primary path).
             notifyPasswordChanged(connection, tenantId, username);
             return ResponseEntity.ok(Map.of("ok", true, "username", username, "tenantId", tenantId));
+        } catch (IdentityPackSchemaException schemaException) {
+            // REG-39: the token_version bump found a schema mismatch (stale built-in-pack copy). The
+            // credential update already committed, so report the revocation gap distinctly rather than
+            // the generic reset_password_failed -- an operator needs to know this is a schema problem,
+            // not a transient reset failure.
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "identity_pack_schema_error: " + schemaException.getMessage());
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "reset_password_failed");
         }
@@ -185,6 +194,13 @@ public class ControlPanelTenantUsersController {
                 return ResponseEntity.status(404).body(Map.of("error", "user_not_found"));
             }
             return ResponseEntity.ok(Map.of("ok", true, "username", username, "tenantId", tenantId));
+        } catch (IdentityPackSchemaException schemaException) {
+            // REG-39: without this, a schema mismatch here previously surfaced as a plain 404
+            // user_not_found (bumpTokenVersion swallowed the SQLException and returned 0, which this
+            // method could not tell apart from "no such user") -- exactly the misleading-failure shape
+            // REG-39 is about.
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "identity_pack_schema_error: " + schemaException.getMessage());
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "revoke_sessions_failed");
         }
@@ -231,6 +247,12 @@ public class ControlPanelTenantUsersController {
             ps.setString(2, username);
             return ps.executeUpdate();
         } catch (SQLException exception) {
+            // REG-39: a schema mismatch (stale built-in-pack copy) is not the same kind of failure as
+            // an ordinary "0 rows updated" -- let it propagate distinctly so callers don't mistake a
+            // broken schema for a nonexistent user.
+            if (SqlSchemaErrors.isSchemaMismatch(exception)) {
+                throw new IdentityPackSchemaException(exception);
+            }
             return 0;
         }
     }

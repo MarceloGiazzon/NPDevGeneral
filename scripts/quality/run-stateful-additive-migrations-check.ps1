@@ -93,9 +93,13 @@ function Resolve-GeneratorTestResultXml {
     # REG-11: candidate 2 already derives <workspace-parent>/Build/gradle/... portably from $root,
     # so the former hardcoded "D:/WorkSpace/NPDev/Build/..." third candidate was a redundant,
     # non-portable duplicate of it (removed).
+    # REG-32 (2026-07-24): that "workspace-parent" was one Split-Path too many -- $root is the repo
+    # root (…\NPDev\NPDev_General), so ONE parent (…\NPDev) is where build.gradle's
+    # layout.buildDirectory redirect actually lands (…\NPDev\Build\gradle\...), not two (…\WorkSpace).
+    # Confirmed by locating the real XML on disk after a fresh run; candidate 2 never matched it.
     $candidates = @(
         (Join-Path $root "NPDevGenerator/generator/build/test-results/test/TEST-$ClassName.xml"),
-        (Join-Path (Split-Path -Parent (Split-Path -Parent $root)) "Build/gradle/npdev-generator/generator/test-results/test/TEST-$ClassName.xml")
+        (Join-Path (Split-Path -Parent $root) "Build/gradle/npdev-generator/generator/test-results/test/TEST-$ClassName.xml")
     )
     foreach ($candidate in $candidates) {
         if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }

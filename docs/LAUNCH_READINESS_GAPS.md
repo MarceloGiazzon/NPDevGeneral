@@ -90,7 +90,7 @@ is actually done today.
 > green on a real GitHub Actions runner** (REG-10), which retroactively *proves* several items that
 > were "done but only on one Windows machine."
 >
-> **2026-07-22 addendum — `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` executed; all three closed
+> **2026-07-22 addendum — `docs/archive/programme-history/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` executed; all three closed
 > (LNCH-22 on the second attempt, after a real fix).** LNCH-10 Slice 3 (server-side PDF) closed against
 > `docs/REG12_DOCUMENT_EXPORT_PLAN.md`, verified live + **CI-green** (run `29943008077`, SHA `b5c7c88`).
 > LNCH-18 (authoring) closed via an independent cold-tester run. **LNCH-22 (docs):** its first closure
@@ -111,11 +111,11 @@ is actually done today.
 > |---|---|---|---|---|
 > | LNCH-4 (auth stakes) | REG-9 | PARTIAL | **DONE** | JWT keys via env var + fail-fast validation + verify-only boot; super-user-key seeding WONTFIX by decision |
 > | LNCH-10 (export) | REG-12 | PARTIAL | **DONE** | All 3 slices DONE (2026-07-22) — CSV, print, and server-side PDF (`docs/REG12_DOCUMENT_EXPORT_PLAN.md`) |
-> | LNCH-18 (authoring test) | REG-13 | PARTIAL | **DONE** | Independent cold-tester run 2026-07-22 (subagent, fresh context, own worktree, cold brief only — see `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part B.1 option 2) authored an issue tracker via the CLI validator fallback (no MCP tools registered) and verified create/list/edit/close over REST, unaided. Evidence + friction log: `NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/` |
+> | LNCH-18 (authoring test) | REG-13 | PARTIAL | **DONE** | Independent cold-tester run 2026-07-22 (subagent, fresh context, own worktree, cold brief only — see `docs/archive/programme-history/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part B.1 option 2) authored an issue tracker via the CLI validator fallback (no MCP tools registered) and verified create/list/edit/close over REST, unaided. Evidence + friction log: `NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/` |
 > | LNCH-19 (Linux CI) | REG-10 | PARTIAL | **DONE** | `npdev-pr-gate.yml` observed **green** on ubuntu-latest (run `29899362276`); six root-caused first-contact-with-Linux fixes |
 > | LNCH-20 (cross-platform) | REG-11 | OPEN | **DONE** | Cross-platform build **proven** by the green run; also fixed a real generated-app `D:/`-cache portability bug |
 > | LNCH-22 (docs test) | REG-14 | PARTIAL | **DONE** | Closed on the 2nd attempt: the first pass was reverted on verification (two cold runs could not build *from docs alone* — a `runtimehost-libs` build-root divergence), fixed in `2adf8ec` (sync mirrors `build.gradle`'s walk) + tutorial one-time-setup step + Windows-safe verify-curl. **Validated by a project-blind in-sandbox run on `2adf8ec`: tutorial built + booted from docs alone (201/422), no source-reading, no leftover libs.** Evidence: `NPDev_General__OutsideRepo/external-tester-evidence/2026-07-22/lnch22-insandbox-blind-PASS.md` |
-> | LNCH-23 (launch checklist) | REG-15 | PARTIAL | **DONE** | Release tag cut (`beta1.1`, on the `beta1→main` merge); license/ADR/release-process already done; trademark parked (portfolio project, owner's decision) |
+> | LNCH-23 (launch checklist) | REG-15 | PARTIAL | **DONE** | Release tag cut (`beta1.1`, on the `beta1→main` merge); license/ADR/release-process already done; trademark **N/A** — individual/hobby project, no mark to defend, none sought (owner's final decision 2026-07-23). REG-15 fully DONE, not parked |
 >
 > **Register-native items (findings that are NOT LNCH gaps — do not look for them here).** The register
 > also tracks work with no LNCH equivalent, all closed/decided except where noted: LNCH-1's own
@@ -185,10 +185,10 @@ regression coverage.
 took two review rounds after the initial "DONE" to get there, and the second one found something
 serious:
 
-- **Remediation (R0–R9, `docs/LNCH1_REMEDIATION_PLAN.md`)** — 2 high-severity bugs (required-field
+- **Remediation (R0–R9, `docs/archive/programme-history/LNCH1_REMEDIATION_PLAN.md`)** — 2 high-severity bugs (required-field
   backfill silently skipped on destructive paths; `DROP_TABLE` tokens uncomputable at plan time),
   1 systemic fragility, 7 smaller gaps. All fixed or recorded.
-- **Hardening (X0–X9, `docs/LNCH1_HARDENING_PLAN.md`)** — a review of the remediation round found a
+- **Hardening (X0–X9, `docs/archive/programme-history/LNCH1_HARDENING_PLAN.md`)** — a review of the remediation round found a
   **CRITICAL regression it had introduced**: on any app with `allowDestructiveRecreate: true` (i.e.
   every shipped app definition), dropping a concept routed to the whole-schema wipe and destroyed
   **every other table's data**, while the orphaned table it was meant to drop survived. Fixed in X1,
@@ -565,7 +565,7 @@ JSON round-trips through the seeder.
 **Status:** DONE (2026-07-22 — all 3 slices) · **Priority:** P1 · **Effort:** L
 
 **Update (2026-07-22, Slice 3) — closed.** Server-side PDF documents shipped via
-`docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part A: a new `document` DSL kind (bound to a concept,
+`docs/archive/programme-history/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part A: a new `document` DSL kind (bound to a concept,
 declarative, 4-copy schema mirror) + a `DocumentRenderContract` port/adapter pair
 (`document-render-inproc`, pure-JVM OpenHTMLtoPDF/PDFBox, no native/display deps; `document-render-stub`
 as the pair's second half) + `GET /api/documents/{document}/render.pdf` (mirrors `export.csv`'s data
@@ -832,9 +832,9 @@ forEach freeze-thread technique); CRUD write+event atomicity proven under JDBC.
 **Update (2026-07-17).** `docs/adr/ADR-0006-authoring-path.md` ratified: AI-first/editor-secondary.
 The DoD's human-run step — a real non-author completing a build from a plain-English description —
 is explicitly left OPEN, not claimed done (bucket-4, real-person-only; see
-`docs/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` for the prep work done toward it).
+`docs/archive/programme-history/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` for the prep work done toward it).
 
-**Update (2026-07-22) — closed.** `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part B ran the DoD's
+**Update (2026-07-22) — closed.** `docs/archive/programme-history/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part B ran the DoD's
 non-author step via an independent cold-start tester: a subagent given ONLY
 `docs/EXTERNAL_TESTER_COLDSTART.md`'s brief, a fresh context window, and its own isolated git
 worktree — no coaching, no access to this project's plans/register/retrospective (Part B.1 option 2,
@@ -1117,7 +1117,7 @@ builds the tutorial app from docs alone; validator errors carry codes + hints.
 
 ### External-tester findings, 2026-07-22 (LNCH-18/22/REG-17 closure run)
 
-Per `docs/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part B.4 ("every friction point the successful run
+Per `docs/archive/programme-history/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md` Part B.4 ("every friction point the successful run
 still surfaced is filed as a dated finding, docs improve even on a pass"). None of these blocked the
 run's own pass bars (all three tasks passed on the first cold run — no re-run iteration was
 needed), but each is a real, reproducible gap an unaided newcomer hits. Full detail + exact repro
@@ -1139,6 +1139,25 @@ Not yet actioned — filed per the loop's own discipline ("do not silently patch
    code-free Spring Boot default error body the moment the flow actually runs — real cause
    (`Capability binding not found for capability 'persistence'`) is visible only in the app's raw
    stdout log, which no doc names as a debugging step.
+   **FIXED 2026-07-23/24 (both halves).** Doc half (2026-07-23): both examples now declare
+   `capabilities` + `bindings` (persistence→repository; eventBus→inproc for the event-using Level 3)
+   with an explanatory "why this is required / validates-clean-but-500s-at-runtime" note. **Runtime
+   diagnostic half (2026-07-24, LEDGER-1):** `StartupValidator` (`NPDevKernel/adapters/runtime-
+   validation`) now reads the compiled model's flow steps and the built `CapabilityRegistry` at boot;
+   if any flow references the `persistence` capability (via `createConcept`/`updateConcept`/
+   `saveConcept`, or a direct `persistence.*` capabilityCall — all of these compile down to the same
+   `CompiledFlowStep.capabilityCall.capabilityName == "persistence"`) and no adapter is bound, the app
+   now **refuses to boot** with a docs-linked `IllegalStateException` naming the offending flow,
+   instead of booting fine and only 500ing opaquely on first use. RED→GREEN verified live: generated
+   `ledger1-red-repro` (a `simple-user-registry-inmemory` copy with the `persistence` binding
+   removed) — RED: booted fine, `GET /api/flows/CreateUser/execute` returned a structured 422 (that
+   debug surface already had its own error handling), but the generated business CRUD path
+   (`POST /api/users`) threw an uncaught `IllegalStateException` → bare Spring
+   `{"status":500,"error":"Internal Server Error"}`, with the real cause
+   (`Capability binding not found for capability 'persistence' and adapter '<missing>'`) visible only
+   in `_ops/app.out.log` — confirming the finding as described. GREEN: after the fix + a
+   `Rebuild-And-Restage.ps1` cycle, the same app refuses to boot with the new diagnostic. See
+   `docs/CONFIGURATION.md#persistence-capability-binding-checked-at-boot`.
 3. **No doc names the automatically-generated concept CRUD's REST verbs/paths** beyond the one `POST`
    create example shown in the tutorial and the manual — list/get/update/delete are undocumented
    (correctly guessable from REST convention, but unverified against the docs).
@@ -1167,6 +1186,37 @@ tests, a real pre-existing suite finding, not a tooling gap — see register); `
 ran and hit finding #1 above; `run-frontend-gate.ps1`/`run-beta-release-gate.ps1` were not attempted
 (time budget, the latter is an explicitly long-running multi-script evidence orchestration). Every
 question the tester had to ask is logged in `friction-log-task-c.md`.
+
+### External-AI cold-start finding, 2026-07-27 (M5-COLDSTART-DOCS, ADR-0009)
+
+Per `docs/EXTERNAL_TESTER_COLDSTART.md`'s own "After the run" rule (friction becomes a dated finding
+here, not silently patched) and `docs/adr/ADR-0009-external-ai-delegation.md`'s M5 mission: a
+genuinely repo-blind external AI vendor (NVIDIA Build, `meta/llama-3.3-70b-instruct`, zero filesystem/
+network/tool access) was given only `docs/TUTORIAL_FIRST_APP.md` + `docs/DSL_REFERENCE.md` and asked
+to author a `model.json` for the tutorial's own target app. This is a genuine strengthening of
+LNCH-18/22's own closure (`docs/external-ai-review/runs/M5-COLDSTART-DOCS.json`) — those were closed
+by a same-sandbox subagent (the register's own "subagent-as-tester approximation"); this is the first
+run by a model with no path back to this repo at all.
+
+**Result: real success, one real friction point.** The authored model correctly named the concept
+`ContactMessage` with the tutorial's exact fields (`name`, `email`, `message`, `status`) and validated
+against the platform's own real semantic validator (`status: "warning"`, not `"failed"`) — a blind
+author, from docs alone, produced a structurally and semantically correct model. The warnings were all
+the same shape:
+
+1. **Neither tutorial doc mentions `ui.label` at all**, so a blind author has no way to know
+   presentation metadata is expected — `missing_concept_label` (the `ContactMessage` concept itself)
+   and `missing_field_label` (all 4 non-id fields: `name`, `email`, `message`, `status`) all fired.
+   Not a launch blocker (the validator reports these as warnings, generation still proceeds with a
+   sensible default label), but a real, reproducible cold-start gap: a newcomer following the tutorial
+   literally ends up with an app that generates fine but carries validator warnings they were never
+   told to expect or address.
+
+**Not yet actioned** — filed per the same discipline as the 2026-07-22 findings above ("do not
+silently patch"). Fix sketch, if picked up: either `TUTORIAL_FIRST_APP.md`'s own model example should
+include `ui.label` on the concept/fields it shows (so a literal-copy author gets a clean validation),
+or `DSL_REFERENCE.md`'s concept/field sections should call out that presentation metadata is expected
+and why. Full verdict + validation report: `NPDev_General__OutsideRepo/external-ai-review/packs/M5-COLDSTART-DOCS/*-nvidia-{authored-model,validation-report}.json`.
 
 ### LNCH-23 — Launch checklist: license, packaging, telemetry, release process
 

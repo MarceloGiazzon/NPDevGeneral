@@ -276,7 +276,31 @@ sourceSets {
             // or even compile, as part of the plain `test` task (no com.npdev.generated. reference,
             // so generatedRuntimeDependentTestSources' auto-exclusion would not otherwise catch it;
             // see generatedRuntimeIntegrationTestSources above for the integrationTest inclusion).
-            exclude 'com/finalexec/db/SchemaLifecycleExecutorPostgresProofMatrixTest.java'
+            // Docker-dependent (Testcontainers Postgres): excluded from the default `test` so a plain
+            // run never needs Docker. It is mount-INDEPENDENT (pure schema-lifecycle, no generated
+            // runtime), so it can be run directly against a bare template on demand via
+            // `-PincludePostgresMatrix` -- this is GATE-PG in docs/SCHEMA_ENGINE_REBUILD_PLAN.md:
+            //   gradlew test --tests com.finalexec.db.SchemaLifecycleExecutorPostgresProofMatrixTest -PincludePostgresMatrix
+            if (!providers.gradleProperty('includePostgresMatrix').present) {
+                exclude 'com/finalexec/db/SchemaLifecycleExecutorPostgresProofMatrixTest.java'
+                // Same rule for the schema-engine-rebuild Postgres golden tests (Testcontainers):
+                // excluded from the default `test`, included on demand via -PincludePostgresMatrix.
+                exclude 'com/finalexec/db/schemastate/CurrentSchemaReaderPostgresTest.java'
+                // SER-P7.5: the conversion-hook Postgres twin (Testcontainers) -- same rule.
+                exclude 'com/finalexec/db/ConversionHookRunnerPostgresTest.java'
+            }
+            // These two tests exercise MAIN classes that import com.npdev.generated.* (ConceptQueryController
+            // -> RuntimeContextService; ActuatorAdminGuardFilter), so those main classes are excluded from
+            // compilation when the generated-runtime mount is absent (a bare-template checkout, e.g. running
+            // GATE-H2/GATE-PG directly per docs/SCHEMA_ENGINE_REBUILD_PLAN.md). The test files themselves
+            // contain no com.npdev.generated. text, so the generatedRuntimeDependentTestSources heuristic
+            // above cannot catch them, and they fail compileTestJava with "cannot find symbol". Exclude them
+            // ONLY when the mount is absent, so the assembled-app gate (mount present) still compiles and runs
+            // them exactly as before -- a transitive-dependency gap the text heuristic can't see.
+            if (!generatedRuntimeMountPresent()) {
+                exclude 'com/finalexec/api/ConceptQueryControllerTest.java'
+                exclude 'com/finalexec/config/ActuatorAdminGuardFilterTest.java'
+            }
         }
     }
     integrationTest {
@@ -380,7 +404,14 @@ tasks.named('bootRun') {
 }
 
 tasks.named('test') {
-    dependsOn 'enforceSingleSchemaRealizationSource'
+    // enforceSingleSchemaRealizationSource verifies an ASSEMBLED FinalApp carries its generated
+    // schema-realization artifacts under npdev-generated/ -- meaningless for a bare-template checkout
+    // (no mount), where it can only fail. Depend on it only when the mount is present, so the
+    // assembled-app gate keeps the guarantee while a direct GATE-H2/GATE-PG run against the template
+    // (docs/SCHEMA_ENGINE_REBUILD_PLAN.md) can execute the mount-independent unit tests.
+    if (generatedRuntimeMountPresent()) {
+        dependsOn 'enforceSingleSchemaRealizationSource'
+    }
     useJUnitPlatform()
     // Perf: forked test JVMs default to 512m and do NOT inherit org.gradle.jvmargs.
     // Deliberately no maxParallelForks here: these are Spring Boot slices sharing a
@@ -394,6 +425,22 @@ tasks.named('test') {
     if (activeProfiles != null && !activeProfiles.toString().trim().isEmpty()) {
         systemProperty 'spring.profiles.active', activeProfiles.toString().trim()
     }
+    // Schema-engine rebuild Phase 3.2: the read-only shadow parity assertion is ON BY DEFAULT -- every
+    // test that drives SchemaLifecycleExecutor.beforeMigrate now also asserts the shadow SchemaDiffEngine
+    // agrees with the live engine on schema-driven decisions (non-schema overrides are scoped out in
+    // ShadowParityProbe). This makes parity a standing invariant: a future change that makes the shadow
+    // diverge fails here. Override with -Pnpdev.schema.shadow.assert=false; point .logFile at a path to
+    // capture divergences for analysis.
+    def shadowAssert = System.getProperty('npdev.schema.shadow.assert') ?: providers.gradleProperty('npdev.schema.shadow.assert').getOrNull()
+    systemProperty 'npdev.schema.shadow.assert', (shadowAssert != null && !shadowAssert.toString().trim().isEmpty() ? shadowAssert.toString().trim() : 'true')
+    def shadowLog = System.getProperty('npdev.schema.shadow.logFile') ?: providers.gradleProperty('npdev.schema.shadow.logFile').getOrNull()
+    if (shadowLog != null && !shadowLog.toString().trim().isEmpty()) {
+        systemProperty 'npdev.schema.shadow.logFile', shadowLog.toString().trim()
+    }
+    // SER Phase 4 COMPLETE: classify + SchemaDeltaReport + all four mutation passes now consume the
+    // canonical SchemaDiff directly (no re-derivation left to self-check), so the per-pass equivalence
+    // asserts (npdev.schema.classify/rename/widen/backfill.*) that guarded each switch are retired.
+    // The end-to-end guard is now the behavior tests + the shadow parity assert (above), which stays on.
     if (System.getProperty('os.name', '').toLowerCase().contains('win')
             && System.getenv('DOCKER_HOST') == null) {
         environment 'DOCKER_HOST', 'npipe:////./pipe/dockerDesktopLinuxEngine'

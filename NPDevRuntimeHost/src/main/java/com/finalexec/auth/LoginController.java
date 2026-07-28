@@ -18,9 +18,12 @@ import java.security.PrivateKey;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Real login for the built-in identity pack (identity_users/identity_roles/identity_user_roles).
@@ -37,6 +40,8 @@ import java.util.Set;
 @RestController
 @ConditionalOnProperty(name = "npdev.auth.mode", havingValue = "jwt")
 public class LoginController {
+
+    private static final Logger LOG = Logger.getLogger(LoginController.class.getName());
 
     private final DataSource dataSource;
     private final ObjectMapper objectMapper;
@@ -172,9 +177,31 @@ public class LoginController {
             body.put("expiresInSeconds", expirySeconds);
             body.put("roles", roles);
             return ResponseEntity.ok(body);
+        } catch (SQLException schemaCandidate) {
+            // REG-39: a stale built-in-pack copy of the identity pack (missing the token_version
+            // column platform code reads unconditionally, or any other column it depends on) must
+            // surface as a schema error, NOT as invalid_credentials -- swallowing this exact class of
+            // exception into a generic auth failure is what made WmsOffice's stale copy so expensive
+            // to diagnose. StartupValidator already fails the app at boot for the identity-pack case
+            // specifically; this is the fallback if that check was ever bypassed or the drift is in a
+            // column StartupValidator doesn't yet cover.
+            if (SqlSchemaErrors.isSchemaMismatch(schemaCandidate)) {
+                LOG.log(Level.SEVERE, "Login failed: identity pack schema mismatch", schemaCandidate);
+                return identityPackSchemaError(schemaCandidate);
+            }
+            return unauthorized(tenantId, username, clientIp);
         } catch (Exception exception) {
             return unauthorized(tenantId, username, clientIp);
         }
+    }
+
+    private ResponseEntity<Map<String, Object>> identityPackSchemaError(SQLException exception) {
+        return ResponseEntity.status(500).body(Map.of(
+                "error", "identity_pack_schema_error",
+                "detail", "Login failed because the database schema does not match what this app's "
+                        + "identity pack copy expects -- likely a stale built-in-pack copy. See "
+                        + "docs/CONFIGURATION.md#identity-pack-freshness-checked-at-boot. Cause: "
+                        + exception.getMessage()));
     }
 
     private ResponseEntity<Map<String, Object>> unauthorized(String tenantId, String username, String clientIp) {

@@ -137,9 +137,27 @@ public final class SchemaRealizationEmitter {
             StringBuilder additive = new StringBuilder();
             additive.append("-- NPDev safe-additive schema columns (Flyway repeatable migration)\n");
             additive.append("-- Adds new non-bond columns to already-existing tables (internal + business) without\n");
-            additive.append("-- destructive recreation. Scope boundary: bond/foreign-key columns, type changes, and\n");
-            additive.append("-- column/table removal remain structural changes handled by the schema-fingerprint\n");
-            additive.append("-- destructive-recreate path.\n\n");
+            additive.append("-- destructive recreation, and self-heals a business table (or bond junction table)\n");
+            additive.append("-- that doesn't exist yet on this database -- CREATE TABLE IF NOT EXISTS is a no-op\n");
+            additive.append("-- the instant it does (REG-40 tactical hotfix). Scope boundary: internal tables stay\n");
+            additive.append("-- V1-only (platform-fixed, not model-driven); column/table removal and type changes\n");
+            additive.append("-- remain structural changes handled by the schema-fingerprint destructive-recreate path.\n\n");
+
+            // Ordering rule (REG-40 tactical hotfix): all CREATE TABLE blocks -> all ADD COLUMN
+            // blocks -> all constraint blocks. A brand-new table must exist before its additive
+            // columns run against it, and a bond FK must come after both endpoint tables exist --
+            // which this ordering guarantees regardless of which tables/columns are actually new.
+
+            // 1. CREATE TABLE IF NOT EXISTS blocks (business tables, then their bond junction tables).
+            if (plan.createBusinessTables()) {
+                Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
+                for (CompiledConcept concept : model.getConcepts()) {
+                    appendBusinessTableShape(additive, concept, plan.engine(), conceptsByName);
+                }
+                appendJunctionTableShapes(additive, model, plan.engine());
+            }
+
+            // 2. ADD COLUMN blocks.
             // Internal tables previously had NO column-evolution path at all -- appendTable() only ever
             // emits CREATE TABLE IF NOT EXISTS, which is a no-op the instant the table already exists.
             // A new column added to an internal table definition (e.g. NpdevTenantTable) would silently
@@ -156,6 +174,17 @@ public final class SchemaRealizationEmitter {
                     appendAdditiveColumns(additive, concept, plan.engine(), conceptsByName);
                 }
             }
+
+            // 3. Constraint/index blocks (unique/secondary/explicit indexes, then bond FKs).
+            if (plan.createBusinessTables()) {
+                Map<String, Set<String>> implicitIndexFields = collectImplicitIndexFields(model);
+                for (CompiledConcept concept : model.getConcepts()) {
+                    appendBusinessTableConstraints(additive, concept, plan.engine(),
+                            implicitIndexFields.getOrDefault(concept.getName().toLowerCase(Locale.ROOT), Set.of()));
+                }
+                appendBondConstraints(additive, model, plan.engine());
+            }
+
             Files.writeString(schemaDir.resolve("R__npdev_schema_additive_columns.sql"), additive.toString(), StandardCharsets.UTF_8);
         }
     }
@@ -350,6 +379,21 @@ public final class SchemaRealizationEmitter {
 
     private static void appendBusinessTable(StringBuilder sql, CompiledConcept concept, DatabaseEngine engine,
             Map<String, CompiledConcept> conceptsByName, Set<String> implicitIndexFields) {
+        appendBusinessTableShape(sql, concept, engine, conceptsByName);
+        appendBusinessTableConstraints(sql, concept, engine, implicitIndexFields);
+    }
+
+    /**
+     * REG-40 tactical hotfix (schema-engine rebuild plan, Part II): split out of the former
+     * monolithic {@code appendBusinessTable} so the R__ repeatable migration can emit the same
+     * idempotent {@code CREATE TABLE IF NOT EXISTS} block for a business table that has never
+     * existed on an already-running database -- self-healing a missing table on an upgrade instead
+     * of failing boot with "Table not found". V1's combined output is unchanged: {@link
+     * #appendBusinessTable} still calls this immediately followed by {@link
+     * #appendBusinessTableConstraints}, in the same order as before this split.
+     */
+    private static void appendBusinessTableShape(StringBuilder sql, CompiledConcept concept, DatabaseEngine engine,
+            Map<String, CompiledConcept> conceptsByName) {
         String table = SqlIdentifierSupport.tableName(concept);
         List<String> lines = new ArrayList<>();
         String idColumn = null;
@@ -393,6 +437,16 @@ public final class SchemaRealizationEmitter {
         lines.add("  PRIMARY KEY (" + idColumn + ")");
         sql.append("CREATE TABLE IF NOT EXISTS ").append(table).append(" (\n");
         sql.append(String.join(",\n", lines)).append("\n);\n\n");
+    }
+
+    /**
+     * The constraint/index half of {@link #appendBusinessTableShape}, run separately in R__ so it
+     * lands AFTER the additive ALTER TABLE section -- a unique/FK constraint may target a column
+     * that section just added to an already-existing table.
+     */
+    private static void appendBusinessTableConstraints(StringBuilder sql, CompiledConcept concept,
+            DatabaseEngine engine, Set<String> implicitIndexFields) {
+        String table = SqlIdentifierSupport.tableName(concept);
         for (CompiledField field : concept.getFields()) {
             if (!field.isUnique()) {
                 continue;
@@ -932,13 +986,19 @@ public final class SchemaRealizationEmitter {
      */
     private static void appendBonds(StringBuilder sql, CompiledModel model, DatabaseEngine engine,
             Map<String, CompiledConcept> conceptsByName) {
-        List<Bond> bonds = BondModelSupport.allBonds(model);
-        if (bonds.isEmpty()) {
-            return;
-        }
+        appendJunctionTableShapes(sql, model, engine);
+        appendBondConstraints(sql, model, engine);
+    }
 
-        // Junction tables (N:M bonds).
-        for (Bond bond : bonds) {
+    /**
+     * REG-40 tactical hotfix (schema-engine rebuild plan, Part II): the CREATE-TABLE half of the
+     * former monolithic {@code appendBonds}, extracted so R__ can emit a many-to-many bond's
+     * junction table (self-healing a missing one on an upgrade) in the same CREATE-TABLE group as
+     * the business tables, ahead of the additive ALTER TABLE section. A junction table has no
+     * ALTER-eligible business columns of its own -- only structure -- so it belongs entirely here.
+     */
+    private static void appendJunctionTableShapes(StringBuilder sql, CompiledModel model, DatabaseEngine engine) {
+        for (Bond bond : BondModelSupport.allBonds(model)) {
             if (bond.cardinality() != Cardinality.MANY_TO_MANY) {
                 continue;
             }
@@ -957,6 +1017,30 @@ public final class SchemaRealizationEmitter {
             sql.append("CREATE INDEX IF NOT EXISTS ")
                     .append(SqlIdentifierSupport.safeSqlIdentifier("idx_" + junctionTable + "_" + targetColumn))
                     .append(" ON ").append(junctionTable).append(" (").append(targetColumn).append(");\n");
+        }
+    }
+
+    /**
+     * The FK-constraint half of the former monolithic {@code appendBonds} (junction-table FKs, then
+     * scalar N:1/1:1 FKs), extracted so R__ can emit it AFTER both the CREATE-TABLE group ({@link
+     * #appendBusinessTableShape}, {@link #appendJunctionTableShapes}) and the additive ALTER TABLE
+     * section -- a bond FK may reference a column either group just created or restored.
+     */
+    private static void appendBondConstraints(StringBuilder sql, CompiledModel model, DatabaseEngine engine) {
+        List<Bond> bonds = BondModelSupport.allBonds(model);
+        if (bonds.isEmpty()) {
+            return;
+        }
+
+        // Junction-table FKs (N:M bonds).
+        for (Bond bond : bonds) {
+            if (bond.cardinality() != Cardinality.MANY_TO_MANY) {
+                continue;
+            }
+            CompiledField sourceId = BondModelSupport.idField(bond.sourceConcept());
+            String junctionTable = bond.junctionTable();
+            String sourceColumn = SqlIdentifierSupport.sourceJunctionColumn(sourceId);
+            String targetColumn = SqlIdentifierSupport.targetJunctionColumn(bond.anchorField());
             // Source-side FK is always CASCADE: a junction row is membership owned by its source.
             String sourceConstraint = SqlIdentifierSupport.safeSqlIdentifier("fk_" + junctionTable + "_" + sourceColumn);
             String sourceConstraintSql = "ALTER TABLE " + junctionTable
@@ -1000,7 +1084,14 @@ public final class SchemaRealizationEmitter {
     ) {
         String statement = addConstraintSql.endsWith(";") ? addConstraintSql : addConstraintSql + ";";
         if (engine != DatabaseEngine.POSTGRES) {
-            return statement + "\n";
+            // REG-38: this lands in R__npdev_schema_additive_columns.sql, a Flyway *repeatable*
+            // migration that re-runs whenever its checksum changes (any model edit regenerates it).
+            // A bare "ADD CONSTRAINT" is not idempotent -- the re-run against a DB that already has
+            // the constraint fails with "Constraint already exists" and refuses the whole boot. H2
+            // supports "DROP CONSTRAINT IF EXISTS", so drop-then-add makes the statement idempotent
+            // the same way the Postgres branch below is (via its IF-NOT-EXISTS catalog guard).
+            return "ALTER TABLE " + tableName + " DROP CONSTRAINT IF EXISTS " + constraintName + ";\n"
+                    + statement + "\n";
         }
         // INFORMATION_SCHEMA.TABLE_CONSTRAINTS is standard SQL available in both PostgreSQL
         // and H2 PostgreSQL-compatibility mode. pg_constraint/pg_class/pg_namespace are
@@ -1060,6 +1151,8 @@ public final class SchemaRealizationEmitter {
         Map<String, Map<String, String>> businessTableColumnDefaultLiterals = new LinkedHashMap<>();
         Map<String, List<String>> businessTableExpressionDefaultColumns = new LinkedHashMap<>();
         Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints = new LinkedHashMap<>();
+        Map<String, List<ForeignKeyDecl>> businessTableForeignKeys = new LinkedHashMap<>();
+        Map<String, List<IndexDecl>> businessTableIndexes = new LinkedHashMap<>();
 
         Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
         for (CompiledConcept concept : model.getConcepts()) {
@@ -1091,6 +1184,17 @@ public final class SchemaRealizationEmitter {
             if (!uniqueConstraints.isEmpty()) {
                 businessTableUniqueConstraints.put(table, uniqueConstraints);
             }
+            // SER-G8: the FKs and indexes this concept's DDL creates, recorded in the manifest so the
+            // runtime can VERIFY them (ExternallyManaged full-shape check) instead of being blind to
+            // the FK/index dimension entirely. Same source of truth as the DDL emitted above.
+            List<ForeignKeyDecl> foreignKeys = collectForeignKeys(concept, conceptsByName);
+            if (!foreignKeys.isEmpty()) {
+                businessTableForeignKeys.put(table, foreignKeys);
+            }
+            List<IndexDecl> indexes = collectIndexes(concept, conceptsByName, uniqueConstraints);
+            if (!indexes.isEmpty()) {
+                businessTableIndexes.put(table, indexes);
+            }
         }
 
         return new BusinessTableMetadata(
@@ -1103,8 +1207,20 @@ public final class SchemaRealizationEmitter {
                 businessTableRequiredColumns,
                 businessTableColumnDefaultLiterals,
                 businessTableExpressionDefaultColumns,
-                businessTableUniqueConstraints
+                businessTableUniqueConstraints,
+                businessTableForeignKeys,
+                businessTableIndexes
         );
+    }
+
+    /** SER-G8: a foreign key the model declares, for manifest emission. Carries no NAME — the runtime
+     *  matches by column set + referenced table, because constraint names are engine-generated. */
+    public record ForeignKeyDecl(List<String> columns, String referencedTable, List<String> referencedColumns) {
+    }
+
+    /** SER-G8: an index the model declares, for manifest emission. Carries no NAME, for the same reason
+     *  as {@link ForeignKeyDecl}. */
+    public record IndexDecl(List<String> columns, boolean unique) {
     }
 
     /** See {@link #computeBusinessTableMetadata}. */
@@ -1118,12 +1234,52 @@ public final class SchemaRealizationEmitter {
             Map<String, List<String>> businessTableRequiredColumns,
             Map<String, Map<String, String>> businessTableColumnDefaultLiterals,
             Map<String, List<String>> businessTableExpressionDefaultColumns,
-            Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints
+            Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints,
+            Map<String, List<ForeignKeyDecl>> businessTableForeignKeys,
+            Map<String, List<IndexDecl>> businessTableIndexes
     ) {
         static BusinessTableMetadata empty() {
             return new BusinessTableMetadata(List.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
-                    Map.of(), Map.of(), Map.of(), Map.of());
+                    Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
         }
+    }
+
+    /** SER-G8: every bond field on this concept becomes one FK — the SAME (column -&gt; targetTable.anchor)
+     *  relationship {@code appendBondConstraints}/the additive path emit as DDL. */
+    private static List<ForeignKeyDecl> collectForeignKeys(
+            CompiledConcept concept, Map<String, CompiledConcept> conceptsByName) {
+        List<ForeignKeyDecl> foreignKeys = new ArrayList<>();
+        for (CompiledField field : concept.getFields()) {
+            Optional<Bond> bond = BondModelSupport.resolveBond(concept, field, conceptsByName);
+            if (bond.isEmpty()) {
+                continue;
+            }
+            Bond resolved = bond.get();
+            foreignKeys.add(new ForeignKeyDecl(
+                    List.of(SqlIdentifierSupport.columnName(field)),
+                    resolved.targetTable(),
+                    List.of(resolved.anchorColumn())));
+        }
+        return List.copyOf(foreignKeys);
+    }
+
+    /** SER-G8: the indexes this concept's DDL creates — one per unique constraint (unique) and one per
+     *  bond column (non-unique, the FK lookup index). Deliberately does NOT include implicit primary-key
+     *  indexes: the runtime treats a live PK over the same columns as satisfying a declared index, and
+     *  the model never needs to ask for one. */
+    private static List<IndexDecl> collectIndexes(
+            CompiledConcept concept, Map<String, CompiledConcept> conceptsByName,
+            List<UniqueConstraintDecl> uniqueConstraints) {
+        List<IndexDecl> indexes = new ArrayList<>();
+        for (UniqueConstraintDecl unique : uniqueConstraints) {
+            indexes.add(new IndexDecl(List.copyOf(unique.columns()), true));
+        }
+        for (CompiledField field : concept.getFields()) {
+            if (BondModelSupport.resolveBond(concept, field, conceptsByName).isPresent()) {
+                indexes.add(new IndexDecl(List.of(SqlIdentifierSupport.columnName(field)), false));
+            }
+        }
+        return List.copyOf(indexes);
     }
 
     private static void emitManifest(
@@ -1201,6 +1357,33 @@ public final class SchemaRealizationEmitter {
         manifest.put("businessTableColumnDefaultLiterals", businessTableColumnDefaultLiterals);
         manifest.put("businessTableExpressionDefaultColumns", businessTableExpressionDefaultColumns);
         manifest.put("businessTableUniqueConstraints", businessTableUniqueConstraints);
+        // SER-G8: the model's declared FKs/indexes, encoded name-lessly (the runtime matches by column
+        // set, since constraint/index names are engine-generated and differ across H2/Postgres).
+        Map<String, List<Map<String, Object>>> encodedForeignKeys = new LinkedHashMap<>();
+        for (Map.Entry<String, List<ForeignKeyDecl>> entry : businessMetadata.businessTableForeignKeys().entrySet()) {
+            List<Map<String, Object>> encoded = new ArrayList<>();
+            for (ForeignKeyDecl decl : entry.getValue()) {
+                Map<String, Object> one = new LinkedHashMap<>();
+                one.put("columns", decl.columns());
+                one.put("referencedTable", decl.referencedTable());
+                one.put("referencedColumns", decl.referencedColumns());
+                encoded.add(one);
+            }
+            encodedForeignKeys.put(entry.getKey(), encoded);
+        }
+        Map<String, List<Map<String, Object>>> encodedIndexes = new LinkedHashMap<>();
+        for (Map.Entry<String, List<IndexDecl>> entry : businessMetadata.businessTableIndexes().entrySet()) {
+            List<Map<String, Object>> encoded = new ArrayList<>();
+            for (IndexDecl decl : entry.getValue()) {
+                Map<String, Object> one = new LinkedHashMap<>();
+                one.put("columns", decl.columns());
+                one.put("unique", decl.unique());
+                encoded.add(one);
+            }
+            encodedIndexes.put(entry.getKey(), encoded);
+        }
+        manifest.put("businessTableForeignKeys", encodedForeignKeys);
+        manifest.put("businessTableIndexes", encodedIndexes);
         // LNCH-1 Phase 6 (task 6.3): the destructive-item stable strings from a migration plan
         // computed THIS generation pass (empty when none was computed -- see this method's caller,
         // SchemaRealizationEmitter#emit's 5-arg overload). Lets the runtime executor's agreement

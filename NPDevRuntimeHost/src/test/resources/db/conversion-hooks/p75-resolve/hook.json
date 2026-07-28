@@ -1,0 +1,7 @@
+{
+  "id": "p75-resolve",
+  "claims": ["ADD_REQUIRED_COLUMN:p75_resolve:status"],
+  "description": "P7.5 fixture: adds the required status column itself, resolving the NEEDS_HOOK claim.",
+  "verifySql": "SELECT COUNT(*) FROM p75_resolve WHERE status IS NULL",
+  "verifyExpect": 0
+}

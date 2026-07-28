@@ -750,6 +750,36 @@ missing):
   relying on this as a strict mutex; if collisions become frequent in practice, the documented upgrade
   path is a real database lock (`pg_advisory_lock` + an H2 lock table), not built for v1.
 
+## Tenant-id canonicalization (REG-25)
+
+As of REG-25 the runtime canonicalizes `tenant_id` to **lowercase** at a single choke point
+(`com.npdev.kernel.ExecutionContext`), so every *new* read and write already uses one bucket per
+logical tenant regardless of casing (`Acme` and `acme` are the same tenant). This matches the tenant
+registry, which has always lowercased on insert.
+
+**Existing data written before REG-25** may still hold mixed-case `tenant_id` values (e.g. business
+rows under `Acme` while the registry says `acme`). A one-time, operator-run migration tool converges
+them — it is **never run automatically and never on boot**:
+
+```
+# dry-run (default): report per-table row counts + any collision buckets, write nothing
+pwsh -File scripts/ops/canonicalize-tenant-ids.ps1 -JdbcUrl 'jdbc:h2:tcp://localhost:9092/npdevdb'
+
+# apply: lowercase tenant_id everywhere; SKIP + report any table whose casings would MERGE
+pwsh -File scripts/ops/canonicalize-tenant-ids.ps1 -JdbcUrl '<url>' -Apply
+
+# force: also merge the collision tables (DANGEROUS: can join two tenants' data / violate a PK)
+pwsh -File scripts/ops/canonicalize-tenant-ids.ps1 -JdbcUrl '<url>' -Apply -Force
+```
+
+- Tenant-id-bearing tables are discovered from `information_schema` (no hard-coded table list); H2
+  (bundled `h2-*.jar`) and PostgreSQL (`psql` on PATH) are auto-detected from the JDBC URL.
+- **Collision detection is primary-key-agnostic:** any `LOWER(tenant_id)` bucket that more than one
+  distinct casing maps to is a collision (a blind lowercase would merge those rows). `-Apply` skips
+  and reports those tables so the operator resolves them deliberately before re-running (or opts in
+  with `-Force`). No forced in-place migration is ever performed for you.
+- Run it once per deployment during a maintenance window, dry-run first.
+
 ## See also
 
 - `docs/DEPLOYMENT.md` — the Postgres-first Docker Compose deployment this feature is exercised

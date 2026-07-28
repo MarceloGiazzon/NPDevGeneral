@@ -25,7 +25,10 @@
     "generatedAt": { "type": "string", "format": "date-time" },
     "scriptPath": { "const": "scripts/quality/generate-final-evidence-bundle.ps1" },
     "workspaceRoot": { "type": "string", "minLength": 1 },
-    "overallStatus": { "enum": ["passed", "failed"] },
+    "overallStatus": {
+      "$comment": "REG-32 (2026-07-24): added precondition-unmet (REG-3 pattern) -- required reports the ~21 producer gates never ran are an expected, non-fatal precondition, not a defect.",
+      "enum": ["passed", "failed", "precondition-unmet"]
+    },
     "bundleRoot": { "type": "string", "minLength": 1 },
     "requiredReportCount": { "const": 21 },
     "missingReportCount": { "type": "integer", "minimum": 0 },

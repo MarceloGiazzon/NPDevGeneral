@@ -6,7 +6,17 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(scriptDir, "..");
-const hostRoot = path.join(projectRoot, "playwright-static");
+// Resolve the static-host root IDENTICALLY to stage-playwright-static-host.mjs so serve reads exactly
+// where stage wrote it. serve previously hardcoded <ui-react>/playwright-static while stage defaulted
+// to the external build root, so the first-ever CI editor-gate run ENOENT'd on
+// 'playwright-static/index.html'. Keep these two resolutions byte-identical. (REG-34, editor E2E.)
+const workspaceRoot = path.resolve(projectRoot, "..", "..");
+const npdevBuildRoot = process.env.NPDEV_BUILD_ROOT
+  ? path.resolve(process.env.NPDEV_BUILD_ROOT)
+  : path.resolve(workspaceRoot, "..", "Build");
+const hostRoot = process.env.NPDEV_UI_PLAYWRIGHT_STATIC_DIR
+  ? path.resolve(process.env.NPDEV_UI_PLAYWRIGHT_STATIC_DIR)
+  : path.join(npdevBuildRoot, "ui", "npdev-editor-ui-react", "playwright-static");
 const appRoot = path.join(hostRoot, "npdev-ui-react");
 const port = Number(process.argv[2] ?? process.env.PORT ?? "5173");
 

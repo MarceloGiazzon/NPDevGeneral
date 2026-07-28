@@ -1,5 +1,11 @@
 package com.npdev.adapters.runtime.validation;
 
+import com.npdev.dsl.v1.compiled.CompiledCapabilityCall;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledFlow;
+import com.npdev.dsl.v1.compiled.CompiledFlowStep;
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.kernel.CapabilityRegistry;
 import com.npdev.kernel.ports.EventStore;
 import com.npdev.kernel.ports.FlowInstanceStore;
 import org.springframework.beans.factory.InitializingBean;
@@ -15,6 +21,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
@@ -25,6 +32,10 @@ public final class StartupValidator implements InitializingBean {
     private static final String SCHEDULER_ANCHOR = "scheduler-settings";
     private static final String AUTH_ANCHOR = "authentication";
     private static final String POSTGRES_ANCHOR = "postgres-mode-required-variables";
+    private static final String CAPABILITY_BINDING_ANCHOR = "persistence-capability-binding-checked-at-boot";
+    private static final String IDENTITY_PACK_ANCHOR = "identity-pack-freshness-checked-at-boot";
+    private static final String IDENTITY_USER_CONCEPT = "identity::User";
+    private static final String TOKEN_VERSION_FIELD = "tokenVersion";
 
     private final RuntimeSettings settings;
     private final DataSource dataSource;
@@ -37,6 +48,8 @@ public final class StartupValidator implements InitializingBean {
     private final String jwtAudience;
     private final String jwtPublicKeyPath;
     private final String jwtPrivateKeyPath;
+    private final CompiledModel compiledModel;
+    private final CapabilityRegistry capabilityRegistry;
     private final ResourceLoader resourceLoader;
 
     public StartupValidator(
@@ -53,7 +66,30 @@ public final class StartupValidator implements InitializingBean {
             String jwtPrivateKeyPath
     ) {
         this(settings, dataSource, eventStore, flowInstanceStore, environment, authMode, apiKeyMappings,
-                jwtIssuer, jwtAudience, jwtPublicKeyPath, jwtPrivateKeyPath, new DefaultResourceLoader());
+                jwtIssuer, jwtAudience, jwtPublicKeyPath, jwtPrivateKeyPath, null, null);
+    }
+
+    // LEDGER-1: overload adding compiledModel/capabilityRegistry for the persistence-binding
+    // boot-time check. Both null is equivalent to the 11-arg constructor above (check skipped) --
+    // kept separate rather than folding into one signature so existing callers/tests are untouched.
+    public StartupValidator(
+            RuntimeSettings settings,
+            DataSource dataSource,
+            EventStore eventStore,
+            FlowInstanceStore flowInstanceStore,
+            Environment environment,
+            String authMode,
+            String apiKeyMappings,
+            String jwtIssuer,
+            String jwtAudience,
+            String jwtPublicKeyPath,
+            String jwtPrivateKeyPath,
+            CompiledModel compiledModel,
+            CapabilityRegistry capabilityRegistry
+    ) {
+        this(settings, dataSource, eventStore, flowInstanceStore, environment, authMode, apiKeyMappings,
+                jwtIssuer, jwtAudience, jwtPublicKeyPath, jwtPrivateKeyPath, compiledModel, capabilityRegistry,
+                new DefaultResourceLoader());
     }
 
     // Package-visible for tests: lets a test inject a ResourceLoader (and thus point key paths at
@@ -70,6 +106,8 @@ public final class StartupValidator implements InitializingBean {
             String jwtAudience,
             String jwtPublicKeyPath,
             String jwtPrivateKeyPath,
+            CompiledModel compiledModel,
+            CapabilityRegistry capabilityRegistry,
             ResourceLoader resourceLoader
     ) {
         this.settings = Objects.requireNonNull(settings, "settings");
@@ -83,6 +121,8 @@ public final class StartupValidator implements InitializingBean {
         this.jwtAudience = jwtAudience;
         this.jwtPublicKeyPath = jwtPublicKeyPath;
         this.jwtPrivateKeyPath = jwtPrivateKeyPath;
+        this.compiledModel = compiledModel;
+        this.capabilityRegistry = capabilityRegistry;
         this.resourceLoader = resourceLoader == null ? new DefaultResourceLoader() : resourceLoader;
     }
 
@@ -99,6 +139,104 @@ public final class StartupValidator implements InitializingBean {
         if (settings.isPostgresMode()) {
             validatePostgres();
         }
+        validatePersistenceBinding();
+        validateIdentityPackFreshness();
+    }
+
+    // LEDGER-1: a model whose flows persist (createConcept/updateConcept/saveConcept, or a direct
+    // persistence.* capabilityCall -- all of these compile down to a CompiledFlowStep whose
+    // capabilityCall.capabilityName is "persistence") but has no bound persistence adapter currently
+    // 500s opaquely on the first such call (RegistryCapabilityDispatcher returns a structured
+    // CAPABILITY_BINDING_MISSING failure that a flow step turns into an uncaught exception -> bare
+    // Spring 500; the clear message reaches only stdout). Refuse to boot instead, naming the flow and
+    // the fix. compiledModel/capabilityRegistry are null for callers that don't wire them (skip check).
+    private void validatePersistenceBinding() {
+        if (compiledModel == null || capabilityRegistry == null) {
+            return;
+        }
+        if (capabilityRegistry.has("persistence")) {
+            return;
+        }
+        String offendingFlow = findFlowReferencingPersistence(compiledModel);
+        if (offendingFlow == null) {
+            return;
+        }
+        throw configError(
+                "Model flow '" + offendingFlow + "' persists via capability 'persistence' but no "
+                        + "persistence capability binding is registered. Declare a binding "
+                        + "(persistence-inproc for dev / persistence-postgres for prod).",
+                CAPABILITY_BINDING_ANCHOR
+        );
+    }
+
+    private static String findFlowReferencingPersistence(CompiledModel model) {
+        for (CompiledFlow flow : model.getFlows()) {
+            if (stepsReferencePersistence(flow.getSteps())) {
+                return flow.getName();
+            }
+        }
+        return null;
+    }
+
+    // REG-39: an app can carry its OWN copy of a built-in pack (a local $ref under its model root,
+    // rather than composing NPDevContract/packs/<alias>/pack.json fresh via BuiltinPackComposer at
+    // every generation). When the platform's pack gains a field that platform code (LoginController,
+    // PasswordResetController, ControlPanelTenantUsersController, IdentityRoleLookup) then reads
+    // unconditionally, every app whose copy predates that addition breaks -- and breaks misleadingly,
+    // as a swallowed SQLException masquerading as invalid_credentials, not as a schema error (this is
+    // exactly what happened to WmsOffice: its local identity-pack copy predated the LNCH-4
+    // tokenVersion field). compiledModel already carries the FULLY MERGED, pack-namespaced concept set
+    // ("identity::User" etc.) regardless of which mechanism contributed it, so this check needs no new
+    // generation-time plumbing: if this app declares an "identity::User" concept at all, it must carry
+    // the tokenVersion field the platform's current identity pack has had since LNCH-4. An app that
+    // doesn't use the identity pack at all has no "identity::User" concept -- skip, nothing to check.
+    private void validateIdentityPackFreshness() {
+        if (compiledModel == null) {
+            return;
+        }
+        CompiledConcept identityUser = null;
+        for (CompiledConcept concept : compiledModel.getConcepts()) {
+            if (IDENTITY_USER_CONCEPT.equalsIgnoreCase(concept.getName())) {
+                identityUser = concept;
+                break;
+            }
+        }
+        if (identityUser == null) {
+            return;
+        }
+        boolean hasTokenVersion = identityUser.getFields().stream()
+                .anyMatch(field -> TOKEN_VERSION_FIELD.equalsIgnoreCase(field.getName()));
+        if (!hasTokenVersion) {
+            throw configError(
+                    "This app's copy of the built-in 'identity' pack is STALE: concept '" + IDENTITY_USER_CONCEPT
+                            + "' is missing the '" + TOKEN_VERSION_FIELD + "' field the platform's identity pack "
+                            + "has carried since LNCH-4. Left unfixed, this makes login fail with a misleading "
+                            + "'invalid_credentials' error instead of this message (REG-39). Fix: regenerate this "
+                            + "app so it composes the platform's CURRENT NPDevContract/packs/identity/pack.json "
+                            + "(the normal path via BuiltinPackComposer), or bring any locally-committed copy of "
+                            + "the identity pack up to date with it.",
+                    IDENTITY_PACK_ANCHOR
+            );
+        }
+    }
+
+    private static boolean stepsReferencePersistence(List<CompiledFlowStep> steps) {
+        if (steps == null) {
+            return false;
+        }
+        for (CompiledFlowStep step : steps) {
+            CompiledCapabilityCall capabilityCall = step.getCapabilityCall();
+            if (capabilityCall != null && "persistence".equalsIgnoreCase(capabilityCall.getCapabilityName())) {
+                return true;
+            }
+            if (stepsReferencePersistence(step.getThenSteps())
+                    || stepsReferencePersistence(step.getElseSteps())
+                    || stepsReferencePersistence(step.getLoopSteps())
+                    || stepsReferencePersistence(step.getOnFailureSteps())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void validateModeAndProfiles() {

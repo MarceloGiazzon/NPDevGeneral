@@ -1,0 +1,11 @@
+{
+  "missionId": "M2-SEC-ROWAUTHZ",
+  "runStatus": "RUN",
+  "packManifestSha256": "47c74d1d17fab883126d611dbd75ab0225bfcb2f4ac05816aa428ab90b7af061",
+  "verdictRecordKind": "external-ai-verdict",
+  "vendors": [
+    "gemini",
+    "nvidia"
+  ],
+  "runAt": "2026-07-27T04:42:44.479131+00:00"
+}
