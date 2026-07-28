@@ -16,6 +16,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
@@ -80,9 +81,444 @@ public final class CompiledMetadataCanonicalJson {
         catalogs.set("transitions", toTransitionCatalog(model));
         catalogs.set("layout", toLayoutCatalog(rawModelRoot, model));
         catalogs.set("validation", toValidationCatalog(model));
+        catalogs.set("invocations", toInvocationCatalog(model));
 
         root.set("catalogs", catalogs);
         return root;
+    }
+
+    /**
+     * F2.1 (docs/FRONTEND_STRATEGY_PLAN.md, docs/NEXT_EXECUTION_PLAN.md P4.2): the intent -&gt;
+     * invocation catalog. A concept typically has SEVERAL write routes with different semantics:
+     * direct CRUD ({@code /api/concepts/&lt;tableName&gt;}) writes the row; flow execution
+     * ({@code /api/v1/flows/&lt;flow&gt;/execute}) runs invariants, orchestration and compensation.
+     * Entries whose concept/mode is flow-backed are emitted with {@code preferred:false} and a
+     * {@code prefer} pointer, so a consumer cannot silently bypass business rules.
+     *
+     * <p>Every path here was independently verified against the real controllers, not assumed from
+     * the model's shape -- an earlier draft of this catalog's own design doc got several paths wrong
+     * this way (e.g. {@code /api/concepts/&lt;ConceptName&gt;} instead of the real
+     * {@code /api/concepts/&lt;tableName&gt;}; a flat 202 for flow-execute when it is actually 200 on
+     * synchronous completion and 202 only when the flow parks on an {@code awaitEvent}). See each
+     * helper's javadoc for the specific controller/route it mirrors.
+     *
+     * <p>Deterministic ordering by id -- the generator's determinism contract. Use
+     * {@code LinkedHashSet}/explicit sorts, never a multi-entry {@code Map.of} (see
+     * {@code NoMultiEntryMapOfInGeneratedManifestEmittersTest}).
+     */
+    private static ArrayNode toInvocationCatalog(CompiledModel model) {
+        List<ObjectNode> entries = new ArrayList<>();
+
+        for (CompiledConcept concept : sortedConcepts(model)) {
+            entries.add(listInvocation(concept));
+            entries.add(pagedQueryInvocation(concept));
+            entries.add(exportCsvInvocation(concept));
+            entries.add(readInvocation(concept));
+            for (String mode : List.of("create", "update", "delete")) {
+                entries.add(directMutationInvocation(model, concept, mode));
+            }
+            for (CompiledField field : sortedFields(concept)) {
+                // The real, repo-wide file-detection idiom (matches FileUploadController's own
+                // requireFileField, and ServiceEmitter/BusinessUiEmitter) -- NOT a "file" widget,
+                // which does not exist in FieldWidgetDefaults.SUPPORTED_WIDGETS.
+                if ("file".equalsIgnoreCase(field.getDslType())) {
+                    entries.add(fileUploadInvocation(concept, field));
+                }
+            }
+        }
+        for (CompiledFlow flow : sortedFlows(model)) {
+            entries.add(flowInvocation(model, flow));
+        }
+        for (CompiledPanel panel : sortedPanels(model)) {
+            for (CompiledPanelAction action : sortedPanelActions(panel)) {
+                entries.add(panelActionInvocation(panel, action));
+            }
+            for (CompiledPanelDataSource dataSource : sortedDataSources(panel)) {
+                if (dataSource.supportsAdd()) {
+                    entries.add(panelRowAddInvocation(panel, dataSource));
+                }
+                if (dataSource.supportsDelete()) {
+                    entries.add(panelRowDeleteInvocation(panel, dataSource));
+                }
+            }
+        }
+        for (CompiledAggregate aggregate : sortedAggregates(model)) {
+            entries.add(aggregateReadInvocation(aggregate));
+            entries.add(aggregateCommitInvocation(aggregate));
+            entries.add(aggregateInvokeInvocation(aggregate));
+        }
+
+        entries.sort(Comparator.comparing(node -> text(node, "id")));
+        return toArray(entries);
+    }
+
+    /** {@code GET /api/concepts/&lt;tableName&gt;} -- the generic CRUD controller's raw list
+     * (business-concept-crud-controller.mustache:78). Always preferred: a read has no
+     * flow-bypass ambiguity. */
+    private static ObjectNode listInvocation(CompiledConcept concept) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("id", "list:" + safe(concept.getName()));
+        node.put("kind", "list");
+        node.put("concept", safe(concept.getName()));
+        node.put("method", "GET");
+        node.put("path", "/api/concepts/" + safe(concept.getTableName()));
+        node.put("successStatus", 200);
+        node.put("preferred", true);
+        node.put("requiredPermission", "list:" + normalize(concept.getName()));
+        return node;
+    }
+
+    /** {@code GET /api/v1/concepts/&lt;ConceptName&gt;/page} (+ {@code /api/...} alias) --
+     * ConceptQueryController's filtered/sorted/paginated read (ConceptQueryController.java:56).
+     * Path variable is the concept NAME, not the table name -- a different vocabulary than the
+     * generic CRUD controller uses at the same {@code /api/concepts} prefix depth. */
+    private static ObjectNode pagedQueryInvocation(CompiledConcept concept) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        String versioned = "/api/v1/concepts/" + safe(concept.getName()) + "/page";
+        String unversioned = "/api/concepts/" + safe(concept.getName()) + "/page";
+        node.put("id", "pagedQuery:" + safe(concept.getName()));
+        node.put("kind", "pagedQuery");
+        node.put("concept", safe(concept.getName()));
+        node.put("method", "GET");
+        node.put("path", versioned);
+        node.set("pathAliases", toStringArray(List.of(unversioned)));
+        node.put("successStatus", 200);
+        node.put("preferred", true);
+        node.put("requiredPermission", "list:" + normalize(concept.getName()));
+        return node;
+    }
+
+    /** {@code GET /api/v1/concepts/&lt;ConceptName&gt;/export.csv} (+ alias) --
+     * ConceptQueryController.exportCsv (ConceptQueryController.java:101). Same filter/sort
+     * query-param contract as {@link #pagedQueryInvocation}. */
+    private static ObjectNode exportCsvInvocation(CompiledConcept concept) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        String versioned = "/api/v1/concepts/" + safe(concept.getName()) + "/export.csv";
+        String unversioned = "/api/concepts/" + safe(concept.getName()) + "/export.csv";
+        node.put("id", "exportCsv:" + safe(concept.getName()));
+        node.put("kind", "exportCsv");
+        node.put("concept", safe(concept.getName()));
+        node.put("method", "GET");
+        node.put("path", versioned);
+        node.set("pathAliases", toStringArray(List.of(unversioned)));
+        node.put("successStatus", 200);
+        node.put("preferred", true);
+        node.put("requiredPermission", "list:" + normalize(concept.getName()));
+        return node;
+    }
+
+    /** {@code GET /api/concepts/&lt;tableName&gt;/{id}} -- generic CRUD read-by-id
+     * (business-concept-crud-controller.mustache:184), 404 when the id does not resolve. */
+    private static ObjectNode readInvocation(CompiledConcept concept) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("id", "read:" + safe(concept.getName()));
+        node.put("kind", "read");
+        node.put("concept", safe(concept.getName()));
+        node.put("method", "GET");
+        node.put("path", "/api/concepts/" + safe(concept.getTableName()) + "/{id}");
+        node.put("successStatus", 200);
+        node.put("preferred", true);
+        node.put("requiredPermission", "read:" + normalize(concept.getName()));
+        return node;
+    }
+
+    /**
+     * {@code create}/{@code update}/{@code delete} direct CRUD (generic CRUD controller:
+     * POST/PUT/DELETE {@code /api/concepts/&lt;tableName&gt;[/{id}]}, business-concept-crud-
+     * controller.mustache:200/221/249 -- 200/200/204 on success, 409 {@code constraint_violation}
+     * on a unique-constraint hit).
+     *
+     * <p>{@code preferred} is derived from {@link CompiledModel#findFlow(String, String)} --
+     * the platform's OWN definition of "this concept/mode is flow-backed" (its javadoc: "the core
+     * mutation step delegates to this Flow's own steps when one is declared, instead of the
+     * default direct gateway/entity save"). Deriving it this way means the catalog cannot drift
+     * from the generator's real delegation decision the way a separately-maintained lookup could.
+     */
+    private static ObjectNode directMutationInvocation(CompiledModel model, CompiledConcept concept, String mode) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        String kind = mode + "Direct";
+        String method = switch (mode) {
+            case "update" -> "PUT";
+            case "delete" -> "DELETE";
+            default -> "POST";
+        };
+        int successStatus = "delete".equals(mode) ? 204 : 200;
+        String basePath = "/api/concepts/" + safe(concept.getTableName());
+        String path = "create".equals(mode) ? basePath : basePath + "/{id}";
+
+        node.put("id", kind + ":" + safe(concept.getName()));
+        node.put("kind", kind);
+        node.put("concept", safe(concept.getName()));
+        node.put("method", method);
+        node.put("path", path);
+        node.put("successStatus", successStatus);
+        node.put("requiredPermission", mode + ":" + normalize(concept.getName()));
+
+        Optional<CompiledFlow> flowBacking = model.findFlow(concept.getName(), mode);
+        if (flowBacking.isPresent()) {
+            node.put("preferred", false);
+            node.put("prefer", "flow:" + safe(flowBacking.get().getName()));
+            node.put("preferReason", safe(concept.getName()) + " " + mode
+                    + " is flow-backed; the direct route bypasses the flow's invariants, orchestration and compensation.");
+        } else {
+            node.put("preferred", true);
+        }
+        return node;
+    }
+
+    /** {@code POST /api/files/&lt;ConceptName&gt;/&lt;fieldName&gt;} (FileUploadController.java:76),
+     * multipart part name {@code "file"}. Concept resolved by NAME (FileUploadController's own
+     * {@code requireFileField}, case-insensitive), not table name -- a third vocabulary at this
+     * same nominal {@code /api/...} depth, after {@code /api/concepts/&lt;tableName&gt;} and
+     * {@code /api/v1/concepts/&lt;ConceptName&gt;}. */
+    private static ObjectNode fileUploadInvocation(CompiledConcept concept, CompiledField field) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("id", "fileUpload:" + safe(concept.getName()) + ":" + safe(field.getName()));
+        node.put("kind", "fileUpload");
+        node.put("concept", safe(concept.getName()));
+        node.put("field", safe(field.getName()));
+        node.put("method", "POST");
+        node.put("path", "/api/files/" + safe(concept.getName()) + "/" + safe(field.getName()));
+        node.put("bodyShape", "multipart");
+        node.put("bodyPartName", "file");
+        node.put("preferred", true);
+        return node;
+    }
+
+    /**
+     * {@code POST /api/v1/flows/&lt;flowName&gt;/execute} (+ {@code /api/flows/...} alias,
+     * npdev-runtime-flow-controller.mustache:46). Every flow is executable here -- there is no
+     * {@code startEndpoint}-gated subset in the real controller, so (unlike an earlier design
+     * sketch) this emits one entry per flow unconditionally.
+     *
+     * <p>{@code inputSchema} is populated from a model key ({@code flow.inputSchema}) no sample in
+     * this repo declares, so it is null in practice; {@code body.inputFields} is derived instead
+     * from the flow's OWN concept (the {@code input.concept}/{@code input.mode} the flow was
+     * declared against), falling back to {@code inputSchema} only when a model does supply one.
+     *
+     * <p>{@code execution} deliberately does not claim a single fixed status: the real controller
+     * returns 200 when the flow completes synchronously, 202 only when it parks on an
+     * {@code awaitEvent}, and 422 (not 400) on invariant/input-validation failure
+     * (npdev-runtime-flow-controller.mustache:76-85).
+     */
+    private static ObjectNode flowInvocation(CompiledModel model, CompiledFlow flow) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("id", "flow:" + safe(flow.getName()));
+        node.put("kind", "flow");
+        node.put("concept", safe(flow.getConcept()));
+        node.put("intent", safe(flow.getMode()));
+        String label = flow.getAction() == null ? "" : safe(flow.getAction().getLabel());
+        node.put("label", label.isBlank() ? safe(flow.getName()) : label);
+        node.put("method", "POST");
+        node.put("path", "/api/v1/flows/" + safe(flow.getName()) + "/execute");
+        node.set("pathAliases", toStringArray(List.of("/api/flows/" + safe(flow.getName()) + "/execute")));
+        node.put("preferred", true);
+
+        ObjectNode body = JsonNodeFactory.instance.objectNode();
+        body.put("shape", "flowInput");
+        body.set("inputFields", flowInputFields(model, flow));
+        node.set("body", body);
+
+        ObjectNode execution = JsonNodeFactory.instance.objectNode();
+        execution.put("async", true);
+        execution.put("statusOnComplete", 200);
+        execution.put("statusOnWaiting", 202);
+        execution.put("statusOnValidationFailure", 422);
+        execution.put("statusRoute", "/api/v1/executions/{executionId}/links");
+        execution.put("correlationField", "executionId");
+        node.set("execution", execution);
+
+        String permissionHint = flow.getAction() == null ? null : flow.getAction().getPermissionHint();
+        if (permissionHint != null && !permissionHint.isBlank()) {
+            node.put("requiredPermission", permissionHint);
+        }
+        return node;
+    }
+
+    /** The flow's input fields -- derived from its OWN concept (the {@code input.concept}/
+     * {@code input.mode} it was declared with), since {@code getInputSchema()} is null for every
+     * flow in this repo's sample corpus. Falls back to walking {@code getInputSchema()} when a
+     * model does supply one. An id field is excluded for {@code mode=create} (the caller does not
+     * supply it). */
+    private static ArrayNode flowInputFields(CompiledModel model, CompiledFlow flow) {
+        List<ObjectNode> fieldNodes = new ArrayList<>();
+        CompiledSchema inputSchema = flow.getInputSchema();
+        if (inputSchema != null && !inputSchema.getProperties().isEmpty()) {
+            for (Map.Entry<String, CompiledSchema> property : inputSchema.getProperties().entrySet()) {
+                ObjectNode fieldNode = JsonNodeFactory.instance.objectNode();
+                fieldNode.put("name", safe(property.getKey()));
+                fieldNode.put("type", inferSchemaType(property.getValue() == null ? null : property.getValue().getType(), property.getValue()));
+                fieldNode.put("required", inputSchema.getRequired().contains(property.getKey()));
+                fieldNode.put("fieldPath", safe(flow.getConcept()) + "." + property.getKey());
+                fieldNodes.add(fieldNode);
+            }
+        } else {
+            Optional<CompiledConcept> concept = model.findConcept(safe(flow.getConcept()));
+            if (concept.isPresent()) {
+                boolean isCreate = "create".equalsIgnoreCase(safe(flow.getMode()));
+                for (CompiledField field : sortedFields(concept.get())) {
+                    if (isCreate && field.isId()) {
+                        continue;
+                    }
+                    ObjectNode fieldNode = JsonNodeFactory.instance.objectNode();
+                    fieldNode.put("name", safe(field.getName()));
+                    fieldNode.put("type", inferSchemaType(field.getDslType(), field.getSchema()));
+                    fieldNode.put("required", field.isRequired());
+                    fieldNode.put("fieldPath", concept.get().getName() + "." + field.getName());
+                    fieldNodes.add(fieldNode);
+                }
+            }
+        }
+        fieldNodes.sort(Comparator.comparing(node -> text(node, "name")));
+        return toArray(fieldNodes);
+    }
+
+    /**
+     * A panel action's real route depends on its {@code binding} -- {@code conceptMutation}/
+     * {@code procedure} go through {@code RuntimeUiMetadataController}'s panel-action endpoint
+     * (RuntimeUiMetadataController.java:84); {@code flow}-bound actions do NOT (PanelRuntime.
+     * executeAction has no flow branch -- it would return {@code status:"UNSUPPORTED"} there) and
+     * instead dispatch through the execution gateway (DirectExecutionGatewayController.java:70),
+     * unconditionally 202. Mirrors {@code PanelRuntime.executeAction}'s own binding-normalization
+     * fallback: a blank {@code binding()} with a non-null {@code procedure()} is treated as
+     * {@code "procedure"}.
+     */
+    private static ObjectNode panelActionInvocation(CompiledPanel panel, CompiledPanelAction action) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        String binding = normalize(firstNonBlank(action.binding(),
+                action.procedure() == null || action.procedure().isBlank() ? null : "procedure"));
+        node.put("id", "panelAction:" + safe(panel.name()) + ":" + safe(action.name()));
+        node.put("kind", "panelAction");
+        node.put("panel", safe(panel.name()));
+        node.put("action", safe(action.name()));
+        node.put("label", safe(firstNonBlank(action.label(), action.name())));
+        node.put("binding", binding.isBlank() ? "conceptmutation" : binding);
+        node.put("method", "POST");
+        if ("flow".equals(binding)) {
+            node.put("path", "/api/v1/execute/panel-action");
+            node.set("pathAliases", toStringArray(List.of("/api/execute/panel-action")));
+            node.put("successStatus", 202);
+        } else {
+            String direct = "/api/v1/runtime/metadata/ui/panels/" + safe(panel.name()) + "/actions/" + safe(action.name());
+            node.put("path", direct);
+            node.set("pathAliases", toStringArray(List.of(
+                    "/api/runtime/metadata/ui/panels/" + safe(panel.name()) + "/actions/" + safe(action.name()))));
+            node.put("successStatus", 200);
+        }
+        node.put("preferred", true);
+        return node;
+    }
+
+    /** {@code POST .../panels/&lt;panel&gt;/dataSources/&lt;dataSource&gt;/rows}
+     * (RuntimeUiMetadataController.java:95). Gated on {@link CompiledPanelDataSource#supportsAdd()},
+     * not a raw {@code rowOps().contains("add")} check -- the built-in accessor is case-insensitive,
+     * a naive contains-check is not. */
+    private static ObjectNode panelRowAddInvocation(CompiledPanel panel, CompiledPanelDataSource dataSource) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        String path = "/api/v1/runtime/metadata/ui/panels/" + safe(panel.name()) + "/dataSources/" + safe(dataSource.name()) + "/rows";
+        node.put("id", "panelRowAdd:" + safe(panel.name()) + ":" + safe(dataSource.name()));
+        node.put("kind", "panelRowAdd");
+        node.put("panel", safe(panel.name()));
+        node.put("dataSource", safe(dataSource.name()));
+        node.put("method", "POST");
+        node.put("path", path);
+        node.set("pathAliases", toStringArray(List.of(path.replaceFirst("^/api/v1", "/api"))));
+        node.put("successStatus", 200);
+        node.put("preferred", true);
+        return node;
+    }
+
+    /** {@code DELETE .../panels/&lt;panel&gt;/dataSources/&lt;dataSource&gt;/rows/{id}}
+     * (RuntimeUiMetadataController.java:106). Gated on {@link CompiledPanelDataSource#supportsDelete()}. */
+    private static ObjectNode panelRowDeleteInvocation(CompiledPanel panel, CompiledPanelDataSource dataSource) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        String path = "/api/v1/runtime/metadata/ui/panels/" + safe(panel.name()) + "/dataSources/" + safe(dataSource.name()) + "/rows/{id}";
+        node.put("id", "panelRowDelete:" + safe(panel.name()) + ":" + safe(dataSource.name()));
+        node.put("kind", "panelRowDelete");
+        node.put("panel", safe(panel.name()));
+        node.put("dataSource", safe(dataSource.name()));
+        node.put("method", "DELETE");
+        node.put("path", path);
+        node.set("pathAliases", toStringArray(List.of(path.replaceFirst("^/api/v1", "/api"))));
+        node.put("successStatus", 200);
+        node.put("preferred", true);
+        return node;
+    }
+
+    /** {@code GET /api/v1/runtime/aggregate/&lt;name&gt;/{rootId}} (AggregateApiController.java:44). */
+    private static ObjectNode aggregateReadInvocation(CompiledAggregate aggregate) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        String path = "/api/v1/runtime/aggregate/" + safe(aggregate.name()) + "/{rootId}";
+        node.put("id", "aggregateRead:" + safe(aggregate.name()));
+        node.put("kind", "aggregateRead");
+        node.put("aggregate", safe(aggregate.name()));
+        node.put("method", "GET");
+        node.put("path", path);
+        node.set("pathAliases", toStringArray(List.of(path.replaceFirst("^/api/v1", "/api"))));
+        node.put("successStatus", 200);
+        node.put("preferred", true);
+        return node;
+    }
+
+    /** {@code POST /api/v1/runtime/aggregate/&lt;name&gt;} (AggregateApiController.java:59) --
+     * commits the whole draft tree in one call. */
+    private static ObjectNode aggregateCommitInvocation(CompiledAggregate aggregate) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        String path = "/api/v1/runtime/aggregate/" + safe(aggregate.name());
+        node.put("id", "aggregateCommit:" + safe(aggregate.name()));
+        node.put("kind", "aggregateCommit");
+        node.put("aggregate", safe(aggregate.name()));
+        node.put("method", "POST");
+        node.put("path", path);
+        node.set("pathAliases", toStringArray(List.of(path.replaceFirst("^/api/v1", "/api"))));
+        node.put("successStatus", 200);
+        node.put("preferred", true);
+        return node;
+    }
+
+    /**
+     * {@code POST /api/v1/runtime/aggregate/&lt;name&gt;/invoke/{procedureName}}
+     * (AggregateApiController.java:79). Deliberately ONE templated entry, not a curated
+     * per-procedure list: {@code AggregateRuntime.invoke}'s own validation
+     * ({@code procedureRunner.hasProcedure(procedureName)}) is model-global, not scoped to this
+     * aggregate at all -- there is no compiled aggregate&lt;-&gt;procedure binding to enumerate.
+     * A curated list derived from workbench-panel {@code actions}/{@code recompute} metadata would
+     * be incomplete (any other model procedure is ALSO callable here) and would misrepresent an
+     * unenforced invariant as an enforced one. Naming that gap explicitly is more honest than
+     * guessing a closed list.
+     */
+    private static ObjectNode aggregateInvokeInvocation(CompiledAggregate aggregate) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        String path = "/api/v1/runtime/aggregate/" + safe(aggregate.name()) + "/invoke/{procedureName}";
+        node.put("id", "aggregateInvoke:" + safe(aggregate.name()));
+        node.put("kind", "aggregateInvoke");
+        node.put("aggregate", safe(aggregate.name()));
+        node.put("method", "POST");
+        node.put("path", path);
+        node.set("pathAliases", toStringArray(List.of(path.replaceFirst("^/api/v1", "/api"))));
+        node.put("successStatus", 200);
+        node.put("preferred", true);
+        node.put("note", "procedureName is any model-declared procedure name -- the runtime does not "
+                + "scope which procedures are valid for this specific aggregate.");
+        return node;
+    }
+
+    private static List<CompiledAggregate> sortedAggregates(CompiledModel model) {
+        List<CompiledAggregate> aggregates = new ArrayList<>(model.getAggregates());
+        aggregates.sort(Comparator.comparing(aggregate -> normalize(aggregate.name())));
+        return aggregates;
+    }
+
+    private static List<CompiledPanelAction> sortedPanelActions(CompiledPanel panel) {
+        List<CompiledPanelAction> actions = new ArrayList<>(panel.actions());
+        actions.sort(Comparator.comparing(action -> normalize(action.name())));
+        return actions;
+    }
+
+    private static List<CompiledPanelDataSource> sortedDataSources(CompiledPanel panel) {
+        List<CompiledPanelDataSource> dataSources = new ArrayList<>(panel.dataSources());
+        dataSources.sort(Comparator.comparing(dataSource -> normalize(dataSource.name())));
+        return dataSources;
     }
 
     private static ArrayNode toConceptCatalog(CompiledModel model) {
