@@ -42,6 +42,25 @@ public record ExecutionContext(
         return new ExecutionContext(tenantId, "system:scheduler", Map.of("trigger", "schedule"), Set.of("ADMIN"));
     }
 
+    /**
+     * REG-56: the trust level a flow resumes under after parking on {@code awaitEvent} -- whether
+     * the resume is triggered by an unrelated caller publishing the awaited event, by the scheduled
+     * sweep, or by the {@code resumeFlow} port method. The flow's own steps (including any
+     * capabilityCall) were already authorized once at submission time; resuming to completion is
+     * not a new privileged request and must not depend on whatever role the resume TRIGGER happens
+     * to hold. Before this existed, three different call sites each got it a different way -- the
+     * event-driven path used the PUBLISHER's own context (denying resume when the publisher lacks a
+     * capability the flow needs, or over-granting when the publisher happens to be an admin), the
+     * scheduled sweep used {@link #of(String, String)} which always defaults role to USER (denying
+     * every capability-gated resume permanently, admin-submitted or not), and the public {@code
+     * resumeFlow} API used {@link #anonymous()} (defaulting tenant too). Mirrors the ADMIN trust
+     * level {@link #system(String)} already grants the cron scheduler (LNCH-12), while keeping the
+     * flow's OWN actor for audit traceability instead of a synthetic "system:scheduler" identity.
+     */
+    public static ExecutionContext resuming(String tenantId, String actorId) {
+        return new ExecutionContext(tenantId, actorId, Map.of("trigger", "resume"), Set.of("ADMIN"));
+    }
+
     public ExecutionContext withTag(String key, String value) {
         String normalizedKey = normalize(key);
         if (normalizedKey == null) {
