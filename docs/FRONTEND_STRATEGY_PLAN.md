@@ -460,9 +460,24 @@ Full ~80%-complete draft of `UI_CONTRACT.md` and the 8-rule agent prompt are in 
 
 ---
 
-# Part 3 — F3 · Provenance: one manifest, three producers  ★
+# Part 3 — F3 · Provenance: one manifest, three producers  ★  ✅ DONE 2026-07-28
 
 **4 days. This is where the merge pays.**
+
+> **Correction, filed the same day this shipped.** "For generated screens provenance is nearly free"
+> (§3.2, unchanged below) was half right: `AutoPanelExpander` really does already stamp
+> `metadata.generatedBy`/`concept`, exactly as this section claims. What it omitted: nothing ever
+> serialized `CompiledPanel.metadata()` into `compiled-metadata.json`'s `panels` catalog, so that
+> stamp never reached an HTTP consumer before this task closed the gap
+> (`CompiledMetadataCanonicalJson#toPanelProvenance`, new). Also, §3.4's staged
+> `bootstrap-panel-provenance-v2.py` had a real, never-yet-run bug: panel-action invocation ids use a
+> COLON (`panelAction:<panel>:<action>`, `CompiledMetadataCanonicalJson#panelActionInvocation`), not
+> the DOT the script assumed — every real panel-action `invokes` would have silently come back empty.
+> Fixed and committed as `scripts/quality/bootstrap-panel-provenance.py`, then run for real against 3
+> genuine WmsOffice screens and confirmed by hand — see `docs/adr/ADR-0010-panel-provenance-manifests
+> .md` for the full account, including two genuine inference errors the human-review step caught
+> (a `name`/`label` HTML-token false positive, and a field spread into a bare flow-payload literal
+> that the writes-heuristic missed).
 
 ## 3.1 The manifest — PROPOSED
 
