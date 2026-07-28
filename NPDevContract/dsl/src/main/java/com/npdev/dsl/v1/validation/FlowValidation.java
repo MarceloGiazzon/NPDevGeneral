@@ -170,6 +170,7 @@ final class FlowValidation {
                 .map(SemanticValidator::normalize)
                 .collect(Collectors.toSet());
         Set<String> referencedCapabilities = new HashSet<>();
+        Map<String, String> ownedConceptToAggregate = AggregateValidation.ownedConceptToAggregate(modelAst);
 
         for (FlowAst flow : modelAst.getFlows()) {
             String flowKey = normalize(flow.getName());
@@ -207,6 +208,7 @@ final class FlowValidation {
                     new HashSet<>(),
                     errors
             );
+            validateAggregateTransactionalBoundary(flow, ownedConceptToAggregate, errors);
             warnCreateOrUpdateFlowWithoutPersistenceSemantics(flow, warnings);
         }
 
@@ -260,6 +262,71 @@ final class FlowValidation {
             }
         }
         return false;
+    }
+
+    /**
+     * P6.1 (docs/NEXT_EXECUTION_PLAN.md 3.7): DDD's core rule -- one aggregate = one transaction =
+     * one consistency boundary. {@code aggregates} carry ownership, but nothing previously enforced
+     * that a single flow may not write concept-mutation steps belonging to two DIFFERENT aggregates.
+     * Makes the construct load-bearing instead of descriptive.
+     *
+     * <p>Scope, stated rather than silently assumed complete: only the four alias step types
+     * ({@code createConcept}/{@code updateConcept}/{@code createEntity}/{@code updateEntity}) are
+     * traced, via their required {@code scope} field -- the one reliable, statically-resolvable
+     * concept-write signal ({@link #validatePersistenceMutationAliasStep}). A raw
+     * {@code capability: persistence, operation: save|delete} step (also a legal way to persist, per
+     * {@link #hasPersistenceSemantics}) is NOT traced: its target concept is not a structured field,
+     * only opaque {@code input}/{@code args}, so it cannot be resolved without runtime argument
+     * evaluation this validator does not do. A concept not owned by any declared aggregate is not a
+     * violation -- the rule only applies where an aggregate boundary actually exists to cross.
+     */
+    private static void validateAggregateTransactionalBoundary(
+            FlowAst flow, Map<String, String> ownedConceptToAggregate, List<String> errors) {
+        if (ownedConceptToAggregate.isEmpty()) {
+            return;
+        }
+        Set<String> mutatedConcepts = new LinkedHashSet<>();
+        collectConceptMutationScopes(flow.getSteps(), mutatedConcepts);
+
+        Map<String, Set<String>> aggregatesByTouchedConcepts = new LinkedHashMap<>();
+        for (String concept : mutatedConcepts) {
+            String aggregate = ownedConceptToAggregate.get(concept);
+            if (aggregate != null) {
+                aggregatesByTouchedConcepts.computeIfAbsent(aggregate, key -> new TreeSet<>()).add(concept);
+            }
+        }
+        if (aggregatesByTouchedConcepts.size() <= 1) {
+            return;
+        }
+        String detail = aggregatesByTouchedConcepts.entrySet().stream()
+                .map(entry -> entry.getKey() + " (" + String.join(", ", entry.getValue()) + ")")
+                .collect(Collectors.joining("; "));
+        errors.add("Flow " + flow.getName() + ": writes concepts across " + aggregatesByTouchedConcepts.size()
+                + " different aggregates in one flow: " + detail
+                + " -- DDD's one-aggregate-one-transaction rule: split this into one flow per "
+                + "aggregate, coordinated by a domain event, rather than writing both roots here.");
+    }
+
+    private static void collectConceptMutationScopes(List<StepAst> steps, Set<String> scopes) {
+        if (steps == null) {
+            return;
+        }
+        for (StepAst step : steps) {
+            if (step == null) {
+                continue;
+            }
+            String type = normalize(step.getType());
+            if ("createentity".equals(type) || "updateentity".equals(type)
+                    || "createconcept".equals(type) || "updateconcept".equals(type)) {
+                String scope = normalize(step.getScope());
+                if (!scope.isBlank()) {
+                    scopes.add(scope);
+                }
+            }
+            collectConceptMutationScopes(step.getThenSteps(), scopes);
+            collectConceptMutationScopes(step.getElseSteps(), scopes);
+            collectConceptMutationScopes(step.getLoopSteps(), scopes);
+        }
     }
 
     private static void validateFlowSteps(
