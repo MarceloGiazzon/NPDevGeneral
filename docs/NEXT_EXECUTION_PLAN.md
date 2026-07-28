@@ -338,14 +338,30 @@ screens are hand-written."
 
 ## P4.2 F2 — Contract substrate · 5 days
 
-- **F2.1 `invocations` catalog (2 days).** Insert at `CompiledMetadataCanonicalJson.java:83`.
-  The catalog's core value is **`preferred` / `prefer` / `preferReason`** — a concept typically has
-  three write routes (typed per-concept, generic CRUD, flow execution) with *different semantics*,
-  and using direct CRUD on a flow-backed concept silently bypasses invariants, orchestration and
-  compensation. Derivable today from `CompiledFlow.getConcept()` + mode.
-  **★ The single most important test in 2.CD: assert every `invocations[].path` matches a real
-  `@RequestMapping` across BOTH source trees** (`App/src/main/java/com/finalexec/**` and
-  `App/npdev-generated/**`). `extract-routes.py --format junit` emits the fixture.
+- **F2.1 `invocations` catalog (2 days). ✅ DONE 2026-07-28.** Inserted at
+  `CompiledMetadataCanonicalJson.java`, `toInvocationCatalog` + ~15 helpers. The catalog's core
+  value is **`preferred` / `prefer` / `preferReason`** — a concept typically has several write
+  routes (generic CRUD, flow execution) with *different semantics*, and using direct CRUD on a
+  flow-backed concept silently bypasses invariants, orchestration and compensation. Derived via
+  `CompiledModel.findFlow(concept, mode)` — the platform's OWN definition of flow-backed, not a
+  separately-maintained lookup that could drift from it.
+  **★ The single most important test in 2.CD, done and green: every `invocations[].path` (+
+  `pathAliases`) matches a real controller route.** Proven two ways: (1) a fresh
+  `extract-routes.py` run against a real regenerated WmsOffice found **zero mismatches** across
+  343 real paths spanning all 252 invocation entries the model produces (32 concepts, 15 flows,
+  panels, 2 aggregates) — this run ALSO found and fixed a real bug in `extract-routes.py` itself
+  (its regex couldn't parse a path variable nested inside a multi-value `@PostMapping` array,
+  silently dropping every flow-execute route from its output); (2) the committed, permanent
+  regression test `InvocationCatalogRouteConformanceTest` (`NPDevContract/dsl`), run against the
+  in-repo `medium-expense-approval` sample, pattern-matching every entry against the small, stable
+  set of real controller route shapes rather than a large brittle per-entity fixture.
+  **Several factual corrections against the original sketch** (see `docs/FRONTEND_STRATEGY_PLAN.md`
+  §2.2's own correction note): the generic-CRUD path is keyed by TABLE name not concept name; flow-
+  execute returns 200/202/422 depending on outcome, not a flat 202; `requiredPermission` is
+  `"<op>:<concept>"` not the reverse; `CompiledAggregate` has no `getInvocableProcedures()` and no
+  aggregate↔procedure binding exists anywhere at runtime (one templated entry per aggregate names
+  this explicitly, rather than guessing a closed list); the `isStartEndpoint()` gate would have
+  emitted zero flow entries (no sample sets it, and the real route has no such filter) — dropped.
 - **F2.2 bundle endpoint (1 day).** `GET /api/v1/runtime/metadata/ui/bundle?concept=X`, composing
   the existing `PermissionAwareUiMetadataService` filters. Reuse the existing compiled-model
   fingerprint for `modelHash`; do not mint a second hash.

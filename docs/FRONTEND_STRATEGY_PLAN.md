@@ -204,7 +204,37 @@ declarative field-level reactivity, compiled. `actions` carries `label`, `confir
 picker spec. All of it is served, permission-filtered, at `/api/v1/runtime/metadata/ui/*` via
 `PermissionAwareUiMetadataService`.
 
-## 2.2 F2.1 — The `invocations` catalog · **2 days**
+## 2.2 F2.1 — The `invocations` catalog · **2 days** · ✅ DONE 2026-07-28
+
+> **Correction, filed the same day this shipped.** This section's original Java sketch and JSON
+> examples (below) were written from the model's *shape*, not verified source, and several were
+> factually wrong once actually implemented and checked against a real generated app (WmsOffice,
+> regenerated 2026-07-28) — the EXACT mistake this feature's own "finding that justifies it"
+> paragraph warns about, made again while designing the feature meant to prevent it:
+> - `POST /api/concepts/ExpenseRequest` (line ~259, generic CRUD) **does not exist**. The real path
+>   is keyed by TABLE name, not concept name: `POST /api/concepts/expense_requests`.
+> - `execution.successStatus: 202` for flow-execute is only sometimes true. The real controller
+>   returns **200 on synchronous completion, 202 only when the flow parks on an `awaitEvent`, and
+>   422 (not 400) on invariant/validation failure**.
+> - `requiredPermission: "expenserequest:create"` has the halves backwards — the real format is
+>   `"create:expenserequest"` (operation first).
+> - `getInvocableProcedures()` (line 337) does not exist on `CompiledAggregate`, and **no closed
+>   aggregate↔procedure binding exists anywhere in the platform** — `AggregateRuntime.invoke`
+>   accepts any model-global procedure name. The shipped implementation emits one templated
+>   `aggregateInvoke` entry per aggregate naming this explicitly, rather than inventing or guessing
+>   a curated list.
+> - The `isStartEndpoint()` gate (line 323) would have emitted **zero** flow entries — no sample in
+>   this repo sets it, and the real flow-execute route has no such filter. Every flow is executable.
+>
+> The shipped implementation (`CompiledMetadataCanonicalJson.toInvocationCatalog` and its ~15
+> helpers) corrects all of these; see each helper's own javadoc for the specific controller/line it
+> verifies against. **The critical test passed with zero mismatches**: every one of 343 real paths
+> (main + aliases) across all 252 invocation entries WmsOffice's model produces matched a real
+> `@RequestMapping` in the generated app, across both source trees — proven by a fresh
+> `extract-routes.py` run (which itself needed a real bug fixed: its regex could not parse a path
+> variable nested inside a multi-value `@PostMapping` array, silently dropping every flow-execute
+> route). `InvocationCatalogRouteConformanceTest` (`NPDevContract/dsl`) is the permanent, committed
+> regression form of this proof, run against the in-repo `medium-expense-approval` sample.
 
 ### The finding that justifies it
 

@@ -202,6 +202,9 @@ TREE 2 — BIG
 │    │        operator-console is the strongest single-app signal (WmsOffice, 5/13 screens)
 │    │        but is one real second app away from qualifying -- not built as a primitive yet.
 │    │    F2  Contract substrate — `invocations` catalog + bundle + docs   [5 days]
+│    │        F2.1 ✅ DONE 2026-07-28 -- invocations catalog shipped, 252 real entries
+│    │        verified live against WmsOffice with zero path mismatches (found + fixed a real
+│    │        bug in extract-routes.py along the way -- see register). F2.2/F2.3 remain.
 │    │    F3  Provenance — one manifest, three producers                   [4 days] ★
 │    │    F4  Impact gate — a field rename names the screens it breaks     [2 days] ★★
 │    │    F5  Workbench: re-verify + 4 residuals (DONE, not to-build)      [2.5 days]
