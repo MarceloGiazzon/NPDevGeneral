@@ -197,12 +197,16 @@ TREE 2 — BIG
 │    │       docs/architecture/AGGREGATE_WORKBENCH_PLAN.md. It covers the
 │    │       master-detail-detail TRANSACTION class only.
 │    │
-│    │    F1  Screen taxonomy — which primitive covers which class        [1 day] ★★
+│    │    F1  Screen taxonomy ✅ DONE 2026-07-28 — docs/SCREEN_TAXONOMY.md. Measured, not
+│    │        guessed: zero classes reach the ≥2-app/≥2-screen promotion threshold today.
+│    │        operator-console is the strongest single-app signal (WmsOffice, 5/13 screens)
+│    │        but is one real second app away from qualifying -- not built as a primitive yet.
 │    │    F2  Contract substrate — `invocations` catalog + bundle + docs   [5 days]
 │    │    F3  Provenance — one manifest, three producers                   [4 days] ★
 │    │    F4  Impact gate — a field rename names the screens it breaks     [2 days] ★★
 │    │    F5  Workbench: re-verify + 4 residuals (DONE, not to-build)      [2.5 days]
-│    │    F6  Coverage roadmap — build only what F1 proves recurs          [gated]
+│    │    F6  Coverage roadmap — build only what F1 proves recurs          [gated -- F1 found
+│    │        nothing recurs yet, so F6 has nothing to build until that changes]
 │
 ├─ 2.E  Ledger migration: prose register → ledger/items/*.yml       [3 days]
 │    │    Unwires the 13 process docs currently hard-wired into gates.

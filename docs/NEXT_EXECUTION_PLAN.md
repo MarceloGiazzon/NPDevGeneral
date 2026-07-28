@@ -306,20 +306,35 @@ this section is the current-state delta and the execution order.
 > `getInvocableProcedures` does not exist — a compile failure the plan's sketch would otherwise hit.
 > Others in that sketch are equally unverified.
 
-## P4.1 F1 — Screen taxonomy ★★ · 1 day · **START HERE**
+## P4.1 F1 — Screen taxonomy ★★ · 1 day · ✅ DONE 2026-07-28
 
 Routes everything else. `classify-screens.py` does the measurement; a human does the judgment.
 
 Promotion rule, encoded: **a hand-written class in ≥ 2 apps with ≥ 2 screens is a primitive
-candidate.** On WmsOffice's measured data alone, **6 of 13 screens are operator consoles** — the
-strongest candidate, and invisible until the screens were measured as a set.
+candidate.**
 
-**Deliverable:** `docs/SCREEN_TAXONOMY.md` — every screen in all five official apps classified; each
-class names its covering primitive or is explicitly `hand-written → contract`; candidates carry the
-≥2/≥2 evidence.
+**Correction against a fresh, reasoned re-measurement:** the "6 of 13 screens are operator
+consoles" figure above does not survive re-running the tool and reviewing the borderline cases by
+hand on this checkout. Measured result: **5 of 13** (one screen, `crossdocking`, human-overridden
+from the mechanical classifier's `detail-form` default — see `docs/SCREEN_TAXONOMY.md`'s footnote).
+More importantly: **the promotion rule finds ZERO candidates**, mechanically or after the human
+review. Every hand-written, no-primitive-covers-it class (`operator-console`, `dashboard`,
+`spatial-map`, `admin-tool`) lives in WmsOffice **alone** — no other app (official or sample) has a
+second instance of any of them, so the `≥ 2 apps` half of the rule is never met. `operator-console`
+is the strongest signal (WmsOffice's plurality class) but is one real second app away from
+qualifying, not already qualifying — building a primitive from n=1 would be exactly what the rule
+exists to prevent. **Do not build a new primitive yet; this directly gates F6 to "nothing to build
+until a second app proves recurrence."**
 
-**Bonus:** it makes the README's limitations section *precise* — generated classes vs hand-written
-classes, instead of the current vague "custom business screens are hand-written."
+**Deliverable:** `docs/SCREEN_TAXONOMY.md` — every screen in all five official apps classified (two
+of the five, WordLab and Claude Support Desk, have **zero** hand-written screens at all — fully
+generated); each class names its covering primitive or is explicitly `hand-written → contract`; the
+promotion-rule verdict and its evidence are stated plainly, not forced to match this plan's own
+earlier, less-precise claim.
+
+**Bonus, done:** the README-precision goal is met by `docs/SCREEN_TAXONOMY.md`'s own "Bonus" section
+— a measured generated-vs-hand-written breakdown per app, not the prior vague "custom business
+screens are hand-written."
 
 ## P4.2 F2 — Contract substrate · 5 days
 
@@ -372,9 +387,13 @@ no model to diff against; OutSystems/Mendix cannot emit source you own.
   two-picker boundary in `ACCEPTED_BOUNDARIES.md` (30 min).
 - **F5-V.1/V.3** — suites + `STATUS: EXECUTED` header on `AGGREGATE_WORKBENCH_PLAN.md` (gate → 13/13).
 
-## P4.6 F6 — Coverage roadmap · gated on F1
+## P4.6 F6 — Coverage roadmap · gated on F1 — **still gated, now with a measured answer**
 
-Build nothing until F1 proves a class recurs. **F6-1 `layoutSlot`** (3 days) is the one to keep warm.
+F1 is done and found **zero recurring hand-written classes** (see P4.1) — build nothing. This is
+not "not yet measured," it is "measured, and the answer is not yet." **F6-1 `layoutSlot`** (3 days)
+remains the one to keep warm for whenever a second app produces an `operator-console`-shaped (or
+other) recurrence; re-run `classify-screens.py` periodically as new apps are built, rather than
+re-deriving this by hand.
 
 ---
 
@@ -456,8 +475,9 @@ WEEK 1 ✅ DONE          P3.1 REG-57 durability/ack ordering  ★★ -- root cau
                         UNIQUE-backfill refusal) -- pulled forward from Week 2, same subsystem as
                         REG-58/59 so doing it right after was cheaper than context-switching back.
 
-WEEK 2 (next)   P4.1 F1 taxonomy ★★ [1 d]  ← run preflight-accessors.py first
-                P4.2 F2 contract substrate [5 d]
+WEEK 2 (started) ✅ P4.1 F1 taxonomy [1 d] DONE same day as Part 3 -- zero recurring classes found,
+                mechanically and after human review; F6 stays gated. docs/SCREEN_TAXONOMY.md.
+                P4.2 F2 contract substrate [5 d]  ← next
 
 WEEK 3          P4.3 F3 provenance [4 d]
                 P4.4 F4 impact gate ★★ [2 d]  → the money demo
