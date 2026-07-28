@@ -73,4 +73,23 @@ class RuntimeUiMetadataControllerStandaloneTest {
                 .andExpect(jsonPath("$.suppressedItems[0].denial.message")
                         .value("Insurance claim automation is reserved for privileged runtime roles."));
     }
+
+    /** F2.2: the bundle endpoint, exercised over real HTTP through the same standalone MockMvc setup
+     * as the other endpoints here. */
+    @Test
+    void bundleEndpointReturnsConceptScopedContractWithPermissionAwareFields() throws Exception {
+        when(runtimeContextService.currentContext(any()))
+                .thenReturn(ExecutionContext.of("dev", "support-agent").withRoles(Set.of("SUPPORT")));
+
+        mockMvc.perform(get("/api/runtime/metadata/ui/bundle").param("concept", "Appointment"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.schemaVersion").value("npdev-ui-contract.v1"))
+                .andExpect(jsonPath("$.permissionAware").value(true))
+                .andExpect(jsonPath("$.scope.concept").value("Appointment"))
+                .andExpect(jsonPath("$.modelHash").value(org.hamcrest.Matchers.startsWith("sha256:")))
+                .andExpect(jsonPath("$.concept.name").value("Appointment"))
+                .andExpect(jsonPath("$.fields[?(@.fieldPath=='checkInTime')].permissionState").value("readonly"))
+                .andExpect(jsonPath("$.invocations[?(@.id=='createDirect:Appointment')]").exists())
+                .andExpect(jsonPath("$.transitions[?(@.from=='Scheduled' && @.to=='CheckedIn')]").exists());
+    }
 }

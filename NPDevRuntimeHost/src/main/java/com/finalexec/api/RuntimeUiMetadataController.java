@@ -63,6 +63,19 @@ public class RuntimeUiMetadataController {
         return run(() -> permissionAwareUiMetadataService.fields(concept, fieldPath, currentContext(request)));
     }
 
+    /** F2.2: single-call UI contract for a screen, composing the existing {@code /fields}/{@code
+     * /actions} filters (see {@link PermissionAwareUiMetadataService#bundle}'s javadoc for the full
+     * design rationale, incl. why layout/enums/references/transitions/validation/invocations are
+     * passed through unfiltered rather than gaining a brand-new permission filter each). */
+    @GetMapping("/bundle")
+    public Map<String, Object> bundle(
+            HttpServletRequest request,
+            @RequestParam(required = false) String concept,
+            @RequestParam(required = false) String panel
+    ) {
+        return run(() -> permissionAwareUiMetadataService.bundle(concept, panel, currentContext(request)));
+    }
+
     @GetMapping("/preview/{conceptName}")
     public Map<String, Object> previewSupport(
             HttpServletRequest request,

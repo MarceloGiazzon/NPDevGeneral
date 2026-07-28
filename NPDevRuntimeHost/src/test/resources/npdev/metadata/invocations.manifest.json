@@ -1,0 +1,334 @@
+{
+  "metadataManifestVersion" : "1.0.0",
+  "metadataVersion" : "1.0.0",
+  "catalog" : "invocations",
+  "sourceCatalog" : "invocations",
+  "generatedFrom" : "npdev/compiled-metadata.json",
+  "count" : 29,
+  "items" : [ {
+    "id" : "createDirect:Appointment",
+    "kind" : "createDirect",
+    "concept" : "Appointment",
+    "method" : "POST",
+    "path" : "/api/concepts/appointments",
+    "successStatus" : 200,
+    "requiredPermission" : "create:appointment",
+    "preferred" : false,
+    "prefer" : "flow:CreateAppointment",
+    "preferReason" : "Appointment create is flow-backed; the direct route bypasses the flow's invariants, orchestration and compensation."
+  }, {
+    "id" : "createDirect:InsuranceClaim",
+    "kind" : "createDirect",
+    "concept" : "InsuranceClaim",
+    "method" : "POST",
+    "path" : "/api/concepts/insurance_claims",
+    "successStatus" : 200,
+    "requiredPermission" : "create:insuranceclaim",
+    "preferred" : true
+  }, {
+    "id" : "createDirect:Patient",
+    "kind" : "createDirect",
+    "concept" : "Patient",
+    "method" : "POST",
+    "path" : "/api/concepts/patients",
+    "successStatus" : 200,
+    "requiredPermission" : "create:patient",
+    "preferred" : true
+  }, {
+    "id" : "createDirect:Provider",
+    "kind" : "createDirect",
+    "concept" : "Provider",
+    "method" : "POST",
+    "path" : "/api/concepts/providers",
+    "successStatus" : 200,
+    "requiredPermission" : "create:provider",
+    "preferred" : true
+  }, {
+    "id" : "deleteDirect:Appointment",
+    "kind" : "deleteDirect",
+    "concept" : "Appointment",
+    "method" : "DELETE",
+    "path" : "/api/concepts/appointments/{id}",
+    "successStatus" : 204,
+    "requiredPermission" : "delete:appointment",
+    "preferred" : true
+  }, {
+    "id" : "deleteDirect:InsuranceClaim",
+    "kind" : "deleteDirect",
+    "concept" : "InsuranceClaim",
+    "method" : "DELETE",
+    "path" : "/api/concepts/insurance_claims/{id}",
+    "successStatus" : 204,
+    "requiredPermission" : "delete:insuranceclaim",
+    "preferred" : true
+  }, {
+    "id" : "deleteDirect:Patient",
+    "kind" : "deleteDirect",
+    "concept" : "Patient",
+    "method" : "DELETE",
+    "path" : "/api/concepts/patients/{id}",
+    "successStatus" : 204,
+    "requiredPermission" : "delete:patient",
+    "preferred" : true
+  }, {
+    "id" : "deleteDirect:Provider",
+    "kind" : "deleteDirect",
+    "concept" : "Provider",
+    "method" : "DELETE",
+    "path" : "/api/concepts/providers/{id}",
+    "successStatus" : 204,
+    "requiredPermission" : "delete:provider",
+    "preferred" : true
+  }, {
+    "id" : "exportCsv:Appointment",
+    "kind" : "exportCsv",
+    "concept" : "Appointment",
+    "method" : "GET",
+    "path" : "/api/v1/concepts/Appointment/export.csv",
+    "pathAliases" : [ "/api/concepts/Appointment/export.csv" ],
+    "successStatus" : 200,
+    "preferred" : true,
+    "requiredPermission" : "list:appointment"
+  }, {
+    "id" : "exportCsv:InsuranceClaim",
+    "kind" : "exportCsv",
+    "concept" : "InsuranceClaim",
+    "method" : "GET",
+    "path" : "/api/v1/concepts/InsuranceClaim/export.csv",
+    "pathAliases" : [ "/api/concepts/InsuranceClaim/export.csv" ],
+    "successStatus" : 200,
+    "preferred" : true,
+    "requiredPermission" : "list:insuranceclaim"
+  }, {
+    "id" : "exportCsv:Patient",
+    "kind" : "exportCsv",
+    "concept" : "Patient",
+    "method" : "GET",
+    "path" : "/api/v1/concepts/Patient/export.csv",
+    "pathAliases" : [ "/api/concepts/Patient/export.csv" ],
+    "successStatus" : 200,
+    "preferred" : true,
+    "requiredPermission" : "list:patient"
+  }, {
+    "id" : "exportCsv:Provider",
+    "kind" : "exportCsv",
+    "concept" : "Provider",
+    "method" : "GET",
+    "path" : "/api/v1/concepts/Provider/export.csv",
+    "pathAliases" : [ "/api/concepts/Provider/export.csv" ],
+    "successStatus" : 200,
+    "preferred" : true,
+    "requiredPermission" : "list:provider"
+  }, {
+    "id" : "flow:CreateAppointment",
+    "kind" : "flow",
+    "concept" : "Appointment",
+    "intent" : "create",
+    "label" : "Create appointment",
+    "method" : "POST",
+    "path" : "/api/v1/flows/CreateAppointment/execute",
+    "pathAliases" : [ "/api/flows/CreateAppointment/execute" ],
+    "preferred" : true,
+    "body" : {
+      "shape" : "flowInput",
+      "inputFields" : [ {
+        "name" : "checkInTime",
+        "type" : "datetime",
+        "required" : false,
+        "fieldPath" : "Appointment.checkInTime"
+      }, {
+        "name" : "checkOutTime",
+        "type" : "datetime",
+        "required" : false,
+        "fieldPath" : "Appointment.checkOutTime"
+      }, {
+        "name" : "durationMinutes",
+        "type" : "integer",
+        "required" : false,
+        "fieldPath" : "Appointment.durationMinutes"
+      }, {
+        "name" : "patientId",
+        "type" : "reference",
+        "required" : true,
+        "fieldPath" : "Appointment.patientId"
+      }, {
+        "name" : "providerId",
+        "type" : "reference",
+        "required" : true,
+        "fieldPath" : "Appointment.providerId"
+      }, {
+        "name" : "scheduledAt",
+        "type" : "datetime",
+        "required" : true,
+        "fieldPath" : "Appointment.scheduledAt"
+      }, {
+        "name" : "status",
+        "type" : "enum",
+        "required" : true,
+        "fieldPath" : "Appointment.status"
+      }, {
+        "name" : "visitReason",
+        "type" : "string",
+        "required" : false,
+        "fieldPath" : "Appointment.visitReason"
+      } ]
+    },
+    "execution" : {
+      "async" : true,
+      "statusOnComplete" : 200,
+      "statusOnWaiting" : 202,
+      "statusOnValidationFailure" : 422,
+      "statusRoute" : "/api/v1/executions/{executionId}/links",
+      "correlationField" : "executionId"
+    },
+    "requiredPermission" : "appointments.create"
+  }, {
+    "id" : "list:Appointment",
+    "kind" : "list",
+    "concept" : "Appointment",
+    "method" : "GET",
+    "path" : "/api/concepts/appointments",
+    "successStatus" : 200,
+    "preferred" : true,
+    "requiredPermission" : "list:appointment"
+  }, {
+    "id" : "list:InsuranceClaim",
+    "kind" : "list",
+    "concept" : "InsuranceClaim",
+    "method" : "GET",
+    "path" : "/api/concepts/insurance_claims",
+    "successStatus" : 200,
+    "preferred" : true,
+    "requiredPermission" : "list:insuranceclaim"
+  }, {
+    "id" : "list:Patient",
+    "kind" : "list",
+    "concept" : "Patient",
+    "method" : "GET",
+    "path" : "/api/concepts/patients",
+    "successStatus" : 200,
+    "preferred" : true,
+    "requiredPermission" : "list:patient"
+  }, {
+    "id" : "list:Provider",
+    "kind" : "list",
+    "concept" : "Provider",
+    "method" : "GET",
+    "path" : "/api/concepts/providers",
+    "successStatus" : 200,
+    "preferred" : true,
+    "requiredPermission" : "list:provider"
+  }, {
+    "id" : "pagedQuery:Appointment",
+    "kind" : "pagedQuery",
+    "concept" : "Appointment",
+    "method" : "GET",
+    "path" : "/api/v1/concepts/Appointment/page",
+    "pathAliases" : [ "/api/concepts/Appointment/page" ],
+    "successStatus" : 200,
+    "preferred" : true,
+    "requiredPermission" : "list:appointment"
+  }, {
+    "id" : "pagedQuery:InsuranceClaim",
+    "kind" : "pagedQuery",
+    "concept" : "InsuranceClaim",
+    "method" : "GET",
+    "path" : "/api/v1/concepts/InsuranceClaim/page",
+    "pathAliases" : [ "/api/concepts/InsuranceClaim/page" ],
+    "successStatus" : 200,
+    "preferred" : true,
+    "requiredPermission" : "list:insuranceclaim"
+  }, {
+    "id" : "pagedQuery:Patient",
+    "kind" : "pagedQuery",
+    "concept" : "Patient",
+    "method" : "GET",
+    "path" : "/api/v1/concepts/Patient/page",
+    "pathAliases" : [ "/api/concepts/Patient/page" ],
+    "successStatus" : 200,
+    "preferred" : true,
+    "requiredPermission" : "list:patient"
+  }, {
+    "id" : "pagedQuery:Provider",
+    "kind" : "pagedQuery",
+    "concept" : "Provider",
+    "method" : "GET",
+    "path" : "/api/v1/concepts/Provider/page",
+    "pathAliases" : [ "/api/concepts/Provider/page" ],
+    "successStatus" : 200,
+    "preferred" : true,
+    "requiredPermission" : "list:provider"
+  }, {
+    "id" : "read:Appointment",
+    "kind" : "read",
+    "concept" : "Appointment",
+    "method" : "GET",
+    "path" : "/api/concepts/appointments/{id}",
+    "successStatus" : 200,
+    "preferred" : true,
+    "requiredPermission" : "read:appointment"
+  }, {
+    "id" : "read:InsuranceClaim",
+    "kind" : "read",
+    "concept" : "InsuranceClaim",
+    "method" : "GET",
+    "path" : "/api/concepts/insurance_claims/{id}",
+    "successStatus" : 200,
+    "preferred" : true,
+    "requiredPermission" : "read:insuranceclaim"
+  }, {
+    "id" : "read:Patient",
+    "kind" : "read",
+    "concept" : "Patient",
+    "method" : "GET",
+    "path" : "/api/concepts/patients/{id}",
+    "successStatus" : 200,
+    "preferred" : true,
+    "requiredPermission" : "read:patient"
+  }, {
+    "id" : "read:Provider",
+    "kind" : "read",
+    "concept" : "Provider",
+    "method" : "GET",
+    "path" : "/api/concepts/providers/{id}",
+    "successStatus" : 200,
+    "preferred" : true,
+    "requiredPermission" : "read:provider"
+  }, {
+    "id" : "updateDirect:Appointment",
+    "kind" : "updateDirect",
+    "concept" : "Appointment",
+    "method" : "PUT",
+    "path" : "/api/concepts/appointments/{id}",
+    "successStatus" : 200,
+    "requiredPermission" : "update:appointment",
+    "preferred" : true
+  }, {
+    "id" : "updateDirect:InsuranceClaim",
+    "kind" : "updateDirect",
+    "concept" : "InsuranceClaim",
+    "method" : "PUT",
+    "path" : "/api/concepts/insurance_claims/{id}",
+    "successStatus" : 200,
+    "requiredPermission" : "update:insuranceclaim",
+    "preferred" : true
+  }, {
+    "id" : "updateDirect:Patient",
+    "kind" : "updateDirect",
+    "concept" : "Patient",
+    "method" : "PUT",
+    "path" : "/api/concepts/patients/{id}",
+    "successStatus" : 200,
+    "requiredPermission" : "update:patient",
+    "preferred" : true
+  }, {
+    "id" : "updateDirect:Provider",
+    "kind" : "updateDirect",
+    "concept" : "Provider",
+    "method" : "PUT",
+    "path" : "/api/concepts/providers/{id}",
+    "successStatus" : 200,
+    "requiredPermission" : "update:provider",
+    "preferred" : true
+  } ]
+}

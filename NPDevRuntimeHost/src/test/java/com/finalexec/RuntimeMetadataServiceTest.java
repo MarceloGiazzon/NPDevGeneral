@@ -20,7 +20,7 @@ class RuntimeMetadataServiceTest {
 
         assertEquals("generated-runtime-metadata", overview.get("sourceType"));
         assertEquals("canonical.clinicdemo", overview.get("namespace"));
-        assertEquals(9, ((Number) overview.get("catalogCount")).intValue());
+        assertEquals(11, ((Number) overview.get("catalogCount")).intValue());
         assertTrue(overview.containsKey("compiledCatalogNames"));
     }
 
@@ -44,5 +44,30 @@ class RuntimeMetadataServiceTest {
         assertTrue(tabs.contains("Visit lifecycle"));
         assertTrue(actionLabels.stream().anyMatch(item -> "Create appointment".equals(item.get("label"))));
         assertTrue(referencePickers.stream().anyMatch(item -> "patientId".equals(item.get("fieldPath"))));
+    }
+
+    /** F2.2: the invocations/transitions catalogs (F2.1, pre-existing respectively) were emitted into
+     * {@code compiled-metadata.json} but never split into their own manifest file, so
+     * {@code RuntimeMetadataService.catalog(...)} had no way to serve them -- the bundle endpoint's
+     * arrays would have 404'd. Proves the alias + split-manifest wiring added in this change. */
+    @Test
+    void exposesInvocationsAndTransitionsCatalogsFilteredByConcept() {
+        Map<String, Object> invocations = runtimeMetadataService.catalog("invocations", "Appointment", null, null);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> invocationItems = (List<Map<String, Object>>) invocations.get("items");
+        assertTrue(invocationItems.stream().anyMatch(item -> "createDirect:Appointment".equals(item.get("id"))));
+        assertTrue(invocationItems.stream().allMatch(item -> "Appointment".equals(item.get("concept"))),
+                "Filtering the invocations catalog by concept must exclude other concepts' entries.");
+
+        Map<String, Object> transitions = runtimeMetadataService.catalog("transitions", "Appointment", null, null);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> transitionItems = (List<Map<String, Object>>) transitions.get("items");
+        assertTrue(transitionItems.stream().anyMatch(item -> "Scheduled".equals(item.get("from")) && "CheckedIn".equals(item.get("to"))));
+    }
+
+    @Test
+    void schemaFingerprintReusesTheSchemaLifecycleExecutorManifestVerbatim() {
+        String fingerprint = runtimeMetadataService.schemaFingerprint();
+        assertTrue(fingerprint.startsWith("sha256:"), "Expected a sha256: schema fingerprint, got: " + fingerprint);
     }
 }
