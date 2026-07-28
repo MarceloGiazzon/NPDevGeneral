@@ -209,10 +209,12 @@ TREE 2 — BIG
 │    │    docs/OPEN_ITEMS.md becomes GENERATED, never hand-edited.
 │    └─ Unblocks 3.4.
 │
-└─ 2.F  Durable-workflow demo app                                  [1 week] ★★
-         A flow parks on awaitEvent → `docker restart` → flow resumes and completes.
-         You have a capability Temporal charges for and zero public evidence it exists.
-         Highest ratio of (evaluator impact) / (effort) in the entire plan.
+└─ 2.F  Durable-workflow demo app  ✅ DONE 2026-07-28 (0384966, CORE C-3)
+         NPDevSamples/durable-workflow-demo + NPDevSamples/scripts/run-durable-resume-demo.ps1
+         Park on awaitEvent → hard kill → new JVM → publish → same execution resumes. One command.
+         ⚠️ Currently demonstrates a narrower path than the engine: no capabilityCall step
+            (REG-56) and a 5s pre-kill delay (REG-57). Both disclosed in the runner.
+            Closing REG-56/57 → re-add the capability step, drop the sleep.
 ```
 
 ### Estimate calibration
@@ -250,15 +252,20 @@ TREE 3 — BLOCKED
 │          Does anyone want to author a model, or only to prompt an agent?
 │
 ├─ 3.3  Fix REG-40 (additive migration never CREATEs new tables)
-│        ✅ UNBLOCKED — 2.B.4 (SchemaLifecycleExecutor split) is DONE 2026-07-28.
-│        → User impact is high: "add a new entity to an existing app" currently fails.
-│          Not yet scheduled; no longer has a reason to wait.
+│        ✅ DONE 2026-07-24 (SER-P9) — REG-40 is CLOSED in the register; the fix is
+│          recorded twice in DATABASES_AND_MIGRATIONS.md (lines 416, 513).
 │
 ├─ 3.4  Archive the remaining 13 gate-hardwired process docs
 │        ⛔ BLOCKED BY: 2.E
 │
 ├─ 3.5  Postgres adapters in the PR gate (currently nightly only)
-│        ⛔ BLOCKED BY: REG-4 flake root cause (load-sensitive, still unresolved)
+│        ⛔ STALE BLOCKER, corrected 2026-07-28: this row used to cite the REG-4 flake as an
+│        open blocker — REG-4 was CLOSED 2026-07-21 (root cause fixed, not just
+│        tolerance-widened; see register §1.4). The REAL, current reason Postgres/full
+│        validation stays nightly-only is runtime cost, per `npdev-ci-validation.yml`'s own
+│        header: "too slow/expensive for every PR (up to 120min)" — not a flake. Re-scope as
+│        a deliberate cost/time tradeoff, or as scoping a fast Postgres PR-subset, not as
+│        "blocked."
 │
 ├─ 3.6  Bounded contexts / multi-namespace models
 │        ✅ UNBLOCKED — 2.A (DSL 2.0) is DONE 2026-07-27.
