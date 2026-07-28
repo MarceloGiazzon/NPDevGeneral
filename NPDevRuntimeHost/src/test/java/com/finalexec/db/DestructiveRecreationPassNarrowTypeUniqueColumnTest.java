@@ -78,7 +78,7 @@ class DestructiveRecreationPassNarrowTypeUniqueColumnTest {
 
         try (Connection connection = dataSource.getConnection()) {
             assertDoesNotThrow(() -> DestructiveRecreationPass.executeNarrowTypeDropAndRecreate(
-                    connection, "identity_password_reset_tokens", "token_hash", "VARCHAR(64)"),
+                    connection, "identity_password_reset_tokens", "token_hash", "VARCHAR(64)", false),
                     "REG-58: a unique index on the narrowed column must not block the drop-and-recreate");
         }
 
@@ -115,7 +115,7 @@ class DestructiveRecreationPassNarrowTypeUniqueColumnTest {
 
         try (Connection connection = dataSource.getConnection()) {
             assertDoesNotThrow(() -> DestructiveRecreationPass.executeNarrowTypeDropAndRecreate(
-                    connection, "areas", "nome", "VARCHAR(150)"),
+                    connection, "areas", "nome", "VARCHAR(150)", false),
                     "the un-indexed case (already working before REG-58) must keep working");
         }
     }
