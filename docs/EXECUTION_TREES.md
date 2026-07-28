@@ -214,8 +214,11 @@ TREE 2 — BIG
          Park on awaitEvent → hard kill → new JVM → publish → same execution resumes. One command.
          ✅ REG-57 CLOSED 2026-07-28: the 5s pre-kill delay is gone (H2 WRITE_DELAY=0 fix,
             root-caused not guessed -- see register). 3/3 clean with the sleep removed.
-         ⚠️ Still narrower than the engine: no capabilityCall step (REG-56, open).
-            Closing REG-56 → re-add the capability step.
+         ✅ REG-56 CLOSED 2026-07-28: the notify-approval capabilityCall step is back in the
+            demo's model (ExecutionContext.resuming fix -- resume now runs under a trusted
+            system role instead of losing the flow's original permission level). 3/3 clean
+            across a real kill+restart, capability call included.
+         The demo now demonstrates the FULL path, not a narrowed one.
 ```
 
 ### Estimate calibration
