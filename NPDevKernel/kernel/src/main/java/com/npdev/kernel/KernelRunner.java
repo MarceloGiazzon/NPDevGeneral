@@ -682,7 +682,7 @@ final EventBus eventBus;
             eventStore.append(envelope);
         }
         eventBus.publish(envelope);
-        ResumeCoordinator.resumeWaitingExecutionsFor(this, envelope, null, effectiveCorrelationId, effectiveContext);
+        ResumeCoordinator.resumeWaitingExecutionsFor(this, envelope, null, effectiveCorrelationId);
         return envelope;
     }
 
@@ -912,7 +912,7 @@ final EventBus eventBus;
         if (lookupCorrelationId == null) {
             lookupCorrelationId = eventEnvelope.correlationId();
         }
-        return ResumeCoordinator.resumeWaitingExecutionsFor(this, eventEnvelope, null, lookupCorrelationId, ExecutionContext.anonymous());
+        return ResumeCoordinator.resumeWaitingExecutionsFor(this, eventEnvelope, null, lookupCorrelationId);
     }
 
     public int resumeAllWaitingExecutions() {
