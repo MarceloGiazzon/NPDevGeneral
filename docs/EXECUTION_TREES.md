@@ -218,7 +218,12 @@ TREE 2 — BIG
 │    │        anywhere (fixed). Human bootstrapper had a real dot-vs-colon id bug (fixed,
 │    │        committed as scripts/quality/bootstrap-panel-provenance.py); run for real +
 │    │        confirmed by hand against 3 live WmsOffice screens.
-│    │    F4  Impact gate — a field rename names the screens it breaks     [2 days] ★★
+│    │    F4  Impact gate ✅ DONE 2026-07-28 -- check-panel-provenance-impact.py shipped,
+│    │        calibrated, and money-demo'd for real (simulated field rename against a
+│    │        confirmed WmsOffice manifest -> FAIL naming the exact screen, exit 1).
+│    │        Correction: NOT wired into run-ai-knowledge-gate.ps1 (that gate is static/
+│    │        repo-level; this needs a live authenticated bundle) -- it's a per-app
+│    │        post-deploy tool, documented recipe instead of a fragile auto-wired script.
 │    │    F5  Workbench: re-verify + 4 residuals (DONE, not to-build)      [2.5 days]
 │    │    F6  Coverage roadmap — build only what F1 proves recurs          [gated -- F1 found
 │    │        nothing recurs yet, so F6 has nothing to build until that changes]

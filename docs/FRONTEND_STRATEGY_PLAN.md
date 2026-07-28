@@ -557,9 +557,20 @@ two-line change and the reason to run the bootstrapper against real screens befo
 
 ---
 
-# Part 4 — F4 · The impact gate  ★★
+# Part 4 — F4 · The impact gate  ★★  ✅ DONE 2026-07-28
 
 **2 days. This is the demo that sells the whole strategy.**
+
+> **Correction, filed the same day this shipped.** This section doesn't say where the gate should be
+> wired, but the plan-level task list (`docs/NEXT_EXECUTION_PLAN.md` P4.4) said
+> `run-ai-knowledge-gate.ps1` — the wrong place. That gate checks this repo's own static state on
+> every PR with no external dependency; this check needs `*.panel.json` files that live in
+> `AppGen/apps/*/web/` (a different, non-git workspace, never inside this repo) and a live
+> authenticated bundle response (JWT login against a running FinalApp). It is a per-app, post-deploy
+> verification tool, not a platform CI check — see `docs/NEXT_EXECUTION_PLAN.md` P4.4 for the
+> corrected recipe. The money demo below was run for real (not just `--calibrate`): a simulated
+> field rename in a scratch copy of a real confirmed WmsOffice manifest, checked against the real
+> live-captured bundle, failed naming the exact screen.
 
 | Condition | Result |
 |---|---|

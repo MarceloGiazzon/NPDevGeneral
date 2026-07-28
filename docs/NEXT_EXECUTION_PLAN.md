@@ -458,13 +458,44 @@ three producers. See the ADR for full detail; the plan-level corrections:
 - `"slotOf"` reserved from day one, per the original plan — `null` until ADR-0004's L5 `layoutSlot`
   ships.
 
-## P4.4 F4 — Impact gate ★★ · 2 days
+## P4.4 F4 — Impact gate ★★ · 2 days · ✅ DONE 2026-07-28 (script + proof); wiring point corrected
 
-`check-panel-provenance-impact.py` is written and its calibration passes both directions. Wire it in.
+Shipped `scripts/quality/check-panel-provenance-impact.py`. `--calibrate` passes both controls
+(fires on a stale confirmed manifest, silent on a correct one).
 
-**The money demo:** rename a real WmsOffice field → the build fails naming the exact screens that
-break, instead of a warehouse operator finding out. No competitor can do this — Lovable/v0/Bolt have
-no model to diff against; OutSystems/Mendix cannot emit source you own.
+**The money demo, done for real, not simulated in the abstract:** took the 3 hand-confirmed WmsOffice
+manifests from F3, renamed one field reference in a scratch copy of `crossdocking.panel.json`
+(`CrossDocking.dataAtivacao` → `dataAtivacaoContada`, mirroring this section's own worked example),
+and ran the gate against the real live-captured WmsOffice bundle (32 concepts, 188 fields, 252
+invocations): **FAIL, exit code 1, naming the exact screen** —
+`web/crossdocking.panel.json: references field 'CrossDocking.dataAtivacaoContada', which the model
+no longer has`. Run clean (no simulated rename) against the same 3 confirmed manifests: 0 blocking
+problems, 10 advisory warnings for WmsOffice's other unconfirmed screens (exactly `13 - 3`) — both
+runs prove the gate works end-to-end on real data, not just the synthetic `--calibrate` fixtures.
+
+**Correction: "wire it into `run-ai-knowledge-gate.ps1`" was the wrong instruction, not executed as
+written.** That gate checks THIS repo's own static state (register consistency, knowledge cards,
+security patterns) and runs on every PR with no external dependency. This gate needs two things that
+gate cannot supply: (1) `*.panel.json` files, which live in `AppGen/apps/*/web/` — a different,
+non-git workspace (layer 2), never inside `NPDev_General` — so there is nothing for it to find in
+this repo; (2) a live bundle response with a real `modelHash`, which requires an authenticated,
+running FinalApp (JWT login, per-app credentials) — something a fast, offline PR gate structurally
+cannot do. Forcing it into `run-ai-knowledge-gate.ps1` would make check-10 either silently find
+nothing (every run, forever, in this repo) or require embedding one specific app's login credentials
+into a platform-wide gate, neither of which is honest. The gate is real, calibrated, and proven
+against real data (above); it is a **per-app, post-deploy verification tool** (same category as
+`_ops/Test-App.ps1`/`Smoke-Test.ps1`), not a platform CI check — run it via:
+```
+curl -s -X POST <baseUrl>/api/auth/login -d '{"tenantId":"...","username":"...","password":"..."}' \
+  | jq -r .token > /tmp/t
+curl -s <baseUrl>/api/runtime/metadata/ui/bundle -H "Authorization: Bearer $(cat /tmp/t)" -o bundle.json
+python scripts/quality/check-panel-provenance-impact.py --root <AppGen-app-dir> --metadata bundle.json
+```
+No generic `_ops/Check-Provenance.ps1` template was added — it would need to embed app-specific
+credentials to be non-interactive, which is worse than documenting the manual recipe above.
+
+**No competitor can do this** — Lovable/v0/Bolt have no model to diff against; OutSystems/Mendix
+cannot emit source you own.
 
 ## P4.5 F5 — Workbench residuals · ~1 day remaining
 
