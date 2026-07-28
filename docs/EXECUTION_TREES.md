@@ -307,8 +307,11 @@ TREE 3 — BLOCKED
 │        "blocked."
 │
 ├─ 3.6  Bounded contexts / multi-namespace models
-│        ✅ UNBLOCKED — 2.A (DSL 2.0) is DONE 2026-07-27.
-│        → Decides whether NPDev can model a company or only a department. Not yet scheduled.
+│        ✅ SCOPED 2026-07-28 (docs/NEXT_EXECUTION_PLAN.md P6.2) -- not built, that was the
+│        ask. Decision: defer, filed as ACCEPTED_BOUNDARIES.md B20. namespace is cosmetic
+│        today (grep-verified); F1 found zero sub-domain pressure even in WmsOffice, the
+│        richest single app. Trigger: real cross-domain-in-one-app demand, likely surfaced
+│        via P6.3's conversations.
 │
 ├─ 3.7  Aggregate transactional boundary enforcement (the core DDD rule:
 │        one aggregate = one transaction = one consistency boundary)
