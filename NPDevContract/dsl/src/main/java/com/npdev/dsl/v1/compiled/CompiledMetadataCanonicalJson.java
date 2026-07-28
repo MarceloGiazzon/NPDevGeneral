@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -637,10 +638,99 @@ public final class CompiledMetadataCanonicalJson {
             node.set("dataSources", toPanelDataSourceSummaries(panel.dataSources()));
             node.set("fields", toStringArray(panelFields(panel)));
             node.set("actions", toPanelActionSummaries(panel.actions()));
+            node.set("provenance", toPanelProvenance(panel));
             entries.add(node);
         }
         entries.sort(Comparator.comparing(node -> text(node, "name")));
         return toArray(entries);
+    }
+
+    /**
+     * F3 Producer 1 (docs/NEXT_EXECUTION_PLAN.md P4.3): the generator producer of a
+     * {@code npdev-panel-provenance.v1} manifest. {@link AutoPanelExpander} already stamps
+     * {@code metadata.generatedBy} on every AutoPanel/selector-expanded panel -- that stamp existed
+     * before this method but was never serialized here, so it never reached any HTTP consumer
+     * (found while building this task, not assumed from "AutoPanelExpander already computes this").
+     * A hand-declared panel (no {@code generatedBy} stamp) has no provenance to report -- {@code null}.
+     *
+     * <p>{@code reads} come from the SAME {@link #panelFields} helper the {@code fields} catalog key
+     * uses -- a read-only "selection"/table surface carries its columns on
+     * {@link CompiledPanel#layout()} with an EMPTY {@link CompiledPanel#fieldBindings()} (confirmed
+     * against {@code AutoPanelExpanderTest}'s own assertions, not assumed: only the editable "form"
+     * surface populates {@code fieldBindings()}), so deriving reads from bindings alone silently
+     * missed every read-only surface's fields. {@code writes} come from {@code fieldBindings()} where
+     * {@link CompiledPanelFieldBinding#editable()} is true, qualified against the matching
+     * {@link CompiledPanelDataSource#concept()} (falling back to the panel's own
+     * {@code metadata.concept} when a binding's source doesn't resolve to a declared data source).
+     * {@code invokes} points at this panel's own {@code panelAction:&lt;panel&gt;:&lt;action&gt;}
+     * invocation ids (always present in the invocations catalog for a panel with actions), not the
+     * underlying flow/procedure, since that is the actual route the panel's own UI calls.
+     *
+     * <p>{@code modelHash} is deliberately absent: this class runs at model-compile time, before the
+     * schema fingerprint exists (that is computed later, in NPDevGenerator, from the resolved database
+     * config -- see {@code UserDatabaseDefinitionLoader#fingerprintInputs}). A generator-producer
+     * manifest with no {@code modelHash} should be treated as always-re-derive by a future F4 impact
+     * gate, not stale-compared -- see the schema's own note on this
+     * ({@code schemas/panel-provenance.schema.json}).
+     */
+    private static JsonNode toPanelProvenance(CompiledPanel panel) {
+        Map<String, Object> panelMetadata = panel.metadata();
+        String generatedBy = safe((String) panelMetadata.get("generatedBy"));
+        if (generatedBy.isBlank()) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+
+        Map<String, String> dataSourceConcepts = new LinkedHashMap<>();
+        for (CompiledPanelDataSource dataSource : panel.dataSources()) {
+            dataSourceConcepts.put(safe(dataSource.name()), safe(dataSource.concept()));
+        }
+        String primaryConcept = safe((String) panelMetadata.get("concept"));
+        if (primaryConcept.isBlank() && !panel.dataSources().isEmpty()) {
+            primaryConcept = safe(panel.dataSources().get(0).concept());
+        }
+
+        LinkedHashSet<String> reads = new LinkedHashSet<>();
+        for (String field : panelFields(panel)) {
+            if (!primaryConcept.isBlank()) {
+                reads.add(primaryConcept + "." + field);
+            }
+        }
+        LinkedHashSet<String> writes = new LinkedHashSet<>();
+        for (CompiledPanelFieldBinding binding : panel.fieldBindings()) {
+            if (!binding.editable() || binding.field() == null || binding.field().isBlank()) {
+                continue;
+            }
+            String concept = dataSourceConcepts.getOrDefault(safe(binding.source()), primaryConcept);
+            if (concept.isBlank()) {
+                continue;
+            }
+            writes.add(concept + "." + binding.field());
+        }
+        // Disjoint by convention (matches scripts/quality/bootstrap-panel-provenance.py): a written
+        // field is not also reported as a read.
+        reads.removeAll(writes);
+
+        LinkedHashSet<String> invokes = new LinkedHashSet<>();
+        for (CompiledPanelAction action : panel.actions()) {
+            invokes.add("panelAction:" + safe(panel.name()) + ":" + safe(action.name()));
+        }
+
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("schemaVersion", "npdev-panel-provenance.v1");
+        node.put("panel", safe(panel.name()));
+        node.putNull("screenClass");
+        node.put("producer", "generator");
+        ObjectNode generatedFrom = JsonNodeFactory.instance.objectNode();
+        generatedFrom.put("generator", generatedBy);
+        node.set("generatedFrom", generatedFrom);
+        node.set("reads", toStringArray(sortStrings(new ArrayList<>(reads))));
+        node.set("writes", toStringArray(sortStrings(new ArrayList<>(writes))));
+        node.set("invokes", toStringArray(sortStrings(new ArrayList<>(invokes))));
+        node.set("calls", JsonNodeFactory.instance.arrayNode());
+        node.putNull("slotOf");
+        node.put("confirmed", true);
+        node.set("unresolved", JsonNodeFactory.instance.arrayNode());
+        return node;
     }
 
     private static ArrayNode toDomainTypeCatalog(CompiledModel model) {

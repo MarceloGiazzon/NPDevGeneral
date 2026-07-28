@@ -212,7 +212,12 @@ TREE 2 — BIG
 │    │        F2.3 ✅ DONE 2026-07-28 -- docs/UI_CONTRACT.md, schemas/ui-contract.schema.json
 │    │        (validated against a real live bundle response), docs/ai/UI_GENERATION_PROMPT.md.
 │    │        F2 (contract substrate) is now fully closed.
-│    │    F3  Provenance — one manifest, three producers                   [4 days] ★
+│    │    F3  Provenance ✅ DONE 2026-07-28 -- schemas/panel-provenance.schema.json,
+│    │        ADR-0010, all 3 producers shipped. Generator producer needed real work, not
+│    │        "nearly free": CompiledPanel.metadata() was stamped but never serialized
+│    │        anywhere (fixed). Human bootstrapper had a real dot-vs-colon id bug (fixed,
+│    │        committed as scripts/quality/bootstrap-panel-provenance.py); run for real +
+│    │        confirmed by hand against 3 live WmsOffice screens.
 │    │    F4  Impact gate — a field rename names the screens it breaks     [2 days] ★★
 │    │    F5  Workbench: re-verify + 4 residuals (DONE, not to-build)      [2.5 days]
 │    │    F6  Coverage roadmap — build only what F1 proves recurs          [gated -- F1 found

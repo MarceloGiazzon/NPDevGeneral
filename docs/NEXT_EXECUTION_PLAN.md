@@ -414,16 +414,49 @@ screens are hand-written."
   bundle response (`GET .../bundle?concept=Area` on WmsOffice) with the `jsonschema` library, for
   both the concept-scoped and unscoped-bundle shapes.
 
-## P4.3 F3 — Provenance: one manifest, three producers ★ · 4 days
+## P4.3 F3 — Provenance: one manifest, three producers ★ · 4 days · ✅ DONE 2026-07-28
 
-The merge point. `AutoPanelExpander` (590 lines) already computes per-surface
-`fields · columns · actions · procedure · recompute · aggregate · bands · lifecycle · allowedActions ·
-fkFields` and already stamps `generatedBy` — so **for generated screens provenance is nearly free**
-(no inference). Agent-generated screens declare it per the prompt. Hand-written screens are inferred
-by `bootstrap-panel-provenance-v2.py` with `confirmed: false`, then confirmed by a human.
+Shipped `schemas/panel-provenance.schema.json`, `ADR-0010-panel-provenance-manifests.md`, and all
+three producers. See the ADR for full detail; the plan-level corrections:
 
-Reserve `"slotOf"` from day one — ADR-0004's L5 `layoutSlot` is where the workbench and the contract
-literally meet in code.
+- **Generator producer was NOT "nearly free."** `AutoPanelExpander` does already stamp
+  `metadata.generatedBy`/`concept` on every expanded panel, exactly as claimed — but
+  `CompiledMetadataCanonicalJson#toPanelCatalog` **never serialized `CompiledPanel.metadata()` at
+  all**, so that stamp never reached any HTTP consumer before this task. The real "nearly free" work
+  was closing that gap plus deriving `reads`/`writes`/`invokes` from already-compiled data
+  (`CompiledMetadataCanonicalJson#toPanelProvenance`, new). Also found and avoided a real bug before
+  it shipped: a read-only "selection"/table surface carries its fields on `CompiledPanel.layout()`
+  with an EMPTY `fieldBindings()` (only the editable "form" surface populates bindings, confirmed
+  against `AutoPanelExpanderTest`'s own assertions) — deriving `reads` from bindings alone would have
+  silently emitted zero reads for every read-only generated surface. Verified with 2 new tests
+  (`CompiledPanelProvenanceTest`, `NPDevContract/dsl`) built on a real `AutoPanelExpander` output
+  (not a hand-built fixture), covering both the confirmed-generator-provenance case and the
+  hand-declared-panel-has-no-provenance case.
+- **Human producer bootstrapper had a real, previously-unrun bug.** The staged
+  `bootstrap-panel-provenance-v2.py` assumed panel-action invocation ids use a DOT
+  (`panelAction:<panel>.<action>`); the real id format (`CompiledMetadataCanonicalJson
+  #panelActionInvocation`) uses a COLON (`panelAction:<panel>:<action>`) — the dot form would have
+  silently produced zero panel-action `invokes` on every real screen that calls one. Fixed and
+  committed as `scripts/quality/bootstrap-panel-provenance.py` (the canonical version now).
+  **Run for real** against 3 genuine WmsOffice screens (`inventario.html`, `crossdocking.html`,
+  `centro-trabalho.html`) using a live-captured unscoped bundle (32 concepts, 188 fields, 252
+  invocations) — correctly recovered all 4/3/1 real flow invocations per screen (cross-validated
+  against `docs/SCREEN_TAXONOMY.md`'s independent "crossdocking has 3 flow invocations" measurement).
+  **Confirmed all 3 by hand**, finding two genuine, demonstrable inference errors along the way (now
+  documented in the ADR): a `name`/`label` HTML-token false-positive class, and a field
+  (`CrossDocking.dataAtivacao`) spread into a bare flow-payload object literal that the writes-heuristic
+  missed and classified as a read instead. The 3 confirmed manifests are written to
+  `AppGen/apps/_official/WmsOffice/web/*.panel.json` (AppGen is layer 2, not this git repo).
+- **Agent producer needed no new work** — F2.3's `docs/ai/UI_GENERATION_PROMPT.md` already requires
+  the `{screen}.panel.json` output in this exact shape as its second required output.
+- **`Build-NpdevApp.ps1` already copies `*.panel.json` alongside `web/*`** — its existing "mount
+  companion web assets" step (`Get-ChildItem $WebSrc -Force | Copy-Item -Recurse`) copies the whole
+  `web/` directory verbatim, which already includes any `.panel.json` sibling files. Verified live: a
+  regenerated WmsOffice build placed all 3 confirmed manifests under
+  `App/src/main/resources/static/`. **No script change was needed** for this task item — checked,
+  not assumed.
+- `"slotOf"` reserved from day one, per the original plan — `null` until ADR-0004's L5 `layoutSlot`
+  ships.
 
 ## P4.4 F4 — Impact gate ★★ · 2 days
 
