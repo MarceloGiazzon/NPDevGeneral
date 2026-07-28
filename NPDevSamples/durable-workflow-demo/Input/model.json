@@ -69,12 +69,23 @@
         "save",
         "findById"
       ]
+    },
+    {
+      "name": "notification",
+      "type": "NotificationCapability",
+      "operations": [
+        "send"
+      ]
     }
   ],
   "bindings": [
     {
       "capability": "persistence",
       "adapter": "repository"
+    },
+    {
+      "capability": "notification",
+      "adapter": "notification-inproc"
     },
     {
       "capability": "eventBus",
@@ -172,6 +183,16 @@
                 "correlation": true
               },
               "awaitRef": "approval"
+            },
+            {
+              "name": "notify-approval",
+              "type": "capabilityCall",
+              "args": [
+                "$approval"
+              ],
+              "capability": "notification",
+              "operation": "send",
+              "output": "$notification"
             },
             {
               "name": "return-approval",
