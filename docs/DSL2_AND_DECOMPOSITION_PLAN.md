@@ -1,8 +1,10 @@
 # DSL 2.0 + God-File Decomposition — Execution Plan
 
-> **STATUS: ACTIVE.** Live backlog. Written 2026-07-27 against `beta1-vision-spine` @ `8bc3715`
-> (+ T1.15 in flight). Covers the **remaining TREE 1 items** and **TREE 2 items 2.A and 2.B**
-> from `docs/EXECUTION_TREES.md`.
+> **STATUS: Parts 2 and 3 DONE (2026-07-27/28).** Part 1 (R1/T1.6, merge `beta1-vision-spine` to
+> `main` + tag `beta1.2`) is the one item still open, blocked on `gh auth login` (owner action,
+> not a code task) — see §0.2. Written 2026-07-27 against `beta1-vision-spine` @ `8bc3715` (+
+> T1.15 in flight). Covers the **remaining TREE 1 items** and **TREE 2 items 2.A and 2.B** from
+> `docs/EXECUTION_TREES.md`.
 >
 > **Staged outside the repo** while T1.15 (SemanticValidator split) is in flight. Move in with:
 > ```powershell
@@ -801,8 +803,33 @@ of grep-based pre-checking alone.
       filed, not fixed: REG-54 (dead code, `worse`/`hasTypeChange`, orphaned by the unrelated SER-
       P4.8 migration), REG-55 (a capability-dispatch ambiguity surfaced by the rehearsal, on an
       H2Local app resolving a Postgres adapter — needs its own RED-first investigation)
-- [ ] 2.B.5 `KernelRunner` split verified by a durable-resume rehearsal — not started
-- [x] Every commit so far a pure move; every bug found filed separately (REG-54/REG-55 above)
+- [x] 2.B.5 `KernelRunner` (4,423 → 3,071 lines, 13 new files, commits `62e2888`/`40f4d4d`/
+      `3dcde0a`/`8a2df66`): all 9 step kinds (`FlowStepDefinition.Type`) split into their own
+      files, plus `CompensationRunner` (LNCH-17), `ResumeCoordinator`, `FlowStateCodec`, and a
+      `StepExecutionRequest` context-parameter record threading the per-iteration locals the
+      switch used to close over. Kept flat siblings in `com.npdev.kernel`, not a `flow`/
+      `flow.steps` subpackage as originally proposed — same reason as 2.B.4's files: the
+      collaborators needed are package-private, and widening them all to `public` would be a
+      larger, riskier change than the split itself. Test parity, independently reconfirmed with
+      forced (`--rerun-tasks`, not cached) reruns, not just agent-reported: `:kernel:test` 160/0;
+      `:adapters:expression-cel:test` 62/0; `:adapters:flow-compiled:test` 13/0; `:adapters:
+      mail-inproc:test` 4/0; `:adapters:resume-bootstrap-spring:test` 1/0; full `NPDevRuntimeHost`
+      suite 403/0 (after independently re-syncing `runtimehost-libs` against the freshly-built
+      kernel jar myself, not trusting the agent's own resync). **Durable-resume rehearsal
+      performed** (this file's real acceptance bar, per the plan's own words): a new sample
+      (`AppGen/apps/await-resume-rehearsal`, H2Local/`KeepExistingIfCompatible` for real
+      cross-restart persistence — no existing sample had a compatible `awaitEvent` flow), a flow
+      parked on `awaitEvent` (state persisted, not in-memory), the JVM **killed** (not just a
+      second `resume()` call in the same process), a genuinely new JVM started, the same
+      execution/correlation ID confirmed still `WAITING_EVENT` post-restart, the awaited event
+      published, and the same execution ID confirmed reaching `COMPLETED`. One connection-drop
+      mid-task during this split (resumed from an in-progress, non-compiling rename via
+      `SendMessage`, verified independently before and after). One incidental bug noted, not
+      fixed, in a different module (`SandboxedPluginExecutionEngine.resolveOperation`,
+      `NPDevRuntimeHost`) — folded into REG-55, which turned out to be the same root cause as a
+      symptom already seen during 2.B.4's rehearsal.
+- [x] Every commit a pure move; every bug found filed separately (REG-54/REG-55 above) — **Part 3
+      (2.B.2-2.B.5) is now fully done.**
 
 ---
 
