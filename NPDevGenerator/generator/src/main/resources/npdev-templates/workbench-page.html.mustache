@@ -178,7 +178,7 @@
       .catch(function () { /* recompute is best-effort; keep the user's draft on failure */ });
   }
 
-  var store = null, selected = null;
+  var store = null, selected = null, pendingMsg = null;
 
   function render() {
     var v = store.view();
@@ -251,13 +251,14 @@
       return;
     }
     var msg = el('<span class="msg"></span>');
+    if (pendingMsg) { msg.className = pendingMsg.className; msg.textContent = pendingMsg.text; pendingMsg = null; }
     function commitDraft(label) {
       msg.className = "msg"; msg.textContent = (label || "Saving") + "…";
       fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate),
         { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(store.toDraft()) })
         .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, b: b }; }); })
         .then(function (res) {
-          if (res.ok) { msg.className = "msg ok"; msg.textContent = (label || "Saved") + "."; store = createStore({ workbench: store.descriptor, title: store.title, aggregate: store.aggregate, data: res.b }); render(); }
+          if (res.ok) { pendingMsg = { className: "msg ok", text: (label || "Saved") + "." }; store = createStore({ workbench: store.descriptor, title: store.title, aggregate: store.aggregate, data: res.b }); render(); }
           else { msg.className = "msg err"; msg.textContent = "Failed: " + (res.b && res.b.message || r.status); }
         })
         .catch(function (e) { msg.className = "msg err"; msg.textContent = "Error: " + e; });
@@ -282,7 +283,7 @@
         { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(store.toDraft()) })
         .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, b: b }; }); })
         .then(function (res) {
-          if (res.ok) { msg.className = "msg ok"; msg.textContent = (action.label || "Done") + " — review and Save."; store.patch(res.b); render(); }
+          if (res.ok) { pendingMsg = { className: "msg ok", text: (action.label || "Done") + " — review and Save." }; store.patch(res.b); render(); }
           else { msg.className = "msg err"; msg.textContent = "Failed: " + (res.b && res.b.message || "error"); }
         })
         .catch(function (e) { msg.className = "msg err"; msg.textContent = "Error: " + e; });
