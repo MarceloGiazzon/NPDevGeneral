@@ -610,9 +610,21 @@ covers generated screens too, it protects the workbench surfaces as well.
 
 ---
 
-# Part 5 — F5 · The workbench: verify + close residuals
+# Part 5 — F5 · The workbench: verify + close residuals · ✅ DONE 2026-07-28, one item filed OPEN
 
 **2.5 days. It is DONE — this is verification, not construction.**
+
+> **Status, filed the same day this closed.** V.1/V.2/V.3 and R2/R3/R4 all done (see each
+> subsection below for what changed). **R1 (`allowedActions` typing) was investigated and NOT
+> shipped** — the plan's fix assumed validating an `allowedActions` entry against "a declared
+> action" was straightforward; it is not, because AutoPanel section actions (`"actions": [...]`
+> inside `transaction.sections[]`) have no typed AST home either — they live in the same untyped
+> `metadata` map `allowedActions` itself does. Typing `allowedActions` alone would enforce array
+> shape but cannot catch the actual failure mode (a typo'd action name), since JSON Schema has no
+> way to validate against a per-model dynamic set. Filed **REG-62** (OPEN, LOW,
+> `docs/NPDEV_OPEN_ITEMS_REGISTER.md`) rather than ship a typed-but-unvalidated field that would
+> look done without fixing the REG-52/53-class problem it exists to prevent. 0/27 corpus usage
+> means no urgency.
 
 ## F5-V.1 Suites · **2 hr**
 

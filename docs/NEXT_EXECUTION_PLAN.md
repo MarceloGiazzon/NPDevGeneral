@@ -497,21 +497,48 @@ credentials to be non-interactive, which is worse than documenting the manual re
 **No competitor can do this** — Lovable/v0/Bolt have no model to diff against; OutSystems/Mendix
 cannot emit source you own.
 
-## P4.5 F5 — Workbench residuals · ~1 day remaining
+## P4.5 F5 — Workbench residuals · mostly ✅ DONE 2026-07-28, one item honestly deferred
 
-- **F5-V.2** ✅ DONE (7/11).
-- **The 3 unexercised steps are not random**: `recompute`, `bandPickers`, `actions` — i.e. exactly
-  **AW-P3, AW-P2, AW-P5**, the three phases closed on paper *after* the 2026-07-12 reconciliation.
-  So the three most-recently-closed workbench phases are the three never verified live. "Exercised
-  elsewhere in the corpus" is suite-level, not *VERIFIED LIVE* by this register's own vocabulary.
-  **Fix: a tiny sample declaring all three (≈1 hr) and re-run those steps.**
-- **F5-R1 `allowedActions` untyped** (4 hr) and **F5-R2 `computed[]` warn-only** (2 hr) — both were
-  scoped as *"land inside 2.A."* **2.A shipped without them**, so they are now standalone breaking
-  changes needing their own `BREAKING.md` entries. **Still codemod-free** — my corpus pre-check
-  holds: **0 of 27** models use `allowedActions` or declare `computed[]`.
-- **F5-R3** phantom `display` toggle (30 min — corpus verified clean, doc-only) · **F5-R4** record the
-  two-picker boundary in `ACCEPTED_BOUNDARIES.md` (30 min).
-- **F5-V.1/V.3** — suites + `STATUS: EXECUTED` header on `AGGREGATE_WORKBENCH_PLAN.md` (gate → 13/13).
+- **F5-V.1 Suites.** ✅ DONE. `:dsl:test --rerun-tasks` and `:generator:test :generator:behaviorTest`
+  both green. Grepped `NPDevContract/dsl/src/test` and `NPDevGenerator/generator/src/test` for
+  `@Disabled` on any workbench/aggregate/band/region test — zero hits, so no acceptance test has
+  silently decayed into a skip.
+- **F5-V.2 Live re-verification.** ✅ DONE 7/11 (this was completed earlier the same session, before
+  F1–F4; see `docs/architecture/AGGREGATE_WORKBENCH_PLAN.md`'s own STATUS header and REG-60).
+- **F5-V.3 Status header.** ✅ Already DONE — same commit that recorded F5-V.2
+  (`38da6c7`) added the `> **STATUS: EXECUTED.**` header to
+  `AGGREGATE_WORKBENCH_PLAN.md`'s first line, satisfying `check-register-consistency.py`'s
+  planning-document coverage. No new work needed; verified by reading the live file, not assumed.
+- **F5-R3** phantom `display` toggle. ✅ DONE. Added a correction note directly at the `display`
+  documentation in `AGGREGATE_WORKBENCH_PLAN.md` (3 occurrences in the worked JSON example, not the
+  1 the plan implied) — `ff4acba` found no code path reads it (`BandRegion` always renders the
+  `selected` mode); kept as recorded design intent, not documentation of current behavior. Corpus
+  stays clean (0 files in `golden-ai-scenarios/**`/`knowledge/**` teach it).
+- **F5-R4** two-picker boundary. ✅ DONE. Added `B19` to `docs/ACCEPTED_BOUNDARIES.md`: `bandPickers`
+  (`selectors[]` + `picker:`) and the plain FK auto-picker (already `B16`) are two real, independently
+  working mechanisms that were deliberately not unified (`7e1096e`) — not "one is broken."
+- **F5-R2 `computed[]` warn-only.** ✅ Confirmed already correctly implemented — no code change
+  needed. Read `PanelValidation.java`'s `validateSurfaceComputed`: it already warns (does not error)
+  when a surface declares `computed[]` with no `transaction.metadata.recompute` procedure, exactly
+  the "warn, don't lie" behavior this item asked for. The plan's own remaining recommendation
+  ("delete the field in DSL 2.0") is explicitly a future breaking-change-track item, not this task.
+- **F5-R1 `allowedActions` untyped — investigated, NOT implemented, scoped honestly.** The plan's fix
+  ("typed array + validate every entry resolves to a declared action") assumes the AutoPanel's
+  declared action names are already a resolvable, typed set at DSL-validation time. They are not:
+  `AutoPanelSurfaceAst` has no `actions` field at all — an AutoPanel section's action list (e.g.
+  `"actions": ["gerarDemanda"]` inside a `transaction.sections[]` entry) lives inside that surface's
+  untyped `Map<String, Object> metadata`, the same escape hatch `allowedActions` itself uses today
+  (`AutoPanelExpander.java:310`, reading a CSV string off `state.getMetadata().get("allowedActions")`).
+  Typing `allowedActions` alone (a JSON-Schema `string[]`) would enforce array SHAPE but cannot catch
+  the actual failure mode this item exists to prevent — a typo'd action name (`GerarDemenda`) — since
+  JSON Schema has no way to validate against a per-model, dynamically-declared set of valid names.
+  Real semantic validation needs the action-declaration side resolved out of untyped metadata FIRST,
+  which is a separate, larger prerequisite refactor than this item's 4 hr estimate accounted for.
+  Shipping a typed-but-unvalidated field would look done without fixing the REG-52/53-class problem
+  it's named after — worse than leaving it visibly open. **Left as a genuinely open item**, not
+  silently dropped: `allowedActions` typing + cross-reference validation, blocked on first giving
+  AutoPanel section actions a typed AST home. 0/27 corpus usage still holds, so there is no urgency
+  and no regression from deferring.
 
 ## P4.6 F6 — Coverage roadmap · gated on F1 — **still gated, now with a measured answer**
 

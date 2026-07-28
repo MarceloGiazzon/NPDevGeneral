@@ -158,6 +158,14 @@ for the bespoke 20%:
 `display` ∈ `selected` (default) | `all` | `paged`. Recebimento reuses this with
 `grids: [destinos]` and `lifecycle: "RecebimentoEstagio"`.
 
+> **F5-R3 (`docs/FRONTEND_STRATEGY_PLAN.md`), recorded 2026-07-28: `display` was never
+> implemented.** `ff4acba` found no code path reads it — `BandRegion` always renders in the
+> `selected` mode this doc calls the default, with no `all`/`paged` alternative anywhere in the
+> generator or runtime. It was closed without code, not deferred. Corpus-checked 2026-07-27: 0
+> files in `golden-ai-scenarios/**` or `knowledge/**` teach a client to expect it, so this was
+> confined to this document. Kept here as a recorded design intent (a future band-display-mode
+> feature could still pick this field name up), not as documentation of current behavior.
+
 ---
 
 ## 5. Phased plan (re-sequenced for AutoPanels)

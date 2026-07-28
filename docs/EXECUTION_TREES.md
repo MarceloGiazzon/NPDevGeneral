@@ -224,7 +224,13 @@ TREE 2 — BIG
 │    │        Correction: NOT wired into run-ai-knowledge-gate.ps1 (that gate is static/
 │    │        repo-level; this needs a live authenticated bundle) -- it's a per-app
 │    │        post-deploy tool, documented recipe instead of a fragile auto-wired script.
-│    │    F5  Workbench: re-verify + 4 residuals (DONE, not to-build)      [2.5 days]
+│    │    F5  Workbench residuals ✅ DONE 2026-07-28, except one honestly deferred item.
+│    │        V.1 suites green (dsl+generator+behaviorTest), 0 @Disabled workbench tests.
+│    │        V.2/V.3 already done earlier the same session. R2/R3/R4 confirmed/fixed
+│    │        (doc-only). R1 (typed allowedActions) investigated, NOT shipped: typing
+│    │        alone can't catch the typo it exists to prevent -- semantic validation is
+│    │        blocked on AutoPanel actions having no typed AST home yet. Filed REG-62,
+│    │        OPEN, LOW (0/27 corpus usage, no urgency).
 │    │    F6  Coverage roadmap — build only what F1 proves recurs          [gated -- F1 found
 │    │        nothing recurs yet, so F6 has nothing to build until that changes]
 │
