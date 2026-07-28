@@ -209,7 +209,9 @@ TREE 2 — BIG
 │    │        verbatim (anti-drift proven live against WmsOffice) + 6 unfiltered catalogs;
 │    │        found invocations+transitions were never split into their own manifest files
 │    │        (fixed, 9->11 manifests). modelHash reuses SchemaLifecycleExecutor's fingerprint.
-│    │        F2.3 remains.
+│    │        F2.3 ✅ DONE 2026-07-28 -- docs/UI_CONTRACT.md, schemas/ui-contract.schema.json
+│    │        (validated against a real live bundle response), docs/ai/UI_GENERATION_PROMPT.md.
+│    │        F2 (contract substrate) is now fully closed.
 │    │    F3  Provenance — one manifest, three producers                   [4 days] ★
 │    │    F4  Impact gate — a field rename names the screens it breaks     [2 days] ★★
 │    │    F5  Workbench: re-verify + 4 residuals (DONE, not to-build)      [2.5 days]

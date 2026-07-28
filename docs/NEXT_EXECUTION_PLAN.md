@@ -398,8 +398,21 @@ screens are hand-written."
   `bundle.fields`/`bundle.actions` were byte-for-byte equal to the individual `/fields`/`/actions`
   endpoints' own output for the same JWT-authenticated caller — the exact anti-drift assertion the
   plan's acceptance criterion names.
-- **F2.3 docs + schema + agent prompt (2 days).** `UI_CONTRACT.md` (~80% drafted in
-  `FRONTEND_STRATEGY_PLAN.md`), `schemas/ui-contract.schema.json`, `docs/ai/UI_GENERATION_PROMPT.md`.
+- **F2.3 docs + schema + agent prompt (2 days). ✅ DONE 2026-07-28.** Shipped
+  `docs/UI_CONTRACT.md`, `schemas/ui-contract.schema.json`, `docs/ai/UI_GENERATION_PROMPT.md`.
+  Carried the staged draft over with corrections earned by actually building F2.1/F2.2, not assumed:
+  the draft's "Everything is permission-filtered" claim is false (only `fields`/`actions` are; the
+  other six catalogs are raw pass-through — now stated plainly, with a dedicated warning section);
+  the "twelve catalogs" table conflated the platform's full catalog set with what the bundle actually
+  exposes (`panels`/`procedures`/`domainTypes` and the plural `concepts` list are NOT in the bundle —
+  table now says so explicitly); the direct-CRUD path example (`POST /api/{pluralTable}`) was wrong,
+  corrected to the real `/api/concepts/{tableName}`; found a real, previously-undocumented gateway
+  route (`POST /api/v1/execute/flow`, `DirectExecutionGatewayController`) that exists but is **not**
+  represented in the `invocations` catalog at all — documented as a known gap rather than silently
+  treated as covered. `ui-contract.schema.json` (one copy, not the 4-way `model.schema.json` mirror —
+  this shape is produced entirely at runtime, never read by the DSL) validated against a real live
+  bundle response (`GET .../bundle?concept=Area` on WmsOffice) with the `jsonschema` library, for
+  both the concept-scoped and unscoped-bundle shapes.
 
 ## P4.3 F3 — Provenance: one manifest, three producers ★ · 4 days
 

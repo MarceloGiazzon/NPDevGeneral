@@ -431,7 +431,22 @@ compose the **existing** filters in `PermissionAwareUiMetadataService` rather th
 **Acceptance.** Each bundle array equals the individual endpoint's output for the same caller (the
 anti-drift assertion). Two roles → different `filteredCount`.
 
-## 2.4 F2.3 — `docs/UI_CONTRACT.md` + schema + agent prompt · **2 days**
+## 2.4 F2.3 — `docs/UI_CONTRACT.md` + schema + agent prompt · **2 days** · ✅ DONE 2026-07-28
+
+> **Correction, filed the same day this shipped.** The staged draft below was carried over, not
+> verbatim, because building F2.1/F2.2 first surfaced real errors in it: "Everything is
+> permission-filtered" is false (only `fields`/`actions` are — the shipped `UI_CONTRACT.md` states
+> this as its own dedicated warning section); the "twelve catalogs" table implied all twelve are in
+> the bundle, when `panels`/`procedures`/`domainTypes`/plural-`concepts` are not; the direct-CRUD
+> path example (`POST /api/{pluralTable}`) doesn't exist (real path: `/api/concepts/{tableName}`,
+> same F2.1 correction). Also found, while writing the doc, a real gateway route neither this plan
+> nor F2.1 ever catalogued: `POST /api/v1/execute/flow` (`DirectExecutionGatewayController`) is a
+> real, working, untyped flow-execution path — but it is not represented in the `invocations`
+> catalog at all, so an agent following only the catalog would never discover it. Documented as a
+> known gap. `schemas/ui-contract.schema.json` shipped as ONE file (not the 4-way `model.schema.json`
+> mirror, per this section's own "decide this explicitly" note) and was validated with the
+> `jsonschema` library against a real captured `GET .../bundle?concept=Area` response from a live
+> regenerated WmsOffice.
 
 Full ~80%-complete draft of `UI_CONTRACT.md` and the 8-rule agent prompt are in the staged
 `2C_CONTRACT_PATH_PLAN.md` §2.C.3 — carry them over verbatim. The two rules that matter most:
