@@ -16,7 +16,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * <p>{@link SchemaLifecycleExecutor#normalizeSqlType} already aliased H2's
  * {@code "CHARACTER VARYING"} and the generator's {@code "JSONB"} to their canonical forms, but
  * never accounted for Postgres's OWN internal pg_type short names (e.g. a column declared BIGINT
- * live-reports {@code TYPE_NAME="int8"}) -- so on Postgres, {@code classify()}/{@code hasTypeChange()}
+ * live-reports {@code TYPE_NAME="int8"}) -- so on Postgres, {@code classify()} (via the
+ * since-removed {@code hasTypeChange()} helper it used at the time, REG-54; classify() now goes
+ * through {@code ClassificationReducer})
  * misclassified every unchanged INTEGER/BIGINT/SMALLINT/BOOLEAN/REAL/DOUBLE column as a type change
  * the moment ANY fingerprint mismatch triggered a diff, which (per {@code beforeMigrate}'s per-table
  * all-or-nothing composition) could route an otherwise-safe change straight to destructive
