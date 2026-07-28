@@ -1,5 +1,8 @@
 ## Summary
 
+<!-- External contribution? See CONTRIBUTING.md. The "Batch Governance Checklist" below is for the
+     maintainer's own internal work batches -- leave it blank if it doesn't apply to your PR. -->
+
 - Active board:
 - Batch ID:
 - Owner:
