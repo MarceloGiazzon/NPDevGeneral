@@ -710,9 +710,33 @@
     const panelContext = panelContextValues();
     const panelEnabled = evaluateWhen(panelMeta.enabledWhen, panelContext);
     (panelMeta.actions || []).forEach(function (action) {
+      // G2: scope="row" actions render per row inside renderDeclaredColumnsTable instead -- skip here.
+      if (action.scope === "row") { return; }
       if (!evaluateWhen(action.visibleWhen, panelContext)) { return; }
+      const fieldNames = action.inputFields || [];
+      // G3 (docs/MOVE2_PANEL_ACTIONS_PLAN.md): a panel-scoped action with declared inputFields gets
+      // an inline "collect input, then invoke" mini-form -- the same shape
+      // renderDeclaredPanelAddRowForm already uses for a dataSource's add-row form, just wired to
+      // executeDeclaredPanelAction instead of createDeclaredPanelRow. Plain text inputs only (no
+      // widget/reference-picker resolution yet -- a real but smaller gap than having no form at all).
+      const inputsByField = {};
+      if (fieldNames.length) {
+        const inlineForm = document.createElement("span");
+        inlineForm.className = "declared-panel-action-inputs";
+        fieldNames.forEach(function (field) {
+          const input = document.createElement("input");
+          input.type = "text";
+          input.placeholder = field;
+          input.className = "declared-panel-edit-input";
+          inputsByField[field] = input;
+          inlineForm.appendChild(input);
+        });
+        section.appendChild(inlineForm);
+      }
       const actionButton = button(action.label, "primary", function () {
-        executeDeclaredPanelAction(panelMeta, action.name);
+        const data = {};
+        Object.keys(inputsByField).forEach(function (field) { data[field] = inputsByField[field].value; });
+        executeDeclaredPanelAction(panelMeta, action.name, data);
       });
       actionButton.disabled = !panelEnabled || !evaluateWhen(action.enabledWhen, panelContext);
       section.appendChild(actionButton);
@@ -838,6 +862,17 @@
   // editable render an <input> instead of static text; an explicit per-row "Save" button (not
   // autosave) appears once per row that has at least one editable column and a resolvable save
   // action -- modeled directly on the proven WmsOffice centro-trabalho.html renderPosicaoRow pattern.
+  // G2 (docs/MOVE2_PANEL_ACTIONS_PLAN.md): declared actions with scope "row" render once per row of
+  // their declared dataSource, instead of once at the panel header (see renderDeclaredPanel's header
+  // loop, which skips them). visibleWhen/enabledWhen evaluate against the row's OWN field values
+  // merged over the usual actor/role panelContext, so e.g. `situacao == 'Ativo'` can gate the button
+  // per row -- panelContextValues() alone (isSuperUser/role/actorId) can't express that.
+  function rowScopedActions(entry, dataSourceName) {
+    return (entry.actions || []).filter(function (action) {
+      return action.scope === "row" && action.dataSource === dataSourceName;
+    });
+  }
+
   function renderDeclaredColumnsTable(rows, columns, dataSourceName, panelMeta, entry) {
     const table = document.createElement("table");
     table.className = "records";
@@ -845,8 +880,9 @@
     const saveAction = editableColumns.length ? resolveRowSaveAction(panelMeta, entry, dataSourceName) : null;
     const dataSourceMeta = declaredPanelDataSourceMeta(entry, dataSourceName);
     const deletable = Boolean(dataSourceMeta && (dataSourceMeta.rowOps || []).indexOf("delete") !== -1);
+    const rowActions = rowScopedActions(entry, dataSourceName);
     const headerLabels = columns.map(function (column) { return column.label || column.field; });
-    if (saveAction || deletable) { headerLabels.push(""); }
+    if (saveAction || deletable || rowActions.length) { headerLabels.push(""); }
     const thead = document.createElement("thead");
     thead.appendChild(headerRow(headerLabels));
     table.appendChild(thead);
@@ -871,7 +907,7 @@
         }
         tr.appendChild(td);
       });
-      if (saveAction || deletable) {
+      if (saveAction || deletable || rowActions.length) {
         const actionTd = document.createElement("td");
         if (saveAction) {
           actionTd.appendChild(button("Save", "secondary small", function () {
@@ -883,6 +919,15 @@
             executeDeclaredPanelAction(panelMeta, saveAction.name, { id: row.id, data: data });
           }));
         }
+        const rowContext = Object.assign({}, panelContextValues(), rowData);
+        rowActions.forEach(function (action) {
+          if (!evaluateWhen(action.visibleWhen, rowContext)) { return; }
+          const rowActionButton = button(action.label || action.name, "secondary small", function () {
+            executeDeclaredPanelAction(panelMeta, action.name, { id: row.id });
+          });
+          rowActionButton.disabled = !evaluateWhen(action.enabledWhen, rowContext);
+          actionTd.appendChild(rowActionButton);
+        });
         if (deletable) {
           actionTd.appendChild(button("✕", "secondary small", function () {
             deleteDeclaredPanelRow(panelMeta, dataSourceName, row.id);

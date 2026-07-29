@@ -3123,6 +3123,28 @@
         },
         "metadata": {
           "type": "object"
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "panel",
+            "row"
+          ],
+          "default": "panel",
+          "description": "panel: rendered once, no row context. row: rendered per row of dataSource, invoked with that row's id."
+        },
+        "dataSource": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Required when scope is row -- names the panel dataSource whose rows this action is rendered against."
+        },
+        "inputFields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Field names collected from the user before invoking this action, then passed as the flow/procedure input. Same declaration shape as panelDataSource.addFormFields."
         }
       },
       "additionalProperties": false

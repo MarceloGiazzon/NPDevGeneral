@@ -540,7 +540,7 @@ final class AutoPanelExpander {
     private static CompiledPanelAction mutationAction(String name, String label, String concept, String operation) {
         return new CompiledPanelAction(
                 name, label, "conceptMutation", concept, operation,
-                null, null, null, null, List.of(), Map.of(), Map.of());
+                null, null, null, null, List.of(), Map.of(), Map.of(), null, null, List.of());
     }
 
     private static Map<String, Object> surfaceMetadata(String autoPanel, String surface, String concept) {

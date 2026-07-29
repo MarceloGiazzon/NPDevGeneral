@@ -264,6 +264,30 @@
           "name": "orders",
           "concept": "WidgetOrder"
         }
+      ],
+      "actions": [
+        {
+          "name": "place",
+          "label": "Place order",
+          "binding": "flow",
+          "flow": "PlaceWidgetOrder",
+          "metadata": {
+            "purpose": "Coverage for panelAction.inputFields (G3, docs/MOVE2_PANEL_ACTIONS_PLAN.md): a panel-scoped create action collects these fields from the user before invoking the flow."
+          },
+          "inputFields": ["customerEmail", "status", "lineCount"]
+        },
+        {
+          "name": "confirm",
+          "label": "Confirm order",
+          "binding": "flow",
+          "flow": "ConfirmWidgetOrder",
+          "scope": "row",
+          "dataSource": "orders",
+          "visibleWhen": "status == 'pending'",
+          "metadata": {
+            "purpose": "Coverage for panelAction.scope=row (G2, docs/MOVE2_PANEL_ACTIONS_PLAN.md): rendered once per row of \"orders\", invoked with that row's id, visible only while status is pending."
+          }
+        }
       ]
     }
   ],
@@ -447,6 +471,27 @@
           "name": "return-line",
           "type": "return",
           "value": "$updatedLine"
+        }
+      ]
+    },
+    {
+      "name": "ConfirmWidgetOrder",
+      "input": {
+        "concept": "WidgetOrder",
+        "mode": "update"
+      },
+      "steps": [
+        {
+          "name": "apply-confirmed",
+          "type": "updateConcept",
+          "scope": "WidgetOrder",
+          "input": "$input",
+          "output": "$confirmed"
+        },
+        {
+          "name": "return-confirmed",
+          "type": "return",
+          "value": "$confirmed"
         }
       ]
     },

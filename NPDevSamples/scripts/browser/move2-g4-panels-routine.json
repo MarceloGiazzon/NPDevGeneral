@@ -1,0 +1,30 @@
+{
+  "scenarioName": "move2-g4-new-panels-render",
+  "targetPath": "/login.html",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl", "label": "Open the real login page" },
+    { "action": "waitForSelector", "selector": "#username", "state": "visible", "label": "Login form rendered" },
+    { "action": "fill", "selector": "#base", "value": "http://127.0.0.1:8100", "label": "Same-origin base" },
+    { "action": "fill", "selector": "#username", "value": "admin" },
+    { "action": "fill", "selector": "#password", "value": "admin123" },
+    { "action": "fill", "selector": "#tenant", "value": "trial" },
+    { "action": "click", "selector": "#loginBtn", "label": "Submit real login" },
+    { "action": "waitForSelector", "selector": "#tokenBox", "state": "visible", "label": "Login succeeded" },
+    { "action": "goto", "url": "http://127.0.0.1:8100/npdev-business-ui/", "label": "Navigate to the business UI" },
+    { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-__panel-InventarioHistoricoPanel__\"]", "state": "visible", "label": "InventarioHistoricoPanel nav entry rendered" },
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-__panel-InventarioHistoricoPanel__\"]", "label": "Open InventarioHistoricoPanel" },
+    { "action": "waitForSelector", "selector": "#concept-__panel-InventarioHistoricoPanel__ h2", "state": "visible", "label": "Panel rendered" },
+    { "action": "waitForTimeout", "timeoutMs": 1200, "label": "Let dataSources settle" },
+    { "action": "screenshot", "name": "shot_inventario_historico", "label": "InventarioHistoricoPanel with nested linhas" },
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-__panel-MovimentoLivrePanel__\"]", "label": "Open MovimentoLivrePanel" },
+    { "action": "waitForSelector", "selector": "#concept-__panel-MovimentoLivrePanel__ h2", "state": "visible", "label": "Panel rendered" },
+    { "action": "waitForTimeout", "timeoutMs": 1200, "label": "Let dataSources settle" },
+    { "action": "screenshot", "name": "shot_movimento_livre", "label": "MovimentoLivrePanel with add-item form + row-scoped Confirmar" },
+    { "action": "click", "selector": "#sideNav a[href=\"#concept-__panel-ConferenciaFiscalNfePanel__\"]", "label": "Open ConferenciaFiscalNfePanel" },
+    { "action": "waitForSelector", "selector": "#concept-__panel-ConferenciaFiscalNfePanel__ h2", "state": "visible", "label": "Panel rendered" },
+    { "action": "waitForTimeout", "timeoutMs": 1200, "label": "Let dataSources settle" },
+    { "action": "screenshot", "name": "shot_conferencia_fiscal_nfe", "label": "ConferenciaFiscalNfePanel with nested itens + row-scoped Cancelar" },
+    { "action": "collect", "what": ["domText", "console"] }
+  ]
+}

@@ -532,6 +532,15 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 actionNode.put("binding", action.binding());
                 actionNode.put("visibleWhen", action.visibleWhen() == null ? "" : action.visibleWhen());
                 actionNode.put("enabledWhen", action.enabledWhen() == null ? "" : action.enabledWhen());
+                // G2 (docs/MOVE2_PANEL_ACTIONS_PLAN.md): the header-button loop in
+                // business-ui-app.mustache needs "scope" on THIS boot-time manifest (not just the
+                // richer live GET response's entry.actions) to skip row-scoped actions from its very
+                // first render, before any panel data has loaded.
+                actionNode.put("scope", action.scope());
+                // G3 (docs/MOVE2_PANEL_ACTIONS_PLAN.md): the header loop needs the field list at boot
+                // time to render the inline "collect input, then invoke" mini-form for a panel-scoped
+                // action (same shape as panelDataSource.addFormFields' add-row form).
+                actionNode.put("inputFields", action.inputFields());
                 actions.add(actionNode);
             }
             node.put("actions", actions);

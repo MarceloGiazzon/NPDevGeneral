@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**70 item(s) migrated: 0 open/partial, 70 done.**
+**72 item(s) migrated: 0 open/partial, 72 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -78,6 +78,8 @@
 | REG-68 | check-narrative-status-drift.py's Rule P2 real-instance control also used bare "HEAD" and rotted the same way as REG-67 | GAP | LOW | DONE | 2026-07-29 |
 | REG-69 | 3 DSL features (fragments, packs, step.updateConcept) have zero coverage on a bare CI checkout -- only exercised by AppGen/apps-only models | GAP | LOW | DONE | 2026-07-29 |
 | REG-7 | LNCH-1-B6: no migration advisory lock (multi-instance) -- converted to a feature | BOUNDARY | — | DONE | 2026-07-21 |
+| REG-70 | panel.action.binding: "flow" is schema-valid, compiler-accepted, and unimplemented at runtime -- 2 shipping WmsOffice panels already have a dead primary action | BUG | HIGH | DONE | 2026-07-29 |
+| REG-71 | panelAction scope="row" + binding="conceptMutation" blanked every other required field to null (executeConceptMutation stripped "id" from a flat body; ConceptGatewaySemanticPolicy separately requires "id" present in the data map) | BUG | HIGH | DONE | 2026-07-29 |
 | REG-8 | LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-9 | LNCH-4: auth secrets management -- JWT key env-var delivery | GAP | HIGH | DONE | 2026-07-21 |
 
@@ -1651,6 +1653,131 @@ Verified: full RuntimeHost suite green after each sub-phase, dedicated test clas
 live boot rehearsals against a real assembled app found and fixed two real ordering bugs.
 
 *Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-7`
+
+### REG-70 — panel.action.binding: "flow" is schema-valid, compiler-accepted, and unimplemented at runtime -- 2 shipping WmsOffice panels already have a dead primary action
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-07-29)
+**Verification:** VERIFIED_LIVE
+**Source:** docs/MOVE1_CONSOLE_CONVERSION_PLAN.md (Move 1 of CAPABILITY_ROADMAP.md) -- found by a code read before authoring CrossDockingConsolePanel, then confirmed live via both direct REST calls and a real-browser ScrapForAI run against a running WmsOffice instance
+**Surface:** `kernel/panel-runtime`
+**Files:**
+- `NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/PanelRuntime.java`
+- `NPDevContract/schemas/model.schema.json`
+- `AppGen/apps/_official/WmsOffice/definition/model.json`
+
+`model.schema.json`'s `panelAction.binding` enum is `["conceptQuery","conceptMutation","procedure",
+"flow"]` and the compiler (`CompiledPanelAction`) accepts all four. But
+`PanelRuntime.executeAction` only implements `procedure`, `conceptQuery`, and `conceptMutation`;
+the `flow` case falls through to an `else` branch returning
+`{"status":"UNSUPPORTED","result":{"code":"PANEL_ACTION_BINDING_UNSUPPORTED", ...}}`. Both
+entry points into panel-action execution (`RuntimeUiMetadataController`'s
+`/panels/{panel}/actions/{action}` and `DirectExecutionGateway.executePanelAction`) delegate to
+this same method, so there is no alternate path that works.
+
+**Two panels already shipping in WmsOffice's live model have their one action on this dead
+branch**: `ConferenciaRecebimentoPanel.ConfirmarRecebimento` and
+`ExpedicaoDemandaPanel.ConfirmarSaidaExpedicao` (both `binding: "flow"`). Confirmed live
+2026-07-29: `GET .../panels/ConferenciaRecebimentoPanel` and `.../ExpedicaoDemandaPanel` both
+report `"binding": "flow"` for their sole action; a `flow`-bound action invoked against the
+running app (proven via `CrossDockingConsolePanel`'s equivalent actions, same code path,
+action-name/flow-name-agnostic branch) returns `PANEL_ACTION_BINDING_UNSUPPORTED` with HTTP 200 --
+and the generated business-ui client's status banner only flags a result as an error when
+`payload.status === "FAILED"`, so a user clicking the button sees a neutral (non-red) "Action
+... completed: UNSUPPORTED" message, not an obvious failure. `OcupacaoLocalPanel` (`procedure`
+binding) and `MovimentoDetailPanel` (`conceptMutation` binding) are unaffected -- confirmed
+working end-to-end (including a real invariant-evaluated write) via `CrossDockingConsolePanel`'s
+`marcarConcluidoDireto` control action, which used the identical `executeAction` method with a
+different `binding` value.
+
+Smallest fix: add a `flow` branch to `PanelRuntime.executeAction` that invokes the named flow
+through the same execution path `/api/v1/flows/{name}/execute` already uses (the `procedure` and
+`conceptMutation` branches in the same switch are the proven-working reference). Scoped to Move 2
+of `CAPABILITY_ROADMAP.md` (`docs/MOVE1_CONSOLE_CONVERSION_PLAN.md`'s G1) -- Move 1 itself changes
+no platform code by design, so this fix is deliberately not made yet.
+
+Same class as `generatedAction` (schema+compiler+runtime all support it, only the validator
+rejects it -- REG-65) and `panel.route` (declared, compiled, but the generated business-ui client
+never wires it to an actual navigable URL; panels are reached via the left-nav "Panels" section
+instead) -- a declared surface some layer silently doesn't finish, not caught by any existing test
+because none crosses the authoring-to-runtime boundary for panel actions.
+
+CLOSED 2026-07-29 (`docs/MOVE2_PANEL_ACTIONS_PLAN.md` G1): added a `flow` branch to
+`PanelRuntime.executeAction` that routes through `KernelFacade.executeFlow` (the same call the
+generated `FlowExecutionController`'s `/api/flows/{name}/execute` uses), returning `OK`/`WAITING`/
+`FAILED` (mapped from `ExecutionStatus`) plus a real `executionId`/`correlationId` -- no
+synchronous result is synthesized for a parked (`WAITING_EVENT`) flow. `kernelFacade == null`
+still degrades to the old `UNSUPPORTED` response (graceful, matches this file's existing
+null-safety idiom) rather than throwing, so no existing unit test needed updating.
+
+New test `NPDevRuntimeHost/src/test/java/com/finalexec/PanelRuntimeFlowActionTest.java`
+(2 cases, Mockito-mocked `KernelFacade`) -- RED confirmed by this REG's own live evidence above
+(`PANEL_ACTION_BINDING_UNSUPPORTED`) before the branch existed; GREEN proven by actually running
+it inside a regenerated+mounted WmsOffice build (2/2 passing; `test`'s default sourceSet excludes
+`com.npdev.generated.*`-referencing test sources per `feedback_runtimehost_generated_app_test_exclusions`,
+so the exclusion was temporarily lifted in the ephemeral generated app's own `build.gradle` to run
+it, then reverted -- the source template itself was never changed).
+
+**Both dead actions verified live end-to-end, real state transitions**, not just "no longer
+UNSUPPORTED": `ConferenciaRecebimentoPanel.ConfirmarRecebimento` walked a real Recebimento through
+`PreRecebimento -> Enderecado -> Conferido -> Armazenado` (each hop `status: OK`, real
+`executionId`); `ExpedicaoDemandaPanel.ConfirmarSaidaExpedicao` walked a real Expedicao through
+`PreExpedicao -> DemandaGerada -> MovimentacaoConcluida -> SaidaConfirmada`, same result shape.
+`CrossDockingConsolePanel.ativar`/`.concluir` (the panel this REG was found through) also
+confirmed `OK` with real flow output. A real-browser ScrapForAI pass (clicking the still-unscoped,
+still-input-less `Ativar Cross-Docking` header button -- G2/G3 not yet fixed) now shows
+`Action "ativar" completed: FAILED` with the client's real error-red styling (the `payload.status
+=== "FAILED"` check now matches), instead of the previous neutral, easy-to-miss `"...completed:
+UNSUPPORTED"` -- a real UX improvement, not just a status-code change.
+
+### REG-71 — panelAction scope="row" + binding="conceptMutation" blanked every other required field to null (executeConceptMutation stripped "id" from a flat body; ConceptGatewaySemanticPolicy separately requires "id" present in the data map)
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-07-29)
+**Verification:** VERIFIED_LIVE
+**Source:** docs/MOVE2_PANEL_ACTIONS_PLAN.md G4 -- found live while authoring InventarioHistoricoPanel's "Confirmar" action and ConferenciaFiscal{Nfe,Romaneio}Panel's "Cancelar" action (the first scope="row" actions in the corpus bound to conceptMutation rather than flow -- G2's own live verification against CrossDockingConsolePanel only ever exercised flow-bound row actions)
+**Surface:** `kernel/panel-runtime`
+**Files:**
+- `NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/PanelRuntime.java`
+- `NPDevRuntimeHost/src/test/java/com/finalexec/PanelRuntimeRowScopedActionTest.java`
+
+Two stacked bugs, found and fixed in sequence, both only reachable by a `scope: "row"` action
+bound to `conceptMutation` (the real per-row button always sends a flat `{id: row.id}` body, per
+`business-ui-app.mustache`'s row-action click handler):
+
+**Bug 1** -- `PanelRuntime.executeAction`'s row-scope merge (`resolveRowScopedInput`, added for
+G2) originally only applied to `flow`/`procedure` bindings, not `conceptMutation`. A `conceptMutation`
+action's own `executeConceptMutation` treats a body with no `"data"` key as the WHOLE record to
+save -- so a flat `{id}` body (correct) was ALSO doing that, blanking every other required field
+to null. Reproduced live: `POST .../InventarioHistoricoPanel/actions/confirmar` with `{id,
+situacao}` failed `ConceptGatewaySemanticException: Required concept field is missing:
+InventarioArquivo.entidadeId`.
+
+**Bug 2** (surfaced immediately after fixing Bug 1) -- `executeConceptMutation`'s fallback branch
+(`data.isEmpty()`) built the save payload as `new LinkedHashMap<>(input); data.remove("id")` --
+deliberately excluding `"id"` from the data map, on the assumption `"id"` is call metadata, not a
+data field. But `ConfiguredConceptGatewaySemanticPolicy` (the real, non-noop semantic policy)
+iterates every declared concept field INCLUDING `"id"` (every concept has one, `required: true`)
+and validates it's present in the SAME data map. Reproduced live:
+`ConceptGatewaySemanticException: Required concept field is missing: InventarioArquivo.id`, even
+after Bug 1's fix correctly merged every other field in.
+
+**Why G2's own live verification missed this**: `CrossDockingConsolePanel.concluir`/`.cancelar`
+(G2's proof) are both `binding: "flow"`, which already had its own row-scope merge from the start.
+No corpus panel had a `conceptMutation` + `scope: "row"` action until G4's
+`InventarioHistoricoPanel.confirmar` / `ConferenciaFiscal{Nfe,Romaneio}Panel.cancelar`.
+
+**Test methodology note**: the first version of the regression test used
+`DefaultConceptGateway`'s 4-arg constructor, which defaults to `ConceptGatewaySemanticPolicy.noop()`
+-- so it passed even with BOTH bugs still present, proving nothing (same shape as
+`feedback_red_proof_must_match_production_shape`: a RED-proof that doesn't match production shape
+is not a RED-proof). Rewritten to construct a real `ConfiguredConceptGatewaySemanticPolicy` with a
+concept definition carrying required fields (including `id`), which failed correctly before the
+fix and passes after.
+
+Fixed: `effectiveInput` computation now also runs `resolveRowScopedInput` for `conceptmutation`
+bindings (Bug 1); `executeConceptMutation`'s fallback branch no longer strips `"id"` from the
+constructed data map (Bug 2). Verified live: `InventarioHistoricoPanel.confirmar` and
+`ConferenciaFiscalNfePanel.cancelar` both return `status: "OK"` with a real gateway trace showing
+the correct lifecycle transition and every other field preserved from the fresh row read.
 
 ### REG-8 — LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback
 

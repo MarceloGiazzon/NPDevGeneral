@@ -280,7 +280,37 @@ final class PanelValidation {
                     errors.add("Panel " + panel.name() + " action " + action.name()
                             + ": flow not found: " + action.flow());
                 }
+                validatePanelActionScope(panel, action, errors);
             }
+        }
+    }
+
+    /**
+     * G2 (docs/MOVE2_PANEL_ACTIONS_PLAN.md): a {@code scope: "row"} action is rendered once per row
+     * of a declared dataSource and invoked with that row's id -- it needs {@code dataSource} to name
+     * which one. Default ({@code scope} absent or {@code "panel"}) needs nothing new, so every action
+     * declared before this field existed validates unchanged.
+     */
+    private static void validatePanelActionScope(PanelAst panel, PanelActionAst action, List<String> errors) {
+        String scope = hasText(action.scope()) ? normalize(action.scope()) : "panel";
+        if (!scope.equals("panel") && !scope.equals("row")) {
+            errors.add("Panel " + panel.name() + " action " + action.name()
+                    + ": unsupported action scope " + action.scope() + " (must be panel or row)");
+            return;
+        }
+        if (!scope.equals("row")) {
+            return;
+        }
+        if (!hasText(action.dataSource())) {
+            errors.add("Panel " + panel.name() + " action " + action.name()
+                    + ": scope \"row\" requires dataSource");
+            return;
+        }
+        boolean dataSourceExists = panel.dataSources().stream()
+                .anyMatch(candidate -> normalize(candidate.name()).equals(normalize(action.dataSource())));
+        if (!dataSourceExists) {
+            errors.add("Panel " + panel.name() + " action " + action.name()
+                    + ": dataSource not found among panel's dataSources: " + action.dataSource());
         }
     }
 
