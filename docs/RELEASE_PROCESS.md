@@ -35,6 +35,28 @@ existing gate seed) and the beta0 tag-immutability rules already written into
    release): confirm the trademark-check item in `docs/adr/ADR-0007-distribution-model.md` has
    actually been done, not just noted as pending.
 
+## Merge cadence: keep `origin/main` current
+
+`main` is public and the default branch — it is what a clone gets, what GitHub renders, and what any
+first impression is formed from. Work lands on the active working branch (today: `beta1-vision-spine`)
+and `main` only advances on an explicit merge, so **nothing about normal development keeps it
+current on its own.** Left alone, this has silently reached 150 commits behind (pre-T1.6) and 71
+commits behind (2026-07-29, `docs/RECORD_SURFACES_PLAN.md` P1) — twice, with nothing measuring the
+gap either time.
+
+- **Convention: merge forward whenever a plan closes.** A plan closing is a natural, memorable
+  checkpoint — don't let a gap accumulate across several.
+- **Merge via PR, not a local fast-forward**, so both quality gates run on the merge itself before
+  it lands — this is often the first *observed CI run* for changes to the gates themselves.
+- **Tag the merge** `v<version>` per the versioning scheme below. Per the beta0 tag-immutability
+  rule (step 4 above): never move a previously pushed tag to point at the new merge — supersede it
+  with the next tag.
+- **The tripwire, not the only defense:** `scripts/quality/check-record-surfaces.py`, wired into
+  `run-ai-knowledge-gate.ps1`, WARNs above 20 commits ahead of `origin/main` and FAILs above 50. A
+  working branch is *meant* to run some commits ahead between merges — the threshold exists so a
+  second unmerged release can't again reach 71 (or 150) unnoticed, not to force a merge on every
+  commit.
+
 ## Versioning
 
 Semantic-ish: `MAJOR.MINOR.PATCH`.
