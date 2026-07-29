@@ -1,0 +1,23 @@
+id: REG-36
+title: "Oversized idempotency keys could exceed the Postgres btree index-entry size limit"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-25
+closed: 2026-07-25
+verification: VERIFIED_LIVE
+source: "REG16-resid Round 1 kernel-execution adversarial review, finding REG16K-F1"
+surface: kernel/idempotency
+detail: |
+  A new IdempotencyKeys.bound(...) digests a key above 200 chars to npdev-sha256$<hex>, applied in
+  both stores at their key chokepoints. A naive digest would have introduced a NEW collision the
+  original bug didn't have (a caller submitting the literal short string "sha256(X)" would land on
+  X's record) -- fixed by also digesting any short key that already starts with the reserved prefix.
+  Correction found while building the control: the real trigger is size AFTER compression (an
+  oversized but highly compressible key inserts fine); verified on a real Postgres container: 8,000
+  incompressible chars throws, the compressible twin does not. idempotency-postgres was the ONLY
+  *-postgres adapter with no postgres-test-support dependency at all -- its one test ran H2 in
+  PostgreSQL mode, which does not enforce this limit; that gap is why the bug shipped and is now
+  closed (a real-Postgres PostgresIdempotencyKeyBoundTest added). Tests: IdempotencyKeysTest (6),
+  InProcIdempotencyStoreTest (+3).
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-36

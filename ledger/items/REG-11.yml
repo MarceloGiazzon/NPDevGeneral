@@ -1,0 +1,23 @@
+id: REG-11
+title: "LNCH-20: cross-platform build scripts (gradlew.bat literals, portable cache dir)"
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-22
+verification: VERIFIED_LIVE
+source: LNCH-1 programme inheritance, corrected 2026-07-21
+surface: scripts/cross-platform
+detail: |
+  13 scripts (18 occurrences) hardcoded gradlew.bat instead of resolving per-OS; a working helper
+  (Get-NPDevGradleWrapperExecutable in scripts/npdev-common.ps1) already existed but these call sites
+  hadn't been migrated to it -- mechanical work, not new plumbing. A separate repo-wide D:\ literal
+  sweep of the scoped files found zero matches (that part of the original claim didn't hold).
+  Migrated all genuine gradlew.bat call sites to the shared helper. Closed/proven via REG-10's green
+  Linux CI run, which additionally exposed and fixed a real cross-platform DISTRIBUTION bug this
+  item's "code-complete" state had missed: every generated FinalApp shipped
+  NPDevRuntimeHost/gradle.properties's hardcoded org.gradle.projectcachedir=D:/WorkSpace/NPDev/Build/...,
+  copied verbatim by FinalAppAssembler, so a generated app's own gradlew bootJar could not run on any
+  machine but the original dev box. Removed from the template so generated apps use gradle's portable
+  default cache.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-11

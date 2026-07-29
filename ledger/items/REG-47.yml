@@ -1,0 +1,20 @@
+id: REG-47
+title: "Correlation ids had no length cap -- an oversized caller-chosen id could hit the same btree limit as REG-36"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-25
+closed: 2026-07-25
+verification: UNIT_TESTED
+source: Security-pattern-sweep closure round, 2026-07-25
+surface: kernel/correlation-ids
+detail: |
+  New CorrelationIds.require(...) caps a correlation id at 400 characters, called from
+  KernelRunner.normalizeCorrelationId -- the single chokepoint every correlation id passes on its way
+  into durable state, reached before the event envelope is built or flow state initialised, so nothing
+  is published/executed/persisted first. Rejects rather than digests (unlike REG-36) for two reasons:
+  a correlation id is caller-chosen tracing metadata with no legitimate oversized form, and callers
+  look it up again via @PathVariable on timeline/event-query controllers -- digesting would store an
+  id different from the one the caller holds. 6 tests incl. the exact boundary, trim-before-measure,
+  and a guard that the ceiling stays inside the btree limit alongside its composite-index companions.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-47

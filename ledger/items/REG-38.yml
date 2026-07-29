@@ -1,0 +1,20 @@
+id: REG-38
+title: "Additive-migration constraints were not idempotent on H2 -- redeploy failed with duplicate constraint"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-24
+closed: 2026-07-24
+verification: VERIFIED_LIVE
+source: Discovered live while rebuilding WmsOffice with a new field (ARCH-upload P6)
+surface: runtimehost/schema-lifecycle
+detail: |
+  SchemaRealizationEmitter.addConstraintIfMissing wrapped Postgres's ADD CONSTRAINT in an IF NOT
+  EXISTS catalog guard but the H2 branch emitted a bare ADD CONSTRAINT. That statement lands in a
+  Flyway REPEATABLE migration that re-runs whenever its checksum changes (i.e. after any model edit),
+  so redeploying a changed model against an existing H2 DB failed at boot with "Constraint already
+  exists" and refused the whole application. Fix: the H2 branch now emits
+  ALTER TABLE ... DROP CONSTRAINT IF EXISTS <name> before the ADD (both verbs supported on H2 and
+  Postgres; Postgres path unchanged). RED->GREEN SchemaRealizationEmitterAdditiveColumnsTest; verified
+  live -- WmsOffice now boots cleanly against the same existing DB that previously refused.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-38

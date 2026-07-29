@@ -1,0 +1,24 @@
+id: REG-9
+title: "LNCH-4: auth secrets management -- JWT key env-var delivery"
+type: GAP
+severity: HIGH
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-21
+verification: VERIFIED_LIVE
+source: LNCH-1 programme inheritance, rescoped 2026-07-21 (P0 priority)
+surface: runtimehost/auth
+detail: |
+  Original claim was that DB credentials, runtime API keys, JWT keys, and the super-user key all
+  lacked an env-var deployment path. Independent verification found the gap narrower: DB credentials
+  and runtime API keys already worked (Spring's built-in relaxed binding, already emitted into the
+  Docker Compose template). The real, confirmed-open gap was JWT keys: LoginController/
+  JwtBearerAuthFilter read key paths via @Value with no default and no env-var wiring, and
+  DockerDeploymentEmitter emitted zero NPDEV_AUTH_JWT_* entries -- a missing key failed with a raw
+  Spring bean-creation error, not a docs-linked one. Fix: NPDEV_AUTH_JWT_PUBLICKEYPATH/
+  PRIVATEKEYPATH emitted into compose + .env.example; StartupValidator fail-fasts with a docs-linked
+  message on an unreadable key; LoginController supports verify-only deployments (blank private key
+  boots, login returns 503) instead of crashing the context. Super-user key env-seeding defaulted to
+  WONTFIX (issued-not-supplied model preserved, reversible). Verified: 12/12 StartupValidator unit
+  tests + 8/8 verify-only JwtAuthExternalBetaIT live on real Postgres.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-9

@@ -1,0 +1,23 @@
+id: REG-10
+title: "LNCH-19: Linux CI observed green for the first time"
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-22
+verification: VERIFIED_LIVE
+source: LNCH-1 programme inheritance
+surface: ci/pr-gate
+detail: |
+  Every prior quality claim had run only on one Windows machine; nobody had watched a real GitHub
+  Actions run go green. npdev-pr-gate.yml ran green on ubuntu-latest (run 29899362276, commit
+  3dcc51e) -- every step success: DSL contract, kernel inproc adapters, all 168 generator unit tests
+  (incl. 3 packaged-app boot/HTTP/JDBC proof tests), RuntimeHost libs sync, sample generation, and the
+  RuntimeHost generated-app suite. Took six root-caused fixes across seven runs: a hardcoded Windows
+  pwsh.exe path, NPDEV_BUILD_ROOT disagreement (repo checked out as "NPDevGeneral" without the
+  underscore), a real product portability bug (every generated FinalApp inherited a hardcoded
+  D:/WorkSpace/NPDev/Build gradle projectcachedir -- see REG-11), a hand-maintained adapter list
+  missing mail-inproc/mail-smtp, missing CI diagnostics, and a ".." in an artifact upload path.
+  Caveat noted at closure: the green run was on an older branch line; confirming green on the latest
+  line was a scheduled follow-up.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-10

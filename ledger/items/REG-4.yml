@@ -1,0 +1,20 @@
+id: REG-4
+title: "T-F1: load-sensitive SandboxedPluginExecutionEngine test flake, root cause fixed"
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-21
+verification: VERIFIED_LIVE
+source: LNCH-1 programme inheritance, re-verified 2026-07-21
+surface: kernel/plugin-execution
+detail: |
+  SandboxedPluginExecutionEngineTest failed roughly 1 in 5 runs under parallel load, 0 in 5 in
+  isolation. Reproduced the flake DETERMINISTICALLY with a new test
+  (timeoutIsNotCorruptedByAPreExistingCallerInterrupt, RED 100%) instead of waiting for a suite-load
+  reoccurrence. Root cause: future.get(timeout) runs on the calling thread, and a stray interrupt left
+  by a prior test on the same worker thread made it throw InterruptedException before the timeout.
+  Fixed in SandboxedPluginExecutionEngine.execute (read-and-clear a stray caller interrupt around the
+  bounded get(), re-assert it after) -- an engine robustness fix, not a tolerance widening. Removed
+  @Tag("load-sensitive") from timesOutSlowPluginExecution; 6/6 green live.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-4

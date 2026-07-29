@@ -1,19 +1,20 @@
 # Ledger — structured open-items tracking
 
-**Status: PROTOTYPE, 2026-07-28.** This directory is the first slice of the 2.E ledger migration
-(`docs/NEXT_EXECUTION_PLAN.md` Part 5): `docs/NPDEV_OPEN_ITEMS_REGISTER.md` remains the
-**authoritative** source until migration is complete for every entry — this proves the schema,
-the generator, and gate-compatibility on a real subset (REG-54 through REG-62, this session's own
-work, verified for fidelity against the source register) before committing to a full cutover.
+**Status: MIGRATION COMPLETE, 2026-07-29 (docs/REMEDIATION_PLAN.md R-P1).** This directory is the
+single source of truth for NPDev's tracked bugs/gaps/boundaries. `docs/NPDEV_OPEN_ITEMS_REGISTER.md`
+is now **archived-in-place**: it stays on disk (its `#reg-N` anchors are linked from every
+`legacyDetailRef` below, and its prose investigation narrative is genuinely valuable history) but is
+no longer hand-edited for status. All 64 tracked ids (REG-1 through REG-63, plus REG-16-resid) are
+migrated. To open a new item, add a `ledger/items/<ID>.yml` file directly.
 
 ## Why
 
-The prose register represents status two ways at once — `~~strikethrough~~` on the ID, and a
-freeform bolded verdict sentence in the detail cell — and nothing prevents them from disagreeing.
+The prose register represented status two ways at once — `~~strikethrough~~` on the ID, and a
+freeform bolded verdict sentence in the detail cell — and nothing prevented them from disagreeing.
 REG-59 did exactly that (struck, but its own detail text still argued the underlying gap was open),
-caught only by a purpose-built regex rule (`check-register-consistency.py`'s Rule T2). A single
-structured `status` field makes that class of contradiction impossible by construction: there is
-only one place status lives.
+caught only by a purpose-built regex rule (`check-register-consistency.py`'s since-retired Rule T2
+sibling, "Rule T3"). A single structured `status` field makes that class of contradiction impossible
+by construction: there is only one place status lives.
 
 ## Schema
 
@@ -33,14 +34,13 @@ surface: component tag, e.g. runtimehost/schema-lifecycle  # required
 files: [path/one.java, path/two.java]    # optional
 detail: |                        # required -- concise root-cause/fix/verification summary
   Multi-line prose.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-61   # required until full narrative migrates
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-61   # the archived register's full narrative
 ```
 
-`legacyDetailRef` is temporary scaffolding for this prototype phase: the full, often
-multi-thousand-word investigation narrative for older entries stays in the prose register rather
-than being bulk-copied (error-prone, and not the actual problem this migration solves — see "Why"
-above). New entries filed directly in the ledger should eventually drop this field once the prose
-register is retired.
+`legacyDetailRef` is permanent, not a migration-era scaffold: the full, often multi-thousand-word
+investigation narrative for every entry stays in the archived prose register rather than being
+bulk-copied into `detail` (error-prone, and not what this migration was solving — see "Why" above).
+A genuinely new entry (no register history to point at) may omit this field.
 
 ## Generating `docs/OPEN_ITEMS.md`
 
@@ -51,25 +51,30 @@ python scripts/quality/generate_open_items.py --check    # exit 1 if stale (CI f
 
 Regenerates `docs/OPEN_ITEMS.md` from every `ledger/items/*.yml`, validating each file's schema
 first (required fields, enum values, `status: DONE` requires `closed`). Never hand-edit that file.
+Wired into `run-ai-knowledge-gate.ps1` (`--check` form), blocking.
 
-**Dependency note:** this script needs PyYAML (`import yaml`), the only script under `scripts/`
-that does — everything else here is stdlib-only. Not yet declared in a `requirements.txt` (none
-exists in this repo) since nothing wires this script into a CI gate yet; do that before relying on
-it in CI, or CI's Python may not have it installed.
+**Dependency note:** this script needs PyYAML (`import yaml`), same as
+`scripts/quality/check-register-consistency.py`'s `load_ledger_items` (feeds Rule T1) — together the
+only two scripts under `scripts/` that do; everything else here is stdlib-only. Declared in
+`scripts/requirements.txt`; `.github/workflows/ai-knowledge-gate.yml` installs it
+(`pip install -r scripts/requirements.txt`) before running either script.
 
-## What's NOT done yet (honest status, not a backlog to silently claim)
+## What consumes the ledger now
 
-- Only 9 of 60+ `NPDEV_OPEN_ITEMS_REGISTER.md` entries are migrated (REG-54–REG-62). The other ~53,
-  plus `OPEN_GAPS_AND_ROADMAP.md`'s 19 and `LAUNCH_READINESS_GAPS.md`'s 24, are not.
-- `check-register-consistency.py`'s T1/T2 rules and `ledger_coverage_gaps` still read the PROSE
-  register — they have not been repointed at `ledger/items/*.yml`. Doing so before migration is
-  complete would make the gate blind to the 90%+ of items still only in prose.
-- No gate enforces `ledger/items/*.yml` schema validity yet (a `check-ledger-schema.py` companion to
-  `check-panel-provenance-impact.py`'s pattern would be the natural next step).
-- The "13 process docs hard-wired into gates" the plan names as unblocked by this work were not
-  identified or unwired in this prototype pass — that needs its own investigation.
+- `scripts/quality/generate_open_items.py` — renders `docs/OPEN_ITEMS.md`.
+- `scripts/quality/check-register-consistency.py`'s Rule T1 — cross-checks `docs/EXECUTION_TREES.md`
+  mentions of an id against that id's `status` here (reads the YAML directly, not the archived
+  register).
+- `scripts/external-review/build-review-pack.py` — excludes `docs/OPEN_ITEMS.md` (like the archived
+  register before it) from any external-AI review pack, since it carries the platform's own
+  conclusions about itself.
 
-**Cutover is a separate, later decision**: migrate the remaining entries (mechanical, one YAML file
-per row), point the gates at `ledger/items/*.yml` instead of the prose tables, then retire the prose
-register in favor of the generated `docs/OPEN_ITEMS.md`. Not done here — deliberately, to avoid
-leaving the repo's actual governance source of truth in a half-migrated, ambiguous state.
+## History
+
+Prototyped 2026-07-28 against a 9-item subset (REG-54–REG-62, that session's own work) to prove the
+schema, the generator, and gate-compatibility before committing to a full cutover. Full migration —
+the remaining ~54 ids, the register-archival banner, Rule T1's YAML repoint, and Rule T3's
+retirement — landed 2026-07-29 (docs/REMEDIATION_PLAN.md R-P1). `OPEN_GAPS_AND_ROADMAP.md`'s 19
+items and `LAUNCH_READINESS_GAPS.md`'s 24 items are a separate ledger family, not part of this
+migration's scope, and remain their own prose documents (both still cross-checked by
+`check-register-consistency.py`'s original summary-vs-detail rule).

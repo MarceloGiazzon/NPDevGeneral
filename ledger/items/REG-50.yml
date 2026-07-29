@@ -1,0 +1,26 @@
+id: REG-50
+title: "PostgresPersistenceCapabilityAdapter fell back to UNSCOPED reads/writes on a transient metadata-read failure"
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-07-27
+closed: 2026-07-27
+verification: VERIFIED_LIVE
+source: "First real ADR-0009 external-AI mission (M3-SEC-TENANT), gemini findings F1+F2 (same root cause)"
+surface: kernel/persistence-postgres
+detail: |
+  TableColumns.unavailable() was returned both on a genuine SQLException AND on "this table
+  legitimately has no such columns" -- indistinguishable, so a transient metadata-read failure on a
+  tenant-scoped table silently fell back to the UNSCOPED findById/delete/exists overloads instead of
+  failing closed. Fix (a): TableColumns is now tri-state (a distinct queryFailedResult()), set only on
+  a genuine thrown SQLException; a new enforceMetadataAvailableForTenantScoping throws before the
+  tenant-scoped overloads ever consult hasColumn -- fails closed only when scoping status is genuinely
+  unknown, matching REG-43's precedent (blanket fail-closed was rejected there for the same reason).
+  Fix (b): the unavailable-metadata fallback in identifier resolution now routes through the
+  platform's existing safe-identifier whitelist instead of an unsanitized path. RED->GREEN, all
+  against a REAL Postgres container (the REG-36 lesson -- H2-in-PG-mode wouldn't have caught this
+  either): a Proxy-wrapped Connection whose getMetaData() throws confirmed RED on all 3 tenant-scoped
+  methods pre-fix (silently fell back, no denial) and on a hostile-identifier case (a real Postgres
+  syntax-error confirmed), GREEN after (all 3 throw naming the table/operation; the hostile field name
+  coerces to a syntactically valid but nonexistent column). (c) split out as REG-52.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-50

@@ -1,0 +1,7 @@
+# Python dependencies for scripts/ that are not stdlib-only.
+#
+# scripts/quality/check-register-consistency.py (Rule T3, docs/REMEDIATION_PLAN.md R-D2) and
+# scripts/quality/generate_open_items.py both parse ledger/items/*.yml. Every other script under
+# scripts/ is stdlib-only. Installed by .github/workflows/ai-knowledge-gate.yml before running
+# either script -- see ledger/README.md.
+PyYAML>=6.0.1

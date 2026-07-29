@@ -1,0 +1,25 @@
+id: REG-6
+title: "ColumnFacts: eight SchemaLifecycleExecutor passes each re-derived column semantics independently"
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-24
+verification: VERIFIED_LIVE
+source: LNCH-1 programme inheritance; fully closed via the Schema Engine Rebuild
+surface: runtimehost/schema-lifecycle
+detail: |
+  SchemaLifecycleExecutor's roughly eight passes (relax, tighten, backfill, additive, delta-report,
+  classify, bond-refusal, rename, unique-constraint) each performed their own set arithmetic over the
+  same raw manifest to answer the same questions (is this column platform-managed? additive-eligible?
+  required?), with three-to-four overlapping and divergent notions of "platform column". This was the
+  root cause behind repeated prior findings (T-B1, T-B2): each round fixed one pass's inference while
+  the structure that produced the wrong inference stayed untouched. Initially closed re-scoped
+  (2026-07-22, risk-core only: a ColumnFacts projection + a class-load drift-guard, full set-algebra
+  purity deferred). FULLY closed 2026-07-24 via the Schema Engine Rebuild: a single canonical
+  CurrentSchema/DesiredSchema/SchemaDiff model (SchemaDiffEngine) is now the ONE place column
+  semantics are derived, consumed by both decision surfaces and all four mutation passes, built
+  strangler-fig with a proven 100% behavior-equivalence shadow-parity gate on H2 + Postgres before
+  each pass switched over. Remaining known limit (separate, documented, not a re-derivation): no
+  explicit FK/index diff (P0.2/P5.2, deferred enhancement).
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-6

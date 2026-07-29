@@ -1,0 +1,23 @@
+id: REG-35
+title: "Gradle-native postBeta0MaturityCheck has the same missing-vs-invalid conflation REG-32 fixed in PowerShell, plus an overly strict nested artifact schema"
+type: PROCESS
+severity: LOW
+status: OPEN
+opened: 2026-07-24
+verification: VERIFIED_LIVE
+source: Discovered as a byproduct of verifying REG-32's fix, 2026-07-24 -- pre-existing, not caused by that work
+surface: ci/maturity-bootstrap
+detail: |
+  The same CI step also runs ./gradlew postBeta0MaturityCheck, a completely separate Gradle-native
+  validation pipeline that independently re-checks 7 of the same maturity reports. Two gaps neither
+  touched by REG-32: (1) validateReports treats a missing report file as an unconditional failure (no
+  precondition-unmet concept exists in this framework at all), and separately trips hard on REG-32's
+  new "precondition-unmet" overallStatus value -- reproduced: 6 of 7 report pairs "missing schema or
+  report", the 7th "precondition-unmet". (2) final-evidence-bundle-manifest.schema.json's artifacts[]
+  items are unconditionally required with no "never generated" escape hatch -- reproduced: a freshly
+  generated manifest (19/21 reports absent) produces 76 schema errors. Also noted: validateBoundaryLocks
+  independently fails on this tree for an unrelated, long-pre-existing reason (hardcoded drive-letter
+  paths), out of this finding's scope. Not fixed: build.gradle is the single highest-blast-radius
+  build file in the repo and extending the REG-3/REG-32 pattern into a second, structurally different
+  Gradle-native pipeline is its own bounded task. CI step keeps continue-on-error:true until fixed.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-35

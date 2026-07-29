@@ -1,0 +1,24 @@
+id: REG-63
+title: "AuxScreen and Pigmentampa's model.json use a pre-DSL-stabilization flow-step shape the current schema rejects"
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-07-29
+verification: VERIFIED_LIVE
+source: Found while confirming panel-provenance manifests for R-G2 (docs/REMEDIATION_PLAN.md)
+surface: dsl/model-schema-compatibility
+detail: |
+  AppGen/apps/_official/AuxScreen and .../Pigmentampa's model.json both declare flows in a
+  pre-stabilization shape (top-level input/out per step, a type:"validate" step kind) that the CURRENT
+  model.schema.json rejects outright -- JsonModelParser.parse() fails schema validation before an AST
+  is even built. Confirmed live: Build-NpdevApp.ps1 -GenerateOnly fails identically for both apps, so
+  neither can be regenerated, and no compiled model/invocations catalog/live bundle can be produced
+  for either at all. Blocked both apps' single hand-written screen from getting a panel-provenance
+  manifest for R-G2 (filed there as a written reason, not silently skipped). Both existing
+  BUILT/running instances are unaffected -- this only blocks regeneration with the current toolchain.
+  Fix, when picked up: a real npdev migrate codemod for this flow-step shape (BREAKING.md's own
+  standing rule -- every DSL break ships its codemod in the same commit), likely a mechanical
+  type:"validate" -> invariantCheck rewrite plus flattening the top-level input/out/name properties;
+  needs a check of how many other AppGen apps (if any beyond these two) still carry this shape before
+  scoping the codemod's coverage.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-63

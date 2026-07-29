@@ -1,0 +1,14 @@
+id: REG-19
+title: LoginThrottle.windowsByKey unbounded -- memory-exhaustion DoS via unique-username spray
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-21
+verification: UNIT_TESTED
+source: "REG-16 Tier-A adversarial review (docs/archive/programme-history/REG16_TENANT_AUTH_ADVERSARIAL_REVIEW.md)"
+surface: runtimehost/auth
+detail: |
+  Hard cap (100k) added with expired-first + oldest-live eviction and a cutoff tie-break. RED-first
+  LoginThrottleBoundedTest sprays 3x the cap.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-19

@@ -1,0 +1,22 @@
+id: REG-48
+title: "DefaultConceptGateway.delete() had the same authz-after-invariant-eval ordering bug REG-41 fixed in save()"
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-07-27
+closed: 2026-07-27
+verification: VERIFIED_LIVE
+source: "First real ADR-0009 external-AI mission (M2-SEC-ROWAUTHZ), gemini finding F1"
+surface: kernel/concept-gateway
+detail: |
+  delete() ran evaluateRuleProfiles (concept invariants against the previous record's data) BEFORE
+  enforcePermission/enforceRowWritable -- the identical bug class REG-41 already fixed in save(),
+  never applied to delete(). Fix: reordered delete() so the authorization gates run before
+  evaluateRuleProfiles, keeping the existing previous-record fetch (still needed for the row-scope
+  check) -- a literal mirror of REG-41's save() fix. RED->GREEN: a dedicated Vault concept with a
+  locked=='false' invariant, seeded LOCKED directly through the store; confirmed RED pre-fix (leaked
+  the vault's locked state to a caller with zero delete access via the invariant exception), GREEN
+  after (ROW_SCOPE_DENIED, invariant never evaluated). delete() is store-agnostic, so InMemory+H2
+  coverage is the complete adapter matrix for this bug. Re-verified live against the platform source
+  directly (never exposed to the REG-49 staleness class).
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-48

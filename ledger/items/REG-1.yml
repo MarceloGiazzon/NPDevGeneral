@@ -1,0 +1,20 @@
+id: REG-1
+title: 9 app definitions remain on the deprecated blanket destructive posture (down from 27)
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-21
+verification: VERIFIED_LIVE
+source: LNCH-1 programme inheritance, re-verified 2026-07-21
+surface: appgen/schema-lifecycle-policy
+detail: |
+  A repo-wide audit found 18 unreferenced sample-app definitions still on the deprecated
+  DropAndRecreateOnStructureChange blanket posture; moved to an outside-repo archive (recoverable),
+  shrinking the tracked pool from 38 to 20. All 7 remaining flip-worthy apps (4 AppGen _official +
+  invoice-bonds-demo + 2 NPDevSamples) flipped to KeepExistingIfCompatible +
+  allowDestructiveRecreate:false. Verified per app: clean regeneration, manifest carries the new
+  lifecycle, and a live additive-change proof on superuser-admin-console showed the boot log
+  correctly skipping destructive recreation. 2 apps (lnch1-rehearsal,
+  simple-user-registry-h2local-freshdb) are deliberately kept on blanket by documented design.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-1

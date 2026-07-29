@@ -1,0 +1,26 @@
+id: REG-49
+title: "M1-SEC-GENCODE finding withdrawn as a false positive -- the reviewed pack was stale, not the platform"
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-07-27
+closed: 2026-07-27
+verification: VERIFIED_LIVE
+source: "First real ADR-0009 external-AI mission (M1-SEC-GENCODE), gemini finding F1"
+surface: process/external-ai-review
+detail: |
+  WITHDRAWN as a false positive, not fixed as a bug. The reviewed pack's generated Java was 62 minutes
+  OLDER than the LNCH13-F1 fix commit it was reviewed against -- the vendor correctly identified
+  LNCH13-F1's exact shape, in code where LNCH13-F1 had not yet been fixed. On code generated AFTER the
+  fix, every mutation arm on both flow-backed concepts is properly guarded. Root cause (pack
+  provenance was unrecorded) tracked and fixed as REG-51 so this false-positive class cannot recur
+  silently. One genuine residual checked as part of the withdrawal: no previously-verified concept had
+  exercised a DELETE-backed flow specifically (only create/update). A careful manual trace of the real
+  generated exception hierarchy found the delete arm's structural shape differs from create/update
+  (unconditional gateway call, not an either/or swap) so it was never actually exposed to this bug
+  class -- but this was a manual trace, not an automated runtime assertion. Later closed for real
+  (2026-07-27): a new ServiceBaseDeleteFlowRowLevelAuthzBehaviorTest generates a real ServiceBase for a
+  delete-mode flow, compiles it for real, and runs it against real (not mocked) gateway/policy/kernel
+  components, asserting the flow's own execute() call never happens when the gateway denies. RED->GREEN
+  confirmed twice by temporarily reordering the mustache template.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-49

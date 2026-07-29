@@ -1,0 +1,21 @@
+id: REG-45
+title: "Flow resume was tenant-scoped but not actor-scoped -- any same-tenant user could resume another's flow"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-25
+closed: 2026-07-25
+verification: UNIT_TESTED
+source: "REG16-resid Round 4 flow/await orchestration adversarial review, R4-F1"
+surface: kernel/flow-orchestration
+detail: |
+  DefaultExecutionAuthorizationPolicy.canResumeExecution now requires the same tenant AND that the
+  requester is the actor who started the flow. FlowInstance already carried actorId, so no schema/
+  contract change was needed. An instance with no recorded actor stays tenant-scoped only -- a blank
+  actorId is what a flow started anonymously, by the cron scheduler, or before this field existed
+  looks like; requiring equality against null would make every one of those permanently unresumable,
+  turning a data-scoping fix into an availability regression for exactly the stuck flows an operator
+  most needs to recover. Verified before tightening that only the HTTP resume endpoint consults this
+  policy -- the kernel's event-driven and scheduler resume paths do not -- so background recovery is
+  unaffected. 2 new tests; the pre-existing resume test still passes unchanged.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-45

@@ -1,0 +1,24 @@
+id: REG-32
+title: "npdev-ci-validation.yml Bootstrap step aggregated ~21 maturity reports its producers never generated"
+type: PROCESS
+severity: MEDIUM
+status: DONE
+opened: 2026-07-24
+closed: 2026-07-24
+verification: VERIFIED_LIVE
+source: CI evidence-orchestration review, 2026-07-24
+surface: ci/maturity-bootstrap
+detail: |
+  Closed for the PowerShell bootstrap chain; residual Gradle-native gap filed separately as REG-35.
+  The Linux job's bootstrap step AGGREGATES ~21 maturity reports and hard-fails if any are missing or
+  schema-invalid, but does not GENERATE them -- ~19 were precondition-unmet (producers never run),
+  plus one genuinely schema-invalid report. Fix (both halves): (1) bootstrap-post-beta0-reports.ps1,
+  validate-report-schemas.ps1, and generate-final-evidence-bundle.ps1 now distinguish
+  precondition-unmet (exit 2, non-fatal) from check-failed (exit 1); also fixed a real bug in
+  validate-report-schemas.ps1 conflating "never produced" with "produced but wrong". (2) Fixed the
+  one real schema-invalid report (stateful-additive-migrations-report.json): two real defects, a
+  wrong directory-walk depth in the XML resolver, and a schema requiring const:true on 8 fields a
+  prior fix had deliberately retired to false. Verified: errorCount 0 (was 10). CI step's
+  continue-on-error kept intentionally (not removed) since REG-35's Gradle-native residual still
+  trips on the same tree.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-32
