@@ -41,5 +41,6 @@ cares primarily about a polished custom UI out of the box, say so before they fi
 engine in depth), `docs/DATABASES_AND_MIGRATIONS.md` (schema evolution in depth).
 
 **After the conversation:** record what they hit in the first hour —
-`docs/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` (see `docs/archive/programme-history/` if it needs to be
-restored from there).
+`docs/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` (restored to `docs/` 2026-07-29, docs/REMEDIATION_PLAN.md
+R-O2 — it had been archived alongside its own DoD's programme history, but this is a reusable
+template, not a historical record).
