@@ -1614,6 +1614,20 @@ fix (add genuine `fragments`/`packs`/`step.updateConcept` examples to
 `NPDevSamples/dsl-conformance-max`, Gradle-validated) is deliberately deferred, not done -- tracked
 as `docs/ACCEPTED_BOUNDARIES.md` B27 with its own revisit trigger.
 
+UPDATE 2026-07-29 (docs/FAIL_OPEN_PLAN.md R2): B27's premise -- that `packs` and `fragments`
+"genuinely need an out-of-tree asset" -- was an untested assumption, not a proven limit, per R2's
+own instruction to attempt the harder two before accepting that. Both `packRef` and the top-level
+`fragments` entry are just a `{"$ref": "relative/path.json"}` pointing at any JSON file inside the
+model's own directory tree; there is no out-of-tree requirement in either schema. Closed for real:
+`NPDevSamples/dsl-conformance-max` gained `packs/labeling/pack.json` (a minimal, fully in-git
+concept pack, same `$ref` mechanism `AppGen/apps/_official/WmsOffice`'s identity/workspace packs
+use), `fragments/auditLog.json` (a minimal, fully in-git capability+binding fragment, same shape as
+`AppGen/apps/npdev_split_model_sample_app`'s `plugin/sendMail.json`), and an `UpdateOrderLineQuantity`
+flow (`step.updateConcept`). All three Gradle-validated (`validateModel`, 0 errors, 0 warnings).
+`scripts/quality/dsl-coverage-allowlist.json` is empty again; `docs/ACCEPTED_BOUNDARIES.md` B27
+removed (its own revisit trigger fired the same day it was written, so it never described an
+ongoing state -- keeping it would itself be a stale record).
+
 ### REG-7 — LNCH-1-B6: no migration advisory lock (multi-instance) -- converted to a feature
 
 **Type:** BOUNDARY · **Severity:** — · **Status:** DONE (2026-07-22)

@@ -64,6 +64,39 @@ enforces this; a reviewed false positive (prose narrating a pre-existing, alread
 rather than a new scope cut) goes in `scripts/quality/plan-deferral-citation-allowlist.json`, not a
 silent rewrite of the check.
 
+## A `--calibrate` control that cannot run is a failure, not a skip
+
+`docs/FAIL_OPEN_PLAN.md` R1: a control that reads a pinned git revision (`git show <SHA>:<path>`) can
+legitimately fail to read it — a shallow clone, a fork without full history, a rebase that orphaned
+the pin. Guarding the *read* is right; several `--calibrate` implementations guard the *whole
+control* instead (`if head_text is not None: report(...)`), so an unreadable revision means that
+`report()` call simply never runs — no PASS, no FAIL, nothing. The loop still reports "OK" because
+"control never ran" and "control ran and passed" look identical to the aggregate `ok` flag. This is
+exactly how the pre-`fetch-depth: 0` state went unnoticed on CI for as long as it did (three separate
+`--calibrate` scripts silently lost their real-instance controls, not just one).
+
+If a `calibrate()` guards any `report()` call this way, assert the **count** of controls that actually
+ran against the count the function intends to run (`scripts/quality/check-register-consistency.py`'s
+`EXPECTED_CONTROLS` is the reference implementation) — a skipped control must FAIL the calibration,
+never silently pass one fewer control than advertised. Prove the assertion works before trusting it:
+temporarily point one pinned SHA at something unreachable (e.g. `deadbeef`), confirm `--calibrate`
+goes RED with a "N controls skipped" message, then restore it and confirm GREEN.
+
+## A new allowlist entry needs a `why` and a REG-nn/B-nn citation
+
+`docs/FAIL_OPEN_PLAN.md` R3: an empty `"cleared": {}` allowlist is self-policing — any entry stands
+out by existing at all. The moment one gains entries, that stops being true unless something asserts
+each one is reviewed rather than pre-cleared speculatively. `corpus-parse-allowlist.json`,
+`test-task-coverage-allowlist.json`, and `dsl-coverage-allowlist.json` already say this in their own
+`_comment` header ("only for a genuine, reviewed exception with a REG id"); `scripts/quality/check-allowlist-citations.py`
+(wired in `run-ai-knowledge-gate.ps1`) is what actually checks it now — a new entry in any of those
+three with no `REG-nn`/`B-nn` citation in its `why` fails the gate.
+
+`plan-deferral-citation-allowlist.json` and `security-pattern-sweep-allowlist.json` use a different,
+already-established citation shape (doc-paragraph narrative; a `docs/SECURITY_PATTERN_SWEEP_2026-07.md`
+cross-reference) and are not held to this rule — `check-allowlist-citations.py` only reports their
+size every run, so growth is visible without retrofitting either one's existing entries.
+
 ## A test that hand-builds `CompiledModel` proves the compiled contract, not the authoring path
 
 A test that constructs `CompiledModel` / `CompiledFlow` objects directly (bypassing
