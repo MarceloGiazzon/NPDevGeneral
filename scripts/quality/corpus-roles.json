@@ -1,0 +1,71 @@
+{
+  "_comment": [
+    "F5 (docs/FINAL_OPEN_ITEMS_PLAN.md): the corpus mixes two independent axes -- DSL coverage (what",
+    "model shapes the compiler must handle) and runtime coverage (a 4-way engine fan-out) -- with",
+    "nothing distinguishing them, so every tool treated an engine fan-out as N separate DSL risks.",
+    "Every corpus model (AppGen/apps + NPDevSamples) MUST have an entry here, keyed by",
+    "validate-corpus.py's own corpus label (e.g. 'AppGen/apps/_official/WmsOffice',",
+    "'NPDevSamples/canonical-demo') -- a model with no role fails the gate, no silent default.",
+    "",
+    "Roles:",
+    "  dsl-fixture    -- exists to exercise DSL surface (parse/compile coverage, not a demo)",
+    "  engine-variant -- same DSL shape, different DB engine/config; the 'true distinct bodies' count",
+    "                    is corpus size minus (engine-variant count - 1 per family)",
+    "  repro-case     -- encodes a specific past bug or rehearses a specific runtime behavior",
+    "  showcase       -- realistic app, demo/verification value (official apps + release-blocking",
+    "                    samples all read this way: proving real platform behavior, not DSL syntax)"
+  ],
+  "roles": {
+    "AppGen/apps/_official/AuxScreen": "showcase",
+    "AppGen/apps/_official/Claude": "showcase",
+    "AppGen/apps/_official/Pigmentampa": "showcase",
+    "AppGen/apps/_official/WmsOffice": "showcase",
+    "AppGen/apps/_official/WordLab": "showcase",
+    "AppGen/apps/await-resume-rehearsal": "repro-case",
+    "AppGen/apps/invoice-bonds-demo": "showcase",
+    "AppGen/apps/ledger1-red-repro": "repro-case",
+    "AppGen/apps/lnch1-rehearsal": "repro-case",
+    "AppGen/apps/npdev_split_model_sample_app": "dsl-fixture",
+    "AppGen/apps/p77-hookproof": "dsl-fixture",
+    "AppGen/apps/p77-hookproof-pg": "engine-variant",
+    "AppGen/apps/pack-sample": "dsl-fixture",
+    "AppGen/apps/simple-consumer-h2server": "dsl-fixture",
+    "AppGen/apps/simple-product-h2local": "dsl-fixture",
+    "AppGen/apps/simple-user-registry-h2local": "engine-variant",
+    "AppGen/apps/simple-user-registry-h2local-freshdb": "engine-variant",
+    "AppGen/apps/simple-user-registry-inmemory": "engine-variant",
+    "AppGen/apps/simple-user-registry-postgres": "repro-case",
+    "NPDevSamples/12works/gift-idea-tracker": "dsl-fixture",
+    "NPDevSamples/canonical-demo": "dsl-fixture",
+    "NPDevSamples/dsl-conformance-max": "dsl-fixture",
+    "NPDevSamples/durable-workflow-demo": "dsl-fixture",
+    "NPDevSamples/medium-expense-approval": "showcase",
+    "NPDevSamples/restaurant-saas-multitenant": "showcase",
+    "NPDevSamples/simple-contact-intake": "showcase",
+    "NPDevSamples/simple-user-registry": "engine-variant",
+    "NPDevSamples/superuser-admin-console": "showcase",
+    "NPDevSamples/user-minimal": "dsl-fixture"
+  },
+  "engineVariantFamiliesComment": [
+    "F6 (docs/FINAL_OPEN_ITEMS_PLAN.md): a family is a group of model bodies expected to stay",
+    "byte-identical (differing only in config.json/db.definition.json engine settings). Measured",
+    "2026-07-29 via sha256 (validate-corpus.py's own contentHash): confirmed identical. Asserted, not",
+    "assumed, by check-engine-variant-families.py -- a deliberate edit to only one member now fails.",
+    "simple-user-registry-postgres is NOT in the simple-user-registry family: measured as carrying an",
+    "intentional field rename (name -> fullName, with renamedFrom) plus two new fields (notes,",
+    "department) -- a schema-evolution repro case using Postgres as the engine, not a plain engine",
+    "variant, hence its corpusRole is repro-case above, not engine-variant."
+  ],
+  "engineVariantFamilies": {
+    "simple-user-registry": [
+      "AppGen/apps/simple-user-registry-h2local",
+      "AppGen/apps/simple-user-registry-h2local-freshdb",
+      "AppGen/apps/simple-user-registry-inmemory",
+      "NPDevSamples/simple-user-registry"
+    ],
+    "p77-hookproof": [
+      "AppGen/apps/p77-hookproof",
+      "AppGen/apps/p77-hookproof-pg"
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "_comment": [
+    "Reviewed exemptions for scripts/quality/check-dsl-coverage.py. Each entry means: a human",
+    "decided this DSL feature is deliberately allowed to have zero corpus models exercising it, and",
+    "here is why. The key is the feature name exactly as check-dsl-coverage.py reports it.",
+    "Empty today: docs/FINAL_OPEN_ITEMS_PLAN.md F8 was written specifically because",
+    "NPDevSamples/dsl-conformance-max (F3) already closed every zero-coverage feature the 2026-07-29",
+    "measurement found. Add an entry here only for a genuine, reviewed exception with a REG id --",
+    "never pre-clear speculatively; prefer adding a real example to dsl-conformance-max instead."
+  ],
+  "cleared": {}
+}

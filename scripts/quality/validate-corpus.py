@@ -32,6 +32,7 @@ Exit 0 (all models parse, or every failure is allowlisted with a reason + REG id
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
@@ -42,7 +43,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_APPGEN_ROOT = Path(r"D:\WorkSpace\NPDev\AppGen\apps")
 DEFAULT_SAMPLES_ROOT = REPO_ROOT / "NPDevSamples"
 ALLOWLIST_PATH = REPO_ROOT / "scripts" / "quality" / "corpus-parse-allowlist.json"
+ROLES_PATH = REPO_ROOT / "scripts" / "quality" / "corpus-roles.json"
 GRADLEW = REPO_ROOT / ("gradlew.bat" if sys.platform == "win32" else "gradlew")
+CORPUS_ROLES = ("dsl-fixture", "engine-variant", "repro-case", "showcase")
 
 
 def project_cache_dir() -> Path:
@@ -77,6 +80,20 @@ def load_allowlist() -> dict:
         return {}
     data = json.loads(ALLOWLIST_PATH.read_text(encoding="utf-8"))
     return data.get("cleared", {})
+
+
+def load_roles() -> dict:
+    if not ROLES_PATH.exists():
+        return {}
+    data = json.loads(ROLES_PATH.read_text(encoding="utf-8"))
+    return data.get("roles", {})
+
+
+def content_hash(path: Path) -> str:
+    """F5: sha256 of the raw file bytes -- used to find byte-identical model bodies (an
+    engine-variant family, or an undocumented duplicate) independent of the corpusRole a human
+    assigned. This is what originally caught reg39-healthy-control being a WmsOffice clone."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def validate_one(label: str, model_path: Path, report_dir: Path) -> dict:
@@ -116,6 +133,7 @@ def validate_one(label: str, model_path: Path, report_dir: Path) -> dict:
 def run(appgen_root: Path, samples_root: Path) -> tuple[list[dict], int]:
     models = find_models(appgen_root, samples_root)
     allowlist = load_allowlist()
+    roles = load_roles()
     results = []
     with tempfile.TemporaryDirectory(prefix="npdev-corpus-validate-") as tmp:
         report_dir = Path(tmp)
@@ -123,19 +141,37 @@ def run(appgen_root: Path, samples_root: Path) -> tuple[list[dict], int]:
             result = validate_one(label, path, report_dir)
             result["allowlisted"] = label in allowlist
             result["allowlistReason"] = allowlist.get(label, {}).get("why")
+            result["corpusRole"] = roles.get(label)
+            result["contentHash"] = content_hash(path)
             results.append(result)
     return results, len(models)
 
 
 def print_table(results: list[dict]) -> None:
     width = max((len(r["label"]) for r in results), default=10)
-    print(f"{'model'.ljust(width)}  parses?  first error")
-    print(f"{'-' * width}  -------  ----------")
+    print(f"{'model'.ljust(width)}  parses?  role            first error")
+    print(f"{'-' * width}  -------  --------------  ----------")
     for r in results:
         ok = r["status"] in ("passed", "warning")
         mark = "yes" if ok else ("ALLOWED" if r["allowlisted"] else "NO")
+        role = r.get("corpusRole") or "MISSING"
         err = "" if ok else (r.get("firstError") or "")
-        print(f"{r['label'].ljust(width)}  {mark.ljust(7)}  {err}")
+        print(f"{r['label'].ljust(width)}  {mark.ljust(7)}  {role.ljust(14)}  {err}")
+
+
+def print_role_summary(results: list[dict]) -> None:
+    """F5: the corpus mixes DSL coverage with a 4-way engine fan-out; report both counts so the
+    number that actually matters for a schema change (the dsl-fixture count, and the distinct-body
+    count) isn't buried inside a flat model total."""
+    by_role: dict[str, int] = {}
+    for r in results:
+        role = r.get("corpusRole") or "MISSING"
+        by_role[role] = by_role.get(role, 0) + 1
+    distinct_bodies = len({r["contentHash"] for r in results})
+    role_parts = " | ".join(f"{by_role.get(role, 0)} {role}" for role in CORPUS_ROLES)
+    missing = by_role.get("MISSING", 0)
+    print(f"\n{len(results)} models | {distinct_bodies} distinct bodies | {role_parts}"
+          + (f" | {missing} MISSING role" if missing else ""))
 
 
 def main(argv: list[str]) -> int:
@@ -155,12 +191,14 @@ def main(argv: list[str]) -> int:
     results, count = run(appgen_root, samples_root)
     print(f"Corpus validator: {count} model(s) found ({appgen_root} + {samples_root}).\n")
     print_table(results)
+    print_role_summary(results)
 
     if args.json:
         Path(args.json).write_text(json.dumps(results, indent=2), encoding="utf-8")
         print(f"\nFull results written to {args.json}")
 
     failing = [r for r in results if r["status"] not in ("passed", "warning") and not r["allowlisted"]]
+    missing_role = [r for r in results if not r.get("corpusRole")]
     passing = count - len(failing)
     print(f"\n{passing}/{count} parse (or are allowlisted with a reason + REG id).")
     if failing:
@@ -170,8 +208,17 @@ def main(argv: list[str]) -> int:
         print(f"\nTo allowlist a genuine, reviewed exception, add an entry keyed by the corpus label "
               f"to {ALLOWLIST_PATH} with a 'why' and a REG id -- never pre-clear speculatively.",
               file=sys.stderr)
+    if missing_role:
+        print(f"\nFAIL: {len(missing_role)} model(s) have no corpusRole (F5, docs/FINAL_OPEN_ITEMS_PLAN.md) "
+              f"-- no silent default:", file=sys.stderr)
+        for r in missing_role:
+            print(f"  - {r['label']}", file=sys.stderr)
+        print(f"\nAdd an entry keyed by the corpus label to {ROLES_PATH}, one of {CORPUS_ROLES}.",
+              file=sys.stderr)
+    if failing or missing_role:
         return 1
-    print("OK: every corpus model parses (or is a reviewed, allowlisted exception).")
+    print("OK: every corpus model parses (or is a reviewed, allowlisted exception), and every model "
+          "declares a corpusRole.")
     return 0
 
 
