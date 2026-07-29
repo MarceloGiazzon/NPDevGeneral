@@ -373,23 +373,37 @@ tasks.register('validateReports') {
                 ['maturity-score', 'schemas/ai/maturity-score-report.schema.json', 'scripts/reports/out/maturity-score-report.json'],
                 ['script-inventory', 'schemas/ai/script-inventory-report.schema.json', 'scripts/reports/out/script-inventory-report.json']
         ]
+        // REG-35 (2026-07-29, docs/CORPUS_INTEGRITY_PLAN.md C9): same missing-vs-invalid conflation
+        // REG-32 fixed in the PowerShell bootstrap chain -- a required report a producer never ran
+        // is a PRECONDITION-UNMET, not a validation failure, and neither is an existing report that
+        // honestly declares its OWN overallStatus as precondition-unmet (the REG-32 pattern, which
+        // any of these 7 producers may itself use). Only a schema-invalid report, or one whose own
+        // status is a genuine failure, belongs in `failures`.
         def failures = []
+        def preconditionUnmet = []
         def validated = []
         reportPairs.each { pair ->
             def schema = file(pair[1])
             def report = file(pair[2])
-            if (!schema.isFile() || !report.isFile()) {
-                failures << "${pair[0]}: missing schema or report"
+            if (!schema.isFile()) {
+                failures << "${pair[0]}: missing schema ${repoPath(schema)}"
+                return
+            }
+            if (!report.isFile()) {
+                preconditionUnmet << pair[0]
                 return
             }
             def result = runNodeSchemaValidation(schema, report)
             validated << pair[0]
             if (result.exitCode != 0 || result.status != 'passed') {
                 failures << "${pair[0]}: schema validation failed"
+                return
             }
             def reportJson = parseJson(report)
             def status = reportJson.overallStatus ?: reportJson.status
-            if (status != 'passed') {
+            if (status == 'precondition-unmet') {
+                preconditionUnmet << pair[0]
+            } else if (status != 'passed') {
                 failures << "${pair[0]}: report status is ${status}"
             }
         }
@@ -399,7 +413,7 @@ tasks.register('validateReports') {
                 implementation: 'native-gradle-node',
                 passed: failures.isEmpty(),
                 reason: failures.join('; '),
-                evidence: [validatedReports: validated],
+                evidence: [validatedReports: validated, preconditionUnmet: preconditionUnmet],
                 details: [failures: failures]
         )
     }

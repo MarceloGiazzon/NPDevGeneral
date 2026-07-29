@@ -1,23 +1,39 @@
 id: REG-35
-title: "Gradle-native postBeta0MaturityCheck has the same missing-vs-invalid conflation REG-32 fixed in PowerShell, plus an overly strict nested artifact schema"
+title: "Gradle-native postBeta0MaturityCheck had the same missing-vs-invalid conflation REG-32 fixed in PowerShell, plus an overly strict nested artifact schema"
 type: PROCESS
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-07-24
+closed: 2026-07-29
 verification: VERIFIED_LIVE
-source: Discovered as a byproduct of verifying REG-32's fix, 2026-07-24 -- pre-existing, not caused by that work
+source: Discovered as a byproduct of verifying REG-32's fix, 2026-07-24 -- pre-existing, not caused by that work; fixed docs/CORPUS_INTEGRITY_PLAN.md C9
 surface: ci/maturity-bootstrap
+files:
+  - build.gradle
+  - schemas/ai/final-evidence-bundle-manifest.schema.json
+  - .github/workflows/npdev-ci-validation.yml
 detail: |
-  The same CI step also runs ./gradlew postBeta0MaturityCheck, a completely separate Gradle-native
-  validation pipeline that independently re-checks 7 of the same maturity reports. Two gaps neither
-  touched by REG-32: (1) validateReports treats a missing report file as an unconditional failure (no
-  precondition-unmet concept exists in this framework at all), and separately trips hard on REG-32's
-  new "precondition-unmet" overallStatus value -- reproduced: 6 of 7 report pairs "missing schema or
-  report", the 7th "precondition-unmet". (2) final-evidence-bundle-manifest.schema.json's artifacts[]
-  items are unconditionally required with no "never generated" escape hatch -- reproduced: a freshly
-  generated manifest (19/21 reports absent) produces 76 schema errors. Also noted: validateBoundaryLocks
-  independently fails on this tree for an unrelated, long-pre-existing reason (hardcoded drive-letter
-  paths), out of this finding's scope. Not fixed: build.gradle is the single highest-blast-radius
-  build file in the repo and extending the REG-3/REG-32 pattern into a second, structurally different
-  Gradle-native pipeline is its own bounded task. CI step keeps continue-on-error:true until fixed.
+  Both originally-scoped gaps fixed 2026-07-29: (1) build.gradle's validateReports task now treats
+  a missing report file as precondition-unmet (not a failure), and also recognizes an EXISTING
+  report's own `overallStatus: "precondition-unmet"` (the REG-32 pattern any of the 7 producers may
+  itself use) as non-fatal -- verified live: passed=true, failures=[], with all 7 pairs correctly
+  classified as preconditionUnmet, none as failures (was: unconditional failure on any missing
+  file). (2) final-evidence-bundle-manifest.schema.json's artifacts[] items now accept the shape a
+  never-generated report legitimately has (bytes:0, sha256:"", schemaVersion:"",
+  overallStatus:"missing"/"missing-status") instead of requiring bytes>=1 and a real sha256 on every
+  one of the required 21 slots regardless of whether its producer ran -- verified live against a
+  fresh manifest (18/21 reports missing): errorCount 0 (was 76, exactly 19 missing x 4 violated
+  constraints at the time of the original finding).
+  A third, unrelated false positive turned up verifying the fix end to end (running the full
+  `postBeta0MaturityCheck` chain, not just validateReports in isolation): validateBoundaryLocks'
+  own hardcoded-drive-letter-path scan (a CP5-era portability check) matched a code COMMENT
+  describing a Windows path, not an actual embedded one, in
+  .github/workflows/npdev-ci-validation.yml. The scan reads raw file text with no comment-awareness,
+  so any future comment mentioning a drive-letter path would trip the same false positive again --
+  not re-architected here (out of this item's own scope), just reworded past this one instance.
+  `postBeta0MaturityCheck` now runs green end to end locally, all 6 tasks. CI step's continue-on-
+  error kept intentionally: the same shell step also runs 4 other commands
+  (`npdev report bootstrap`, validate-report-schemas.ps1, generate-final-evidence-bundle.ps1,
+  run-portable-tooling-check.ps1) whose own precondition-unmet-vs-exit-code handling was not
+  re-audited here -- flipping the flag for the whole step is a separate decision.
 legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-35

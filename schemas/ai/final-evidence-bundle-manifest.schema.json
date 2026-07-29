@@ -56,10 +56,25 @@
           "reportPath": { "type": "string", "minLength": 1 },
           "bundledPath": { "type": "string", "minLength": 1 },
           "schemaPath": { "type": "string", "minLength": 1 },
-          "schemaVersion": { "type": "string", "minLength": 1 },
-          "overallStatus": { "enum": ["passed", "failed"] },
-          "bytes": { "type": "integer", "minimum": 1 },
-          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          "schemaVersion": {
+            "$comment": "REG-35 (2026-07-29): empty when the report was never generated -- generate-final-evidence-bundle.ps1 has no schemaVersion to read from a file that does not exist.",
+            "type": "string"
+          },
+          "overallStatus": {
+            "$comment": "REG-35 (2026-07-29): not just passed/failed -- Get-ReportStatus (generate-final-evidence-bundle.ps1) also emits 'missing' (producer never ran, the REG-32 precondition-unmet case) and 'missing-status' (report exists but declares neither overallStatus nor status); an existing report may also declare its own non-passed/failed status string (e.g. a producer using the same precondition-unmet pattern), so this stays open rather than an overfit enum.",
+            "type": "string",
+            "minLength": 1
+          },
+          "bytes": {
+            "$comment": "REG-35 (2026-07-29): 0 when the report was never generated (no file to size).",
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "$comment": "REG-35 (2026-07-29): empty when the report was never generated (no file to hash).",
+            "type": "string",
+            "pattern": "^([0-9a-f]{64})?$"
+          }
         }
       }
     }
