@@ -39,6 +39,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Every other workflow in this repo already sets this (ai-beta-gate.yml,
+          # npdev-ci-validation.yml, npdev-pr-gate.yml, npdev-release-gate.yml) -- this one was the
+          # lone gap. Found live on PR #7 (2026-07-29): the default shallow (depth-1) checkout made
+          # every `git show <pinned-SHA>:<path>` calibration control unable to read its target
+          # revision at all. check-register-consistency.py's and check-narrative-status-drift.py's
+          # calibrate() tolerate that (their git_show() returns None and the caller skips the
+          # control instead of failing) -- so those controls had been silently SKIPPED on every CI
+          # run, not run and passing, exactly the "nothing notices" class RECORD_SURFACES_PLAN.md
+          # is about. check-record-surfaces.py's calibrate() does not tolerate it (by design -- a
+          # silently skipped control is worse than a loud failure) and surfaced the gap as a real
+          # CI failure instead of continuing to hide it.
+          fetch-depth: 0
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
