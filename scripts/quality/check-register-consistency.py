@@ -696,6 +696,11 @@ def calibrate(root: Path) -> int:
     REG-40/REG-4 instances and T2b's REG-62 instance, all real and all in this repo's own history);
     falls back to a small synthetic fixture only where no single real revision isolates the mechanism
     cleanly.
+
+    REG-67: T1/T2's real-instance controls used to read bare `HEAD`, a moving target -- both target
+    docs were edited again after 2026-07-28, so the stale wording the controls looked for no longer
+    existed at HEAD and `--calibrate` silently rotted. Pinned to `PRE_FIX_SHA` below instead, same
+    fixed-revision discipline Rule T2b already used for REG-62 @ 9c3c423.
     """
     ok = True
 
@@ -723,8 +728,13 @@ def calibrate(root: Path) -> int:
             print(f"  ERROR: could not read {revision} revision of {path.name}: {exc.stderr}", file=sys.stderr)
             return None
 
+    # Pinned to a fixed SHA, not HEAD (REG-67): both docs changed together in 7ef8af4 (the fix
+    # commit); 6a58b09 is its parent and still holds the pre-fix stale wording for both Rule T1
+    # (EXECUTION_TREES.md) and Rule T2 (NPDEV_OPEN_ITEMS_REGISTER.md) -- confirmed via `git show`.
+    PRE_FIX_SHA = "6a58b09"
+
     head_register_summary = None
-    head_register_text = git_show(register_path)
+    head_register_text = git_show(register_path, revision=PRE_FIX_SHA)
     if head_register_text is not None:
         # Reuse parse()'s line-based logic against the HEAD text by writing it through the same
         # summary-extraction pass parse() uses (duplicated minimally: parse() takes a Path, not text).
@@ -737,10 +747,10 @@ def calibrate(root: Path) -> int:
         finally:
             tmp_path.unlink(missing_ok=True)
 
-    head_tree_text = git_show(tree_path)
+    head_tree_text = git_show(tree_path, revision=PRE_FIX_SHA)
     if head_tree_text is not None and head_register_summary is not None:
         report(
-            "Rule T1 vs. EXECUTION_TREES.md @ HEAD (pre-fix: 3.3/REG-40 + 3.5/REG-4, real git revision)",
+            f"Rule T1 vs. EXECUTION_TREES.md @ {PRE_FIX_SHA} (pre-fix: 3.3/REG-40 + 3.5/REG-4, real git revision)",
             tree_ledger_agreement_text(f"{tree_path.name}@HEAD", head_tree_text.splitlines(), head_register_summary),
             expect_fire=True,
         )
@@ -752,7 +762,7 @@ def calibrate(root: Path) -> int:
 
     if head_register_text is not None:
         report(
-            "Rule T2 vs. NPDEV_OPEN_ITEMS_REGISTER.md @ HEAD (pre-fix REG-59, real git revision)",
+            f"Rule T2 vs. NPDEV_OPEN_ITEMS_REGISTER.md @ {PRE_FIX_SHA} (pre-fix REG-59, real git revision)",
             strikethrough_contradiction_text(f"{register_path.name}@HEAD", head_register_text.splitlines()),
             expect_fire=True,
         )

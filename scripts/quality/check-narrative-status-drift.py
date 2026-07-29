@@ -44,8 +44,9 @@ CALIBRATE BEFORE TRUSTING IT (non-negotiable -- P4's lesson, repeated at the met
     python scripts/quality/check-narrative-status-drift.py --calibrate
 
 Runs two controls and prints PASS/FAIL for each, exiting 1 if either fails:
-  - Rule P2 against the REAL git HEAD revision of ADR-0009 (still the pre-`docs:` header-fix text
-    as of this writing -- that fix is an uncommitted working-tree edit) -- MUST fire; against the
+  - Rule P2 against ADR-0009 pinned at a fixed SHA (`PRE_FIX_SHA`, not `HEAD` -- REG-68: `HEAD` is a
+    moving target, and ADR-0009 was edited again after this control was first written, which rotted
+    it silently once the pre-fix header text no longer existed at HEAD) -- MUST fire; against the
     current working-tree file -- MUST NOT fire.
   - Rule P1 against a SYNTHETIC fixture reproducing the REG-50 "remains OPEN" shape -- MUST fire;
     against a corrected variant -- MUST NOT fire. Synthetic, not `git show`-derived, and said so
@@ -287,17 +288,23 @@ def calibrate(root: Path) -> int:
 
     print("Calibration -- must catch both real 2026-07-27 instances before this ships:")
 
+    # REG-68: pinned to a fixed SHA, not HEAD -- ADR-0009 was edited again after this control was
+    # written (DRAFT -> APPROVED WITH CONDITIONS), so bare HEAD stopped reproducing the pre-fix
+    # header and --calibrate rotted silently. 10d3a88 is the last commit before that fix (f76b95f)
+    # and still carries the "DRAFT -- 2026-07-26 ... D3, D4, D5 remain pending" header -- confirmed
+    # via `git show`. Same fixed-revision discipline check-register-consistency.py's Rule T2b uses.
+    PRE_FIX_SHA = "10d3a88"
     adr_path = root / "docs" / "adr" / "ADR-0009-external-ai-delegation.md"
     try:
         head_text = subprocess.run(
-            ["git", "show", f"HEAD:{adr_path.relative_to(root).as_posix()}"],
+            ["git", "show", f"{PRE_FIX_SHA}:{adr_path.relative_to(root).as_posix()}"],
             cwd=root, capture_output=True, text=True, check=True,
         ).stdout
     except subprocess.CalledProcessError as exc:
-        print(f"  ERROR: could not read HEAD revision of {adr_path.name}: {exc.stderr}", file=sys.stderr)
+        print(f"  ERROR: could not read {PRE_FIX_SHA} revision of {adr_path.name}: {exc.stderr}", file=sys.stderr)
         return 1
-    report("Rule P2 vs. ADR-0009 @ HEAD (pre-fix header, real git revision)",
-           rule_p2_text("ADR-0009@HEAD", head_text), expect_fire=True)
+    report(f"Rule P2 vs. ADR-0009 @ {PRE_FIX_SHA} (pre-fix header, real git revision)",
+           rule_p2_text(f"ADR-0009@{PRE_FIX_SHA}", head_text), expect_fire=True)
     report("Rule P2 vs. ADR-0009 in the working tree (post-fix)",
            rule_p2(adr_path), expect_fire=False)
 

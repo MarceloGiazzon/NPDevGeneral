@@ -2,8 +2,9 @@ id: REG-67
 title: check-register-consistency.py's --calibrate mode uses bare "HEAD" for its real-instance controls, which silently stops proving anything once the target doc is edited again
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-07-29
+closed: 2026-07-29
 verification: VERIFIED_LIVE
 source: Found incidentally while calibrating Rule T2b (docs/CLOSEOUT_PLAN.md G4), reproduced against the unmodified script before any G4 edit landed
 surface: quality/register-consistency
@@ -31,3 +32,11 @@ detail: |
   or replace the rotted real-instance controls with synthetic fixtures (T2 already has one working
   synthetic control per rule; T1 does too) and drop the real-instance assertion once it can no longer
   be kept current for free.
+
+  CLOSED 2026-07-29 (`docs/INVOCATION_TOPOLOGY_PLAN.md` T1): Rule T1/T2 pinned to `6a58b09` (parent
+  of the fix commit `7ef8af4`, confirmed via `git show` to still hold both stale-wording shapes).
+  `--calibrate` now PASSes on all T1/T2/T2b controls. Corrected-scope lesson: this item was filed as
+  ONE rotted control; running all eight then-existing `--calibrate` modes by hand (not just
+  re-reading this instance) found a SECOND, unfiled instance with the identical root cause in
+  `check-narrative-status-drift.py`'s Rule P2 -- see `REG-68`. The real count was two, found only by
+  running the whole class, not the one instance that happened to get noticed first.
