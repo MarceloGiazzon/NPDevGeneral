@@ -43,8 +43,9 @@ jobs:
           cache: gradle
 
       # CI-1 (2026-07-23): the committed gradle.properties hardcode a dev-machine
-      # org.gradle.projectcachedir=D:/... which does not exist on Linux -> gradle aborts before any
-      # test. Strip it (mirrors npdev-pr-gate.yml) so gradle uses its portable default project cache.
+      # org.gradle.projectcachedir pointing at an absolute Windows path, which does not exist on
+      # Linux -> gradle aborts before any test. Strip it (mirrors npdev-pr-gate.yml) so gradle uses
+      # its portable default project cache.
       - name: Neutralize dev-machine gradle projectcachedir (portability)
         run: |
           for f in gradle.properties NPDevContract/dsl/gradle.properties NPDevEditor/gradle.properties NPDevGenerator/gradle.properties NPDevKernel/gradle.properties NPDevRuntimeHost/gradle.properties; do
@@ -164,13 +165,20 @@ jobs:
       # precondition-unmet (exit 2, non-fatal) from check-failed (exit 1) — verified locally, prints
       # "PRECONDITION-UNMET: 19 of 21 ..." and exits 2 on this same missing-producer state that used
       # to hard-fail. The 1 real schema-invalid report (stateful-additive-migrations) is also fixed.
-      # STILL ADVISORY (REG-35, filed 2026-07-24): the OTHER commands below —
-      # `./gradlew postBeta0MaturityCheck` (a separate Gradle-native validation pipeline with the
-      # identical missing-vs-invalid conflation, pre-existing, not touched by REG-32) and the nested
-      # per-artifact strictness in final-evidence-bundle-manifest.schema.json — still hard-fail on
-      # this job's expected missing-producer state. See docs/NPDEV_OPEN_ITEMS_REGISTER.md (REG-32,
-      # REG-35) before removing continue-on-error; removing it now would just go red for REG-35's
-      # reasons instead of REG-32's.
+      # REG-35 (filed 2026-07-24, fixed 2026-07-29 -- docs/CORPUS_INTEGRITY_PLAN.md C9): the OTHER
+      # commands below — `./gradlew postBeta0MaturityCheck` (a separate Gradle-native validation
+      # pipeline with the identical missing-vs-invalid conflation REG-32 fixed in the PowerShell
+      # chain) and the nested per-artifact strictness in final-evidence-bundle-manifest.schema.json —
+      # used to hard-fail on this job's expected missing-producer state; both now distinguish
+      # precondition-unmet from a real failure the same way REG-32's chain does. A third, unrelated
+      # false positive found verifying this fix (validateBoundaryLocks's own hardcoded-drive-letter-
+      # path scan matched a COMMENT describing a Windows path, not an actual embedded one) is also
+      # fixed. `postBeta0MaturityCheck` now runs clean locally end to end.
+      # continue-on-error is kept for now regardless: this same step also runs `npdev report
+      # bootstrap`, validate-report-schemas.ps1, generate-final-evidence-bundle.ps1, and
+      # run-portable-tooling-check.ps1 in one shell block, and only the two REG-35 targets were
+      # audited for the precondition-unmet-vs-exit-code distinction here — flipping the flag for the
+      # whole step is a separate, higher-stakes CI-gating decision this fix did not make.
       - name: Bootstrap post-Beta0 maturity reports (advisory — REG-32 PowerShell chain fixed; REG-35 Gradle-native gap open)
         continue-on-error: true
         timeout-minutes: 60
