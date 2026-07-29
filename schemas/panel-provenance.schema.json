@@ -56,12 +56,12 @@
     },
     "reads": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z0-9_.]+$" },
+      "items": { "type": "string", "pattern": "^(?:[A-Za-z_][A-Za-z0-9_]*::)?[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z0-9_.]+$" },
       "description": "Concept.fieldPath entries this screen reads. Every entry must resolve in the bundle's fields catalog -- F4 fails the build otherwise."
     },
     "writes": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z0-9_.]+$" },
+      "items": { "type": "string", "pattern": "^(?:[A-Za-z_][A-Za-z0-9_]*::)?[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z0-9_.]+$" },
       "description": "Concept.fieldPath entries this screen mutates."
     },
     "invokes": {

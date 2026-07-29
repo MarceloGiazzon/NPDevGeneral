@@ -19,27 +19,44 @@ primitive candidate.
 
 ## Per-screen classification
 
-| App | Screen | Bytes | Class | Primitive | Status |
-|---|---|---|---|---|---|
-| AuxScreen | `aux-screen` | 6,071 | detail-form | AutoPanel Detail | generated-equivalent |
-| Pigmentampa | `pigmentampa-editor` | 14,341 | detail-form | AutoPanel Detail | generated-equivalent |
-| WmsOffice | `analytics` | 11,455 | dashboard | none | hand-written → contract (F2/F3) |
-| WmsOffice | `centro-trabalho` | 30,862 | operator-console | none | hand-written → contract (F2/F3) |
-| WmsOffice | `conferencia-fiscal` | 22,897 | operator-console | none | hand-written → contract (F2/F3) |
-| WmsOffice | `crossdocking` | 12,748 | **operator-console** ¹ | none | hand-written → contract (F2/F3) |
-| WmsOffice | `excluir-estabelecimento` | 9,820 | detail-form | AutoPanel Detail | generated-equivalent |
-| WmsOffice | `inventario` | 28,031 | operator-console | none | hand-written → contract (F2/F3) |
-| WmsOffice | `login` | 6,773 | auth | generated login | generated-equivalent |
-| WmsOffice | `mapa-armazem` | 19,650 | spatial-map | none | hand-written → contract (F2/F3) |
-| WmsOffice | `movimentacao-livre` | 23,392 | operator-console | none | hand-written → contract (F2/F3) |
-| WmsOffice | `novo-estabelecimento` | 16,347 | detail-form | AutoPanel Detail | generated-equivalent |
-| WmsOffice | `relatorios` | 10,540 | dashboard | none | hand-written → contract (F2/F3) |
-| WmsOffice | `seed-data` | 8,674 | admin-tool | ControlPanel (partial) | hand-written |
-| WmsOffice | `usuarios-roles` | 9,500 | auth | generated login | generated-equivalent |
-| WordLab | *(none)* | — | — | — | **fully generated — no `web/` directory at all** |
-| Claude Support Desk | *(none)* | — | — | — | **fully generated — no `web/` directory at all** |
+**Manifest column** (R-G2, `docs/REMEDIATION_PLAN.md`): `confirmed` = a reviewed `*.panel.json` exists
+and the impact gate (F4) enforces it; `blocked` = cannot be produced yet, reason given below the
+table; `n/a` = no hand-written screen to manifest (fully generated). 15/15 hand-written screens now
+have a manifest or a written reason (13/13 WmsOffice confirmed 2026-07-29; AuxScreen/Pigmentampa
+blocked, see below) — up from 3/15 confirmed.
 
-¹ **Human override of the mechanical classifier's default.** `classify-screens.py`'s
+| App | Screen | Bytes | Class | Primitive | Status | Manifest |
+|---|---|---|---|---|---|---|
+| AuxScreen | `aux-screen` | 6,071 | detail-form | AutoPanel Detail | generated-equivalent | blocked ¹ |
+| Pigmentampa | `pigmentampa-editor` | 14,341 | detail-form | AutoPanel Detail | generated-equivalent | blocked ¹ |
+| WmsOffice | `analytics` | 11,455 | dashboard | none | hand-written → contract (F2/F3) | confirmed |
+| WmsOffice | `centro-trabalho` | 30,862 | operator-console | none | hand-written → contract (F2/F3) | confirmed |
+| WmsOffice | `conferencia-fiscal` | 22,897 | operator-console | none | hand-written → contract (F2/F3) | confirmed |
+| WmsOffice | `crossdocking` | 12,748 | **operator-console** ² | none | hand-written → contract (F2/F3) | confirmed |
+| WmsOffice | `excluir-estabelecimento` | 9,820 | detail-form | AutoPanel Detail | generated-equivalent | confirmed |
+| WmsOffice | `inventario` | 28,031 | operator-console | none | hand-written → contract (F2/F3) | confirmed |
+| WmsOffice | `login` | 6,773 | auth | generated login | generated-equivalent | confirmed |
+| WmsOffice | `mapa-armazem` | 19,650 | spatial-map | none | hand-written → contract (F2/F3) | confirmed |
+| WmsOffice | `movimentacao-livre` | 23,392 | operator-console | none | hand-written → contract (F2/F3) | confirmed |
+| WmsOffice | `novo-estabelecimento` | 16,347 | detail-form | AutoPanel Detail | generated-equivalent | confirmed |
+| WmsOffice | `relatorios` | 10,540 | dashboard | none | hand-written → contract (F2/F3) | confirmed |
+| WmsOffice | `seed-data` | 8,674 | admin-tool | ControlPanel (partial) | hand-written | confirmed |
+| WmsOffice | `usuarios-roles` | 9,500 | auth | generated login | generated-equivalent | confirmed |
+| WordLab | *(none)* | — | — | — | **fully generated — no `web/` directory at all** | n/a |
+| Claude Support Desk | *(none)* | — | — | — | **fully generated — no `web/` directory at all** | n/a |
+
+¹ **Blocked, not skipped (R-G2, 2026-07-29 finding).** Neither app can be regenerated with the
+current toolchain: both `model.json`s use a pre-DSL-stabilization flow-step shape (top-level
+`name`/`input`/`out` properties, a `type: "validate"` step kind) that the current
+`model.schema.json` rejects outright (`JsonModelParser.parse()` fails schema validation before an
+AST is even built) -- confirmed live, both `Build-NpdevApp.ps1 -GenerateOnly` runs fail with the
+identical `ModelSchemaValidationException`. This blocks every downstream step a manifest needs (no
+compiled model → no invocations catalog → no live bundle → nothing to bootstrap or hand-verify
+against). A real `npdev migrate` codemod for this flow-step shape (BREAKING.md's own standing rule:
+every DSL break ships its codemod) is the actual fix; out of scope for a manifest-coverage pass.
+Tracked as a new gap, see `docs/NPDEV_OPEN_ITEMS_REGISTER.md`.
+
+² **Human override of the mechanical classifier's default.** `classify-screens.py`'s
 `operator-console` rule requires `flow-invocation signals ≥ 1 AND form-input signals ≤ 4`;
 `crossdocking.html` has 3 flow invocations (`/api/flows/.../execute`) but 7 form-input elements,
 so the mechanical pass placed it in `detail-form` on that threshold alone. Read by hand: it invokes

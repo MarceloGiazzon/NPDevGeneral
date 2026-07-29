@@ -37,6 +37,9 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install Python dependencies
+        run: pip install -r scripts/requirements.txt
+
       - name: Run AI knowledge gate
         shell: pwsh
         run: pwsh -NoProfile -File scripts/quality/run-ai-knowledge-gate.ps1

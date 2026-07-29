@@ -35,6 +35,12 @@
     duplicated in four places with nothing previously enforcing they stay in sync, and they had
     already drifted by the time this check was written. Blocking.
 
+    Check 10 (R-G1 static half, docs/REMEDIATION_PLAN.md) validates every *.panel.json manifest's own
+    SHAPE against schemas/panel-provenance.schema.json (required fields, no unexpected fields, a
+    well-formed invokes[] id) -- the half of the panel-provenance impact gate (F4) that needs no live
+    app. The EXISTENCE half (does a field/invocation still exist in the current model) needs a real
+    authenticated bundle and runs per-app instead, via that app's own `_ops/Check-Provenance.ps1`.
+
     Run before merging any change to the ledger, the cards, the AI knowledge scripts, model.schema.json
     (any of its four copies), or any code the sweep's patterns cover (SQL building, auth catches,
     template authorization guards).
@@ -55,48 +61,48 @@ try {
 
     Write-Host "== AI knowledge gate ==" -ForegroundColor Cyan
 
-    # [1/9] Register self-check runs FIRST: platform-status.json is DERIVED from the same documents,
+    # [1/10] Register self-check runs FIRST: platform-status.json is DERIVED from the same documents,
     # so a summary row contradicting its own detail section does not just mislead a human reader --
     # it propagates straight into the AI knowledge substrate the MCP tools serve. Catching it before
     # the projection is regenerated stops the drift at its source. (An audit on 2026-07-24/25 found
     # ~12 such rows; every one would have been caught here in under a second.)
-    Write-Host "[1/9] Checking register/roadmap summary rows against their detail sections..."
+    Write-Host "[1/10] Checking register/roadmap summary rows against their detail sections..."
     & $py "scripts/quality/check-register-consistency.py"
     if ($LASTEXITCODE -ne 0) { $failures += "register/roadmap summary rows contradict their own detail sections" }
 
     if ($Fix) {
-        Write-Host "[2/9] Regenerating platform-status projection..." -ForegroundColor Yellow
+        Write-Host "[2/10] Regenerating platform-status projection..." -ForegroundColor Yellow
         & $py "scripts/ai/extract_platform_status.py"
         if ($LASTEXITCODE -ne 0) { $failures += "platform-status regeneration failed" }
     } else {
-        Write-Host "[2/9] Checking platform-status projection is current..."
+        Write-Host "[2/10] Checking platform-status projection is current..."
         & $py "scripts/ai/extract_platform_status.py" --check
         if ($LASTEXITCODE -ne 0) { $failures += "platform-status projection is STALE (run with -Fix)" }
     }
 
-    Write-Host "[3/9] Validating knowledge cards..."
+    Write-Host "[3/10] Validating knowledge cards..."
     & $py "scripts/ai/build_knowledge.py" --validate-only
     if ($LASTEXITCODE -ne 0) { $failures += "knowledge-card validation failed" }
 
-    Write-Host "[4/9] Checking failure-signature normalizer..."
+    Write-Host "[4/10] Checking failure-signature normalizer..."
     $sig = & $py "scripts/ai/failure_signatures.py" "Panel 'Orders' references unknown entity 'Customer'"
     $expected = "panel <id> references unknown entity <id>"
     if ($sig.Trim() -ne $expected) {
         $failures += "normalizer self-check failed: got '$($sig.Trim())' expected '$expected'"
     }
 
-    # [5/9] Same question as [1/9], asked of a different mechanism: is this quality tool still doing
+    # [5/10] Same question as [1/10], asked of a different mechanism: is this quality tool still doing
     # what its documentation claims? The sweep's fixtures are the REAL historical shapes of bugs this
     # repo shipped (LNCH13-F1, REG-39, REG-36) plus each one's fix, and it must separate them. A sweep
     # that reports 350 hits but would have walked past LNCH13-F1 does not just fail to help -- it
     # manufactures confidence. Note this checks the PATTERNS, not the codebase: it cannot fail because
     # someone wrote new code, only because someone broke the detector.
-    Write-Host "[5/9] Checking the security pattern sweep still catches its known bugs..."
+    Write-Host "[5/10] Checking the security pattern sweep still catches its known bugs..."
     & $py "scripts/quality/security-pattern-sweep.py" --self-test
     if ($LASTEXITCODE -ne 0) { $failures += "security-pattern-sweep self-test failed: a pattern no longer catches the bug it was written for" }
 
-    # [6/9] Run the sweep against the CODEBASE and fail on anything untriaged. Until now the gate
-    # proved the detector worked ([5/9]) but never actually pointed it at the repo, so a new hit could
+    # [6/10] Run the sweep against the CODEBASE and fail on anything untriaged. Until now the gate
+    # proved the detector worked ([5/10]) but never actually pointed it at the repo, so a new hit could
     # sit unnoticed indefinitely -- which is exactly what happened: closing the triage loop drove the
     # count 307 -> 8, and REG-46's own fix then silently added 8 more in the adapter it modified.
     # A sweep whose "new" count is allowed to drift upward stops being read, and a real hit hides in
@@ -106,38 +112,50 @@ try {
     # minute; the allowlist entry is a fingerprint + a reason. It is deliberately BLOCKING rather than
     # advisory, because an advisory count that nobody must act on is the state this replaces.
     # To relax it, drop `--fail-on-new` (the sweep still reports) -- but prefer triaging the hit.
-    Write-Host "[6/9] Checking for untriaged security-pattern hits..."
+    Write-Host "[6/10] Checking for untriaged security-pattern hits..."
     & $py "scripts/quality/security-pattern-sweep.py" --fail-on-new
     if ($LASTEXITCODE -ne 0) {
         $failures += "untriaged security-pattern hits: review each, then record a fingerprint + REASON in scripts/quality/security-pattern-sweep-allowlist.json and the rule in docs/SECURITY_PATTERN_SWEEP_2026-07.md (a false 'safe' is worse than a noisy hit)"
     }
 
-    # [7/9] Report-only (Phase 2.4, docs/REMAINDER_CLOSURE_PLAN.md): calibrated against both real
+    # [7/10] Report-only (Phase 2.4, docs/REMAINDER_CLOSURE_PLAN.md): calibrated against both real
     # 2026-07-27 instances (see the script's own --calibrate mode) and zero false positives on this
     # corpus at the time it shipped. Deliberately does not add to $failures yet -- promote once a
     # clean-tree run has stayed at zero for a while, per lesson #4.
-    Write-Host "[7/9] Checking for narrative-status drift (report-only)..."
+    Write-Host "[7/10] Checking for narrative-status drift (report-only)..."
     & $py "scripts/quality/check-narrative-status-drift.py"
 
-    # [8/9] T1.3: a custom Gradle Test task (behaviorTest/integrationTest/a future contractTest) that
+    # [8/10] T1.3: a custom Gradle Test task (behaviorTest/integrationTest/a future contractTest) that
     # is declared but reachable from no CI workflow is a test that only runs on one laptop -- exactly
-    # what REG-49's residual behaviorTest was until T1.2 wired it in. Blocking, same rationale as [6/9].
-    Write-Host "[8/9] Checking every custom Gradle Test task is reachable from a CI workflow..."
+    # what REG-49's residual behaviorTest was until T1.2 wired it in. Blocking, same rationale as [6/10].
+    Write-Host "[8/10] Checking every custom Gradle Test task is reachable from a CI workflow..."
     & $py "scripts/quality/check-test-task-coverage.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a custom Gradle Test task is unreachable from CI: see scripts/quality/check-test-task-coverage.py output above, then either wire it into a workflow or record a reviewed exemption in scripts/quality/test-task-coverage-allowlist.json"
     }
 
-    # [9/9] 2.A.2 (docs/DSL2_AND_DECOMPOSITION_PLAN.md): model.schema.json is duplicated in four
+    # [9/10] 2.A.2 (docs/DSL2_AND_DECOMPOSITION_PLAN.md): model.schema.json is duplicated in four
     # places with nothing previously enforcing they stay in sync -- they had already drifted by the
-    # time this gate was written. Blocking, same rationale as [6/9] and [8/9]: an unsynced schema
+    # time this gate was written. Blocking, same rationale as [6/10] and [8/10]: an unsynced schema
     # copy silently teaches a stale contract to whichever consumer reads it (authoring UI, DSL module,
     # the legacy authoring location), with no error until something built against the stale copy fails
     # far away from the edit that caused it.
-    Write-Host "[9/9] Checking the four model.schema.json copies are still semantically identical..."
+    Write-Host "[9/10] Checking the four model.schema.json copies are still semantically identical..."
     & $py "scripts/quality/check-schema-mirror-consistency.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "the four model.schema.json copies have drifted: see scripts/quality/check-schema-mirror-consistency.py output above for which key differs, then mirror the edit to all four (CLAUDE.md's own standing rule)"
+    }
+
+    # [10/10] R-G1 static half (docs/REMEDIATION_PLAN.md): the panel-provenance impact gate (F4)
+    # needs a live authenticated bundle to check field/invocation EXISTENCE (that half now runs
+    # per-app via _ops/Check-Provenance.ps1, wired 2026-07-28) -- but a manifest's own SHAPE
+    # (required fields, no unexpected fields, a well-formed invokes[] id) needs no live app at all.
+    # Runs against the AppGen apps workspace when present on this machine; 0 manifests found (e.g.
+    # a bare CI checkout, which has no AppGen/apps at all) is a printed PASS, not a silent skip.
+    Write-Host "[10/10] Checking *.panel.json manifests structurally validate (no live app needed)..."
+    & $py "scripts/quality/check-panel-provenance-schema.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a *.panel.json manifest fails structural validation: see scripts/quality/check-panel-provenance-schema.py output above"
     }
 
     if ($failures.Count -gt 0) {
