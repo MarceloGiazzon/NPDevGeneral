@@ -99,7 +99,7 @@ jobs:
       # flowinstance/tracestore) -- those stay nightly-only per npdev-ci-validation.yml's own reasoning
       # (runtime cost, up to 120min across the full Postgres/Playwright/maturity-bootstrap suite); this is
       # a narrow, evidence-scoped promotion, not a blanket one.
-      - name: Postgres adapter tests (fast subset with real H2-invisible findings: persistence, idempotency)
+      - name: "Postgres adapter tests (fast subset with real H2-invisible findings: persistence, idempotency)"
         working-directory: NPDevKernel
         timeout-minutes: 15
         run: |
