@@ -944,7 +944,10 @@ public final class CompiledModelCanonicalJsonReader {
                     optionalText(actionNode, "enabledWhen"),
                     toStringList(actionNode.get("permissionRequirements")),
                     toObjectMap(actionNode.get("explainability")),
-                    toObjectMap(actionNode.get("metadata"))
+                    toObjectMap(actionNode.get("metadata")),
+                    optionalText(actionNode, "scope"),
+                    optionalText(actionNode, "dataSource"),
+                    toStringList(actionNode.get("inputFields"))
             ));
         }
         return out;

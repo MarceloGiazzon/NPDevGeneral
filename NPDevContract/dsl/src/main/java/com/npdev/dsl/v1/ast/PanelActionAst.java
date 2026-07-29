@@ -15,10 +15,14 @@ public record PanelActionAst(
         String enabledWhen,
         List<String> permissionRequirements,
         Map<String, Object> explainability,
-        Map<String, Object> metadata
+        Map<String, Object> metadata,
+        String scope,
+        String dataSource,
+        List<String> inputFields
 ) {
     public PanelActionAst {
         permissionRequirements = permissionRequirements == null ? List.of() : List.copyOf(permissionRequirements);
+        inputFields = inputFields == null ? List.of() : List.copyOf(inputFields);
         explainability = explainability == null ? Map.of() : Map.copyOf(explainability);
         metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
     }

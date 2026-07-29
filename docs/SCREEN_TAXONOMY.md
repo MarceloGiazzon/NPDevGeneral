@@ -29,14 +29,14 @@ and the impact gate (F4) enforces it; `n/a` = no hand-written screen to manifest
 | AuxScreen | `aux-screen` | 6,071 | detail-form | AutoPanel Detail | generated-equivalent | confirmed ¹ |
 | Pigmentampa | `pigmentampa-editor` | 14,341 | detail-form | AutoPanel Detail | generated-equivalent | confirmed ¹ |
 | WmsOffice | `analytics` | 11,455 | dashboard | none | hand-written → contract (F2/F3) | confirmed |
-| WmsOffice | `centro-trabalho` | 30,862 | operator-console | none | hand-written → contract (F2/F3) | confirmed |
-| WmsOffice | `conferencia-fiscal` | 22,897 | operator-console | none | hand-written → contract (F2/F3) | confirmed |
-| WmsOffice | `crossdocking` | 12,748 | **operator-console** ² | none | hand-written → contract (F2/F3) | confirmed |
+| WmsOffice | `centro-trabalho` | 30,862 | operator-console | none (evaluated ⁴, not authored) | hand-written → contract or Aggregate Workbench (2-level nesting) | confirmed |
+| WmsOffice | `conferencia-fiscal` | 22,897 | operator-console | `panel` ⁴ (History half) | **partially converted** — History works, Import wizard cannot-express | confirmed |
+| WmsOffice | `crossdocking` | 12,748 | **operator-console** ² | `panel` ³ | **converted** (14/20 checklist items work) | confirmed |
 | WmsOffice | `excluir-estabelecimento` | 9,820 | detail-form | AutoPanel Detail | generated-equivalent | confirmed |
-| WmsOffice | `inventario` | 28,031 | operator-console | none | hand-written → contract (F2/F3) | confirmed |
+| WmsOffice | `inventario` | 28,031 | operator-console | `panel` ⁴ (Historico half) | **partially converted** — Historico works, 3 CSV wizards cannot-express | confirmed |
 | WmsOffice | `login` | 6,773 | auth | generated login | generated-equivalent | confirmed |
 | WmsOffice | `mapa-armazem` | 19,650 | spatial-map | none | hand-written → contract (F2/F3) | confirmed |
-| WmsOffice | `movimentacao-livre` | 23,392 | operator-console | none | hand-written → contract (F2/F3) | confirmed |
+| WmsOffice | `movimentacao-livre` | 23,392 | operator-console | `panel` ⁴ (header+item half) | **partially converted** — header/item list works, position-level allocation cannot-express | confirmed |
 | WmsOffice | `novo-estabelecimento` | 16,347 | detail-form | AutoPanel Detail | generated-equivalent | confirmed |
 | WmsOffice | `relatorios` | 10,540 | dashboard | none | hand-written → contract (F2/F3) | confirmed |
 | WmsOffice | `seed-data` | 8,674 | admin-tool | ControlPanel (partial) | hand-written | confirmed |
@@ -62,10 +62,37 @@ passive CRUD detail screen. Reclassified here. (`excluir-estabelecimento` and
 `novo-estabelecimento` were also checked by hand: **zero** flow invocations each — genuinely
 CRUD-shaped, the mechanical `detail-form` call stands.)
 
+³ **2026-07-29, `CAPABILITY_ROADMAP.md` Moves 1+2** (`docs/MOVE1_CONSOLE_CONVERSION_PLAN.md` +
+`docs/MOVE2_PANEL_ACTIONS_PLAN.md`, findings in `docs/MOVE1_PANEL_GAPS.md`): Move 1 declared
+`crossdocking.html` as `CrossDockingConsolePanel`, authoring-only, and found reads converted
+cleanly but actions were blocked by three stacked gaps — G1 (`binding: "flow"` schema-valid,
+compiler-accepted, unimplemented at runtime; also affected two already-shipping panels, REG-70),
+G2 (panel actions rendered once per panel, never once per row), G3 (no mechanism to collect ad hoc
+user input for a non-row-scoped action). Move 2 closed all three the same day (schema + compiler +
+runtime + generated-frontend changes, backward-compatible defaults, 5 new tests, 2 new
+`dsl-conformance-max` examples) and re-verified live: a real browser fills the 5-field Ativar form
+and creates a real CrossDocking via the real flow; per-row Concluir/Cancelar buttons appear only on
+`Ativo` rows and execute against the correct row. **14 of the original 20 checklist behaviours now
+work** (up from 3), confirming none of the three was a hard architectural limit.
+
 **Corrected count: WmsOffice has 5 of 13 screens classified operator-console** (not "6 of 13" as
 an earlier planning note asserted — that figure does not survive a fresh, reasoned re-measurement
 on this checkout, whichever methodology originally produced it; 5/13 is still the plurality class
 and the strongest single-app signal).
+
+⁴ **2026-07-29, `CAPABILITY_ROADMAP.md` Move 2 G4** (`docs/MOVE2_PANEL_ACTIONS_PLAN.md`, results in
+`docs/MOVE2_G4_CHECKLISTS.md`). All 5 operator-console screens have now been attempted or evaluated.
+Two consistent, non-blocking-per-se boundaries found across the remaining four (none of them a hard
+architectural wall — see the detail doc): **Class A** (multi-step wizard: parse/preview → an N+1-
+write confirm — `conferencia-fiscal`'s Import, all 3 of `inventario`'s CSV flows) has no declared
+Panel surface for either half; **Class B** (nesting deeper than 1 level — `movimentacao-livre` /
+`centro-trabalho`'s Movimento→MovimentoItem→MovimentoItemPosicao) hits `PanelValidation`'s existing,
+deliberate 1-level nesting cap — the Aggregate Workbench primitive is the platform's answer for that
+shape, not Panel. `centro-trabalho.html` was evaluated by close reading rather than authored+built:
+it is a structural superset of `movimentacao-livre.html` (same two blockers, no new mechanism), and
+a third live-verification of an already-proven boundary would not have added evidence. A real
+platform bug (REG-71: `scope: "row"` + `conceptMutation` blanked required fields) was found and
+fixed while authoring this batch.
 
 ## Declared (generated) surfaces per app
 
@@ -77,9 +104,14 @@ these are what each app's `model.json` already declares (`autoPanels`/`panels`/`
 |---|---|---|---|---|
 | AuxScreen | 0 | 2 | 0 | 0 |
 | Pigmentampa | 0 | 2 | 0 | 0 |
-| WmsOffice | 2 | 4 | 2 | 0 |
+| WmsOffice | 2 | 9 ⁵ | 2 | 0 |
 | WordLab | *(not scanned — no `web/` dir; declared surfaces alone drive its entire UI)* |
 | Claude Support Desk | *(not scanned — no `web/` dir; declared surfaces alone drive its entire UI)* |
+
+⁵ Was 4 before 2026-07-29. Move 1 added `CrossDockingConsolePanel` (see ³ above, now fully working
+after Move 2 G1-G3). Move 2 G4 added 4 more: `ConferenciaFiscalNfePanel`, `ConferenciaFiscalRomaneioPanel`,
+`MovimentoLivrePanel`, `InventarioHistoricoPanel` — each a partial conversion of its screen (see ⁴
+above and `docs/MOVE2_G4_CHECKLISTS.md`).
 
 ## Promotion-rule verdict
 
@@ -117,6 +149,40 @@ measured breakdown:
   screens are hand-written" is actually true and substantial — and it is the corpus F2/F3's contract
   substrate (`invocations`, provenance, the impact gate) is built to bring under contract, not
   replace.
+
+## Ratio re-measurement (Move 2 G4 close, 2026-07-29)
+
+`CAPABILITY_ROADMAP.md`'s target: WmsOffice's hand-written-to-model ratio, `1.02x → ~0.45x`, with a
+Move 2 Definition-of-Done threshold of **below 0.6x**.
+
+```
+model     (AppGen/apps/_official/WmsOffice/definition/**/*.json, full tree)   274,488 B
+hand-written (AppGen/apps/_official/WmsOffice/web/*.html, excluding
+              this session's *.original.html backups)                        210,689 B
+ratio = hand-written / model                                                    0.77x
+```
+
+**Methodology note:** this counts the full `definition/` tree (`model.json` plus every `$ref`'d
+`concepts/*.json`/`packs/*.json` fragment), the same shape `model.json`'s own `$ref` structure
+implies the roadmap's original 265,384 B figure measured. The two numbers are not confirmed
+byte-for-byte reconcilable to the original measurement script (not available to re-run here) — treat
+this as a fresh, independently-reasoned measurement with a stated method, not a certified diff.
+
+**The ratio improved (1.02x baseline → 0.77x here) entirely from the model growing** — 5 new panels
+across Move 1 and Move 2 G4, real declared capability — **not from any hand-written file shrinking**.
+Zero bytes of hand-written HTML were deleted this session, correctly: per Move 1's own rule ("keep
+the original until its replacement passes"), none of the five operator consoles reached full
+parity — `crossdocking` is 14/20 checklist items, the other four are partial conversions with named,
+real remaining gaps (Class A wizards, Class B nesting). **The DoD's `< 0.6x` threshold is not yet
+met**, and it cannot be met without deletions that the evidence doesn't yet support making.
+
+**What closing the gap requires**, honestly, not assumed: not more schema/runtime work (G1-G3 are
+already closed and sufficient for everything Class A/B don't need) — it requires either (a) a real
+design pass on Class A (structured multi-row input + multi-write actions) and Class B (already has
+an answer: Aggregate Workbench, not Panel) if a second/third console justifies it per the roadmap's
+own "≥2 consoles" promotion rule — both classes already clear that bar (Class A: 2 screens; Class B:
+2 screens) — or (b) accepting the remaining hand-written surface as correctly-scoped bespoke UI and
+moving to Move 3's contract-generation path for it instead.
 
 ## Methodology
 

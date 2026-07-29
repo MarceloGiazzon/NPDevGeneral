@@ -2528,6 +2528,9 @@ public final class CompiledMetadataCanonicalJson {
             node.put("visibleWhen", safe(action.visibleWhen()));
             node.put("enabledWhen", safe(action.enabledWhen()));
             node.set("permissionRequirements", toStringArray(action.permissionRequirements()));
+            node.put("scope", safe(action.scope()));
+            node.put("dataSource", safe(action.dataSource()));
+            node.set("inputFields", toStringArray(action.inputFields()));
             array.add(node);
         }
         return array;

@@ -1430,7 +1430,10 @@ public final class ModelCompiler {
                     action.enabledWhen(),
                     sortedStrings(action.permissionRequirements()),
                     sortObjectMap(action.explainability()),
-                    sortObjectMap(action.metadata())
+                    sortObjectMap(action.metadata()),
+                    action.scope(),
+                    action.dataSource(),
+                    sortedStrings(action.inputFields())
             ));
         }
         out.sort(Comparator.comparing(action -> normalize(action.name())));

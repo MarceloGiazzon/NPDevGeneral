@@ -831,6 +831,9 @@ public final class CompiledModelCanonicalJson {
             node.set("permissionRequirements", toStringArray(action.permissionRequirements()));
             node.set("explainability", toObjectMap(action.explainability()));
             node.set("metadata", toObjectMap(action.metadata()));
+            node.put("scope", safe(action.scope()));
+            node.put("dataSource", safe(action.dataSource()));
+            node.set("inputFields", toStringArray(action.inputFields()));
             out.add(node);
         }
         return out;

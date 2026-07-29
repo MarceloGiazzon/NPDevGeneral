@@ -1132,7 +1132,10 @@ public final class JsonModelParser {
                     readText(actionNode, "enabledWhen"),
                     parseTextArray(actionNode.get("permissionRequirements")),
                     parseObjectMap(actionNode.get("explainability")),
-                    parseObjectMap(actionNode.get("metadata"))
+                    parseObjectMap(actionNode.get("metadata")),
+                    readText(actionNode, "scope"),
+                    readText(actionNode, "dataSource"),
+                    parseTextArray(actionNode.get("inputFields"))
             ));
         }
         return out;

@@ -7,7 +7,9 @@ import com.npdev.dsl.v1.compiled.CompiledPanelDataSource;
 import com.npdev.dsl.v1.compiled.CompiledPanelFieldBinding;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.dsl.v1.expr.ComputedExpression;
+import com.npdev.generated.runtime.service.KernelFacade;
 import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.ExecutionResult;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptGatewayTraceRecord;
 import com.npdev.kernel.concepts.ConceptListRequest;
@@ -44,6 +46,7 @@ public class PanelRuntime {
     private final EventBus eventBus;
     private final AggregateRuntime aggregateRuntime;
     private final ProcedureRunner procedureRunner;
+    private final KernelFacade kernelFacade;
 
     public PanelRuntime(
             RuntimeMetadataService runtimeMetadataService,
@@ -68,7 +71,8 @@ public class PanelRuntime {
             ObjectProvider<ConceptGateway> conceptGateway,
             ObjectProvider<CapabilityDispatcher> capabilityDispatcher,
             ObjectProvider<EventBus> eventBus,
-            ObjectProvider<AggregateRuntime> aggregateRuntime
+            ObjectProvider<AggregateRuntime> aggregateRuntime,
+            ObjectProvider<KernelFacade> kernelFacade
     ) {
         this(
                 runtimeMetadataService,
@@ -77,7 +81,8 @@ public class PanelRuntime {
                 conceptGateway == null ? null : conceptGateway.getIfAvailable(),
                 capabilityDispatcher == null ? null : capabilityDispatcher.getIfAvailable(),
                 eventBus == null ? null : eventBus.getIfAvailable(),
-                aggregateRuntime == null ? null : aggregateRuntime.getIfAvailable()
+                aggregateRuntime == null ? null : aggregateRuntime.getIfAvailable(),
+                kernelFacade == null ? null : kernelFacade.getIfAvailable()
         );
     }
 
@@ -90,7 +95,7 @@ public class PanelRuntime {
             EventBus eventBus
     ) {
         this(runtimeMetadataService, permissionAwareUiMetadataService, compiledModel, conceptGateway,
-                capabilityDispatcher, eventBus, null);
+                capabilityDispatcher, eventBus, null, null);
     }
 
     public PanelRuntime(
@@ -102,6 +107,20 @@ public class PanelRuntime {
             EventBus eventBus,
             AggregateRuntime aggregateRuntime
     ) {
+        this(runtimeMetadataService, permissionAwareUiMetadataService, compiledModel, conceptGateway,
+                capabilityDispatcher, eventBus, aggregateRuntime, null);
+    }
+
+    public PanelRuntime(
+            RuntimeMetadataService runtimeMetadataService,
+            PermissionAwareUiMetadataService permissionAwareUiMetadataService,
+            CompiledModel compiledModel,
+            ConceptGateway conceptGateway,
+            CapabilityDispatcher capabilityDispatcher,
+            EventBus eventBus,
+            AggregateRuntime aggregateRuntime,
+            KernelFacade kernelFacade
+    ) {
         this.runtimeMetadataService = runtimeMetadataService;
         this.permissionAwareUiMetadataService = permissionAwareUiMetadataService;
         this.compiledModel = compiledModel;
@@ -110,6 +129,7 @@ public class PanelRuntime {
         this.eventBus = eventBus;
         this.aggregateRuntime = aggregateRuntime;
         this.procedureRunner = new ProcedureRunner(compiledModel, conceptGateway, capabilityDispatcher, eventBus);
+        this.kernelFacade = kernelFacade;
     }
 
     public Map<String, Object> renderConceptPanel(String conceptName, ExecutionContext context) {
@@ -253,6 +273,18 @@ public class PanelRuntime {
         ExecutionContext effectiveContext = interactiveContext(context);
         Map<String, Object> safeInput = safeInput(input);
         String binding = normalize(firstNonBlank(action.binding(), action.procedure() == null ? null : "procedure"));
+        // G2 (docs/MOVE2_PANEL_ACTIONS_PLAN.md): a scope="row" action's input starts from the target
+        // row's OWN current data (freshly re-read, not whatever the client happens to have cached),
+        // with the caller's body layered on top as overrides -- the same shape crossdocking.html's
+        // hand-written Concluir/Cancelar used (`{...xd, situacao: 'Concluido'}`). Panel-scoped actions
+        // (the default) are unaffected -- safeInput passes straight through. Covers conceptMutation
+        // too (found live authoring G4's Cancelar/Confirmar actions): the real row button only ever
+        // sends `{id}`, and conceptmutation's own save path treats a "data"-less body as the WHOLE
+        // record to save -- without this merge, that would blank every other required field to null.
+        Map<String, Object> effectiveInput =
+                "flow".equals(binding) || "procedure".equals(binding) || "conceptmutation".equals(binding)
+                        ? resolveRowScopedInput(panel, action, safeInput, effectiveContext)
+                        : safeInput;
         int traceStart = traceStartIndex();
 
         Map<String, Object> response = new LinkedHashMap<>();
@@ -268,7 +300,7 @@ public class PanelRuntime {
         response.put("governedDataAccess", "ConceptGateway");
 
         if ("procedure".equals(binding)) {
-            ProcedureExecutionResult result = executeProcedure(action.procedure(), safeInput, effectiveContext);
+            ProcedureExecutionResult result = executeProcedure(action.procedure(), effectiveInput, effectiveContext);
             response.put("status", result.ok() ? "OK" : "FAILED");
             response.put("result", result);
         } else if ("conceptquery".equals(binding)) {
@@ -278,7 +310,26 @@ public class PanelRuntime {
             response.put("result", records.stream().map(PanelRuntime::toRecordMap).toList());
         } else if ("conceptmutation".equals(binding)) {
             response.put("status", "OK");
-            response.put("result", executeConceptMutation(action, panel, safeInput, effectiveContext));
+            response.put("result", executeConceptMutation(action, panel, effectiveInput, effectiveContext));
+        } else if ("flow".equals(binding)) {
+            String flowName = action.flow();
+            if (kernelFacade == null || !hasText(flowName)) {
+                response.put("status", "UNSUPPORTED");
+                response.put("result", Map.of(
+                        "code", "PANEL_ACTION_BINDING_UNSUPPORTED",
+                        "message", "Panel action binding is not executable by the supported runtime: flow"
+                ));
+            } else {
+                // G1 (docs/MOVE1_PANEL_GAPS.md, REG-70): route through the same KernelFacade.executeFlow
+                // the generated FlowExecutionController uses for /api/flows/{name}/execute, so row-level
+                // authz/tenant isolation and async WAITING_EVENT semantics are identical -- not
+                // re-implemented here. Do not synthesize a synchronous "OK" for a parked flow.
+                ExecutionResult flowResult = kernelFacade.executeFlow(flowName, effectiveInput, effectiveContext);
+                response.put("status", mapFlowStatus(flowResult));
+                response.put("executionId", safe(flowResult.getExecutionId()));
+                response.put("correlationId", safe(flowResult.getCorrelationId()));
+                response.put("result", flowResultMap(flowResult));
+            }
         } else {
             response.put("status", "UNSUPPORTED");
             response.put("result", Map.of(
@@ -435,6 +486,33 @@ public class PanelRuntime {
         }
     }
 
+    private static String mapFlowStatus(ExecutionResult result) {
+        if (result == null || result.getStatus() == null) {
+            return "FAILED";
+        }
+        return switch (result.getStatus()) {
+            case OK -> "OK";
+            case WAITING_EVENT -> "WAITING";
+            default -> "FAILED";
+        };
+    }
+
+    private static Map<String, Object> flowResultMap(ExecutionResult result) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("executionId", safe(result.getExecutionId()));
+        out.put("correlationId", safe(result.getCorrelationId()));
+        out.put("flowName", safe(result.getFlowName()));
+        out.put("status", result.getStatus() == null ? "" : result.getStatus().name());
+        out.put("output", result.getOutput());
+        if (result.getError() != null) {
+            out.put("error", result.getError());
+        }
+        if (result.getErrorCode() != null) {
+            out.put("errorCode", result.getErrorCode());
+        }
+        return out;
+    }
+
     private Object executeConceptMutation(
             CompiledPanelAction action,
             CompiledPanel panel,
@@ -453,8 +531,13 @@ public class PanelRuntime {
         }
         Map<String, Object> data = castMap(input.get("data"));
         if (data.isEmpty()) {
+            // G2/G4 (docs/MOVE2_PANEL_ACTIONS_PLAN.md): found live authoring InventarioHistoricoPanel's
+            // Confirmar action -- ConceptGatewaySemanticPolicy validates every declared concept field,
+            // including "id" itself (required:true on every concept), against this data map. Keeping
+            // "id" out of it (as this branch used to) meant any flat, "data"-less body -- exactly what
+            // resolveRowScopedInput now feeds this method for a scope="row" conceptMutation action --
+            // failed with "Required concept field is missing: <Concept>.id" every time.
             data = new LinkedHashMap<>(input);
-            data.remove("id");
         }
         ConceptRecord saved = requireConceptGateway().save(new ConceptWriteRequest(conceptName, id, null, data), context);
         return toRecordMap(saved);
@@ -669,6 +752,56 @@ public class PanelRuntime {
     }
 
 
+    /**
+     * G2 (docs/MOVE2_PANEL_ACTIONS_PLAN.md): resolves the effective flow/procedure input for a
+     * panel action. {@code scope: "row"} re-reads the target row fresh from its declared dataSource
+     * (by id) and layers the caller's body on top as overrides; {@code scope: "panel"} (the default)
+     * passes the caller's body through unchanged, so every action declared before this existed
+     * behaves exactly as before.
+     */
+    private Map<String, Object> resolveRowScopedInput(
+            CompiledPanel panel,
+            CompiledPanelAction action,
+            Map<String, Object> safeInput,
+            ExecutionContext context
+    ) {
+        if (!"row".equalsIgnoreCase(action.scope())) {
+            return safeInput;
+        }
+        String id = stringValue(safeInput.get("id"));
+        if (id.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Panel action '" + action.name() + "' is scope=\"row\" and requires an 'id' in the request body.");
+        }
+        CompiledPanelDataSource dataSource = findDataSource(panel, action.dataSource());
+        if (dataSource == null) {
+            throw new IllegalStateException(
+                    "Panel action '" + action.name() + "' declares dataSource '" + action.dataSource()
+                            + "' which was not found on panel '" + panel.name() + "'.");
+        }
+        String conceptName = resolveDataSourceConcept(dataSource);
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (hasText(conceptName)) {
+            requireConceptGateway().read(new ConceptReadRequest(conceptName, id, null), context)
+                    .ifPresent(record -> merged.putAll(record.data()));
+        }
+        merged.putAll(safeInput);
+        merged.put("id", id);
+        return Collections.unmodifiableMap(merged);
+    }
+
+    private static CompiledPanelDataSource findDataSource(CompiledPanel panel, String dataSourceName) {
+        if (!hasText(dataSourceName)) {
+            return null;
+        }
+        for (CompiledPanelDataSource dataSource : panel.dataSources()) {
+            if (dataSourceName.trim().equalsIgnoreCase(dataSource.name())) {
+                return dataSource;
+            }
+        }
+        return null;
+    }
+
     private String primaryPanelConcept(CompiledPanel panel) {
         for (CompiledPanelDataSource dataSource : panel.dataSources()) {
             String concept = resolveDataSourceConcept(dataSource);
@@ -743,6 +876,15 @@ public class PanelRuntime {
             item.put("procedure", safe(action.procedure()));
             item.put("concept", safe(action.concept()));
             item.put("operation", safe(action.operation()));
+            item.put("scope", safe(action.scope()));
+            item.put("dataSource", safe(action.dataSource()));
+            // G2: row-scoped buttons (rendered from THIS live response's entry.actions, not the
+            // boot-time manifest) need visibleWhen/enabledWhen too, to gate per row -- e.g.
+            // "situacao == 'Ativo'". Previously absent here because only the boot-time manifest
+            // (BusinessUiEmitter) carried them, for the panel-header loop alone.
+            item.put("visibleWhen", safe(action.visibleWhen()));
+            item.put("enabledWhen", safe(action.enabledWhen()));
+            item.put("inputFields", action.inputFields());
             actions.add(item);
         }
         return List.copyOf(actions);

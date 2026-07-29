@@ -1,0 +1,80 @@
+id: REG-70
+title: "panel.action.binding: \"flow\" is schema-valid, compiler-accepted, and unimplemented at runtime -- 2 shipping WmsOffice panels already have a dead primary action"
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-07-29
+closed: 2026-07-29
+verification: VERIFIED_LIVE
+source: docs/MOVE1_CONSOLE_CONVERSION_PLAN.md (Move 1 of CAPABILITY_ROADMAP.md) -- found by a code
+  read before authoring CrossDockingConsolePanel, then confirmed live via both direct REST calls and
+  a real-browser ScrapForAI run against a running WmsOffice instance
+surface: kernel/panel-runtime
+files:
+  - NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/PanelRuntime.java
+  - NPDevContract/schemas/model.schema.json
+  - AppGen/apps/_official/WmsOffice/definition/model.json
+detail: |
+  `model.schema.json`'s `panelAction.binding` enum is `["conceptQuery","conceptMutation","procedure",
+  "flow"]` and the compiler (`CompiledPanelAction`) accepts all four. But
+  `PanelRuntime.executeAction` only implements `procedure`, `conceptQuery`, and `conceptMutation`;
+  the `flow` case falls through to an `else` branch returning
+  `{"status":"UNSUPPORTED","result":{"code":"PANEL_ACTION_BINDING_UNSUPPORTED", ...}}`. Both
+  entry points into panel-action execution (`RuntimeUiMetadataController`'s
+  `/panels/{panel}/actions/{action}` and `DirectExecutionGateway.executePanelAction`) delegate to
+  this same method, so there is no alternate path that works.
+
+  **Two panels already shipping in WmsOffice's live model have their one action on this dead
+  branch**: `ConferenciaRecebimentoPanel.ConfirmarRecebimento` and
+  `ExpedicaoDemandaPanel.ConfirmarSaidaExpedicao` (both `binding: "flow"`). Confirmed live
+  2026-07-29: `GET .../panels/ConferenciaRecebimentoPanel` and `.../ExpedicaoDemandaPanel` both
+  report `"binding": "flow"` for their sole action; a `flow`-bound action invoked against the
+  running app (proven via `CrossDockingConsolePanel`'s equivalent actions, same code path,
+  action-name/flow-name-agnostic branch) returns `PANEL_ACTION_BINDING_UNSUPPORTED` with HTTP 200 --
+  and the generated business-ui client's status banner only flags a result as an error when
+  `payload.status === "FAILED"`, so a user clicking the button sees a neutral (non-red) "Action
+  ... completed: UNSUPPORTED" message, not an obvious failure. `OcupacaoLocalPanel` (`procedure`
+  binding) and `MovimentoDetailPanel` (`conceptMutation` binding) are unaffected -- confirmed
+  working end-to-end (including a real invariant-evaluated write) via `CrossDockingConsolePanel`'s
+  `marcarConcluidoDireto` control action, which used the identical `executeAction` method with a
+  different `binding` value.
+
+  Smallest fix: add a `flow` branch to `PanelRuntime.executeAction` that invokes the named flow
+  through the same execution path `/api/v1/flows/{name}/execute` already uses (the `procedure` and
+  `conceptMutation` branches in the same switch are the proven-working reference). Scoped to Move 2
+  of `CAPABILITY_ROADMAP.md` (`docs/MOVE1_CONSOLE_CONVERSION_PLAN.md`'s G1) -- Move 1 itself changes
+  no platform code by design, so this fix is deliberately not made yet.
+
+  Same class as `generatedAction` (schema+compiler+runtime all support it, only the validator
+  rejects it -- REG-65) and `panel.route` (declared, compiled, but the generated business-ui client
+  never wires it to an actual navigable URL; panels are reached via the left-nav "Panels" section
+  instead) -- a declared surface some layer silently doesn't finish, not caught by any existing test
+  because none crosses the authoring-to-runtime boundary for panel actions.
+
+  CLOSED 2026-07-29 (`docs/MOVE2_PANEL_ACTIONS_PLAN.md` G1): added a `flow` branch to
+  `PanelRuntime.executeAction` that routes through `KernelFacade.executeFlow` (the same call the
+  generated `FlowExecutionController`'s `/api/flows/{name}/execute` uses), returning `OK`/`WAITING`/
+  `FAILED` (mapped from `ExecutionStatus`) plus a real `executionId`/`correlationId` -- no
+  synchronous result is synthesized for a parked (`WAITING_EVENT`) flow. `kernelFacade == null`
+  still degrades to the old `UNSUPPORTED` response (graceful, matches this file's existing
+  null-safety idiom) rather than throwing, so no existing unit test needed updating.
+
+  New test `NPDevRuntimeHost/src/test/java/com/finalexec/PanelRuntimeFlowActionTest.java`
+  (2 cases, Mockito-mocked `KernelFacade`) -- RED confirmed by this REG's own live evidence above
+  (`PANEL_ACTION_BINDING_UNSUPPORTED`) before the branch existed; GREEN proven by actually running
+  it inside a regenerated+mounted WmsOffice build (2/2 passing; `test`'s default sourceSet excludes
+  `com.npdev.generated.*`-referencing test sources per `feedback_runtimehost_generated_app_test_exclusions`,
+  so the exclusion was temporarily lifted in the ephemeral generated app's own `build.gradle` to run
+  it, then reverted -- the source template itself was never changed).
+
+  **Both dead actions verified live end-to-end, real state transitions**, not just "no longer
+  UNSUPPORTED": `ConferenciaRecebimentoPanel.ConfirmarRecebimento` walked a real Recebimento through
+  `PreRecebimento -> Enderecado -> Conferido -> Armazenado` (each hop `status: OK`, real
+  `executionId`); `ExpedicaoDemandaPanel.ConfirmarSaidaExpedicao` walked a real Expedicao through
+  `PreExpedicao -> DemandaGerada -> MovimentacaoConcluida -> SaidaConfirmada`, same result shape.
+  `CrossDockingConsolePanel.ativar`/`.concluir` (the panel this REG was found through) also
+  confirmed `OK` with real flow output. A real-browser ScrapForAI pass (clicking the still-unscoped,
+  still-input-less `Ativar Cross-Docking` header button -- G2/G3 not yet fixed) now shows
+  `Action "ativar" completed: FAILED` with the client's real error-red styling (the `payload.status
+  === "FAILED"` check now matches), instead of the previous neutral, easy-to-miss `"...completed:
+  UNSUPPORTED"` -- a real UX improvement, not just a status-code change.

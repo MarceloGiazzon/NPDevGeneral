@@ -1,0 +1,56 @@
+id: REG-71
+title: "panelAction scope=\"row\" + binding=\"conceptMutation\" blanked every other required field to null (executeConceptMutation stripped \"id\" from a flat body; ConceptGatewaySemanticPolicy separately requires \"id\" present in the data map)"
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-07-29
+closed: 2026-07-29
+verification: VERIFIED_LIVE
+source: docs/MOVE2_PANEL_ACTIONS_PLAN.md G4 -- found live while authoring InventarioHistoricoPanel's
+  "Confirmar" action and ConferenciaFiscal{Nfe,Romaneio}Panel's "Cancelar" action (the first
+  scope="row" actions in the corpus bound to conceptMutation rather than flow -- G2's own live
+  verification against CrossDockingConsolePanel only ever exercised flow-bound row actions)
+surface: kernel/panel-runtime
+files:
+  - NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/PanelRuntime.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/PanelRuntimeRowScopedActionTest.java
+detail: |
+  Two stacked bugs, found and fixed in sequence, both only reachable by a `scope: "row"` action
+  bound to `conceptMutation` (the real per-row button always sends a flat `{id: row.id}` body, per
+  `business-ui-app.mustache`'s row-action click handler):
+
+  **Bug 1** -- `PanelRuntime.executeAction`'s row-scope merge (`resolveRowScopedInput`, added for
+  G2) originally only applied to `flow`/`procedure` bindings, not `conceptMutation`. A `conceptMutation`
+  action's own `executeConceptMutation` treats a body with no `"data"` key as the WHOLE record to
+  save -- so a flat `{id}` body (correct) was ALSO doing that, blanking every other required field
+  to null. Reproduced live: `POST .../InventarioHistoricoPanel/actions/confirmar` with `{id,
+  situacao}` failed `ConceptGatewaySemanticException: Required concept field is missing:
+  InventarioArquivo.entidadeId`.
+
+  **Bug 2** (surfaced immediately after fixing Bug 1) -- `executeConceptMutation`'s fallback branch
+  (`data.isEmpty()`) built the save payload as `new LinkedHashMap<>(input); data.remove("id")` --
+  deliberately excluding `"id"` from the data map, on the assumption `"id"` is call metadata, not a
+  data field. But `ConfiguredConceptGatewaySemanticPolicy` (the real, non-noop semantic policy)
+  iterates every declared concept field INCLUDING `"id"` (every concept has one, `required: true`)
+  and validates it's present in the SAME data map. Reproduced live:
+  `ConceptGatewaySemanticException: Required concept field is missing: InventarioArquivo.id`, even
+  after Bug 1's fix correctly merged every other field in.
+
+  **Why G2's own live verification missed this**: `CrossDockingConsolePanel.concluir`/`.cancelar`
+  (G2's proof) are both `binding: "flow"`, which already had its own row-scope merge from the start.
+  No corpus panel had a `conceptMutation` + `scope: "row"` action until G4's
+  `InventarioHistoricoPanel.confirmar` / `ConferenciaFiscal{Nfe,Romaneio}Panel.cancelar`.
+
+  **Test methodology note**: the first version of the regression test used
+  `DefaultConceptGateway`'s 4-arg constructor, which defaults to `ConceptGatewaySemanticPolicy.noop()`
+  -- so it passed even with BOTH bugs still present, proving nothing (same shape as
+  `feedback_red_proof_must_match_production_shape`: a RED-proof that doesn't match production shape
+  is not a RED-proof). Rewritten to construct a real `ConfiguredConceptGatewaySemanticPolicy` with a
+  concept definition carrying required fields (including `id`), which failed correctly before the
+  fix and passes after.
+
+  Fixed: `effectiveInput` computation now also runs `resolveRowScopedInput` for `conceptmutation`
+  bindings (Bug 1); `executeConceptMutation`'s fallback branch no longer strips `"id"` from the
+  constructed data map (Bug 2). Verified live: `InventarioHistoricoPanel.confirmar` and
+  `ConferenciaFiscalNfePanel.cancelar` both return `status: "OK"` with a real gateway trace showing
+  the correct lifecycle transition and every other field preserved from the fresh row read.
