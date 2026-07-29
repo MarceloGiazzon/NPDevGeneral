@@ -69,14 +69,21 @@ longer applies; it is used.
 
 ## How it is used
 
-Validated, not run. `scripts/quality/validate-corpus.py` parses it on every AI-knowledge-gate run.
+**Validated and generated** (2026-07-29, `docs/CLOSEOUT_PLAN.md` G2 — was "validated, not run" until
+then). `scripts/quality/validate-corpus.py` parses it on every AI-knowledge-gate run;
+`scripts/quality/check-dsl-conformance-generates.py` additionally generates it for real
+(emission only, no build/boot) on every PR gate run, and asserts the rare features it exists to
+carry actually survive into the compiled output — not just that generation exits 0.
 
 ```powershell
 .\gradlew :NPDevContract:dsl:validateModel `
   -PmodelPath=<this dir>\model.json -PreportOut=<somewhere>\report.json
+
+# or generate it for real (what the PR gate does):
+pwsh .\NPDevSamples\scripts\generate-sample-app.ps1 -SampleId dsl-conformance-max -NoAssembleFinalApp
 ```
 
-Current status: **passed, 0 errors, 0 warnings.**
+Current status: **passed, 0 errors, 0 warnings; generates cleanly, all tracked features present.**
 
 ## The rule that keeps this useful
 

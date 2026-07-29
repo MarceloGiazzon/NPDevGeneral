@@ -60,15 +60,27 @@ def project_cache_dir() -> Path:
 
 
 def find_models(appgen_root: Path, samples_root: Path) -> list[tuple[str, Path]]:
-    """Returns (label, path) pairs, label = a stable human-readable corpus id."""
+    """Returns (label, path) pairs, label = a stable human-readable corpus id.
+
+    Skips anything under an `Output` directory (docs/CLOSEOUT_PLAN.md G2 aftermath): a real, live
+    instance was a generated copy of dsl-conformance-max's model.json landing at
+    NPDevSamples/dsl-conformance-max/Output/ArtifactNP/.../resources/npdev/model.json after a local
+    `generate-sample-app.ps1` run, which this scanner's blind rglob then picked up as a SEPARATE,
+    role-less corpus member -- `NPDevSamples/**/Output/` is gitignored precisely because it is
+    ephemeral (docs/BUILD_OUTPUT_LOCATION_POLICY.md), so it must never enter the tracked corpus.
+    """
     models: list[tuple[str, Path]] = []
     if appgen_root.exists():
         for p in sorted(appgen_root.rglob("model.json")):
+            if "Output" in p.relative_to(appgen_root).parts:
+                continue
             rel = p.relative_to(appgen_root).parts  # e.g. ('_official', 'AuxScreen', 'definition', 'model.json')
             app = "/".join(rel[:-2]) if len(rel) > 2 else rel[0]
             models.append((f"AppGen/apps/{app}", p))
     if samples_root.exists():
         for p in sorted(samples_root.rglob("model.json")):
+            if "Output" in p.relative_to(samples_root).parts:
+                continue
             rel = p.relative_to(samples_root).parts
             app = "/".join(rel[:-2]) if len(rel) > 2 else rel[0]
             models.append((f"NPDevSamples/{app}", p))

@@ -98,7 +98,7 @@
       "name": "DSL Conformance Max",
       "kind": "test-model",
       "formerCategory": "test-models",
-      "purpose": "DSL surface-coverage fixture: exercises the schema sections and flow-step kinds no other corpus model used. Validated, not run.",
+      "purpose": "DSL surface-coverage fixture: exercises the schema sections and flow-step kinds no other corpus model used. Validated and generated (docs/CLOSEOUT_PLAN.md G2).",
       "inputRoot": "dsl-conformance-max/Input",
       "outputRoot": "dsl-conformance-max/Output",
       "inputPath": "NPDevSamples/dsl-conformance-max/Input",

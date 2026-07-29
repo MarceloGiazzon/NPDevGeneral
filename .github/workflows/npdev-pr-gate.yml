@@ -59,6 +59,11 @@ jobs:
           java-version: '17'
           cache: gradle
 
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: DSL contract check (includes ReleaseGateValidatorTest)
         working-directory: NPDevContract/dsl
         timeout-minutes: 15
@@ -119,6 +124,19 @@ jobs:
         run: |
           sed -i '/org\.gradle\.projectcachedir/d' gradle.properties
           ./gradlew :generator:test :generator:behaviorTest --no-daemon --console=plain
+
+      # G2 (docs/CLOSEOUT_PLAN.md): the corpus-parse gate proves every DSL feature PARSES; nothing
+      # proved any of them actually EMIT. dsl-conformance-max was "validated, not run" until this
+      # step -- F4 was exactly this failure one layer over (generatedAction runtime-proven, but
+      # validator-rejected, for as long as the feature existed). RED-then-GREEN proven live
+      # (2026-07-29): temporarily forced CompiledModelCanonicalJson's aggregates field to an empty
+      # array, regenerated -- this check correctly failed naming "aggregates"; reverted, regenerated,
+      # green again. MEASURED local (warm Gradle daemon): ~10s; cheap enough to run on every PR
+      # against this job's already-observed 6m14s/60min budget (F2b).
+      - name: "Generate dsl-conformance-max (G2, docs/CLOSEOUT_PLAN.md): rare DSL features must actually emit, not just parse"
+        timeout-minutes: 10
+        run: |
+          python scripts/quality/check-dsl-conformance-generates.py
 
       - name: Editor unit tests
         working-directory: NPDevEditor/ui-react
