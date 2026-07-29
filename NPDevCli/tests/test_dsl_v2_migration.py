@@ -160,6 +160,52 @@ class OrchestrationRuleMigrationTest(unittest.TestCase):
         self.assertIn("actions", rule)
         self.assertEqual(1, len(result.ambiguities))
 
+    def test_top_level_orchestrations_key_renamed(self):
+        # Found migrating AppGen/apps/invoice-bonds-demo for real (docs/CORPUS_INTEGRITY_PLAN.md
+        # C2): this repo's schema has never accepted any spelling but 'orchestrationRules', but the
+        # 2.A.6 corpus scan never covered AppGen/apps, so this alias was invisible to it.
+        doc = {
+            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [], "flows": [],
+            "orchestrations": [{
+                "name": "Rule1",
+                "trigger": {"type": "event", "event": "X"},
+                "action": {"type": "create", "concept": "Y", "map": {"a": "1"}},
+            }],
+        }
+        result = migrate_document(doc)
+        self.assertNotIn("orchestrations", doc)
+        self.assertIn("orchestrationRules", doc)
+        rule = doc["orchestrationRules"][0]
+        self.assertNotIn("action", rule)  # scalar-action normalization ran in the same pass
+        self.assertEqual(1, len(rule["actions"]))
+        self.assertTrue(result.changed)
+
+    def test_both_orchestrations_and_orchestrationRules_present_is_ambiguous(self):
+        doc = {
+            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [], "flows": [],
+            "orchestrations": [{"name": "Old", "trigger": {"type": "event", "event": "X"},
+                                 "action": {"type": "create", "concept": "Y", "map": {}}}],
+            "orchestrationRules": [{"name": "New", "trigger": {"type": "event", "event": "Z"},
+                                     "actions": [{"type": "create", "concept": "W", "map": {}}]}],
+        }
+        result = migrate_document(doc)
+        self.assertIn("orchestrations", doc)
+        self.assertIn("orchestrationRules", doc)
+        self.assertEqual(1, len(result.ambiguities))
+
+    def test_orchestrations_key_rename_is_idempotent(self):
+        doc = {
+            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [], "flows": [],
+            "orchestrations": [{"name": "Rule1", "trigger": {"type": "event", "event": "X"},
+                                 "actions": [{"type": "create", "concept": "Y", "map": {}}]}],
+        }
+        first = migrate_document(doc)
+        self.assertTrue(first.changed)
+        before = copy.deepcopy(doc)
+        second = migrate_document(doc)
+        self.assertFalse(second.changed)
+        self.assertEqual(before, doc)
+
     def test_orchestration_action_type_enum_value_never_rewritten(self):
         # orchestrationAction.type's own canonical values (create/callCapability/scheduleEvent) must
         # NEVER be touched by the flowStep.type alias table, even though "callCapability" and
