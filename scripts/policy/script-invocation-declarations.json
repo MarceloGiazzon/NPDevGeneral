@@ -121,6 +121,9 @@
     "scripts/quality/bucket2-report-common.ps1": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-allowlist-citations.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-dsl-conformance-generates.py": {
       "invocation": "ci-gate"
     },

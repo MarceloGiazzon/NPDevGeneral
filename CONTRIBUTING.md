@@ -82,6 +82,21 @@ never silently pass one fewer control than advertised. Prove the assertion works
 temporarily point one pinned SHA at something unreachable (e.g. `deadbeef`), confirm `--calibrate`
 goes RED with a "N controls skipped" message, then restore it and confirm GREEN.
 
+## A new allowlist entry needs a `why` and a REG-nn/B-nn citation
+
+`docs/FAIL_OPEN_PLAN.md` R3: an empty `"cleared": {}` allowlist is self-policing — any entry stands
+out by existing at all. The moment one gains entries, that stops being true unless something asserts
+each one is reviewed rather than pre-cleared speculatively. `corpus-parse-allowlist.json`,
+`test-task-coverage-allowlist.json`, and `dsl-coverage-allowlist.json` already say this in their own
+`_comment` header ("only for a genuine, reviewed exception with a REG id"); `scripts/quality/check-allowlist-citations.py`
+(wired in `run-ai-knowledge-gate.ps1`) is what actually checks it now — a new entry in any of those
+three with no `REG-nn`/`B-nn` citation in its `why` fails the gate.
+
+`plan-deferral-citation-allowlist.json` and `security-pattern-sweep-allowlist.json` use a different,
+already-established citation shape (doc-paragraph narrative; a `docs/SECURITY_PATTERN_SWEEP_2026-07.md`
+cross-reference) and are not held to this rule — `check-allowlist-citations.py` only reports their
+size every run, so growth is visible without retrofitting either one's existing entries.
+
 ## A test that hand-builds `CompiledModel` proves the compiled contract, not the authoring path
 
 A test that constructs `CompiledModel` / `CompiledFlow` objects directly (bypassing
