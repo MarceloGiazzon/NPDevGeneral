@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**66 item(s) migrated: 2 open/partial, 64 done.**
+**67 item(s) migrated: 0 open/partial, 67 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -69,10 +69,11 @@
 | REG-6 | ColumnFacts: eight SchemaLifecycleExecutor passes each re-derived column semantics independently | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-60 | Aggregate Workbench post-commit "Saved." confirmation is wiped by the next render before a user can see it | BUG | LOW | DONE | 2026-07-28 |
 | REG-61 | Narrow-type recreate loses NOT NULL; no per-row-unique default expressible for a required UNIQUE column | GAP | HIGH | DONE | 2026-07-28 |
-| REG-62 | allowedActions typed (C8 done); cross-referencing it against declared workbench actions still blocked on a typed-actions prerequisite | GAP | LOW | OPEN | 2026-07-28 |
+| REG-62 | allowedActions typed (C8 done); cross-referencing it against declared workbench actions still blocked on a typed-actions prerequisite | GAP | LOW | DONE | 2026-07-28 |
 | REG-63 | 17 of 29 corpus models (not 2) used pre-DSL-2.0 flow-step/orchestration shapes the current schema rejects | GAP | MEDIUM | DONE | 2026-07-29 |
-| REG-64 | EntityEmitter has no reserved-column collision guard -- a model field named tenantId/version/rowVersion produces uncompilable duplicate-field Java, not a clear message | GAP | LOW | OPEN | 2026-07-29 |
+| REG-64 | EntityEmitter has no reserved-column collision guard -- a model field named tenantId/version/rowVersion produces uncompilable duplicate-field Java, not a clear message | GAP | LOW | DONE | 2026-07-29 |
 | REG-65 | generatedAction was a canonical flowStep.type value FlowValidation always rejected, despite full compiler/generator/runtime support downstream | BUG | MEDIUM | DONE | 2026-07-29 |
+| REG-66 | reg39-healthy-control retired -- a byte-identical WmsOffice clone with no independent signal, closed REG-39's own one-time verification artifact | PROCESS | LOW | DONE | 2026-07-29 |
 | REG-7 | LNCH-1-B6: no migration advisory lock (multi-instance) -- converted to a feature | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-8 | LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-9 | LNCH-4: auth secrets management -- JWT key env-var delivery | GAP | HIGH | DONE | 2026-07-21 |
@@ -1305,14 +1306,16 @@ documents the new refusal case and recipe. Full com.finalexec.db suite 273/273, 
 
 ### REG-62 — allowedActions typed (C8 done); cross-referencing it against declared workbench actions still blocked on a typed-actions prerequisite
 
-**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-07-29)
 **Verification:** VERIFIED_LIVE
-**Source:** Investigated while closing F5-R1, 2026-07-28; typed half shipped docs/CORPUS_INTEGRITY_PLAN.md C8, 2026-07-29
+**Source:** Investigated while closing F5-R1, 2026-07-28; typed half shipped docs/CORPUS_INTEGRITY_PLAN.md C8, 2026-07-29; cross-reference shipped docs/FINAL_OPEN_ITEMS_PLAN.md F9, 2026-07-29
 **Surface:** `dsl/autopanel-lifecycle`
 **Files:**
 - `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/StateMachineStateAst.java`
 - `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java`
 - `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/LifecycleValidation.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ConceptValidation.java`
 
 2026-07-29 (C8): the CSV-in-metadata escape hatch is retired. allowedActions is now a proper
 `array` of `string` on a `lifecycleState` node (all 4 model.schema.json mirrors), a real field on
@@ -1334,6 +1337,27 @@ mechanical follow-on to this fix) and was consciously left out of this pass rath
 Fix, when picked up: type AutoPanelSurfaceAst's actions list, then add the cross-reference check,
 likely in PanelValidation.validateAutoPanels (which already has both the concept's lifecycle and
 the AutoPanel's surfaces in scope).
+
+2026-07-29 (F9): closed without typing AutoPanelSurfaceAst's actions list -- that turned out not to
+be a real prerequisite. LifecycleValidation.validateLifecycle (called from ConceptValidation) now
+reads transaction.metadata().get("actions") directly, the same untyped structure
+AutoPanelExpander.workbenchActions() itself reads, and cross-references every lifecycle state's
+allowedActions entries against the declared procedure names. A state referencing an unknown action
+now fails validation naming both the bad entry and the concept's real declared actions (or "(none)"
+if the concept has no autoPanel at all).
+One correction made while proving this RED-then-GREEN: an AutoPanel binds to a concept two ways --
+directly via autoPanel.concept() (JsonModelParser.parseAutoPanels reads it verbatim from the JSON's
+"concept" key), or via an aggregate's root concept when the JSON only sets "aggregate" (the real,
+common shape for aggregate-bound workbenches -- see AutoPanelExpander.expandAggregateWorkbench,
+which resolves the root concept from the model's aggregates list, not from autoPanel.concept()).
+The first cross-reference cut only checked the direct-concept form and produced false positives
+("(none)" declared) against every aggregate-bound fixture, including the exact shape
+AggregateWorkbenchExpansionTest already exercises. Fixed by passing the model's List<AggregateAst>
+into LifecycleValidation and resolving both binding forms before matching.
+Proof: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/AllowedActionsCrossReferenceValidationTest.java
+(4 cases: clean match, no-allowedActions state left unrestricted, misspelled entry rejected naming
+the real actions, and no-autoPanel-at-all rejected naming "(none)") -- all green; full DSL module
+test suite green afterward (no other lifecycle/autoPanel test regressed).
 
 *Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-62`
 
@@ -1377,13 +1401,14 @@ not recur silently.
 
 ### REG-64 — EntityEmitter has no reserved-column collision guard -- a model field named tenantId/version/rowVersion produces uncompilable duplicate-field Java, not a clear message
 
-**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-07-29)
 **Verification:** VERIFIED_LIVE
-**Source:** Found regenerating Claude Support Desk, docs/CORPUS_INTEGRITY_PLAN.md C2
+**Source:** Found regenerating Claude Support Desk, docs/CORPUS_INTEGRITY_PLAN.md C2; fixed docs/FINAL_OPEN_ITEMS_PLAN.md F10
 **Surface:** `generator/entity-emission`
 **Files:**
 - `NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/EntityEmitter.java`
 - `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ReservedColumnNames.java`
 
 SchemaRealizationEmitter already has RESERVED_BUSINESS_COLUMN_NAMES (version/row_version/tenant_id)
 with a guard (validateNoReservedColumnCollision) that throws a clear, actionable IllegalStateException
@@ -1401,6 +1426,22 @@ model's own field, not by touching the generator. Fix, when picked up: call the 
 equivalent) reserved-column check from EntityEmitter before field emission, so the failure surfaces
 at generation time with the existing guard's message instead of at compile time with a bare
 javac diagnostic.
+
+2026-07-29 (F10): fixed by extraction, not duplication. The reserved-name set and collision check
+moved out of SchemaRealizationEmitter into a new shared
+NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ReservedColumnNames.java
+(RESERVED_BUSINESS_COLUMN_NAMES + validateNoCollision(CompiledConcept)). SchemaRealizationEmitter
+now delegates to it (same message, same call site, no behavior change there). EntityEmitter.emit()
+calls the same check as the first statement of its per-concept loop, before any Java field is
+written -- so a colliding field now fails at generation time with the actionable rename message,
+before Java compilation ever sees it, regardless of which emitter runs first.
+Proof: new NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/EntityEmitterReservedColumnTest.java
+(3 cases: tenantId collision throws naming the concept + "tenant_id" + the rename hint; version
+collision also throws; an ordinary field is unaffected and the entity file is actually written) --
+mirrors the existing SchemaRealizationEmitterReservedColumnTest's assertion shape, using
+BondJavaEmitterTest's TemplateEngine/GeneratedSourceWriter direct-construction pattern since
+EntityEmitter (unlike SchemaRealizationEmitter) doesn't take a GeneratedDatabasePlan. Full Generator
+module test suite green afterward.
 
 ### REG-65 — generatedAction was a canonical flowStep.type value FlowValidation always rejected, despite full compiler/generator/runtime support downstream
 
@@ -1439,6 +1480,33 @@ cross-reference the way a capability step's operation lookup does, since the nam
 code-generation directive resolved by the generator at build time, not a model-declared capability).
 dsl-conformance-max (F3) now includes a real generatedAction step as its own proof; docs/FLOWS.md
 updated.
+
+### REG-66 — reg39-healthy-control retired -- a byte-identical WmsOffice clone with no independent signal, closed REG-39's own one-time verification artifact
+
+**Type:** PROCESS · **Severity:** LOW · **Status:** DONE (2026-07-29)
+**Verification:** VERIFIED_LIVE
+**Source:** Corpus-structure measurement, docs/FINAL_OPEN_ITEMS_PLAN.md F7
+**Surface:** `appgen-apps/corpus-structure`
+
+AppGen/apps/reg39-healthy-control (external, non-git Layer 2) was created 2026-07-25 as a
+one-time "healthy pack" live control for REG-39 (see docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-39):
+"app reg39-healthy-control, a clone of the WmsOffice definition" -- proving the layer-1 identity-
+pack-drift detector did not false-positive on a genuinely healthy pack, on a fresh empty database.
+REG-39 has been DONE since 2026-07-25; this app was never meant to be a standing fixture.
+Measured before retiring: its definition/model.json was still byte-identical to
+_official/WmsOffice's current one; the directory carried only definition/ (capabilities, concepts,
+packs, seeds, widgets) -- no web/ or other unique content, 44 files vs. WmsOffice's 72. It also
+inflated the aggregates/autoPanels/guidePages corpus-coverage count from a true 1 (WmsOffice alone)
+to an apparent 2, which is part of why the Aggregate Workbench's real single-point-of-failure went
+unnoticed until the 2026-07-29 corpus measurement that led to NPDevSamples/dsl-conformance-max.
+Searched the whole repo for functional references before deleting: none found. The only mentions
+are historical documentation -- docs/NPDEV_OPEN_ITEMS_REGISTER.md (REG-39's own closure record,
+archived-in-place), docs/archive/programme-history/REG48_50_CLOSURE_PLAN.md, and
+NPDevSamples/dsl-conformance-max/Input/README.md's own corpus-coverage table (a measurement
+snapshot, correctly left as historical record, not updated).
+Retired (deleted from the external AppGen/apps workspace, user-confirmed given it has no git
+history to revert through). Nothing of unique value was destroyed -- its only distinguishing
+content (model.json) is identical to WmsOffice's own, which remains.
 
 ### REG-7 — LNCH-1-B6: no migration advisory lock (multi-instance) -- converted to a feature
 
