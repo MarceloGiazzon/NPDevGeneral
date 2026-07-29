@@ -1,0 +1,23 @@
+{
+  "$schema": "../../../../../NPDevContract/schemas/pack.schema.json",
+  "dslVersion": "1.0.0",
+  "pack": "labeling",
+  "version": "1.0.0",
+  "namespace": "com.npdev.labeling",
+  "description": "docs/FAIL_OPEN_PLAN.md R2: minimal, fully in-git example of a top-level `packs` entry -- a self-contained, reusable domain module composed into the model via $ref, same mechanism AppGen/apps/_official/WmsOffice's identity/workspace packs use, with no out-of-tree asset dependency.",
+  "category": "other",
+  "author": "NPDev",
+  "concepts": [
+    {
+      "name": "Label",
+      "ui": {
+        "label": "Label"
+      },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "text", "type": "string", "required": true, "maxLength": 80, "ui": { "label": "Text" } },
+        { "name": "color", "type": "string", "required": false, "maxLength": 20, "ui": { "label": "Color" } }
+      ]
+    }
+  ]
+}

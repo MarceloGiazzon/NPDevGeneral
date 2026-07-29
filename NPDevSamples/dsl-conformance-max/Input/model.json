@@ -8,6 +8,14 @@
     "egress": "denied"
   },
 
+  "packs": [
+    { "$ref": "packs/labeling/pack.json", "as": "labeling" }
+  ],
+
+  "fragments": [
+    { "$ref": "fragments/auditLog.json" }
+  ],
+
   "domainTypes": [
     {
       "name": "Sku",
@@ -406,6 +414,39 @@
           "name": "return-line",
           "type": "return",
           "value": "$savedLine"
+        }
+      ]
+    },
+    {
+      "name": "UpdateOrderLineQuantity",
+      "input": {
+        "concept": "WidgetOrderLine",
+        "mode": "update"
+      },
+      "steps": [
+        {
+          "name": "validate-line",
+          "type": "invariantCheck",
+          "scope": "WidgetOrderLine",
+          "invariants": [ "PositiveQuantity" ]
+        },
+        {
+          "name": "apply-quantity",
+          "type": "updateConcept",
+          "scope": "WidgetOrderLine",
+          "input": "$input",
+          "output": "$updatedLine"
+        },
+        {
+          "name": "emit-line-updated",
+          "type": "emitEvent",
+          "event": "WidgetOrderLineRecorded",
+          "from": "$updatedLine"
+        },
+        {
+          "name": "return-line",
+          "type": "return",
+          "value": "$updatedLine"
         }
       ]
     },
