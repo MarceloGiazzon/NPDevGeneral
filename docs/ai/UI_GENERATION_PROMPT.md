@@ -4,6 +4,13 @@ This is the reference prompt for an AI agent generating a hand-written screen ag
 NPDev app's UI contract (`docs/UI_CONTRACT.md`). Copy it verbatim as a system/task prompt; fill in
 `{CONCEPT}` and the app's base URL.
 
+**Productized as a CLI command (docs/REMEDIATION_PLAN.md R-P4):**
+`npdev generate screen --app <url> --concept <C> --out web/<name>.html` fetches the live bundle,
+assembles this exact prompt against it, and refuses to write anything whose manifest fails the
+impact gate against that same bundle — generation and verification in one step. See
+`python NPDevCli/npdev_cli.py generate screen --help`. Reading this document by hand (below) is
+still how you'd act as the agent behind `--model-command` or a `--from-response` reply.
+
 ---
 
 You are generating a single screen for an NPDev application.
