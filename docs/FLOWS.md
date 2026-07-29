@@ -199,10 +199,20 @@ exercises 6 of the 9 kinds in sequence:
 > intentionally omitted above since the migration renumbered their content slightly; the flow/step
 > names quoted are stable.
 
-**Honest gap:** no real sample model in this repo uses `FOR_EACH` or `onFailure` (compensation) —
-only test code (`KernelRunnerForEachDurabilityTest`, `KernelRunnerCompensationTest`) and the hand-written
-snippets in `docs/architecture/FLOW_TRANSACTION_CONTRACT.md` exercise them. If you're looking for a
-worked model to copy, those two kinds don't have one yet — recorded here rather than hidden.
+**Resolved (2026-07-29, `docs/FINAL_OPEN_ITEMS_PLAN.md` F3):** the gap noted here — no real sample
+model used `FOR_EACH` or `onFailure` (compensation) — is closed by `NPDevSamples/dsl-conformance-max`,
+a DSL surface-coverage fixture (validated, not run as a demo) that exercises both, alongside six other
+schema sections a corpus-wide measurement found at zero or near-zero coverage. Its own `README.md`
+documents exactly what it covers and why. `KernelRunnerForEachDurabilityTest`/
+`KernelRunnerCompensationTest` remain the real *runtime-behavior* proof for both kinds; this fixture's
+job is parse/compile-time coverage, not runtime proof.
+
+**generatedAction is now genuinely usable (2026-07-29, F4).** It was documented as sugar for
+`CAPABILITY_CALL` above, correctly, but `FlowValidation`'s step-type switch had no case for it, so
+every authored model using it was rejected as "unsupported step type" despite the compiler and
+generator/runtime already having full, tested support downstream — see `ledger/items/REG-65.yml` for
+the measured evidence. Fixed by adding the missing case; `dsl-conformance-max` now includes a real
+`generatedAction` step as its own proof.
 
 ## 4. `AWAIT_EVENT` in depth — the differentiator
 

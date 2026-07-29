@@ -33,6 +33,20 @@ entry in `BREAKING.md`, **in the same commit**, alongside the `npdev migrate` co
 existing models automatically. Never land the break first and the codemod later — see `BREAKING.md`
 itself for the standing rule and examples.
 
+## When you add a DSL feature, fixture it in the same commit
+
+`NPDevSamples/dsl-conformance-max` exists because a 2026-07-29 corpus-wide measurement found the
+DSL corpus exercised roughly 60% of `model.schema.json` — seven schema sections and flow-step kinds
+(including `generatedAction`, which turned out to be entirely unreachable — REG-65) had **zero**
+models using them, so a schema/parser/compiler change that broke any of them would have passed the
+corpus-parse gate clean. See its own `README.md` for what it covers and why.
+
+**Rule:** a new `flowStep.type`, top-level schema section, or similar DSL surface gets a minimal,
+real example added to `dsl-conformance-max` in the same commit that ships it — not a promise to
+follow up later. That is what turns "the corpus covers most of the schema" from something someone
+has to go measure into something the gate tells you (`scripts/quality/validate-corpus.py`, run on
+every PR via `ai-knowledge-gate.yml`).
+
 ## When a new app lands
 
 Re-run the screen classifier and refresh `docs/SCREEN_TAXONOMY.md`'s per-screen table (F1/F6,

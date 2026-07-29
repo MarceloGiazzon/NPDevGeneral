@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**65 item(s) migrated: 2 open/partial, 63 done.**
+**66 item(s) migrated: 2 open/partial, 64 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -72,6 +72,7 @@
 | REG-62 | allowedActions typed (C8 done); cross-referencing it against declared workbench actions still blocked on a typed-actions prerequisite | GAP | LOW | OPEN | 2026-07-28 |
 | REG-63 | 17 of 29 corpus models (not 2) used pre-DSL-2.0 flow-step/orchestration shapes the current schema rejects | GAP | MEDIUM | DONE | 2026-07-29 |
 | REG-64 | EntityEmitter has no reserved-column collision guard -- a model field named tenantId/version/rowVersion produces uncompilable duplicate-field Java, not a clear message | GAP | LOW | OPEN | 2026-07-29 |
+| REG-65 | generatedAction was a canonical flowStep.type value FlowValidation always rejected, despite full compiler/generator/runtime support downstream | BUG | MEDIUM | DONE | 2026-07-29 |
 | REG-7 | LNCH-1-B6: no migration advisory lock (multi-instance) -- converted to a feature | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-8 | LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-9 | LNCH-4: auth secrets management -- JWT key env-var delivery | GAP | HIGH | DONE | 2026-07-21 |
@@ -1400,6 +1401,44 @@ model's own field, not by touching the generator. Fix, when picked up: call the 
 equivalent) reserved-column check from EntityEmitter before field emission, so the failure surfaces
 at generation time with the existing guard's message instead of at compile time with a bare
 javac diagnostic.
+
+### REG-65 — generatedAction was a canonical flowStep.type value FlowValidation always rejected, despite full compiler/generator/runtime support downstream
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-07-29)
+**Verification:** VERIFIED_LIVE
+**Source:** Found building NPDevSamples/dsl-conformance-max (F3), scoped and fixed as docs/FINAL_OPEN_ITEMS_PLAN.md F4
+**Surface:** `dsl/flow-validation`
+**Files:**
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/FlowValidation.java`
+
+generatedAction is one of the 12 canonical flowStep.type values in model.schema.json (all 4
+mirrors), documented in docs/FLOWS.md as author-facing sugar for CAPABILITY_CALL alongside
+createConcept/updateConcept. JsonModelParser handles it and requires actionName
+(JsonModelParser.java:1482-1484); ModelCompiler.compileFlowSteps already treats it as
+"capability-like" and compiles it into a CompiledCapabilityCall with capability type
+"GeneratedActionCapability". The generator (TrustedActionKernelRunnerTemplate,
+GeneratedActionCapabilityAdapter) has full, tested support for executing a compiled step of that
+shape -- proven live by TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest, which builds and
+boots a real packaged app with a generatedAction-shaped compiled flow step.
+But FlowValidation.validateFlowSteps's switch had no case for "generatedaction" (it handled
+invariant/capability/createentity-updateentity-createconcept-updateconcept/event/scheduleevent/
+return/map/branch/await/foreach -- 11 kinds, not generatedAction's 12th), so it fell to `default`
+and every authored model using it was rejected: "unsupported step type generatedAction". This is
+why 0 of 30 corpus models ever used it -- they could not, structurally, regardless of intent. The
+runtime-proof test above never surfaces this because it hand-constructs CompiledModel objects
+directly, bypassing JsonModelParser/SemanticValidator entirely -- it proves the compiler/generator/
+runtime chain works, never that a real authored model.json can reach it.
+Confirmed the runtime side has no separate gap before fixing: FlowStepDefinition.Type (the kernel's
+own enum) has no GENERATED_ACTION member, but this is BY DESIGN, not a limitation -- it matches
+createConcept/updateConcept, the other two documented sugar kinds, which also desugar to
+CAPABILITY_CALL rather than getting their own kernel Type.
+Fix: added `case "generatedaction" -> validateGeneratedActionStep(...)` to FlowValidation's switch,
+matching the minimal-validator style of return/map (JsonModelParser already guarantees actionName
+is present, so this is a defensive re-check, not new enforcement -- there is nothing to
+cross-reference the way a capability step's operation lookup does, since the named action is a
+code-generation directive resolved by the generator at build time, not a model-declared capability).
+dsl-conformance-max (F3) now includes a real generatedAction step as its own proof; docs/FLOWS.md
+updated.
 
 ### REG-7 — LNCH-1-B6: no migration advisory lock (multi-instance) -- converted to a feature
 
