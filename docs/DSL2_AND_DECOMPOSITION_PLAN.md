@@ -757,7 +757,7 @@ is 150 commits stale is the most falsifiable claim the project could ship.
       git-tracked model in the repo. Byte-identical-compiled-model proof reframed as "full test
       suites green after the corpus is actually migrated" (the 27-file synthetic proof loop was
       superseded by doing the real thing); `AppGen/apps` deliberately deferred (owner's call, §0.2-
-      adjacent: non-git external directory)
+      adjacent: non-git external directory -- B25, `docs/ACCEPTED_BOUNDARIES.md`)
 - [x] Parser switch is 1:1; schema validation (which always runs first) is the actual refuse-point,
       with a diagnostic naming the canonical replacement
 - [x] `DSL_REFERENCE.md` regenerated, `FLOWS.md` updated (worked examples + two shifted line-range

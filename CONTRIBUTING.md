@@ -47,6 +47,23 @@ follow up later. That is what turns "the corpus covers most of the schema" from 
 has to go measure into something the gate tells you (`scripts/quality/validate-corpus.py`, run on
 every PR via `ai-knowledge-gate.yml`).
 
+## A plan may not close with an unresolved deferral that has no tracking id
+
+`docs/INVOCATION_TOPOLOGY_PLAN.md` T4: `docs/DSL2_AND_DECOMPOSITION_PLAN.md` closed with its own
+Definition of Done recording "`AppGen/apps` deferred as a non-git external directory — owner's
+call", with no ledger item attached. The plan closed and the deferral closed with it — 17 corpus
+models stayed broken for ~3 weeks (REG-63) because nothing tracked that the migration tool's proof
+had a real, unstated gap.
+
+Deferring scope is fine and often the right call. Deferring **without a tracking id** is what
+failed. If a plan marked `EXECUTED`/`DONE`/`CLOSED` in its `STATUS:` banner says `deferred` / `out
+of scope` / `not covered` / `left for later`, cite either a `REG-nn` (`docs/OPEN_ITEMS.md`, a real
+gap) or a `B-nn` (`docs/ACCEPTED_BOUNDARIES.md`, a permanent deliberate boundary — don't file a REG
+for something that isn't a gap or bug) in the same paragraph. `check-register-consistency.py`
+enforces this; a reviewed false positive (prose narrating a pre-existing, already-tracked claim
+rather than a new scope cut) goes in `scripts/quality/plan-deferral-citation-allowlist.json`, not a
+silent rewrite of the check.
+
 ## A test that hand-builds `CompiledModel` proves the compiled contract, not the authoring path
 
 A test that constructs `CompiledModel` / `CompiledFlow` objects directly (bypassing
