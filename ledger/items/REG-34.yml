@@ -2,19 +2,39 @@ id: REG-34
 title: "Windows CI job runs Testcontainers (Linux-container) tests that windows-latest can't run"
 type: PROCESS
 severity: LOW
-status: PARTIAL
+status: DONE
 opened: 2026-07-24
+closed: 2026-07-29
 verification: VERIFIED_LIVE
-source: Surfaced by REG-17 once Fix A + REG-33 unblocked the Windows job's downstream gates
+source: Surfaced by REG-17 once Fix A + REG-33 unblocked the Windows job's downstream gates; re-audited docs/CORPUS_INTEGRITY_PLAN.md C10
 surface: ci/windows-job-scoping
 detail: |
-  npdev-ci-validation.yml's Windows job runs full gate suites including Testcontainers tests that
-  start LINUX containers (MinIO, Postgres); windows-latest cannot run Linux containers at all
-  (Windows-container-only), so those tests fail on Windows while passing on the green Linux job.
-  Approach: disable each genuinely-Linux-container test on Windows via @DisabledOnOs(OS.WINDOWS)
-  (stays enabled and validated on Linux CI). Done so far: the generator gate's MinIO packaged-app
-  proof test, verified locally to skip on Windows and still build. Remaining: the Windows job's
-  further gates (Security hardening, Runtime security, RuntimeHost gate, Editor gate) had never run
-  to completion at filing time; each may contain more Linux-container tests to scope the same way,
-  to be iterated as they surface.
+  2026-07-29 re-audit (C10): re-checked the "remaining" gates this item left open (Security
+  hardening, Runtime security, RuntimeHost gate, Editor gate) by tracing every actual command the
+  Windows job in npdev-ci-validation.yml runs today, and cross-referencing every real Testcontainers
+  user in the repo -- not just re-asserting the original "iterate as they surface" plan.
+  Found, measured live: repo-wide, exactly one class carries a real `@Testcontainers`/`@Container`
+  annotation (`AbstractScenarioIntegrationTest`, NPDevRuntimeHost) and three more directly
+  instantiate `PostgreSQLContainer` (`ConversionHookRunnerPostgresTest`,
+  `SchemaLifecycleExecutorPostgresProofMatrixTest`, `CurrentSchemaReaderPostgresTest`). None of the
+  four is reachable from anything the Windows job actually runs: the abstract class's subclasses
+  live in NPDevRuntimeHost's separate `integrationTest` Gradle source set/task (`includeTags
+  'integration'`), which `check` does not depend on and which is documented as nightly-only, not
+  wired into any step here; the three Postgres classes are excluded from the default `test` task
+  unless `-PincludePostgresMatrix` is passed (`NPDevRuntimeHost/build.gradle`), which no step in
+  this workflow does. The Windows job's only real `gradlew check`/`test` invocation is scoped to
+  `NPDevContract\dsl` alone (the "DSL contract check" step, `working-directory: NPDevContract\dsl`),
+  which has zero Testcontainers usage; "Security hardening"/"Runtime security"/"RuntimeHost gate"/
+  "Editor gate" all run PowerShell-orchestrated sample-generation/surface-evidence scripts
+  (run-runtimehost-gate.ps1 et al.), not a raw module test suite.
+  Net: as measured today, no Linux-container test is reachable from anything the Windows job
+  invokes -- via Gradle task/source-set separation, not `@DisabledOnOs` sprinkled per-test (the
+  original fix approach). The one instance that WAS fixed with `@DisabledOnOs` (the generator
+  gate's MinIO packaged-app proof test) stays as-is; it is not wrong, just not the mechanism that
+  turned out to matter for the rest. Residual, explicitly not eliminated: this is a measurement of
+  the CURRENT wiring, not a standing gate -- a future change that adds a new Testcontainers test
+  reachable from the Windows job's actual commands, or that wires `integrationTest`/
+  `-PincludePostgresMatrix` into this workflow, would need the same check re-run by hand. Building a
+  permanent gate for that was judged out of scope for this LOW item (matches C10's own "no action
+  expected" framing) rather than folded in here.
 legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-34
