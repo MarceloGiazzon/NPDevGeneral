@@ -1,24 +1,40 @@
 id: REG-63
-title: "AuxScreen and Pigmentampa's model.json use a pre-DSL-stabilization flow-step shape the current schema rejects"
+title: "17 of 29 corpus models (not 2) used pre-DSL-2.0 flow-step/orchestration shapes the current schema rejects"
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-07-29
+closed: 2026-07-29
 verification: VERIFIED_LIVE
-source: Found while confirming panel-provenance manifests for R-G2 (docs/REMEDIATION_PLAN.md)
+source: Found while confirming panel-provenance manifests for R-G2 (docs/REMEDIATION_PLAN.md); re-scoped and closed by docs/CORPUS_INTEGRITY_PLAN.md
 surface: dsl/model-schema-compatibility
 detail: |
-  AppGen/apps/_official/AuxScreen and .../Pigmentampa's model.json both declare flows in a
-  pre-stabilization shape (top-level input/out per step, a type:"validate" step kind) that the CURRENT
-  model.schema.json rejects outright -- JsonModelParser.parse() fails schema validation before an AST
-  is even built. Confirmed live: Build-NpdevApp.ps1 -GenerateOnly fails identically for both apps, so
-  neither can be regenerated, and no compiled model/invocations catalog/live bundle can be produced
-  for either at all. Blocked both apps' single hand-written screen from getting a panel-provenance
-  manifest for R-G2 (filed there as a written reason, not silently skipped). Both existing
-  BUILT/running instances are unaffected -- this only blocks regeneration with the current toolchain.
-  Fix, when picked up: a real npdev migrate codemod for this flow-step shape (BREAKING.md's own
-  standing rule -- every DSL break ships its codemod in the same commit), likely a mechanical
-  type:"validate" -> invariantCheck rewrite plus flattening the top-level input/out/name properties;
-  needs a check of how many other AppGen apps (if any beyond these two) still carry this shape before
-  scoping the codemod's coverage.
+  Originally filed against AuxScreen and Pigmentampa only. docs/CORPUS_INTEGRITY_PLAN.md C1 measured
+  the real scope with the actual validator (scripts/quality/validate-corpus.py, the validateModel
+  Gradle task per model, not a heuristic grep): 17 of 29 corpus models under AppGen/apps failed --
+  4 of 5 _official apps (AuxScreen, Claude, Pigmentampa, WordLab; WmsOffice was clean) plus 13 non-
+  official AppGen apps. Root cause: 2.A.4's own migration (docs/DSL2_AND_DECOMPOSITION_PLAN.md)
+  deliberately deferred AppGen/apps as a non-git external directory (owner's call, documented in that
+  plan's own Definition of Done) while migrating every git-tracked tree -- the deferred item just
+  never got a tracking item to come back to.
+  C2 extended NPDevCli/dsl_v2_migration.py (already covered all 8 retired flowStep.type values and the
+  cap/op/out/as field aliases; gained a 5th rule renaming the top-level `orchestrations` key to
+  `orchestrationRules`, a pre-baseline spelling the heuristic scan never covered) and ran it via
+  `npdev migrate dsl-2 --write` across all of AppGen/apps: 19 files changed, 0 ambiguities. Two
+  unrelated bugs surfaced and were fixed in the same pass, not by the codemod: pack-sample's model
+  used a retired shared-packs-directory $ref convention (`Pack $ref escapes the model root`, unrelated
+  to flow-step shapes) plus a duplicate `persistence` capability once the $ref resolved; Claude Support
+  Desk's model declared its own `tenantId` reference field, colliding with the platform's own
+  auto-injected `tenant_id` isolation column (a real Java compile failure, not a parse error) -- fixed
+  by renaming the model field to `tenantIdRef`, the exact fix
+  SchemaRealizationEmitter.RESERVED_BUSINESS_COLUMN_NAMES's own guard message suggests. That guard
+  only runs at DB-schema-realization time (after Java compilation), so it never got a chance to show
+  its friendly message here -- see the new gap this surfaced (entity emitter lacks the same guard,
+  filed separately rather than expanding this item's scope).
+  All 29/29 corpus models now parse; all 13 sample-tier apps generate; all 4 previously-broken
+  official apps generate+build+boot clean (health UP, all NPDev subsystems UP). R-G2 manifest coverage
+  is genuinely 15/15 (AuxScreen's aux-screen.panel.json and Pigmentampa's pigmentampa-editor.panel.json
+  authored fresh and confirmed live, 0 problems from check-panel-provenance-impact.py against each
+  app's real bundle). C4 promotes the corpus validator to a permanent blocking gate so this class does
+  not recur silently.
 legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-63

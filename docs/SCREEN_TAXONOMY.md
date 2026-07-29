@@ -20,15 +20,14 @@ primitive candidate.
 ## Per-screen classification
 
 **Manifest column** (R-G2, `docs/REMEDIATION_PLAN.md`): `confirmed` = a reviewed `*.panel.json` exists
-and the impact gate (F4) enforces it; `blocked` = cannot be produced yet, reason given below the
-table; `n/a` = no hand-written screen to manifest (fully generated). 15/15 hand-written screens now
-have a manifest or a written reason (13/13 WmsOffice confirmed 2026-07-29; AuxScreen/Pigmentampa
-blocked, see below) — up from 3/15 confirmed.
+and the impact gate (F4) enforces it; `n/a` = no hand-written screen to manifest (fully generated).
+**15/15 hand-written screens confirmed** (13/13 WmsOffice 2026-07-29; AuxScreen/Pigmentampa closed
+2026-07-29 by `docs/CORPUS_INTEGRITY_PLAN.md` C2/C3, see below) — up from 3/15 at the start of R-G2.
 
 | App | Screen | Bytes | Class | Primitive | Status | Manifest |
 |---|---|---|---|---|---|---|
-| AuxScreen | `aux-screen` | 6,071 | detail-form | AutoPanel Detail | generated-equivalent | blocked ¹ |
-| Pigmentampa | `pigmentampa-editor` | 14,341 | detail-form | AutoPanel Detail | generated-equivalent | blocked ¹ |
+| AuxScreen | `aux-screen` | 6,071 | detail-form | AutoPanel Detail | generated-equivalent | confirmed ¹ |
+| Pigmentampa | `pigmentampa-editor` | 14,341 | detail-form | AutoPanel Detail | generated-equivalent | confirmed ¹ |
 | WmsOffice | `analytics` | 11,455 | dashboard | none | hand-written → contract (F2/F3) | confirmed |
 | WmsOffice | `centro-trabalho` | 30,862 | operator-console | none | hand-written → contract (F2/F3) | confirmed |
 | WmsOffice | `conferencia-fiscal` | 22,897 | operator-console | none | hand-written → contract (F2/F3) | confirmed |
@@ -45,16 +44,13 @@ blocked, see below) — up from 3/15 confirmed.
 | WordLab | *(none)* | — | — | — | **fully generated — no `web/` directory at all** | n/a |
 | Claude Support Desk | *(none)* | — | — | — | **fully generated — no `web/` directory at all** | n/a |
 
-¹ **Blocked, not skipped (R-G2, 2026-07-29 finding).** Neither app can be regenerated with the
-current toolchain: both `model.json`s use a pre-DSL-stabilization flow-step shape (top-level
-`name`/`input`/`out` properties, a `type: "validate"` step kind) that the current
-`model.schema.json` rejects outright (`JsonModelParser.parse()` fails schema validation before an
-AST is even built) -- confirmed live, both `Build-NpdevApp.ps1 -GenerateOnly` runs fail with the
-identical `ModelSchemaValidationException`. This blocks every downstream step a manifest needs (no
-compiled model → no invocations catalog → no live bundle → nothing to bootstrap or hand-verify
-against). A real `npdev migrate` codemod for this flow-step shape (BREAKING.md's own standing rule:
-every DSL break ships its codemod) is the actual fix; out of scope for a manifest-coverage pass.
-Tracked as a new gap, see `docs/NPDEV_OPEN_ITEMS_REGISTER.md`.
+¹ **Closed 2026-07-29 (`docs/CORPUS_INTEGRITY_PLAN.md` C2/C3).** Was blocked, R-G2's own 2026-07-29
+finding: neither app could regenerate with the toolchain of the day (a pre-DSL-2.0 flow-step shape
+the schema rejected outright). Measuring the real scope found this was 17 of 29 corpus models, not
+2 (see REG-63) -- `npdev migrate dsl-2 --write` fixed all of them. Both apps now generate, build, and
+boot clean; `aux-screen.panel.json` and `pigmentampa-editor.panel.json` were authored fresh
+(bootstrap-panel-provenance.py + hand review) and confirmed live against each app's real bundle, 0
+problems from `check-panel-provenance-impact.py`.
 
 ² **Human override of the mechanical classifier's default.** `classify-screens.py`'s
 `operator-console` rule requires `flow-invocation signals ≥ 1 AND form-input signals ≤ 4`;
