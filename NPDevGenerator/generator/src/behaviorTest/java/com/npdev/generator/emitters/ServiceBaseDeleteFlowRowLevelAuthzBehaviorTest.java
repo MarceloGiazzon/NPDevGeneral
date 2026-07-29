@@ -28,7 +28,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * REG-49 residual (`docs/REMAINDER_CLOSURE_PLAN.md` §3.3): an automated BEHAVIORAL test of the
+ * REG-49 residual (`docs/archive/programme-history/REMAINDER_CLOSURE_PLAN.md` §3.3): an automated BEHAVIORAL test of the
  * delete-flow arm, closing the one gap REG-49's withdrawal left open. REG-49 itself was a false
  * positive (a stale generated-code pack), but its withdrawal's own manual trace of the real
  * generated artifact and the real kernel exception hierarchy stopped short of an automated runtime

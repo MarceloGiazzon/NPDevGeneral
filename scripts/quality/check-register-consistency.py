@@ -365,7 +365,7 @@ def mission_run_coverage_gaps(root: Path) -> list[str]:
 
 
 def provenance_audit_gaps(root: Path) -> list[str]:
-    """ADR-0009 / REG-51 residual (`docs/REMAINDER_CLOSURE_PLAN.md` §3.4): defence-in-depth BEHIND
+    """ADR-0009 / REG-51 residual (`docs/archive/programme-history/REMAINDER_CLOSURE_PLAN.md` §3.4): defence-in-depth BEHIND
     the build-time refusal `build-review-pack.py`'s `resolve_provenance()` already enforces.
 
     That refusal stops a NEW pack from ever being built against stale generated-app output -- the

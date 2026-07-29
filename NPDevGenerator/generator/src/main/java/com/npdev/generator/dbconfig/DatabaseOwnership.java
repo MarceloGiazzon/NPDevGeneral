@@ -5,7 +5,7 @@ import java.util.Locale;
 /**
  * REG-7.1: whether NPDev owns this app's database schema (issues DDL, migrates it) or the schema is
  * externally managed (pre-existing legacy system, or an operator running the DDL by hand). Orthogonal
- * to {@link SchemaLifecycleStrategy} -- see {@code docs/REG7_REG8_EXTERNAL_DB_AND_MIGRATION_MARKING_PLAN.md}
+ * to {@link SchemaLifecycleStrategy} -- see {@code docs/archive/programme-history/REG7_REG8_EXTERNAL_DB_AND_MIGRATION_MARKING_PLAN.md}
  * D1: {@code strategy} answers HOW NPDev migrates when it owns the schema; {@code ownership} answers
  * WHETHER it touches schema DDL at all.
  */

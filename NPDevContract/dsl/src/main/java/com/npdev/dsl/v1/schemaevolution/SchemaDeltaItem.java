@@ -2,7 +2,7 @@ package com.npdev.dsl.v1.schemaevolution;
 
 /**
  * LNCH-1 Phase 4's destructive item vocabulary, moved to the DSL module in Phase 6 (task 6.1's (A)
- * share decision). Exactly four kinds, per {@code docs/LNCH1_SCHEMA_EVOLUTION_PLAN.md} §4.1:
+ * share decision). Exactly four kinds, per {@code docs/archive/programme-history/LNCH1_SCHEMA_EVOLUTION_PLAN.md} §4.1:
  * {@link DropColumn}, {@link DropTable}, {@link NarrowType}, {@link Unknown}.
  *
  * <p>Two independent producers construct these records for the SAME underlying kind of change:
