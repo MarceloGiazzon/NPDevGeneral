@@ -26,7 +26,7 @@ constructs. A forged cross-site `<form>` POST or `<img>`-style GET cannot set a 
 all; a cross-site `fetch()`/`XHR` *can* set one, but only if the attacker's script already has the
 token to put there -- which means CSRF was never the vector, token theft (XSS, a leaked log, a
 compromised client) was, and that is a different, already-tracked threat class (see
-[`NPDEV_BOX_OBJECT_THREAT_MODEL.md`](NPDEV_BOX_OBJECT_THREAT_MODEL.md) and LNCH-4's token-revocation
+[`NPDEV_BOX_OBJECT_THREAT_MODEL.md`](../security/NPDEV_BOX_OBJECT_THREAT_MODEL.md) and LNCH-4's token-revocation
 work, which exists precisely to bound the blast radius of a stolen token).
 
 ## What backs the claim, structurally (not just by argument)

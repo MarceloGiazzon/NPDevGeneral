@@ -26,6 +26,15 @@
 >   (exact), `panel orderBy`→orderBy items (keyword), nonsense→explicit `unknown`.
 > - **Phase 5** — `scripts/appgen/Rebuild-And-Restage.ps1` + tracked skills `rebuild-app` /
 >   `verify-in-browser` under `.claude/skills/` (un-ignored). Wrapper not yet run against a live app.
+> - **Follow-on tooling (2026-07-10, `ed5ef43`), outside the original five phases:** two maintainer
+>   tools for AI structured-output support. `scripts/ai/build_core_context.py` assembles the
+>   prompt-cacheable core-context bundle (`docs/ai/AUTHORING_FOR_AI.md` + the curated `schemas/ai/*`
+>   schemas + a few golden samples) into `<Build>/npdev-ai/core-context/`. `scripts/ai/
+>   derive_constrained_schemas.py` mechanically derives a structured-output-safe subset of the
+>   authoring-strict `schemas/ai/*.json` schemas (Claude's `output_config.format` supports only a
+>   constrained JSON-Schema subset — no `pattern`/`minLength`/`if-then`/`not`/recursive `$ref`) into
+>   `<Build>/npdev-ai/constrained/`. Both are run manually when the AI-authoring contract or its
+>   schemas change; neither is wired into a gate.
 >
 > **Decisions taken:** skills home = `.claude/skills/` via a targeted `!.claude/skills/` un-ignore
 > (so they function as real Claude Code skills and are tracked). Live error→fix pair capture is now

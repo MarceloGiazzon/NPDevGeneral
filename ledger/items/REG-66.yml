@@ -1,0 +1,30 @@
+id: REG-66
+title: "reg39-healthy-control retired -- a byte-identical WmsOffice clone with no independent signal, closed REG-39's own one-time verification artifact"
+type: PROCESS
+severity: LOW
+status: DONE
+opened: 2026-07-29
+closed: 2026-07-29
+verification: VERIFIED_LIVE
+source: Corpus-structure measurement, docs/FINAL_OPEN_ITEMS_PLAN.md F7
+surface: appgen-apps/corpus-structure
+detail: |
+  AppGen/apps/reg39-healthy-control (external, non-git Layer 2) was created 2026-07-25 as a
+  one-time "healthy pack" live control for REG-39 (see docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-39):
+  "app reg39-healthy-control, a clone of the WmsOffice definition" -- proving the layer-1 identity-
+  pack-drift detector did not false-positive on a genuinely healthy pack, on a fresh empty database.
+  REG-39 has been DONE since 2026-07-25; this app was never meant to be a standing fixture.
+  Measured before retiring: its definition/model.json was still byte-identical to
+  _official/WmsOffice's current one; the directory carried only definition/ (capabilities, concepts,
+  packs, seeds, widgets) -- no web/ or other unique content, 44 files vs. WmsOffice's 72. It also
+  inflated the aggregates/autoPanels/guidePages corpus-coverage count from a true 1 (WmsOffice alone)
+  to an apparent 2, which is part of why the Aggregate Workbench's real single-point-of-failure went
+  unnoticed until the 2026-07-29 corpus measurement that led to NPDevSamples/dsl-conformance-max.
+  Searched the whole repo for functional references before deleting: none found. The only mentions
+  are historical documentation -- docs/NPDEV_OPEN_ITEMS_REGISTER.md (REG-39's own closure record,
+  archived-in-place), docs/archive/programme-history/REG48_50_CLOSURE_PLAN.md, and
+  NPDevSamples/dsl-conformance-max/Input/README.md's own corpus-coverage table (a measurement
+  snapshot, correctly left as historical record, not updated).
+  Retired (deleted from the external AppGen/apps workspace, user-confirmed given it has no git
+  history to revert through). Nothing of unique value was destroyed -- its only distinguishing
+  content (model.json) is identical to WmsOffice's own, which remains.

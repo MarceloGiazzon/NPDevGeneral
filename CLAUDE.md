@@ -34,16 +34,22 @@ Main package roots: `com.npdev.dsl.v1` / `com.npdev.generator` / `com.npdev.kern
 
 ## Large files — DO NOT full-read (Grep to a line, then Read with offset/limit)
 
-These are the files most often edited; reading any one whole burns 40–100k tokens:
+These are the files most often edited; reading any one whole burns 40–100k tokens. Sizes are checked
+against disk by `scripts/quality/check-record-surfaces.py` (±25% tolerance) — if this list drifts, that
+gate fails, so it should stay accurate without needing a manual re-audit:
 
 - `NPDevGenerator/.../npdev-templates/static-react/assets/app.js` (407 KB) — **generated bundle, ignore entirely**
-- `NPDevKernel/adapters/expression-cel/.../GeneratedCrudRuntimeSupport.java` (198 KB)
-- `NPDevGenerator/.../emitters/TrustedSourceEmitter.java` (197 KB)
-- `NPDevKernel/kernel/.../KernelRunner.java` (177 KB)
-- `NPDevContract/dsl/.../validation/SemanticValidator.java` (164 KB)
-- `NPDevGenerator/.../npdev-templates/business-ui-app.mustache` (147 KB)
+- `NPDevGenerator/.../npdev-templates/business-ui-app.mustache` (169 KB)
+- `NPDevKernel/adapters/expression-cel/.../GeneratedCrudRuntimeSupport.java` (158 KB)
+- `NPDevRuntimeHost/.../db/SchemaLifecycleExecutor.java` (138 KB)
+- `NPDevKernel/kernel/.../KernelRunner.java` (126 KB)
 - Big JSON that is noise if read whole: `NPDevSamples/NPDevSamples_Tree.txt`, and test fixtures
   `NPDevRuntimeHost/src/test/resources/npdev/compiled-metadata.json` / `metadata/fields.manifest.json`
+
+**No longer large** — split by the 2.B decomposition (2026-07-27/28), read them normally: `SemanticValidator.java`
+(10 KB, now an orchestrator over sibling `*Validation` classes in `NPDevContract/dsl/.../validation/`) and
+`TrustedSourceEmitter.java` (11 KB, now an orchestrator over sibling classes in
+`NPDevGenerator/.../emitters/`). Their logic moved to those sibling classes — grep the package, not the file.
 
 **`model.schema.json` is duplicated in 4 places** — edits must mirror to all four:
 `NPDevContract/schemas/model.schema.json`, `NPDevContract/schemas/authoring/model.schema.json`,
@@ -88,6 +94,27 @@ layout, or internal APIs ships its `npdev migrate` codemod in the same commit**,
   PATH via `C:\Program Files\Git\usr\bin` (applies to new sessions).
 - Regenerating an app can hit a transient **VS Code Java/Gradle file lock** on the fresh build dir —
   the established workaround is to bump the build-root suffix (`-alt`/`-hNN`); a reboot clears it.
+
+## Where the truth lives (read before filing or editing status)
+
+- **Open items:** `ledger/items/*.yml` is authoritative. `docs/OPEN_ITEMS.md` is GENERATED from it
+  (`scripts/quality/generate_open_items.py`) — never hand-edit. `docs/NPDEV_OPEN_ITEMS_REGISTER.md`
+  is HISTORICAL/archived-in-place: read for narrative (root causes, fix rationale), never for status.
+- **DSL is at 2.0** — retired `flowStep.type` aliases collapsed to their canonical values. See
+  `BREAKING.md`. Every breaking change to the DSL, generated code layout, or internal APIs ships its
+  `npdev migrate` codemod (`NPDevCli/dsl_v2_migration.py`) in the same commit.
+- **Adding a DSL feature?** Add a real example to `NPDevSamples/dsl-conformance-max` in the same
+  commit — `scripts/quality/check-dsl-coverage.py` (wired in `run-ai-knowledge-gate.ps1`) fails any
+  DSL feature with zero corpus coverage.
+- **Adding a script under `scripts/`?** It needs both a classification (pattern-matched in
+  `scripts/policy/script-inventory-policy.json`) and a declared `invocation` in
+  `scripts/policy/script-invocation-declarations.json`; `run-script-inventory-check.ps1` enforces
+  both match reality.
+- **Adding a corpus model** (`AppGen/apps` or `NPDevSamples`)? It needs a `corpusRole` entry in
+  `scripts/quality/corpus-roles.json` (`dsl-fixture` / `engine-variant` / `repro-case` / `showcase`)
+  — a model with no role fails the corpus gate, no silent default.
+- **Frontend contract:** `docs/UI_CONTRACT.md` · screen classes: `docs/SCREEN_TAXONOMY.md` · the
+  durable flow engine (hosted inside `KernelRunner`): `docs/FLOWS.md`.
 
 ## Key docs
 

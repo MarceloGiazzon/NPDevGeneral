@@ -1,0 +1,34 @@
+{
+  "id": "dsl-conformance-max",
+  "title": "DSL Conformance Max",
+  "complexity": "small",
+  "mainFlow": "PlaceWidgetOrder",
+  "purpose": "DSL surface-coverage fixture. A corpus-wide measurement (2026-07-29) found 7 schema features exercised by ZERO of the 29 corpus models and 6 more carried by a single model -- including `aggregates`/`autoPanels`/`guidePages`, which lived only in WmsOffice and its byte-identical clone. This model exists to close those gaps so a schema or compiler change that breaks them fails the corpus-parse gate instead of shipping unnoticed.",
+  "businessStory": "Deliberately thin: a widget order with owned lines, a catalog to pick SKUs from, and a nightly sweep. The domain is a vehicle for the DSL surface, not the point. Do NOT use this as an authoring example -- read `simple-contact-intake` or `medium-expense-approval` for that.",
+  "features": [
+    "externalAi (egress: denied)",
+    "domainTypes",
+    "selectors",
+    "aggregates",
+    "autoPanels",
+    "documents",
+    "guidePages",
+    "queries",
+    "procedures",
+    "panels",
+    "ruleProfiles",
+    "flow.schedule (cron)",
+    "flow.specializes + flow.hooks",
+    "step: forEach (+ maxLoopIterations)",
+    "step: onFailure (compensation)",
+    "step: map",
+    "step: scheduleEvent (delaySeconds)",
+    "step: invariantCheck, createConcept, emitEvent, capabilityCall, return"
+  ],
+  "inputFiles": [],
+  "walkthrough": [
+    "This fixture is validated AND generated (docs/CLOSEOUT_PLAN.md G2): `scripts/quality/validate-corpus.py` parses it on every knowledge-gate run, and `scripts/quality/check-dsl-conformance-generates.py` generates it for real and asserts its rare features survive into the compiled output on every PR gate run.",
+    "To check it by hand: gradlew :NPDevContract:dsl:validateModel -PmodelPath=<this dir>/model.json -PreportOut=<out>.json",
+    "When you add a DSL feature, add it HERE too -- that is what keeps the corpus honest."
+  ]
+}

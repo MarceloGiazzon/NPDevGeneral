@@ -1,0 +1,36 @@
+id: REG-69
+title: 3 DSL features (fragments, packs, step.updateConcept) have zero coverage on a bare CI checkout -- only exercised by AppGen/apps-only models
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-07-29
+closed: 2026-07-29
+verification: VERIFIED_LIVE
+source: check-dsl-coverage.py failing on PR #7 (2026-07-29), the first real GitHub Actions run of run-ai-knowledge-gate.ps1 since T3 removed its `paths:` filter -- docs/RECORD_SURFACES_PLAN.md's own P1 merge
+surface: quality/dsl-coverage
+files:
+  - scripts/quality/dsl-coverage-allowlist.json
+  - NPDevSamples/dsl-conformance-max
+detail: |
+  Locally, with `AppGen/apps` present (a non-git, developer-machine-only directory per CLAUDE.md's
+  "Layers"), `check-dsl-coverage.py` scans 29 corpus models and every one of the 29 tracked DSL
+  features has at least one example: `fragments` via `AppGen/apps/npdev_split_model_sample_app`,
+  `packs` and `step.updateConcept` via `AppGen/apps/_official/WmsOffice`. On a bare CI checkout
+  (`AppGen/apps` absent, only `NPDevSamples` scanned -- 10 models), those three features have never
+  had a real example in the git-tracked corpus, so the check has been failing unconditionally on
+  every CI run of this gate -- just never observed, because `ai-knowledge-gate.yml` had no `paths:`
+  filter removed until T3, and this PR is the first real run since.
+
+  This is the same shape as CONTRIBUTING.md's own standing rule ("add a DSL feature, add a real
+  example to `dsl-conformance-max` in the same commit") being satisfied by AppGen/apps state instead
+  -- a claim ("every feature has corpus coverage") that was only ever true because of state CI
+  cannot see, exactly the kind of drift `docs/RECORD_SURFACES_PLAN.md` is about, just discovered
+  as a side effect of finally getting an observed CI run rather than as one of that plan's own
+  named P1-P6 items.
+
+  CLOSED 2026-07-29 as: recorded a reviewed exception in `scripts/quality/dsl-coverage-allowlist.json`
+  for all three features, citing this REG id, per the check's own documented escape hatch --
+  unblocks CI without hand-authoring untested new DSL fixture content under time pressure. The real
+  fix (add genuine `fragments`/`packs`/`step.updateConcept` examples to
+  `NPDevSamples/dsl-conformance-max`, Gradle-validated) is deliberately deferred, not done -- tracked
+  as `docs/ACCEPTED_BOUNDARIES.md` B27 with its own revisit trigger.

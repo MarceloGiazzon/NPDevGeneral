@@ -43,8 +43,7 @@ final class ResumeCoordinator {
             KernelRunner runner,
             EventEnvelope envelope,
             String currentExecutionId,
-            String lookupCorrelationId,
-            ExecutionContext resumeExecutionContext
+            String lookupCorrelationId
     ) {
         if (envelope == null) {
             return FlowEngine.ResumeOutcome.noMatch();
@@ -73,9 +72,13 @@ final class ResumeCoordinator {
             }
             matchedWaiters++;
             try {
+                // REG-56: resume under the flow's OWN trust level, not the publisher's -- see
+                // ExecutionContext#resuming for why. Using the publisher's context here either
+                // denied a legitimate resume (publisher lacks a capability the flow needs) or
+                // over-granted one (publisher happens to be an admin) depending on who published.
                 ExecutionResult result = runner.resumeExecution(
                         instance.executionId(),
-                        resumeExecutionContext == null ? ExecutionContext.anonymous() : resumeExecutionContext
+                        ExecutionContext.resuming(instance.tenantId(), instance.actorId())
                 );
                 if (result.getStatus() == ExecutionStatus.WAITING_EVENT) {
                     // Event-driven mismatches must be a no-op. Backoff is only for scheduled scans.
@@ -375,12 +378,17 @@ final class ResumeCoordinator {
             }
 
             try {
-                // Resume under the waiting instance's own tenant/actor. The awaited event is
-                // tenant-scoped, so resuming with an anonymous context would look it up under the
-                // default tenant and never match a tenant-scoped event, leaving the flow stuck.
+                // Resume under the waiting instance's own tenant/actor, not a fresh default-role
+                // context. The awaited event is tenant-scoped, so resuming with an anonymous
+                // context would look it up under the default tenant and never match a
+                // tenant-scoped event, leaving the flow stuck. REG-56: ExecutionContext#of always
+                // defaults role to USER, which permanently denies any capability-gated resume
+                // regardless of what role the flow was originally submitted under --
+                // ExecutionContext#resuming grants the trusted resume-level role instead (see its
+                // javadoc), while still keeping the instance's own actor for audit traceability.
                 ExecutionResult result = runner.resumeExecution(
                         waitingInstance.executionId(),
-                        ExecutionContext.of(waitingInstance.tenantId(), waitingInstance.actorId())
+                        ExecutionContext.resuming(waitingInstance.tenantId(), waitingInstance.actorId())
                 );
                 if (result.getStatus() == ExecutionStatus.WAITING_EVENT) {
                     FlowInstance latest = runner.flowInstanceStore.findByExecutionId(waitingInstance.executionId())

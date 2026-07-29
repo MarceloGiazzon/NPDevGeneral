@@ -42,7 +42,7 @@ This is the most important finding and directly threatens the branch's "no false
   See [JsonModelSchemaValidator.java:53-64](../dsl/src/main/java/com/npdev/dsl/v1/validation/JsonModelSchemaValidator.java#L53-L64).
 - `model.schema.json` works today because it only uses internal `#/$defs/...` references.
 - `pack.schema.json` uses **cross-file references**, e.g. `{ "$ref": "model.schema.json#/$defs/concept" }`.
-  See [pack.schema.json:43-46](../../schemas/pack.schema.json#L43-L46).
+  See [pack.schema.json:43-46](../schemas/pack.schema.json#L43-L46).
 
 **Why it breaks**
 With the string-overload loader and a `$id` of `https://npdev.local/schema/npdev-model.schema.json`, networknt resolves the cross-file ref against that base `$id` URI and attempts to *fetch* `model.schema.json`. With no resolver mapping configured, it will either throw, or — worse — resolve to an empty / unconstrained schema, meaning **every pack validates as "valid."** That is precisely a false green.

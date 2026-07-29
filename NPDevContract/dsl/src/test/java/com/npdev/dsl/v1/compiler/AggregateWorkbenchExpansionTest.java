@@ -38,7 +38,7 @@ class AggregateWorkbenchExpansionTest {
                     "statusField": "estagio",
                     "states": [
                       { "value": "aberta", "label": "Aberta", "initial": true,
-                        "metadata": { "allowedActions": "GerarDemanda" } },
+                        "allowedActions": ["GerarDemanda"] },
                       { "value": "confirmada", "label": "Confirmada", "terminal": true } ],
                     "transitions": [ { "from": "aberta", "to": "confirmada", "actionLabel": "Confirmar" } ]
                   } },
@@ -114,8 +114,7 @@ class AggregateWorkbenchExpansionTest {
         assertEquals(Boolean.TRUE, aberta.get("editable"), "non-terminal state is editable");
         assertEquals(Boolean.FALSE, confirmada.get("editable"), "terminal state is read-only");
 
-        // AW-P5: per-state allowedActions gating, declared as a comma-separated metadata string
-        // (metadata is a flat string map in the schema, so this reuses the "editable" convention).
+        // AW-P5: per-state allowedActions gating, a typed array field (REG-62).
         assertEquals(List.of("GerarDemanda"), aberta.get("allowedActions"),
                 "aberta declares allowedActions -- only GerarDemanda is permitted there");
         assertNull(confirmada.get("allowedActions"),

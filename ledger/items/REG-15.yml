@@ -1,0 +1,18 @@
+id: REG-15
+title: "LNCH-23: trademark clearance N/A, release tag cut"
+type: PROCESS
+severity: LOW
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-23
+verification: NOT_VERIFIED
+source: LNCH-1 programme inheritance
+surface: process/release
+detail: |
+  Release tag beta1.1 (annotated) cut 2026-07-22 on the beta1-vision-spine -> main merge commit
+  3e29cca; run-release-checklist-gate.ps1 no longer lacks a tag. Trademark clearance: owner's final
+  decision (2026-07-23) is N/A -- this is an individual, non-commercial hobby/portfolio project with
+  no mark to defend and no trademark sought, so there is nothing to clear and nothing to park; the
+  item is complete, not deferred. Two preliminary name-collision findings on file ("NP DEV Soluções em
+  T.I.", NPDEV LIMITED UK #14176093) are informational only and block nothing.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-15

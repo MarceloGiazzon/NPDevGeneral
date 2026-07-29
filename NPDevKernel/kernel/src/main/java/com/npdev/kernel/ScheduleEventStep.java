@@ -152,7 +152,7 @@ final class ScheduleEventStep {
             ));
         }
         runner.eventBus.publish(envelope);
-        ResumeCoordinator.resumeWaitingExecutionsFor(runner, envelope, executionId, envelope.correlationId(), effectiveContext);
+        ResumeCoordinator.resumeWaitingExecutionsFor(runner, envelope, executionId, envelope.correlationId());
         emittedEvents.add(envelope);
         state.put("lastEvent", envelope);
         state.put("causationId", executionId);

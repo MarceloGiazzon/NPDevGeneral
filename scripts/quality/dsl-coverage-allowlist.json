@@ -1,0 +1,24 @@
+{
+  "_comment": [
+    "Reviewed exemptions for scripts/quality/check-dsl-coverage.py. Each entry means: a human",
+    "decided this DSL feature is deliberately allowed to have zero corpus models exercising it, and",
+    "here is why. The key is the feature name exactly as check-dsl-coverage.py reports it.",
+    "docs/FINAL_OPEN_ITEMS_PLAN.md F8 was written specifically because NPDevSamples/dsl-conformance-max",
+    "(F3) already closed every zero-coverage feature the 2026-07-29 measurement found -- that",
+    "measurement scanned the full local corpus (AppGen/apps + NPDevSamples). The three entries below",
+    "(REG-69) are a different failure mode: real on a bare CI checkout, where AppGen/apps is absent,",
+    "not zero-coverage locally. Add an entry here only for a genuine, reviewed exception with a REG",
+    "id -- never pre-clear speculatively; prefer adding a real example to dsl-conformance-max instead."
+  ],
+  "cleared": {
+    "fragments": {
+      "why": "Only real example is AppGen/apps/npdev_split_model_sample_app, a non-git developer-machine-only directory (CLAUDE.md 'Layers') -- absent on a bare CI checkout, so this has been failing on every real CI run of this gate, just never observed before PR #7 (T3 removed the paths: filter that had masked it). REG-69."
+    },
+    "packs": {
+      "why": "Only real example is AppGen/apps/_official/WmsOffice, absent on a bare CI checkout. Same shape as fragments above. REG-69."
+    },
+    "step.updateConcept": {
+      "why": "Only real example is AppGen/apps/_official/WmsOffice, absent on a bare CI checkout. Same shape as fragments above. REG-69."
+    }
+  }
+}

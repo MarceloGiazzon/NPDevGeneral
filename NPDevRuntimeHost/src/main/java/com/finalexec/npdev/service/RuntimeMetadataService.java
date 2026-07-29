@@ -21,6 +21,14 @@ public class RuntimeMetadataService {
     private static final String ENDPOINT_VERSION = "1.0.0";
     private static final String COMPILED_METADATA_CLASSPATH = "npdev/compiled-metadata.json";
     private static final String METADATA_INDEX_CLASSPATH = "npdev/metadata/index.json";
+    // F2.2: the same file SchemaLifecycleExecutor/SchemaManifestLoader read to get schemaFingerprint --
+    // reused verbatim as the UI-contract bundle's modelHash rather than minting a second hash (the
+    // plan's own explicit instruction). Note this fingerprint covers table/column/type/required/unique
+    // shape only (see UserDatabaseDefinitionLoader#fingerprintInputs) -- it will NOT change for a
+    // panel-action/permission-hint/flow/lifecycle-only edit, only for a schema-shaped one (e.g. a field
+    // rename). Accepted boundary, not a bug: F4's drift detection is precise for renames, the category
+    // this catalog exists to protect against.
+    private static final String SCHEMA_REALIZATION_MANIFEST_CLASSPATH = "npdev/db/schema-realization-manifest.json";
     private static final Map<String, String> CATALOG_ALIASES = Map.ofEntries(
             Map.entry("concept", "concepts"),
             Map.entry("concepts", "concepts"),
@@ -36,11 +44,15 @@ public class RuntimeMetadataService {
             Map.entry("references", "references"),
             Map.entry("action", "actions"),
             Map.entry("actions", "actions"),
+            Map.entry("transition", "transitions"),
+            Map.entry("transitions", "transitions"),
             Map.entry("layout", "layout"),
             Map.entry("layouts", "layout"),
             Map.entry("validation", "validationHints"),
             Map.entry("validation-hints", "validationHints"),
-            Map.entry("validationhints", "validationHints")
+            Map.entry("validationhints", "validationHints"),
+            Map.entry("invocation", "invocations"),
+            Map.entry("invocations", "invocations")
     );
 
     private final ObjectMapper objectMapper;
@@ -138,6 +150,15 @@ public class RuntimeMetadataService {
 
     public Map<String, Object> catalog(String catalogName, String conceptName, String ownerName, String fieldPath) {
         return buildCatalogResponse(catalogName, conceptName, ownerName, fieldPath);
+    }
+
+    /** F2.2: the UI-contract bundle's {@code modelHash} -- the same fingerprint
+     * {@code SchemaLifecycleExecutor}/{@code SchemaManifestLoader} read from this identical classpath
+     * resource, reused rather than minting a second hash. Throws {@link IllegalStateException} (like
+     * every other catalog read here) if the app has no schema-realization manifest on its classpath --
+     * the controller's existing {@code run()} wrapper maps that to 503, same as a missing catalog. */
+    public String schemaFingerprint() {
+        return stringValue(loadJsonMap(SCHEMA_REALIZATION_MANIFEST_CLASSPATH).get("schemaFingerprint"));
     }
 
     public Map<String, Object> previewSupport(String conceptName) {

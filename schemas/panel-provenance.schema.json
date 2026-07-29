@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.internal/schemas/panel-provenance.schema.json",
+  "title": "NPDev panel provenance manifest",
+  "description": "One manifest, three producers (docs/NEXT_EXECUTION_PLAN.md P4.3 / F3): generator-emitted (for AutoPanel/selector-generated panels), agent-emitted (docs/ai/UI_GENERATION_PROMPT.md's required second output), or human-confirmed (bootstrap-panel-provenance-v2.py infers a draft with confirmed:false; a human reviews and flips it to true). The impact gate (F4) enforces only confirmed:true manifests.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "panel", "producer", "generatedFrom", "reads", "writes", "invokes",
+    "calls", "slotOf", "confirmed", "unresolved"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "npdev-panel-provenance.v1"
+    },
+    "panel": {
+      "type": "string",
+      "description": "The panel/screen name. For a generated panel, matches CompiledPanel.name()."
+    },
+    "screen": {
+      "type": "string",
+      "description": "Repo/app-relative path to the hand-written screen file this manifest describes. Absent for generator-produced panels (there is no separate screen file -- the panel IS the screen)."
+    },
+    "screenClass": {
+      "type": ["string", "null"],
+      "description": "F1 taxonomy class (docs/SCREEN_TAXONOMY.md), e.g. operator-console, detail-form. Null until classified."
+    },
+    "producer": {
+      "type": "string",
+      "enum": ["generator", "agent", "human"]
+    },
+    "generatedFrom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generator"],
+      "properties": {
+        "modelHash": {
+          "type": "string",
+          "description": "The bundle's modelHash (RuntimeMetadataService#schemaFingerprint) this manifest was built against. F4 compares this to the CURRENT app's modelHash to detect drift. NOT required: the generator producer (CompiledMetadataCanonicalJson, which stamps provenance at model-compile time) runs before the schema fingerprint exists -- that fingerprint is computed later, in NPDevGenerator, from the resolved database config (UserDatabaseDefinitionLoader#fingerprintInputs). A generator-producer entry with no modelHash should be treated by F4 as always-re-derive, not stale-compared."
+        },
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "generator": {
+          "type": "string",
+          "description": "Which producer emitted this: a compiler class name (generator), a model id (agent), or the bootstrapper script name (human)."
+        },
+        "bundleScope": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "concept": { "type": "string" },
+            "panel": { "type": "string" }
+          }
+        }
+      }
+    },
+    "reads": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^(?:[A-Za-z_][A-Za-z0-9_]*::)?[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z0-9_.]+$" },
+      "description": "Concept.fieldPath entries this screen reads. Every entry must resolve in the bundle's fields catalog -- F4 fails the build otherwise."
+    },
+    "writes": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^(?:[A-Za-z_][A-Za-z0-9_]*::)?[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z0-9_.]+$" },
+      "description": "Concept.fieldPath entries this screen mutates."
+    },
+    "invokes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "invocations[].id entries this screen calls (e.g. 'flow:SubmitExpense', 'panelAction:ExpenseApprovalPanel:SubmitExpense'). Every entry must exist in the bundle's invocations catalog -- F4 fails the build otherwise."
+    },
+    "calls": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Raw HTTP paths observed/declared (method-agnostic string, or 'METHOD path'). Informational -- invokes is the enforced field; calls is evidence for a human reviewing a draft."
+    },
+    "slotOf": {
+      "type": ["string", "null"],
+      "description": "Reserved for ADR-0004's L5 layoutSlot -- the workbench region this panel fills, once that concept ships. Null until then."
+    },
+    "confirmed": {
+      "type": "boolean",
+      "description": "false for every bootstrapper-inferred draft (a hypothesis, not a fact) and true for generator/agent output (confirmed by construction) or a human-reviewed draft. The impact gate (F4) enforces only confirmed:true manifests -- an unconfirmed one is reported, not failed."
+    },
+    "unresolved": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Identifiers the inferring producer could not resolve to a field or invocation. Must be empty before a human sets confirmed:true."
+    },
+    "handWritten": {
+      "type": "boolean",
+      "description": "true when producer is human and the screen is not generated by any NPDev emitter."
+    },
+    "reviewedBy": {
+      "type": "string",
+      "description": "Who confirmed this manifest, when producer is human and confirmed is true."
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

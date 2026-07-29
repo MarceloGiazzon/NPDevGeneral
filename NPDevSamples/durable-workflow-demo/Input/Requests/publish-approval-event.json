@@ -1,0 +1,9 @@
+{
+  "eventName": "ExpenseApproved",
+  "correlationId": "<use correlationId from the submit response>",
+  "payload": {
+    "expenseId": "<use executionId's saved concept id from the submit response output>",
+    "approved": true,
+    "reviewer": "demo-manager"
+  }
+}

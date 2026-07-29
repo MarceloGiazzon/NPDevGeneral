@@ -1,0 +1,59 @@
+id: REG-62
+title: allowedActions is a typed array and is cross-referenced against the surface's declared actions
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-07-28
+closed: 2026-07-29
+verification: VERIFIED_LIVE
+source: Investigated while closing F5-R1, 2026-07-28; typed half shipped docs/CORPUS_INTEGRITY_PLAN.md C8, 2026-07-29; cross-reference shipped docs/FINAL_OPEN_ITEMS_PLAN.md F9, 2026-07-29
+surface: dsl/autopanel-lifecycle
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/StateMachineStateAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/LifecycleValidation.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ConceptValidation.java
+detail: |
+  2026-07-29 (C8): the CSV-in-metadata escape hatch is retired. allowedActions is now a proper
+  `array` of `string` on a `lifecycleState` node (all 4 model.schema.json mirrors), a real field on
+  StateMachineStateAst (was: parsed out of a comma-separated string inside the flat
+  Map<String,String> metadata map -- no schema validation of any kind). Safe with zero corpus impact
+  (0 of 29 models used the old form, confirmed live via scripts/quality/validate-corpus.py), so no
+  codemod and no BREAKING.md entry, matching the original finding's own prediction.
+  What this closes: a value that is not a JSON array of strings (a number, an object, nested JSON,
+  anything malformed) is now a structural schema-validation failure at author time, not a silent
+  no-op at runtime.
+  What this does NOT yet close, and why it stays OPEN: a well-formed but MIS-SPELLED action name
+  inside the array (e.g. "GerarDemand" instead of "GerarDemanda") is still accepted silently -- the
+  original bug's actual failure mode ("a typo silently drops an action-rail button"). Catching that
+  needs a cross-reference check against the AutoPanel section's own declared workbench actions, and
+  those still live inside `AutoPanelSurfaceAst.metadata()`'s own untyped escape hatch (read via
+  `AutoPanelExpander.workbenchActions()` from `transaction.metadata().get("actions")`) -- giving
+  workbench actions a typed AST home of their own is a real, separate design decision (not a
+  mechanical follow-on to this fix) and was consciously left out of this pass rather than rushed.
+  Fix, when picked up: type AutoPanelSurfaceAst's actions list, then add the cross-reference check,
+  likely in PanelValidation.validateAutoPanels (which already has both the concept's lifecycle and
+  the AutoPanel's surfaces in scope).
+
+  2026-07-29 (F9): closed without typing AutoPanelSurfaceAst's actions list -- that turned out not to
+  be a real prerequisite. LifecycleValidation.validateLifecycle (called from ConceptValidation) now
+  reads transaction.metadata().get("actions") directly, the same untyped structure
+  AutoPanelExpander.workbenchActions() itself reads, and cross-references every lifecycle state's
+  allowedActions entries against the declared procedure names. A state referencing an unknown action
+  now fails validation naming both the bad entry and the concept's real declared actions (or "(none)"
+  if the concept has no autoPanel at all).
+  One correction made while proving this RED-then-GREEN: an AutoPanel binds to a concept two ways --
+  directly via autoPanel.concept() (JsonModelParser.parseAutoPanels reads it verbatim from the JSON's
+  "concept" key), or via an aggregate's root concept when the JSON only sets "aggregate" (the real,
+  common shape for aggregate-bound workbenches -- see AutoPanelExpander.expandAggregateWorkbench,
+  which resolves the root concept from the model's aggregates list, not from autoPanel.concept()).
+  The first cross-reference cut only checked the direct-concept form and produced false positives
+  ("(none)" declared) against every aggregate-bound fixture, including the exact shape
+  AggregateWorkbenchExpansionTest already exercises. Fixed by passing the model's List<AggregateAst>
+  into LifecycleValidation and resolving both binding forms before matching.
+  Proof: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/AllowedActionsCrossReferenceValidationTest.java
+  (4 cases: clean match, no-allowedActions state left unrestricted, misspelled entry rejected naming
+  the real actions, and no-autoPanel-at-all rejected naming "(none)") -- all green; full DSL module
+  test suite green afterward (no other lifecycle/autoPanel test regressed).
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-62

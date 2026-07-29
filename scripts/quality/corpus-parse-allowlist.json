@@ -1,0 +1,13 @@
+{
+  "_comment": [
+    "Reviewed exemptions for scripts/quality/validate-corpus.py. Each entry means: a human decided",
+    "this corpus model is deliberately allowed to not parse against the current schema, and here is",
+    "why. The key is the model's corpus label (e.g. 'AppGen/apps/_official/AuxScreen' or",
+    "'NPDevSamples/canonical-demo'), so renaming or moving the app invalidates the exemption and it",
+    "resurfaces for re-review -- which is the point.",
+    "Empty today: docs/CORPUS_INTEGRITY_PLAN.md's C2 migrates every currently-broken model rather than",
+    "excepting any of them (they are the DSL's only volume regression corpus). Add an entry here only",
+    "for a genuine, reviewed exception with a REG id -- never pre-clear speculatively."
+  ],
+  "cleared": {}
+}

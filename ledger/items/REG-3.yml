@@ -1,0 +1,23 @@
+id: REG-3
+title: "GATE-REL-1: node_modules/slimness conflict was already fixed; the real gap was stale evidence reports"
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-21
+verification: VERIFIED_LIVE
+source: LNCH-1 programme inheritance, re-verified 2026-07-21
+surface: quality-gates/release-gate
+detail: |
+  Original claim: run-beta-release-gate.ps1 structurally cannot pass because json-schema-validator's
+  node_modules can't be committed under the workspace slimness policy. Independent verification found
+  this premise stale -- commit 437d19b (2026-05-14, two months before this register) already moved
+  that runtime outside the repo, and Test-WorkspaceSlimness.ps1 never scans that external location.
+  There was no conflict. The gate DID exit 1 (35 of 36 required evidence reports missing), but the
+  real cause is a report-orchestration/staleness gap: the constituent evidence-generating scripts
+  simply hadn't been run recently. Fix: added run-beta-release-evidence-orchestration.ps1 (runs all
+  ~18 producers in dependency order sharing one runId) + opt-in -GenerateReports; the gate now
+  distinguishes precondition-unmet (exit 2) from check-failed (exit 1). Found and fixed a producer
+  that could only ever emit passing evidence, plus its stale fixture that had silently disabled the
+  model-root additionalProperties guard.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-3

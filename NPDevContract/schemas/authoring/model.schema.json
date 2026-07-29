@@ -674,6 +674,13 @@
         "terminal": {
           "type": "boolean"
         },
+        "allowedActions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
         "metadata": {
           "type": "object",
           "additionalProperties": {

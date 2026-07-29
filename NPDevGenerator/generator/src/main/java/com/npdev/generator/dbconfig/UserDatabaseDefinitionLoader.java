@@ -209,11 +209,20 @@ public final class UserDatabaseDefinitionLoader {
             case IN_MEMORY -> "";
             case POSTGRES -> "jdbc:postgresql://" + identity.host() + ":" + identity.hostPort()
                     + "/" + identity.resolvedDatabaseName();
+            // REG-57: H2's MVStore defaults to a 500ms WRITE_DELAY, buffering committed writes in
+            // memory before flushing to disk -- a hard kill inside that window silently loses
+            // however many commits landed since the last flush, even though the JDBC call already
+            // returned and the caller was already told the write succeeded (proven live: a durable
+            // flow's WAITING_EVENT checkpoint, plus several prior step checkpoints, vanished on a
+            // kill within ~1s of the HTTP response; absent with a 5s buffer). WRITE_DELAY=0 forces a
+            // flush on every commit, trading write throughput for the durability this engine exists
+            // to provide. Postgres is unaffected -- COMMIT is synchronous to WAL there, no analogous
+            // buffering parameter exists or is needed.
             case H2_LOCAL -> "jdbc:h2:file:" + identity.resolvedDataRoot() + "/" + identity.resolvedDatabaseName()
-                    + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_ON_EXIT=FALSE";
+                    + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0";
             case H2_SERVER -> "jdbc:h2:tcp://" + identity.host() + ":" + identity.hostPort()
                     + "/" + identity.resolvedDataRoot() + "/" + identity.resolvedDatabaseName()
-                    + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_ON_EXIT=FALSE";
+                    + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0";
         };
     }
 

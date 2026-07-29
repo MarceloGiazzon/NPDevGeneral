@@ -1,0 +1,24 @@
+id: REG-40
+title: "Additive migration never emitted CREATE TABLE -- a new concept on an existing DB failed to boot"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-24
+closed: 2026-07-24
+verification: VERIFIED_LIVE
+source: Schema-engine rebuild plan Part II fast track
+surface: runtimehost/schema-lifecycle
+detail: |
+  The additive/repeatable migration only ever emitted ALTER TABLE ... ADD COLUMN/ADD CONSTRAINT (zero
+  CREATE TABLE), so a new concept/table added to a model then redeployed against an EXISTING DB failed
+  at boot with "Table not found" (the versioned V1 CREATE-TABLE migration had already run and doesn't
+  re-run). Fix: SchemaRealizationEmitter's R__ assembly now emits, in order, (1) CREATE TABLE IF NOT
+  EXISTS for every business + junction table, (2) additive ADD COLUMNs, (3) unique/index/FK
+  constraint blocks -- all idempotent, so a missing table now self-heals on upgrade exactly like a
+  missing column already did. RED->GREEN SchemaRealizationEmitterAdditiveColumnsTest; proven
+  end-to-end against real Flyway migrations on both engines (a new
+  SchemaLifecycleExecutorNewTableOnExistingDbTest on H2, a Postgres Testcontainers proof-matrix
+  scenario): boot with a 1-concept model, insert a row, upgrade to a 2-concept model against the SAME
+  database -- the new table exists empty, the old row survives, schema history records APPLIED not a
+  refusal. Orthogonal to REG-38 (that was constraint idempotency on EXISTING tables).
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-40

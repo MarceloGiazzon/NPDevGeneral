@@ -2021,12 +2021,14 @@ public final class JsonModelParser {
             String label = readText(stateNode, "label");
             Boolean initial = readOptionalBoolean(stateNode, "initial");
             Boolean terminal = readOptionalBoolean(stateNode, "terminal");
+            List<String> allowedActions = parseTextArray(stateNode.get("allowedActions"));
             Map<String, String> metadata = parseStringMap(stateNode.get("metadata"));
             states.add(new StateMachineStateAst(
                     value,
                     label,
                     initial != null && initial,
                     terminal != null && terminal,
+                    allowedActions,
                     metadata
             ));
         }

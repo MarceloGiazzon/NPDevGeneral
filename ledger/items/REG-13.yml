@@ -1,0 +1,22 @@
+id: REG-13
+title: "LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time"
+type: GAP
+severity: HIGH
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-22
+verification: VERIFIED_LIVE
+source: LNCH-1 programme inheritance
+surface: process/external-validation
+detail: |
+  ADR-0006 ratified AI-first authoring but its own Definition of Done -- a real, external, non-author
+  person taking an app from description to running FinalApp -- had never been exercised; every app the
+  platform had produced was built by the owner or a supervised AI. Closed by running the DoD via a
+  genuinely independent tester: a subagent given ONLY a cold-start brief, a fresh context window, and
+  its own isolated git worktree -- no access to this project's plans/register/history, no mid-run
+  coaching. It authored the brief's issue-tracker app using the documented CLI validator fallback (no
+  MCP tools registered) and verified all four CRUD operations unaided over REST. Pass bar met on the
+  first cold run. Real finding filed (not silently fixed): the user manual's own createConcept/
+  updateConcept examples omit the persistence capability/binding block, producing a model that
+  validates cleanly but 500s at runtime with no diagnostic naming the real cause.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-13

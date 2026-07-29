@@ -34,6 +34,14 @@ DESIGN PRINCIPLES (all load-bearing, don't relax any of them)
    similar to raw field names but mean something entirely different and must never be rewritten.
    Any step carrying one of these markers causes the WHOLE DOCUMENT to be classified `is_compiled`
    and left completely untouched (see `COMPILED_STEP_MARKER_FIELDS`).
+
+5. Also renames the top-level `orchestrations` key to `orchestrationRules` (found: 2026-07-29,
+   docs/CORPUS_INTEGRITY_PLAN.md C2, migrating `AppGen/apps/invoice-bonds-demo` for real -- this
+   repo's schema history has never accepted any spelling but `orchestrationRules`, so this predates
+   even this repo's own baseline commit rather than being a DSL-2.0-era rename; it was invisible to
+   the original 2.A.6 corpus scan because that scan never covered `AppGen/apps`, the one tree where
+   it turns up). Same ambiguity discipline as every other alias here: if both keys are present, left
+   untouched and reported, never silently merged.
 """
 
 from __future__ import annotations
@@ -199,6 +207,23 @@ def _migrate_orchestration_action(action: dict, where: str, result: MigrationRes
     _rewrite_field_aliases(action, ORCHESTRATION_ACTION_FIELD_ALIASES, where, result)
 
 
+def _migrate_orchestrations_key(doc: dict, result: MigrationResult) -> None:
+    """Renames the top-level `orchestrations` key to `orchestrationRules` -- see design principle 5
+    in the module docstring. Must run before the `orchestrationRules[]` walk below so the renamed
+    entries get the per-rule scalar-action normalization in the same pass."""
+    if "orchestrations" not in doc:
+        return
+    if doc.get("orchestrationRules") is not None:
+        result.ambiguities.append(
+            "$: both top-level 'orchestrations' and 'orchestrationRules' present -- left untouched, "
+            "resolve by hand which one is authoritative"
+        )
+        return
+    doc["orchestrationRules"] = doc.pop("orchestrations")
+    result.changed = True
+    result.changes.append("$: renamed top-level 'orchestrations' -> 'orchestrationRules'")
+
+
 def _migrate_orchestration_rule(rule: dict, where: str, result: MigrationResult) -> None:
     if not isinstance(rule, dict):
         return
@@ -223,6 +248,8 @@ def migrate_document(doc: dict) -> MigrationResult:
     if _looks_compiled(doc):
         result.is_compiled = True
         return result
+
+    _migrate_orchestrations_key(doc, result)
 
     for i, flow in enumerate(doc.get("flows", None) or []):
         if not isinstance(flow, dict):

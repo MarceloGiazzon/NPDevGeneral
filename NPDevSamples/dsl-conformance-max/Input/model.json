@@ -1,0 +1,444 @@
+{
+  "$schema": "..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "trial.dslconformancemax",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+
+  "externalAi": {
+    "egress": "denied"
+  },
+
+  "domainTypes": [
+    {
+      "name": "Sku",
+      "baseType": "string",
+      "format": "sku",
+      "examples": [
+        "WID-0001",
+        "WID-9999"
+      ],
+      "ui": {
+        "label": "SKU",
+        "placeholder": "WID-0000"
+      }
+    }
+  ],
+
+  "concepts": [
+    {
+      "name": "WidgetOrder",
+      "ui": {
+        "label": "Widget order"
+      },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        {
+          "name": "customerEmail",
+          "type": "string",
+          "required": true,
+          "ui": { "label": "Customer email" }
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": true,
+          "ui": { "label": "Status" }
+        },
+        {
+          "name": "lineCount",
+          "type": "integer",
+          "required": true,
+          "ui": { "label": "Line count" }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "CustomerEmailRequired",
+          "expr": "customerEmail != null && customerEmail != ''"
+        },
+        {
+          "name": "LineCountNotNegative",
+          "expr": "lineCount != null && lineCount >= 0"
+        }
+      ]
+    },
+    {
+      "name": "WidgetOrderLine",
+      "ui": {
+        "label": "Widget order line"
+      },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        {
+          "name": "widgetOrderId",
+          "type": "uuid",
+          "required": true,
+          "ui": { "label": "Order" }
+        },
+        {
+          "name": "sku",
+          "type": "string",
+          "required": true,
+          "domainType": "Sku",
+          "ui": { "label": "SKU" }
+        },
+        {
+          "name": "quantity",
+          "type": "integer",
+          "required": true,
+          "ui": { "label": "Quantity" }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "PositiveQuantity",
+          "expr": "quantity != null && quantity > 0"
+        }
+      ]
+    },
+    {
+      "name": "WidgetCatalogEntry",
+      "ui": {
+        "label": "Widget catalog entry"
+      },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        {
+          "name": "sku",
+          "type": "string",
+          "required": true,
+          "domainType": "Sku",
+          "ui": { "label": "SKU" }
+        },
+        {
+          "name": "displayName",
+          "type": "string",
+          "required": true,
+          "ui": { "label": "Name" }
+        },
+        {
+          "name": "discontinued",
+          "type": "boolean",
+          "required": true,
+          "ui": { "label": "Discontinued" }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "CatalogSkuRequired",
+          "expr": "sku != null && sku != ''"
+        }
+      ]
+    }
+  ],
+
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [ "save", "findById" ]
+    },
+    {
+      "name": "notification",
+      "type": "NotificationCapability",
+      "operations": [ "send" ]
+    }
+  ],
+
+  "bindings": [
+    { "capability": "persistence", "adapter": "repository" },
+    { "capability": "notification", "adapter": "notification-inproc" },
+    { "capability": "eventBus", "adapter": "inproc" }
+  ],
+
+  "events": [
+    {
+      "name": "WidgetOrderPlaced",
+      "payload": [
+        { "name": "id", "type": "uuid" },
+        { "name": "status", "type": "string" }
+      ]
+    },
+    {
+      "name": "WidgetOrderLineRecorded",
+      "payload": [
+        { "name": "widgetOrderId", "type": "uuid" },
+        { "name": "sku", "type": "string" }
+      ]
+    },
+    {
+      "name": "WidgetOrderReviewDue",
+      "payload": [
+        { "name": "widgetOrderId", "type": "uuid" }
+      ]
+    }
+  ],
+
+  "ruleProfiles": [
+    {
+      "name": "always",
+      "description": "Concept Gateway rules for the conformance fixture's concepts.",
+      "appliesTo": [ "WidgetOrder", "WidgetOrderLine", "WidgetCatalogEntry" ],
+      "enabled": true,
+      "metadata": {
+        "invariants": [
+          "CustomerEmailRequired",
+          "LineCountNotNegative",
+          "PositiveQuantity",
+          "CatalogSkuRequired"
+        ]
+      }
+    }
+  ],
+
+  "queries": [
+    {
+      "name": "ActiveCatalogEntries",
+      "concept": "WidgetCatalogEntry",
+      "where": "discontinued == false",
+      "orderBy": [ "sku" ]
+    }
+  ],
+
+  "selectors": [
+    {
+      "name": "WidgetCatalogPicker",
+      "concept": "WidgetCatalogEntry",
+      "multiSelect": true,
+      "filters": [ "sku", "displayName" ],
+      "columns": [ "sku", "displayName", "discontinued" ],
+      "returnMapping": {
+        "sku": "sku"
+      },
+      "metadata": {
+        "purpose": "Coverage for selectors[]: no other corpus model declares one."
+      }
+    }
+  ],
+
+  "aggregates": [
+    {
+      "name": "WidgetOrderAggregate",
+      "root": "WidgetOrder",
+      "collections": [
+        {
+          "name": "lines",
+          "concept": "WidgetOrderLine",
+          "childField": "widgetOrderId",
+          "ownership": "owned",
+          "orderBy": "sku"
+        }
+      ],
+      "metadata": {
+        "purpose": "Second independent aggregate in the corpus; WmsOffice and its clone were the only ones."
+      }
+    }
+  ],
+
+  "autoPanels": [
+    {
+      "name": "WidgetOrderWorkbench",
+      "aggregate": "WidgetOrderAggregate",
+      "route": "/widget-orders",
+      "metadata": {
+        "purpose": "Coverage for autoPanels[] outside WmsOffice."
+      }
+    }
+  ],
+
+  "panels": [
+    {
+      "name": "WidgetOrderReviewPanel",
+      "route": "/widget-order-review",
+      "title": "Widget order review",
+      "dataSources": [
+        {
+          "name": "orders",
+          "concept": "WidgetOrder"
+        }
+      ]
+    }
+  ],
+
+  "documents": [
+    {
+      "name": "WidgetOrderSummary",
+      "concept": "WidgetOrder",
+      "title": "Widget order summary",
+      "pageSize": "A4",
+      "marginMm": 18,
+      "metadata": {
+        "purpose": "Coverage for documents[]: only superuser-admin-console declared one."
+      }
+    }
+  ],
+
+  "guidePages": [
+    {
+      "name": "WidgetOrderGuide",
+      "default": true
+    }
+  ],
+
+  "procedures": [
+    {
+      "name": "RecountOrderLines",
+      "description": "Procedure-over-aggregate shape: recompute the order's line count.",
+      "parameters": [
+        { "name": "widgetOrderId", "type": "uuid" }
+      ],
+      "steps": [
+        {
+          "name": "return-count",
+          "type": "return",
+          "value": "$widgetOrderId"
+        }
+      ]
+    }
+  ],
+
+  "flows": [
+    {
+      "name": "PlaceWidgetOrder",
+      "input": {
+        "concept": "WidgetOrder",
+        "mode": "create"
+      },
+      "steps": [
+        {
+          "name": "validate-order",
+          "type": "invariantCheck",
+          "scope": "WidgetOrder",
+          "invariants": [
+            "CustomerEmailRequired",
+            "LineCountNotNegative"
+          ]
+        },
+        {
+          "name": "save-order",
+          "type": "createConcept",
+          "scope": "WidgetOrder",
+          "input": "$input",
+          "output": "$saved",
+          "onFailure": [
+            {
+              "name": "compensate-notify",
+              "type": "capabilityCall",
+              "capability": "notification",
+              "operation": "send",
+              "args": [ "$input" ],
+              "output": "$compensationNotice"
+            }
+          ]
+        },
+        {
+          "name": "capture-order-id",
+          "type": "map",
+          "input": "$saved.id",
+          "output": "$orderId"
+        },
+        {
+          "name": "score-order-risk",
+          "type": "generatedAction",
+          "actionName": "ScoreWidgetOrderRisk",
+          "input": "$saved",
+          "output": "$riskScore"
+        },
+        {
+          "name": "schedule-review",
+          "type": "scheduleEvent",
+          "event": "WidgetOrderReviewDue",
+          "from": "$saved",
+          "delaySeconds": 3600
+        },
+        {
+          "name": "return-order",
+          "type": "return",
+          "value": "$saved"
+        }
+      ]
+    },
+    {
+      "name": "PlaceWidgetOrderAudited",
+      "specializes": "PlaceWidgetOrder",
+      "hooks": [
+        {
+          "position": "after",
+          "targetStep": "save-order",
+          "steps": [
+            {
+              "name": "hook-emit-placed",
+              "type": "emitEvent",
+              "event": "WidgetOrderPlaced",
+              "from": "$saved"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RecordOrderLines",
+      "input": {
+        "concept": "WidgetOrderLine",
+        "mode": "create"
+      },
+      "steps": [
+        {
+          "name": "validate-line",
+          "type": "invariantCheck",
+          "scope": "WidgetOrderLine",
+          "invariants": [ "PositiveQuantity" ]
+        },
+        {
+          "name": "save-line",
+          "type": "createConcept",
+          "scope": "WidgetOrderLine",
+          "input": "$input",
+          "output": "$savedLine"
+        },
+        {
+          "name": "emit-line-recorded",
+          "type": "emitEvent",
+          "event": "WidgetOrderLineRecorded",
+          "from": "$savedLine"
+        },
+        {
+          "name": "return-line",
+          "type": "return",
+          "value": "$savedLine"
+        }
+      ]
+    },
+    {
+      "name": "SweepDiscontinuedCatalog",
+      "concept": "WidgetCatalogEntry",
+      "schedule": {
+        "cron": "0 15 3 * * *"
+      },
+      "steps": [
+        {
+          "name": "sweep-entries",
+          "type": "forEach",
+          "collection": "$input.entries",
+          "itemKey": "entry",
+          "maxLoopIterations": 500,
+          "steps": [
+            {
+              "name": "flag-entry",
+              "type": "capabilityCall",
+              "capability": "notification",
+              "operation": "send",
+              "args": [ "$entry" ],
+              "output": "$flagged"
+            }
+          ]
+        },
+        {
+          "name": "return-sweep",
+          "type": "return",
+          "value": "$input"
+        }
+      ]
+    }
+  ]
+}

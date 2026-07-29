@@ -37,7 +37,7 @@ class SqlTypeSupportTest {
      * REG-53: a declared {@code maxLength} must actually reach the SQL type -- previously this class
      * hardcoded {@code VARCHAR(255)} for every string/enum field regardless of {@code
      * CompiledSchema.getMaxLength()}, so the schema diff could never see a narrowing or widening
-     * (`docs/REMAINDER_CLOSURE_PLAN.md` §1.2/§3.2).
+     * (`docs/archive/programme-history/REMAINDER_CLOSURE_PLAN.md` §1.2/§3.2).
      */
     @Test
     void honorsADeclaredMaxLengthForStringAndEnumFields() {

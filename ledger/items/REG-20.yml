@@ -1,0 +1,15 @@
+id: REG-20
+title: No defense against password-spraying (limiter was per-(tenant,username) only)
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-21
+verification: UNIT_TESTED
+source: "REG-16 Tier-A adversarial review (docs/archive/programme-history/REG16_TENANT_AUTH_ADVERSARIAL_REVIEW.md)"
+surface: runtimehost/auth
+detail: |
+  Added a per-source-IP arm to LoginThrottle (default 50/window vs 10/username), wired the client IP
+  through LoginController; a success clears the username window but not the IP window. RED-first
+  LoginThrottleIpSprayTest.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-20

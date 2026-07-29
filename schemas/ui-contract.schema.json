@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.internal/schemas/ui-contract.schema.json",
+  "title": "NPDev UI Contract bundle response",
+  "description": "GET /api/v1/runtime/metadata/ui/bundle response shape (docs/UI_CONTRACT.md). One copy only -- unlike model.schema.json's 4-way mirror, this shape is produced entirely at runtime by PermissionAwareUiMetadataService.bundle() and is never read by the DSL/compiler, so there is nothing to keep in sync across modules.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "modelHash", "generatedAt", "namespace", "permissionAware", "scope",
+    "concept", "fields", "layout", "enums", "references", "actions", "transitions",
+    "validation", "invocations", "apiBase", "auth"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "npdev-ui-contract.v1"
+    },
+    "modelHash": {
+      "type": "string",
+      "description": "SchemaLifecycleExecutor's own schema fingerprint, reused verbatim (see RuntimeMetadataService#schemaFingerprint). Covers table/column/type/required/unique shape only.",
+      "pattern": "^sha256:[0-9a-f]+$"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "permissionAware": {
+      "type": "boolean",
+      "description": "Always true. Signals that fields/actions are role-filtered -- NOT that every array in this response is."
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "concept": { "type": "string" },
+        "panel": { "type": "string" }
+      },
+      "description": "Empty object when the request supplied neither ?concept= nor ?panel=."
+    },
+    "concept": {
+      "description": "The resolved concept object when ?concept= was supplied; null otherwise (including when only ?panel= was supplied -- a panel is not a concept).",
+      "type": ["object", "null"],
+      "additionalProperties": true
+    },
+    "fields": {
+      "type": "array",
+      "description": "Permission-filtered. Each item's shape mirrors npdev/metadata/fields.manifest.json plus permissionState/visible/editable.",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "layout": {
+      "type": "array",
+      "description": "Unfiltered pass-through of the layout catalog.",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "enums": {
+      "type": "array",
+      "description": "Unfiltered pass-through of the enums catalog.",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "references": {
+      "type": "array",
+      "description": "Unfiltered pass-through of the references catalog.",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "actions": {
+      "type": "array",
+      "description": "Permission-filtered. Each item's shape mirrors npdev/metadata/actions.manifest.json plus requiredPermission/available/uiState/denial.",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "transitions": {
+      "type": "array",
+      "description": "Unfiltered pass-through of the transitions (lifecycle state-machine) catalog.",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "validation": {
+      "type": "array",
+      "description": "Unfiltered pass-through of the validationHints catalog.",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "invocations": {
+      "type": "array",
+      "description": "Unfiltered pass-through of the invocations catalog (F2.1) -- method/path/preferred/prefer/execution semantics for every real way to read or mutate this scope.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["id", "kind", "method", "path"],
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "type": "string" },
+          "method": { "type": "string", "enum": ["GET", "POST", "PUT", "DELETE"] },
+          "path": { "type": "string" },
+          "pathAliases": { "type": "array", "items": { "type": "string" } },
+          "preferred": { "type": "boolean" },
+          "prefer": { "type": "string" },
+          "preferReason": { "type": "string" }
+        }
+      }
+    },
+    "apiBase": {
+      "type": "string",
+      "const": "/api/v1"
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "tenantHeader"],
+      "properties": {
+        "scheme": { "type": "string", "const": "bearer" },
+        "tenantHeader": { "type": "string", "const": "X-Tenant-Id" }
+      }
+    }
+  }
+}

@@ -1,16 +1,23 @@
 package com.finalexec.db;
 
+import com.finalexec.db.schemastate.DesiredColumn;
+import com.finalexec.db.schemastate.DesiredSchema;
+import com.finalexec.db.schemastate.DesiredTable;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.DropColumn;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.DropTable;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem.NarrowType;
 
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 
 import javax.sql.DataSource;
 
@@ -120,7 +127,8 @@ final class DestructiveRecreationPass {
                     // narrowed column is acknowledged lost by the token, and a cast can fail
                     // per-row (e.g. a too-long VARCHAR value) -- simpler and more honest to drop
                     // and recreate empty than attempt a partially-successful cast.
-                    executeNarrowTypeDropAndRecreate(connection, narrowType.table(), narrowType.column(), narrowType.toType());
+                    boolean requiredByModel = isColumnRequiredByModel(manifest, narrowType.table(), narrowType.column());
+                    executeNarrowTypeDropAndRecreate(connection, narrowType.table(), narrowType.column(), narrowType.toType(), requiredByModel);
                     applied.add("NARROW_TYPE " + narrowType.table() + "." + narrowType.column() + " -> " + narrowType.toType());
                 }
                 // UNKNOWN items never reach here -- the caller only takes this path when
@@ -157,18 +165,106 @@ final class DestructiveRecreationPass {
         }
     }
 
-    private static void executeNarrowTypeDropAndRecreate(Connection connection, String table, String column, String newType)
+    /** REG-61(a): does the model declare this column required (⇒ NOT NULL)? Looked up from the
+     * manifest rather than carried on {@link NarrowType} itself, since that delta-item shape is
+     * shared with migration-plan generation and impact reporting -- adding a field there would
+     * ripple beyond this one consumer. Absent table/column (should not happen for an item this
+     * pass is about to act on) is treated as not-required, matching the pre-fix behavior exactly. */
+    private static boolean isColumnRequiredByModel(SchemaLifecycleExecutor.SchemaManifest manifest, String table, String column) {
+        DesiredSchema desired = DesiredSchemaFactory.fromManifest(manifest);
+        DesiredTable desiredTable = desired.tables().get(table.toLowerCase(Locale.ROOT));
+        if (desiredTable == null) {
+            return false;
+        }
+        DesiredColumn desiredColumn = desiredTable.columns().get(column.toLowerCase(Locale.ROOT));
+        return desiredColumn != null && !desiredColumn.nullable();
+    }
+
+    // Package-private (not private), matching TypeWideningPass#attemptInPlaceTypeWidenings's own
+    // precedent, so it is directly unit-testable against a real H2 DataSource.
+    static void executeNarrowTypeDropAndRecreate(Connection connection, String table, String column, String newType, boolean requiredByModel)
             throws SQLException {
         String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
         String safeColumn = SchemaLifecycleExecutor.safeIdentifier(column);
         String safeType = TypeWideningPass.safeSqlType(newType);
+        // REG-58: a plain DROP COLUMN fails when a unique index/constraint still references this
+        // column (H2: "Column may be referenced by ..."; Postgres would refuse similarly). Every
+        // ux_<table>_<column>-style index SchemaRealizationEmitter bootstraps is exactly this shape
+        // for any field the model declares unique -- confirmed live on
+        // identity_password_reset_tokens.token_hash, and several of the OTHER columns in this same
+        // narrow-type batch (identity_users.username/email, produtos.codigo, ruas.codigo) are
+        // equally likely unique-constrained business keys, so this is not a one-off. Not fixing the
+        // OTHER side of the constraint lifecycle here deliberately: UniqueConstraintPass.
+        // applyUniqueConstraints already runs on every boot's afterMigrate and re-adds any declared
+        // constraint it finds missing (constraintExists returns false once the index backing it is
+        // gone), so dropping the blocking index/constraint here is enough -- recreating it would be
+        // redundant with, and could race, that existing idempotent pass.
+        dropIndexesReferencingColumn(connection, table, safeTable, column);
         try (PreparedStatement drop = connection.prepareStatement(
                 "ALTER TABLE " + safeTable + " DROP COLUMN " + safeColumn)) {
             drop.executeUpdate();
         }
+        // REG-61(a): re-apply NOT NULL directly when it is safe to -- a table with zero existing
+        // rows can go straight to the model's declared required-ness, skipping the backfill dance
+        // BackfillPass would otherwise demand on the very next boot for a column it sees as newly
+        // nullable. A non-empty table cannot: adding a NOT NULL column with no default fails
+        // outright against any existing row, so it is added nullable exactly as before, and
+        // BackfillPass's existing TIGHTEN_NOT_NULL detection converges it once a default is
+        // declared (or, for a UNIQUE-constrained column with more than one affected row, refuses
+        // by name -- see REG-61(b)).
+        String nullability = requiredByModel && isTableEmpty(connection, safeTable) ? " NOT NULL" : "";
         try (PreparedStatement add = connection.prepareStatement(
-                "ALTER TABLE " + safeTable + " ADD COLUMN " + safeColumn + " " + safeType)) {
+                "ALTER TABLE " + safeTable + " ADD COLUMN " + safeColumn + " " + safeType + nullability)) {
             add.executeUpdate();
+        }
+    }
+
+    /** {@code safeTable} is already {@link SchemaLifecycleExecutor#safeIdentifier}-validated by every
+     * caller before it reaches here -- never build this query from a raw, unvalidated identifier. */
+    private static boolean isTableEmpty(Connection connection, String safeTable) throws SQLException {
+        try (PreparedStatement count = connection.prepareStatement("SELECT COUNT(*) FROM " + safeTable);
+                ResultSet resultSet = count.executeQuery()) {
+            return resultSet.next() && resultSet.getLong(1) == 0L;
+        }
+    }
+
+    /**
+     * Finds every index (unique or not -- any index referencing the column would equally block the
+     * DROP COLUMN below) that references {@code column} on {@code table}, via portable
+     * {@link DatabaseMetaData#getIndexInfo} rather than assuming the {@code ux_<table>_<column>}
+     * naming convention {@code UniqueConstraintPass} happens to use today -- a future naming change
+     * or a hand-declared index would otherwise silently reopen this exact bug. Drops each one found;
+     * a table can have more than one index touching the same column (composite + single-column), so
+     * this collects distinct index names first rather than dropping mid-iteration over a live
+     * {@code ResultSet}.
+     */
+    private static void dropIndexesReferencingColumn(Connection connection, String table, String safeTable, String column)
+            throws SQLException {
+        DatabaseMetaData metadata = connection.getMetaData();
+        LinkedHashSet<String> indexNames = new LinkedHashSet<>();
+        for (String candidate : List.of(table.toLowerCase(Locale.ROOT), table.toUpperCase(Locale.ROOT))) {
+            try (ResultSet resultSet = metadata.getIndexInfo(null, null, candidate, false, false)) {
+                while (resultSet.next()) {
+                    String indexName = resultSet.getString("INDEX_NAME");
+                    String indexColumn = resultSet.getString("COLUMN_NAME");
+                    if (indexName != null && indexColumn != null && indexColumn.equalsIgnoreCase(column)) {
+                        indexNames.add(indexName);
+                    }
+                }
+            }
+        }
+        for (String indexName : indexNames) {
+            String safeIndex = SchemaLifecycleExecutor.safeIdentifier(indexName);
+            try (PreparedStatement dropIndex = connection.prepareStatement("DROP INDEX IF EXISTS " + safeIndex)) {
+                dropIndex.executeUpdate();
+            } catch (SQLException indexDropFailed) {
+                // A true named CONSTRAINT (not a plain index) needs ALTER TABLE ... DROP CONSTRAINT
+                // instead of DROP INDEX on some engines -- fall back rather than fail the whole pass.
+                try (PreparedStatement dropConstraint = connection.prepareStatement(
+                        "ALTER TABLE " + safeTable + " DROP CONSTRAINT IF EXISTS " + safeIndex)) {
+                    dropConstraint.executeUpdate();
+                }
+            }
         }
     }
 

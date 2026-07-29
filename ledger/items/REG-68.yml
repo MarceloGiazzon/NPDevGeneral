@@ -1,0 +1,34 @@
+id: REG-68
+title: check-narrative-status-drift.py's Rule P2 real-instance control also used bare "HEAD" and rotted the same way as REG-67
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-07-29
+closed: 2026-07-29
+verification: VERIFIED_LIVE
+source: Found by running all eight then-existing `--calibrate` modes by hand while scoping docs/INVOCATION_TOPOLOGY_PLAN.md T1 (REG-67's own fix) -- not a re-read of REG-67, a second real instance of the same root cause
+surface: quality/narrative-status-drift
+files:
+  - scripts/quality/check-narrative-status-drift.py
+detail: |
+  `calibrate()`'s Rule P2 real-instance control read `git show HEAD:docs/adr/ADR-0009-external-ai-delegation.md`,
+  expecting that revision to still contain the pre-fix header ("DRAFT -- 2026-07-26 ... D3, D4, D5
+  remain pending") so `expect_fire=True` proves the rule would have caught the real 2026-07-27
+  drift. Identical root cause to REG-67: `HEAD` is a moving target, ADR-0009 has been edited again
+  since (the header was fixed to "APPROVED WITH CONDITIONS" and D4/D5 were resolved), so the exact
+  stale-wording shape the control looks for no longer exists at HEAD. `--calibrate` FAILED on a
+  clean tree -- confirmed by running the unmodified script against HEAD before any fix landed.
+
+  This script's own docstring states it "ships REPORTING ONLY ... never blocking, until a clean-tree
+  run proves the detector works" -- by its own stated contract it should not have been shipping
+  report-only in the gate (step 7/15 of `run-ai-knowledge-gate.ps1`) while its calibration was
+  silently broken. Impact bounded the same way as REG-67: the script's default (non-`--calibrate`)
+  mode reads the live working tree, not HEAD, so the actual report-only scan was unaffected; only
+  the self-test evidence was stale.
+
+  CLOSED 2026-07-29 (`docs/INVOCATION_TOPOLOGY_PLAN.md` T1): pinned to `10d3a88` (the commit
+  immediately before the fix `f76b95f`, confirmed via `git show` to still hold the pre-fix DRAFT
+  header), matching the same fixed-revision discipline used for REG-67 and Rule T2b's REG-62 @
+  9c3c423 pin. `--calibrate` now PASSes. `run-ai-knowledge-gate.ps1` gained a new step that runs
+  every `--calibrate`-capable script (derived from argparse, not hand-maintained) specifically so
+  this class of rot announces itself instead of waiting to be found by hand a third time.

@@ -53,7 +53,9 @@ class SchemaLifecycleExecutorVarcharTypeNormalizationTest {
     void unchangedVarcharColumnIsNotMisclassifiedAsATypeChangeOnH2() throws SQLException {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             // Deliberately no "renamedFrom" involvement -- this exercises the plain no-rename
-            // hasTypeChange() branch (classify() lines ~302-312), independent of Phase 1's rename step.
+            // column-type-comparison path (classify() -> ClassificationReducer.reduce(), SER-P4.8;
+            // the old hasTypeChange() helper this comment used to name is dead code, removed REG-54),
+            // independent of Phase 1's rename step.
             statement.execute("CREATE TABLE widgets (id UUID, name VARCHAR(255), version BIGINT)");
         }
 
