@@ -23,6 +23,10 @@ jobs:
   pr-gate:
     name: PR gate (DSL/kernel/generator/RuntimeHost smoke, Linux)
     runs-on: ubuntu-latest
+    # F2b (docs/FINAL_OPEN_ITEMS_PLAN.md): budget re-verified after the two Postgres adapters
+    # (persistence, idempotency) were promoted into this job -- see docs/ACCEPTED_BOUNDARIES.md B21.
+    # OBSERVED (run 30422102769, 2026-07-29, real PR run, cold runner): 6m14s total wall clock.
+    # 60 min leaves ample headroom; both Postgres adapters stay in this gate.
     timeout-minutes: 60
 
     defaults:
@@ -54,6 +58,11 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: DSL contract check (includes ReleaseGateValidatorTest)
         working-directory: NPDevContract/dsl
@@ -88,12 +97,46 @@ jobs:
             :adapters:file-store-inproc:test \
             --no-daemon --console=plain
 
+      # docs/REMEDIATION_PLAN.md R-P3 (3.5): the two *-postgres adapters with a track record of REAL,
+      # H2-invisible findings (REG-36's btree index-entry size limit, REG-50's metadata-read failure
+      # fallback) -- both fixes shipped a real-Postgres regression test (via :adapters:postgres-test-support,
+      # a single shared Testcontainers `postgres:15-alpine`, a few seconds to start) specifically because
+      # H2-in-PostgreSQL-compatibility-mode does not enforce what a real engine does. Until this step, this
+      # gate ran NEITHER task at all -- confirmed by grep, neither PR nor nightly (`npdev-ci-validation.yml`)
+      # invoked them -- so these two regressions' own proof has never run in CI since the day they were
+      # fixed. Deliberately NOT the other six *-postgres adapters (eventstore/audit/bulkhead/circuit/
+      # flowinstance/tracestore) -- those stay nightly-only per npdev-ci-validation.yml's own reasoning
+      # (runtime cost, up to 120min across the full Postgres/Playwright/maturity-bootstrap suite); this is
+      # a narrow, evidence-scoped promotion, not a blanket one.
+      - name: "Postgres adapter tests (fast subset with real H2-invisible findings: persistence, idempotency)"
+        working-directory: NPDevKernel
+        timeout-minutes: 15
+        run: |
+          sed -i '/org\.gradle\.projectcachedir/d' gradle.properties
+          ./gradlew \
+            :adapters:persistence-postgres:test \
+            :adapters:idempotency-postgres:test \
+            --no-daemon --console=plain
+
       - name: Generator unit tests
         working-directory: NPDevGenerator
         timeout-minutes: 20
         run: |
           sed -i '/org\.gradle\.projectcachedir/d' gradle.properties
           ./gradlew :generator:test :generator:behaviorTest --no-daemon --console=plain
+
+      # G2 (docs/CLOSEOUT_PLAN.md): the corpus-parse gate proves every DSL feature PARSES; nothing
+      # proved any of them actually EMIT. dsl-conformance-max was "validated, not run" until this
+      # step -- F4 was exactly this failure one layer over (generatedAction runtime-proven, but
+      # validator-rejected, for as long as the feature existed). RED-then-GREEN proven live
+      # (2026-07-29): temporarily forced CompiledModelCanonicalJson's aggregates field to an empty
+      # array, regenerated -- this check correctly failed naming "aggregates"; reverted, regenerated,
+      # green again. MEASURED local (warm Gradle daemon): ~10s; cheap enough to run on every PR
+      # against this job's already-observed 6m14s/60min budget (F2b).
+      - name: "Generate dsl-conformance-max (G2, docs/CLOSEOUT_PLAN.md): rare DSL features must actually emit, not just parse"
+        timeout-minutes: 10
+        run: |
+          python scripts/quality/check-dsl-conformance-generates.py
 
       - name: Editor unit tests
         working-directory: NPDevEditor/ui-react

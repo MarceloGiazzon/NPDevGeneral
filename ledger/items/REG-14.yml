@@ -1,0 +1,21 @@
+id: REG-14
+title: "LNCH-22: newcomer documentation test run for the first time"
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-22
+verification: VERIFIED_LIVE
+source: LNCH-1 programme inheritance
+surface: process/external-validation
+detail: |
+  The DoD -- a newcomer building the tutorial app from docs alone -- had never been exercised. Closed
+  by the same 2026-07-22 independent-tester run that closed REG-13: it built
+  NPDevSamples/simple-contact-intake from docs/TUTORIAL_FIRST_APP.md alone (docs only, no MCP tools or
+  CLI validator used to fill gaps), and verified it booted and worked (both the tutorial's create
+  example and its invariant-failure example). Pass bar met on the first cold run. Real, dated findings
+  filed even though the pass bar was met: the tutorial's literal `gradlew.bat bootJar` command fails
+  on an undocumented RuntimeHost-libs staging prerequisite whose own suggested fix also fails
+  standalone in a fresh worktree; the doc's claimed 400 status for an invariant violation is actually
+  422.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-14

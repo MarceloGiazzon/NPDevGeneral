@@ -144,4 +144,38 @@ final class AggregateValidation {
         }
     }
 
+    /**
+     * P6.1 (docs/NEXT_EXECUTION_PLAN.md): normalized concept name -&gt; owning aggregate name, for
+     * every aggregate's root concept plus every OWNED (not {@code referenced}) collection concept,
+     * recursively. A {@code referenced} collection is a normal cross-aggregate pointer in the DDD
+     * sense (an aggregate may reference another aggregate's root by id without owning it), so it is
+     * deliberately excluded -- only ownership defines a consistency boundary. Used by
+     * {@link FlowValidation} to check a flow does not write across two aggregates' boundaries.
+     *
+     * <p>If two aggregates both (incorrectly) claim ownership of the same concept, the later
+     * aggregate in declaration order wins the mapping -- a modeling error this method does not
+     * itself flag; {@link #validateAggregates} is the place such a conflict would need its own check.
+     */
+    static Map<String, String> ownedConceptToAggregate(ModelAst modelAst) {
+        Map<String, String> byConcept = new LinkedHashMap<>();
+        for (AggregateAst aggregate : modelAst.getAggregates()) {
+            if (hasText(aggregate.root())) {
+                byConcept.put(normalize(aggregate.root()), aggregate.name());
+            }
+            collectOwnedConcepts(aggregate.name(), aggregate.collections(), byConcept);
+        }
+        return byConcept;
+    }
+
+    private static void collectOwnedConcepts(
+            String aggregateName, List<AggregateCollectionAst> collections, Map<String, String> byConcept) {
+        for (AggregateCollectionAst collection : collections) {
+            boolean owned = !hasText(collection.ownership()) || normalize(collection.ownership()).equals("owned");
+            if (owned && hasText(collection.concept())) {
+                byConcept.put(normalize(collection.concept()), aggregateName);
+            }
+            collectOwnedConcepts(aggregateName, collection.collections(), byConcept);
+        }
+    }
+
 }

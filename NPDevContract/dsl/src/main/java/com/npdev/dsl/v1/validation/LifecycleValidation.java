@@ -83,7 +83,13 @@ final class LifecycleValidation {
     private LifecycleValidation() {
     }
 
-    static void validateLifecycle(ConceptAst entity, EffectiveEntity effective, List<String> errors) {
+    static void validateLifecycle(
+            ConceptAst entity,
+            EffectiveEntity effective,
+            List<AutoPanelAst> autoPanels,
+            List<AggregateAst> aggregates,
+            List<String> errors
+    ) {
         LifecycleAst lifecycle = entity.getLifecycle();
         if (lifecycle == null) {
             return;
@@ -119,6 +125,14 @@ final class LifecycleValidation {
             return;
         }
 
+        // REG-62/F9 (docs/FINAL_OPEN_ITEMS_PLAN.md): allowedActions is now a typed array (C8), but a
+        // well-formed, MIS-SPELLED action name still passed silently -- the original bug's actual
+        // failure mode. Cross-reference against the concept's own AutoPanel workbench actions
+        // (transaction.metadata.actions[].procedure -- the same untyped escape hatch
+        // AutoPanelExpander.workbenchActions() itself reads; no AST-typing prerequisite needed since
+        // this reads the same structure at validation time instead of compile time).
+        Set<String> declaredActionProcedures = workbenchActionProcedures(conceptName, autoPanels, aggregates);
+
         Set<String> declaredStates = new LinkedHashSet<>();
         int initialStateCount = 0;
         for (StateMachineStateAst state : lifecycle.getStates()) {
@@ -148,6 +162,18 @@ final class LifecycleValidation {
                 String key = metadataEntry.getKey() == null ? "" : metadataEntry.getKey().trim();
                 if (key.isBlank()) {
                     errors.add("Entity " + conceptName + " lifecycle state '" + value + "': metadata keys must be non-blank");
+                }
+            }
+            for (String actionName : state.getAllowedActions()) {
+                String trimmed = actionName == null ? "" : actionName.trim();
+                if (trimmed.isBlank()) {
+                    continue;
+                }
+                if (!declaredActionProcedures.contains(trimmed)) {
+                    errors.add("Entity " + conceptName + " lifecycle state '" + value
+                            + "': allowedActions references unknown action '" + trimmed
+                            + "' -- declared workbench actions for this concept: "
+                            + (declaredActionProcedures.isEmpty() ? "(none)" : declaredActionProcedures));
                 }
             }
         }
@@ -226,6 +252,65 @@ final class LifecycleValidation {
                 }
             }
         }
+    }
+
+    /**
+     * REG-62/F9: the procedure names a lifecycle state's {@code allowedActions} may legitimately
+     * reference -- every AutoPanel bound to this concept's {@code transaction.metadata.actions[]}
+     * entry's {@code procedure} value (mirrors {@code AutoPanelExpander.workbenchActions()}'s own
+     * parsing exactly: an entry with no {@code procedure} is not a real button and is skipped).
+     *
+     * <p>An AutoPanel binds to a concept either directly ({@code autoPanel.concept()}, expanded by
+     * {@code AutoPanelExpander.expand}) or via an aggregate's root concept ({@code
+     * autoPanel.aggregate()} -> {@code AggregateAst.root()}, expanded by {@code
+     * AutoPanelExpander.expandAggregateWorkbench}) -- both forms are checked here.
+     */
+    @SuppressWarnings("unchecked")
+    private static Set<String> workbenchActionProcedures(
+            String conceptName, List<AutoPanelAst> autoPanels, List<AggregateAst> aggregates) {
+        Set<String> procedures = new LinkedHashSet<>();
+        if (autoPanels == null) {
+            return procedures;
+        }
+        Map<String, String> aggregateRootByName = new HashMap<>();
+        if (aggregates != null) {
+            for (AggregateAst aggregate : aggregates) {
+                if (aggregate != null && aggregate.name() != null) {
+                    aggregateRootByName.put(normalize(aggregate.name()), aggregate.root());
+                }
+            }
+        }
+        for (AutoPanelAst autoPanel : autoPanels) {
+            if (autoPanel == null) {
+                continue;
+            }
+            boolean boundToConcept = conceptName.equalsIgnoreCase(autoPanel.concept());
+            if (!boundToConcept && hasText(autoPanel.aggregate())) {
+                String root = aggregateRootByName.get(normalize(autoPanel.aggregate()));
+                boundToConcept = conceptName.equalsIgnoreCase(root);
+            }
+            if (!boundToConcept) {
+                continue;
+            }
+            AutoPanelSurfaceAst transaction = autoPanel.transaction();
+            if (transaction == null) {
+                continue;
+            }
+            Object declared = transaction.metadata().get("actions");
+            if (!(declared instanceof List<?> list)) {
+                continue;
+            }
+            for (Object entry : list) {
+                if (!(entry instanceof Map<?, ?> map)) {
+                    continue;
+                }
+                Object procedure = map.get("procedure");
+                if (procedure != null && !String.valueOf(procedure).isBlank()) {
+                    procedures.add(String.valueOf(procedure).trim());
+                }
+            }
+        }
+        return procedures;
     }
 
     private static boolean isSupportedLifecycleGuard(String expression) {

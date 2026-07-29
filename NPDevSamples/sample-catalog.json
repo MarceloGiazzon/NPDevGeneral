@@ -92,6 +92,21 @@
       "runScript": "scripts/samples/run-sample.ps1 -SampleId user-minimal",
       "verifyScript": "scripts/samples/verify-sample.ps1 -SampleIds user-minimal -GenerateIfMissing",
       "verificationTarget": "contract-fixture"
+    },
+    {
+      "id": "dsl-conformance-max",
+      "name": "DSL Conformance Max",
+      "kind": "test-model",
+      "formerCategory": "test-models",
+      "purpose": "DSL surface-coverage fixture: exercises the schema sections and flow-step kinds no other corpus model used. Validated and generated (docs/CLOSEOUT_PLAN.md G2).",
+      "inputRoot": "dsl-conformance-max/Input",
+      "outputRoot": "dsl-conformance-max/Output",
+      "inputPath": "NPDevSamples/dsl-conformance-max/Input",
+      "outputPath": "NPDevSamples/dsl-conformance-max/Output",
+      "generateScript": "scripts/samples/generate-sample.ps1 -SampleIds dsl-conformance-max",
+      "runScript": "scripts/samples/run-sample.ps1 -SampleId dsl-conformance-max",
+      "verifyScript": "scripts/samples/verify-sample.ps1 -SampleIds dsl-conformance-max -GenerateIfMissing",
+      "verificationTarget": "contract-fixture"
     }
   ]
 }

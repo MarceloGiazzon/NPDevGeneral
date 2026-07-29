@@ -1,5 +1,12 @@
 # NPDev — Execution Trees
 
+> **STATUS UPDATE (2026-07-28):** TREE 1 is fully DONE (`docs/TREE1_LAUNCH_UNBLOCK_PLAN.md`, all 16
+> tasks) — the repo is merged to `main` (`89eb945`), tagged `beta1.2`, and **public**. TREE 2's 2.A
+> (DSL 2.0) and 2.B (all five god-file splits, including 2.B.5/CORE C-4) are also DONE
+> (`docs/DSL2_AND_DECOMPOSITION_PLAN.md`). The 2.C/2.D frontend fork below never existed as a real
+> choice — see the corrected 2.CD section and `docs/FRONTEND_STRATEGY_PLAN.md`. What's actually next:
+> `docs/POST_PUBLIC_PLAN.md`.
+>
 > **Written:** 2026-07-27, against branch `beta1-vision-spine` (`97a2491` + uncommitted working tree).
 > **Purpose:** one place that says what to do next, grouped by *what blocks it* rather than by
 > subsystem. Three trees:
@@ -80,7 +87,7 @@ arguably the hardest thing in the repo and the least visible.
 | **C-4** | Split `KernelRunner` into step-kind classes; make `FlowEngine`'s implementation findable | TREE 2 · 2.B.5 | 1 wk | structural |
 | **C-5** | Promote the flow/orchestration adversarial review out of `archive/` and cite it from `FLOWS.md` | TREE 1 · T1.10 | ⚡ | evidence |
 | **C-6** | Collapse the 14 synonym `flowStep.type` values (23 → 9, matching the 9 real kinds) | TREE 2 · 2.A.1 | in 2.A | DSL clarity |
-| **C-7** | Aggregate transactional boundary enforcement (one aggregate = one transaction) | TREE 3 · 3.7 | ⛔ 2.B.5 | DDD correctness |
+| **C-7** | Aggregate transactional boundary enforcement (one aggregate = one transaction) | TREE 3 · 3.7 | ✅ DONE 2026-07-28 | DDD correctness |
 
 **Recommended minimum this month: C-1 + C-2 + C-5** — that is one day plus fifteen minutes, and it
 converts the platform's least-visible strength into something an evaluator can find. **C-3 is the
@@ -96,7 +103,8 @@ in §2.C/2.D is real; the core is the thing on the other side of the trade that 
 
 ## Tree 1 — NOW
 
-**Zero dependencies. ~4 working days. Unblocks publishing, which unblocks everything strategic.**
+**✅ ALL 16 TASKS DONE (2026-07-28).** Tree diagram below kept as historical record of the plan as
+written; see [TREE1_LAUNCH_UNBLOCK_PLAN.md](TREE1_LAUNCH_UNBLOCK_PLAN.md) for what actually happened.
 
 Full detail, per-task commands, and acceptance criteria: **[TREE1_LAUNCH_UNBLOCK_PLAN.md](TREE1_LAUNCH_UNBLOCK_PLAN.md)**.
 
@@ -141,6 +149,13 @@ See [§0.1 — The CORE track](#01-the-core-track--read-this-before-the-trees).
 
 **Multi-week. Real design risk. Do these one at a time, on a branch, with nothing else interleaved.**
 
+**✅ 2.A and 2.B (all five splits, incl. 2.B.5/CORE C-4) are DONE (2026-07-27/28)** — see
+[DSL2_AND_DECOMPOSITION_PLAN.md](DSL2_AND_DECOMPOSITION_PLAN.md) for what actually happened,
+including two corrected premises (2.A.0's createConcept/updateConcept sugar, and 2.B.4's
+`SchemaLifecycleExecutor`, whose "build ColumnFacts+SchemaPass from scratch" framing below turned
+out stale — a separate already-complete initiative had solved it). Tree diagram below kept as the
+plan's original record.
+
 ```
 TREE 2 — BIG
 │
@@ -175,45 +190,70 @@ TREE 2 — BIG
 │    └─ 2.B.5 KernelRunner           4,423 L ·  84 statics → step classes [1 week]
 │             → FlowEngine.java (currently a 26-line stub) becomes the real thing
 │
-├─ 2.C  ═══ FRONTEND OPTION (b) — CONTRACT PATH ═══                [2 weeks] ⭐ RECOMMENDED
-│    │    ~80% ALREADY BUILT. compiled-metadata.json ships 11 catalogs
-│    │    (concepts · procedures · panels · domainTypes · fields · enums ·
-│    │     references · actions · transitions · layout · validation), served
-│    │     permission-filtered at /api/v1/runtime/metadata/ui/*.
-│    │    `layout` already carries visibleWhen/enabledWhen/readonlyWhen/requiredWhen.
-│    ├─ 2.C.1 Emit `routes` catalog (the 12th) — method/path/params/permission [2 days]
-│    ├─ 2.C.2 GET /metadata/ui/bundle?concept=X — one call + modelHash         [1 day]
-│    ├─ 2.C.3 docs/UI_CONTRACT.md + JSON Schema + example agent prompt         [2 days]
-│    ├─ 2.C.4 panel.json provenance manifest (reads/writes/calls/generatedFrom)[3 days]
-│    ├─ 2.C.5 Impact gate: build FAILS on a stale field reference in a screen  [2 days]
-│    └─ 2.C.6 PROOF: regenerate inventario.html from the bundle alone          [2 days]
-│         → Delivers: rename a field, learn exactly which screens break, regenerate them.
-│           No competitor can do this. It is the schema-evolution insight, one layer up.
+├─ 2.CD ═══ FRONTEND STRATEGY — contract, coverage, provenance ═══   [~3 wks]
+│    │    ⚠️ The old 2.C-vs-2.D "fork" does not exist. They cover disjoint screen
+│    │       classes and share one substrate. See docs/FRONTEND_STRATEGY_PLAN.md.
+│    │    ✅ Aggregate Workbench is DONE (2026-07-11 … 07-25) — see
+│    │       docs/architecture/AGGREGATE_WORKBENCH_PLAN.md. It covers the
+│    │       master-detail-detail TRANSACTION class only.
+│    │
+│    │    F1  Screen taxonomy ✅ DONE 2026-07-28 — docs/SCREEN_TAXONOMY.md. Measured, not
+│    │        guessed: zero classes reach the ≥2-app/≥2-screen promotion threshold today.
+│    │        operator-console is the strongest single-app signal (WmsOffice, 5/13 screens)
+│    │        but is one real second app away from qualifying -- not built as a primitive yet.
+│    │    F2  Contract substrate — `invocations` catalog + bundle + docs   [5 days]
+│    │        F2.1 ✅ DONE 2026-07-28 -- invocations catalog shipped, 252 real entries
+│    │        verified live against WmsOffice with zero path mismatches (found + fixed a real
+│    │        bug in extract-routes.py along the way -- see register).
+│    │        F2.2 ✅ DONE 2026-07-28 -- bundle endpoint shipped, composing fields/actions
+│    │        verbatim (anti-drift proven live against WmsOffice) + 6 unfiltered catalogs;
+│    │        found invocations+transitions were never split into their own manifest files
+│    │        (fixed, 9->11 manifests). modelHash reuses SchemaLifecycleExecutor's fingerprint.
+│    │        F2.3 ✅ DONE 2026-07-28 -- docs/UI_CONTRACT.md, schemas/ui-contract.schema.json
+│    │        (validated against a real live bundle response), docs/ai/UI_GENERATION_PROMPT.md.
+│    │        F2 (contract substrate) is now fully closed.
+│    │    F3  Provenance ✅ DONE 2026-07-28 -- schemas/panel-provenance.schema.json,
+│    │        ADR-0010, all 3 producers shipped. Generator producer needed real work, not
+│    │        "nearly free": CompiledPanel.metadata() was stamped but never serialized
+│    │        anywhere (fixed). Human bootstrapper had a real dot-vs-colon id bug (fixed,
+│    │        committed as scripts/quality/bootstrap-panel-provenance.py); run for real +
+│    │        confirmed by hand against 3 live WmsOffice screens.
+│    │    F4  Impact gate ✅ DONE 2026-07-28 -- check-panel-provenance-impact.py shipped,
+│    │        calibrated, and money-demo'd for real (simulated field rename against a
+│    │        confirmed WmsOffice manifest -> FAIL naming the exact screen, exit 1).
+│    │        Correction: NOT wired into run-ai-knowledge-gate.ps1 (that gate is static/
+│    │        repo-level; this needs a live authenticated bundle) -- it's a per-app
+│    │        post-deploy tool, documented recipe instead of a fragile auto-wired script.
+│    │    F5  Workbench residuals ✅ DONE 2026-07-28, except one honestly deferred item.
+│    │        V.1 suites green (dsl+generator+behaviorTest), 0 @Disabled workbench tests.
+│    │        V.2/V.3 already done earlier the same session. R2/R3/R4 confirmed/fixed
+│    │        (doc-only). R1 (typed allowedActions) investigated, NOT shipped: typing
+│    │        alone can't catch the typo it exists to prevent -- semantic validation is
+│    │        blocked on AutoPanel actions having no typed AST home yet. Filed REG-62,
+│    │        OPEN, LOW (0/27 corpus usage, no urgency).
+│    │    F6  Coverage roadmap — build only what F1 proves recurs          [gated -- F1 found
+│    │        nothing recurs yet, so F6 has nothing to build until that changes]
 │
-├─ 2.D  ═══ FRONTEND OPTION (a) — FULL AGGREGATE WORKBENCH ═══     [4-8 weeks]
-│    ├─ 2.D.0 SPIKE P3 FIRST ⚠️ GATE — how much do the existing            [3 days]
-│    │        visibleWhen/enabledWhen/readonlyWhen/requiredWhen already give us?
-│    │        Answer decides 4 weeks vs 8 weeks. Do not start 2.D.2 before this.
-│    ├─ 2.D.1 P5 Slots — hand-written HTML inside a generated region  [3 days] ★
-│    │        DO THIS EVEN IF (a) IS DROPPED. It closes the governance hole alone.
-│    ├─ 2.D.2 P1 Region taxonomy (header/filters/grid/detail/actions)  [3 days]
-│    ├─ 2.D.3 P2 N-level nesting + selection cascade                   [1 week]
-│    ├─ 2.D.4 P3 Two-tier reactivity ⚠️ DOES NOT COMPRESS             [1-3 weeks]
-│    │        Field-level (recompute a total) vs region-level (reload children).
-│    │        This is design uncertainty, not implementation. More tokens ≠ faster.
-│    ├─ 2.D.5 P4 Lifecycle hooks + cross-region transactional actions  [1 week]
-│    └─ 2.D.6 P6 ACCEPTANCE: rebuild centro-trabalho.html from model ONLY [1 week]
-│             Count what you CANNOT express. ≤2 → ship it. ≥9 → slots were the product.
+├─ 2.E  Ledger migration 🟡 PROTOTYPE 2026-07-28, full migration not done  [3 days]
+│    │    ledger/README.md + scripts/quality/generate_open_items.py shipped, proven
+│    │    (RED/GREEN schema validation, idempotent --check). Only 9/~106 entries
+│    │    migrated (REG-54..62, this session's own -- verifiable fidelity). ~97
+│    │    entries remain prose-only; NPDEV_OPEN_ITEMS_REGISTER.md stays authoritative.
+│    │    Gates NOT repointed at ledger/items/*.yml yet -- would blind them to the 90%+
+│    │    still in prose. "13 process docs hard-wired into gates" not identified;
+│    │    the actual gate's document set is 3 checked + 4 named exclusions.
+│    └─ 3.4 stays blocked -- full migration + cutover is a separate, later decision.
 │
-├─ 2.E  Ledger migration: prose register → ledger/items/*.yml       [3 days]
-│    │    Unwires the 13 process docs currently hard-wired into gates.
-│    │    docs/OPEN_ITEMS.md becomes GENERATED, never hand-edited.
-│    └─ Unblocks 3.4.
-│
-└─ 2.F  Durable-workflow demo app                                  [1 week] ★★
-         A flow parks on awaitEvent → `docker restart` → flow resumes and completes.
-         You have a capability Temporal charges for and zero public evidence it exists.
-         Highest ratio of (evaluator impact) / (effort) in the entire plan.
+└─ 2.F  Durable-workflow demo app  ✅ DONE 2026-07-28 (0384966, CORE C-3)
+         NPDevSamples/durable-workflow-demo + NPDevSamples/scripts/run-durable-resume-demo.ps1
+         Park on awaitEvent → hard kill → new JVM → publish → same execution resumes. One command.
+         ✅ REG-57 CLOSED 2026-07-28: the 5s pre-kill delay is gone (H2 WRITE_DELAY=0 fix,
+            root-caused not guessed -- see register). 3/3 clean with the sleep removed.
+         ✅ REG-56 CLOSED 2026-07-28: the notify-approval capabilityCall step is back in the
+            demo's model (ExecutionContext.resuming fix -- resume now runs under a trusted
+            system role instead of losing the flow's original permission level). 3/3 clean
+            across a real kill+restart, capability call included.
+         The demo now demonstrates the FULL path, not a narrowed one.
 ```
 
 ### Estimate calibration
@@ -241,40 +281,58 @@ looks like.
 TREE 3 — BLOCKED
 │
 ├─ 3.1  🚀 PUBLISH THE REPO PUBLICLY
-│        ⛔ BLOCKED BY: T1.4 · T1.5 · T1.6 · T1.8 · T1.9 (i.e. ~4 days of TREE 1)
-│        → THE single unblock in this whole document. Everything strategic is downstream.
+│        ✅ DONE 2026-07-28 — repo is public, main merged (89eb945), tagged beta1.2.
 │
 ├─ 3.2  Get 3 real humans using it
-│        ⛔ BLOCKED BY: 3.1
+│        ⬥ UNBLOCKED, owner action — see docs/POST_PUBLIC_PLAN.md P2.4.
 │        → Answers the questions no amount of internal review can:
 │          Is the hand-written-HTML gap a dealbreaker or a shrug?
 │          Is the durable flow engine the killer feature or an unused subsystem?
 │          Does anyone want to author a model, or only to prompt an agent?
 │
 ├─ 3.3  Fix REG-40 (additive migration never CREATEs new tables)
-│        ⛔ NOT technically blocked — but scope AFTER 2.B.4 (ColumnFacts), or you
-│          fix it inside a 3,739-line file and redo it during the split.
-│        → User impact is high: "add a new entity to an existing app" currently fails.
+│        ✅ DONE 2026-07-24 (SER-P9) — REG-40 is CLOSED in the register; the fix is
+│          recorded twice in DATABASES_AND_MIGRATIONS.md (lines 416, 513).
 │
 ├─ 3.4  Archive the remaining 13 gate-hardwired process docs
 │        ⛔ BLOCKED BY: 2.E
 │
-├─ 3.5  Postgres adapters in the PR gate (currently nightly only)
-│        ⛔ BLOCKED BY: REG-4 flake root cause (load-sensitive, still unresolved)
+├─ 3.5  Postgres adapters in the PR gate  ✅ DECIDED 2026-07-28 (docs/REMEDIATION_PLAN.md R-P3)
+│        Recommendation (b) taken: a narrow, evidence-scoped PR-gate promotion, not "all nightly"
+│        vs. "all PR". `:adapters:persistence-postgres:test` + `:adapters:idempotency-postgres:test`
+│        (REG-50 + REG-36's own regression tests, both genuinely H2-invisible — confirmed neither
+│        task ran in ANY workflow before this) now run every PR (`npdev-pr-gate.yml`), ~34s locally
+│        against one shared Testcontainers `postgres:15-alpine`. The other six `*-postgres` adapters
+│        (eventstore/audit/bulkhead/circuit/flowinstance/tracestore) stay nightly-only — no comparable
+│        track record of an H2-invisible finding, and `npdev-ci-validation.yml`'s runtime-cost
+│        reasoning (up to 120min for the full Postgres/Playwright/maturity-bootstrap suite) still
+│        holds for that broader set. Recorded as `docs/ACCEPTED_BOUNDARIES.md` B21.
 │
 ├─ 3.6  Bounded contexts / multi-namespace models
-│        ⛔ BLOCKED BY: 2.A — land it in DSL 2.0 or pay for it twice
-│        → Decides whether NPDev can model a company or only a department.
+│        ✅ SCOPED 2026-07-28 (docs/NEXT_EXECUTION_PLAN.md P6.2) -- not built, that was the
+│        ask. Decision: defer, filed as ACCEPTED_BOUNDARIES.md B20. namespace is cosmetic
+│        today (grep-verified); F1 found zero sub-domain pressure even in WmsOffice, the
+│        richest single app. Trigger: real cross-domain-in-one-app demand, likely surfaced
+│        via P6.3's conversations.
 │
 ├─ 3.7  Aggregate transactional boundary enforcement (the core DDD rule:
 │        one aggregate = one transaction = one consistency boundary)
-│        ⛔ BLOCKED BY: 2.B.5 — needs a clean place to live
-│        → Today `aggregates` carry `ownership` but nothing enforces it. Enforcing it
-│          makes the construct load-bearing instead of descriptive.
+│        ✅ DONE 2026-07-28 (docs/NEXT_EXECUTION_PLAN.md P6.1). AggregateValidation +
+│        FlowValidation now reject a flow whose concept-mutation steps touch two
+│        different aggregates' owned concepts. RED-confirmed test, full dsl/generator
+│        suites green, WmsOffice's real 2-aggregate model validated clean (0 diagnostics).
+│        BREAKING.md entry filed (no codemod -- a real design decision, not a rewrite).
 │
-└─ 3.8  Agent-driven frontend generation, productized
-         ⛔ BLOCKED BY: 2.C (the whole contract path)
-         → After 2.C this is a prompt plus a CLI command, not a project.
+└─ 3.8  Agent-driven frontend generation, productized  ✅ DONE 2026-07-29 (docs/REMEDIATION_PLAN.md R-P4)
+         `npdev generate screen --app <url> --concept <C> --out web/<name>.html` fetches the live
+         bundle, hands it plus docs/ai/UI_GENERATION_PROMPT.md to a pluggable agent (--model-command,
+         or a two-step --from-response flow -- no LLM vendor is baked into the CLI), and REFUSES to
+         write anything whose manifest fails the same impact gate R-G1 wired live -- generation and
+         verification in one step. Proven live end-to-end against WmsOffice (2026-07-29): a real
+         Produto screen generated, an intentional over-reach (a cross-concept field the scoped bundle
+         correctly doesn't expose) was REFUSED with nothing written, then the corrected manifest wrote
+         both files and passed; the screen's exact CRUD calls verified against the real running app
+         (create/read/update/delete, 204 on delete). NPDevCli/npdev_cli.py.
 ```
 
 ---
@@ -282,35 +340,23 @@ TREE 3 — BLOCKED
 ## The critical path
 
 ```
-Week 1     TREE 1 (all of it, ~4 days)        ──────────►  🚀 3.1 PUBLISH
+Week 1     TREE 1 (all of it, ~4 days)  ✅ DONE 2026-07-28  ──►  🚀 3.1 PUBLISH ✅ DONE
               ║                                                  │
-              ║                                                  └──► 3.2 real users
-Week 2     2.A DSL 2.0  ⚠️ must precede real production users          (feedback starts)
+              ║                                                  └──► 3.2 real users  ⬥ owner
+Week 2     2.A DSL 2.0  ✅ DONE 2026-07-27                             (feedback starts)
               ║
-Week 3-4   2.C CONTRACT PATH        ║  2.F workflow demo (parallel, different subsystem)
+Week 3-4   2.CD FRONTEND STRATEGY   ║  2.F / C-3 workflow demo (parallel, different subsystem)
+              ║                        (2.B god-file split ✅ DONE 2026-07-28, incl. 2.B.5/C-4)
               ║
-           ┌──╨──────────────────────────────┐
-           │  ⬥ FORK — decide HERE, not now   │
-           └──┬──────────────────────────────┘
-              ║
-Week 5     2.D.0 SPIKE P3 (3 days)
-              ║
-        ┌─────╨─────────┐
-        ▼               ▼
-  P3 is small       P3 is real
-  → run 2.D full    → 2.D.1 slots only (3 days), then STOP.
-    (~4 weeks)         Contract + slots already covers the need.
+        (no fork — see docs/FRONTEND_STRATEGY_PLAN.md; the old 2.C-vs-2.D
+         decision point never existed as a real choice, see 2.CD above)
 ```
 
-### Why the fork is at Week 5 and not today
-
-**2.C is required under both options.** Option (a) without a contract still leaves hand-written
-screens ungoverned. Option (b) *is* the contract. So four productive weeks pass before the decision,
-and you arrive at it holding two pieces of evidence you do not have now: the P3 spike result, and —
-if 3.1/3.2 landed — actual human reaction to the generic admin UI.
-
-**The relationship in one line:** the Workbench *generates* screens; the contract makes screens
-*safe*. You need the second regardless. You need the first only where the second is not enough.
+**There is no Week-5 fork.** The 2.C-vs-2.D framing above was itself wrong (see 2.CD): the
+Aggregate Workbench (former "2.D") is DONE, not a 4-8 week bet, and the contract path (former "2.C")
+is not an alternative to it — they cover disjoint screen classes (Transaction-class
+master-detail-detail vs. everything else) and share one substrate. `docs/FRONTEND_STRATEGY_PLAN.md`
+is now the single plan for this area; there is nothing left to decide between.
 
 ---
 

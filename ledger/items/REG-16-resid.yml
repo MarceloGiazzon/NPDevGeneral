@@ -1,0 +1,31 @@
+id: REG-16-resid
+title: "Adversarial review of the other ~21 launch surfaces (6-round programme)"
+type: PROCESS
+severity: HIGH
+status: DONE
+opened: 2026-07-24
+closed: 2026-07-25
+verification: VERIFIED_LIVE
+source: "docs/archive/programme-history/POST_REG17_CLOSURE_PLAN.md Task 4, reusing the REG-16 template"
+surface: process/adversarial-review
+detail: |
+  REG-16's original Tier-A review covered only LNCH-2 (tenant isolation) + LNCH-4 (auth); the other
+  ~21 launch surfaces had never had an attack-first review. Six rounds, all complete 2026-07-25:
+  Round 1 (kernel execution path: KernelRunner/dispatcher/resilience mechanisms) -- no CRITICAL/HIGH,
+  2 MEDIUM filed as REG-36/REG-37. Round 2 (LNCH-13 row-level authz, kernel gateway + generated CRUD)
+  -- one CRITICAL found and fixed same round: a concept with a custom create/update/delete Flow got
+  ZERO row-level access.write enforcement on its generated endpoint (bypassed conceptGateway entirely);
+  fixed in service-base.mustache; 2 MEDIUM residual filed as REG-41/REG-42. Round 3 (generator codegen
+  OUTPUT) -- one HIGH found and fixed: every many-to-many bond emitted 4 HTTP endpoints with NO
+  authorization at all; fixed via a new ConceptGateway.authorizeWrite with a deliberately deny-by-
+  default; also fixed an XSS sink in the generated business UI; 1 MEDIUM residual filed as REG-44.
+  Round 4 (flow/await orchestration) -- no CRITICAL/HIGH; identity does not survive suspension, so no
+  confused-deputy authority to steal; 1 MEDIUM residual filed as REG-45. Round 5 (durable-state
+  adapters' own SQL, all *-postgres adapters) -- no CRITICAL/HIGH, ZERO SQL-injection findings (every
+  value bound, every identifier whitelisted); 1 MEDIUM residual filed as REG-46. Round 6 (export/PDF
+  path) -- no CRITICAL/HIGH, three findings all fixed in-round: CSV formula injection, an unbounded-
+  memory PDF export DoS, and an SSRF-capable PDF renderer with no URI policy (not reachable today,
+  fixed anyway). Net: 4 surfaces that stood at zero adversarial review now each have their own scope
+  list and findings document; every round's residual MEDIUM findings are individually tracked, not
+  silently dropped.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-16-resid

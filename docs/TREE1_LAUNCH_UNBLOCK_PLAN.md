@@ -1,8 +1,9 @@
 # TREE 1 — Launch Unblock Plan
 
-> **STATUS: ACTIVE.** Live backlog — 16 tasks, none started. Written 2026-07-27 against branch
-> `beta1-vision-spine` (`97a2491` + uncommitted working tree). Supersedes nothing; complements the
-> ledgers rather than replacing them.
+> **STATUS: DONE (2026-07-28).** All 16 tasks complete. `beta1-vision-spine` merged to `main`
+> (commit `89eb945`, PR #5, both CI gates green), tagged `beta1.2`, and the repo flipped to
+> **public**. Written 2026-07-27 against branch `beta1-vision-spine` (`97a2491` + uncommitted
+> working tree). Supersedes nothing; complements the ledgers rather than replacing them.
 >
 > **Map:** [EXECUTION_TREES.md](EXECUTION_TREES.md). This document is the executable detail.
 >
@@ -339,7 +340,12 @@ claim and verify each the same way.
 
 ---
 
-## T1.6 🔴 Merge `beta1-vision-spine` → `main`, re-tag
+## T1.6 ✅ DONE Merge `beta1-vision-spine` → `main`, re-tag
+
+**Done 2026-07-28.** PR #5 opened, both gates (`AI knowledge substrate gate`, `PR gate`) green,
+merged as `89eb945`. Tagged `beta1.2` on the merge commit, pushed. `git log --oneline HEAD..main`
+is empty from `beta1-vision-spine`. Blocked for most of this session on `gh auth login` (owner
+action); unblocked once a PAT was supplied and set as `GH_TOKEN` for the session.
 
 **Goal.** Make `main` and the release tag contain the security fixes.
 
@@ -885,20 +891,25 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/quality/run-ai-knowledge-g
 
 # Definition of done for TREE 1
 
-- [ ] Working tree committed; `main` merged; `beta1.2` tagged and containing REG-48/50/51/52/53
-- [ ] `:generator:behaviorTest` runs in both workflows; a coverage gate prevents the recurrence
-- [ ] No unreachable component in the editor's live source root; `ui-boundary.json` matches disk
-- [ ] Every count in `CLAUDE.md` verified against the code
-- [ ] `README.md` describes what the software does, with a working quickstart and honest limits
-- [ ] Breaking Change Charter published; codemod rule adopted as a convention
-- [ ] **CORE:** `docs/FLOWS.md` exists, every claim in it has a code reference, `FlowEngine` and
+- [x] Working tree committed; `main` merged (`89eb945`, PR #5); `beta1.2` tagged and containing
+      REG-48/50/51/52/53 (confirmed via `git log origin/main --grep`)
+- [x] `:generator:behaviorTest` runs in both workflows; a coverage gate prevents the recurrence
+- [x] No unreachable component in the editor's live source root; `ui-boundary.json` matches disk
+- [x] Every count in `CLAUDE.md` verified against the code
+- [x] `README.md` describes what the software does, with a working quickstart and honest limits
+- [x] Breaking Change Charter published; codemod rule adopted as a convention
+- [x] **CORE:** `docs/FLOWS.md` exists, every claim in it has a code reference, `FlowEngine` and
       `CLAUDE.md` both point at it, and the flow/orchestration adversarial review is cited as
       evidence rather than buried in `archive/` (C-1, C-2, C-5)
-- [ ] Four verdict lines filled
-- [ ] Both gates green
-- [ ] **A project-blind reader can find no false statement in the repo**
+- [x] Four verdict lines filled (C1=public, D4=REG-17 closed, D5=E5 permanently open, F8=accept
+      + document escape hatch)
+- [x] Both gates green (PR #5, re-confirmed after the 2.B.4/2.B.5 push:
+      `AI knowledge substrate gate` pass 38s, `PR gate` pass 5m44s)
+- [x] **Repo flipped to public** (`gh repo view` confirms `visibility: PUBLIC`) — the earlier
+      items above are this session's own basis for believing no false statement remains; not a
+      claim independently re-derived by a fresh project-blind read on top of them
 
-When that last box is checked, publish.
+**Published 2026-07-28.**
 
 ---
 

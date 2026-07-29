@@ -328,7 +328,7 @@ final class ConceptValidation {
             }
 
             validateAccessRules(e.getName(), e.getAccess(), fieldNames, errors);
-            validateLifecycle(e, effective, errors);
+            validateLifecycle(e, effective, effectiveModel.getAutoPanels(), effectiveModel.getAggregates(), errors);
         }
     }
 

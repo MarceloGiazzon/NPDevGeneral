@@ -26,23 +26,26 @@ If a source roadmap copy contains an older target, Checkpoint 0 records that as 
 The roadmap contains exactly these 16 checkpoints:
 
 0. Honest State and Closure Contract
-1. Phase-2 Postgres and Linux Residual Fixes
-2. RuntimeHost Integration Test Infrastructure
-3. Trusted-Source and Custom Scenario Reconciliation
+1. Phase-2 Postgres and Linux Residual Fixes (`scripts/quality/run-phase2-residual-fidelity-check.ps1`)
+2. RuntimeHost Integration Test Infrastructure (`scripts/quality/run-runtimehost-integration-infrastructure-check.ps1`)
+3. Trusted-Source and Custom Scenario Reconciliation (`scripts/quality/run-scenario-scope-reconciliation-check.ps1`)
 4. Report Bootstrap and Evidence Regeneration
-5. Portable Tooling and Path Neutrality
+5. Portable Tooling and Path Neutrality (`scripts/quality/run-portable-tooling-check.ps1`)
 6. Gradle-Native Validation Migration
-7. Schema Consolidation and Strict Legacy Rejection
-8. Stateful Additive Migration Support
+7. Schema Consolidation and Strict Legacy Rejection (`scripts/quality/run-schema-consolidation-check.ps1`)
+8. Stateful Additive Migration Support (`scripts/quality/run-stateful-additive-migrations-check.ps1`)
 9. Incremental Migration Test Harness
 10. Trusted Source Security Hardening
-11. Shift-Left AI Safety and Schema Hardening
-12. Custom UX and Extensibility Support
+11. Shift-Left AI Safety and Schema Hardening (`scripts/quality/run-shift-left-ai-safety-check.ps1`)
+12. Custom UX and Extensibility Support (`scripts/quality/run-custom-ux-extensibility-check.ps1`)
 13. React Editor Decomplexification
-14. DSL Parser Robustness
-15. CI Parallelization, Caching, Onboarding, and Final Closure
+14. DSL Parser Robustness (`scripts/quality/run-dsl-parser-robustness-check.ps1`)
+15. CI Parallelization, Caching, Onboarding, and Final Closure (`scripts/quality/run-maturity-max-final-closure-check.ps1`, `scripts/quality/run-maturity-max-roadmap-boundary-check.ps1`, `scripts/quality/run-maturity-score.ps1`)
 
-No checkpoint may be added, removed, renamed, split, merged, or reordered without explicit human approval.
+No checkpoint may be added, removed, renamed, split, merged, or reordered without explicit human approval. Checkpoint numbers without a script named above either have no dedicated per-checkpoint script (verification is manual/narrative) or their script lives outside this per-checkpoint naming convention -- absence here is not itself evidence the checkpoint is unverified.
+
+This policy document's own boundary rules (the checkpoint list, the no-new-roadmap rule, the closure
+definition) are themselves checked against reality by two scripts, run manually against this file: `scripts/quality/run-post-beta0-roadmap-boundary-check.ps1` (reads this document as `$DocumentationPath`) and `scripts/quality/run-maturity-max-roadmap-boundary-check.ps1`.
 
 ## Beta0 Tag Rule
 

@@ -596,6 +596,12 @@ $Plan = [ordered]@{
   appId = $AppId; appName = $AppId; outRoot = $OutRoot; appRoot = $GeneratedAppRoot
   serverPort = $ServerPort; apiKey = $ApiKey; springProfiles = $SpringProfiles
   baseUrl = "http://localhost:$ServerPort"; runtimeHostLibsDir = $RuntimeHostLibsDir
+  # R-G1 (docs/REMEDIATION_PLAN.md): Check-Provenance.ps1 needs the app's SOURCE web/ directory
+  # (where *.panel.json manifests are authored, in AppGen/apps/<App>/web) -- distinct from
+  # $GeneratedAppRoot's copy under src/main/resources/static, which is a build artifact, not the
+  # source of truth an author edits. Blank when the app has no web/ directory at all.
+  webSourceDir = $(if (Test-Path -LiteralPath $WebSrc) { $WebSrc } else { '' })
+  productRepo = $ProductRepo
 }
 Write-JsonFile $Plan (Join-Path $OpsDir 'app-plan.json')
 
@@ -916,6 +922,66 @@ exit 0
 '@
 Set-Content -LiteralPath (Join-Path $OpsDir 'Test-App.ps1') -Value $TestApp -Encoding UTF8
 
+# docs/REMEDIATION_PLAN.md R-G1: the panel-provenance impact gate (check-panel-provenance-impact.py,
+# F4) proved itself live (a real field rename against a real bundle named the exact broken screen)
+# but was never wired anywhere runnable -- "the demo proved the gun fires; nobody loaded it." This
+# gives it the same home every other lifecycle script already has: it logs in with THIS app's own
+# credentials, fetches the live UI-contract bundle, and runs the gate against THIS app's own web/
+# source directory (where *.panel.json manifests are authored). A field rename followed by the
+# normal rebuild-and-restart now fails here, without anyone remembering to run anything separately.
+$CheckProvenance = @'
+$ErrorActionPreference = 'Stop'
+$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') | ConvertFrom-Json
+
+if (-not $plan.webSourceDir -or -not (Test-Path -LiteralPath $plan.webSourceDir)) {
+  Write-Host 'No web/ source directory recorded for this app -- nothing to check.' -ForegroundColor Yellow
+  exit 0
+}
+$manifestCount = @(Get-ChildItem -LiteralPath $plan.webSourceDir -Filter '*.panel.json' -ErrorAction SilentlyContinue).Count
+if ($manifestCount -eq 0) {
+  Write-Host "No *.panel.json manifests under $($plan.webSourceDir) -- nothing to check yet. Run bootstrap-panel-provenance.py to draft one." -ForegroundColor Yellow
+  exit 0
+}
+
+$base = $plan.baseUrl
+$bundleUri = "$base/api/v1/runtime/metadata/ui/bundle"
+$bundle = $null
+try {
+  $bundle = Invoke-RestMethod -Method GET -Uri $bundleUri -Headers @{ 'X-Api-Key' = $plan.apiKey } -TimeoutSec 15
+} catch {
+  # X-Api-Key doesn't authenticate a JWT-mode app (e.g. WmsOffice) -- fall back to a bearer token
+  # an operator drops at _ops\jwt-token.txt after logging in once. No attempt to automate that
+  # login here across every app's auth setup: an honest, documented fallback beats a guessed one.
+  $tokenFile = Join-Path $PSScriptRoot 'jwt-token.txt'
+  if (Test-Path -LiteralPath $tokenFile) {
+    $token = (Get-Content -Raw -LiteralPath $tokenFile).Trim()
+    try {
+      $bundle = Invoke-RestMethod -Method GET -Uri $bundleUri -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 15
+    } catch {
+      Write-Host "Bundle fetch failed with both X-Api-Key and the bearer token in jwt-token.txt: $($_.Exception.Message)" -ForegroundColor Red
+      exit 2
+    }
+  } else {
+    Write-Host "Bundle fetch failed with X-Api-Key: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "If this app uses JWT auth, log in once and save the token to: $tokenFile" -ForegroundColor Yellow
+    exit 2
+  }
+}
+
+$bundlePath = Join-Path $PSScriptRoot 'ui-contract-bundle.json'
+$bundle | ConvertTo-Json -Depth 50 | Set-Content -LiteralPath $bundlePath -Encoding UTF8
+
+$py = @('python', 'python3') | Where-Object { Get-Command $_ -ErrorAction SilentlyContinue } | Select-Object -First 1
+if (-not $py) { Write-Host 'python not found on PATH.' -ForegroundColor Red; exit 2 }
+
+$gateScript = Join-Path $plan.productRepo 'scripts\quality\check-panel-provenance-impact.py'
+if (-not (Test-Path -LiteralPath $gateScript)) { Write-Host "Gate script not found: $gateScript" -ForegroundColor Red; exit 2 }
+
+& $py $gateScript --root $plan.webSourceDir --metadata $bundlePath
+exit $LASTEXITCODE
+'@
+Set-Content -LiteralPath (Join-Path $OpsDir 'Check-Provenance.ps1') -Value $CheckProvenance -Encoding UTF8
+
 # Make the generator's older convenience scripts delegate to the guarded ops scripts,
 # so running either name (Build-FinalApp.ps1 / Run-FinalApp.ps1) is safe.
 $buildShim = "# Deprecated name -> delegates to the guarded Build-App.ps1 (detects a running app first).`n& (Join-Path `$PSScriptRoot 'Build-App.ps1') @args`nexit `$LASTEXITCODE`n"
@@ -925,7 +991,7 @@ foreach ($shimPair in @(@('Build-FinalApp.ps1', $buildShim), @('Run-FinalApp.ps1
   if (Test-Path -LiteralPath $shimTarget) { Set-Content -LiteralPath $shimTarget -Value $shimPair[1] -Encoding UTF8 }
 }
 
-$OpsReadme = "# $AppId - operations toolbox`n`nAll scripts read app-plan.json and run with no arguments. Port $ServerPort, base http://localhost:$ServerPort.`n`n| Script | Purpose |`n| --- | --- |`n| Build-App.ps1 | gradle clean build -> FinalExec jar |`n| Start-App.ps1 | start in background, wait for /api/flows |`n| Stop-App.ps1 | stop background app |`n| Status-App.ps1 | report up/down |`n| Test-App.ps1 | data-driven smoke (reads Input\smoke-plan.json) |`n`n``````powershell`n.\Build-App.ps1; .\Start-App.ps1; .\Test-App.ps1; .\Stop-App.ps1`n```````n"
+$OpsReadme = "# $AppId - operations toolbox`n`nAll scripts read app-plan.json and run with no arguments. Port $ServerPort, base http://localhost:$ServerPort.`n`n| Script | Purpose |`n| --- | --- |`n| Build-App.ps1 | gradle clean build -> FinalExec jar |`n| Start-App.ps1 | start in background, wait for /api/flows |`n| Stop-App.ps1 | stop background app |`n| Status-App.ps1 | report up/down |`n| Test-App.ps1 | data-driven smoke (reads Input\smoke-plan.json) |`n| Check-Provenance.ps1 | panel-provenance impact gate against the live bundle (docs/REMEDIATION_PLAN.md R-G1); needs the app running (Start-App.ps1 first) |`n`n``````powershell`n.\Build-App.ps1; .\Start-App.ps1; .\Test-App.ps1; .\Check-Provenance.ps1; .\Stop-App.ps1`n```````n"
 Set-Content -LiteralPath (Join-Path $OpsDir 'README.md') -Value $OpsReadme -Encoding UTF8
 
 # ---- emit interactive app-info page (Property/Value table + copy/open) -----

@@ -1,0 +1,22 @@
+id: REG-43
+title: "TenantRegistryService.isActive silently fail-opened on any read failure, with no log at any level"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-25
+closed: 2026-07-25
+verification: VERIFIED_LIVE
+source: "First run of scripts/quality/security-pattern-sweep.py (docs/SECURITY_PATTERN_SWEEP_2026-07.md §3)"
+surface: runtimehost/tenant-registry
+detail: |
+  isActive (reached from TenantStatusFilter, the sole per-request chokepoint gating tenant disable)
+  ended `catch (SQLException e) { return true; }` with no log at any level -- once a DataSource
+  existed, any read failure (dropped table, exhausted pool, mid-migration rename) silently returned
+  every explicitly DISABLED tenant to full service, undetectably. MED not HIGH: needs BOTH an
+  operator-disabled tenant AND a concurrent DB fault; an attacker cannot trigger it, and a disabled
+  tenant still needs valid signed credentials. Fix is not blanket fail-closed (would brick any app
+  legitimately without an npdev_tenant table): missing-table SQLState -> fail OPEN, log INFO,
+  unchanged behavior; any OTHER SQL error -> fail CLOSED, log ERROR. RED->GREEN
+  TenantRegistryServiceTest (+3): exactly one test RED against pre-fix code, missing-table fail-open
+  test stays green, proving the fix discriminates rather than flipping everything closed.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-43

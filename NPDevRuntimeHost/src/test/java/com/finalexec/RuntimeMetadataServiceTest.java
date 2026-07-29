@@ -4,8 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finalexec.npdev.service.RuntimeMetadataService;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -20,7 +23,7 @@ class RuntimeMetadataServiceTest {
 
         assertEquals("generated-runtime-metadata", overview.get("sourceType"));
         assertEquals("canonical.clinicdemo", overview.get("namespace"));
-        assertEquals(9, ((Number) overview.get("catalogCount")).intValue());
+        assertEquals(11, ((Number) overview.get("catalogCount")).intValue());
         assertTrue(overview.containsKey("compiledCatalogNames"));
     }
 
@@ -44,5 +47,62 @@ class RuntimeMetadataServiceTest {
         assertTrue(tabs.contains("Visit lifecycle"));
         assertTrue(actionLabels.stream().anyMatch(item -> "Create appointment".equals(item.get("label"))));
         assertTrue(referencePickers.stream().anyMatch(item -> "patientId".equals(item.get("fieldPath"))));
+    }
+
+    /** F2.2: the invocations/transitions catalogs (F2.1, pre-existing respectively) were emitted into
+     * {@code compiled-metadata.json} but never split into their own manifest file, so
+     * {@code RuntimeMetadataService.catalog(...)} had no way to serve them -- the bundle endpoint's
+     * arrays would have 404'd. Proves the alias + split-manifest wiring added in this change. */
+    @Test
+    void exposesInvocationsAndTransitionsCatalogsFilteredByConcept() {
+        Map<String, Object> invocations = runtimeMetadataService.catalog("invocations", "Appointment", null, null);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> invocationItems = (List<Map<String, Object>>) invocations.get("items");
+        assertTrue(invocationItems.stream().anyMatch(item -> "createDirect:Appointment".equals(item.get("id"))));
+        assertTrue(invocationItems.stream().allMatch(item -> "Appointment".equals(item.get("concept"))),
+                "Filtering the invocations catalog by concept must exclude other concepts' entries.");
+
+        Map<String, Object> transitions = runtimeMetadataService.catalog("transitions", "Appointment", null, null);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> transitionItems = (List<Map<String, Object>>) transitions.get("items");
+        assertTrue(transitionItems.stream().anyMatch(item -> "Scheduled".equals(item.get("from")) && "CheckedIn".equals(item.get("to"))));
+    }
+
+    @Test
+    void schemaFingerprintReusesTheSchemaLifecycleExecutorManifestVerbatim() {
+        String fingerprint = runtimeMetadataService.schemaFingerprint();
+        assertTrue(fingerprint.startsWith("sha256:"), "Expected a sha256: schema fingerprint, got: " + fingerprint);
+    }
+
+    /** docs/REMEDIATION_PLAN.md R-D3: compiled-metadata.json sat 3 months stale (April baseline, 11
+     * catalogs) after {@code CompiledMetadataCanonicalJson} grew a 12th ("invocations") -- the split
+     * manifests ({@code metadata/index.json} + {@code metadata/invocations.manifest.json}) were
+     * regenerated at some point but the raw fixture never was, so this service was exercised against
+     * a snapshot that predated a catalog it is now expected to serve. This module has no compile-time
+     * dependency on the DSL/generator emitter, so the strongest guard available here is cross-checking
+     * the fixture against its OWN sibling artifact rather than the emitter's source: both are supposed
+     * to be generated from the same compiled model in the same pass, so every catalog the split index
+     * knows about must also appear in the raw compiled-metadata.json. {@code domainTypes} is the one
+     * deliberate exception -- it is never split into its own manifest/index entry. Fails loudly the
+     * next time only one of the two fixtures gets regenerated. */
+    @Test
+    void compiledMetadataCatalogNamesStayCompleteAgainstTheSplitManifestIndex() {
+        Map<String, Object> overview = runtimeMetadataService.overview();
+        @SuppressWarnings("unchecked")
+        Set<String> compiledCatalogNames = (Set<String>) overview.get("compiledCatalogNames");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> indexCatalogs = (List<Map<String, Object>>) overview.get("catalogs");
+
+        Set<String> indexSourceCatalogNames = indexCatalogs.stream()
+                .map(entry -> String.valueOf(entry.get("sourceCatalog")))
+                .collect(Collectors.toSet());
+
+        Set<String> expected = new HashSet<>(indexSourceCatalogNames);
+        expected.add("domainTypes"); // deliberately never split into its own manifest/index entry
+
+        assertEquals(expected, compiledCatalogNames,
+                "compiled-metadata.json's catalog set has drifted from metadata/index.json's -- one of "
+                        + "the two fixtures was regenerated and the other was not. Regenerate both from "
+                        + "the same compiled model (see docs/REMEDIATION_PLAN.md R-D3).");
     }
 }

@@ -1,0 +1,25 @@
+id: REG-51
+title: "External-AI review packs sliced from generated code carried no provenance -- exactly how REG-49 became a false positive"
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-07-27
+closed: 2026-07-27
+verification: VERIFIED_LIVE
+source: "REG-49's own root cause, docs/archive/programme-history/REG48_50_CLOSURE_PLAN.md §2 (B1)"
+surface: process/external-ai-review
+detail: |
+  A pack sliced from a GENERATED app's already-emitted code recorded no provenance at all -- nothing
+  distinguished "reflects the current generator" from "emitted before a relevant template fix landed",
+  which is exactly how REG-49 became a false positive (62 minutes stale). Fix: a new
+  resolve_provenance() -- for a --repo-root outside the platform repo, walks upward for the sliced
+  app's own build-info to read its real generation timestamp, computes the newest commit touching the
+  generator's templates/emitters via git log, and REFUSES the pack build outright (no pack written)
+  when the generated code predates that commit -- owner's explicit choice over warn-and-proceed, so
+  this false-positive class cannot recur silently. source.kind is now "generated-app" for this case
+  (previously miscategorized). Verified both directions on real artifacts: re-running the exact stale
+  slice that produced REG-49 now refuses with a message naming the stale-vs-fix gap; a freshly
+  regenerated sample builds cleanly. A secondary defence-in-depth gate (provenance_audit_gaps in
+  check-register-consistency.py) flags EXISTING run records with unresolved provenance when backing
+  evidence is still available locally -- never flagging a record whose evidence is simply absent.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-51

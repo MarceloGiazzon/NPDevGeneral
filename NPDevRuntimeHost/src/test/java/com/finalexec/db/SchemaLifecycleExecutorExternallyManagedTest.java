@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * REG-7.1: {@code schemaLifecycle.ownership=ExternallyManaged} -- NPDev must never issue schema DDL
  * against a database it does not own, only verify at boot that the live schema can serve the current
- * model. See {@code docs/REG7_REG8_EXTERNAL_DB_AND_MIGRATION_MARKING_PLAN.md} §5 Phase P1 / D5.
+ * model. See {@code docs/archive/programme-history/REG7_REG8_EXTERNAL_DB_AND_MIGRATION_MARKING_PLAN.md} §5 Phase P1 / D5.
  *
  * <p>Exercises both {@link SchemaLifecycleExecutor#verifyExternallyManagedSchemaCompatible} directly
  * (fine-grained refusal-message coverage) and the full {@link SchemaLifecycleExecutor#migrate(Flyway,

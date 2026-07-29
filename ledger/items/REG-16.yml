@@ -1,0 +1,21 @@
+id: REG-16
+title: "The other 23 launch items had zero adversarial review"
+type: PROCESS
+severity: HIGH
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-25
+verification: VERIFIED_LIVE
+source: LNCH-1 programme, Tier A/B closed 2026-07-21; residual programme closed 2026-07-25
+surface: process/adversarial-review
+detail: |
+  LNCH-1 had absorbed five full review->plan->implement->review rounds; every other item in the
+  ledger (LNCH-2 tenant isolation, LNCH-4 auth, LNCH-13 row-level authz, ~23 other launch items) had
+  had none. Tier A (independent attack-first review of the LNCH-2+4 surface, ~23 files/~3,400 LOC):
+  headline no CRITICAL or HIGH finding -- tenant isolation is genuinely defense-in-depth. Residual 5
+  MEDIUM + 3 LOW + 1 INFO filed as REG-18..REG-26. Tier B (fixing those) also done same day. The
+  remaining ~21 launch surfaces (generator codegen, kernel FlowEngine/KernelRunner, LNCH-13
+  row-level authz, export/PDF, etc.) were tracked as a residual programme, REG-16-resid, rather than
+  reopening this item's scope -- that programme finished all six rounds 2026-07-25, closing this
+  item fully: no launch surface is left at zero adversarial review.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-16

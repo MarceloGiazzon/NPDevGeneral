@@ -1,0 +1,22 @@
+id: REG-27
+title: "REG-8 Trigger C false-negative for a fresh-installed build (rollback silently re-added a dropped column)"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-22
+closed: 2026-07-22
+verification: UNIT_TESTED
+source: Independent code verification of the REG-7/REG-8 implementation, 2026-07-22
+surface: runtimehost/schema-lifecycle
+detail: |
+  Trigger C (databaseMigratedPastThisBuild) only fired if the rolled-back-to build's fingerprint had
+  a PRIOR APPLIED/MANUALLY_MARKED_DONE row in npdev_schema_history. A build reached by FRESH INSTALL
+  never had one (the blank-fingerprint boot writes no history row), so the register's own canonical
+  example -- fresh-installed build N, N+1 drops a column, roll back to N -- was NOT actually refused;
+  the dropped column was silently re-added empty. The headline test had only passed because it
+  hand-seeded a history row a real fresh install never writes. Fix: afterMigrate now records the
+  initial realization as an APPLIED history point on the fresh-install path too, so every fingerprint
+  the DB has genuinely been at is visible to Trigger C. RED-first: two new tests in
+  SchemaLifecycleExecutorDatabaseMigratedPastBuildTest (a direct fresh-install-records-history
+  assertion, and the honest end-to-end with no hand-seeded row).
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-27

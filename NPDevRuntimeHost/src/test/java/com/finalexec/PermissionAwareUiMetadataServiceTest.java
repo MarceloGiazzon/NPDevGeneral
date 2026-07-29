@@ -82,4 +82,51 @@ class PermissionAwareUiMetadataServiceTest {
         assertTrue(hiddenActions.stream().anyMatch(item -> "CompleteAppointmentFlow#1".equals(item.get("name"))));
         assertEquals(1, ((Number) actions.get("hiddenCount")).intValue());
     }
+
+    /** F2.2 acceptance (docs/FRONTEND_STRATEGY_PLAN.md &sect;2.3): "each bundle array equals the
+     * individual endpoint's output for the same caller" -- the anti-drift property that justifies
+     * composing rather than re-deriving. Proven directly: same context, same concept, compare. */
+    @Test
+    void bundleFieldsAndActionsArraysMatchTheIndividualEndpointsForTheSameCaller() {
+        ExecutionContext context = ExecutionContext.of("dev", "support-agent").withRoles(Set.of("SUPPORT"));
+
+        Map<String, Object> bundle = service.bundle("Appointment", null, context);
+        Map<String, Object> fields = service.fields("Appointment", null, context);
+        Map<String, Object> actions = service.actions("Appointment", null, context);
+
+        assertEquals(fields.get("items"), bundle.get("fields"),
+                "bundle.fields must equal fields(...).items for the same caller (anti-drift).");
+        assertEquals(actions.get("items"), bundle.get("actions"),
+                "bundle.actions must equal actions(...).items for the same caller (anti-drift).");
+        assertEquals("npdev-ui-contract.v1", bundle.get("schemaVersion"));
+        assertEquals(Boolean.TRUE, bundle.get("permissionAware"));
+        assertEquals(Map.of("concept", "Appointment"), bundle.get("scope"));
+        assertTrue(((String) bundle.get("modelHash")).startsWith("sha256:"));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> transitions = (List<Map<String, Object>>) bundle.get("transitions");
+        assertTrue(transitions.stream().allMatch(item -> "Appointment".equals(item.get("concept"))));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> invocations = (List<Map<String, Object>>) bundle.get("invocations");
+        assertTrue(invocations.stream().anyMatch(item -> "createDirect:Appointment".equals(item.get("id"))));
+    }
+
+    /** F2.2 acceptance: "two roles -> different filteredCount" -- proven at the bundle level via the
+     * fields array size, since the bundle itself doesn't carry a raw filteredCount field. */
+    @Test
+    void bundleFieldVisibilityDiffersByRole() {
+        ExecutionContext admin = ExecutionContext.of("dev", "admin-user").withRoles(Set.of("ADMIN"));
+        ExecutionContext viewer = ExecutionContext.of("dev", "viewer").withRoles(Set.of("USER"));
+
+        Map<String, Object> adminBundle = service.bundle("Appointment", null, admin);
+        Map<String, Object> viewerBundle = service.bundle("Appointment", null, viewer);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> adminFields = (List<Map<String, Object>>) adminBundle.get("fields");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> viewerFields = (List<Map<String, Object>>) viewerBundle.get("fields");
+
+        assertTrue(adminFields.size() != viewerFields.size(),
+                "Expected role-based field visibility to differ between ADMIN and USER.");
+    }
 }

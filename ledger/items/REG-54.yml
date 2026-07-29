@@ -1,0 +1,21 @@
+id: REG-54
+title: Two dead private methods left behind by the T2.B.4 SchemaLifecycleExecutor split
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-07-27
+closed: 2026-07-28
+verification: UNIT_TESTED
+source: T2.B.4 file-split verification, 2026-07-27
+surface: runtimehost/schema-lifecycle
+files:
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
+detail: |
+  While splitting SchemaLifecycleExecutor.java (docs/DSL2_AND_DECOMPOSITION_PLAN.md §2.B.4),
+  worse(SchemaChangeClassification, SchemaChangeClassification) and hasTypeChange(...) (both
+  private static) were found to have zero callers anywhere in com.finalexec.db, confirmed by
+  direct grep repo-wide before deleting, not just within the package. Both methods deleted; a
+  dangling {@link #hasTypeChange} javadoc reference and three test files' doc-comments that
+  referenced hasTypeChange()/classify() as if still live were updated to describe the historical
+  pre-SER-P4.8 behavior instead. NPDevRuntimeHost SchemaLifecycleExecutor* suite green after.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-54

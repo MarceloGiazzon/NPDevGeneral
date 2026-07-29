@@ -266,7 +266,7 @@ public final class SandboxedPluginExecutionEngine implements AutoCloseable {
                 return result;
             }
 
-            Method method = resolveOperation(handler, effectiveCall.operation(), effectiveCall.args().size());
+            Method method = resolveOperation(handler, effectiveCall.operation(), effectiveCall.args());
             method.setAccessible(true);
             if (method.getParameterCount() == 0) {
                 return CapabilityResult.success(method.invoke(handler));
@@ -360,8 +360,9 @@ public final class SandboxedPluginExecutionEngine implements AutoCloseable {
         );
     }
 
-    private static Method resolveOperation(Object handler, String operation, int argCount) {
+    private static Method resolveOperation(Object handler, String operation, List<Object> args) {
         Class<?> type = handler.getClass();
+        int argCount = args.size();
         List<Method> candidates = new ArrayList<>();
         for (Method method : type.getMethods()) {
             if (!method.getName().equals(operation) || method.getDeclaringClass().equals(Object.class)) {
@@ -374,13 +375,78 @@ public final class SandboxedPluginExecutionEngine implements AutoCloseable {
         if (candidates.isEmpty()) {
             throw new IllegalStateException("Operation not found: " + operation + " on handler " + type.getName());
         }
-        if (candidates.size() > 1) {
+        if (candidates.size() == 1) {
+            return candidates.get(0);
+        }
+
+        // REG-55: more than one method shares this name+argCount -- an overload set differing
+        // only in parameter TYPE (e.g. save(Object,Object) vs save(TenantScope,Object)). This
+        // used to throw "Ambiguous" unconditionally here, even when the ACTUAL runtime argument
+        // values make exactly one candidate legal -- a String concept name can never be a
+        // TenantScope, so only save(Object,Object) ever accepts it. Disambiguate by checking
+        // which candidates' declared parameter types the actual argument values are assignable
+        // to; fall back to the original ambiguous/not-found errors only when that check doesn't
+        // narrow to exactly one method.
+        List<Method> typeMatched = new ArrayList<>();
+        for (Method candidate : candidates) {
+            if (acceptsArgumentTypes(candidate, args)) {
+                typeMatched.add(candidate);
+            }
+        }
+        if (typeMatched.size() == 1) {
+            return typeMatched.get(0);
+        }
+        if (typeMatched.isEmpty()) {
             throw new IllegalStateException(
-                    "Ambiguous sandboxed plugin operation %s with %d arguments on handler %s"
-                            .formatted(operation, argCount, type.getName())
+                    "Operation not found: %s on handler %s -- %d candidate(s) share this name and %d-argument count, but none accept these actual argument types (%s)"
+                            .formatted(operation, type.getName(), candidates.size(), argCount, argumentTypeNames(args))
             );
         }
-        return candidates.get(0);
+        throw new IllegalStateException(
+                "Ambiguous sandboxed plugin operation %s with %d arguments on handler %s (%d candidates accept these argument types: %s)"
+                        .formatted(operation, argCount, type.getName(), typeMatched.size(), argumentTypeNames(args))
+        );
+    }
+
+    private static boolean acceptsArgumentTypes(Method method, List<Object> args) {
+        Class<?>[] paramTypes = method.getParameterTypes();
+        for (int i = 0; i < paramTypes.length; i++) {
+            Object arg = args.get(i);
+            Class<?> paramType = boxed(paramTypes[i]);
+            if (arg == null) {
+                if (paramTypes[i].isPrimitive()) {
+                    return false;
+                }
+                continue;
+            }
+            if (!paramType.isInstance(arg)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static Class<?> boxed(Class<?> type) {
+        if (!type.isPrimitive()) {
+            return type;
+        }
+        if (type == int.class) return Integer.class;
+        if (type == long.class) return Long.class;
+        if (type == double.class) return Double.class;
+        if (type == float.class) return Float.class;
+        if (type == boolean.class) return Boolean.class;
+        if (type == short.class) return Short.class;
+        if (type == byte.class) return Byte.class;
+        if (type == char.class) return Character.class;
+        return type;
+    }
+
+    private static String argumentTypeNames(List<Object> args) {
+        List<String> names = new ArrayList<>();
+        for (Object arg : args) {
+            names.add(arg == null ? "null" : arg.getClass().getName());
+        }
+        return String.join(", ", names);
     }
 
     private SandboxedPluginExecutionResult fromCapabilityResult(

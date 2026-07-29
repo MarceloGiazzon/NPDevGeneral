@@ -1,0 +1,21 @@
+id: REG-52
+title: "TenantIsolationPolicy.STRICT_EQUALS normalize() only trimmed, never lowercased -- inconsistent with ExecutionContext"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-27
+closed: 2026-07-27
+verification: VERIFIED_LIVE
+source: "M3-SEC-TENANT mission, gemini F3 -- filed separately from REG-50, not buried in its prose"
+surface: kernel/tenant-isolation
+detail: |
+  STRICT_EQUALS.normalize() only trimmed (case-sensitive) while ExecutionContext.normalizeTenantId()
+  lowercases (per REG-25) -- a real inconsistency whenever STRICT_EQUALS compared a context-derived
+  tenantId (normalized) against a per-request tenantId that bypassed ExecutionContext's constructor.
+  Direction was fail-closed (a spurious case mismatch denied rather than wrongly allowed), so this was
+  a correctness/availability gap, not a security hole. Fix: normalize() now also lowercases, matching
+  ExecutionContext's REG-25 canonicalization exactly. RED->GREEN using the REAL STRICT_EQUALS (not a
+  case-sensitive test-double lambda used elsewhere in the same file): context tenant "Acme" (normalized
+  to acme), request tenant "ACME" (raw, unnormalized); confirmed RED pre-fix (denied a same-tenant
+  read), GREEN after.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-52

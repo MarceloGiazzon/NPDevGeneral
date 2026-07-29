@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * LNCH-1 Phase 7 (task 7.1). The 16-scenario H2 proof matrix from
- * {@code docs/LNCH1_SCHEMA_EVOLUTION_PLAN.md}'s Phase 7 table, in ONE place, traceable row by row.
+ * {@code docs/archive/programme-history/LNCH1_SCHEMA_EVOLUTION_PLAN.md}'s Phase 7 table, in ONE place, traceable row by row.
  * Every row is exercised here against a real H2 database via {@link SchemaLifecycleExecutor}'s
  * package-private methods (the same bare-JDBC, no-Spring-context style every Phase 1-6 test in
  * this package already uses), driving the actual production sequencing

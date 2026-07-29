@@ -1,0 +1,214 @@
+{
+  "$schema": "..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "trial.durableworkflowdemo",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "concepts": [
+    {
+      "name": "ExpenseRequest",
+      "ui": {
+        "label": "Expense request"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "employeeEmail",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Employee email"
+          }
+        },
+        {
+          "name": "amount",
+          "type": "integer",
+          "required": true,
+          "ui": {
+            "label": "Amount"
+          }
+        },
+        {
+          "name": "needsManagerApproval",
+          "type": "boolean",
+          "required": true,
+          "ui": {
+            "label": "Needs manager approval"
+          }
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Status"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "EmployeeEmailRequired",
+          "expr": "employeeEmail != null && employeeEmail != ''"
+        },
+        {
+          "name": "PositiveAmount",
+          "expr": "amount != null && amount > 0"
+        }
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        "save",
+        "findById"
+      ]
+    },
+    {
+      "name": "notification",
+      "type": "NotificationCapability",
+      "operations": [
+        "send"
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    },
+    {
+      "capability": "notification",
+      "adapter": "notification-inproc"
+    },
+    {
+      "capability": "eventBus",
+      "adapter": "inproc"
+    }
+  ],
+  "events": [
+    {
+      "name": "ExpenseSubmitted",
+      "payload": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "ExpenseApproved",
+      "payload": [
+        {
+          "name": "expenseId",
+          "type": "uuid"
+        },
+        {
+          "name": "approved",
+          "type": "boolean"
+        },
+        {
+          "name": "reviewer",
+          "type": "string"
+        }
+      ]
+    }
+  ],
+  "ruleProfiles": [
+    {
+      "name": "always",
+      "description": "Shared ExpenseRequest semantic rules evaluated by the Concept Gateway.",
+      "appliesTo": [
+        "ExpenseRequest"
+      ],
+      "enabled": true,
+      "metadata": {
+        "invariants": [
+          "EmployeeEmailRequired",
+          "PositiveAmount"
+        ]
+      }
+    }
+  ],
+  "flows": [
+    {
+      "name": "SubmitExpense",
+      "input": {
+        "concept": "ExpenseRequest",
+        "mode": "create"
+      },
+      "steps": [
+        {
+          "name": "validate-expense",
+          "type": "invariantCheck",
+          "scope": "ExpenseRequest",
+          "invariants": [
+            "EmployeeEmailRequired",
+            "PositiveAmount"
+          ]
+        },
+        {
+          "name": "save-expense",
+          "type": "createConcept",
+          "scope": "ExpenseRequest",
+          "input": "$input",
+          "output": "$saved"
+        },
+        {
+          "name": "emit-expense-submitted",
+          "type": "emitEvent",
+          "event": "ExpenseSubmitted",
+          "from": "$saved"
+        },
+        {
+          "name": "approval-gate",
+          "type": "branch",
+          "condition": "$saved.needsManagerApproval == true",
+          "then": [
+            {
+              "name": "await-approval",
+              "type": "awaitEvent",
+              "awaitEvent": "ExpenseApproved",
+              "match": {
+                "correlation": true
+              },
+              "awaitRef": "approval"
+            },
+            {
+              "name": "notify-approval",
+              "type": "capabilityCall",
+              "args": [
+                "$approval"
+              ],
+              "capability": "notification",
+              "operation": "send",
+              "output": "$notification"
+            },
+            {
+              "name": "return-approval",
+              "type": "return",
+              "value": "$approval"
+            }
+          ],
+          "else": [
+            {
+              "name": "return-expense",
+              "type": "return",
+              "value": "$saved"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

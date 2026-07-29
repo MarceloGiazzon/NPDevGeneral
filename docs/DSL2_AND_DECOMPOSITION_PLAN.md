@@ -1,10 +1,11 @@
 # DSL 2.0 + God-File Decomposition — Execution Plan
 
-> **STATUS: Parts 2 and 3 DONE (2026-07-27/28).** Part 1 (R1/T1.6, merge `beta1-vision-spine` to
-> `main` + tag `beta1.2`) is the one item still open, blocked on `gh auth login` (owner action,
-> not a code task) — see §0.2. Written 2026-07-27 against `beta1-vision-spine` @ `8bc3715` (+
-> T1.15 in flight). Covers the **remaining TREE 1 items** and **TREE 2 items 2.A and 2.B** from
-> `docs/EXECUTION_TREES.md`.
+> **STATUS: DONE (2026-07-28).** All three parts complete: Part 1 (R1/T1.6) merged
+> `beta1-vision-spine` to `main` (`89eb945`, PR #5, both gates green) and tagged `beta1.2`; Parts 2
+> (DSL 2.0) and 3 (decomposition) closed out 2026-07-27. `gh auth login` (the blocker through most
+> of this session) was unblocked via a PAT supplied by the owner. Written 2026-07-27 against
+> `beta1-vision-spine` @ `8bc3715` (+ T1.15 in flight). Covers the **remaining TREE 1 items** and
+> **TREE 2 items 2.A and 2.B** from `docs/EXECUTION_TREES.md`.
 >
 > **Staged outside the repo** while T1.15 (SemanticValidator split) is in flight. Move in with:
 > ```powershell
@@ -756,7 +757,7 @@ is 150 commits stale is the most falsifiable claim the project could ship.
       git-tracked model in the repo. Byte-identical-compiled-model proof reframed as "full test
       suites green after the corpus is actually migrated" (the 27-file synthetic proof loop was
       superseded by doing the real thing); `AppGen/apps` deliberately deferred (owner's call, §0.2-
-      adjacent: non-git external directory)
+      adjacent: non-git external directory -- B25, `docs/ACCEPTED_BOUNDARIES.md`)
 - [x] Parser switch is 1:1; schema validation (which always runs first) is the actual refuse-point,
       with a diagnostic naming the canonical replacement
 - [x] `DSL_REFERENCE.md` regenerated, `FLOWS.md` updated (worked examples + two shifted line-range
@@ -830,6 +831,16 @@ of grep-based pre-checking alone.
       symptom already seen during 2.B.4's rehearsal.
 - [x] Every commit a pure move; every bug found filed separately (REG-54/REG-55 above) — **Part 3
       (2.B.2-2.B.5) is now fully done.**
+
+**Decision recorded (2026-07-28, `docs/POST_PUBLIC_PLAN.md` P3.2) so it isn't re-litigated: three
+files remain above the ~800-line smell threshold** — `GeneratedCrudRuntimeSupport` (3,651),
+`KernelRunner` (3,071), `SchemaLifecycleExecutor` (2,120) — each for the documented reasons above
+(instance-state coupling, mustache-template qualified-name references, or genuinely-cohesive
+sequencer logic shared with same-package files). The plan's own wording was explicit that ≤800 is
+"not a hard gate; a smell threshold." **Do not chase a second decomposition pass now** — it is pure
+cost until something needs to change inside one of these files. Revisit
+`GeneratedCrudRuntimeSupport` (the largest remaining) only when frontend contract work
+(`docs/FRONTEND_STRATEGY_PLAN.md` F2/F3) touches panel row operations.
 
 ---
 

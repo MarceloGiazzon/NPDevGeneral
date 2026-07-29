@@ -1,0 +1,25 @@
+id: REG-46
+title: "Persistence capability port had no tenant parameter -- flow-step persistence writes were unscoped"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-25
+closed: 2026-07-25
+verification: VERIFIED_LIVE
+source: "REG16-resid Round 5 durable-state-adapter SQL adversarial review, R5-F1"
+surface: kernel/persistence-port
+detail: |
+  Generated CRUD was tenant-scoped but the persistence capability PORT itself carried no tenant
+  parameter, so the flow-step persistence route was unscoped -- the same hole existed in BOTH adapters
+  (in-memory and JDBC), meaning this was a port-level gap, not a backend difference, and dev/prod would
+  disagree about visibility only by accident. Fix: a new TenantScopedPersistenceCapabilityContract
+  beside the unchanged PersistenceCapabilityContract; both adapters implement it;
+  RegistryCapabilityDispatcher prepends the executing tenant from the flow's authenticated state --
+  supplied by the runtime, never declared by the model author (letting the author choose the tenant
+  would look enforced while being weaker than no scoping at all). Two real signature/dispatch
+  collisions found and resolved during implementation (a String-vs-TenantScope arity clash that had
+  been silently mis-routing/self-recursing, and an identical reflective-dispatch collision resolved
+  against the interface). Scoping applied only where a tenant_id column actually exists (read from the
+  live catalog). 7 tests incl. delete-is-not-an-existence-oracle and save-stamps-ownership-over-a-
+  payload-claim.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-46

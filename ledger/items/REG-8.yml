@@ -1,0 +1,24 @@
+id: REG-8
+title: "LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback"
+type: BOUNDARY
+severity: null
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-22
+verification: VERIFIED_LIVE
+source: LNCH-1 programme inheritance
+surface: runtimehost/schema-lifecycle
+detail: |
+  Rolling an older build back onto a database a newer build had already migrated past (which dropped
+  a column) silently re-added the dropped column empty, instead of refusing. Owner decision: closed as
+  "a clear refusal exists," not "every drop is reconstructed" -- data a genuine drop destroyed stays
+  gone. Fix (Trigger C): SchemaLifecycleExecutor.databaseMigratedPastThisBuild consults
+  npdev_schema_history instead of live schema shape -- finds the most recent successfully-applied row
+  for this build's target fingerprint; if a LATER row records a different fingerprint, refuses before
+  classify() ever runs, guarding every resolution kind uniformly. CORRECTION found by independent code
+  verification and fixed as REG-27: the original implementation only refused when the rolled-back-to
+  build had a PRIOR history row, which a fresh-installed build never wrote -- so the register's own
+  canonical example (fresh-installed build N, N+1 drops a column, roll back to N) was not actually
+  refused until REG-27 made afterMigrate record the initial realization as an APPLIED history point
+  too. This item's DONE claim holds only with the REG-27 fix applied.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-8

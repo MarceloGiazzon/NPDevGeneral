@@ -1,0 +1,22 @@
+id: REG-28
+title: "Stale mark-done fast-forward (REG-7.2): a leftover mark could authorize an unrelated future boot"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-22
+closed: 2026-07-22
+verification: VERIFIED_LIVE
+source: Independent code verification of the REG-7/REG-8 implementation, 2026-07-22
+surface: runtimehost/schema-lifecycle
+detail: |
+  MigrationMarkStore recorded only the target fingerprint, no from-fingerprint binding and no TTL. A
+  leftover mark for X (a deploy planned then abandoned) would silently authorize the first future
+  boot whose target was X, from whatever the DB actually was at, fast-forwarding with zero
+  migration/classify/Trigger-C passes. Fix: MigrationMarkStore now binds every mark to a
+  (from_fingerprint, marked_fingerprint) pair; findMatching only returns a mark when the boot's own
+  live stored fingerprint equals the recorded "from". SchemaAcknowledgmentController#markDone takes
+  fromFingerprint/toFingerprint. RED-first SchemaLifecycleExecutorMigrationMarkTest proves a mark
+  recorded for from=A does not fire when live-stored is Z, and does fire when live-stored is A.
+  Verified live: real boot rehearsal against superuser-admin-console confirmed both the non-firing and
+  firing cases.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-28

@@ -1,0 +1,16 @@
+id: REG-26
+title: "Granular JWT error codes disclose why a token failed validation (informational, WONTFIX)"
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-21
+verification: NOT_VERIFIED
+source: "REG-16 Tier-A adversarial review (docs/archive/programme-history/REG16_TENANT_AUTH_ADVERSARIAL_REVIEW.md), severity INFO in the original register (this schema has no INFO level; mapped to LOW)"
+surface: runtimehost/auth
+detail: |
+  WONTFIX. Standard practice; the error codes name the validation reason (expired / bad issuer / bad
+  signature), not any secret or account state, and materially aid operator/integration debugging.
+  Collapsing to a single generic error would trade real diagnosability for negligible disclosure
+  reduction.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-26

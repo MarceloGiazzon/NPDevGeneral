@@ -87,6 +87,11 @@ DEFAULT_CHUNK_LINES = 400
 FORBIDDEN_PATH_PATTERNS = [
     re.compile(r"_ADVERSARIAL_REVIEW\.md$"),
     re.compile(r"NPDEV_OPEN_ITEMS_REGISTER\.md$"),
+    # docs/REMEDIATION_PLAN.md R-P1 (2026-07-29): the 2.E ledger migration completed, so
+    # docs/OPEN_ITEMS.md (generated from ledger/items/*.yml) now carries the same "our own
+    # conclusions about ourselves" content the register above used to -- excluding only the old
+    # filename would leak that content through its replacement.
+    re.compile(r"OPEN_ITEMS\.md$"),
     re.compile(r"THREAD_SUMMARY.*\.md$"),
     re.compile(r"PLAN_EXTERNAL_AI_REVIEW.*\.md$"),
     re.compile(r"POST_BETA0_HUMAN_ACTION_REGISTER\.md$"),

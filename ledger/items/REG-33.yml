@@ -1,0 +1,18 @@
+id: REG-33
+title: "CLI's on-demand npm install for the JSON-schema validator failed on Windows from a Python subprocess"
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-07-24
+closed: 2026-07-24
+verification: VERIFIED_LIVE
+source: CI Windows diagnostic capture, 2026-07-24
+surface: cli/json-schema-validator
+detail: |
+  `npm --prefix <validator> install` run with cwd=repo-root makes npm read package.json from cwd (the
+  repo root has none) -> ENOENT on the CI Windows npm; --prefix only sets where node_modules lands,
+  not where npm reads the manifest. Fix: npdev_cli.py now runs npm install with
+  cwd=validator_root (no --prefix). Verified locally RED->GREEN: removed node_modules, ran
+  `npdev migrate`, install ran from the validator dir, exit 0. CI also pre-installs the deps in the
+  Windows job as belt-and-suspenders.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-33

@@ -1,0 +1,21 @@
+id: REG-41
+title: "DefaultConceptGateway.save() leaked a row's lifecycle status to an unauthorized caller before authz ran"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-25
+closed: 2026-07-25
+verification: VERIFIED_LIVE
+source: "REG16-resid Round 2 LNCH-13 row-level authz adversarial review"
+surface: kernel/concept-gateway
+detail: |
+  save() ran enforcePermission/enforceRowWritable AFTER runWriteSemantics/validateLifecycleTransition
+  touched the previous record's data. A caller with zero concept.write permission and zero
+  access.write row-scope could submit an unreachable lifecycle-transition target and learn the row's
+  real current status from the resulting error's "from" detail, since neither authorization gate had
+  run yet. Fix: reordered so the authorization gates run BEFORE the semantic-validation use of the
+  previous record's data (the previous-record fetch itself stays, still needed for the row-scope
+  check). RED->GREEN RowLevelAuthorizationAttackTest (both InMemory and JDBC/H2 adapters): confirmed
+  RED pre-fix (leaked the status via the lifecycle exception), GREEN after (ROW_SCOPE_DENIED, no
+  status disclosed).
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-41

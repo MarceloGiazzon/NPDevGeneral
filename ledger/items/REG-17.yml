@@ -1,0 +1,25 @@
+id: REG-17
+title: "No third party had ever reproduced any verification"
+type: PROCESS
+severity: MEDIUM
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-27
+verification: VERIFIED_LIVE
+source: LNCH-1 programme; multi-round CI reproduction effort
+surface: ci/external-reproduction
+detail: |
+  Every green suite/gate/rehearsal had been produced on one machine by the owner or a supervised AI,
+  never independently exercised. Closed via ~11 root-caused CI fixes across ~9 rounds: profile/config
+  fixes, a JDBC-capable sample for the Postgres integration tests (Fix A), surface-evidence advisory
+  wiring, npm ENOENT on Windows (REG-33), a deterministic runtimehost-libs sync, @DisabledOnOs on a
+  Linux-container test Windows can't run (REG-34), and an editor-E2E static-host path fix. Result:
+  npdev-ci-validation.yml (both the Linux maturity job and the Windows segmented job) runs green
+  end-to-end on GitHub-hosted runners from a clean checkout -- automated external reproduction on
+  hardware this project had never touched, the mechanism REG-17's DoD actually names. Owner's final
+  call (2026-07-27): the automated-repro + blind-AI-operator combination already achieved satisfies
+  REG-17's DoD intent; no further literal-human run is required to consider it closed. Residual,
+  filed not fixed: a genuinely clean container's anonymous `git clone` got a 404/credential prompt --
+  the repo was private at the time, so an uninvited third party could not have cloned it regardless of
+  CI's green status (repo visibility is an owner call, not an AI decision).
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-17

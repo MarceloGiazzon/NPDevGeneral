@@ -1,0 +1,21 @@
+id: REG-5
+title: "GATE-OBS-1a: surface-governance drift checks were advisory and unowned"
+type: PROCESS
+severity: LOW
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-21
+verification: NOT_VERIFIED
+source: LNCH-1 programme inheritance, re-verified 2026-07-21
+surface: quality-gates/runtimehost-gate
+detail: |
+  The RuntimeHost gate's surface-convergence/exclusivity checks encoded a pre-d0bf41b
+  "package == support bucket" convention the beta-0 manifest refactor replaced with exact allowlists.
+  They had been demoted to advisory-only (-PendingOk) so the gate's exit code stayed truthful, but the
+  underlying drift was unowned. Decision (owner): formal RETIREMENT over the plan's default option --
+  a concrete check confirmed the exact-list allowlist (runtime-surface-allowlist-report.json, backed
+  by RuntimeControllerAllowlistConfig) already IS the blocking exact-list enforcement, so the 6
+  package-convention checks were a redundant proxy that would only duplicate the allowlist if
+  rewritten. Retired to informational-only (reversible) with a dated rationale in
+  run-observability-hardening.ps1, run-runtimehost-gate.ps1, and OPEN_GAPS_AND_ROADMAP.md.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-5

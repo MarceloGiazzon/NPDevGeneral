@@ -1,21 +1,24 @@
 name: AI Knowledge Gate
 
-# Lightweight (seconds, pure-Python -- no Java/Gradle/Playwright), so UNLIKE the heavy
-# workflow_dispatch-only workflows this one runs automatically on every PR that touches the AI
-# knowledge substrate. It guards three invariants:
-#   1. knowledge/platform-status.json is not stale vs the gaps ledger (someone edited the ledger
-#      without regenerating the derived projection),
-#   2. every knowledge/cards/*.json validates,
-#   3. the shared failure-signature normalizer behaves.
+# Now a 17-step gate (grew from 13 at F1/F2 time, docs/FINAL_OPEN_ITEMS_PLAN.md, to 17 via
+# docs/INVOCATION_TOPOLOGY_PLAN.md T1/T2) that shells out to gradlew (corpus-parse) -- NOT
+# "seconds, pure-Python, no Java/Gradle" any more. Runs Java/Gradle (`validate-corpus.py`'s
+# validateModel task, ~4s/model amortized against a warm daemon, materially more on a cold CI
+# runner -- see the timeout-minutes comment below) on every PR, unconditionally.
+#
+# docs/INVOCATION_TOPOLOGY_PLAN.md T3: this used to trigger only on a hand-maintained `paths:`
+# list. That list was already wrong once for real (it covered none of
+# NPDevContract/schemas/model.schema.json, NPDevSamples/**/model.json, ledger/**, or
+# scripts/quality/** itself when REG-63's 17-of-29-models corpus break needed exactly this gate to
+# catch it) and a hand-maintained filter is exactly as durable as the hand-maintained list that
+# caused finding 1 in the first place: add a check next PR that guards a path not yet in the list,
+# and the filter silently under-covers again, discovered only by accident. Removed the filter
+# entirely instead of building a GUARDS:-declaration mechanism to police it (see
+# docs/ACCEPTED_BOUNDARIES.md B24) -- "always runs" cannot under-cover, ever, and this gate's own
+# measured wall clock (B23: 1m21s for the pre-T1/T2 15 checks) leaves enormous headroom under the
+# 20-minute cap even unconditionally on every PR.
 on:
-  pull_request:
-    paths:
-      - 'docs/OPEN_GAPS_AND_ROADMAP.md'
-      - 'knowledge/**'
-      - 'scripts/ai/**'
-      - 'schemas/ai/knowledge-card.schema.json'
-      - 'scripts/quality/run-ai-knowledge-gate.ps1'
-      - '.github/workflows/ai-knowledge-gate.yml'
+  pull_request: {}
   workflow_dispatch:
 
 concurrency:
@@ -26,16 +29,53 @@ jobs:
   ai-knowledge-gate:
     name: AI knowledge substrate gate
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # F2: was 5 -- a coin flip against a measured ~2 min for validate-corpus.py alone on a warm
+    # local daemon, materially more on a cold CI runner with no dependency cache.
+    # OBSERVED (PR #6, run 30421704185, 2026-07-29, cold runner): 1m21s total wall clock. 20 min
+    # leaves ample headroom even against a fully cold Gradle+dependency cache; revisit only if a
+    # future run approaches half the cap.
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Every other workflow in this repo already sets this (ai-beta-gate.yml,
+          # npdev-ci-validation.yml, npdev-pr-gate.yml, npdev-release-gate.yml) -- this one was the
+          # lone gap. Found live on PR #7 (2026-07-29): the default shallow (depth-1) checkout made
+          # every `git show <pinned-SHA>:<path>` calibration control unable to read its target
+          # revision at all. check-register-consistency.py's and check-narrative-status-drift.py's
+          # calibrate() tolerate that (their git_show() returns None and the caller skips the
+          # control instead of failing) -- so those controls had been silently SKIPPED on every CI
+          # run, not run and passing, exactly the "nothing notices" class RECORD_SURFACES_PLAN.md
+          # is about. check-record-surfaces.py's calibrate() does not tolerate it (by design -- a
+          # silently skipped control is worse than a loud failure) and surfaced the gap as a real
+          # CI failure instead of continuing to hide it.
+          fetch-depth: 0
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      # CI-1 pattern (npdev-ci-validation.yml, npdev-pr-gate.yml): the committed gradle.properties
+      # files hardcode a dev-machine org.gradle.projectcachedir (D:\WorkSpace\...), which does not
+      # exist on Linux -- gradle aborts before any task runs, and a --project-cache-dir CLI override
+      # does NOT fix it (gradle.properties is read during wrapper bootstrap, before the CLI flag can
+      # take effect). This gate never ran gradle before check 11/12 (validate-corpus.py) existed, so
+      # this had never been hit here. Strip the line so gradle falls back to its own portable default.
+      - name: Neutralize dev-machine gradle projectcachedir (portability)
+        run: sed -i '/org\.gradle\.projectcachedir/d' gradle.properties NPDevContract/dsl/gradle.properties
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: pip install -r scripts/requirements.txt
 
       - name: Run AI knowledge gate
         shell: pwsh

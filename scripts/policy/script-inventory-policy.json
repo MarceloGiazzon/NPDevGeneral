@@ -8,7 +8,8 @@
     ".js",
     ".sh",
     ".bat",
-    ".cmd"
+    ".cmd",
+    ".py"
   ],
   "allowedClassifications": [
     "canonical",
@@ -17,6 +18,13 @@
     "one-time-repair",
     "outside-repo-only"
   ],
+  "allowedInvocations": [
+    "ci-gate",
+    "manual-runbook",
+    "orchestrated",
+    "retired"
+  ],
+  "invocationDeclarationsPath": "scripts/policy/script-invocation-declarations.json",
   "classificationRules": [
     {
       "classification": "outside-repo-only",
@@ -25,6 +33,10 @@
     {
       "classification": "one-time-repair",
       "pattern": "^scripts/quality/fix-statezip-visible-timestamps\\.ps1$"
+    },
+    {
+      "classification": "one-time-repair",
+      "pattern": "^scripts/ops/canonicalize-tenant-ids\\.ps1$"
     },
     {
       "classification": "helper",
@@ -40,7 +52,7 @@
     },
     {
       "classification": "canonical",
-      "pattern": "^scripts/(ai|evidence|hygiene|quality|release|runtimehost|samples|security)/"
+      "pattern": "^scripts/(ai|evidence|hygiene|quality|release|runtimehost|samples|security|appgen|ci|docs|external-review|hooks|proofs)/"
     },
     {
       "classification": "canonical",

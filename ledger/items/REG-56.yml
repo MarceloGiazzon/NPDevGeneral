@@ -1,0 +1,28 @@
+id: REG-56
+title: Flow resume rebuilds ExecutionContext with the wrong actor/role, three different wrong ways
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-07-28
+closed: 2026-07-28
+verification: VERIFIED_LIVE
+source: Found while building the CORE C-3 durable-workflow demo, 2026-07-28
+surface: kernel/flow-resume
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ExecutionContext.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ResumeCoordinator.java
+detail: |
+  Two filed hypotheses were refuted by tracing code, not guessed away. Actual root cause: a real
+  permission-context bug, confirmed live via a debug log -- the resumed flow's capability.invoke
+  check ran as roles=[user] (denied), moments after the SAME request's event.publish check had run
+  as roles=[admin] for the SAME actor/tenant. Three call sites each built a resume ExecutionContext
+  a different wrong way (the publisher's own context; ExecutionContext.of, which defaults to USER;
+  ExecutionContext.anonymous()) because FlowInstance never persisted roles in the first place. Fix:
+  new ExecutionContext.resuming(tenantId, actorId), granting the trusted resume-level role
+  (mirroring ExecutionContext.system's ADMIN trust for the cron scheduler), wired into all three
+  call sites; the now-unused caller-supplied-context parameter removed from
+  resumeWaitingExecutionsFor, updating its four callers. RED->GREEN, freshly reproduced on this
+  checkout: the notify-approval capabilityCall step re-added to the durable-workflow-demo model
+  reproduced CAPABILITY_FAILED on a real kill+restart before the fix; 3/3 clean runs after. Plus
+  ExecutionContextResumingTest (3/3) and the full NPDevKernel:kernel suite (163/163), no regression.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-56

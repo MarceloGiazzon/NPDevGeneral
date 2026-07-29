@@ -1,0 +1,21 @@
+id: REG-31
+title: "run-script-automation-quality's structured-report-contract check was mis-calibrated (helper-name grep, not a behavior test)"
+type: PROCESS
+severity: LOW
+status: DONE
+opened: 2026-07-24
+closed: 2026-07-24
+verification: VERIFIED_LIVE
+source: Quality-gate calibration review, 2026-07-24
+surface: quality-gates/script-automation-quality
+detail: |
+  The check greped script SOURCE for the literal helper names Invoke-NPDevReportedCommand/
+  Write-NPDevJsonFile and failed any of ~68 scripts lacking them -- flagging 59, a helper-name
+  presence test, not a report-behavior test. Spot-checked 9 of the 59: 56 of 59 persist a genuinely
+  valid structured JSON report by other means (direct ConvertTo-Json | Set-Content to the standard
+  report-path convention). Only 3 were genuinely non-compliant. Fix: the sub-check now tests actual
+  behavior (serializes to JSON AND persists it AND targets the standard report-path convention, by
+  ANY mechanism). The 3 genuinely non-compliant scripts excluded via a dated backlog list, not
+  silently dropped and not mass-migrated. Verified locally: exits 0, 65/65 scoped scripts pass (was
+  9/68). CI's continue-on-error removed -- blocking again.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-31

@@ -1,0 +1,23 @@
+id: REG-37
+title: "Circuit-breaker failure-count read-decide-write was not a single atomic critical section"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-25
+closed: 2026-07-25
+verification: VERIFIED_LIVE
+source: "REG16-resid Round 1 kernel-execution adversarial review, finding REG16K-F2"
+surface: kernel/circuit-breaker
+detail: |
+  The transition rule moved into a pure function CircuitBreakerTransitions.afterFailure, and the
+  read-decide-write is now one critical section owned by the store: ConcurrentHashMap.compute
+  in-proc, SELECT ... FOR UPDATE inside a transaction on JDBC. A SELECT ... FOR UPDATE cannot lock a
+  row that doesn't exist, so two concurrent FIRST failures would both compute 1; the JDBC path seeds
+  a CLOSED/zero row before locking -- that seed must NOT go through the upsert-despite-its-name
+  insertOrIgnore helper, which reset the counter on every call (caught by a test asserting the
+  counter's real value, not just its presence). RED->GREEN proven by reverting both stores to the
+  interface's documented non-atomic default: concurrency tests fail, deterministic lifecycle tests
+  still pass. Tests: InProcCircuitBreakerStateStoreTest (8 threads x 200),
+  JdbcCircuitBreakerStateStoreConcurrencyTest on H2, PostgresCircuitBreakerStateStoreTest on the real
+  engine.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-37

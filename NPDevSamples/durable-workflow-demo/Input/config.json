@@ -1,0 +1,51 @@
+{
+  "$schema": "..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "durable-workflow-demo",
+    "description": "CORE C-3: proves a flow parks on awaitEvent, survives a real process restart, and resumes to completion from persisted state alone.",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": {
+    "root": "..\\..\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\Output\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\Output\\App",
+    "deleteBeforeMount": true
+  },
+  "runtime": {
+    "springProfile": "dev,trial",
+    "serverPort": 8097,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "trialDefaults": {
+    "apiKey": "dev-key",
+    "recommendedProfiles": "dev,trial",
+    "runtimeUrl": "http://localhost:8097/",
+    "databaseMode": "h2local-file",
+    "pluginDiscoveryMode": "filesystem-folder",
+    "pluginPackageDirectory": "./npdev-generated/src/main/resources/npdev/plugin-packages",
+    "notes": [
+      "Deliberately NOT the step0 profile: step0 always boots against a fixed in-memory H2 sandbox",
+      "regardless of db.definition.json (see application-step0.yml), which would make a process",
+      "restart lose all state -- the exact thing this sample exists to prove survives. 'dev,trial'",
+      "lets the real H2Local file-backed engine declared in db.definition.json take effect."
+    ]
+  }
+}

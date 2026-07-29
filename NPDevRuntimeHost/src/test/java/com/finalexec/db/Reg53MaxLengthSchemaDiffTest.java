@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * REG-53 (`docs/REMAINDER_CLOSURE_PLAN.md` §1.2/§3.2). Root cause traced live: {@code
+ * REG-53 (`docs/archive/programme-history/REMAINDER_CLOSURE_PLAN.md` §1.2/§3.2). Root cause traced live: {@code
  * SqlTypeSupport.sqlType} -- the single shared mapper its own class javadoc names as feeding
  * "Generator DDL, bond DDL, and database-definition fingerprints" -- hardcoded every
  * {@code string}/{@code enum} field to {@code VARCHAR(255)}, never consulting {@code

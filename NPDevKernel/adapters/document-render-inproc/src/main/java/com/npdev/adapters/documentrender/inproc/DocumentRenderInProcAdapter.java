@@ -9,7 +9,7 @@ import java.io.IOException;
 /**
  * REG-12 Slice 3 (D-A1): the default, pure-JVM {@link DocumentRenderContract} adapter --
  * OpenHTMLtoPDF/PDFBox, no native or display dependencies, headless-safe on Linux CI (proven by a
- * throwaway spike ahead of this class; see `docs/REG12_DOCUMENT_EXPORT_PLAN.md` P0). Accepts the
+ * throwaway spike ahead of this class; see `docs/archive/programme-history/REG12_DOCUMENT_EXPORT_PLAN.md` P0). Accepts the
  * CSS-subset limitation this honestly documents (no flexbox/grid layout, no JS) in exchange for
  * running anywhere the JVM does.
  */

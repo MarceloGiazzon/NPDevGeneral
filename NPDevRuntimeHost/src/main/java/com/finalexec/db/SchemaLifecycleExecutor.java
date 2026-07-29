@@ -1360,27 +1360,6 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         return dropped;
     }
 
-    private static SchemaChangeClassification worse(SchemaChangeClassification a, SchemaChangeClassification b) {
-        return a.severity() >= b.severity() ? a : b;
-    }
-
-    private static boolean hasTypeChange(
-            DatabaseMetaData metadata,
-            String table,
-            Set<String> columns,
-            Map<String, String> expectedTypes
-    ) {
-        Map<String, String> actualTypes = readActualColumnTypes(metadata, table);
-        for (String column : columns) {
-            String expected = normalizeSqlType(expectedTypes.get(column));
-            String actual = normalizeSqlType(actualTypes.get(column));
-            if (expected != null && actual != null && !expected.equals(actual)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     /**
      * Best-effort cross-engine type comparison: uppercases, treats JSON/JSONB as equivalent (H2
      * reports "JSON" for a column the manifest declares as Postgres-style "JSONB" -- see
@@ -1404,7 +1383,8 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * <p><b>LNCH-1 Phase 3 fix -- length/precision was previously stripped unconditionally:</b>
      * before this fix, everything from the first {@code '('} onward was discarded before
      * comparing, so {@code "VARCHAR(255)"} and {@code "VARCHAR(20)"} both normalized to the
-     * identical string {@code "VARCHAR"} and {@link #hasTypeChange} treated a VARCHAR-length or
+     * identical string {@code "VARCHAR"} and the (since-removed dead code, REG-54) {@code hasTypeChange}
+     * helper treated a VARCHAR-length or
      * NUMERIC-precision-only change (in EITHER direction, widening or narrowing) as no change at
      * all -- a real, silent data-truncation-risk gap, pinned by
      * {@code SchemaLifecycleExecutorTypeChangeLengthPrecisionGapTest}. {@link #readActualColumnTypes}

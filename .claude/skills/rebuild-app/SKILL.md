@@ -26,7 +26,10 @@ pwsh -File scripts/appgen/Rebuild-And-Restage.ps1 -AppFolder <appFolder>
 
 The wrapper runs, in order: `sync-runtimehost-libs.ps1 -BuildLocalJars -RuntimeHostLibsDir <dir>` →
 `AppGen/generator-runtime/prepare-npdev-generator-runtime.ps1 -RuntimeRoot <root>` →
-`Build-NpdevApp.ps1 ... -RuntimeHostLibsDir <dir>`.
+`Build-NpdevApp.ps1 ... -RuntimeHostLibsDir <dir>` → starts the app and runs the panel-provenance
+impact gate (`_ops/Check-Provenance.ps1`) against its live bundle, failing the rebuild if a
+**confirmed** manifest now references a field/invocation the model no longer has (add
+`-SkipProvenanceCheck` to skip; `-GenerateOnly` skips it automatically since there is no jar to run).
 
 ## Hard rules (don't skip)
 - **Pass the SAME `-RuntimeHostLibsDir` to sync and build.** Their defaults differ; if you run the

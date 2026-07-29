@@ -1,7 +1,7 @@
 # Security pattern sweep — 2026-07 triage
 
 > **Run:** 2026-07-25 · **Branch:** `beta1-vision-spine` · **Tool:** `scripts/quality/security-pattern-sweep.py`
-> **Purpose:** the mechanical pass required by [`ONE_PLAN_CLOSE_EVERYTHING.md`](ONE_PLAN_CLOSE_EVERYTHING.md) §2.1,
+> **Purpose:** the mechanical pass required by [`ONE_PLAN_CLOSE_EVERYTHING.md`](archive/programme-history/ONE_PLAN_CLOSE_EVERYTHING.md) §2.1,
 > run once across all four unreviewed surfaces. **This document is the input to sessions 2 and 3** —
 > its job is to say *where the deep review should concentrate*, not to replace it.
 
@@ -116,7 +116,7 @@ was cleared was the code as it read, and if it no longer reads that way it has n
 | **A3** | `ConfiguredConceptGatewaySemanticPolicy.evaluateAccessRule` | Documented fail-**closed**: a row-level access rule that will not evaluate denies. Correct direction, and the reasoning is already in-line at the catch. |
 | **A4** | `PasswordHasher.verify` | Fail-closed: a hash that cannot be verified is not a match. No other outcome is reachable. |
 | **B1** | `SELECT 1` liveness probes, `pg_try_advisory_lock` | Reads no tenant rows at all, so there is no tenant scope to apply. |
-| **B2** | Schema/DDL engine reads (`SchemaLifecycleExecutor`, `ImpactReport`, `ProposedConversionSql`, `SchemaDeltaReport`, `SchemaDropSnapshotWriter`, `PendingSchemaAcknowledgmentStore`, `DatabaseIdentityStartupValidator`) | The physical schema is a property of the **database**, not of a tenant — all tenants share one set of tables, so a tenant predicate would be meaningless. Separately admin-gated. |
+| **B2** | Schema/DDL engine reads (`SchemaLifecycleExecutor`, `ImpactReport`, `ProposedConversionSql`, `SchemaDeltaReport`, `SchemaDropSnapshotWriter`, `PendingSchemaAcknowledgmentStore`, `DatabaseIdentityStartupValidator`, `BackfillPass`, `DestructiveRecreationPass`) | The physical schema is a property of the **database**, not of a tenant — all tenants share one set of tables, so a tenant predicate would be meaningless. Separately admin-gated. `BackfillPass`/`DestructiveRecreationPass`'s row-count reads (REG-61, 2026-07-28) are the same class as `SchemaDropSnapshotWriter`'s own `SELECT COUNT(*) FROM <table>` -- boot-time, admin-gated, schema-migration bookkeeping applied uniformly across all tenants, not a tenant-scoped business-data read. |
 | **B3** | REG-46's `findByIdScoped` / `deleteScoped` / `existsScoped` in `PostgresPersistenceCapabilityAdapter` | The tenant predicate **is** applied — the statement is built from TWO literals (`"… where <id> = ? and "` + `tableColumns.columnName(TENANT_COLUMN)` + `" = ?"`) and binds `scope.tenantId()`; the sweep matches only the first literal (its documented second-literal limitation). Where the table has no tenant column the method delegates to the unscoped sibling, which is correct: a table with no tenant column holds no tenant-owned rows to scope. *Triaged 2026-07-25 by the post-implementation audit.* |
 | **D2** | The same three REG-46 methods | The only concatenated identifiers are the table name and `resolveIdColumn(…)` / `resolveCriteriaColumn(…)`, which resolve against the live table's **actual** columns — Round 5's "identifiers are safe by construction via two whitelists". Every **value** is a bound parameter. *Triaged 2026-07-25.* |
 | **I5** | `scope.tenantId()` bound by the same three methods | The tenant comes from the kernel's authenticated context (`RegistryCapabilityDispatcher` prepends `TenantScope`; it is not author- or caller-writable), and `tenant_id` is length-bounded by its own column definition. *Triaged 2026-07-25.* |
@@ -147,6 +147,20 @@ were left in place rather than deleted (harmless: they simply never match anythi
 god-file split (2.B.5 already done; any later ones) should expect the same mechanical churn and follow
 the same process: confirm byte-identical content at the old location, then re-clear under the
 established rule rather than re-deriving one.
+
+**Superseded 2026-07-28 (`docs/POST_PUBLIC_PLAN.md` P3.1) — this is now structurally fixed, not just
+documented.** `Hit.fingerprint()` no longer hashes in the relative file path (pattern + normalised
+matched text only); moving code to a new file no longer orphans its verdict at all, so the manual
+"check byte-identical, re-clear under the same rule" dance above is no longer needed for a pure move.
+All 333 existing entries were migrated to the new content-only fingerprint (a script matched every
+hit under both the old and new formula by `(file, line, pattern, snippet)` identity, then re-keyed
+the allowlist — 275 entries after 31 same-content-different-location merges and 29 genuinely orphaned
+entries left untouched). Proven RED-first: temporarily moved `ValueCoercionSupport.java` to a new
+directory, confirmed all 10 of its hits still matched cleared (0 needing triage), moved it back. The
+sweep now also **reports** (never fails) when a cleared hit's current file isn't mentioned in its
+entry's `where` text — a real code move surfaces as an informational note so `where` can be kept
+honest, not as a re-triage demand. `path` in each entry stays informational prose describing where a
+reviewer actually looked, same as before.
 
 ---
 
