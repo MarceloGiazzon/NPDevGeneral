@@ -1,0 +1,21 @@
+id: REG-25
+title: "Tenant match was case-sensitive -- isolation-bucket fragmentation (not a cross-tenant bypass)"
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-24
+verification: VERIFIED_LIVE
+source: "REG-16 Tier-A adversarial review (docs/archive/programme-history/REG16_TENANT_AUTH_ADVERSARIAL_REVIEW.md)"
+surface: runtimehost/auth
+detail: |
+  The core write-path normalizers only trimmed tenant_id (did not lowercase); only peripheral sites
+  lowercased -- so business data could land under "Acme" while the registry stored "acme". Fix:
+  canonicalize tenant_id to lowercase at the single choke point every read/write derives its tenant
+  from -- ExecutionContext's compact constructor (actorId stays case-sensitive; the reserved "default"
+  sentinel unaffected). Proven RED->GREEN via ExecutionContextTenantCanonicalizationTest; full
+  RuntimeHost gate green. Existing-data fix: scripts/ops/canonicalize-tenant-ids.ps1 (dry-run
+  default, -Apply, -Force) lowercases tenant_id across the registry + every business table, with a
+  collision detector that skips + reports merge-risk tables unless -Force. Proven end-to-end on a
+  seeded H2 DB.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-25

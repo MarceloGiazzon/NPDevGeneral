@@ -1,0 +1,27 @@
+id: REG-12
+title: "LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped"
+type: GAP
+severity: HIGH
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-22
+verification: VERIFIED_LIVE
+source: LNCH-1 programme inheritance
+surface: generator/export-pdf
+detail: |
+  Slice 1 (streaming CSV export) pre-existed. Slice 2 (print stylesheet/render mode): a "Print" button
+  on every declared panel builds a self-contained #printRoot document and calls window.print(); a new
+  @media print block hides app chrome. Verified live via real-browser ScrapForAI. Found+fixed a
+  pre-existing unrelated bug during this verification: an InMemory-storage app's promotion panel
+  retried a 503'ing endpoint in an unbounded render loop; fixed with an "attempted" guard flag. Slice
+  3 (server-side PDF): a new declarative `document` DSL kind bound to a concept's query, a
+  DocumentRenderContract kernel port with a pure-JVM openhtmltopdf adapter (proven headless-safe by a
+  spike) plus an honest no-op stub adapter, a DocumentRenderController mirroring the CSV export
+  controller's discipline, and a "Download PDF" toolbar link. Verified live: a real PDF streamed with
+  exact title/timestamp/row/column/footer content confirmed via PDFBox text extraction. Found+fixed 3
+  real bugs during wiring: two model-reconstruction call sites silently dropping the new `documents`
+  field (and, at one of them, also pre-existing dropped guidePages/aggregates/autoPanels for
+  pack-composing apps), a static controller allowlist silently 404ing the new endpoint, and a missing
+  Gradle dependency declaration causing NoClassDefFoundError. Verified green on real Linux GitHub
+  Actions (run 29943008077), not just Windows.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-12

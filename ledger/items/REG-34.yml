@@ -1,0 +1,20 @@
+id: REG-34
+title: "Windows CI job runs Testcontainers (Linux-container) tests that windows-latest can't run"
+type: PROCESS
+severity: LOW
+status: PARTIAL
+opened: 2026-07-24
+verification: VERIFIED_LIVE
+source: Surfaced by REG-17 once Fix A + REG-33 unblocked the Windows job's downstream gates
+surface: ci/windows-job-scoping
+detail: |
+  npdev-ci-validation.yml's Windows job runs full gate suites including Testcontainers tests that
+  start LINUX containers (MinIO, Postgres); windows-latest cannot run Linux containers at all
+  (Windows-container-only), so those tests fail on Windows while passing on the green Linux job.
+  Approach: disable each genuinely-Linux-container test on Windows via @DisabledOnOs(OS.WINDOWS)
+  (stays enabled and validated on Linux CI). Done so far: the generator gate's MinIO packaged-app
+  proof test, verified locally to skip on Windows and still build. Remaining: the Windows job's
+  further gates (Security hardening, Runtime security, RuntimeHost gate, Editor gate) had never run
+  to completion at filing time; each may contain more Linux-container tests to scope the same way,
+  to be iterated as they surface.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-34

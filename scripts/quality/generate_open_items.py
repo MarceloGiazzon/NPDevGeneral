@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""2.E ledger migration (docs/NEXT_EXECUTION_PLAN.md Part 5): regenerate docs/OPEN_ITEMS.md from
-ledger/items/*.yml.
+"""2.E ledger migration (docs/REMEDIATION_PLAN.md R-P1, complete 2026-07-29): regenerate
+docs/OPEN_ITEMS.md from ledger/items/*.yml -- the single source of truth for tracked items.
 
 Never hand-edit docs/OPEN_ITEMS.md -- it is a projection, the same discipline
 knowledge/platform-status.json already uses relative to the gaps ledger
 (scripts/ai/extract_platform_status.py).
 
-PROTOTYPE STATUS (see ledger/README.md): only a subset of the full register is migrated to
-ledger/items/*.yml so far. docs/NPDEV_OPEN_ITEMS_REGISTER.md remains the authoritative register
-until migration is complete for every entry.
+MIGRATION COMPLETE (see ledger/README.md): all 64 tracked ids are migrated.
+docs/NPDEV_OPEN_ITEMS_REGISTER.md is archived-in-place (kept for its `#reg-N` anchors and prose
+investigation narrative, linked from every item's `legacyDetailRef`) and is no longer hand-edited
+for status.
 
     python scripts/quality/generate_open_items.py           # writes docs/OPEN_ITEMS.md
     python scripts/quality/generate_open_items.py --check    # exit 1 if the file is stale
@@ -42,14 +43,25 @@ def load_items(ledger_dir: Path) -> list[dict]:
 def validate_item(item: dict, path: Path) -> list[str]:
     errors = []
     for field in REQUIRED_FIELDS:
+        # severity is required to be PRESENT but is allowed to be null for type: BOUNDARY
+        # (ledger/README.md's own schema doc) -- checked properly below instead of here, where
+        # every other field's blanket None-means-missing rule still applies. REG-7/REG-8 (2026-07-29,
+        # docs/REMEDIATION_PLAN.md R-P1) were the first BOUNDARY items ever migrated and the first to
+        # actually exercise this path -- until then this was a latent, never-triggered bug.
+        if field == "severity":
+            continue
         if field not in item or item[field] in (None, ""):
             errors.append(f"missing required field '{field}'")
+    if "severity" not in item:
+        errors.append("missing required field 'severity'")
     if item.get("id") and item["id"] != path.stem:
         errors.append(f"id '{item.get('id')}' does not match filename '{path.stem}'")
     if item.get("type") not in VALID_TYPES:
         errors.append(f"type '{item.get('type')}' not in {sorted(VALID_TYPES)}")
     if item.get("severity") not in VALID_SEVERITIES:
         errors.append(f"severity '{item.get('severity')}' not in {sorted(s for s in VALID_SEVERITIES if s)}")
+    if item.get("severity") is None and item.get("type") != "BOUNDARY":
+        errors.append("severity: null is only valid for type: BOUNDARY")
     if item.get("status") not in VALID_STATUSES:
         errors.append(f"status '{item.get('status')}' not in {sorted(VALID_STATUSES)}")
     if item.get("status") == "DONE" and not item.get("closed"):
@@ -63,10 +75,11 @@ def render(items: list[dict]) -> str:
     lines = [
         "# Open Items — generated",
         "",
-        "> **GENERATED FILE — do not hand-edit.** Source: `ledger/items/*.yml`. Regenerate with",
-        "> `python scripts/quality/generate_open_items.py`. See `ledger/README.md` for the schema",
-        "> and this prototype's honest scope (only a subset of the full register is migrated so far;",
-        "> `docs/NPDEV_OPEN_ITEMS_REGISTER.md` remains authoritative until migration completes).",
+        "> **GENERATED FILE — do not hand-edit.** Source: `ledger/items/*.yml`, the authoritative",
+        "> record for every tracked id. Regenerate with `python scripts/quality/generate_open_items.py`.",
+        "> See `ledger/README.md` for the schema. `docs/NPDEV_OPEN_ITEMS_REGISTER.md` is archived-in-",
+        "> place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is",
+        "> no longer hand-edited for status.",
         "",
     ]
 

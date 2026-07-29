@@ -1,0 +1,23 @@
+id: REG-44
+title: "crud.kernelControlled=false silently removed ALL coarse permission/audit checks, not just access.write"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-25
+closed: 2026-07-25
+verification: VERIFIED_LIVE
+source: "REG16-resid Round 3, R3-F3"
+surface: generator/authorization
+detail: |
+  A model declaring access.read/access.write while crud.kernelControlled resolves false silently
+  removed every coarse CRUD permission check (READ/LIST/CREATE/UPDATE/DELETE) and mutation audit
+  across 13 emission sites -- not just access.write as the original wording assumed. Row-level
+  access.read survives (generated reads go through conceptGateway unconditionally), which is exactly
+  the asymmetry that made the combination look harmless when spot-checked. Fix: new
+  UnenforceableAccessRuleCheck, run from GeneratorFacade before any emitter, refuses to generate a
+  model with this contradiction. Not visible to SemanticValidator alone: the validator sees only the
+  model, while crud.kernelControlled comes from config.json -- the contradiction is only visible where
+  compiled model and resolved settings meet. Resolved per-concept (overridable at concept scope; an
+  app-level read would miss a targeted opt-out). 5 tests incl. the concept-scoped override and an
+  end-to-end check that nothing is emitted when generation is refused.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-44

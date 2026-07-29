@@ -1,0 +1,21 @@
+id: REG-2
+title: "IT-EXTPG-1: 10 integration tests unrunnable; root cause re-opened then found"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-21
+verification: VERIFIED_LIVE
+source: LNCH-1 programme inheritance, re-verified 2026-07-21
+surface: runtimehost/integration-tests
+detail: |
+  10 integrationTest classes (JwtAuthExternalBetaIT x8, PublicationRollbackE2EIT,
+  TenantIsolationE2EIT) failed with ApplicationContext load errors. Two prior theories (Testcontainers
+  Postgres profile config, a missing DataSource bean) were independently re-checked and found not to
+  hold up. The real cause was a THIRD mechanism: DatabaseIdentityStartupValidator aborting because
+  Testcontainers' jdbc:tc: DB always reports name "test", which never matches the app's resolved
+  identity. Fixed at the profile level (application-postgres.yml ->
+  npdev.trial.database-override:true). Running the suite surfaced two more real bugs, both fixed: a
+  text=uuid cast in PublicationRollbackE2EIT, and LoginController crashing verify-only JWT (fixed
+  under REG-9). 10/10 green on real Postgres.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-2

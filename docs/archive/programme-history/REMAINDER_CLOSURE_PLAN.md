@@ -1,6 +1,15 @@
 # Remainder closure plan — ledger truth, blind spot #8, deferred residuals, decision briefs
 
-> **STATUS: ACTIVE** — 2026-07-27. Promoted from
+> **STATUS: HISTORICAL** (corrected 2026-07-29, docs/REMEDIATION_PLAN.md R-P2) — last changed
+> 2026-07-27; its completion state has been cross-checked, not re-run: Phase 1 (ledger truth) and
+> Phase 2 (the instrument, blind spot #8) shipped as `scripts/quality/check-narrative-status-drift.py`,
+> which exists and runs; every Phase 3 item (REG-52, REG-53, the REG-49 residual, the REG-51 residual)
+> is `status: DONE` in `ledger/items/*.yml`; Phase 4's D4 decision is answered (REG-17, DONE) and C1
+> (repo visibility) was resolved public per `docs/archive/programme-history/...` history. Phase 5 was
+> explicitly conditional/not-scheduled by this plan's own design, not a completion gate. Treat nothing
+> here as an open commitment: check `docs/OPEN_ITEMS.md` (authoritative) before acting on any item.
+>
+> **Original banner, 2026-07-27:** Promoted from
 > `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\external-ai-review\PLAN_REMAINDER_CLOSURE_2026-07-27.md`
 > on owner approval ("full implement"). Same flow as `archive/programme-history/EXTERNAL_AI_DELEGATION_PLAN.md` /
 > `archive/programme-history/REG48_50_CLOSURE_PLAN.md`.

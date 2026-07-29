@@ -1,0 +1,22 @@
+id: REG-29
+title: "Claim-release-on-refusal was correct but untested (migration collision claim)"
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-07-22
+closed: 2026-07-22
+verification: UNIT_TESTED
+source: Independent code verification of the REG-7/REG-8 implementation, 2026-07-22
+surface: runtimehost/schema-lifecycle
+detail: |
+  The production `finally` in migrate() does release the boot's own claim on a refusal thrown from
+  inside the migration body (Trigger C, destructive-without-token) -- verified correct by reading, but
+  no test proved it: the existing "refuses" test failed at claim ACQUISITION (a PK collision), where
+  the boot never held a claim in the first place -- the wedge-risk property that matters most was
+  unverified. No production change needed. Added
+  refusalWhileHoldingOwnClaimStillReleasesIt to SchemaLifecycleExecutorMigrationClaimTest: seeds
+  Trigger C's canonical shape so beforeMigrate throws from inside migrate's try block AFTER this
+  boot's own claim was acquired, asserts the throw and that the claim store is empty afterward.
+  RED-first: verified the test fails when the finally's release is neutralized, passes with the real
+  code.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-29

@@ -1,0 +1,20 @@
+id: REG-42
+title: "ConceptGateway.query() leaked a row-scoped count through total/hasMore pagination metadata"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-25
+closed: 2026-07-25
+verification: VERIFIED_LIVE
+source: "REG16-resid Round 2 LNCH-13 row-level authz adversarial review"
+surface: kernel/concept-gateway
+detail: |
+  total/hasMore were computed by the store BEFORE row-scope filtering, leaking the count of rows
+  outside the caller's access.read scope through pagination metadata even though the items array
+  correctly hid them. Fix: a new ConceptGatewaySemanticPolicy.hasRowReadScope(conceptName) (default
+  false) lets query() pay an extra bounded re-query cost only for concepts that actually declare
+  access.read -- an unpaged re-query (bounded by the existing MAX_LIMIT ceiling) with the same
+  filters/sorts, row-scope filtered, replaces total/hasMore; every other concept's query() is
+  unaffected. RED->GREEN: extended an existing test to assert total==1/hasMore==false (not the
+  tenant's real count of 2), confirmed RED pre-fix, GREEN after, both adapters.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-42

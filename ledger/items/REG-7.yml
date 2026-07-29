@@ -1,0 +1,26 @@
+id: REG-7
+title: "LNCH-1-B6: no migration advisory lock (multi-instance) -- converted to a feature"
+type: BOUNDARY
+severity: null
+status: DONE
+opened: 2026-07-21
+closed: 2026-07-22
+verification: VERIFIED_LIVE
+source: LNCH-1 programme inheritance
+surface: runtimehost/schema-lifecycle
+detail: |
+  Owner decision: convert this and REG-8 into features with a fail-loud + operator-resolves posture
+  rather than leave them as documented limits. Delivered as three sub-features: (1) external/unmanaged
+  database ownership -- a new schemaLifecycle.ownership field; ExternallyManaged apps issue zero
+  schema DDL and run a read-only compatibility check every boot; (2) "mark migration as done" -- a
+  ControlPanel operation that fast-forwards the stored fingerprint with zero migration passes, on the
+  operator's word; (3) collision detection (this item's original scope) -- a single-row claim table
+  taken at the top of every upgrade boot and released in a finally, a held claim refuses the boot
+  loudly naming the holder, a crashed holder is clearable via a SUPERUSER admin endpoint. Honestly
+  named residual: this is detect-and-refuse, NOT a true lock -- a near-simultaneous-INSERT race
+  remains theoretically possible on an engine without strict insert serialization; a genuinely virgin
+  database's first-ever boot is not claim-protected by design (claiming unconditionally there would
+  break Flyway's own baseline detection -- a real bug found and fixed via live boot rehearsal).
+  Verified: full RuntimeHost suite green after each sub-phase, dedicated test classes for all three,
+  live boot rehearsals against a real assembled app found and fixed two real ordering bugs.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-7

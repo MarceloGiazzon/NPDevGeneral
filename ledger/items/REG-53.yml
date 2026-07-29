@@ -1,0 +1,26 @@
+id: REG-53
+title: "SqlTypeSupport hardcoded VARCHAR(255) for every string/enum field, ignoring a declared maxLength"
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-07-27
+closed: 2026-07-27
+verification: VERIFIED_LIVE
+source: Session live-code trace, 2026-07-27
+surface: dsl/sql-type-mapping
+detail: |
+  SqlTypeSupport.sqlType -- the single shared mapper feeding generator DDL, bond DDL, and database-
+  definition fingerprints -- mapped every string/enum field to a literal hardcoded VARCHAR(255),
+  never consulting the compiled maxLength. DefaultSchemaValidator DID enforce a declared maxLength at
+  write-time input validation, so any string field declared with maxLength>255 let the validator
+  accept input the database column was never actually widened to hold -- a real hard-failure
+  production mode ("value too long") with zero warning anywhere in the schema-evolution tooling (no
+  Impact Report entry, no migration-plan diff). Genuinely undiffed, not a documented design boundary.
+  Fix: SqlTypeSupport.sqlType now honors a declared maxLength for string/enum fields via a new
+  varcharType helper -- VARCHAR(<maxLength>) when declared, the same VARCHAR(255) default when not (no
+  existing model's DDL/fingerprint changes). No changes needed to SchemaDiffEngine/TypeChangeMatrix --
+  both already correctly compare and classify a VARCHAR(n)->VARCHAR(m) change once given two genuinely
+  different type strings; the bug was entirely upstream. RED->GREEN: a new test drives the REAL
+  pipeline end-to-end (not hand-written type strings) -- confirmed RED pre-fix (a 255->10 narrowing
+  produced NO diff item at all), GREEN after (correctly classified as a destructive narrowing).
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-53

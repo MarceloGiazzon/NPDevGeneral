@@ -1,0 +1,25 @@
+id: REG-39
+title: "Stale built-in identity pack copy caused a silent, unhelpful auth failure -- fixed platform-wide"
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-07-24
+closed: 2026-07-25
+verification: VERIFIED_LIVE
+source: WmsOffice app-scope incident, generalized to a platform hazard
+surface: runtimehost/identity-pack
+detail: |
+  An app carrying a stale built-in-pack copy (missing a field like tokenVersion the pack now
+  declares) would boot then fail auth with a generic error, not a diagnosable one. Fixed platform-wide
+  via three layers: (1) detect -- StartupValidator.validateIdentityPackFreshness fails fast at boot
+  naming the pack/concept/missing-field/fix; (2) stop swallowing -- the 4 real SQL touchpoints reading/
+  writing token_version now distinguish a genuine schema-mismatch SQLException from a routine
+  negative via a new IdentityPackSchemaException, so a missing column produces a distinct diagnosable
+  error instead of a generic auth failure; (3) surface pre-deploy -- the same drift check folds a
+  synthetic NEEDS_HOOK item into the Impact Report, so -ImpactOnly / ControlPanel report
+  NEEDS_ATTENTION for a stale pack copy without needing a boot. Verified: a live proof stripped
+  tokenVersion from the platform's own identity pack, regenerated an app against a virgin DB, booted
+  -- reproduced the exact intended failure naming pack/concept/field/fix; clean revert + reboot
+  confirmed no false-positive on a healthy pack. A full rebuild-app run against WmsOffice confirmed no
+  regression on the originally-affected app.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-39

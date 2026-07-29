@@ -50,8 +50,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Only user of PyYAML in this script (load_ledger_items, feeding Rule T1) -- see ledger/README.md
+# and scripts/requirements.txt. ai-knowledge-gate.yml installs it before running this script.
+import yaml
+
 # A closed item, however its section words it.
-CLOSED_WORDS = ("CLOSED", "DONE", "WONTFIX", "ACHIEVED", "RETIRED", "LIFTED")
+# FIXED added 2026-07-29 (docs/REMEDIATION_PLAN.md R-P1): REG-33's own Status line reads "FIXED
+# (2026-07-24)" -- a real miss found while building Rule T3 (since retired) tried to cross-check
+# every sectioned item's status for the first time, proving the word list too narrow. Per this
+# module's own docstring: tighten on a real miss, never loosen after a false alarm.
+CLOSED_WORDS = ("CLOSED", "DONE", "WONTFIX", "ACHIEVED", "RETIRED", "LIFTED", "FIXED")
 # An item that is still live work.
 OPEN_WORDS = ("OPEN", "PARTIAL", "GAP", "IN PROGRESS", "NOT STARTED", "TODO")
 
@@ -247,12 +255,14 @@ def check(path: Path, mode: str, verbose: bool) -> list[str]:
 
 # Ledger-SHAPED documents that are deliberately not status-cross-checked, each with the reason.
 # Anything else that looks like a ledger fails ledger_coverage_gaps() -- see its docstring.
+#
+# docs/REMEDIATION_PLAN.md R-P2 (2026-07-29): LNCH1_CLOSEOUT_PLAN.md, LNCH1_PLATFORM_COLUMN_PLAN.md,
+# and REGISTER_CLOSURE_PLAN.md were archived to docs/archive/programme-history/ (this sweep only
+# scans docs/*.md, not subdirectories, so their exclusion entries are now unreachable) -- removed
+# rather than left as dead entries nothing can ever match again.
 LEDGER_EXCLUSIONS = {
-    "LNCH1_CLOSEOUT_PLAN.md": "Executed plan (marked HISTORICAL). Its tables are task checklists, not a status ledger of record.",
-    "LNCH1_PLATFORM_COLUMN_PLAN.md": "Executed plan (marked HISTORICAL). Same: task tables, not tracked items.",
-    "REGISTER_CLOSURE_PLAN.md": "Executed plan (marked HISTORICAL). Tables restate register items; the register itself is the checked source.",
     "FRONTEND_STRATEGY_PLAN.md": "Proposed, not-yet-started roadmap (STATUS: ACTIVE, F1-F6 gated on scheduling). Its F1..F6 table is an effort/priority estimate, not a status ledger of tracked open/closed items -- there is nothing yet to cross-check a detail section against.",
-    "OPEN_ITEMS.md": "2.E ledger migration prototype (docs/NEXT_EXECUTION_PLAN.md Part 5, ledger/README.md). A GENERATED projection of ledger/items/*.yml, not hand-editable prose -- a summary-vs-detail contradiction is structurally impossible (both come from the SAME single `status` field in the same YAML file, rendered by the same script). Its own drift check is `python scripts/quality/generate_open_items.py --check` (exact-byte comparison against the source YAML), a stronger guarantee than this script's regex-based cross-check. Excluded here, not added to `checked`, until the full register migrates and this file's source (ledger/items/*.yml) becomes the actual authority.",
+    "OPEN_ITEMS.md": "2.E ledger migration COMPLETE (docs/REMEDIATION_PLAN.md R-P1, 2026-07-29; ledger/README.md). The authoritative source-of-truth projection of ledger/items/*.yml, not hand-editable prose -- a summary-vs-detail contradiction is structurally impossible (both come from the SAME single `status` field in the same YAML file, rendered by the same script). Its own drift check is `python scripts/quality/generate_open_items.py --check` (exact-byte comparison against the source YAML), a stronger guarantee than this script's regex-based cross-check. Excluded here, not added to `checked`, permanently -- not a migration-in-progress artifact.",
 }
 
 # Adversarial-review findings documents are excluded as a CLASS, not one by one: their tables are
@@ -512,12 +522,26 @@ def tree_ledger_agreement_text(doc_name: str, lines: list[str], register_summary
     return gaps
 
 
+def ledger_status_summary(root: Path) -> dict[str, tuple[int, str]]:
+    """{id: (0, "closed"|"open")} from ledger/items/*.yml -- the same shape `parse()`'s summary dict
+    has, so it drops straight into `tree_ledger_agreement_text` unchanged. Line number is always 0
+    (meaningless for a YAML source; callers only use it for a human-readable pointer, and the id
+    itself is enough to find the file)."""
+    return {
+        item.get("id", "<missing id>"): (0, "closed" if item.get("status") == "DONE" else "open")
+        for item in load_ledger_items(root)
+    }
+
+
 def tree_ledger_agreement_gaps(root: Path) -> list[str]:
-    register_path = root / "docs" / "NPDEV_OPEN_ITEMS_REGISTER.md"
+    """Rule T1 (docs/REMEDIATION_PLAN.md R-P1: simplified to a YAML field read once the 2.E ledger
+    migration completed -- was `parse(NPDEV_OPEN_ITEMS_REGISTER.md, "strikethrough")` until then)."""
     tree_path = root / "docs" / "EXECUTION_TREES.md"
-    if not register_path.exists() or not tree_path.exists():
+    if not tree_path.exists():
         return []
-    summary, _detail, _sectioned = parse(register_path, "strikethrough")
+    summary = ledger_status_summary(root)
+    if not summary:
+        return []
     lines = tree_path.read_text(encoding="utf-8", errors="replace").splitlines()
     return tree_ledger_agreement_text(tree_path.name, lines, summary)
 
@@ -574,6 +598,29 @@ def strikethrough_contradiction_gaps(root: Path) -> list[str]:
         return []
     lines = register_path.read_text(encoding="utf-8", errors="replace").splitlines()
     return strikethrough_contradiction_text(register_path.name, lines)
+
+
+# ---------------------------------------------------------------------------
+# Rule T3 RETIRED (docs/REMEDIATION_PLAN.md R-P1, 2026-07-29): it existed only to cross-check
+# ledger/items/*.yml against NPDEV_OPEN_ITEMS_REGISTER.md while the 2.E migration was partial (see
+# git history for the removed implementation if it's ever needed again). The migration is now
+# complete -- the register is archived-in-place (see its own banner) and the ledger is the single
+# source of truth -- so there is nothing left for this rule to cross-check, exactly the condition
+# its own docstring named as the retirement trigger. Rule T1 below was simplified to read the ledger
+# directly instead of parsing the register's strikethrough state.
+# ---------------------------------------------------------------------------
+
+
+def load_ledger_items(root: Path) -> list[dict]:
+    ledger_dir = root / "ledger" / "items"
+    if not ledger_dir.is_dir():
+        return []
+    items = []
+    for path in sorted(ledger_dir.glob("*.yml")):
+        item = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        item.setdefault("id", path.stem)
+        items.append(item)
+    return items
 
 
 SYNTHETIC_T1_STALE = """\
@@ -678,6 +725,8 @@ def calibrate(root: Path) -> int:
            strikethrough_contradiction_text("<synthetic>", SYNTHETIC_T2_FIXED.splitlines()),
            expect_fire=False)
 
+    # Rule T3 retired (docs/REMEDIATION_PLAN.md R-P1) -- see its retirement note above Rule T1.
+
     if not ok:
         print("\nFAIL: at least one control did not behave as required -- T1/T2 do not ship as "
               "blocking until they do (docs/NEXT_EXECUTION_PLAN.md P2.1).", file=sys.stderr)
@@ -719,10 +768,12 @@ def main(argv: list[str]) -> int:
     all_problems.extend(mission_run_coverage_gaps(root))
     all_problems.extend(provenance_audit_gaps(root))
     # Rules T1+T2 (docs/NEXT_EXECUTION_PLAN.md P2.1): tree-vs-ledger and strikethrough-vs-own-verdict
-    # cross-checks, calibrated (see `--calibrate`) against the real 2026-07-28 drift instances.
+    # cross-checks, calibrated (see `--calibrate`) against the real 2026-07-28 drift instances. T1
+    # reads ledger/items/*.yml directly since docs/REMEDIATION_PLAN.md R-P1 completed the 2.E
+    # migration; Rule T3 (which bridged the partial-migration period) is retired -- see its note above.
     t1 = tree_ledger_agreement_gaps(root)
     t2 = strikethrough_contradiction_gaps(root)
-    print(f"  EXECUTION_TREES.md vs. register (Rule T1): {len(t1)} contradiction(s)")
+    print(f"  EXECUTION_TREES.md vs. ledger (Rule T1): {len(t1)} contradiction(s)")
     print(f"  NPDEV_OPEN_ITEMS_REGISTER.md strikethrough-vs-verdict (Rule T2): {len(t2)} contradiction(s)")
     all_problems.extend(t1)
     all_problems.extend(t2)

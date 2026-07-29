@@ -1,0 +1,18 @@
+id: REG-30
+title: "Duplicate mark-done rows each survive one consume, letting a second future boot fast-forward"
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-07-22
+closed: 2026-07-22
+verification: VERIFIED_LIVE
+source: Independent code verification of the REG-7/REG-8 implementation, 2026-07-22
+surface: runtimehost/schema-lifecycle
+detail: |
+  Two marks for the same fingerprint: consume() deleted only the matched row, so the older duplicate
+  survived to fast-forward a second future boot at that fingerprint. Folded into the REG-28 fix: a
+  unique index on (from_fingerprint, marked_fingerprint) rejects a duplicate mark for the identical
+  transition at insert time. Verified live against superuser-admin-console: re-POSTing an identical
+  (from, to) pair via the real ControlPanel API returned 500 and GET /marks still showed exactly one
+  row. Unit coverage: duplicateMarkForTheSameTransitionIsRejected.
+legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-30
