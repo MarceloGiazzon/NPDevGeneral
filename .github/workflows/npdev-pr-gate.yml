@@ -23,6 +23,10 @@ jobs:
   pr-gate:
     name: PR gate (DSL/kernel/generator/RuntimeHost smoke, Linux)
     runs-on: ubuntu-latest
+    # F2b (docs/FINAL_OPEN_ITEMS_PLAN.md): budget re-verified after the two Postgres adapters
+    # (persistence, idempotency) were promoted into this job -- see docs/ACCEPTED_BOUNDARIES.md B21.
+    # OBSERVED (run 30422102769, 2026-07-29, real PR run, cold runner): 6m14s total wall clock.
+    # 60 min leaves ample headroom; both Postgres adapters stay in this gate.
     timeout-minutes: 60
 
     defaults:
