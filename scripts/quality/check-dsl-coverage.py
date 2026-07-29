@@ -16,6 +16,18 @@ security-pattern-sweep.py / check-test-task-coverage.py).
 Sequenced after F4 (docs/FINAL_OPEN_ITEMS_PLAN.md): generatedAction was unreachable until F4 fixed
 FlowValidation, so this gate's target set assumes that fix has already landed.
 
+Why this is not redundant with the platform's existing unit tests (G3, docs/CLOSEOUT_PLAN.md): a
+measured 65 test files across NPDevGenerator/NPDevRuntimeHost/NPDevKernel/NPDevContract hand-build
+`CompiledModel`/`CompiledFlow` objects directly, bypassing `JsonModelParser`/`SemanticValidator`
+entirely. Those tests prove the compiled contract -- given a compiled shape, does the
+emitter/runtime do the right thing -- and are correct and fast for exactly that. They cannot,
+by construction, prove that a real `model.json` can PRODUCE that shape. That gap is exactly what let
+`generatedAction` sit unreachable from authoring for as long as it existed (REG-65): a packaged-app
+runtime-proof test passed the whole time by hand-constructing the compiled step directly, while
+`FlowValidation` rejected every authored model that tried to express one. This script closes the
+authoring-side half of that seam; `check-dsl-conformance-generates.py` (G2) closes the
+generation-side half (parsing is not the same as emitting).
+
     python check-dsl-coverage.py
     python check-dsl-coverage.py --calibrate
 """
@@ -101,15 +113,21 @@ FEATURE_DETECTORS = {
 
 
 def find_models(appgen_root: Path, samples_root: Path) -> list[tuple[str, Path]]:
-    """Mirrors validate-corpus.py's own find_models() label convention exactly."""
+    """Mirrors validate-corpus.py's own find_models() label convention exactly -- including its
+    Output-dir exclusion (docs/CLOSEOUT_PLAN.md G2 aftermath: a generated model.json copy under
+    NPDevSamples/**/Output/ must never enter the tracked corpus; see that function's own docstring)."""
     models: list[tuple[str, Path]] = []
     if appgen_root.exists():
         for p in sorted(appgen_root.rglob("model.json")):
+            if "Output" in p.relative_to(appgen_root).parts:
+                continue
             rel = p.relative_to(appgen_root).parts
             app = "/".join(rel[:-2]) if len(rel) > 2 else rel[0]
             models.append((f"AppGen/apps/{app}", p))
     if samples_root.exists():
         for p in sorted(samples_root.rglob("model.json")):
+            if "Output" in p.relative_to(samples_root).parts:
+                continue
             rel = p.relative_to(samples_root).parts
             app = "/".join(rel[:-2]) if len(rel) > 2 else rel[0]
             models.append((f"NPDevSamples/{app}", p))
