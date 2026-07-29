@@ -297,14 +297,16 @@ TREE 3 — BLOCKED
 ├─ 3.4  Archive the remaining 13 gate-hardwired process docs
 │        ⛔ BLOCKED BY: 2.E
 │
-├─ 3.5  Postgres adapters in the PR gate (currently nightly only)
-│        ⛔ STALE BLOCKER, corrected 2026-07-28: this row used to cite the REG-4 flake as an
-│        open blocker — REG-4 was CLOSED 2026-07-21 (root cause fixed, not just
-│        tolerance-widened; see register §1.4). The REAL, current reason Postgres/full
-│        validation stays nightly-only is runtime cost, per `npdev-ci-validation.yml`'s own
-│        header: "too slow/expensive for every PR (up to 120min)" — not a flake. Re-scope as
-│        a deliberate cost/time tradeoff, or as scoping a fast Postgres PR-subset, not as
-│        "blocked."
+├─ 3.5  Postgres adapters in the PR gate  ✅ DECIDED 2026-07-28 (docs/REMEDIATION_PLAN.md R-P3)
+│        Recommendation (b) taken: a narrow, evidence-scoped PR-gate promotion, not "all nightly"
+│        vs. "all PR". `:adapters:persistence-postgres:test` + `:adapters:idempotency-postgres:test`
+│        (REG-50 + REG-36's own regression tests, both genuinely H2-invisible — confirmed neither
+│        task ran in ANY workflow before this) now run every PR (`npdev-pr-gate.yml`), ~34s locally
+│        against one shared Testcontainers `postgres:15-alpine`. The other six `*-postgres` adapters
+│        (eventstore/audit/bulkhead/circuit/flowinstance/tracestore) stay nightly-only — no comparable
+│        track record of an H2-invisible finding, and `npdev-ci-validation.yml`'s runtime-cost
+│        reasoning (up to 120min for the full Postgres/Playwright/maturity-bootstrap suite) still
+│        holds for that broader set. Recorded as `docs/ACCEPTED_BOUNDARIES.md` B21.
 │
 ├─ 3.6  Bounded contexts / multi-namespace models
 │        ✅ SCOPED 2026-07-28 (docs/NEXT_EXECUTION_PLAN.md P6.2) -- not built, that was the
@@ -321,9 +323,16 @@ TREE 3 — BLOCKED
 │        suites green, WmsOffice's real 2-aggregate model validated clean (0 diagnostics).
 │        BREAKING.md entry filed (no codemod -- a real design decision, not a rewrite).
 │
-└─ 3.8  Agent-driven frontend generation, productized
-         ⛔ BLOCKED BY: 2.CD (the whole contract path, F1-F6) — see docs/FRONTEND_STRATEGY_PLAN.md
-         → After 2.CD this is a prompt plus a CLI command, not a project.
+└─ 3.8  Agent-driven frontend generation, productized  ✅ DONE 2026-07-29 (docs/REMEDIATION_PLAN.md R-P4)
+         `npdev generate screen --app <url> --concept <C> --out web/<name>.html` fetches the live
+         bundle, hands it plus docs/ai/UI_GENERATION_PROMPT.md to a pluggable agent (--model-command,
+         or a two-step --from-response flow -- no LLM vendor is baked into the CLI), and REFUSES to
+         write anything whose manifest fails the same impact gate R-G1 wired live -- generation and
+         verification in one step. Proven live end-to-end against WmsOffice (2026-07-29): a real
+         Produto screen generated, an intentional over-reach (a cross-concept field the scoped bundle
+         correctly doesn't expose) was REFUSED with nothing written, then the corrected manifest wrote
+         both files and passed; the screen's exact CRUD calls verified against the real running app
+         (create/read/update/delete, 204 on delete). NPDevCli/npdev_cli.py.
 ```
 
 ---

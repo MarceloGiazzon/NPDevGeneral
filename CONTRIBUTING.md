@@ -33,6 +33,22 @@ entry in `BREAKING.md`, **in the same commit**, alongside the `npdev migrate` co
 existing models automatically. Never land the break first and the codemod later — see `BREAKING.md`
 itself for the standing rule and examples.
 
+## When a new app lands
+
+Re-run the screen classifier and refresh `docs/SCREEN_TAXONOMY.md`'s per-screen table (F1/F6,
+`docs/FRONTEND_STRATEGY_PLAN.md`):
+
+```
+python <scratchpad>/helpers/classify-screens.py --apps-root D:/WorkSpace/NPDev/AppGen/apps --format md
+```
+
+**Trigger:** a hand-written screen *class* only earns a new NPDev primitive once it reaches
+`SCREEN_TAXONOMY.md`'s own promotion rule — **≥ 2 apps with ≥ 2 screens each**. That threshold can
+only be crossed by a new app or a new hand-written screen in an existing one, so this is the moment
+that matters, not a periodic calendar check. F6 was gated "nothing recurs yet" as of 2026-07-28
+(zero classes cleared the rule); skipping this re-check on the next app is how a recurring class
+would go unnoticed indefinitely — see `docs/REMEDIATION_PLAN.md` R-G4.
+
 ## Gates that must pass
 
 These aren't optional CI noise — they catch real drift:
