@@ -72,7 +72,16 @@
     fix behind F3/F4: NPDevSamples/dsl-conformance-max fixes today's 8 zero-coverage features once;
     this check is why a 9th can be added and never fixtured.
 
-    Check 16 (docs/INVOCATION_TOPOLOGY_PLAN.md T1): runs every scripts/quality/*.py script whose
+    Check 16 (docs/RECORD_SURFACES_PLAN.md P4): a different class than checks 1-15 -- not "a check
+    exists, nothing runs it" but "a surface of record goes stale after successful work, and nothing
+    notices." Two mechanical claims that went stale silently on 2026-07-29: `origin/main` reached 71
+    commits behind (the third recurrence; public repo, default branch, what a clone gets) with nothing
+    measuring the gap, and CLAUDE.md's own "Large files" block misstated three files' sizes (two had
+    shrunk to ~12 KB after the 2.B split, one had grown 25 KB) with nothing checking a claim CLAUDE.md
+    makes about itself. Blocking, same rationale as checks 6/8/9/11/12/13: a byte count and a commit
+    count are exactly the kind of claim that should never be trusted from memory.
+
+    Check 17 (docs/INVOCATION_TOPOLOGY_PLAN.md T1): runs every scripts/quality/*.py script whose
     argparse declares --calibrate (the list is derived by scanning for that literal idiom, not
     hand-maintained -- a hand-list would drift exactly like the artifacts this whole plan is about).
     A calibration nobody runs is a claim, not evidence: two of these (REG-67, REG-68) had silently
@@ -100,48 +109,48 @@ try {
 
     Write-Host "== AI knowledge gate ==" -ForegroundColor Cyan
 
-    # [1/17] Register self-check runs FIRST: platform-status.json is DERIVED from the same documents,
+    # [1/18] Register self-check runs FIRST: platform-status.json is DERIVED from the same documents,
     # so a summary row contradicting its own detail section does not just mislead a human reader --
     # it propagates straight into the AI knowledge substrate the MCP tools serve. Catching it before
     # the projection is regenerated stops the drift at its source. (An audit on 2026-07-24/25 found
     # ~12 such rows; every one would have been caught here in under a second.)
-    Write-Host "[1/17] Checking register/roadmap summary rows against their detail sections..."
+    Write-Host "[1/18] Checking register/roadmap summary rows against their detail sections..."
     & $py "scripts/quality/check-register-consistency.py"
     if ($LASTEXITCODE -ne 0) { $failures += "register/roadmap summary rows contradict their own detail sections" }
 
     if ($Fix) {
-        Write-Host "[2/17] Regenerating platform-status projection..." -ForegroundColor Yellow
+        Write-Host "[2/18] Regenerating platform-status projection..." -ForegroundColor Yellow
         & $py "scripts/ai/extract_platform_status.py"
         if ($LASTEXITCODE -ne 0) { $failures += "platform-status regeneration failed" }
     } else {
-        Write-Host "[2/17] Checking platform-status projection is current..."
+        Write-Host "[2/18] Checking platform-status projection is current..."
         & $py "scripts/ai/extract_platform_status.py" --check
         if ($LASTEXITCODE -ne 0) { $failures += "platform-status projection is STALE (run with -Fix)" }
     }
 
-    Write-Host "[3/17] Validating knowledge cards..."
+    Write-Host "[3/18] Validating knowledge cards..."
     & $py "scripts/ai/build_knowledge.py" --validate-only
     if ($LASTEXITCODE -ne 0) { $failures += "knowledge-card validation failed" }
 
-    Write-Host "[4/17] Checking failure-signature normalizer..."
+    Write-Host "[4/18] Checking failure-signature normalizer..."
     $sig = & $py "scripts/ai/failure_signatures.py" "Panel 'Orders' references unknown entity 'Customer'"
     $expected = "panel <id> references unknown entity <id>"
     if ($sig.Trim() -ne $expected) {
         $failures += "normalizer self-check failed: got '$($sig.Trim())' expected '$expected'"
     }
 
-    # [5/17] Same question as [1/17], asked of a different mechanism: is this quality tool still doing
+    # [5/18] Same question as [1/18], asked of a different mechanism: is this quality tool still doing
     # what its documentation claims? The sweep's fixtures are the REAL historical shapes of bugs this
     # repo shipped (LNCH13-F1, REG-39, REG-36) plus each one's fix, and it must separate them. A sweep
     # that reports 350 hits but would have walked past LNCH13-F1 does not just fail to help -- it
     # manufactures confidence. Note this checks the PATTERNS, not the codebase: it cannot fail because
     # someone wrote new code, only because someone broke the detector.
-    Write-Host "[5/17] Checking the security pattern sweep still catches its known bugs..."
+    Write-Host "[5/18] Checking the security pattern sweep still catches its known bugs..."
     & $py "scripts/quality/security-pattern-sweep.py" --self-test
     if ($LASTEXITCODE -ne 0) { $failures += "security-pattern-sweep self-test failed: a pattern no longer catches the bug it was written for" }
 
-    # [6/17] Run the sweep against the CODEBASE and fail on anything untriaged. Until now the gate
-    # proved the detector worked ([5/17]) but never actually pointed it at the repo, so a new hit could
+    # [6/18] Run the sweep against the CODEBASE and fail on anything untriaged. Until now the gate
+    # proved the detector worked ([5/18]) but never actually pointed it at the repo, so a new hit could
     # sit unnoticed indefinitely -- which is exactly what happened: closing the triage loop drove the
     # count 307 -> 8, and REG-46's own fix then silently added 8 more in the adapter it modified.
     # A sweep whose "new" count is allowed to drift upward stops being read, and a real hit hides in
@@ -151,112 +160,123 @@ try {
     # minute; the allowlist entry is a fingerprint + a reason. It is deliberately BLOCKING rather than
     # advisory, because an advisory count that nobody must act on is the state this replaces.
     # To relax it, drop `--fail-on-new` (the sweep still reports) -- but prefer triaging the hit.
-    Write-Host "[6/17] Checking for untriaged security-pattern hits..."
+    Write-Host "[6/18] Checking for untriaged security-pattern hits..."
     & $py "scripts/quality/security-pattern-sweep.py" --fail-on-new
     if ($LASTEXITCODE -ne 0) {
         $failures += "untriaged security-pattern hits: review each, then record a fingerprint + REASON in scripts/quality/security-pattern-sweep-allowlist.json and the rule in docs/SECURITY_PATTERN_SWEEP_2026-07.md (a false 'safe' is worse than a noisy hit)"
     }
 
-    # [7/17] Report-only (Phase 2.4, docs/archive/programme-history/REMAINDER_CLOSURE_PLAN.md): calibrated against both real
+    # [7/18] Report-only (Phase 2.4, docs/archive/programme-history/REMAINDER_CLOSURE_PLAN.md): calibrated against both real
     # 2026-07-27 instances (see the script's own --calibrate mode) and zero false positives on this
     # corpus at the time it shipped. Deliberately does not add to $failures yet -- promote once a
     # clean-tree run has stayed at zero for a while, per lesson #4.
-    Write-Host "[7/17] Checking for narrative-status drift (report-only)..."
+    Write-Host "[7/18] Checking for narrative-status drift (report-only)..."
     & $py "scripts/quality/check-narrative-status-drift.py"
 
-    # [8/17] T1.3: a custom Gradle Test task (behaviorTest/integrationTest/a future contractTest) that
+    # [8/18] T1.3: a custom Gradle Test task (behaviorTest/integrationTest/a future contractTest) that
     # is declared but reachable from no CI workflow is a test that only runs on one laptop -- exactly
-    # what REG-49's residual behaviorTest was until T1.2 wired it in. Blocking, same rationale as [6/17].
-    Write-Host "[8/17] Checking every custom Gradle Test task is reachable from a CI workflow..."
+    # what REG-49's residual behaviorTest was until T1.2 wired it in. Blocking, same rationale as [6/18].
+    Write-Host "[8/18] Checking every custom Gradle Test task is reachable from a CI workflow..."
     & $py "scripts/quality/check-test-task-coverage.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a custom Gradle Test task is unreachable from CI: see scripts/quality/check-test-task-coverage.py output above, then either wire it into a workflow or record a reviewed exemption in scripts/quality/test-task-coverage-allowlist.json"
     }
 
-    # [9/17] 2.A.2 (docs/DSL2_AND_DECOMPOSITION_PLAN.md): model.schema.json is duplicated in four
+    # [9/18] 2.A.2 (docs/DSL2_AND_DECOMPOSITION_PLAN.md): model.schema.json is duplicated in four
     # places with nothing previously enforcing they stay in sync -- they had already drifted by the
-    # time this gate was written. Blocking, same rationale as [6/17] and [8/17]: an unsynced schema
+    # time this gate was written. Blocking, same rationale as [6/18] and [8/18]: an unsynced schema
     # copy silently teaches a stale contract to whichever consumer reads it (authoring UI, DSL module,
     # the legacy authoring location), with no error until something built against the stale copy fails
     # far away from the edit that caused it.
-    Write-Host "[9/17] Checking the four model.schema.json copies are still semantically identical..."
+    Write-Host "[9/18] Checking the four model.schema.json copies are still semantically identical..."
     & $py "scripts/quality/check-schema-mirror-consistency.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "the four model.schema.json copies have drifted: see scripts/quality/check-schema-mirror-consistency.py output above for which key differs, then mirror the edit to all four (CLAUDE.md's own standing rule)"
     }
 
-    # [10/17] R-G1 static half (docs/REMEDIATION_PLAN.md): the panel-provenance impact gate (F4)
+    # [10/18] R-G1 static half (docs/REMEDIATION_PLAN.md): the panel-provenance impact gate (F4)
     # needs a live authenticated bundle to check field/invocation EXISTENCE (that half now runs
     # per-app via _ops/Check-Provenance.ps1, wired 2026-07-28) -- but a manifest's own SHAPE
     # (required fields, no unexpected fields, a well-formed invokes[] id) needs no live app at all.
     # Runs against the AppGen apps workspace when present on this machine; 0 manifests found (e.g.
     # a bare CI checkout, which has no AppGen/apps at all) is a printed PASS, not a silent skip.
-    Write-Host "[10/17] Checking *.panel.json manifests structurally validate (no live app needed)..."
+    Write-Host "[10/18] Checking *.panel.json manifests structurally validate (no live app needed)..."
     & $py "scripts/quality/check-panel-provenance-schema.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a *.panel.json manifest fails structural validation: see scripts/quality/check-panel-provenance-schema.py output above"
     }
 
-    # [11/17] C4 (docs/CORPUS_INTEGRITY_PLAN.md): every model.json under AppGen/apps + NPDevSamples
-    # must still parse against the REAL validator. Blocking, same rationale as [6/17]/[8/17]/[9/17] --
+    # [11/18] C4 (docs/CORPUS_INTEGRITY_PLAN.md): every model.json under AppGen/apps + NPDevSamples
+    # must still parse against the REAL validator. Blocking, same rationale as [6/18]/[8/18]/[9/18] --
     # REG-63 is what happened when nothing checked this: 17 of 29 corpus models silently stopped
     # parsing as the schema evolved, unnoticed for weeks. Runs against AppGen/apps when present on
     # this machine (a bare CI checkout still gets full NPDevSamples coverage); a reviewed, REG-id'd
     # exception goes in scripts/quality/corpus-parse-allowlist.json -- never pre-cleared.
-    Write-Host "[11/17] Checking every corpus model.json still parses..."
+    Write-Host "[11/18] Checking every corpus model.json still parses..."
     & $py "scripts/quality/validate-corpus.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a corpus model no longer parses: see scripts/quality/validate-corpus.py output above, then either fix the model or record a reviewed exception (with a REG id) in scripts/quality/corpus-parse-allowlist.json"
     }
 
-    Write-Host "[12/17] Checking every relative markdown link resolves..."
+    Write-Host "[12/18] Checking every relative markdown link resolves..."
     & $py "scripts/quality/check-markdown-links.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a relative markdown link is broken: see scripts/quality/check-markdown-links.py output above"
     }
 
-    # [13/17] Found by accident verifying F1/F2 on a live PR, 2026-07-29: an unquoted colon inside a
+    # [13/18] Found by accident verifying F1/F2 on a live PR, 2026-07-29: an unquoted colon inside a
     # step name made npdev-pr-gate.yml invalid YAML -- GitHub scheduled ZERO jobs for it, silently,
     # on every push and PR for hours before anyone noticed. Same "nothing looked" shape as checks
     # 11/14 and 12/14. Syntax only (yaml.safe_load), not GitHub Actions schema validation -- cheapest
     # version of the fix, matching the failure mode that actually happened.
-    Write-Host "[13/17] Checking every workflow file is valid YAML..."
+    Write-Host "[13/18] Checking every workflow file is valid YAML..."
     & $py "scripts/quality/check-workflow-yaml-syntax.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a workflow file is not valid YAML: see scripts/quality/check-workflow-yaml-syntax.py output above"
     }
 
-    # [14/17] F6 (docs/FINAL_OPEN_ITEMS_PLAN.md): the simple-user-registry-* and p77-hookproof(-pg)
+    # [14/18] F6 (docs/FINAL_OPEN_ITEMS_PLAN.md): the simple-user-registry-* and p77-hookproof(-pg)
     # engine-variant families have byte-identical model bodies by design (differing only in DB
     # engine config) -- nothing previously asserted they STAY identical, so a fix applied to one
     # would not visibly propagate to its siblings. Membership is declared (hand-reviewed) in
     # corpus-roles.json; sameness is asserted here, every run.
-    Write-Host "[14/17] Checking engine-variant families stay byte-identical..."
+    Write-Host "[14/18] Checking engine-variant families stay byte-identical..."
     & $py "scripts/quality/check-engine-variant-families.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "an engine-variant family has diverged: see scripts/quality/check-engine-variant-families.py output above"
     }
 
-    # [15/17] F8 (docs/FINAL_OPEN_ITEMS_PLAN.md): the corpus-parse gate (check 11) answers "does
+    # [15/18] F8 (docs/FINAL_OPEN_ITEMS_PLAN.md): the corpus-parse gate (check 11) answers "does
     # every model parse?" -- nothing answered "is every DSL feature exercised by at least one
     # model?", the gap that let 8 schema features (selectors, externalAi, step forEach, step
     # generatedAction, onFailure compensation, flow.schedule, flow.hooks, flow.specializes) sit at
     # zero coverage until dsl-conformance-max (F3) closed them -- confirmed live: re-running this
     # exact check against the corpus with that fixture excluded reproduces all 8 as RED. Sequenced
     # after F4 (generatedAction only became reachable once FlowValidation's switch was fixed).
-    Write-Host "[15/17] Checking every DSL feature has at least one corpus model exercising it..."
+    Write-Host "[15/18] Checking every DSL feature has at least one corpus model exercising it..."
     & $py "scripts/quality/check-dsl-coverage.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a DSL feature has zero corpus coverage: see scripts/quality/check-dsl-coverage.py output above -- add a real example to NPDevSamples/dsl-conformance-max, or record a reviewed exception with a REG id"
     }
 
-    # [16/17] docs/INVOCATION_TOPOLOGY_PLAN.md T1: a calibration nobody runs is a claim, not
+    # [16/18] docs/RECORD_SURFACES_PLAN.md P4: two mechanical record-surface claims that go stale
+    # silently -- how far origin/main has drifted behind this branch, and whether CLAUDE.md's own
+    # "Large files" block still matches the files on disk. Both found real drift on 2026-07-29 (71
+    # commits, three misstated sizes) with nothing previously checking either. Blocking, same
+    # rationale as [6/18]/[8/18]/[9/18]/[11/18]/[12/18]/[13/18].
+    Write-Host "[16/18] Checking branch freshness vs. origin/main and CLAUDE.md's large-file size claims..."
+    & $py "scripts/quality/check-record-surfaces.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a record surface has drifted: see scripts/quality/check-record-surfaces.py output above (branch gap vs. origin/main, or a stale CLAUDE.md file-size claim)"
+    }
+
+    # [17/18] docs/INVOCATION_TOPOLOGY_PLAN.md T1: a calibration nobody runs is a claim, not
     # evidence -- REG-67 and REG-68 both rotted silently (a real-instance control pinned to bare
     # `HEAD`, which stopped proving anything once its target doc was edited again) and nothing
     # noticed until someone happened to run `--calibrate` by hand. The script list is DERIVED from
     # argparse (any scripts/quality/*.py declaring `--calibrate`), not hand-maintained, so a future
     # calibratable script is picked up automatically instead of needing this list updated too.
-    Write-Host "[16/17] Running every --calibrate self-test (list derived from argparse, not hand-written)..."
+    Write-Host "[17/18] Running every --calibrate self-test (list derived from argparse, not hand-written)..."
     $calibratable = @(Get-ChildItem "scripts/quality/*.py" | Where-Object {
         (Get-Content $_.FullName -Raw) -match 'add_argument\(\s*"--calibrate"'
     })
@@ -268,12 +288,12 @@ try {
         }
     }
 
-    # [17/17] docs/INVOCATION_TOPOLOGY_PLAN.md T2: every script under scripts/ must declare BOTH a
+    # [18/18] docs/INVOCATION_TOPOLOGY_PLAN.md T2: every script under scripts/ must declare BOTH a
     # classification (what it is) and an invocation (what invokes it), and both must match reality --
     # generalizes check-test-task-coverage.py's "declared but never invoked" check from Gradle Test
     # tasks to every script. This checker was itself an orphan until this step: nothing had ever
     # invoked it (grep-confirmed before this change), the pattern in miniature.
-    Write-Host "[17/17] Checking every script declares a classification + invocation matching reality..."
+    Write-Host "[18/18] Checking every script declares a classification + invocation matching reality..."
     pwsh -NoProfile -File "scripts/quality/run-script-inventory-check.ps1"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a script's classification/invocation declaration is missing or does not match reality: see scripts/quality/run-script-inventory-check.ps1 output above, or scripts/reports/out/script-inventory-report.json"
