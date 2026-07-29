@@ -359,22 +359,12 @@ public final class SchemaRealizationEmitter {
     // would otherwise silently produce a CREATE TABLE with the same column listed twice -- invalid
     // SQL that fails at the database, not at generation time where the error is actually
     // diagnosable. Fail fast here instead, with a message that tells the model author what to do.
-    private static final Set<String> RESERVED_BUSINESS_COLUMN_NAMES = Set.of("version", "row_version", "tenant_id");
-
+    // REG-64/F10: this guard alone wasn't enough -- it runs downstream of Java compilation, so a
+    // colliding field produced a bare javac "duplicate field" error before ever reaching here.
+    // Extracted to ReservedColumnNames so EntityEmitter can run the identical check first. Kept
+    // here too, unchanged, as defence in depth.
     private static void validateNoReservedColumnCollision(CompiledConcept concept) {
-        for (CompiledField field : concept.getFields()) {
-            String column = SqlIdentifierSupport.columnName(field);
-            if (RESERVED_BUSINESS_COLUMN_NAMES.contains(column.toLowerCase(Locale.ROOT))) {
-                throw new IllegalStateException(
-                        "Concept " + concept.getName() + " has a field '" + field.getName()
-                                + "' whose column name '" + column + "' collides with a platform-reserved "
-                                + "business-table column (every generated table implicitly gets 'version' "
-                                + "for optimistic concurrency, 'row_version' for LNCH-16 CAS updates through "
-                                + "ConceptGateway, and 'tenant_id' for tenant isolation). "
-                                + "Rename this field in the model to something else (e.g. '"
-                                + field.getName() + "Ref').");
-            }
-        }
+        ReservedColumnNames.validateNoCollision(concept);
     }
 
     private static void appendBusinessTable(StringBuilder sql, CompiledConcept concept, DatabaseEngine engine,
