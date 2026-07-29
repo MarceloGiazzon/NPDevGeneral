@@ -88,6 +88,27 @@ jobs:
             :adapters:file-store-inproc:test \
             --no-daemon --console=plain
 
+      # docs/REMEDIATION_PLAN.md R-P3 (3.5): the two *-postgres adapters with a track record of REAL,
+      # H2-invisible findings (REG-36's btree index-entry size limit, REG-50's metadata-read failure
+      # fallback) -- both fixes shipped a real-Postgres regression test (via :adapters:postgres-test-support,
+      # a single shared Testcontainers `postgres:15-alpine`, a few seconds to start) specifically because
+      # H2-in-PostgreSQL-compatibility-mode does not enforce what a real engine does. Until this step, this
+      # gate ran NEITHER task at all -- confirmed by grep, neither PR nor nightly (`npdev-ci-validation.yml`)
+      # invoked them -- so these two regressions' own proof has never run in CI since the day they were
+      # fixed. Deliberately NOT the other six *-postgres adapters (eventstore/audit/bulkhead/circuit/
+      # flowinstance/tracestore) -- those stay nightly-only per npdev-ci-validation.yml's own reasoning
+      # (runtime cost, up to 120min across the full Postgres/Playwright/maturity-bootstrap suite); this is
+      # a narrow, evidence-scoped promotion, not a blanket one.
+      - name: Postgres adapter tests (fast subset with real H2-invisible findings: persistence, idempotency)
+        working-directory: NPDevKernel
+        timeout-minutes: 15
+        run: |
+          sed -i '/org\.gradle\.projectcachedir/d' gradle.properties
+          ./gradlew \
+            :adapters:persistence-postgres:test \
+            :adapters:idempotency-postgres:test \
+            --no-daemon --console=plain
+
       - name: Generator unit tests
         working-directory: NPDevGenerator
         timeout-minutes: 20
