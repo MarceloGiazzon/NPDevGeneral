@@ -1,35 +1,24 @@
 name: AI Knowledge Gate
 
-# F1/F2 (docs/FINAL_OPEN_ITEMS_PLAN.md, 2026-07-29): this is now a 13-step gate that shells out to
-# gradlew (corpus-parse, check 11/13) -- NOT "seconds, pure-Python, no Java/Gradle" any more. Runs
-# Java/Gradle (`validate-corpus.py`'s validateModel task, ~4s/model amortized against a warm daemon,
-# materially more on a cold CI runner -- see the timeout-minutes comment below) on every PR that
-# touches any of the paths below. It guards, among others:
-#   1. knowledge/platform-status.json is not stale vs the gaps ledger,
-#   2. every knowledge/cards/*.json validates,
-#   3. the shared failure-signature normalizer behaves,
-#   4. every corpus model.json still parses against the real validator (check 11/13) --
-#      REG-63's own 17-of-29-models break is exactly the event the ORIGINAL six-entry paths: list
-#      would not have fired on: none of its entries covered NPDevContract/schemas/model.schema.json,
-#      NPDevSamples/**/model.json, ledger/**, or scripts/quality/** itself,
-#   5. every relative markdown link resolves (check 12/13) -- the ORIGINAL list did not cover
-#      docs/** broadly either, so the same 8-broken-link class of break would not have fired this,
-#   6. every workflow file is valid YAML (check 13/13) -- found by accident verifying THIS fix on a
-#      live PR: npdev-pr-gate.yml had an unquoted colon in a step name and was silently scheduling
-#      zero jobs for hours. Fixed in the same PR; this check is why it can't recur silently.
+# Now a 17-step gate (grew from 13 at F1/F2 time, docs/FINAL_OPEN_ITEMS_PLAN.md, to 17 via
+# docs/INVOCATION_TOPOLOGY_PLAN.md T1/T2) that shells out to gradlew (corpus-parse) -- NOT
+# "seconds, pure-Python, no Java/Gradle" any more. Runs Java/Gradle (`validate-corpus.py`'s
+# validateModel task, ~4s/model amortized against a warm daemon, materially more on a cold CI
+# runner -- see the timeout-minutes comment below) on every PR, unconditionally.
+#
+# docs/INVOCATION_TOPOLOGY_PLAN.md T3: this used to trigger only on a hand-maintained `paths:`
+# list. That list was already wrong once for real (it covered none of
+# NPDevContract/schemas/model.schema.json, NPDevSamples/**/model.json, ledger/**, or
+# scripts/quality/** itself when REG-63's 17-of-29-models corpus break needed exactly this gate to
+# catch it) and a hand-maintained filter is exactly as durable as the hand-maintained list that
+# caused finding 1 in the first place: add a check next PR that guards a path not yet in the list,
+# and the filter silently under-covers again, discovered only by accident. Removed the filter
+# entirely instead of building a GUARDS:-declaration mechanism to police it (see
+# docs/ACCEPTED_BOUNDARIES.md B24) -- "always runs" cannot under-cover, ever, and this gate's own
+# measured wall clock (B23: 1m21s for the pre-T1/T2 15 checks) leaves enormous headroom under the
+# 20-minute cap even unconditionally on every PR.
 on:
-  pull_request:
-    paths:
-      - 'docs/**'                      # link gate (check 12/12) + T1/T2 source docs
-      - 'ledger/**'                    # T1/T2 authority
-      - 'knowledge/**'
-      - 'scripts/ai/**'
-      - 'scripts/quality/**'           # every gate script re-runs its own gate
-      - 'schemas/**'                   # ai + ui-contract + panel-provenance
-      - 'NPDevContract/schemas/**'     # the 17-model corpus-parse trigger (check 11/12)
-      - 'NPDevSamples/**/model.json'   # in-repo corpus models
-      - 'gradle.properties'            # affects every gradlew invocation this gate now makes
-      - '.github/workflows/*.yml'      # check 13/13 -- a workflow file that stops parsing
+  pull_request: {}
   workflow_dispatch:
 
 concurrency:
