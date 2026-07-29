@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**67 item(s) migrated: 0 open/partial, 67 done.**
+**68 item(s) migrated: 1 open/partial, 67 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -69,11 +69,12 @@
 | REG-6 | ColumnFacts: eight SchemaLifecycleExecutor passes each re-derived column semantics independently | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-60 | Aggregate Workbench post-commit "Saved." confirmation is wiped by the next render before a user can see it | BUG | LOW | DONE | 2026-07-28 |
 | REG-61 | Narrow-type recreate loses NOT NULL; no per-row-unique default expressible for a required UNIQUE column | GAP | HIGH | DONE | 2026-07-28 |
-| REG-62 | allowedActions typed (C8 done); cross-referencing it against declared workbench actions still blocked on a typed-actions prerequisite | GAP | LOW | DONE | 2026-07-28 |
+| REG-62 | allowedActions is a typed array and is cross-referenced against the surface's declared actions | GAP | LOW | DONE | 2026-07-28 |
 | REG-63 | 17 of 29 corpus models (not 2) used pre-DSL-2.0 flow-step/orchestration shapes the current schema rejects | GAP | MEDIUM | DONE | 2026-07-29 |
 | REG-64 | EntityEmitter has no reserved-column collision guard -- a model field named tenantId/version/rowVersion produces uncompilable duplicate-field Java, not a clear message | GAP | LOW | DONE | 2026-07-29 |
 | REG-65 | generatedAction was a canonical flowStep.type value FlowValidation always rejected, despite full compiler/generator/runtime support downstream | BUG | MEDIUM | DONE | 2026-07-29 |
 | REG-66 | reg39-healthy-control retired -- a byte-identical WmsOffice clone with no independent signal, closed REG-39's own one-time verification artifact | PROCESS | LOW | DONE | 2026-07-29 |
+| REG-67 | check-register-consistency.py's --calibrate mode uses bare "HEAD" for its real-instance controls, which silently stops proving anything once the target doc is edited again | GAP | LOW | OPEN | 2026-07-29 |
 | REG-7 | LNCH-1-B6: no migration advisory lock (multi-instance) -- converted to a feature | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-8 | LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-9 | LNCH-4: auth secrets management -- JWT key env-var delivery | GAP | HIGH | DONE | 2026-07-21 |
@@ -1304,7 +1305,7 @@ documents the new refusal case and recipe. Full com.finalexec.db suite 273/273, 
 
 *Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-61`
 
-### REG-62 — allowedActions typed (C8 done); cross-referencing it against declared workbench actions still blocked on a typed-actions prerequisite
+### REG-62 — allowedActions is a typed array and is cross-referenced against the surface's declared actions
 
 **Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-07-29)
 **Verification:** VERIFIED_LIVE
@@ -1507,6 +1508,37 @@ snapshot, correctly left as historical record, not updated).
 Retired (deleted from the external AppGen/apps workspace, user-confirmed given it has no git
 history to revert through). Nothing of unique value was destroyed -- its only distinguishing
 content (model.json) is identical to WmsOffice's own, which remains.
+
+### REG-67 — check-register-consistency.py's --calibrate mode uses bare "HEAD" for its real-instance controls, which silently stops proving anything once the target doc is edited again
+
+**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** Found incidentally while calibrating Rule T2b (docs/CLOSEOUT_PLAN.md G4), reproduced against the unmodified script before any G4 edit landed
+**Surface:** `quality/register-consistency`
+**Files:**
+- `scripts/quality/check-register-consistency.py`
+
+`calibrate()`'s Rule T1 and Rule T2 real-instance controls read `git show HEAD:<path>`, expecting
+that revision to still contain the exact 2026-07-28 bug-shaped text (REG-40/REG-4 for T1,
+REG-59 for T2) so `expect_fire=True` proves the rule would have caught the real historical bug.
+`HEAD` is a moving target, not a pinned commit -- and both target documents
+(`docs/EXECUTION_TREES.md`, `docs/NPDEV_OPEN_ITEMS_REGISTER.md`) have been edited again since
+2026-07-28 (further closures, REG-59/REG-61 split, register archived-in-place), so the exact
+stale-wording shape the controls look for no longer exists at today's HEAD. Both controls now
+report "silent" instead of "fired", so `--calibrate` FAILS on a clean tree -- confirmed by running
+the unmodified, pre-this-session script against the current HEAD (5892370) before touching the
+file for Rule T2b: identical two failures, so this is not something this session's edits caused.
+Not a regression in the RULES themselves -- `main()`'s actual blocking checks (T1/T2 run against
+the live working tree, not HEAD) are unaffected; confirmed both report 0 contradictions in the
+same run. This only affects the optional `--calibrate` self-test, which nothing in
+`run-ai-knowledge-gate.ps1` invokes automatically (grep-confirmed: only `main()`'s default mode
+runs in the gate). Impact is real but bounded to a maintainer manually running `--calibrate`.
+Fix, when picked up: pin each real-instance control to the actual commit SHA where the bug shape
+is verifiably still present (`git log -S` or a recorded SHA in a comment, the same durability
+`docs/CLOSEOUT_PLAN.md` G4's own new Rule T2b control uses for REG-62 @ 9c3c423) instead of `HEAD`,
+or replace the rotted real-instance controls with synthetic fixtures (T2 already has one working
+synthetic control per rule; T1 does too) and drop the real-instance assertion once it can no longer
+be kept current for free.
 
 ### REG-7 — LNCH-1-B6: no migration advisory lock (multi-instance) -- converted to a feature
 
