@@ -623,6 +623,46 @@ def load_ledger_items(root: Path) -> list[dict]:
     return items
 
 
+# Rule T2b (docs/CLOSEOUT_PLAN.md G4): a scope gap in Rule T2 above, not a new contradiction class --
+# T2 checks the register's strikethrough marker against its own verdict SENTENCE, but never reads an
+# item's TITLE, and never looks at ledger/items/*.yml at all (that YAML has its own independent
+# title/status pair since the 2.E migration). Found live: REG-62.yml's title still read "...still
+# blocked on a typed-actions prerequisite" after F9 (docs/FINAL_OPEN_ITEMS_PLAN.md) shipped the
+# cross-reference and flipped status to DONE -- the one field a human scans first (the title, e.g. in
+# docs/OPEN_ITEMS.md's summary table) was the one field no gate checked.
+LEDGER_CLOSED_STATUSES = ("DONE", "WITHDRAWN")
+LEDGER_TITLE_STALE_PHRASES = (
+    re.compile(r"\bstill blocked\b", re.IGNORECASE),
+    re.compile(r"\bnot fixed\b", re.IGNORECASE),
+    re.compile(r"\bremains open\b", re.IGNORECASE),
+    re.compile(r"\bblocked on\b", re.IGNORECASE),
+    re.compile(r"\bunresolved\b", re.IGNORECASE),
+)
+
+
+def ledger_title_status_contradiction_text(items: list[dict]) -> list[str]:
+    gaps: list[str] = []
+    for item in items:
+        status = str(item.get("status") or "").strip().upper()
+        if status not in LEDGER_CLOSED_STATUSES:
+            continue
+        title = str(item.get("title") or "")
+        for pattern in LEDGER_TITLE_STALE_PHRASES:
+            found = pattern.search(title)
+            if found:
+                gaps.append(
+                    f"ledger/items/{item.get('id')}.yml: status is {status} but its own title "
+                    f"({title.strip()[:80]!r}) contains {found.group(0)!r}, which reads as still "
+                    f"open. Fix: reword the title to describe the closed state."
+                )
+                break
+    return gaps
+
+
+def ledger_title_status_contradiction_gaps(root: Path) -> list[str]:
+    return ledger_title_status_contradiction_text(load_ledger_items(root))
+
+
 SYNTHETIC_T1_STALE = """\
 ├─ 9.1  Fix REG-99 (synthetic fixture, not a real tree item)
 │        → User impact is high: this currently fails. Not yet scheduled.
@@ -640,12 +680,22 @@ SYNTHETIC_T2_FIXED = """\
 | ~~**REG-98**~~ | synthetic fixture | HIGH | **DONE for X.** The platform gap is filed as REG-97 (OPEN). |
 """
 
+SYNTHETIC_T2B_STALE = [{
+    "id": "REG-97", "status": "DONE",
+    "title": "some fix (synthetic) -- still blocked on a prerequisite",
+}]
+SYNTHETIC_T2B_FIXED = [{
+    "id": "REG-97", "status": "DONE",
+    "title": "some fix (synthetic), now unblocked",
+}]
+
 
 def calibrate(root: Path) -> int:
-    """Required controls for T1/T2 before either ships as blocking -- same standard this repo already
+    """Required controls for T1/T2/T2b before any ships as blocking -- same standard this repo already
     holds `check-narrative-status-drift.py` to. Prefers real git revisions where one exists (T1's
-    REG-40/REG-4 instances, both real and both in this repo's own history); falls back to a small
-    synthetic fixture only where no single real revision isolates the mechanism cleanly.
+    REG-40/REG-4 instances and T2b's REG-62 instance, all real and all in this repo's own history);
+    falls back to a small synthetic fixture only where no single real revision isolates the mechanism
+    cleanly.
     """
     ok = True
 
@@ -658,19 +708,19 @@ def calibrate(root: Path) -> int:
         for f in findings:
             print(f"           {f}")
 
-    print("Calibration -- Rules T1/T2 must catch the real 2026-07-28 instances before shipping:")
+    print("Calibration -- Rules T1/T2/T2b must catch their real historical instances before shipping:")
 
     register_path = root / "docs" / "NPDEV_OPEN_ITEMS_REGISTER.md"
     tree_path = root / "docs" / "EXECUTION_TREES.md"
 
-    def git_show(path: Path) -> str | None:
+    def git_show(path: Path, revision: str = "HEAD") -> str | None:
         try:
             return subprocess.run(
-                ["git", "show", f"HEAD:{path.relative_to(root).as_posix()}"],
+                ["git", "show", f"{revision}:{path.relative_to(root).as_posix()}"],
                 cwd=root, capture_output=True, encoding="utf-8", errors="replace", check=True,
             ).stdout
         except subprocess.CalledProcessError as exc:
-            print(f"  ERROR: could not read HEAD revision of {path.name}: {exc.stderr}", file=sys.stderr)
+            print(f"  ERROR: could not read {revision} revision of {path.name}: {exc.stderr}", file=sys.stderr)
             return None
 
     head_register_summary = None
@@ -727,11 +777,37 @@ def calibrate(root: Path) -> int:
 
     # Rule T3 retired (docs/REMEDIATION_PLAN.md R-P1) -- see its retirement note above Rule T1.
 
+    # Rule T2b (docs/CLOSEOUT_PLAN.md G4): real instance is REG-62.yml @ commit 9c3c423 (the F9 commit
+    # that flipped status to DONE without updating the title) -- still readable via git history even
+    # though the working tree has since been fixed, same "real revision preferred over synthetic"
+    # standard as T1/T2 above.
+    head_reg62_text = git_show(root / "ledger" / "items" / "REG-62.yml", revision="9c3c423")
+    if head_reg62_text is not None:
+        head_reg62_item = yaml.safe_load(head_reg62_text) or {}
+        head_reg62_item.setdefault("id", "REG-62")
+        report(
+            "Rule T2b vs. ledger/items/REG-62.yml @ 9c3c423 (pre-fix, real instance)",
+            ledger_title_status_contradiction_text([head_reg62_item]),
+            expect_fire=True,
+        )
+    report(
+        "Rule T2b vs. the working tree (post-fix)",
+        ledger_title_status_contradiction_gaps(root),
+        expect_fire=False,
+    )
+    report("Rule T2b vs. synthetic 'still blocked' title fixture (mechanism control)",
+           ledger_title_status_contradiction_text(SYNTHETIC_T2B_STALE),
+           expect_fire=True)
+    report("Rule T2b vs. the corrected synthetic fixture",
+           ledger_title_status_contradiction_text(SYNTHETIC_T2B_FIXED),
+           expect_fire=False)
+
     if not ok:
-        print("\nFAIL: at least one control did not behave as required -- T1/T2 do not ship as "
-              "blocking until they do (docs/NEXT_EXECUTION_PLAN.md P2.1).", file=sys.stderr)
+        print("\nFAIL: at least one control did not behave as required -- T1/T2/T2b do not ship as "
+              "blocking until they do (docs/NEXT_EXECUTION_PLAN.md P2.1, docs/CLOSEOUT_PLAN.md G4).",
+              file=sys.stderr)
         return 1
-    print("\nOK: all T1/T2 controls behave correctly.")
+    print("\nOK: all T1/T2/T2b controls behave correctly.")
     return 0
 
 
@@ -739,7 +815,7 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--root", default=".", help="repo root (default: cwd)")
     parser.add_argument("--verbose", action="store_true", help="also print consistent/skipped counts")
-    parser.add_argument("--calibrate", action="store_true", help="run the T1/T2 required controls and exit")
+    parser.add_argument("--calibrate", action="store_true", help="run the T1/T2/T2b required controls and exit")
     args = parser.parse_args(argv)
 
     root = Path(args.root).resolve()
@@ -773,10 +849,13 @@ def main(argv: list[str]) -> int:
     # migration; Rule T3 (which bridged the partial-migration period) is retired -- see its note above.
     t1 = tree_ledger_agreement_gaps(root)
     t2 = strikethrough_contradiction_gaps(root)
+    t2b = ledger_title_status_contradiction_gaps(root)
     print(f"  EXECUTION_TREES.md vs. ledger (Rule T1): {len(t1)} contradiction(s)")
     print(f"  NPDEV_OPEN_ITEMS_REGISTER.md strikethrough-vs-verdict (Rule T2): {len(t2)} contradiction(s)")
+    print(f"  ledger/items/*.yml title-vs-status (Rule T2b): {len(t2b)} contradiction(s)")
     all_problems.extend(t1)
     all_problems.extend(t2)
+    all_problems.extend(t2b)
 
     if all_problems:
         print(f"\nFAIL: {len(all_problems)} tracking inconsistency(ies) — a summary row contradicting "

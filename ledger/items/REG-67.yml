@@ -1,0 +1,33 @@
+id: REG-67
+title: check-register-consistency.py's --calibrate mode uses bare "HEAD" for its real-instance controls, which silently stops proving anything once the target doc is edited again
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-07-29
+verification: VERIFIED_LIVE
+source: Found incidentally while calibrating Rule T2b (docs/CLOSEOUT_PLAN.md G4), reproduced against the unmodified script before any G4 edit landed
+surface: quality/register-consistency
+files:
+  - scripts/quality/check-register-consistency.py
+detail: |
+  `calibrate()`'s Rule T1 and Rule T2 real-instance controls read `git show HEAD:<path>`, expecting
+  that revision to still contain the exact 2026-07-28 bug-shaped text (REG-40/REG-4 for T1,
+  REG-59 for T2) so `expect_fire=True` proves the rule would have caught the real historical bug.
+  `HEAD` is a moving target, not a pinned commit -- and both target documents
+  (`docs/EXECUTION_TREES.md`, `docs/NPDEV_OPEN_ITEMS_REGISTER.md`) have been edited again since
+  2026-07-28 (further closures, REG-59/REG-61 split, register archived-in-place), so the exact
+  stale-wording shape the controls look for no longer exists at today's HEAD. Both controls now
+  report "silent" instead of "fired", so `--calibrate` FAILS on a clean tree -- confirmed by running
+  the unmodified, pre-this-session script against the current HEAD (5892370) before touching the
+  file for Rule T2b: identical two failures, so this is not something this session's edits caused.
+  Not a regression in the RULES themselves -- `main()`'s actual blocking checks (T1/T2 run against
+  the live working tree, not HEAD) are unaffected; confirmed both report 0 contradictions in the
+  same run. This only affects the optional `--calibrate` self-test, which nothing in
+  `run-ai-knowledge-gate.ps1` invokes automatically (grep-confirmed: only `main()`'s default mode
+  runs in the gate). Impact is real but bounded to a maintainer manually running `--calibrate`.
+  Fix, when picked up: pin each real-instance control to the actual commit SHA where the bug shape
+  is verifiably still present (`git log -S` or a recorded SHA in a comment, the same durability
+  `docs/CLOSEOUT_PLAN.md` G4's own new Rule T2b control uses for REG-62 @ 9c3c423) instead of `HEAD`,
+  or replace the rotted real-instance controls with synthetic fixtures (T2 already has one working
+  synthetic control per rule; T1 does too) and drop the real-instance assertion once it can no longer
+  be kept current for free.
