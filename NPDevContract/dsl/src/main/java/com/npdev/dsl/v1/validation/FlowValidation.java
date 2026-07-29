@@ -377,6 +377,7 @@ final class FlowValidation {
                         errors
                 );
                 case "await" -> validateAwaitStep(flow, step, eventNames, errors);
+                case "generatedaction" -> validateGeneratedActionStep(flow, step, errors);
                 case "foreach" -> validateForEachStep(
                         flow,
                         step,
@@ -649,6 +650,25 @@ final class FlowValidation {
                 && (step.getData() == null || step.getData().isEmpty())) {
             errors.add("Flow " + flow.getName() + " step " + step.getName()
                     + ": event step must define payload reference or data mapping");
+        }
+    }
+
+    /** F4 (docs/FINAL_OPEN_ITEMS_PLAN.md): generatedAction was one of the 12 canonical flowStep.type
+     * values (DSL 2.0's 3 "sugar" kinds, alongside createConcept/updateConcept) but this switch never
+     * had a case for it, so every authored model using it was rejected as "unsupported step type" --
+     * despite ModelCompiler already compiling it into a CompiledCapabilityCall("GeneratedActionCapability",
+     * ...) and the generator/runtime (TrustedActionKernelRunnerTemplate, GeneratedActionCapabilityAdapter)
+     * already having full, tested support for executing one. JsonModelParser already guarantees
+     * actionName is present and non-blank (throws during parsing otherwise, generatedAction.md), so
+     * this check is a defensive belt-and-suspenders re-check, not new enforcement -- there is nothing
+     * to cross-reference (unlike a capability step's operationsByCapability lookup): the named action
+     * is a code-generation directive resolved by the generator at build time, not a model-declared
+     * capability. */
+    private static void validateGeneratedActionStep(FlowAst flow, StepAst step, List<String> errors) {
+        String actionName = normalize(step.getGeneratedActionName());
+        if (actionName.isBlank()) {
+            errors.add("Flow " + flow.getName() + " step " + step.getName()
+                    + ": generatedAction step must define actionName");
         }
     }
 

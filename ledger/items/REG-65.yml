@@ -1,0 +1,41 @@
+id: REG-65
+title: "generatedAction was a canonical flowStep.type value FlowValidation always rejected, despite full compiler/generator/runtime support downstream"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-29
+closed: 2026-07-29
+verification: VERIFIED_LIVE
+source: Found building NPDevSamples/dsl-conformance-max (F3), scoped and fixed as docs/FINAL_OPEN_ITEMS_PLAN.md F4
+surface: dsl/flow-validation
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/FlowValidation.java
+detail: |
+  generatedAction is one of the 12 canonical flowStep.type values in model.schema.json (all 4
+  mirrors), documented in docs/FLOWS.md as author-facing sugar for CAPABILITY_CALL alongside
+  createConcept/updateConcept. JsonModelParser handles it and requires actionName
+  (JsonModelParser.java:1482-1484); ModelCompiler.compileFlowSteps already treats it as
+  "capability-like" and compiles it into a CompiledCapabilityCall with capability type
+  "GeneratedActionCapability". The generator (TrustedActionKernelRunnerTemplate,
+  GeneratedActionCapabilityAdapter) has full, tested support for executing a compiled step of that
+  shape -- proven live by TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest, which builds and
+  boots a real packaged app with a generatedAction-shaped compiled flow step.
+  But FlowValidation.validateFlowSteps's switch had no case for "generatedaction" (it handled
+  invariant/capability/createentity-updateentity-createconcept-updateconcept/event/scheduleevent/
+  return/map/branch/await/foreach -- 11 kinds, not generatedAction's 12th), so it fell to `default`
+  and every authored model using it was rejected: "unsupported step type generatedAction". This is
+  why 0 of 30 corpus models ever used it -- they could not, structurally, regardless of intent. The
+  runtime-proof test above never surfaces this because it hand-constructs CompiledModel objects
+  directly, bypassing JsonModelParser/SemanticValidator entirely -- it proves the compiler/generator/
+  runtime chain works, never that a real authored model.json can reach it.
+  Confirmed the runtime side has no separate gap before fixing: FlowStepDefinition.Type (the kernel's
+  own enum) has no GENERATED_ACTION member, but this is BY DESIGN, not a limitation -- it matches
+  createConcept/updateConcept, the other two documented sugar kinds, which also desugar to
+  CAPABILITY_CALL rather than getting their own kernel Type.
+  Fix: added `case "generatedaction" -> validateGeneratedActionStep(...)` to FlowValidation's switch,
+  matching the minimal-validator style of return/map (JsonModelParser already guarantees actionName
+  is present, so this is a defensive re-check, not new enforcement -- there is nothing to
+  cross-reference the way a capability step's operation lookup does, since the named action is a
+  code-generation directive resolved by the generator at build time, not a model-declared capability).
+  dsl-conformance-max (F3) now includes a real generatedAction step as its own proof; docs/FLOWS.md
+  updated.

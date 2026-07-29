@@ -22,7 +22,8 @@
     "restaurant-saas-multitenant"
   ],
   "fixtureOnlySamples": [
-    "user-minimal"
+    "user-minimal",
+    "dsl-conformance-max"
   ],
   "aiBetaScenarioLinks": {
     "simple-user-registry": [

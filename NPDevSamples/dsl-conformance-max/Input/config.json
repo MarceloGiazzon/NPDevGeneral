@@ -1,0 +1,49 @@
+{
+  "$schema": "..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "dsl-conformance-max",
+    "description": "DSL surface-coverage fixture: exercises the schema sections and flow-step kinds no other corpus model used. Deliberately not a realistic business app.",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": {
+    "root": "..\\..\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\Output\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\Output\\App",
+    "deleteBeforeMount": true
+  },
+  "runtime": {
+    "springProfile": "dev,step0,trial",
+    "serverPort": 8099,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "trialDefaults": {
+    "apiKey": "dev-key",
+    "recommendedProfiles": "dev,step0,trial",
+    "runtimeUrl": "http://localhost:8099/",
+    "databaseMode": "step0-h2",
+    "pluginDiscoveryMode": "filesystem-folder",
+    "pluginPackageDirectory": "./npdev-generated/src/main/resources/npdev/plugin-packages",
+    "notes": [
+      "InMemory + step0 on purpose: this fixture exists to be PARSED and GENERATED cheaply on every",
+      "corpus-gate run, not to hold data. A dedicated port (8099) keeps it clear of the other samples."
+    ]
+  }
+}
