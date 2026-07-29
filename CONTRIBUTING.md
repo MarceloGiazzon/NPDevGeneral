@@ -47,6 +47,26 @@ follow up later. That is what turns "the corpus covers most of the schema" from 
 has to go measure into something the gate tells you (`scripts/quality/validate-corpus.py`, run on
 every PR via `ai-knowledge-gate.yml`).
 
+## A test that hand-builds `CompiledModel` proves the compiled contract, not the authoring path
+
+A test that constructs `CompiledModel` / `CompiledFlow` objects directly (bypassing
+`JsonModelParser`/`SemanticValidator` entirely) proves the emitter/runtime does the right thing
+**given that compiled shape**. It does **not** prove a real `model.json` can produce that shape.
+
+This is not hypothetical: `TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest` built and
+booted a real packaged app with a `generatedAction`-shaped compiled step and passed for the entire
+time no model could actually express one (`FlowValidation` rejected the schema's own canonical enum
+value as "unsupported" — REG-65, `docs/FINAL_OPEN_ITEMS_PLAN.md` F4). A green runtime proof coexisted
+with a broken authoring path, indefinitely, because nothing joined the two ends.
+
+**Any feature reachable from `model.json` needs a corpus fixture too** — see
+`NPDevSamples/dsl-conformance-max` and `scripts/quality/check-dsl-coverage.py` (proves every DSL
+feature parses) plus `scripts/quality/check-dsl-conformance-generates.py` (proves it also
+generates — `docs/CLOSEOUT_PLAN.md` G2/G3). Do **not** rewrite a hand-built compiled-object test to
+go through the full authoring path instead — that would make the suite far slower for little gain.
+The fix is to make sure the authoring path is *also* exercised somewhere, not to convert every
+compiled-contract test into an end-to-end one.
+
 ## When a new app lands
 
 Re-run the screen classifier and refresh `docs/SCREEN_TAXONOMY.md`'s per-screen table (F1/F6,
