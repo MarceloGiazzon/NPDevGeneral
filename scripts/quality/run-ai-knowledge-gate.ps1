@@ -268,6 +268,17 @@ try {
         }
     }
 
+    # [17/17] docs/INVOCATION_TOPOLOGY_PLAN.md T2: every script under scripts/ must declare BOTH a
+    # classification (what it is) and an invocation (what invokes it), and both must match reality --
+    # generalizes check-test-task-coverage.py's "declared but never invoked" check from Gradle Test
+    # tasks to every script. This checker was itself an orphan until this step: nothing had ever
+    # invoked it (grep-confirmed before this change), the pattern in miniature.
+    Write-Host "[17/17] Checking every script declares a classification + invocation matching reality..."
+    pwsh -NoProfile -File "scripts/quality/run-script-inventory-check.ps1"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a script's classification/invocation declaration is missing or does not match reality: see scripts/quality/run-script-inventory-check.ps1 output above, or scripts/reports/out/script-inventory-report.json"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red

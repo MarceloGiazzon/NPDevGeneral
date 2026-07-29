@@ -12,10 +12,14 @@
     "workspaceRoot",
     "overallStatus",
     "policyPath",
+    "invocationDeclarationsPath",
     "scriptCount",
     "classificationCounts",
+    "invocationCounts",
     "unknownScripts",
     "releaseCriticalViolations",
+    "unknownInvocationScripts",
+    "invocationMismatchScripts",
     "scripts"
   ],
   "properties": {
@@ -47,11 +51,18 @@
     "policyPath": {
       "const": "scripts/policy/script-inventory-policy.json"
     },
+    "invocationDeclarationsPath": {
+      "type": "string",
+      "minLength": 1
+    },
     "scriptCount": {
       "type": "integer",
       "minimum": 0
     },
     "classificationCounts": {
+      "type": "object"
+    },
+    "invocationCounts": {
       "type": "object"
     },
     "unknownScripts": {
@@ -60,8 +71,41 @@
     "releaseCriticalViolations": {
       "type": "array"
     },
-    "scripts": {
+    "unknownInvocationScripts": {
       "type": "array"
+    },
+    "invocationMismatchScripts": {
+      "type": "array"
+    },
+    "scripts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "path",
+          "classification",
+          "validClassification",
+          "invocation",
+          "validInvocationValue",
+          "invocationMatchesReality",
+          "invocationEvidence"
+        ],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "classification": { "type": "string", "minLength": 1 },
+          "validClassification": { "type": "boolean" },
+          "releaseCritical": { "type": "boolean" },
+          "releaseCriticalAllowedClassification": { "type": "boolean" },
+          "invocation": {
+            "type": "string",
+            "enum": ["ci-gate", "manual-runbook", "orchestrated", "retired", "unknown"]
+          },
+          "validInvocationValue": { "type": "boolean" },
+          "invocationMatchesReality": { "type": "boolean" },
+          "invocationEvidence": { "type": "string" }
+        }
+      }
     }
   }
 }

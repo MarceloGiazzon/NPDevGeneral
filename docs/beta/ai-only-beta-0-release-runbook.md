@@ -39,3 +39,11 @@ Before tagging, confirm `scripts/reports/out/beta0-final-closure-report.json` co
 ```
 
 If the workspace is dirty, the release gate and final closure gate must fail official eligibility even when functional tests pass.
+
+Once `beta0TagAllowed` is true, create the tag with the gate script that re-validates the decision
+table above before tagging (refuses if `overallStatus` is not `passed` or any required boolean is
+false):
+
+```powershell
+pwsh ./scripts/release/create-beta0-tag.ps1 -Version beta0
+```

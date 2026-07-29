@@ -103,6 +103,23 @@ Evidence cleanup is intentionally opt-in:
 pwsh -File scripts\hygiene\clean-rebuildable-artifacts.ps1 -CleanReportsOut -CleanReleaseBundles
 ```
 
+## Other Workspace Hygiene Checks
+
+Gradle wrapper consistency across the repo's multiple Gradle roots (root, `NPDevContract/dsl`,
+`NPDevGenerator`, `NPDevKernel`) is checked manually, not wired into a gate:
+
+```powershell
+pwsh -File scripts\hygiene\Test-GradleWrapperConsistency.ps1
+```
+
+A fresh clone should move the React editor's `node_modules` outside the source tree via a directory
+junction (keeps the workspace slim per the size limits above), run once after cloning or whenever the
+junction is missing:
+
+```powershell
+pwsh -File scripts\hygiene\Setup-EditorNodeModules.ps1
+```
+
 ## Release Bundle Retention
 
 Preview release bundle pruning:

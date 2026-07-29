@@ -96,6 +96,30 @@ Module-specific gates (`run-generator-gate.ps1`, `run-runtimehost-gate.ps1`, `ru
 live in `scripts/quality/` — run the one for whatever you touched. The PR gate on GitHub runs the
 core subset automatically; the full set is documented in `CLAUDE.md`.
 
+## A new script under `scripts/` declares what it is and what invokes it
+
+`docs/INVOCATION_TOPOLOGY_PLAN.md` T2: every check exists to catch a bug, but a check nobody
+invokes is a check that exists only on paper — four separate real findings in this repo were
+exactly that shape. `scripts/quality/run-script-inventory-check.ps1` (step `[17/17]` of
+`run-ai-knowledge-gate.ps1`) fails if a script under `scripts/` has no entry in either policy file:
+
+- **Classification** (`scripts/policy/script-inventory-policy.json`, pattern-based): `canonical` /
+  `helper` / `deprecated` / `one-time-repair` / `outside-repo-only`. Usually inferred automatically
+  from the script's directory — add a `classificationRules` pattern if a new top-level `scripts/`
+  subdirectory needs one.
+- **Invocation** (`scripts/policy/script-invocation-declarations.json`, one entry per script path):
+  what actually invokes it, and the gate checks the declaration against reality (basename/stem
+  presence — cheap and static, same limitation `check-test-task-coverage.py`'s own docstring
+  accepts).
+  - `ci-gate` — must be named in a `.github/workflows/*.yml`, or in a `scripts/quality/run-*.ps1`
+    gate runner that is itself named in a workflow.
+  - `manual-runbook` — must be referenced by at least one `*.md` doc somewhere in the repo. If you
+    add a manual tool, document it (a runbook, `CLAUDE.md`, whatever's the natural home) in the same
+    commit — an undocumented "manual" tool is indistinguishable from an abandoned one.
+  - `orchestrated` — must be referenced by another script (a helper module, a dot-sourced/imported
+    file).
+  - `retired` — must declare a non-empty `reason` and `date`.
+
 ## Reporting bugs / requesting features
 
 Open a GitHub issue. If it's a **security** issue, don't — see `SECURITY.md` instead.
