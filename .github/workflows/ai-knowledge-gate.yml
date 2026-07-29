@@ -1,20 +1,31 @@
 name: AI Knowledge Gate
 
-# Lightweight (seconds, pure-Python -- no Java/Gradle/Playwright), so UNLIKE the heavy
-# workflow_dispatch-only workflows this one runs automatically on every PR that touches the AI
-# knowledge substrate. It guards three invariants:
-#   1. knowledge/platform-status.json is not stale vs the gaps ledger (someone edited the ledger
-#      without regenerating the derived projection),
+# F1/F2 (docs/FINAL_OPEN_ITEMS_PLAN.md, 2026-07-29): this is now a 12-step gate that shells out to
+# gradlew (corpus-parse, check 11/12) -- NOT "seconds, pure-Python, no Java/Gradle" any more. Runs
+# Java/Gradle (`validate-corpus.py`'s validateModel task, ~4s/model amortized against a warm daemon,
+# materially more on a cold CI runner -- see the timeout-minutes comment below) on every PR that
+# touches any of the paths below. It guards, among others:
+#   1. knowledge/platform-status.json is not stale vs the gaps ledger,
 #   2. every knowledge/cards/*.json validates,
-#   3. the shared failure-signature normalizer behaves.
+#   3. the shared failure-signature normalizer behaves,
+#   4. every corpus model.json still parses against the real validator (check 11/12) --
+#      REG-63's own 17-of-29-models break is exactly the event the ORIGINAL six-entry paths: list
+#      would not have fired on: none of its entries covered NPDevContract/schemas/model.schema.json,
+#      NPDevSamples/**/model.json, ledger/**, or scripts/quality/** itself,
+#   5. every relative markdown link resolves (check 12/12) -- the ORIGINAL list did not cover
+#      docs/** broadly either, so the same 8-broken-link class of break would not have fired this.
 on:
   pull_request:
     paths:
-      - 'docs/OPEN_GAPS_AND_ROADMAP.md'
+      - 'docs/**'                      # link gate (check 12/12) + T1/T2 source docs
+      - 'ledger/**'                    # T1/T2 authority
       - 'knowledge/**'
       - 'scripts/ai/**'
-      - 'schemas/ai/knowledge-card.schema.json'
-      - 'scripts/quality/run-ai-knowledge-gate.ps1'
+      - 'scripts/quality/**'           # every gate script re-runs its own gate
+      - 'schemas/**'                   # ai + ui-contract + panel-provenance
+      - 'NPDevContract/schemas/**'     # the 17-model corpus-parse trigger (check 11/12)
+      - 'NPDevSamples/**/model.json'   # in-repo corpus models
+      - 'gradle.properties'            # affects every gradlew invocation this gate now makes
       - '.github/workflows/ai-knowledge-gate.yml'
   workflow_dispatch:
 
@@ -26,11 +37,31 @@ jobs:
   ai-knowledge-gate:
     name: AI knowledge substrate gate
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # F2: was 5 -- a coin flip against a measured ~2 min for validate-corpus.py alone on a warm
+    # local daemon, materially more on a cold CI runner with no dependency cache. Real observed
+    # wall clock from the F1/F2 verification PR: see below.
+    # OBSERVED (F1/F2 verification PR, 2026-07-29): TBD -- filled in after the first real run.
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      # CI-1 pattern (npdev-ci-validation.yml, npdev-pr-gate.yml): the committed gradle.properties
+      # files hardcode a dev-machine org.gradle.projectcachedir (D:\WorkSpace\...), which does not
+      # exist on Linux -- gradle aborts before any task runs, and a --project-cache-dir CLI override
+      # does NOT fix it (gradle.properties is read during wrapper bootstrap, before the CLI flag can
+      # take effect). This gate never ran gradle before check 11/12 (validate-corpus.py) existed, so
+      # this had never been hit here. Strip the line so gradle falls back to its own portable default.
+      - name: Neutralize dev-machine gradle projectcachedir (portability)
+        run: sed -i '/org\.gradle\.projectcachedir/d' gradle.properties NPDevContract/dsl/gradle.properties
 
       - name: Setup Python
         uses: actions/setup-python@v5
