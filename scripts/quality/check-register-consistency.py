@@ -44,6 +44,7 @@ Exit codes: 0 = consistent, 1 = at least one contradiction, 2 = a document was u
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -459,6 +460,139 @@ def check_plan_status_banners(root: Path, verbose: bool) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# docs/INVOCATION_TOPOLOGY_PLAN.md T4: a plan may not close with an unresolved deferral that has no
+# tracking id. Finding 2 of that plan's own Part 0 was exactly this shape and had no executable
+# artifact to point a gate at -- 17 corpus models stayed broken for ~3 weeks because
+# `docs/DSL2_AND_DECOMPOSITION_PLAN.md`'s own Definition of Done recorded "AppGen/apps deferred as a
+# non-git external directory -- owner's call" with no id, the plan closed, and the deferral closed
+# with it. Deferring is fine and often right; deferring WITHOUT a tracking id is what failed.
+#
+# Widened from the plan's literal "must cite a REG-nn": a permanent, deliberate scope boundary (the
+# real DSL2_AND_DECOMPOSITION_PLAN.md instance) is not a gap or a bug -- filing a REG (whose only
+# valid types are GAP/BUG/PROCESS/BOUNDARY) for something ACCEPTED_BOUNDARIES.md already exists to
+# record would misuse the ledger. Either a REG-nn or a B-nn (docs/ACCEPTED_BOUNDARIES.md) citation
+# counts -- both are "a tracking id", the convention's actual intent.
+# ---------------------------------------------------------------------------
+
+DEFERRAL_PHRASES = ("deferred", "out of scope", "not covered", "left for later")
+CLOSED_STATUS_WORDS = {"DONE", "EXECUTED", "CLOSED"}
+PLAN_STATUS_WORD_RE = re.compile(r"\*\*STATUS:\s*([A-Za-z]+)")
+TRACKING_ID_RE = re.compile(r"\bREG-\d+\b|\bB\d{1,3}\b")
+# Same historical-narration idea check-narrative-status-drift.py's HISTORICAL_MARKERS already uses
+# for the identical reason: a paragraph narrating that something WAS deferred and is now resolved
+# is not a live, untracked deferral -- it is the opposite. Without this, a whole closed-out section
+# titled e.g. "Resolve the N deferred panels" (a real instance: docs/TREE1_LAUNCH_UNBLOCK_PLAN.md
+# T1.4) fires on every paragraph discussing the resolution, not just the one time it actually mattered.
+RESOLUTION_MARKERS = (
+    "was deferred", "were deferred", "resolve the", "resolved", "resolving",
+    "previously", "no longer", "turned out", "is now", "corrected",
+)
+
+# Reviewed false positives (same fingerprint-keyed shape as test-task-coverage-allowlist.json /
+# security-pattern-sweep-allowlist.json): the phrase set is cheap text-level matching by design, and
+# a handful of paragraphs narrate an INVESTIGATION into a pre-existing claim (project memory, an
+# older governance file) rather than this plan making its own new, untracked scope cut. Rather than
+# chase every future narrative shape with more regex, a human reviews and clears the specific
+# paragraph -- moving or editing the text invalidates the fingerprint, so it resurfaces for re-review.
+DEFERRAL_ALLOWLIST_PATH = Path(__file__).resolve().parent / "plan-deferral-citation-allowlist.json"
+
+
+def load_deferral_allowlist() -> dict:
+    if not DEFERRAL_ALLOWLIST_PATH.is_file():
+        return {}
+    data = json.loads(DEFERRAL_ALLOWLIST_PATH.read_text(encoding="utf-8"))
+    return data.get("cleared", {})
+
+
+def deferral_fingerprint(doc_name: str, paragraph: str) -> str:
+    normalized = " ".join(paragraph.split())
+    return hashlib.sha256(f"{doc_name}|{normalized}".encode()).hexdigest()[:12]
+
+
+def split_into_deferral_units(text: str) -> list[str]:
+    """Blank-line paragraphs, further split so each markdown list bullet is its own unit.
+
+    A long checklist (`- [x] ...` repeated with no blank line between items) otherwise reads as one
+    giant paragraph -- found for real: docs/DSL2_AND_DECOMPOSITION_PLAN.md's Part 2 checklist has
+    "resolved" three bullets above the actual "AppGen/apps deliberately deferred" bullet, and without
+    this split the unrelated earlier "resolved" wrongly suppressed the real deferral two bullets down.
+    """
+    units: list[str] = []
+    for block in re.split(r"\n\s*\n", text):
+        bullet_starts = [m.start() for m in re.finditer(r"^\s*[-*]\s", block, re.MULTILINE)]
+        if len(bullet_starts) >= 2:
+            bounds = bullet_starts + [len(block)]
+            units.extend(block[bounds[i]:bounds[i + 1]] for i in range(len(bullet_starts)))
+        else:
+            units.append(block)
+    return units
+
+
+def plan_deferral_citations_text(doc_name: str, text: str, allowlist: dict, verbose: bool = False) -> list[str]:
+    """Checks ONE plan document's already-read text. Returns [] if the plan's STATUS does not read
+    as closed (DONE/EXECUTED/CLOSED) -- ACTIVE/HISTORICAL plans are exempt, a deferral in a live
+    backlog is not yet a closed decision. See check_plan_deferral_citations for the full rule.
+    """
+    problems: list[str] = []
+    head = "\n".join(text.split("\n")[:8])
+    status_match = PLAN_STATUS_WORD_RE.search(head)
+    if status_match is None or status_match.group(1).upper() not in CLOSED_STATUS_WORDS:
+        return problems
+    # Fenced code blocks are data/examples (JSON snippets, shell commands, sequencing diagrams), not
+    # prose claims -- strip them before paragraph-splitting so e.g. a `deferred: 32` count in a code
+    # fence is not read as an assertion.
+    prose_text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+    for para in split_into_deferral_units(prose_text):
+        stripped = para.strip()
+        if not stripped or stripped.startswith("#"):
+            continue  # a heading is a title, not a claim
+        para_lower = para.lower()
+        if not any(phrase in para_lower for phrase in DEFERRAL_PHRASES):
+            continue
+        if TRACKING_ID_RE.search(para):
+            continue
+        if any(marker in para_lower for marker in RESOLUTION_MARKERS):
+            continue
+        fp = deferral_fingerprint(doc_name.rsplit("/", 1)[-1], para)
+        if fp in allowlist:
+            if verbose:
+                print(f"    [allowed] {doc_name} ({fp}): {allowlist[fp].get('why', '(no reason recorded)')}")
+            continue
+        snippet = " ".join(para.split())[:220]
+        problems.append(
+            f"{doc_name}: closed plan (STATUS: {status_match.group(1)}) has a deferral with no "
+            f"REG-nn or B-nn (docs/ACCEPTED_BOUNDARIES.md) citation in the same paragraph ({fp}): "
+            f"\"{snippet}\". Cite an existing id, file one, or record a reviewed exemption in "
+            f"scripts/quality/plan-deferral-citation-allowlist.json."
+        )
+    return problems
+
+
+def check_plan_deferral_citations(root: Path, verbose: bool) -> list[str]:
+    """A plan whose STATUS reads as closed (DONE/EXECUTED/CLOSED) may not contain a deferral
+    phrase with no REG-nn or B-nn citation in the same paragraph. Plans still ACTIVE/HISTORICAL are
+    exempt -- a deferral in a live backlog is not yet a closed decision. Heading-only lines,
+    fenced code blocks, and paragraphs narrating a NOW-RESOLVED historical deferral
+    (RESOLUTION_MARKERS) are not claims and are excluded -- this rule targets a plan's own closing
+    scope decision, not prose describing work that already addressed an earlier deferral. A reviewed
+    residual false positive can be cleared in plan-deferral-citation-allowlist.json.
+    """
+    problems: list[str] = []
+    checked = 0
+    allowlist = load_deferral_allowlist()
+    for path in sorted((root / "docs").glob("*PLAN*.md")):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        doc_problems = plan_deferral_citations_text(f"docs/{path.name}", text, allowlist, verbose)
+        head = "\n".join(text.split("\n")[:8])
+        status_match = PLAN_STATUS_WORD_RE.search(head)
+        if status_match is not None and status_match.group(1).upper() in CLOSED_STATUS_WORDS:
+            checked += 1
+        problems.extend(doc_problems)
+    print(f"  plan deferral citations: {checked} closed plan(s) checked, {len(problems)} untracked deferral(s)")
+    return problems
+
+
+# ---------------------------------------------------------------------------
 # Rules T1 + T2 (docs/NEXT_EXECUTION_PLAN.md P2.1): close the tree/ledger drift class, not just the
 # instances found by hand on 2026-07-28 (2.F, 3.3, REG-59, and a fourth found WHILE BUILDING this
 # rule -- 3.5's REG-4 blocker). Same shape as `check()` above -- a summary-shaped claim contradicting
@@ -691,7 +825,7 @@ SYNTHETIC_T2B_FIXED = [{
 
 
 def calibrate(root: Path) -> int:
-    """Required controls for T1/T2/T2b before any ships as blocking -- same standard this repo already
+    """Required controls for T1/T2/T2b/T4 before any ships as blocking -- same standard this repo already
     holds `check-narrative-status-drift.py` to. Prefers real git revisions where one exists (T1's
     REG-40/REG-4 instances and T2b's REG-62 instance, all real and all in this repo's own history);
     falls back to a small synthetic fixture only where no single real revision isolates the mechanism
@@ -713,7 +847,7 @@ def calibrate(root: Path) -> int:
         for f in findings:
             print(f"           {f}")
 
-    print("Calibration -- Rules T1/T2/T2b must catch their real historical instances before shipping:")
+    print("Calibration -- Rules T1/T2/T2b/T4 must catch their real historical instances before shipping:")
 
     register_path = root / "docs" / "NPDEV_OPEN_ITEMS_REGISTER.md"
     tree_path = root / "docs" / "EXECUTION_TREES.md"
@@ -812,12 +946,39 @@ def calibrate(root: Path) -> int:
            ledger_title_status_contradiction_text(SYNTHETIC_T2B_FIXED),
            expect_fire=False)
 
+    # docs/INVOCATION_TOPOLOGY_PLAN.md T4: real instance is DSL2_AND_DECOMPOSITION_PLAN.md's own
+    # Part 2 DoD @ commit b7a4f0f (the commit that marked the plan DONE) -- "AppGen/apps deliberately
+    # deferred (owner's call...)" with no REG-nn/B-nn citation. Pinned by SHA per T1's own rule, even
+    # though (confirmed via `git show`) this pin's content is currently identical to the pre-fix
+    # working tree -- the discipline matters going forward, not just today.
+    dsl2_path = root / "docs" / "DSL2_AND_DECOMPOSITION_PLAN.md"
+    pre_citation_text = git_show(dsl2_path, revision="b7a4f0f")
+    empty_allowlist: dict = {}
+    if pre_citation_text is not None:
+        report(
+            "Rule T4 vs. DSL2_AND_DECOMPOSITION_PLAN.md @ b7a4f0f (pre-citation, real instance)",
+            plan_deferral_citations_text("DSL2_AND_DECOMPOSITION_PLAN.md", pre_citation_text, empty_allowlist),
+            expect_fire=True,
+        )
+    if dsl2_path.exists():
+        report(
+            "Rule T4 vs. DSL2_AND_DECOMPOSITION_PLAN.md in the working tree (post-citation, B25 added)",
+            plan_deferral_citations_text("DSL2_AND_DECOMPOSITION_PLAN.md", dsl2_path.read_text(encoding="utf-8", errors="replace"), empty_allowlist),
+            expect_fire=False,
+        )
+    report(
+        "Rule T4 vs. the full working tree (all closed plans, real allowlist)",
+        check_plan_deferral_citations(root, verbose=False),
+        expect_fire=False,
+    )
+
     if not ok:
-        print("\nFAIL: at least one control did not behave as required -- T1/T2/T2b do not ship as "
-              "blocking until they do (docs/NEXT_EXECUTION_PLAN.md P2.1, docs/CLOSEOUT_PLAN.md G4).",
+        print("\nFAIL: at least one control did not behave as required -- T1/T2/T2b/T4 do not ship "
+              "as blocking until they do (docs/NEXT_EXECUTION_PLAN.md P2.1, docs/CLOSEOUT_PLAN.md G4, "
+              "docs/INVOCATION_TOPOLOGY_PLAN.md T4).",
               file=sys.stderr)
         return 1
-    print("\nOK: all T1/T2/T2b controls behave correctly.")
+    print("\nOK: all T1/T2/T2b/T4 controls behave correctly.")
     return 0
 
 
@@ -825,7 +986,7 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--root", default=".", help="repo root (default: cwd)")
     parser.add_argument("--verbose", action="store_true", help="also print consistent/skipped counts")
-    parser.add_argument("--calibrate", action="store_true", help="run the T1/T2/T2b required controls and exit")
+    parser.add_argument("--calibrate", action="store_true", help="run the T1/T2/T2b/T4 required controls and exit")
     args = parser.parse_args(argv)
 
     root = Path(args.root).resolve()
@@ -848,6 +1009,7 @@ def main(argv: list[str]) -> int:
             return 2
         all_problems.extend(check(target, mode, args.verbose))
     all_problems.extend(check_plan_status_banners(root, args.verbose))
+    all_problems.extend(check_plan_deferral_citations(root, args.verbose))
     # Coverage last so its message is not buried, but it is a HARD gap: a ledger nobody checks is the
     # same failure as a summary row nobody cross-checks.
     all_problems.extend(ledger_coverage_gaps(root))
