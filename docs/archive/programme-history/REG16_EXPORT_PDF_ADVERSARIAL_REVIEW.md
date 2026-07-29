@@ -3,7 +3,7 @@
 > **Date:** 2026-07-25 · **Branch:** `beta1-vision-spine`
 > **Surface:** `ConceptQueryController#exportCsv`, `DocumentRenderController#renderPdf`,
 > `DocumentRenderInProcAdapter`, `DocumentRenderStubAdapter`.
-> **Plan:** [`ONE_PLAN_CLOSE_EVERYTHING.md`](../../ONE_PLAN_CLOSE_EVERYTHING.md) §3.2 ·
+> **Plan:** [`ONE_PLAN_CLOSE_EVERYTHING.md`](ONE_PLAN_CLOSE_EVERYTHING.md) §3.2 ·
 > **Steered by:** [`SECURITY_PATTERN_SWEEP_2026-07.md`](../../SECURITY_PATTERN_SWEEP_2026-07.md) §4.2
 
 ---
