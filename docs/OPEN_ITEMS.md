@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**69 item(s) migrated: 0 open/partial, 69 done.**
+**70 item(s) migrated: 0 open/partial, 70 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -76,6 +76,7 @@
 | REG-66 | reg39-healthy-control retired -- a byte-identical WmsOffice clone with no independent signal, closed REG-39's own one-time verification artifact | PROCESS | LOW | DONE | 2026-07-29 |
 | REG-67 | check-register-consistency.py's --calibrate mode uses bare "HEAD" for its real-instance controls, which silently stops proving anything once the target doc is edited again | GAP | LOW | DONE | 2026-07-29 |
 | REG-68 | check-narrative-status-drift.py's Rule P2 real-instance control also used bare "HEAD" and rotted the same way as REG-67 | GAP | LOW | DONE | 2026-07-29 |
+| REG-69 | 3 DSL features (fragments, packs, step.updateConcept) have zero coverage on a bare CI checkout -- only exercised by AppGen/apps-only models | GAP | LOW | DONE | 2026-07-29 |
 | REG-7 | LNCH-1-B6: no migration advisory lock (multi-instance) -- converted to a feature | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-8 | LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-9 | LNCH-4: auth secrets management -- JWT key env-var delivery | GAP | HIGH | DONE | 2026-07-21 |
@@ -1579,6 +1580,39 @@ header), matching the same fixed-revision discipline used for REG-67 and Rule T2
 9c3c423 pin. `--calibrate` now PASSes. `run-ai-knowledge-gate.ps1` gained a new step that runs
 every `--calibrate`-capable script (derived from argparse, not hand-maintained) specifically so
 this class of rot announces itself instead of waiting to be found by hand a third time.
+
+### REG-69 — 3 DSL features (fragments, packs, step.updateConcept) have zero coverage on a bare CI checkout -- only exercised by AppGen/apps-only models
+
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-07-29)
+**Verification:** VERIFIED_LIVE
+**Source:** check-dsl-coverage.py failing on PR
+**Surface:** `quality/dsl-coverage`
+**Files:**
+- `scripts/quality/dsl-coverage-allowlist.json`
+- `NPDevSamples/dsl-conformance-max`
+
+Locally, with `AppGen/apps` present (a non-git, developer-machine-only directory per CLAUDE.md's
+"Layers"), `check-dsl-coverage.py` scans 29 corpus models and every one of the 29 tracked DSL
+features has at least one example: `fragments` via `AppGen/apps/npdev_split_model_sample_app`,
+`packs` and `step.updateConcept` via `AppGen/apps/_official/WmsOffice`. On a bare CI checkout
+(`AppGen/apps` absent, only `NPDevSamples` scanned -- 10 models), those three features have never
+had a real example in the git-tracked corpus, so the check has been failing unconditionally on
+every CI run of this gate -- just never observed, because `ai-knowledge-gate.yml` had no `paths:`
+filter removed until T3, and this PR is the first real run since.
+
+This is the same shape as CONTRIBUTING.md's own standing rule ("add a DSL feature, add a real
+example to `dsl-conformance-max` in the same commit") being satisfied by AppGen/apps state instead
+-- a claim ("every feature has corpus coverage") that was only ever true because of state CI
+cannot see, exactly the kind of drift `docs/RECORD_SURFACES_PLAN.md` is about, just discovered
+as a side effect of finally getting an observed CI run rather than as one of that plan's own
+named P1-P6 items.
+
+CLOSED 2026-07-29 as: recorded a reviewed exception in `scripts/quality/dsl-coverage-allowlist.json`
+for all three features, citing this REG id, per the check's own documented escape hatch --
+unblocks CI without hand-authoring untested new DSL fixture content under time pressure. The real
+fix (add genuine `fragments`/`packs`/`step.updateConcept` examples to
+`NPDevSamples/dsl-conformance-max`, Gradle-validated) is deliberately deferred, not done -- tracked
+as `docs/ACCEPTED_BOUNDARIES.md` B27 with its own revisit trigger.
 
 ### REG-7 — LNCH-1-B6: no migration advisory lock (multi-instance) -- converted to a feature
 
