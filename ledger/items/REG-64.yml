@@ -2,14 +2,16 @@ id: REG-64
 title: EntityEmitter has no reserved-column collision guard -- a model field named tenantId/version/rowVersion produces uncompilable duplicate-field Java, not a clear message
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-07-29
+closed: 2026-07-29
 verification: VERIFIED_LIVE
-source: Found regenerating Claude Support Desk, docs/CORPUS_INTEGRITY_PLAN.md C2
+source: Found regenerating Claude Support Desk, docs/CORPUS_INTEGRITY_PLAN.md C2; fixed docs/FINAL_OPEN_ITEMS_PLAN.md F10
 surface: generator/entity-emission
 files:
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/EntityEmitter.java
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ReservedColumnNames.java
 detail: |
   SchemaRealizationEmitter already has RESERVED_BUSINESS_COLUMN_NAMES (version/row_version/tenant_id)
   with a guard (validateNoReservedColumnCollision) that throws a clear, actionable IllegalStateException
@@ -27,3 +29,19 @@ detail: |
   equivalent) reserved-column check from EntityEmitter before field emission, so the failure surfaces
   at generation time with the existing guard's message instead of at compile time with a bare
   javac diagnostic.
+
+  2026-07-29 (F10): fixed by extraction, not duplication. The reserved-name set and collision check
+  moved out of SchemaRealizationEmitter into a new shared
+  NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ReservedColumnNames.java
+  (RESERVED_BUSINESS_COLUMN_NAMES + validateNoCollision(CompiledConcept)). SchemaRealizationEmitter
+  now delegates to it (same message, same call site, no behavior change there). EntityEmitter.emit()
+  calls the same check as the first statement of its per-concept loop, before any Java field is
+  written -- so a colliding field now fails at generation time with the actionable rename message,
+  before Java compilation ever sees it, regardless of which emitter runs first.
+  Proof: new NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/EntityEmitterReservedColumnTest.java
+  (3 cases: tenantId collision throws naming the concept + "tenant_id" + the rename hint; version
+  collision also throws; an ordinary field is unaffected and the entity file is actually written) --
+  mirrors the existing SchemaRealizationEmitterReservedColumnTest's assertion shape, using
+  BondJavaEmitterTest's TemplateEngine/GeneratedSourceWriter direct-construction pattern since
+  EntityEmitter (unlike SchemaRealizationEmitter) doesn't take a GeneratedDatabasePlan. Full Generator
+  module test suite green afterward.

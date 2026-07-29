@@ -7,6 +7,7 @@ import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.generator.bonds.BondModelSupport;
 import com.npdev.generator.bonds.BondModelSupport.Bond;
 import com.npdev.generator.bonds.BondModelSupport.Cardinality;
+import com.npdev.generator.dbconfig.ReservedColumnNames;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.templates.TemplateEngine;
 
@@ -25,6 +26,13 @@ public final class EntityEmitter extends AbstractEmitter {
     public void emit(CompiledModel model) {
         Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
         for (CompiledConcept entity : model.getConcepts()) {
+            // REG-64/F10 (docs/FINAL_OPEN_ITEMS_PLAN.md): checked here, before any Java field is
+            // emitted -- not just at SQL-DDL time (SchemaRealizationEmitter, which runs downstream
+            // of Java compilation). A model field colliding with a platform-reserved column
+            // (version/row_version/tenant_id) previously surfaced only as a bare javac
+            // "duplicate field" error; this fails first with the actionable rename message.
+            ReservedColumnNames.validateNoCollision(entity);
+
             Map<String, Object> ctx = new HashMap<>();
             ctx.put("packageName", "com.npdev.generated.entities");
             ctx.put("entityName", entity.getClassName());
