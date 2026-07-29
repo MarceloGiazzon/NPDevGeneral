@@ -1,5 +1,5 @@
 id: REG-62
-title: allowedActions typed (C8 done); cross-referencing it against declared workbench actions still blocked on a typed-actions prerequisite
+title: allowedActions is a typed array and is cross-referenced against the surface's declared actions
 type: GAP
 severity: LOW
 status: DONE
