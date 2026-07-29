@@ -3,7 +3,7 @@
 
 WHY THIS EXISTS
 ---------------
-`docs/ONE_PLAN_CLOSE_EVERYTHING.md` compresses four separate adversarial-review sessions
+`docs/archive/programme-history/ONE_PLAN_CLOSE_EVERYTHING.md` compresses four separate adversarial-review sessions
 into two by running one mechanical pass across all four surfaces FIRST. That compression is
 only honest if the thing being batched is genuinely batchable. It is: every bug class found
 in this repo so far is a *shape*, not a judgement call.

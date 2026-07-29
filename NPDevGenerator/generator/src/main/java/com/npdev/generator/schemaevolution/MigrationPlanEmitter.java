@@ -51,7 +51,7 @@ import java.util.Set;
      * underlying change -- both producers call the identical {@code stableString()} over fields with
      * no live-only inputs (row count out of the hash since R1) and route every type string through the
      * one shared {@code SqlTypeNormalization} -- the exact "two independent derivations that must
-     * agree" property §2.3 of {@code docs/LNCH1_SCHEMA_EVOLUTION_PLAN.md} requires. No circular-dependency
+     * agree" property §2.3 of {@code docs/archive/programme-history/LNCH1_SCHEMA_EVOLUTION_PLAN.md} requires. No circular-dependency
      * blocker existed: the DSL module has zero dependency on the generator or RuntimeHost.</li>
  *   <li>The per-concept manifest-shaped metadata computation (columns, additive-eligibility,
  *       renames, required/default-literal backfill shape, unique constraints) --

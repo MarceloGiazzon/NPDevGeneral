@@ -22,7 +22,7 @@ import java.util.Locale;
  * jar-staging mechanism that already ships {@code com.npdev.dsl.v1.compiled.CompiledModelCanonicalJson*}
  * into every generated app).
  *
- * <p>Exactly the v1 rule set from {@code docs/LNCH1_SCHEMA_EVOLUTION_PLAN.md} §3.1, nothing more:
+ * <p>Exactly the v1 rule set from {@code docs/archive/programme-history/LNCH1_SCHEMA_EVOLUTION_PLAN.md} §3.1, nothing more:
  * <ul>
  *   <li>{@code SMALLINT -> INTEGER -> BIGINT}, transitively ({@code SMALLINT -> BIGINT} is WIDENING
  *       too, even though the two types are not adjacent in the rule list).</li>
