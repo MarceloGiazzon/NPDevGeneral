@@ -795,6 +795,168 @@ def run_generate(args: argparse.Namespace) -> None:
         subprocess.run(command, cwd=generator_root, check=True)
 
 
+def _fetch_json(url: str, headers: dict[str, str]) -> dict:
+    import urllib.error
+    import urllib.request
+
+    request = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")[:500]
+        raise CliError(f"GET {url} -> HTTP {exc.code}: {body}")
+    except urllib.error.URLError as exc:
+        raise CliError(f"GET {url} failed: {exc.reason}")
+
+
+def _screen_auth_headers(args: argparse.Namespace) -> dict[str, str]:
+    if getattr(args, "token_file", None):
+        token = Path(args.token_file).expanduser().read_text(encoding="utf-8").strip()
+        return {"Authorization": f"Bearer {token}"}
+    if getattr(args, "api_key", None):
+        return {"X-Api-Key": args.api_key}
+    return {}
+
+
+def _load_quality_module(root: Path, module_name: str, filename: str):
+    """Import a scripts/quality/*.py module by path (that directory is not a package, matching how
+    other tools in this repo load sibling scripts -- e.g. npdev_cli.py's own failure_signatures
+    import above)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(module_name, root / "scripts" / "quality" / filename)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def run_generate_screen(args: argparse.Namespace) -> int:
+    """R-P4 (docs/REMEDIATION_PLAN.md, 3.8 'agent-driven frontend generation, productized'): fetch
+    the live UI-contract bundle, hand it plus docs/ai/UI_GENERATION_PROMPT.md to an agent, and refuse
+    to write anything whose manifest fails the same impact gate `_ops/Check-Provenance.ps1` runs live
+    against a real app -- generation and verification in one step.
+
+    No LLM vendor is baked into this CLI -- `docs/ai/UI_GENERATION_PROMPT.md` itself is written
+    vendor-neutral ("your model id"), and nothing else in this repo calls out to a specific AI
+    provider from shipped platform code either (ADR-0009's external-AI subsystem is a pluggable
+    kernel PORT, not a hardcoded vendor call). `--model-command` is the same pattern here: an
+    operator-supplied command (parsed with shlex, never a shell string -- this repo's own
+    subprocess.run calls never use shell=True) that reads the assembled prompt on stdin and must
+    print `{"html": "...", "panelJson": {...}}` to stdout. Omit it to get a two-step flow instead:
+    this command writes the assembled prompt next to `--out` and exits 3; feed that file to whatever
+    agent you're using by hand, then re-run with `--from-response <file>` holding its JSON reply.
+    """
+    root = repo_root()
+    out_path = Path(args.out).expanduser().resolve()
+    base_url = args.app.rstrip("/")
+    concept = args.concept
+    headers = _screen_auth_headers(args)
+
+    bundle_url = f"{base_url}/api/v1/runtime/metadata/ui/bundle?concept={concept}"
+    print(f"npdev: fetching {bundle_url}", file=sys.stderr)
+    bundle = _fetch_json(bundle_url, headers)
+
+    prompt_doc_path = root / "docs" / "ai" / "UI_GENERATION_PROMPT.md"
+    if not prompt_doc_path.exists():
+        raise CliError(f"reference prompt not found: {prompt_doc_path}")
+    assembled_prompt = (
+        f"{prompt_doc_path.read_text(encoding='utf-8')}\n\n---\n\n"
+        f"## Task\n\nConcept: {concept}\nOutput screen file: {out_path.name}\n\n"
+        f"## Live bundle (the ONLY source of truth -- see \"Contract\" above)\n\n"
+        f"```json\n{json.dumps(bundle, indent=2)}\n```\n"
+    )
+
+    response_json: object = None
+    if args.from_response:
+        response_json = json.loads(Path(args.from_response).expanduser().read_text(encoding="utf-8"))
+    elif args.model_command:
+        command = shlex.split(args.model_command)
+        completed = subprocess.run(command, input=assembled_prompt, capture_output=True, text=True)
+        if completed.returncode != 0:
+            raise CliError(f"--model-command exited {completed.returncode}:\n{completed.stderr[-2000:]}")
+        try:
+            response_json = json.loads(completed.stdout)
+        except json.JSONDecodeError as exc:
+            raise CliError(f"--model-command did not print a valid JSON {{html, panelJson}} object: {exc}")
+    else:
+        prompt_path = Path(str(out_path) + ".prompt.txt")
+        prompt_path.parent.mkdir(parents=True, exist_ok=True)
+        prompt_path.write_text(assembled_prompt, encoding="utf-8")
+        print(
+            f"npdev: no --model-command / --from-response given -- wrote the assembled prompt + live "
+            f"bundle to {prompt_path}. Feed it to an agent, save its "
+            f'{{"html": ..., "panelJson": ...}} response as JSON, then re-run with '
+            f"--from-response <file>.",
+            file=sys.stderr,
+        )
+        return 3
+
+    if not isinstance(response_json, dict) or "html" not in response_json or "panelJson" not in response_json:
+        raise CliError('agent response must be a JSON object with "html" and "panelJson" keys')
+    html = response_json["html"]
+    panel = response_json["panelJson"]
+    if not isinstance(html, str) or not html.strip():
+        raise CliError('agent response "html" must be a non-empty string')
+    if not isinstance(panel, dict):
+        raise CliError('agent response "panelJson" must be a JSON object')
+
+    # Force the fields this command, not the agent, is responsible for getting right --
+    # docs/ai/UI_GENERATION_PROMPT.md's required-output shape plus R-P4's producer/confirmed contract.
+    panel.setdefault("schemaVersion", "npdev-panel-provenance.v1")
+    panel["producer"] = "agent"
+    panel["confirmed"] = True
+    panel.setdefault("screen", f"web/{out_path.name}")
+    panel.setdefault("calls", [])
+    panel.setdefault("slotOf", None)
+    panel.setdefault("screenClass", None)
+    panel.setdefault("unresolved", [])
+    generated_from = panel.setdefault("generatedFrom", {})
+    if not isinstance(generated_from, dict):
+        generated_from = {}
+        panel["generatedFrom"] = generated_from
+    generated_from["modelHash"] = bundle.get("modelHash", generated_from.get("modelHash", ""))
+    generated_from.setdefault(
+        "generatedAt", datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    )
+    generated_from.setdefault("generator", args.model_command or "external-agent")
+    generated_from.setdefault("bundleScope", {"concept": concept})
+
+    schema_checker = _load_quality_module(root, "npdev_cli_panel_schema_check", "check-panel-provenance-schema.py")
+    impact_checker = _load_quality_module(root, "npdev_cli_panel_impact_check", "check-panel-provenance-impact.py")
+
+    schema_errors = schema_checker.validate_manifest(out_path, panel)
+    if schema_errors:
+        for err in schema_errors:
+            print(f"npdev: REFUSED -- {err}", file=sys.stderr)
+        raise CliError(f"generated manifest fails structural validation ({len(schema_errors)} error(s)) -- nothing written")
+
+    fields, invocations = impact_checker.model_surface(bundle)
+    impact_problems: list[str] = []
+    for ref in list(panel.get("reads", [])) + list(panel.get("writes", [])):
+        if ref not in fields:
+            impact_problems.append(f"references field '{ref}', which the live model does not have")
+    for inv in panel.get("invokes", []):
+        if inv not in invocations:
+            impact_problems.append(f"references invocation '{inv}', which does not exist in the live bundle")
+    if impact_problems:
+        for problem in impact_problems:
+            print(f"npdev: REFUSED -- {problem}", file=sys.stderr)
+        raise CliError(
+            f"generated manifest fails the impact gate ({len(impact_problems)} problem(s)) against the "
+            f"live bundle -- nothing written. Either the agent hallucinated a field/route, or the model "
+            f"changed under it; regenerate against a fresh bundle."
+        )
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(html, encoding="utf-8")
+    panel_path = out_path.with_suffix(".panel.json")
+    panel_path.write_text(json.dumps(panel, indent=2) + "\n", encoding="utf-8")
+    print(f"npdev: wrote {out_path}")
+    print(f"npdev: wrote {panel_path} (producer=agent, confirmed=true, verified against the live bundle)")
+    return 0
+
+
 def run_migration_diff(args: argparse.Namespace) -> None:
     root = repo_root()
     generator_root = root / "NPDevGenerator"
@@ -1062,6 +1224,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fail if db.definition.json is missing instead of defaulting to an InMemory database definition.",
     )
 
+    generate_screen = generate_sub.add_parser(
+        "screen", help="Generate one hand-written screen against a live app's UI contract (R-P4)."
+    )
+    generate_screen.add_argument("--app", required=True, help="Base URL of the running app, e.g. http://localhost:8100")
+    generate_screen.add_argument("--concept", required=True, help="Concept the bundle should be scoped to")
+    generate_screen.add_argument("--out", required=True, help="Where to write the screen, e.g. web/inventario.html")
+    generate_screen.add_argument("--api-key", help="X-Api-Key value, for apiKey-mode apps")
+    generate_screen.add_argument("--token-file", help="Path to a file holding a JWT bearer token, for jwt-mode apps")
+    generate_screen.add_argument(
+        "--model-command",
+        help="Shell-parsed (shlex) command that reads the assembled prompt on stdin and prints "
+             '{"html": ..., "panelJson": ...} JSON to stdout. Omit for the two-step flow (see --from-response).',
+    )
+    generate_screen.add_argument(
+        "--from-response",
+        help='Path to a JSON file with {"html": ..., "panelJson": ...}, e.g. produced by hand from '
+             "the prompt this command writes when --model-command is omitted.",
+    )
+
     report = subparsers.add_parser("report")
     report_sub = report.add_subparsers(dest="report_command")
     report_sub.add_parser("bootstrap")
@@ -1120,6 +1301,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "generate" and args.generate_command == "app":
             run_generate(args)
             return 0
+        if args.command == "generate" and args.generate_command == "screen":
+            return run_generate_screen(args)
         if args.command == "report" and args.report_command == "bootstrap":
             run_report_bootstrap()
             return 0
