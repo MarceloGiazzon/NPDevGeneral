@@ -303,13 +303,12 @@ final class AutoPanelExpander {
             boolean editable = !state.isTerminal()
                     && !"false".equalsIgnoreCase(String.valueOf(state.getMetadata().get("editable")));
             node.put("editable", editable);
-            // AW-P5: optional per-state action-rail gating, authored as a comma-separated
-            // metadata string (metadata is a flat string->string map in the schema, so this reuses
-            // the existing "editable" metadata convention rather than adding a new lifecycles[]
-            // plural construct). Absent = no restriction, every declared action stays enabled.
-            List<String> allowedActions = splitCsv(state.getMetadata().get("allowedActions"));
-            if (allowedActions != null) {
-                node.put("allowedActions", allowedActions);
+            // AW-P5: optional per-state action-rail gating (REG-62, typed array as of
+            // docs/CORPUS_INTEGRITY_PLAN.md C8 -- previously a comma-separated string smuggled
+            // through the flat string metadata map, with no schema validation at all). Absent/empty
+            // = no restriction, every declared action stays enabled.
+            if (!state.getAllowedActions().isEmpty()) {
+                node.put("allowedActions", state.getAllowedActions());
             }
             states.add(node);
         }
@@ -572,19 +571,5 @@ final class AutoPanelExpander {
 
     private static boolean hasText(String value) {
         return value != null && !value.isBlank();
-    }
-
-    private static List<String> splitCsv(String value) {
-        if (!hasText(value)) {
-            return null;
-        }
-        List<String> out = new ArrayList<>();
-        for (String part : value.split(",")) {
-            String trimmed = part.trim();
-            if (!trimmed.isEmpty()) {
-                out.add(trimmed);
-            }
-        }
-        return out.isEmpty() ? null : out;
     }
 }

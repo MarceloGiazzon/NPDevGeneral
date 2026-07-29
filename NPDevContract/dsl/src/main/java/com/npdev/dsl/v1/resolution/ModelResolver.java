@@ -1094,6 +1094,7 @@ public final class ModelResolver {
                     state.getLabel(),
                     state.isInitial(),
                     state.isTerminal(),
+                    state.getAllowedActions(),
                     state.getMetadata()
             ));
         }

@@ -1,27 +1,35 @@
 id: REG-62
-title: allowedActions is an untyped, unvalidated CSV-in-metadata escape hatch -- a typo silently drops an action-rail button
+title: allowedActions typed (C8 done); cross-referencing it against declared workbench actions still blocked on a typed-actions prerequisite
 type: GAP
 severity: LOW
 status: OPEN
 opened: 2026-07-28
-verification: NOT_VERIFIED
-source: Investigated while closing F5-R1, 2026-07-28
+verification: VERIFIED_LIVE
+source: Investigated while closing F5-R1, 2026-07-28; typed half shipped docs/CORPUS_INTEGRITY_PLAN.md C8, 2026-07-29
 surface: dsl/autopanel-lifecycle
 files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/StateMachineStateAst.java
   - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java
 detail: |
-  allowedActions (per-lifecycle-state action-rail gating, AW-P5) is authored today as a
-  comma-separated string inside a lifecycle state's generic metadata map
-  (AutoPanelExpander.java:310), not a typed schema field, and nothing validates an entry resolves
-  to a real declared action -- a typo silently yields a missing button in production, same class as
-  REG-52/REG-53. Investigation found the natural fix (typed array + validate against declared
-  actions) is blocked on a real prerequisite gap: AutoPanelSurfaceAst has no actions field at all --
-  an AutoPanel section's action list lives inside that surface's own untyped metadata, the same
-  escape hatch allowedActions itself uses. JSON Schema alone cannot validate against a per-model
-  dynamic set of action names, so typing the array without resolving the action side first would
-  look done without fixing the actual failure mode. Fix, when picked up: give AutoPanel section
-  actions a typed AST home first, then add the typed allowedActions array (all 4 model.schema.json
-  mirrors) plus a cross-reference check, likely in PanelValidation.validateAutoPanels (which already
-  has both the concept's lifecycle and the AutoPanel's surfaces in scope). Not urgent: 0 of 27
-  corpus models use allowedActions at all.
+  2026-07-29 (C8): the CSV-in-metadata escape hatch is retired. allowedActions is now a proper
+  `array` of `string` on a `lifecycleState` node (all 4 model.schema.json mirrors), a real field on
+  StateMachineStateAst (was: parsed out of a comma-separated string inside the flat
+  Map<String,String> metadata map -- no schema validation of any kind). Safe with zero corpus impact
+  (0 of 29 models used the old form, confirmed live via scripts/quality/validate-corpus.py), so no
+  codemod and no BREAKING.md entry, matching the original finding's own prediction.
+  What this closes: a value that is not a JSON array of strings (a number, an object, nested JSON,
+  anything malformed) is now a structural schema-validation failure at author time, not a silent
+  no-op at runtime.
+  What this does NOT yet close, and why it stays OPEN: a well-formed but MIS-SPELLED action name
+  inside the array (e.g. "GerarDemand" instead of "GerarDemanda") is still accepted silently -- the
+  original bug's actual failure mode ("a typo silently drops an action-rail button"). Catching that
+  needs a cross-reference check against the AutoPanel section's own declared workbench actions, and
+  those still live inside `AutoPanelSurfaceAst.metadata()`'s own untyped escape hatch (read via
+  `AutoPanelExpander.workbenchActions()` from `transaction.metadata().get("actions")`) -- giving
+  workbench actions a typed AST home of their own is a real, separate design decision (not a
+  mechanical follow-on to this fix) and was consciously left out of this pass rather than rushed.
+  Fix, when picked up: type AutoPanelSurfaceAst's actions list, then add the cross-reference check,
+  likely in PanelValidation.validateAutoPanels (which already has both the concept's lifecycle and
+  the AutoPanel's surfaces in scope).
 legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-62
