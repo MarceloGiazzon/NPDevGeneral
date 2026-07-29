@@ -142,6 +142,9 @@
     "scripts/quality/check-panel-provenance-schema.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-record-surfaces.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-register-consistency.py": {
       "invocation": "ci-gate"
     },
