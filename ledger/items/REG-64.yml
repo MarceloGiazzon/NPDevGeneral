@@ -1,0 +1,29 @@
+id: REG-64
+title: EntityEmitter has no reserved-column collision guard -- a model field named tenantId/version/rowVersion produces uncompilable duplicate-field Java, not a clear message
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-07-29
+verification: VERIFIED_LIVE
+source: Found regenerating Claude Support Desk, docs/CORPUS_INTEGRITY_PLAN.md C2
+surface: generator/entity-emission
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/EntityEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java
+detail: |
+  SchemaRealizationEmitter already has RESERVED_BUSINESS_COLUMN_NAMES (version/row_version/tenant_id)
+  with a guard (validateNoReservedColumnCollision) that throws a clear, actionable IllegalStateException
+  naming the offending field and the exact rename to make -- its own comment cites precisely this
+  scenario ("a hand-modeled tenantId reference field, as in a pre-platform-tenancy multi-tenant
+  sample"). But that guard runs at DB-schema-realization time, which is downstream of Java
+  compilation. EntityEmitter (which emits the entity's Java field/getter/setter for both the
+  auto-injected platform column and any model-declared field of the same name) has no equivalent
+  check, so a model with a field literally named tenantId/version/rowVersion produces a Java source
+  file with a duplicate field/method declaration -- a raw javac error ("variable X is already defined
+  in class Y") at `App/_ops/Build-App.ps1` time, not the guided message the platform clearly intends
+  the author to see. Confirmed live: this is exactly what happened regenerating Claude Support Desk
+  after its DSL 2.0 migration (unrelated to that migration itself) -- fixed there by renaming the
+  model's own field, not by touching the generator. Fix, when picked up: call the same (or an
+  equivalent) reserved-column check from EntityEmitter before field emission, so the failure surfaces
+  at generation time with the existing guard's message instead of at compile time with a bare
+  javac diagnostic.
