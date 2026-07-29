@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**68 item(s) migrated: 1 open/partial, 67 done.**
+**69 item(s) migrated: 0 open/partial, 69 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -74,7 +74,8 @@
 | REG-64 | EntityEmitter has no reserved-column collision guard -- a model field named tenantId/version/rowVersion produces uncompilable duplicate-field Java, not a clear message | GAP | LOW | DONE | 2026-07-29 |
 | REG-65 | generatedAction was a canonical flowStep.type value FlowValidation always rejected, despite full compiler/generator/runtime support downstream | BUG | MEDIUM | DONE | 2026-07-29 |
 | REG-66 | reg39-healthy-control retired -- a byte-identical WmsOffice clone with no independent signal, closed REG-39's own one-time verification artifact | PROCESS | LOW | DONE | 2026-07-29 |
-| REG-67 | check-register-consistency.py's --calibrate mode uses bare "HEAD" for its real-instance controls, which silently stops proving anything once the target doc is edited again | GAP | LOW | OPEN | 2026-07-29 |
+| REG-67 | check-register-consistency.py's --calibrate mode uses bare "HEAD" for its real-instance controls, which silently stops proving anything once the target doc is edited again | GAP | LOW | DONE | 2026-07-29 |
+| REG-68 | check-narrative-status-drift.py's Rule P2 real-instance control also used bare "HEAD" and rotted the same way as REG-67 | GAP | LOW | DONE | 2026-07-29 |
 | REG-7 | LNCH-1-B6: no migration advisory lock (multi-instance) -- converted to a feature | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-8 | LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-9 | LNCH-4: auth secrets management -- JWT key env-var delivery | GAP | HIGH | DONE | 2026-07-21 |
@@ -1511,7 +1512,7 @@ content (model.json) is identical to WmsOffice's own, which remains.
 
 ### REG-67 — check-register-consistency.py's --calibrate mode uses bare "HEAD" for its real-instance controls, which silently stops proving anything once the target doc is edited again
 
-**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-07-29)
 **Verification:** VERIFIED_LIVE
 **Source:** Found incidentally while calibrating Rule T2b (docs/CLOSEOUT_PLAN.md G4), reproduced against the unmodified script before any G4 edit landed
 **Surface:** `quality/register-consistency`
@@ -1539,6 +1540,45 @@ is verifiably still present (`git log -S` or a recorded SHA in a comment, the sa
 or replace the rotted real-instance controls with synthetic fixtures (T2 already has one working
 synthetic control per rule; T1 does too) and drop the real-instance assertion once it can no longer
 be kept current for free.
+
+CLOSED 2026-07-29 (`docs/INVOCATION_TOPOLOGY_PLAN.md` T1): Rule T1/T2 pinned to `6a58b09` (parent
+of the fix commit `7ef8af4`, confirmed via `git show` to still hold both stale-wording shapes).
+`--calibrate` now PASSes on all T1/T2/T2b controls. Corrected-scope lesson: this item was filed as
+ONE rotted control; running all eight then-existing `--calibrate` modes by hand (not just
+re-reading this instance) found a SECOND, unfiled instance with the identical root cause in
+`check-narrative-status-drift.py`'s Rule P2 -- see `REG-68`. The real count was two, found only by
+running the whole class, not the one instance that happened to get noticed first.
+
+### REG-68 — check-narrative-status-drift.py's Rule P2 real-instance control also used bare "HEAD" and rotted the same way as REG-67
+
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-07-29)
+**Verification:** VERIFIED_LIVE
+**Source:** Found by running all eight then-existing `--calibrate` modes by hand while scoping docs/INVOCATION_TOPOLOGY_PLAN.md T1 (REG-67's own fix) -- not a re-read of REG-67, a second real instance of the same root cause
+**Surface:** `quality/narrative-status-drift`
+**Files:**
+- `scripts/quality/check-narrative-status-drift.py`
+
+`calibrate()`'s Rule P2 real-instance control read `git show HEAD:docs/adr/ADR-0009-external-ai-delegation.md`,
+expecting that revision to still contain the pre-fix header ("DRAFT -- 2026-07-26 ... D3, D4, D5
+remain pending") so `expect_fire=True` proves the rule would have caught the real 2026-07-27
+drift. Identical root cause to REG-67: `HEAD` is a moving target, ADR-0009 has been edited again
+since (the header was fixed to "APPROVED WITH CONDITIONS" and D4/D5 were resolved), so the exact
+stale-wording shape the control looks for no longer exists at HEAD. `--calibrate` FAILED on a
+clean tree -- confirmed by running the unmodified script against HEAD before any fix landed.
+
+This script's own docstring states it "ships REPORTING ONLY ... never blocking, until a clean-tree
+run proves the detector works" -- by its own stated contract it should not have been shipping
+report-only in the gate (step 7/15 of `run-ai-knowledge-gate.ps1`) while its calibration was
+silently broken. Impact bounded the same way as REG-67: the script's default (non-`--calibrate`)
+mode reads the live working tree, not HEAD, so the actual report-only scan was unaffected; only
+the self-test evidence was stale.
+
+CLOSED 2026-07-29 (`docs/INVOCATION_TOPOLOGY_PLAN.md` T1): pinned to `10d3a88` (the commit
+immediately before the fix `f76b95f`, confirmed via `git show` to still hold the pre-fix DRAFT
+header), matching the same fixed-revision discipline used for REG-67 and Rule T2b's REG-62 @
+9c3c423 pin. `--calibrate` now PASSes. `run-ai-knowledge-gate.ps1` gained a new step that runs
+every `--calibrate`-capable script (derived from argparse, not hand-maintained) specifically so
+this class of rot announces itself instead of waiting to be found by hand a third time.
 
 ### REG-7 — LNCH-1-B6: no migration advisory lock (multi-instance) -- converted to a feature
 
