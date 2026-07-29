@@ -5,20 +5,18 @@
     "here is why. The key is the feature name exactly as check-dsl-coverage.py reports it.",
     "docs/FINAL_OPEN_ITEMS_PLAN.md F8 was written specifically because NPDevSamples/dsl-conformance-max",
     "(F3) already closed every zero-coverage feature the 2026-07-29 measurement found -- that",
-    "measurement scanned the full local corpus (AppGen/apps + NPDevSamples). The three entries below",
-    "(REG-69) are a different failure mode: real on a bare CI checkout, where AppGen/apps is absent,",
-    "not zero-coverage locally. Add an entry here only for a genuine, reviewed exception with a REG",
-    "id -- never pre-clear speculatively; prefer adding a real example to dsl-conformance-max instead."
+    "measurement scanned the full local corpus (AppGen/apps + NPDevSamples).",
+    "REG-69 (2026-07-29) briefly held 3 entries here (fragments, packs, step.updateConcept) for a",
+    "different failure mode -- real on a bare CI checkout where AppGen/apps is absent, not",
+    "zero-coverage locally. docs/FAIL_OPEN_PLAN.md R2 closed all three for real rather than leaving",
+    "them allowlisted: dsl-conformance-max gained an UpdateOrderLineQuantity flow (step.updateConcept),",
+    "a fully in-git fragments/auditLog.json ($ref-ed capability+binding, same shape as",
+    "AppGen/apps/npdev_split_model_sample_app's plugin/sendMail.json), and a fully in-git",
+    "packs/labeling/pack.json ($ref-ed concept pack, same mechanism as WmsOffice's identity/workspace",
+    "packs) -- neither `packs` nor `fragments` needed an out-of-tree asset; that was an untested",
+    "assumption, not a proven limit. All Gradle-validated (0 errors, 0 warnings). Empty again.",
+    "Add an entry here only for a genuine, reviewed exception with a REG id -- never pre-clear",
+    "speculatively; prefer adding a real example to dsl-conformance-max instead."
   ],
-  "cleared": {
-    "fragments": {
-      "why": "Only real example is AppGen/apps/npdev_split_model_sample_app, a non-git developer-machine-only directory (CLAUDE.md 'Layers') -- absent on a bare CI checkout, so this has been failing on every real CI run of this gate, just never observed before PR #7 (T3 removed the paths: filter that had masked it). REG-69."
-    },
-    "packs": {
-      "why": "Only real example is AppGen/apps/_official/WmsOffice, absent on a bare CI checkout. Same shape as fragments above. REG-69."
-    },
-    "step.updateConcept": {
-      "why": "Only real example is AppGen/apps/_official/WmsOffice, absent on a bare CI checkout. Same shape as fragments above. REG-69."
-    }
-  }
+  "cleared": {}
 }

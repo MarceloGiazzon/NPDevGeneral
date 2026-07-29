@@ -835,11 +835,31 @@ def calibrate(root: Path) -> int:
     docs were edited again after 2026-07-28, so the stale wording the controls looked for no longer
     existed at HEAD and `--calibrate` silently rotted. Pinned to `PRE_FIX_SHA` below instead, same
     fixed-revision discipline Rule T2b already used for REG-62 @ 9c3c423.
+
+    docs/FAIL_OPEN_PLAN.md R1: several controls below are guarded by `if git_show(...) is not None:`
+    (`git_show` returns `None` and only prints a stderr warning when a pinned revision can't be read,
+    e.g. a shallow clone) -- guarding the *call* is right (a real read failure shouldn't crash the
+    whole calibration), but nothing previously noticed when a guard skipped a control entirely: the
+    loop would just run fewer `report()` calls and still exit 0, because "control never ran" and
+    "control ran and passed" look identical to `ok`. This is exactly how the pre-`fetch-depth` rot
+    went unnoticed -- fixed at the workflow level (`ai-knowledge-gate.yml` now sets `fetch-depth: 0`),
+    but the *behavior* (a skip reads as a pass) was still there and would recreate the same silent gap
+    on the next shallow-clone context (a rebase orphaning a pin, a fork, a future workflow edit).
+    `EXPECTED_CONTROLS` asserts the *count* of `report()` calls actually made, not just their
+    individual outcomes -- a skipped control now fails loudly instead of silently vanishing.
     """
     ok = True
+    reported = 0
+    # MEASURED 2026-07-29 (docs/FAIL_OPEN_PLAN.md R1): 15 report() calls below when every guard
+    # passes. Recount by grepping this function for `report(` if this function's controls change --
+    # a hand-maintained count is exactly the kind of claim check-record-surfaces.py exists to distrust
+    # elsewhere, but there is no cheaper source of truth for "how many controls does THIS run intend"
+    # than reading the function that defines them.
+    EXPECTED_CONTROLS = 15
 
     def report(label: str, findings: list[str], expect_fire: bool) -> None:
-        nonlocal ok
+        nonlocal ok, reported
+        reported += 1
         fired = bool(findings)
         passed = fired == expect_fire
         ok = ok and passed
@@ -971,6 +991,13 @@ def calibrate(root: Path) -> int:
         check_plan_deferral_citations(root, verbose=False),
         expect_fire=False,
     )
+
+    if reported != EXPECTED_CONTROLS:
+        print(f"\nFAIL: expected {EXPECTED_CONTROLS} control(s) to run, only {reported} did -- "
+              f"{EXPECTED_CONTROLS - reported} were silently SKIPPED (an unreachable pinned git "
+              f"revision?). A skipped control proves nothing and must be treated as a failure, not a "
+              f"pass (docs/FAIL_OPEN_PLAN.md R1).", file=sys.stderr)
+        ok = False
 
     if not ok:
         print("\nFAIL: at least one control did not behave as required -- T1/T2/T2b/T4 do not ship "

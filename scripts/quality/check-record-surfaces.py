@@ -21,8 +21,15 @@ two surfaces a *stranger* meets first:
 
 THE TWO CHECKS (deliberately narrow -- see "what this does NOT do" below)
 ---------------------------------------------------------------------------
-1. Branch freshness: `git rev-list --count origin/main..HEAD`. WARN above 20 (a working branch is
-   *meant* to run ahead), FAIL above 50 (that is a second unmerged release, not "ahead").
+1. Branch freshness, both directions (docs/FAIL_OPEN_PLAN.md R4 added the second direction):
+   - Ahead of `origin/main` (`git rev-list --count origin/main..HEAD`): WARN above 20 (a working
+     branch is *meant* to run ahead), FAIL above 50 (that is a second unmerged release, not "ahead").
+   - Behind `origin/main` (`git rev-list --count HEAD..origin/main`): WARN on any amount, never FAIL
+     -- being briefly behind right after someone else merges is normal, but a stale local base is how
+     an ahead-gap starts (build on it long enough and the next `git push` surprises you with commits
+     you never saw). Found live 2026-07-29: `beta1-vision-spine` was 4 commits behind `origin/main`
+     immediately after its own PR #7 merged -- the merge commit lands on `main`, never on the source
+     branch, so "just merged" and "now behind" are the same moment unless the branch is synced back.
 2. CLAUDE.md size claims: every `` `path` (N KB) `` entry in the "Large files" block is resolved
    against the file it names (the path may use a `.../` shorthand, e.g.
    `NPDevKernel/kernel/.../KernelRunner.java`, resolved via glob) and compared to its actual size on
@@ -40,13 +47,15 @@ CALIBRATE BEFORE TRUSTING IT
 ------------------------------
     python scripts/quality/check-record-surfaces.py --calibrate
 
-Four controls, all must behave as stated or the script exits 1:
+Six controls, all must behave as stated or the script exits 1:
   - Size-claim check against CLAUDE.md pinned at `27c984d` (the real commit immediately before this
     plan's P2 fix landed -- confirmed via `git show 27c984d:CLAUDE.md` to still carry the stale
     197KB/164KB claims for the now-12KB TrustedSourceEmitter/SemanticValidator) -- MUST fire.
   - Size-claim check against the CLAUDE.md in the working tree (post-P2) -- MUST NOT fire.
-  - Branch-freshness against a synthetic 51-commit gap -- MUST fire.
-  - Branch-freshness against a synthetic 0-commit gap -- MUST NOT fire.
+  - Branch-freshness against a synthetic 51-ahead/0-behind gap -- MUST fire (FAIL-shaped).
+  - Branch-freshness against a synthetic 0-ahead/0-behind gap -- MUST NOT fire.
+  - Branch-freshness against a synthetic 0-ahead/4-behind gap -- MUST fire (WARN-shaped, never FAILs).
+  - Branch-freshness against a synthetic 0-ahead/0-behind gap (behind control) -- MUST NOT fire.
 
 Same discipline as check-narrative-status-drift.py's ADR-0009 control: pin to a fixed SHA, not HEAD,
 so the control keeps proving something after CLAUDE.md is edited again.
@@ -135,23 +144,37 @@ def check_size_claims(root: Path, claude_md_text: str) -> list[str]:
     return findings
 
 
-def branch_gap(root: Path) -> int:
+def branch_gap(root: Path) -> tuple[int, int]:
     subprocess.run(["git", "fetch", "origin", "main"], cwd=root, capture_output=True, text=True)
-    result = subprocess.run(
+    ahead = int(subprocess.run(
         ["git", "rev-list", "--count", "origin/main..HEAD"],
         cwd=root, capture_output=True, text=True, check=True,
-    )
-    return int(result.stdout.strip())
+    ).stdout.strip())
+    behind = int(subprocess.run(
+        ["git", "rev-list", "--count", "HEAD..origin/main"],
+        cwd=root, capture_output=True, text=True, check=True,
+    ).stdout.strip())
+    return ahead, behind
 
 
-def check_branch_freshness(gap: int) -> list[str]:
-    if gap > BRANCH_FAIL:
-        return [f"branch is {gap} commits ahead of origin/main -- exceeds the FAIL threshold ({BRANCH_FAIL}); "
-                 f"this is a second unmerged release, not \"ahead\" -- merge forward"]
-    if gap > BRANCH_WARN:
-        return [f"WARNING: branch is {gap} commits ahead of origin/main -- exceeds the WARN threshold "
-                 f"({BRANCH_WARN}) but not the FAIL threshold ({BRANCH_FAIL})"]
-    return []
+def check_branch_freshness(ahead: int, behind: int) -> list[str]:
+    findings = []
+    if ahead > BRANCH_FAIL:
+        findings.append(
+            f"branch is {ahead} commits ahead of origin/main -- exceeds the FAIL threshold ({BRANCH_FAIL}); "
+            f"this is a second unmerged release, not \"ahead\" -- merge forward"
+        )
+    elif ahead > BRANCH_WARN:
+        findings.append(
+            f"WARNING: branch is {ahead} commits ahead of origin/main -- exceeds the WARN threshold "
+            f"({BRANCH_WARN}) but not the FAIL threshold ({BRANCH_FAIL})"
+        )
+    if behind > 0:
+        findings.append(
+            f"WARNING: branch is {behind} commit(s) behind origin/main -- pull before building further "
+            f"on top (never FAILs: being briefly behind right after a merge is normal)"
+        )
+    return findings
 
 
 def calibrate(root: Path) -> int:
@@ -184,10 +207,14 @@ def calibrate(root: Path) -> int:
     report("size-claim check vs. CLAUDE.md in the working tree (post-P2)",
            check_size_claims(root, working_text), expect_fire=False)
 
-    report("branch-freshness vs. synthetic 51-commit gap",
-           check_branch_freshness(51), expect_fire=True)
-    report("branch-freshness vs. synthetic 0-commit gap",
-           check_branch_freshness(0), expect_fire=False)
+    report("branch-freshness vs. synthetic 51-ahead/0-behind gap",
+           check_branch_freshness(51, 0), expect_fire=True)
+    report("branch-freshness vs. synthetic 0-ahead/0-behind gap",
+           check_branch_freshness(0, 0), expect_fire=False)
+    report("branch-freshness vs. synthetic 0-ahead/4-behind gap (R4: warn-on-behind)",
+           check_branch_freshness(0, 4), expect_fire=True)
+    report("branch-freshness vs. synthetic 0-ahead/0-behind gap (behind control)",
+           check_branch_freshness(0, 0), expect_fire=False)
 
     if not ok:
         print("\nFAIL: at least one control did not behave as required -- this detector does not "
@@ -216,11 +243,11 @@ def main(argv: list[str]) -> int:
         print(f"  {f}")
     total_blocking += len(size_findings)
 
-    gap = branch_gap(root)
-    branch_findings = check_branch_freshness(gap)
+    ahead, behind = branch_gap(root)
+    branch_findings = check_branch_freshness(ahead, behind)
     for f in branch_findings:
         print(f"  {f}")
-    if gap > BRANCH_FAIL:
+    if ahead > BRANCH_FAIL:
         total_blocking += 1
 
     if total_blocking == 0 and not any(f.startswith("WARNING") for f in branch_findings):

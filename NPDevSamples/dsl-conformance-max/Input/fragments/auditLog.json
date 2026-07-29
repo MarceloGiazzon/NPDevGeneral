@@ -1,0 +1,22 @@
+{
+  "capabilities": [
+    {
+      "name": "auditLog",
+      "type": "AuditLogCapability",
+      "operations": [
+        "record"
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "auditLog",
+      "adapter": "audit-log-inproc"
+    }
+  ],
+  "metadata": {
+    "auditLogFragment": {
+      "purpose": "docs/FAIL_OPEN_PLAN.md R2: real in-git example of a top-level `fragments` entry, mirroring the shape of AppGen/apps/npdev_split_model_sample_app's plugin/sendMail.json fragment (capabilities + bindings + metadata, $ref-ed from model.json)."
+    }
+  }
+}
