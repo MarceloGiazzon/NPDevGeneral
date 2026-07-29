@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**64 item(s) migrated: 4 open/partial, 60 done.**
+**65 item(s) migrated: 2 open/partial, 63 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -38,8 +38,8 @@
 | REG-31 | run-script-automation-quality's structured-report-contract check was mis-calibrated (helper-name grep, not a behavior test) | PROCESS | LOW | DONE | 2026-07-24 |
 | REG-32 | npdev-ci-validation.yml Bootstrap step aggregated ~21 maturity reports its producers never generated | PROCESS | MEDIUM | DONE | 2026-07-24 |
 | REG-33 | CLI's on-demand npm install for the JSON-schema validator failed on Windows from a Python subprocess | BUG | LOW | DONE | 2026-07-24 |
-| REG-34 | Windows CI job runs Testcontainers (Linux-container) tests that windows-latest can't run | PROCESS | LOW | PARTIAL | 2026-07-24 |
-| REG-35 | Gradle-native postBeta0MaturityCheck has the same missing-vs-invalid conflation REG-32 fixed in PowerShell, plus an overly strict nested artifact schema | PROCESS | LOW | OPEN | 2026-07-24 |
+| REG-34 | Windows CI job runs Testcontainers (Linux-container) tests that windows-latest can't run | PROCESS | LOW | DONE | 2026-07-24 |
+| REG-35 | Gradle-native postBeta0MaturityCheck had the same missing-vs-invalid conflation REG-32 fixed in PowerShell, plus an overly strict nested artifact schema | PROCESS | LOW | DONE | 2026-07-24 |
 | REG-36 | Oversized idempotency keys could exceed the Postgres btree index-entry size limit | BUG | MEDIUM | DONE | 2026-07-25 |
 | REG-37 | Circuit-breaker failure-count read-decide-write was not a single atomic critical section | BUG | MEDIUM | DONE | 2026-07-25 |
 | REG-38 | Additive-migration constraints were not idempotent on H2 -- redeploy failed with duplicate constraint | BUG | MEDIUM | DONE | 2026-07-24 |
@@ -69,8 +69,9 @@
 | REG-6 | ColumnFacts: eight SchemaLifecycleExecutor passes each re-derived column semantics independently | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-60 | Aggregate Workbench post-commit "Saved." confirmation is wiped by the next render before a user can see it | BUG | LOW | DONE | 2026-07-28 |
 | REG-61 | Narrow-type recreate loses NOT NULL; no per-row-unique default expressible for a required UNIQUE column | GAP | HIGH | DONE | 2026-07-28 |
-| REG-62 | allowedActions is an untyped, unvalidated CSV-in-metadata escape hatch -- a typo silently drops an action-rail button | GAP | LOW | OPEN | 2026-07-28 |
-| REG-63 | AuxScreen and Pigmentampa's model.json use a pre-DSL-stabilization flow-step shape the current schema rejects | GAP | MEDIUM | OPEN | 2026-07-29 |
+| REG-62 | allowedActions typed (C8 done); cross-referencing it against declared workbench actions still blocked on a typed-actions prerequisite | GAP | LOW | OPEN | 2026-07-28 |
+| REG-63 | 17 of 29 corpus models (not 2) used pre-DSL-2.0 flow-step/orchestration shapes the current schema rejects | GAP | MEDIUM | DONE | 2026-07-29 |
+| REG-64 | EntityEmitter has no reserved-column collision guard -- a model field named tenantId/version/rowVersion produces uncompilable duplicate-field Java, not a clear message | GAP | LOW | OPEN | 2026-07-29 |
 | REG-7 | LNCH-1-B6: no migration advisory lock (multi-instance) -- converted to a feature | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-8 | LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-9 | LNCH-4: auth secrets management -- JWT key env-var delivery | GAP | HIGH | DONE | 2026-07-21 |
@@ -589,42 +590,76 @@ Windows job as belt-and-suspenders.
 
 ### REG-34 — Windows CI job runs Testcontainers (Linux-container) tests that windows-latest can't run
 
-**Type:** PROCESS · **Severity:** LOW · **Status:** PARTIAL
+**Type:** PROCESS · **Severity:** LOW · **Status:** DONE (2026-07-29)
 **Verification:** VERIFIED_LIVE
-**Source:** Surfaced by REG-17 once Fix A + REG-33 unblocked the Windows job's downstream gates
+**Source:** Surfaced by REG-17 once Fix A + REG-33 unblocked the Windows job's downstream gates; re-audited docs/CORPUS_INTEGRITY_PLAN.md C10
 **Surface:** `ci/windows-job-scoping`
 
-npdev-ci-validation.yml's Windows job runs full gate suites including Testcontainers tests that
-start LINUX containers (MinIO, Postgres); windows-latest cannot run Linux containers at all
-(Windows-container-only), so those tests fail on Windows while passing on the green Linux job.
-Approach: disable each genuinely-Linux-container test on Windows via @DisabledOnOs(OS.WINDOWS)
-(stays enabled and validated on Linux CI). Done so far: the generator gate's MinIO packaged-app
-proof test, verified locally to skip on Windows and still build. Remaining: the Windows job's
-further gates (Security hardening, Runtime security, RuntimeHost gate, Editor gate) had never run
-to completion at filing time; each may contain more Linux-container tests to scope the same way,
-to be iterated as they surface.
+2026-07-29 re-audit (C10): re-checked the "remaining" gates this item left open (Security
+hardening, Runtime security, RuntimeHost gate, Editor gate) by tracing every actual command the
+Windows job in npdev-ci-validation.yml runs today, and cross-referencing every real Testcontainers
+user in the repo -- not just re-asserting the original "iterate as they surface" plan.
+Found, measured live: repo-wide, exactly one class carries a real `@Testcontainers`/`@Container`
+annotation (`AbstractScenarioIntegrationTest`, NPDevRuntimeHost) and three more directly
+instantiate `PostgreSQLContainer` (`ConversionHookRunnerPostgresTest`,
+`SchemaLifecycleExecutorPostgresProofMatrixTest`, `CurrentSchemaReaderPostgresTest`). None of the
+four is reachable from anything the Windows job actually runs: the abstract class's subclasses
+live in NPDevRuntimeHost's separate `integrationTest` Gradle source set/task (`includeTags
+'integration'`), which `check` does not depend on and which is documented as nightly-only, not
+wired into any step here; the three Postgres classes are excluded from the default `test` task
+unless `-PincludePostgresMatrix` is passed (`NPDevRuntimeHost/build.gradle`), which no step in
+this workflow does. The Windows job's only real `gradlew check`/`test` invocation is scoped to
+`NPDevContract\dsl` alone (the "DSL contract check" step, `working-directory: NPDevContract\dsl`),
+which has zero Testcontainers usage; "Security hardening"/"Runtime security"/"RuntimeHost gate"/
+"Editor gate" all run PowerShell-orchestrated sample-generation/surface-evidence scripts
+(run-runtimehost-gate.ps1 et al.), not a raw module test suite.
+Net: as measured today, no Linux-container test is reachable from anything the Windows job
+invokes -- via Gradle task/source-set separation, not `@DisabledOnOs` sprinkled per-test (the
+original fix approach). The one instance that WAS fixed with `@DisabledOnOs` (the generator
+gate's MinIO packaged-app proof test) stays as-is; it is not wrong, just not the mechanism that
+turned out to matter for the rest. Residual, explicitly not eliminated: this is a measurement of
+the CURRENT wiring, not a standing gate -- a future change that adds a new Testcontainers test
+reachable from the Windows job's actual commands, or that wires `integrationTest`/
+`-PincludePostgresMatrix` into this workflow, would need the same check re-run by hand. Building a
+permanent gate for that was judged out of scope for this LOW item (matches C10's own "no action
+expected" framing) rather than folded in here.
 
 *Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-34`
 
-### REG-35 — Gradle-native postBeta0MaturityCheck has the same missing-vs-invalid conflation REG-32 fixed in PowerShell, plus an overly strict nested artifact schema
+### REG-35 — Gradle-native postBeta0MaturityCheck had the same missing-vs-invalid conflation REG-32 fixed in PowerShell, plus an overly strict nested artifact schema
 
-**Type:** PROCESS · **Severity:** LOW · **Status:** OPEN
+**Type:** PROCESS · **Severity:** LOW · **Status:** DONE (2026-07-29)
 **Verification:** VERIFIED_LIVE
-**Source:** Discovered as a byproduct of verifying REG-32's fix, 2026-07-24 -- pre-existing, not caused by that work
+**Source:** Discovered as a byproduct of verifying REG-32's fix, 2026-07-24 -- pre-existing, not caused by that work; fixed docs/CORPUS_INTEGRITY_PLAN.md C9
 **Surface:** `ci/maturity-bootstrap`
+**Files:**
+- `build.gradle`
+- `schemas/ai/final-evidence-bundle-manifest.schema.json`
+- `.github/workflows/npdev-ci-validation.yml`
 
-The same CI step also runs ./gradlew postBeta0MaturityCheck, a completely separate Gradle-native
-validation pipeline that independently re-checks 7 of the same maturity reports. Two gaps neither
-touched by REG-32: (1) validateReports treats a missing report file as an unconditional failure (no
-precondition-unmet concept exists in this framework at all), and separately trips hard on REG-32's
-new "precondition-unmet" overallStatus value -- reproduced: 6 of 7 report pairs "missing schema or
-report", the 7th "precondition-unmet". (2) final-evidence-bundle-manifest.schema.json's artifacts[]
-items are unconditionally required with no "never generated" escape hatch -- reproduced: a freshly
-generated manifest (19/21 reports absent) produces 76 schema errors. Also noted: validateBoundaryLocks
-independently fails on this tree for an unrelated, long-pre-existing reason (hardcoded drive-letter
-paths), out of this finding's scope. Not fixed: build.gradle is the single highest-blast-radius
-build file in the repo and extending the REG-3/REG-32 pattern into a second, structurally different
-Gradle-native pipeline is its own bounded task. CI step keeps continue-on-error:true until fixed.
+Both originally-scoped gaps fixed 2026-07-29: (1) build.gradle's validateReports task now treats
+a missing report file as precondition-unmet (not a failure), and also recognizes an EXISTING
+report's own `overallStatus: "precondition-unmet"` (the REG-32 pattern any of the 7 producers may
+itself use) as non-fatal -- verified live: passed=true, failures=[], with all 7 pairs correctly
+classified as preconditionUnmet, none as failures (was: unconditional failure on any missing
+file). (2) final-evidence-bundle-manifest.schema.json's artifacts[] items now accept the shape a
+never-generated report legitimately has (bytes:0, sha256:"", schemaVersion:"",
+overallStatus:"missing"/"missing-status") instead of requiring bytes>=1 and a real sha256 on every
+one of the required 21 slots regardless of whether its producer ran -- verified live against a
+fresh manifest (18/21 reports missing): errorCount 0 (was 76, exactly 19 missing x 4 violated
+constraints at the time of the original finding).
+A third, unrelated false positive turned up verifying the fix end to end (running the full
+`postBeta0MaturityCheck` chain, not just validateReports in isolation): validateBoundaryLocks'
+own hardcoded-drive-letter-path scan (a CP5-era portability check) matched a code COMMENT
+describing a Windows path, not an actual embedded one, in
+.github/workflows/npdev-ci-validation.yml. The scan reads raw file text with no comment-awareness,
+so any future comment mentioning a drive-letter path would trip the same false positive again --
+not re-architected here (out of this item's own scope), just reworded past this one instance.
+`postBeta0MaturityCheck` now runs green end to end locally, all 6 tasks. CI step's continue-on-
+error kept intentionally: the same shell step also runs 4 other commands
+(`npdev report bootstrap`, validate-report-schemas.ps1, generate-final-evidence-bundle.ps1,
+run-portable-tooling-check.ps1) whose own precondition-unmet-vs-exit-code handling was not
+re-audited here -- flipping the flag for the whole step is a separate decision.
 
 *Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-35`
 
@@ -1267,54 +1302,104 @@ documents the new refusal case and recipe. Full com.finalexec.db suite 273/273, 
 
 *Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-61`
 
-### REG-62 — allowedActions is an untyped, unvalidated CSV-in-metadata escape hatch -- a typo silently drops an action-rail button
+### REG-62 — allowedActions typed (C8 done); cross-referencing it against declared workbench actions still blocked on a typed-actions prerequisite
 
 **Type:** GAP · **Severity:** LOW · **Status:** OPEN
-**Verification:** NOT_VERIFIED
-**Source:** Investigated while closing F5-R1, 2026-07-28
+**Verification:** VERIFIED_LIVE
+**Source:** Investigated while closing F5-R1, 2026-07-28; typed half shipped docs/CORPUS_INTEGRITY_PLAN.md C8, 2026-07-29
 **Surface:** `dsl/autopanel-lifecycle`
 **Files:**
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/StateMachineStateAst.java`
 - `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java`
 
-allowedActions (per-lifecycle-state action-rail gating, AW-P5) is authored today as a
-comma-separated string inside a lifecycle state's generic metadata map
-(AutoPanelExpander.java:310), not a typed schema field, and nothing validates an entry resolves
-to a real declared action -- a typo silently yields a missing button in production, same class as
-REG-52/REG-53. Investigation found the natural fix (typed array + validate against declared
-actions) is blocked on a real prerequisite gap: AutoPanelSurfaceAst has no actions field at all --
-an AutoPanel section's action list lives inside that surface's own untyped metadata, the same
-escape hatch allowedActions itself uses. JSON Schema alone cannot validate against a per-model
-dynamic set of action names, so typing the array without resolving the action side first would
-look done without fixing the actual failure mode. Fix, when picked up: give AutoPanel section
-actions a typed AST home first, then add the typed allowedActions array (all 4 model.schema.json
-mirrors) plus a cross-reference check, likely in PanelValidation.validateAutoPanels (which already
-has both the concept's lifecycle and the AutoPanel's surfaces in scope). Not urgent: 0 of 27
-corpus models use allowedActions at all.
+2026-07-29 (C8): the CSV-in-metadata escape hatch is retired. allowedActions is now a proper
+`array` of `string` on a `lifecycleState` node (all 4 model.schema.json mirrors), a real field on
+StateMachineStateAst (was: parsed out of a comma-separated string inside the flat
+Map<String,String> metadata map -- no schema validation of any kind). Safe with zero corpus impact
+(0 of 29 models used the old form, confirmed live via scripts/quality/validate-corpus.py), so no
+codemod and no BREAKING.md entry, matching the original finding's own prediction.
+What this closes: a value that is not a JSON array of strings (a number, an object, nested JSON,
+anything malformed) is now a structural schema-validation failure at author time, not a silent
+no-op at runtime.
+What this does NOT yet close, and why it stays OPEN: a well-formed but MIS-SPELLED action name
+inside the array (e.g. "GerarDemand" instead of "GerarDemanda") is still accepted silently -- the
+original bug's actual failure mode ("a typo silently drops an action-rail button"). Catching that
+needs a cross-reference check against the AutoPanel section's own declared workbench actions, and
+those still live inside `AutoPanelSurfaceAst.metadata()`'s own untyped escape hatch (read via
+`AutoPanelExpander.workbenchActions()` from `transaction.metadata().get("actions")`) -- giving
+workbench actions a typed AST home of their own is a real, separate design decision (not a
+mechanical follow-on to this fix) and was consciously left out of this pass rather than rushed.
+Fix, when picked up: type AutoPanelSurfaceAst's actions list, then add the cross-reference check,
+likely in PanelValidation.validateAutoPanels (which already has both the concept's lifecycle and
+the AutoPanel's surfaces in scope).
 
 *Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-62`
 
-### REG-63 — AuxScreen and Pigmentampa's model.json use a pre-DSL-stabilization flow-step shape the current schema rejects
+### REG-63 — 17 of 29 corpus models (not 2) used pre-DSL-2.0 flow-step/orchestration shapes the current schema rejects
 
-**Type:** GAP · **Severity:** MEDIUM · **Status:** OPEN
+**Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-07-29)
 **Verification:** VERIFIED_LIVE
-**Source:** Found while confirming panel-provenance manifests for R-G2 (docs/REMEDIATION_PLAN.md)
+**Source:** Found while confirming panel-provenance manifests for R-G2 (docs/REMEDIATION_PLAN.md); re-scoped and closed by docs/CORPUS_INTEGRITY_PLAN.md
 **Surface:** `dsl/model-schema-compatibility`
 
-AppGen/apps/_official/AuxScreen and .../Pigmentampa's model.json both declare flows in a
-pre-stabilization shape (top-level input/out per step, a type:"validate" step kind) that the CURRENT
-model.schema.json rejects outright -- JsonModelParser.parse() fails schema validation before an AST
-is even built. Confirmed live: Build-NpdevApp.ps1 -GenerateOnly fails identically for both apps, so
-neither can be regenerated, and no compiled model/invocations catalog/live bundle can be produced
-for either at all. Blocked both apps' single hand-written screen from getting a panel-provenance
-manifest for R-G2 (filed there as a written reason, not silently skipped). Both existing
-BUILT/running instances are unaffected -- this only blocks regeneration with the current toolchain.
-Fix, when picked up: a real npdev migrate codemod for this flow-step shape (BREAKING.md's own
-standing rule -- every DSL break ships its codemod in the same commit), likely a mechanical
-type:"validate" -> invariantCheck rewrite plus flattening the top-level input/out/name properties;
-needs a check of how many other AppGen apps (if any beyond these two) still carry this shape before
-scoping the codemod's coverage.
+Originally filed against AuxScreen and Pigmentampa only. docs/CORPUS_INTEGRITY_PLAN.md C1 measured
+the real scope with the actual validator (scripts/quality/validate-corpus.py, the validateModel
+Gradle task per model, not a heuristic grep): 17 of 29 corpus models under AppGen/apps failed --
+4 of 5 _official apps (AuxScreen, Claude, Pigmentampa, WordLab; WmsOffice was clean) plus 13 non-
+official AppGen apps. Root cause: 2.A.4's own migration (docs/DSL2_AND_DECOMPOSITION_PLAN.md)
+deliberately deferred AppGen/apps as a non-git external directory (owner's call, documented in that
+plan's own Definition of Done) while migrating every git-tracked tree -- the deferred item just
+never got a tracking item to come back to.
+C2 extended NPDevCli/dsl_v2_migration.py (already covered all 8 retired flowStep.type values and the
+cap/op/out/as field aliases; gained a 5th rule renaming the top-level `orchestrations` key to
+`orchestrationRules`, a pre-baseline spelling the heuristic scan never covered) and ran it via
+`npdev migrate dsl-2 --write` across all of AppGen/apps: 19 files changed, 0 ambiguities. Two
+unrelated bugs surfaced and were fixed in the same pass, not by the codemod: pack-sample's model
+used a retired shared-packs-directory $ref convention (`Pack $ref escapes the model root`, unrelated
+to flow-step shapes) plus a duplicate `persistence` capability once the $ref resolved; Claude Support
+Desk's model declared its own `tenantId` reference field, colliding with the platform's own
+auto-injected `tenant_id` isolation column (a real Java compile failure, not a parse error) -- fixed
+by renaming the model field to `tenantIdRef`, the exact fix
+SchemaRealizationEmitter.RESERVED_BUSINESS_COLUMN_NAMES's own guard message suggests. That guard
+only runs at DB-schema-realization time (after Java compilation), so it never got a chance to show
+its friendly message here -- see the new gap this surfaced (entity emitter lacks the same guard,
+filed separately rather than expanding this item's scope).
+All 29/29 corpus models now parse; all 13 sample-tier apps generate; all 4 previously-broken
+official apps generate+build+boot clean (health UP, all NPDev subsystems UP). R-G2 manifest coverage
+is genuinely 15/15 (AuxScreen's aux-screen.panel.json and Pigmentampa's pigmentampa-editor.panel.json
+authored fresh and confirmed live, 0 problems from check-panel-provenance-impact.py against each
+app's real bundle). C4 promotes the corpus validator to a permanent blocking gate so this class does
+not recur silently.
 
 *Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-63`
+
+### REG-64 — EntityEmitter has no reserved-column collision guard -- a model field named tenantId/version/rowVersion produces uncompilable duplicate-field Java, not a clear message
+
+**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** Found regenerating Claude Support Desk, docs/CORPUS_INTEGRITY_PLAN.md C2
+**Surface:** `generator/entity-emission`
+**Files:**
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/EntityEmitter.java`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java`
+
+SchemaRealizationEmitter already has RESERVED_BUSINESS_COLUMN_NAMES (version/row_version/tenant_id)
+with a guard (validateNoReservedColumnCollision) that throws a clear, actionable IllegalStateException
+naming the offending field and the exact rename to make -- its own comment cites precisely this
+scenario ("a hand-modeled tenantId reference field, as in a pre-platform-tenancy multi-tenant
+sample"). But that guard runs at DB-schema-realization time, which is downstream of Java
+compilation. EntityEmitter (which emits the entity's Java field/getter/setter for both the
+auto-injected platform column and any model-declared field of the same name) has no equivalent
+check, so a model with a field literally named tenantId/version/rowVersion produces a Java source
+file with a duplicate field/method declaration -- a raw javac error ("variable X is already defined
+in class Y") at `App/_ops/Build-App.ps1` time, not the guided message the platform clearly intends
+the author to see. Confirmed live: this is exactly what happened regenerating Claude Support Desk
+after its DSL 2.0 migration (unrelated to that migration itself) -- fixed there by renaming the
+model's own field, not by touching the generator. Fix, when picked up: call the same (or an
+equivalent) reserved-column check from EntityEmitter before field emission, so the failure surfaces
+at generation time with the existing guard's message instead of at compile time with a bare
+javac diagnostic.
 
 ### REG-7 — LNCH-1-B6: no migration advisory lock (multi-instance) -- converted to a feature
 
