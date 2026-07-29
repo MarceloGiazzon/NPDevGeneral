@@ -1,0 +1,472 @@
+{
+  "$schemaVersion": "npdev-script-invocation-declarations.v1",
+  "declarations": {
+    "scripts/ai/Invoke-AiRestSmokeVerifier.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/ai/Normalize-AiContract.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/ai/Test-AiShiftLeftSafety.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/ai/build_core_context.py": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/ai/build_knowledge.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/ai/build_rag_index.py": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/ai/derive_constrained_schemas.py": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/ai/extract_platform_status.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/ai/failure_signatures.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/ai/npdev_ai_common.py": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/ai/promote_candidates.py": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/ai/run_ai_authoring_eval.py": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/appgen/Build-AppGenApp.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/appgen/Build-ClaudeApp.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/appgen/Build-NpdevApp.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/appgen/New-AppConsole.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/appgen/New-AppInfoPage.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/appgen/New-AppTreePage.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/appgen/New-ControlPanelPage.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/appgen/Rebuild-And-Restage.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/ci/gh-api.sh": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/docs/generate_dsl_reference.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/evidence/write-security-hardening-maturity-report.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/external-review/build-review-pack.py": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/hooks/install.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/hooks/pre-commit.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/hygiene/Setup-EditorNodeModules.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/hygiene/Test-GradleWrapperConsistency.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/hygiene/Test-WorkspaceSlimness.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/hygiene/check-csrf-posture.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/hygiene/check-deterministic-generation.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/hygiene/clean-rebuildable-artifacts.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/hygiene/clean-workspace-state.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/npdev-common.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/ops/canonicalize-tenant-ids.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/proofs/run-item20-postgres-proof.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/Invoke-JsonSchemaValidation.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/bootstrap-panel-provenance.py": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/bootstrap-post-beta0-reports.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/bucket2-report-common.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-dsl-conformance-generates.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-dsl-coverage.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-engine-variant-families.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-markdown-links.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-narrative-status-drift.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-panel-provenance-impact.py": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/check-panel-provenance-schema.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-register-consistency.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-schema-mirror-consistency.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-test-task-coverage.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-workflow-yaml-syntax.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/fix-statezip-visible-timestamps.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/generate-final-evidence-bundle.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/generate_open_items.py": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/invoke-ai-beta-app-smoke.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/json-schema-validator/validate-json-schema.mjs": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-ai-beta-gate.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-ai-contract-normalizer-tests.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-ai-knowledge-gate.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-ai-rest-smoke-verifier-tests.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-ai-schema-validation.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-app-upgrade-contract-gate.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-beta-release-evidence-orchestration.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-beta-release-gate.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-beta0-final-closure-gate.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-beta0-final-release-check.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-beta0-final-release-check_v2.ps1": {
+      "invocation": "retired",
+      "reason": "superseded by run-beta0-final-release-check.ps1, the documented canonical final release script (docs/beta/ai-only-beta-0-release-runbook.md); last touched 2026-05-17, not referenced anywhere else",
+      "date": "2026-07-29"
+    },
+    "scripts/quality/run-boundary-lock-check.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-controlled-command-runner-tests.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-custom-ux-extensibility-check.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-direct-evidence-hardening-tests.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/run-doc-entrypoint-validation-tests.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/run-doc-entrypoint-validation.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-docker-linux-proof-tests.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/run-docker-linux-proof.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-dsl-parser-robustness-check.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-editor-complexity-check.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-editor-gate.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-expanded-beta0-evidence.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-external-ai-gate.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-final-regression-coverage-audit-tests.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/run-final-regression-coverage-audit.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/run-frontend-gate-tests.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-frontend-gate.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-generator-gate.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-generator-governance.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-incremental-migration-testing-check.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-internal-db-schema-source-of-truth-check.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-json-schema-validation-tests.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-json-schema-validator-tests.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-maturity-max-final-closure-check.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-maturity-max-roadmap-boundary-check.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-maturity-score.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-observability-hardening.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-phase2-residual-fidelity-check.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-portable-tooling-check.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-post-beta0-maturity-closure-check.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-post-beta0-roadmap-boundary-check.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-publication-runtime-sql-neutrality-check.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-release-checklist-gate.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-report-provenance-tests.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-report-schema-validation.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-roadmap-closure-check.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-runbook-workflow-alignment-tests.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/run-runtime-null-context-tests.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-runtime-security-consistency.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-runtime-surface-evidence.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-runtimehost-gate.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-runtimehost-integration-infrastructure-check.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-runtimehost-staged-jar-preflight-tests.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/run-runtimehost-staged-jar-preflight.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-sample-diagnostics-audit.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-sample-matrix-tests.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-sample-matrix.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-scenario-scope-reconciliation-check.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-schema-consolidation-check.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-scope-policy-enforcement-tests.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/run-script-automation-quality.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-script-inventory-check.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-shift-left-ai-safety-check.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-stateful-additive-migrations-check.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-structured-command-surface-alignment.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/run-traceable-local-release.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/run-trusted-source-beta0-proof-tests.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/run-trusted-source-beta0-proof.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-trusted-source-security-check.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/runtimehost-automation-contract-helper.psm1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/security-pattern-sweep.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/validate-corpus.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/validate-report-schemas.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/validate-scenario-coherence.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/write-ai-beta-reproducibility-report.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/release/create-beta0-tag.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/runtimehost/sync-runtimehost-libs.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/samples/clean-sample-output.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/samples/generate-sample.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/samples/normalize-samples.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/samples/run-sample.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/samples/sync-mirrored-samples.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/samples/verify-sample.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/security/Invoke-ControlledCommand.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/security/Invoke-StructuredCommandRequest.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/statezip-common.ps1": {
+      "invocation": "ci-gate"
+    },
+    "scripts/statezip-npdev-contract.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/statezip-npdev-editor.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/statezip-npdev-general.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/statezip-npdev-generator.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/statezip-npdev-kernel.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/statezip-npdev-runtimehost.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/statezip-npdev-samples.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/tests/Test-CiReleaseEvidenceFreshness.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/tests/Test-ReleaseTraceability.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/tests/fixtures/controlled-runner/allowed-build.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/tests/fixtures/controlled-runner/rest-smoke-fixture-server.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/tests/fixtures/controlled-runner/slow-build.ps1": {
+      "invocation": "orchestrated"
+    }
+  }
+}
