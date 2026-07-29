@@ -48,20 +48,39 @@ def load_families(roles_path: Path) -> dict[str, list[str]]:
     return data.get("engineVariantFamilies", {})
 
 
-def check_families(families: dict[str, list[str]]) -> list[str]:
-    """Returns failure messages; empty means every family is internally byte-identical."""
+def check_families(families: dict[str, list[str]], appgen_present: bool) -> tuple[list[str], list[str]]:
+    """Returns (failures, skipped-notes). A label under `AppGen/apps/` is only ever "missing" -- and
+    therefore a failure -- when AppGen_ROOT itself exists but that specific model doesn't (a real
+    problem). When AppGen_ROOT is entirely absent (a bare CI checkout, per CLAUDE.md's layering:
+    `AppGen/apps` is not a git repo and is never part of this checkout), every AppGen-rooted label is
+    simply unverifiable here, not missing -- lumping the two together made this check fail
+    UNCONDITIONALLY on every bare-checkout run, since neither declared family (simple-user-registry:
+    3 of 4 members under AppGen/apps; p77-hookproof: both members under AppGen/apps) has enough
+    NPDevSamples-only members to compare on CI. Found live on PR #7 (2026-07-29), the first real
+    GitHub Actions run of this gate since T3 removed its `paths:` filter."""
     failures = []
+    skipped = []
     for family, labels in families.items():
         hashes: dict[str, str] = {}
         missing: list[str] = []
+        unverifiable = 0
         for label in labels:
             path = label_to_path(label)
             if not path.is_file():
-                missing.append(label)
+                if label.startswith("AppGen/apps/") and not appgen_present:
+                    unverifiable += 1
+                else:
+                    missing.append(label)
                 continue
             hashes[label] = hashlib.sha256(path.read_bytes()).hexdigest()
         if missing:
             failures.append(f"family '{family}': missing model(s), cannot compare: {missing}")
+            continue
+        if len(hashes) < 2:
+            skipped.append(
+                f"family '{family}': only {len(hashes)} of {len(labels)} member(s) resolvable here "
+                f"({unverifiable} unverifiable, AppGen/apps not present) -- nothing to compare"
+            )
             continue
         distinct = set(hashes.values())
         if len(distinct) > 1:
@@ -70,7 +89,7 @@ def check_families(families: dict[str, list[str]]) -> list[str]:
                 by_hash.setdefault(h, []).append(label)
             groups = " vs. ".join(str(v) for v in by_hash.values())
             failures.append(f"family '{family}' has diverged -- not byte-identical: {groups}")
-    return failures
+    return failures, skipped
 
 
 def calibrate() -> int:
@@ -101,6 +120,35 @@ def calibrate() -> int:
         report("all members byte-identical", [a, b_same], expect_fail=False)
         report("one member diverged", [a, b_diff], expect_fail=True)
 
+    # Must catch the real bug found live on PR #7 (2026-07-29): an AppGen-rooted family member being
+    # unresolvable ONLY because AppGen_ROOT itself is absent (a bare CI checkout) must be SKIPPED,
+    # not treated as "missing" -- both real declared families (simple-user-registry, p77-hookproof)
+    # had this fail unconditionally on every CI run before the fix, since neither has 2+ members
+    # resolvable from NPDevSamples alone.
+    def report_families(label: str, families: dict[str, list[str]], appgen_present: bool, expect_fail: bool) -> None:
+        nonlocal ok
+        failures, _skipped = check_families(families, appgen_present)
+        fired = bool(failures)
+        passed = fired == expect_fail
+        ok = ok and passed
+        print(f"  [{'PASS' if passed else 'FAIL'}] {label} ({'fired' if fired else 'silent'})")
+        for f in failures:
+            print(f"           {f}")
+
+    print("Calibration -- an AppGen-rooted member missing ONLY because AppGen/apps is absent must be skipped, not failed:")
+    report_families(
+        "family with only an AppGen-rooted member, AppGen/apps absent (bare CI checkout shape)",
+        {"synthetic": ["AppGen/apps/does-not-exist-anywhere"]},
+        appgen_present=False,
+        expect_fail=False,
+    )
+    report_families(
+        "family with a genuinely missing NPDevSamples-rooted member (always resolvable in-repo)",
+        {"synthetic": ["NPDevSamples/does-not-exist-anywhere"]},
+        appgen_present=False,
+        expect_fail=True,
+    )
+
     if not ok:
         print("\nFAIL: at least one control did not behave as required.", file=sys.stderr)
         return 1
@@ -122,13 +170,16 @@ def main(argv: list[str]) -> int:
         print(f"Engine-variant family check: no families declared in {args.roles} -- nothing to check.")
         return 0
 
-    if not APPGEN_ROOT.exists():
+    appgen_present = APPGEN_ROOT.exists()
+    if not appgen_present:
         print(f"Engine-variant family check: {APPGEN_ROOT} not present on this checkout -- "
               f"AppGen-side family members cannot be checked (expected on a bare CI checkout).")
 
-    failures = check_families(families)
+    failures, skipped = check_families(families, appgen_present)
     print(f"Engine-variant family check: {len(families)} family(ies) declared "
           f"({', '.join(families.keys())}).")
+    for note in skipped:
+        print(f"  SKIPPED: {note}")
     if failures:
         print("\nFAIL: the following famil(y/ies) have diverged:", file=sys.stderr)
         for f in failures:
