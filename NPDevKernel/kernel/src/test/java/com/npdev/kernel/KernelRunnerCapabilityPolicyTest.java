@@ -38,7 +38,7 @@ class KernelRunnerCapabilityPolicyTest {
     void retriesTransientFailuresUntilSuccessWithinPolicyBudget() {
         AtomicInteger attempts = new AtomicInteger();
         KernelRunner runner = runnerWithCapabilityStep(
-                new CapabilityExecutionPolicy(3, 0, 0, null, null),
+                new CapabilityExecutionPolicy(3, 0, 0, 0, 0, 0, null, null),
                 (call, state) -> {
                     int current = attempts.incrementAndGet();
                     if (current < 3) {
@@ -64,7 +64,7 @@ class KernelRunnerCapabilityPolicyTest {
     void doesNotRetryPermanentErrors() {
         AtomicInteger attempts = new AtomicInteger();
         KernelRunner runner = runnerWithCapabilityStep(
-                new CapabilityExecutionPolicy(5, 0, 0, null, null),
+                new CapabilityExecutionPolicy(5, 0, 0, 0, 0, 0, null, null),
                 (call, state) -> {
                     attempts.incrementAndGet();
                     return CapabilityResult.failure(
@@ -87,7 +87,7 @@ class KernelRunnerCapabilityPolicyTest {
     void abortsWhenCapabilityCallTimesOut() {
         AtomicInteger attempts = new AtomicInteger();
         KernelRunner runner = runnerWithCapabilityStep(
-                new CapabilityExecutionPolicy(3, 0, 40, null, null),
+                new CapabilityExecutionPolicy(3, 0, 40, 0, 0, 0, null, null),
                 (call, state) -> {
                     attempts.incrementAndGet();
                     try {
@@ -114,7 +114,7 @@ class KernelRunnerCapabilityPolicyTest {
     void propagatesIdempotencyKeyFromStateToCapabilityCall() {
         AtomicReference<String> seenIdempotencyKey = new AtomicReference<>();
         KernelRunner runner = runnerWithCapabilityStep(
-                new CapabilityExecutionPolicy(1, 0, 0, "$input.requestId", null),
+                new CapabilityExecutionPolicy(1, 0, 0, 0, 0, 0, "$input.requestId", null),
                 (call, state) -> {
                     seenIdempotencyKey.set(call.idempotencyKey());
                     return CapabilityResult.success(Map.of("id", "u-2"));
@@ -134,7 +134,7 @@ class KernelRunnerCapabilityPolicyTest {
     void stampsCallerTenantIntoFlowDrivenPersistenceSavePayload() {
         AtomicReference<Object> seenEntity = new AtomicReference<>();
         KernelRunner runner = runnerWithCapabilityStep(
-                new CapabilityExecutionPolicy(1, 0, 0, null, null),
+                new CapabilityExecutionPolicy(1, 0, 0, 0, 0, 0, null, null),
                 (call, state) -> {
                     seenEntity.set(call.args().get(0));
                     return CapabilityResult.success(Map.of("id", "u-9"));
@@ -174,7 +174,7 @@ class KernelRunnerCapabilityPolicyTest {
                                                 "query",
                                                 List.of("User", "$input"),
                                                 "$found",
-                                                new CapabilityExecutionPolicy(1, 0, 0, null, null)
+                                                new CapabilityExecutionPolicy(1, 0, 0, 0, 0, 0, null, null)
                                         ),
                                         FlowStepDefinition.returnValue("return-found", "$found")
                                 )
@@ -217,7 +217,7 @@ class KernelRunnerCapabilityPolicyTest {
         AtomicInteger attempts = new AtomicInteger();
         CircuitBreakerStateStore circuitStore = new InMemoryCircuitBreakerStore();
         KernelRunner runner = runnerWithCapabilityStep(
-                new CapabilityExecutionPolicy(1, 0, 0, null, null),
+                new CapabilityExecutionPolicy(1, 0, 0, 0, 0, 0, null, null),
                 (call, state) -> {
                     attempts.incrementAndGet();
                     return CapabilityResult.failure(
@@ -247,12 +247,88 @@ class KernelRunnerCapabilityPolicyTest {
         assertEquals(5, attempts.get());
     }
 
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5 / capabilityPolicy, REG-79-class fix): a
+     * declared {@code circuitOpenAfterFailures} used to be silently dropped at the compiled-model
+     * to kernel-policy boundary -- every capability always used the hardcoded
+     * CIRCUIT_FAILURE_THRESHOLD (5) regardless of what the model declared. This policy declares 2
+     * (via the same constructor slot the model compiler now actually threads through, no
+     * CapabilityPolicyOverride involved), so the circuit must open after the SECOND failure, not
+     * the fifth.
+     */
+    @Test
+    void opensCircuitAtTheModelDeclaredThresholdInsteadOfTheHardcodedDefault() {
+        AtomicInteger attempts = new AtomicInteger();
+        CircuitBreakerStateStore circuitStore = new InMemoryCircuitBreakerStore();
+        KernelRunner runner = runnerWithCapabilityStep(
+                new CapabilityExecutionPolicy(1, 0, 0, 2, 0, 0, null, null),
+                (call, state) -> {
+                    attempts.incrementAndGet();
+                    return CapabilityResult.failure(
+                            "NETWORK_DOWN",
+                            "temporary outage",
+                            CapabilityErrorKind.TRANSIENT,
+                            Map.of()
+                    );
+                },
+                circuitStore,
+                BulkheadStore.noop(),
+                IdempotencyStore.noop()
+        );
+
+        for (int index = 0; index < 2; index++) {
+            ExecutionResult failed = runner.execute("CreateUser", Map.of("email", "a@b.com"));
+            assertEquals(ExecutionStatus.CAPABILITY_FAILED, failed.getStatus());
+        }
+
+        ExecutionResult shortCircuited = runner.execute("CreateUser", Map.of("email", "a@b.com"));
+        assertEquals(ExecutionStatus.CAPABILITY_FAILED, shortCircuited.getStatus());
+        assertEquals("CAPABILITY_CIRCUIT_OPEN", shortCircuited.getCapabilityError().code(),
+                "the model's own circuitOpenAfterFailures=2 must open the circuit after 2 failures, not the hardcoded default of 5");
+        assertEquals(2, attempts.get(), "the third call must be short-circuited, never reaching the dispatcher");
+    }
+
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5 / capabilityPolicy): same class of fix for
+     * bulkheadMaxConcurrent -- previously always the hardcoded BULKHEAD_MAX_CONCURRENT (10)
+     * regardless of the model. A spy BulkheadStore records the actual maxConcurrent value
+     * KernelRunner passes to tryAcquire; it must be the model's declared 2, not 10.
+     */
+    @Test
+    void bulkheadMaxConcurrentFromTheModelPolicyReachesTheBulkheadStoreInsteadOfTheHardcodedDefault() {
+        AtomicInteger observedMaxConcurrent = new AtomicInteger(-1);
+        BulkheadStore spyBulkheadStore = new BulkheadStore() {
+            @Override
+            public boolean tryAcquire(CapabilityOpKey key, int maxConcurrent, long nowMs) {
+                observedMaxConcurrent.set(maxConcurrent);
+                return true;
+            }
+
+            @Override
+            public void release(CapabilityOpKey key) {
+            }
+        };
+        KernelRunner runner = runnerWithCapabilityStep(
+                new CapabilityExecutionPolicy(1, 0, 0, 0, 0, 2, null, null),
+                (call, state) -> CapabilityResult.success(Map.of("id", "u-1")),
+                CircuitBreakerStateStore.noop(),
+                spyBulkheadStore,
+                IdempotencyStore.noop()
+        );
+
+        ExecutionResult result = runner.execute("CreateUser", Map.of("email", "a@b.com"));
+
+        assertEquals(ExecutionStatus.OK, result.getStatus());
+        assertEquals(2, observedMaxConcurrent.get(),
+                "the model's own bulkheadMaxConcurrent=2 must reach the bulkhead store, not the hardcoded default of 10");
+    }
+
     @Test
     void returnsCachedIdempotencySuccessWithoutInvokingCapabilityTwice() {
         AtomicInteger attempts = new AtomicInteger();
         IdempotencyStore idempotencyStore = new InMemoryIdempotencyStore();
         KernelRunner runner = runnerWithCapabilityStep(
-                new CapabilityExecutionPolicy(1, 0, 0, "$input.requestId", null),
+                new CapabilityExecutionPolicy(1, 0, 0, 0, 0, 0, "$input.requestId", null),
                 (call, state) -> {
                     attempts.incrementAndGet();
                     return CapabilityResult.success(Map.of("id", "u-100"));
@@ -277,7 +353,7 @@ class KernelRunnerCapabilityPolicyTest {
         AtomicInteger attempts = new AtomicInteger();
         CircuitBreakerStateStore circuitStore = new InMemoryCircuitBreakerStore();
         KernelRunner runner = runnerWithCapabilityStep(
-                new CapabilityExecutionPolicy(1, 0, 0, null, null),
+                new CapabilityExecutionPolicy(1, 0, 0, 0, 0, 0, null, null),
                 (call, state) -> {
                     attempts.incrementAndGet();
                     return CapabilityResult.failure(
@@ -310,7 +386,7 @@ class KernelRunnerCapabilityPolicyTest {
     void recordsFlowOutcomeMetricForSuccessAndFailure() {
         RecordingMetricsSink metricsSink = new RecordingMetricsSink();
         KernelRunner successRunner = runnerWithCapabilityStep(
-                new CapabilityExecutionPolicy(1, 0, 0, null, null),
+                new CapabilityExecutionPolicy(1, 0, 0, 0, 0, 0, null, null),
                 (call, state) -> CapabilityResult.success(Map.of("id", "u-1")),
                 CircuitBreakerStateStore.noop(),
                 BulkheadStore.noop(),
@@ -321,7 +397,7 @@ class KernelRunnerCapabilityPolicyTest {
         assertEquals(ExecutionStatus.OK, ok.getStatus());
 
         KernelRunner failureRunner = runnerWithCapabilityStep(
-                new CapabilityExecutionPolicy(1, 0, 0, null, null),
+                new CapabilityExecutionPolicy(1, 0, 0, 0, 0, 0, null, null),
                 (call, state) -> CapabilityResult.failure(
                         "TRANSIENT_NETWORK",
                         "temporary outage",
@@ -358,7 +434,7 @@ class KernelRunnerCapabilityPolicyTest {
                 )
         ));
         KernelRunner runner = runnerWithCapabilityStep(
-                new CapabilityExecutionPolicy(3, 0, 0, null, null),
+                new CapabilityExecutionPolicy(3, 0, 0, 0, 0, 0, null, null),
                 (call, state) -> {
                     int current = attempts.incrementAndGet();
                     if (current == 1) {
@@ -411,7 +487,7 @@ class KernelRunnerCapabilityPolicyTest {
                                                 "save",
                                                 List.of("$input"),
                                                 "$saved",
-                                                new CapabilityExecutionPolicy(3, 0, 0, null, null)
+                                                new CapabilityExecutionPolicy(3, 0, 0, 0, 0, 0, null, null)
                                         ),
                                         FlowStepDefinition.returnValue("return-saved", "$saved")
                                 )

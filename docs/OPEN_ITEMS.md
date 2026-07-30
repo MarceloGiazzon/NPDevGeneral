@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**80 item(s) migrated: 1 open/partial, 79 done.**
+**81 item(s) migrated: 2 open/partial, 79 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -89,6 +89,7 @@
 | REG-78 | Procedures have no find-by-non-id-fields lookup usable inline with patchConcept, and no arithmetic/accumulation primitive -- blocking SyncOcupacaoProcedure's real find-or-increment semantics (M8/M9) | GAP | LOW | OPEN | 2026-07-30 |
 | REG-79 | A callCapability procedure step's args map is compiled with an unspecified, per-JVM-run-random iteration order (Map.copyOf), silently scrambling positional reflective dispatch for any multi-arg capability method | BUG | MEDIUM | DONE | 2026-07-30 |
 | REG-8 | LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback | BOUNDARY | — | DONE | 2026-07-21 |
+| REG-80 | field.sensitive is dead wiring -- parsed, compiled, and canonical-JSON round-tripped, but never consumed by anything, including its own documented external-AI-review-pack redaction purpose | GAP | MEDIUM | OPEN | 2026-07-30 |
 | REG-9 | LNCH-4: auth secrets management -- JWT key env-var delivery | GAP | HIGH | DONE | 2026-07-21 |
 
 ## Detail
@@ -2409,6 +2410,76 @@ refused until REG-27 made afterMigrate record the initial realization as an APPL
 too. This item's DONE claim holds only with the REG-27 fix applied.
 
 *Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-8`
+
+### REG-80 — field.sensitive is dead wiring -- parsed, compiled, and canonical-JSON round-tripped, but never consumed by anything, including its own documented external-AI-review-pack redaction purpose
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** OPEN
+**Verification:** NOT_VERIFIED
+**Source:** docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5 (Tier 2 zero-witness sweep, item 7 "constraint:sensitive").
+Investigated while trying to author a real corpus declaration and confirm the feature actually
+redacts something -- found live via a targeted research pass rather than assumed from the plan's
+own one-line framing ("drives redaction in traces and event payloads").
+
+**Surface:** `dsl/field-metadata, kernel/adapters/external-ai-pack-core, scripts/external-review`
+**Files:**
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/FieldAst.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledField.java`
+- `NPDevKernel/adapters/external-ai-pack-core/src/main/java/com/npdev/adapters/externalai/packcore/ReviewPackBuilder.java`
+- `scripts/external-review/build-review-pack.py`
+- `NPDevKernel/adapters/tracing-redaction-default/src/main/java/com/npdev/adapters/tracing/redaction/`
+
+`field.sensitive` (a boolean on a concept field, `model.schema.json`'s own description: "ADR-0009:
+marks this field for redaction before it may appear in any external-AI review pack... independent
+of the platform's runtime EventRedactionPolicy family") is fully threaded through the DSL's own
+plumbing -- `JsonModelParser` parses it into `FieldAst.isSensitive()`, `ModelCompiler` copies it
+into `CompiledField.isSensitive()`, and `CompiledModelCanonicalJson`/`Reader` round-trip it through
+canonical JSON -- but that is the ENTIRE extent of its wiring. No other file anywhere in the repo
+calls `.isSensitive()`. Two separate things this field is documented (or assumed by the Wave 5
+plan) to drive turn out to be independently unconnected to it:
+
+1. **Its own documented purpose (external-AI review-pack redaction) is not wired.** Both
+   implementations of the review-pack builder -- `ReviewPackBuilder.java` (Java) and
+   `scripts/external-review/build-review-pack.py` (its Python twin) -- never reference
+   `CompiledField`, concept fields, or `isSensitive()` at all. Their only redaction is a
+   content-shape regex scanner (`SanitizerFailedException` triggered by matching raw file content
+   against `secret-content-patterns.json`, e.g. API-key-looking strings) -- unrelated to the model
+   schema entirely. A field marked `sensitive: true` today has its VALUE included in a review pack
+   exactly like any other field, with zero special handling.
+2. **Runtime trace/event redaction (`EventRedactionPolicy` and its `DefaultEventRedactionPolicy`/
+   `DefaultTraceRedactionPolicy`/`DefaultExecutionRedactionPolicy` implementations,
+   `NPDevKernel/adapters/tracing-redaction-default/`) is a COMPLETELY SEPARATE, hardcoded
+   mechanism**, keyed off `SensitiveKeyPolicy.isSensitiveKey(key)` -- a KEY-NAME substring denylist
+   loaded from `sensitive-key-patterns.json`, plus fixed field-name allowlists per policy
+   (`INFO_ALLOWLIST`/`DEBUG_PAYLOAD_ALLOWLIST`) and a `looksLikeSensitiveValue` heuristic (contains
+   `@`). None of this reads the model or `CompiledField` at all -- so even though the schema's own
+   description explicitly disclaims a connection to this "family," the plan's assumption that some
+   model-driven redaction mechanism exists ANYWHERE for traces/events is also not true.
+
+The Python build script's own comment (`build-review-pack.py:73-75`) confirms this is a KNOWN,
+deliberately-deferred gap, not an accidental oversight: `sensitive-key-patterns.json`'s field-name
+sibling "isn't read yet because P6/P7 will need it once the product producer redacts an app's own
+structured records for M7" -- i.e. structured, model-field-driven redaction of an app's own
+business data is explicitly named as FUTURE work in the existing roadmap, referenced here rather
+than re-derived.
+
+**What this blocks, precisely**: any author who marks a field `sensitive: true` today gets NO
+actual protection anywhere -- not in a generated review pack, not in traces, not in event
+payloads. This is a real, if narrow, information-exposure risk for anyone relying on the flag as
+documented.
+
+**What would close it** (not attempted, scoped for a future session -- two independent, separately
+schedulable pieces): (a) wire `ReviewPackBuilder.java`/`build-review-pack.py` to redact a
+`sensitive`-marked concept field's value wherever a review pack embeds live/example record data
+(needs first confirming review packs actually embed such data today, vs. only source/doc
+artifacts -- not established here); (b) separately, extend `SensitiveKeyPolicy` (or a new
+model-aware policy) to also consult the compiled model's `sensitive` fields, not just its
+hardcoded key-name denylist, for trace/event redaction. Shipping either as a shortcut without the
+other would leave the schema's own documented claim (a) or the plan's assumption (b) still false;
+named both here rather than silently fixing just one and calling the feature closed.
+
+Corpus/round-trip protection landed alongside this finding (not blocked by it): dsl-conformance-max
+now declares `WidgetOrder.customerEmail` as `sensitive: true`, protecting the parse/compile/
+canonical-JSON round trip from regressing even though downstream consumption remains unbuilt.
 
 ### REG-9 — LNCH-4: auth secrets management -- JWT key env-var delivery
 

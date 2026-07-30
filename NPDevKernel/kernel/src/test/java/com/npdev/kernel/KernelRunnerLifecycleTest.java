@@ -903,7 +903,7 @@ class KernelRunnerLifecycleTest {
                                         "save",
                                         List.of("$input"),
                                         "$saved",
-                                        new com.npdev.kernel.capabilities.CapabilityExecutionPolicy(1, 0, 0, null, null)
+                                        new com.npdev.kernel.capabilities.CapabilityExecutionPolicy(1, 0, 0, 0, 0, 0, null, null)
                                 ),
                                 FlowStepDefinition.returnValue("return-saved", "$saved")
                         )
