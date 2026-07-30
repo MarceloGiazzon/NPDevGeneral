@@ -85,6 +85,104 @@ def _has_procedure_step_type(model: dict, step_type: str) -> bool:
     return any(str(s.get("type", "")).lower() == step_type.lower() for s in _all_procedure_steps(model))
 
 
+def _has_panel_action_concept_query(model: dict) -> bool:
+    for panel in (model.get("panels", None) or []):
+        if not isinstance(panel, dict):
+            continue
+        for action in (panel.get("actions", None) or []):
+            if isinstance(action, dict) and str(action.get("binding", "")).lower() == "conceptquery":
+                return True
+    return False
+
+
+def _has_date_field(model: dict) -> bool:
+    for concept in (model.get("concepts", None) or []):
+        if not isinstance(concept, dict):
+            continue
+        for field in (concept.get("fields", None) or []):
+            if isinstance(field, dict) and str(field.get("type", "")).lower() == "date":
+                return True
+    return False
+
+
+def _has_flow_io_schema(model: dict) -> bool:
+    return any(
+        isinstance(f, dict) and (f.get("inputSchema") or f.get("outputSchema"))
+        for f in _flows(model)
+    )
+
+
+def _has_concept_extends(model: dict) -> bool:
+    return any(
+        isinstance(c, dict) and c.get("extends")
+        for c in (model.get("concepts", None) or [])
+    )
+
+
+def _has_post_checkpoint(model: dict) -> bool:
+    return any(
+        str(s.get("type", "")).lower() == "invariantcheck"
+        and str(s.get("checkpoint", "") or s.get("phase", "")).lower() == "post"
+        for s in _all_steps(model)
+    )
+
+
+def _has_sensitive_field(model: dict) -> bool:
+    for concept in (model.get("concepts", None) or []):
+        if not isinstance(concept, dict):
+            continue
+        for field in (concept.get("fields", None) or []):
+            if isinstance(field, dict) and field.get("sensitive"):
+                return True
+    return False
+
+
+def _has_concept_access(model: dict) -> bool:
+    for concept in (model.get("concepts", None) or []):
+        if not isinstance(concept, dict):
+            continue
+        access = concept.get("access")
+        if isinstance(access, dict) and (access.get("read") or access.get("write")):
+            return True
+    return False
+
+
+def _has_composite_index(model: dict) -> bool:
+    for concept in (model.get("concepts", None) or []):
+        if not isinstance(concept, dict):
+            continue
+        for index in (concept.get("indexes", None) or []):
+            if isinstance(index, dict) and len(index.get("fields", None) or []) >= 2:
+                return True
+    return False
+
+
+def _has_file_field(model: dict) -> bool:
+    for concept in (model.get("concepts", None) or []):
+        if not isinstance(concept, dict):
+            continue
+        for field in (concept.get("fields", None) or []):
+            if isinstance(field, dict) and str(field.get("type", "")).lower() == "file":
+                return True
+    return False
+
+
+def _has_flow_start_endpoint(model: dict) -> bool:
+    return any(isinstance(f, dict) and f.get("startEndpoint") for f in _flows(model))
+
+
+def _has_capability_policy(model: dict) -> bool:
+    if any(isinstance(s.get("policy"), dict) and s["policy"] for s in _all_steps(model)):
+        return True
+    for capability in (model.get("capabilities", None) or []):
+        if not isinstance(capability, dict):
+            continue
+        for operation in (capability.get("operations", None) or []):
+            if isinstance(operation, dict) and isinstance(operation.get("policy"), dict) and operation["policy"]:
+                return True
+    return False
+
+
 def _has_aggregate_on_commit(model: dict) -> bool:
     return any(
         isinstance(a, dict) and a.get("onCommit")
@@ -197,6 +295,57 @@ FEATURE_DETECTORS = {
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3A / Gap 6): mapList produces a NEW list
     # (one output object per input item), unlike forEach which only iterates for side effects.
     "procedure.mapList": lambda m: _has_procedure_step_type(m, "mapList"),
+    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): capabilityPolicy (retry/timeout/circuit/
+    # bulkhead/idempotency) -- previously zero declarations anywhere in the corpus; the circuit/
+    # bulkhead halves were also found to be silently dropped by the compiler (fixed alongside).
+    "capabilityPolicy": _has_capability_policy,
+    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): flow.startEndpoint publishes a real
+    # /generated/flows/{name}/start REST route (already proven by a packaged-app runtime test in
+    # the generator module) -- zero declarations in the corpus itself before this.
+    "flow.startEndpoint": _has_flow_start_endpoint,
+    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): a field with type:file (upload/download/
+    # delete-cascade all fully proven by existing packaged-app tests in NPDevGenerator; this just
+    # closes the corpus-witness gap -- WmsOffice's DocumentoFiscal.arquivo already qualifies).
+    "type.file": _has_file_field,
+    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): a genuinely composite (2+ field) unique
+    # index -- REG-58 found H2/Postgres refuse to silently drop a column referenced by a COMPOSITE
+    # index, a shape a single-column repro failed to reproduce. Tracked as its own feature
+    # (distinct from a plain single-column concept.indexes[] entry) so a regression to just the
+    # multi-field case still fails the build.
+    "concept.compositeIndex": _has_composite_index,
+    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): declarative row-level authz
+    # (concept.access.read/write) -- confirmed genuinely wired end-to-end (DefaultConceptGateway's
+    # isRowReadable/isRowWritable, fail-closed on a malformed expression), just never declared by
+    # any real/fixture model before this.
+    "concept.access": _has_concept_access,
+    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): an explicit "post" checkpoint on an
+    # invariantCheck step -- step.invariantCheck itself has broad corpus coverage already, but every
+    # existing declaration relies on JsonModelParser's implicit "pre" default (scope declared, no
+    # explicit checkpoint), so "post" itself, and explicit declaration of either value, had zero
+    # witnesses.
+    "invariant.checkpoint.post": _has_post_checkpoint,
+    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): concept.extends (field-merge inheritance)
+    # -- already covered at the unit level by DslSpecializationTest (field merge, missing-parent
+    # error, cycle detection), just never declared in a real/fixture corpus model before this.
+    "concept.extends": _has_concept_extends,
+    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): flow.inputSchema/outputSchema (the
+    # external contract for a startEndpoint flow) -- already unit-tested (DslFlowModelTest), just
+    # never declared in a real/fixture corpus model before this.
+    "flow.ioSchema": _has_flow_io_schema,
+    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): a field with type:date -- WmsOffice
+    # already has 8 real usages (CrossDocking/DocumentoFiscal/Expedicao/InventarioArquivo/Lote/
+    # Movimento/Recebimento/Romaneio), but they live in $ref'd-out concepts/*.json files this
+    # gate's naive model loader can't see; a dsl-conformance-max fixture makes it a real witness.
+    "type.date": _has_date_field,
+    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): panelAction.binding=conceptQuery -- zero
+    # declarations AND zero test coverage anywhere before this (unlike most other Wave 5 items);
+    # PanelRuntimeConceptQueryActionTest (RuntimeHost) now proves it end-to-end.
+    "panelAction.conceptQuery": _has_panel_action_concept_query,
+    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): field.sensitive -- found to be dead wiring
+    # (REG-80, ledger/items/REG-80.yml): parsed/compiled/round-tripped but consumed by nothing,
+    # including its own documented external-AI-review-pack redaction purpose. Tracked here to protect
+    # the round-trip itself from regressing while the real consumption gap (REG-80) stays open.
+    "constraint.sensitive": _has_sensitive_field,
     "aggregate.onCommit": _has_aggregate_on_commit,
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3B / Gap 8): onValidate is a sibling of
     # onCommit, not a flag on it -- tracked separately so a regression to just this field still

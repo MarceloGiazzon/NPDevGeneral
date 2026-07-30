@@ -44,6 +44,7 @@
           "name": "customerEmail",
           "type": "string",
           "required": true,
+          "sensitive": true,
           "ui": { "label": "Customer email" }
         },
         {
@@ -57,6 +58,22 @@
           "type": "integer",
           "required": true,
           "ui": { "label": "Line count" }
+        },
+        {
+          "name": "purchaseOrderFile",
+          "type": "file",
+          "required": false,
+          "file": {
+            "contentTypes": ["application/pdf"],
+            "maxSizeBytes": 5242880
+          },
+          "ui": { "label": "Purchase order (PDF)" }
+        },
+        {
+          "name": "requestedShipDate",
+          "type": "date",
+          "required": false,
+          "ui": { "label": "Requested ship date" }
         }
       ],
       "invariants": [
@@ -68,7 +85,11 @@
           "name": "LineCountNotNegative",
           "expr": "lineCount != null && lineCount >= 0"
         }
-      ]
+      ],
+      "access": {
+        "read": "customerEmail == $user.id",
+        "write": "customerEmail == $user.id"
+      }
     },
     {
       "name": "WidgetOrderLine",
@@ -101,6 +122,13 @@
         {
           "name": "PositiveQuantity",
           "expr": "quantity != null && quantity > 0"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ux_widget_order_line_sku",
+          "fields": ["widgetOrderId", "sku"],
+          "unique": true
         }
       ]
     },
@@ -167,6 +195,21 @@
         {
           "name": "CatalogSkuRequired",
           "expr": "sku != null && sku != ''"
+        }
+      ]
+    },
+    {
+      "name": "PromotedWidgetCatalogEntry",
+      "extends": "WidgetCatalogEntry",
+      "ui": {
+        "label": "Promoted widget catalog entry"
+      },
+      "fields": [
+        {
+          "name": "promotionLabel",
+          "type": "string",
+          "required": true,
+          "ui": { "label": "Promotion label" }
         }
       ]
     }
@@ -356,6 +399,15 @@
           "inputFields": ["customerEmail", "status", "lineCount"]
         },
         {
+          "name": "listCatalog",
+          "label": "List catalog entries",
+          "binding": "conceptQuery",
+          "concept": "WidgetCatalogEntry",
+          "metadata": {
+            "purpose": "Coverage for panelAction.binding=conceptQuery (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md Wave 5): lists every record of a concept through the same governed ConceptGateway every other binding uses. Zero declarations AND zero test coverage anywhere before this."
+          }
+        },
+        {
           "name": "confirm",
           "label": "Confirm order",
           "binding": "flow",
@@ -491,9 +543,28 @@
     },
     {
       "name": "PlaceWidgetOrder",
+      "startEndpoint": true,
       "input": {
         "concept": "WidgetOrder",
         "mode": "create"
+      },
+      "inputSchema": {
+        "type": "object",
+        "required": ["customerEmail", "status", "lineCount"],
+        "properties": {
+          "customerEmail": { "type": "string", "minLength": 1 },
+          "status": { "type": "string", "minLength": 1 },
+          "lineCount": { "type": "integer" }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "customerEmail": { "type": "string" },
+          "status": { "type": "string" },
+          "lineCount": { "type": "integer" }
+        }
       },
       "steps": [
         {
@@ -518,7 +589,17 @@
               "capability": "notification",
               "operation": "send",
               "args": [ "$input" ],
-              "output": "$compensationNotice"
+              "output": "$compensationNotice",
+              "policy": {
+                "retryCount": 3,
+                "retryDelayMs": 250,
+                "timeoutMs": 5000,
+                "circuitOpenAfterFailures": 3,
+                "circuitOpenMs": 15000,
+                "bulkheadMaxConcurrent": 5,
+                "idempotencyKeyField": "input.id",
+                "failureClassification": "transient"
+              }
             }
           ]
         },
@@ -610,6 +691,7 @@
         {
           "name": "validate-line",
           "type": "invariantCheck",
+          "checkpoint": "pre",
           "scope": "WidgetOrderLine",
           "invariants": [ "PositiveQuantity" ]
         },
@@ -619,6 +701,14 @@
           "scope": "WidgetOrderLine",
           "input": "$input",
           "output": "$updatedLine"
+        },
+        {
+          "name": "validate-line-post",
+          "type": "invariantCheck",
+          "checkpoint": "post",
+          "scope": "WidgetOrderLine",
+          "input": "$updatedLine",
+          "invariants": [ "PositiveQuantity" ]
         },
         {
           "name": "emit-line-updated",

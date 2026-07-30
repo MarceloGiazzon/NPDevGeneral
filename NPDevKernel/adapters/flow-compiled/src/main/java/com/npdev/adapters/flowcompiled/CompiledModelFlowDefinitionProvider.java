@@ -237,6 +237,14 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
                 Math.max(1, policy.getRetryCount()),
                 Math.max(0L, policy.getRetryDelayMs()),
                 Math.max(0L, policy.getTimeoutMs()),
+                // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5 / capabilityPolicy): previously
+                // dropped here entirely -- a declared circuitOpenAfterFailures/circuitOpenMs/
+                // bulkheadMaxConcurrent silently did nothing, every capability instead always using
+                // KernelRunner's hardcoded CIRCUIT_FAILURE_THRESHOLD/CIRCUIT_OPEN_DURATION_MS/
+                // BULKHEAD_MAX_CONCURRENT constants regardless of what the model declared.
+                Math.max(0, policy.getCircuitOpenAfterFailures()),
+                Math.max(0L, policy.getCircuitOpenMs()),
+                Math.max(0, policy.getBulkheadMaxConcurrent()),
                 policy.getIdempotencyKeyField(),
                 failureClassification
         );

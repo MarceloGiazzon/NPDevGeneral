@@ -1472,9 +1472,20 @@ final EventBus eventBus;
                 Math.max(retryBaseDelayMs, safeBase.retryDelayMs())
         );
         long timeoutMs = nonNegativeOrDefault(override.timeoutMs(), safeBase.timeoutMs());
-        int circuitAfterFailures = positiveOrDefault(override.circuitOpenAfterFailures(), CIRCUIT_FAILURE_THRESHOLD);
-        long circuitOpenMs = nonNegativeOrDefault(override.circuitOpenMs(), CIRCUIT_OPEN_DURATION_MS);
-        int bulkheadMaxConcurrent = positiveOrDefault(override.bulkheadMaxConcurrent(), BULKHEAD_MAX_CONCURRENT);
+        // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5 / capabilityPolicy): a declared model
+        // policy's circuitOpenAfterFailures/circuitOpenMs/bulkheadMaxConcurrent now sit BETWEEN the
+        // host-supplied override and the hardcoded constant -- the same 3-tier precedence retry/
+        // timeout already have (override > model > hardcoded default), previously missing entirely
+        // for these three: every capability silently used the hardcoded constants regardless of what
+        // the model declared.
+        int circuitAfterFailuresBase = safeBase.circuitOpenAfterFailures() > 0
+                ? safeBase.circuitOpenAfterFailures() : CIRCUIT_FAILURE_THRESHOLD;
+        long circuitOpenMsBase = safeBase.circuitOpenMs() > 0 ? safeBase.circuitOpenMs() : CIRCUIT_OPEN_DURATION_MS;
+        int bulkheadMaxConcurrentBase = safeBase.bulkheadMaxConcurrent() > 0
+                ? safeBase.bulkheadMaxConcurrent() : BULKHEAD_MAX_CONCURRENT;
+        int circuitAfterFailures = positiveOrDefault(override.circuitOpenAfterFailures(), circuitAfterFailuresBase);
+        long circuitOpenMs = nonNegativeOrDefault(override.circuitOpenMs(), circuitOpenMsBase);
+        int bulkheadMaxConcurrent = positiveOrDefault(override.bulkheadMaxConcurrent(), bulkheadMaxConcurrentBase);
         boolean cacheIdempotencyFailures = override.cacheIdempotencyFailures() != null
                 && override.cacheIdempotencyFailures();
 
