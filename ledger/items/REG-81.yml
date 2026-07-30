@@ -1,0 +1,45 @@
+id: REG-81
+title: "ReleaseGateValidator.validatePromotion (concept.truthLevel promotion gating) is fully implemented and unit-tested but invoked by no real pipeline -- truth-level promotion is effectively dormant"
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-07-30
+verification: NOT_VERIFIED
+source: |
+  docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 6 ("re-verify concept.truthLevel, actionMetadata.
+  inputFormHint, field.connectable -- do not implement before establishing which is metadata-only
+  vs. a real gap"). truthLevel itself came back fully wired (SemanticValidator's own
+  ReferenceValidation.validateBondTruthEdge runs on every real generate/validate call and emits a
+  live "no upward truth edges" warning) -- this item is a narrower, separate finding surfaced
+  incidentally while re-verifying it: a SECOND, more powerful truthLevel consumer exists in the
+  same validation package, fully built and tested, but wired into nothing that actually runs.
+surface: dsl/validation, dsl/release-gate
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ReleaseGateValidator.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ReleaseGateValidatorTest.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/GeneratorMain.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/cli/ModelValidatorMain.java
+detail: |
+  `ReleaseGateValidator.validatePromotion` really does block a promotion when a reachable
+  bond-closure concept sits below the target truth rank, and requires evidence for T4+ -- it is
+  correctly implemented and has its own passing unit test (`ReleaseGateValidatorTest`). But a
+  repo-wide grep for its call sites turns up exactly one: its own test. Neither `GeneratorMain`
+  nor `ModelValidatorMain` (the two real entry points every actual generate/validate run goes
+  through) ever calls it, no CLI flag exposes it, and `.github/workflows/npdev-release-gate.yml`
+  runs an unrelated roadmap/traceability gate despite the similar name -- there is no CI step
+  anywhere that invokes truth-level promotion gating. `docs/DSL_REFERENCE.md:60-63`'s prose ("Release
+  validation is separate: promotion blocks below-rank concepts...") accurately describes what the
+  code CAN do, but overclaims that this happens today -- as written, nothing in the platform
+  currently calls this code outside its own test.
+
+  **What this blocks, precisely**: an author can promote/release a model whose bond-closure
+  reaches a concept below its declared truth level, with T4+ evidence entirely unenforced -- the
+  gate exists in source but never fires. Distinct from, and narrower than, REG-80 (field.sensitive):
+  this is a complete, tested capability sitting unplugged, not missing logic.
+
+  **What would close it** (not attempted, scoped for a future session): wire
+  `ReleaseGateValidator.validatePromotion` into either `GeneratorMain`/`ModelValidatorMain` behind an
+  explicit flag (e.g. `--releaseGate`/`--targetTruthLevel`), or a dedicated CI step analogous to the
+  existing (differently-scoped) `npdev-release-gate.yml`. Left open rather than wired blind: doing so
+  needs a decision on what target truth level/evidence source a real CI run should check against,
+  which is a product decision outside this wave's scope, not a coding gap.

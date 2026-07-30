@@ -1,0 +1,49 @@
+id: REG-82
+title: "NPDevCliMainTest.idempotencyHitReturnsCachedResultMetadata fails deterministically (IOException loading its own temp model file) -- pre-existing, unrelated to Move 5"
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-07-30
+verification: VERIFIED_LIVE
+source: |
+  Surfaced incidentally while running scripts/quality/run-generator-gate.ps1 as a final regression
+  check before committing Move 5 Wave 6 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md) -- the gate's full
+  multi-project build runs :tools:npdev-cli:test, a target none of Wave 1-6's own narrower
+  :dsl:test/:generator:test runs had exercised, so this had gone unnoticed all session.
+surface: tools/npdev-cli
+files:
+  - NPDevGenerator/tools/npdev-cli/src/test/java/com/npdev/cli/NPDevCliMainTest.java
+  - NPDevGenerator/tools/npdev-cli/src/main/java/com/npdev/cli/runtime/CliRuntimeFactory.java
+  - NPDevKernel/adapters/flow-compiled/src/main/java/com/npdev/adapters/flowcompiled/ModelBackedKernelRuntimeFactory.java
+detail: |
+  `NPDevCliMainTest.idempotencyHitReturnsCachedResultMetadata` (Java `tools:npdev-cli` module --
+  distinct from the Python `NPDevCli` mentioned in this repo's module map) fails deterministically:
+  its first `execute` CLI invocation returns exit code 2 instead of 0, with stderr
+  `Unable to load model file: <temp path>\model-idem<random>.json`. That message is
+  `ModelBackedKernelRuntimeFactory.compileModel`'s catch-all wrapper around ANY `IOException` thrown
+  by `JsonModelParser().parse(modelPath)` for the freshly-written temp model file the test itself
+  creates via `Files.createTempFile`/`writeText` a few lines earlier in the same method.
+
+  **Confirmed NOT a regression from this session's work**: reproduced identically, in isolation
+  (`--tests` targeting only this one method, ruling out cross-test interference), on THREE points in
+  history -- the current Wave 6 working tree, commit 76c9bfc (Wave 5, capabilityPolicy changes), and
+  commit ed4a48f (Wave 4, before Wave 5 existed). The failure predates Move 5 entirely.
+
+  **Confirmed NOT a classpath/schema-resource-wide issue**: the other 5 tests in the same class
+  (`circuitBreakerCanBeExercisedFromCliSimulation`, `compileModelFailsFastWhenSchemaIsInvalid`,
+  `executeAndTraceCommandsWorkWithSharedStoreDir`, `validateBundleAndRunProcedureAreScriptable`,
+  `waitingPublishAndResumeLifecycleWorksInCli`) all pass in the same run, including
+  `executeAndTraceCommandsWorkWithSharedStoreDir`, which also calls `execute` against its own
+  temp-file model. This rules out a broken/missing schema jar resource affecting every model load.
+
+  **Not root-caused further** (deliberately, out of Wave 6's scope): whether this is specific to
+  this test's exact model content (a `flows[].steps[].policy` with `retryCount`/`retryDelayMs`/
+  `timeoutMs`/`idempotencyKeyField` but no circuit/bulkhead fields), a genuine Windows temp-file
+  timing/lock race unique to this one test's file lifecycle, or something else, is not established
+  here -- the underlying `IOException`'s own message/type was not captured (the CLI's top-level
+  handler only surfaces the wrapper's static string, not the cause).
+
+  **What would close it** (not attempted): re-run with a debugger/stack-trace-preserving harness to
+  capture the WRAPPED `IOException`'s real type and message (the current wrapper swallows it into a
+  generic string), which would immediately distinguish "malformed JSON" from "file not found" from
+  a genuine environment-specific IO fault.

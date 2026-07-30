@@ -1437,6 +1437,7 @@
           "minLength": 1
         },
         "inputFormHint": {
+          "description": "Free-text hint for how this action's input form should be rendered. Move 5 Wave 6 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md) confirmed this is currently informational only: it is parsed, compiled, canonical-JSON round-tripped, and exposed via the runtime UI metadata API, but no generator template, runtime controller, or authoring-UI renderer reads its value to change rendering today. Set it to document authoring intent for a future renderer; do not rely on it to affect current behavior.",
           "type": "string",
           "minLength": 1
         }

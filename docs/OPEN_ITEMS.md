@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**81 item(s) migrated: 2 open/partial, 79 done.**
+**83 item(s) migrated: 4 open/partial, 79 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -90,6 +90,8 @@
 | REG-79 | A callCapability procedure step's args map is compiled with an unspecified, per-JVM-run-random iteration order (Map.copyOf), silently scrambling positional reflective dispatch for any multi-arg capability method | BUG | MEDIUM | DONE | 2026-07-30 |
 | REG-8 | LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-80 | field.sensitive is dead wiring -- parsed, compiled, and canonical-JSON round-tripped, but never consumed by anything, including its own documented external-AI-review-pack redaction purpose | GAP | MEDIUM | OPEN | 2026-07-30 |
+| REG-81 | ReleaseGateValidator.validatePromotion (concept.truthLevel promotion gating) is fully implemented and unit-tested but invoked by no real pipeline -- truth-level promotion is effectively dormant | GAP | LOW | OPEN | 2026-07-30 |
+| REG-82 | NPDevCliMainTest.idempotencyHitReturnsCachedResultMetadata fails deterministically (IOException loading its own temp model file) -- pre-existing, unrelated to Move 5 | BUG | LOW | OPEN | 2026-07-30 |
 | REG-9 | LNCH-4: auth secrets management -- JWT key env-var delivery | GAP | HIGH | DONE | 2026-07-21 |
 
 ## Detail
@@ -2480,6 +2482,96 @@ named both here rather than silently fixing just one and calling the feature clo
 Corpus/round-trip protection landed alongside this finding (not blocked by it): dsl-conformance-max
 now declares `WidgetOrder.customerEmail` as `sensitive: true`, protecting the parse/compile/
 canonical-JSON round trip from regressing even though downstream consumption remains unbuilt.
+
+### REG-81 — ReleaseGateValidator.validatePromotion (concept.truthLevel promotion gating) is fully implemented and unit-tested but invoked by no real pipeline -- truth-level promotion is effectively dormant
+
+**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Verification:** NOT_VERIFIED
+**Source:** docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 6 ("re-verify concept.truthLevel, actionMetadata.
+inputFormHint, field.connectable -- do not implement before establishing which is metadata-only
+vs. a real gap"). truthLevel itself came back fully wired (SemanticValidator's own
+ReferenceValidation.validateBondTruthEdge runs on every real generate/validate call and emits a
+live "no upward truth edges" warning) -- this item is a narrower, separate finding surfaced
+incidentally while re-verifying it: a SECOND, more powerful truthLevel consumer exists in the
+same validation package, fully built and tested, but wired into nothing that actually runs.
+
+**Surface:** `dsl/validation, dsl/release-gate`
+**Files:**
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ReleaseGateValidator.java`
+- `NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ReleaseGateValidatorTest.java`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/GeneratorMain.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/cli/ModelValidatorMain.java`
+
+`ReleaseGateValidator.validatePromotion` really does block a promotion when a reachable
+bond-closure concept sits below the target truth rank, and requires evidence for T4+ -- it is
+correctly implemented and has its own passing unit test (`ReleaseGateValidatorTest`). But a
+repo-wide grep for its call sites turns up exactly one: its own test. Neither `GeneratorMain`
+nor `ModelValidatorMain` (the two real entry points every actual generate/validate run goes
+through) ever calls it, no CLI flag exposes it, and `.github/workflows/npdev-release-gate.yml`
+runs an unrelated roadmap/traceability gate despite the similar name -- there is no CI step
+anywhere that invokes truth-level promotion gating. `docs/DSL_REFERENCE.md:60-63`'s prose ("Release
+validation is separate: promotion blocks below-rank concepts...") accurately describes what the
+code CAN do, but overclaims that this happens today -- as written, nothing in the platform
+currently calls this code outside its own test.
+
+**What this blocks, precisely**: an author can promote/release a model whose bond-closure
+reaches a concept below its declared truth level, with T4+ evidence entirely unenforced -- the
+gate exists in source but never fires. Distinct from, and narrower than, REG-80 (field.sensitive):
+this is a complete, tested capability sitting unplugged, not missing logic.
+
+**What would close it** (not attempted, scoped for a future session): wire
+`ReleaseGateValidator.validatePromotion` into either `GeneratorMain`/`ModelValidatorMain` behind an
+explicit flag (e.g. `--releaseGate`/`--targetTruthLevel`), or a dedicated CI step analogous to the
+existing (differently-scoped) `npdev-release-gate.yml`. Left open rather than wired blind: doing so
+needs a decision on what target truth level/evidence source a real CI run should check against,
+which is a product decision outside this wave's scope, not a coding gap.
+
+### REG-82 — NPDevCliMainTest.idempotencyHitReturnsCachedResultMetadata fails deterministically (IOException loading its own temp model file) -- pre-existing, unrelated to Move 5
+
+**Type:** BUG · **Severity:** LOW · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** Surfaced incidentally while running scripts/quality/run-generator-gate.ps1 as a final regression
+check before committing Move 5 Wave 6 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md) -- the gate's full
+multi-project build runs :tools:npdev-cli:test, a target none of Wave 1-6's own narrower
+:dsl:test/:generator:test runs had exercised, so this had gone unnoticed all session.
+
+**Surface:** `tools/npdev-cli`
+**Files:**
+- `NPDevGenerator/tools/npdev-cli/src/test/java/com/npdev/cli/NPDevCliMainTest.java`
+- `NPDevGenerator/tools/npdev-cli/src/main/java/com/npdev/cli/runtime/CliRuntimeFactory.java`
+- `NPDevKernel/adapters/flow-compiled/src/main/java/com/npdev/adapters/flowcompiled/ModelBackedKernelRuntimeFactory.java`
+
+`NPDevCliMainTest.idempotencyHitReturnsCachedResultMetadata` (Java `tools:npdev-cli` module --
+distinct from the Python `NPDevCli` mentioned in this repo's module map) fails deterministically:
+its first `execute` CLI invocation returns exit code 2 instead of 0, with stderr
+`Unable to load model file: <temp path>\model-idem<random>.json`. That message is
+`ModelBackedKernelRuntimeFactory.compileModel`'s catch-all wrapper around ANY `IOException` thrown
+by `JsonModelParser().parse(modelPath)` for the freshly-written temp model file the test itself
+creates via `Files.createTempFile`/`writeText` a few lines earlier in the same method.
+
+**Confirmed NOT a regression from this session's work**: reproduced identically, in isolation
+(`--tests` targeting only this one method, ruling out cross-test interference), on THREE points in
+history -- the current Wave 6 working tree, commit 76c9bfc (Wave 5, capabilityPolicy changes), and
+commit ed4a48f (Wave 4, before Wave 5 existed). The failure predates Move 5 entirely.
+
+**Confirmed NOT a classpath/schema-resource-wide issue**: the other 5 tests in the same class
+(`circuitBreakerCanBeExercisedFromCliSimulation`, `compileModelFailsFastWhenSchemaIsInvalid`,
+`executeAndTraceCommandsWorkWithSharedStoreDir`, `validateBundleAndRunProcedureAreScriptable`,
+`waitingPublishAndResumeLifecycleWorksInCli`) all pass in the same run, including
+`executeAndTraceCommandsWorkWithSharedStoreDir`, which also calls `execute` against its own
+temp-file model. This rules out a broken/missing schema jar resource affecting every model load.
+
+**Not root-caused further** (deliberately, out of Wave 6's scope): whether this is specific to
+this test's exact model content (a `flows[].steps[].policy` with `retryCount`/`retryDelayMs`/
+`timeoutMs`/`idempotencyKeyField` but no circuit/bulkhead fields), a genuine Windows temp-file
+timing/lock race unique to this one test's file lifecycle, or something else, is not established
+here -- the underlying `IOException`'s own message/type was not captured (the CLI's top-level
+handler only surfaces the wrapper's static string, not the cause).
+
+**What would close it** (not attempted): re-run with a debugger/stack-trace-preserving harness to
+capture the WRAPPED `IOException`'s real type and message (the current wrapper swallows it into a
+generic string), which would immediately distinguish "malformed JSON" from "file not found" from
+a genuine environment-specific IO fault.
 
 ### REG-9 — LNCH-4: auth secrets management -- JWT key env-var delivery
 

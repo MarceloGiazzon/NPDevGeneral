@@ -207,7 +207,7 @@
   "panels": [
     {
       "name": "ProjectsOverviewPanel",
-      "route": "projects-overview",
+      "route": "/projects-overview",
       "title": "Projects Overview",
       "visibility": "isSuperUser",
       "dataSources": [
