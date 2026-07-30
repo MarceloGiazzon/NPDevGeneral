@@ -157,4 +157,65 @@ class AggregateWorkbenchExpansionTest {
         assertEquals(List.of("local"), picker.get("columns"));
         assertNull(bands.get(1).get("picker"), "undeclared band has no picker");
     }
+
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 2A): a workbench action's declared applyTo
+     * (how a pure-computation procedure's invoke() result folds into the draft, instead of the
+     * client replacing the whole draft with it) must survive the compiler untouched when valid, and
+     * be silently dropped -- not thrown, not passed through malformed -- when it is not.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void workbenchActionApplyToSurvivesWhenValidAndIsDroppedWhenMalformed() throws Exception {
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.applyto", "version": "1.0",
+              "concepts": [
+                { "name": "Movimento", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                { "name": "MovimentoItem", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "movimentoId", "type": "uuid" } ] }
+              ],
+              "aggregates": [
+                { "name": "Movimento", "root": "Movimento",
+                  "collections": [
+                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" }
+                  ] }
+              ],
+              "autoPanels": [ { "aggregate": "Movimento",
+                "transaction": { "metadata": { "actions": [
+                  { "label": "Sugerir", "procedure": "SugerirProcedure",
+                    "applyTo": { "collection": "itens", "mode": "appendRow",
+                      "map": { "produtoId": "$resultado.produtoId", "papel": "Destino" } } },
+                  { "label": "No applyTo", "procedure": "NoApplyToProcedure" },
+                  { "label": "Missing collection", "procedure": "P1", "applyTo": { "mode": "appendRow", "map": { "a": "$b" } } },
+                  { "label": "Wrong mode", "procedure": "P2", "applyTo": { "collection": "itens", "mode": "replaceAll", "map": { "a": "$b" } } },
+                  { "label": "Empty map", "procedure": "P3", "applyTo": { "collection": "itens", "mode": "appendRow", "map": {} } }
+                ] } } } ]
+            }
+            """;
+        CompiledModel model = compile(json);
+
+        CompiledPanel workbench = model.getPanels().stream()
+                .filter(p -> "MovimentoWorkbench".equals(p.name())).findFirst()
+                .orElseThrow(() -> new AssertionError("expected MovimentoWorkbench"));
+        Map<String, Object> wb = (Map<String, Object>) workbench.metadata().get("workbench");
+        List<Map<String, Object>> actions = (List<Map<String, Object>>) wb.get("actions");
+        assertEquals(5, actions.size());
+
+        Map<String, Object> sugerir = actions.get(0);
+        Map<String, Object> applyTo = (Map<String, Object>) sugerir.get("applyTo");
+        assertNotNull(applyTo, "a valid applyTo must survive compilation");
+        assertEquals("itens", applyTo.get("collection"));
+        assertEquals("appendRow", applyTo.get("mode"));
+        Map<String, Object> map = (Map<String, Object>) applyTo.get("map");
+        assertEquals("$resultado.produtoId", map.get("produtoId"), "a $-prefixed value is a ref, passed through verbatim");
+        assertEquals("Destino", map.get("papel"), "a plain value is a literal, passed through verbatim");
+
+        assertNull(actions.get(1).get("applyTo"), "an action that never declared applyTo has none");
+        assertNull(actions.get(2).get("applyTo"), "missing collection must be dropped, not passed through malformed");
+        assertNull(actions.get(3).get("applyTo"), "an undeclared mode must be dropped");
+        assertNull(actions.get(4).get("applyTo"), "an empty map has nothing to fold in, so applyTo is dropped");
+    }
 }

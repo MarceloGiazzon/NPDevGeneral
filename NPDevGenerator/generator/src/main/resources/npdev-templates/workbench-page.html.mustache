@@ -280,6 +280,62 @@
     // extraInput (G3, docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md) merges declared inputFields values on top
     // of the current draft before posting -- how a "propose" action (e.g. parse pasted text into a
     // brand-new/empty draft) seeds input the draft itself has no field for.
+    // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 2A): applyTo.map values follow the SAME
+    // literal-by-default convention patchConcept's own `set` already established server-side
+    // (REG-75/Move 4) -- a plain value is a literal (e.g. a fixed "papel": "Destino"), a leading
+    // "$" resolves as a dotted path into the raw invoke() result (an optional "resultado."/
+    // "result." segment right after it is a naming convention for "the whole result", not a
+    // literal nested key, and is stripped too), and "$$x" escapes to the literal string "$x".
+    function resolveApplyToValue(result, raw) {
+      if (typeof raw !== "string" || raw.charAt(0) !== "$") return raw;
+      if (raw.charAt(1) === "$") return raw.slice(1);
+      var path = raw.slice(1).replace(/^(resultado|result)\./, "");
+      if (!path) return result;
+      var parts = path.split(".");
+      var cur = result;
+      for (var i = 0; i < parts.length; i++) {
+        if (cur == null) return undefined;
+        cur = cur[parts[i]];
+      }
+      return cur;
+    }
+    // applyTo.collection may name a top-level section OR a nested band (e.g. Movimento's
+    // itens -> posicoes, capped-at-1-level in a plain Panel but real here) -- find which, so
+    // appending a row targets the right parent.
+    function findSectionForCollection(collectionName) {
+      var sections = store.descriptor.sections || [];
+      for (var i = 0; i < sections.length; i++) {
+        if (sections[i].collection === collectionName) return { top: sections[i].collection };
+      }
+      for (var i = 0; i < sections.length; i++) {
+        var bands = sections[i].bands || [];
+        for (var j = 0; j < bands.length; j++) {
+          if (bands[j].collection === collectionName) return { parent: sections[i].collection, band: collectionName };
+        }
+      }
+      return null;
+    }
+    // Folds a procedure result into the draft per its declared applyTo, instead of invokeAction's
+    // other branch (store.patch) which replaces the WHOLE draft -- correct for a "propose a new
+    // draft"/"recompute the tree" action, wrong for a pure-computation suggestion like
+    // SugerirDestino, which would otherwise silently discard the rest of the draft. A band-level
+    // applyTo appends under the currently selected parent row (there is no other row context to
+    // attach it to); if nothing is selected yet, the suggestion is dropped rather than guessed at.
+    function applyResultTo(applyTo, result) {
+      if (!applyTo || applyTo.mode !== "appendRow" || !applyTo.collection) return;
+      var target = findSectionForCollection(applyTo.collection);
+      if (!target) return;
+      var newRowId = target.top
+        ? store.addRow(target.top)
+        : (selected == null ? null : store.addBandRow(target.parent, selected, target.band));
+      if (newRowId == null) return;
+      Object.keys(applyTo.map || {}).forEach(function (field) {
+        var value = resolveApplyToValue(result, applyTo.map[field]);
+        if (value === undefined) return;
+        if (target.top) { store.editRow(target.top, newRowId, field, value); }
+        else { store.editBandRow(target.parent, selected, target.band, newRowId, field, value); }
+      });
+    }
     function invokeAction(action, extraInput) {
       msg.className = "msg"; msg.textContent = (action.label || "Running") + "…";
       var body = Object.assign({}, store.toDraft(), extraInput || {});
@@ -287,7 +343,11 @@
         { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(body) })
         .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, b: b }; }); })
         .then(function (res) {
-          if (res.ok) { pendingMsg = { className: "msg ok", text: (action.label || "Done") + " — review and Save." }; store.patch(res.b); render(); }
+          if (res.ok) {
+            pendingMsg = { className: "msg ok", text: (action.label || "Done") + " — review and Save." };
+            if (action.applyTo) { applyResultTo(action.applyTo, res.b); } else { store.patch(res.b); }
+            render();
+          }
           else { msg.className = "msg err"; msg.textContent = "Failed: " + (res.b && res.b.message || "error"); }
         })
         .catch(function (e) { msg.className = "msg err"; msg.textContent = "Error: " + e; });

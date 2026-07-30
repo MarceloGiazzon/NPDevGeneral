@@ -302,6 +302,18 @@
               "metadata": {
                 "purpose": "Coverage for workbench transaction.metadata.actions[].inputFields (G3, docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md): a workbench action collects this field via an inline mini-form and merges it into the draft posted to invoke(), so a 'propose' procedure can seed input the current draft has no field for."
               }
+            },
+            {
+              "label": "Suggest line",
+              "procedure": "SuggestLineProcedure",
+              "applyTo": {
+                "collection": "lines",
+                "mode": "appendRow",
+                "map": { "sku": "$resultado.id", "quantity": "1" }
+              },
+              "metadata": {
+                "purpose": "Coverage for the Workbench applyTo action mapping (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md Wave 2A) -- without applyTo, invoking a pure-computation action replaces the WHOLE draft with its raw result (invokeAction's other branch, store.patch); applyTo instead extracts named fields and appends one new row to a declared collection. map values follow patchConcept's own literal-by-default / $-ref convention -- quantity here is a literal, sku is a $ref into the raw invoke() result."
+              }
             }
           ]
         }
@@ -388,6 +400,14 @@
       "steps": [
         { "name": "map-status", "type": "mapValue", "value": "$newStatus", "target": "status" },
         { "name": "return-status", "type": "return", "value": "$status" }
+      ]
+    },
+    {
+      "name": "SuggestLineProcedure",
+      "description": "Coverage for the Workbench applyTo action mapping (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md Wave 2A) -- a pure-computation-style suggestion (here: just echoing $input back, standing in for a real capabilityCall like WmsOffice's AllocationCapability.sugerirDestino) whose result the client folds into a NEW row via the action's declared applyTo, instead of invoke()'s other path (store.patch) which would replace the whole draft.",
+      "steps": [
+        { "name": "echo-input", "type": "mapValue", "value": "$input", "target": "resultado" },
+        { "name": "return-resultado", "type": "return", "value": "$resultado" }
       ]
     },
     {

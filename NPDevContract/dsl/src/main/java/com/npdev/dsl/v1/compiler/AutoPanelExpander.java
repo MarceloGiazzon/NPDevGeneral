@@ -209,9 +209,52 @@ final class AutoPanelExpander {
                 }
             }
             action.put("inputFields", inputFields);
+            Map<String, Object> applyTo = workbenchActionApplyTo(map.get("applyTo"));
+            if (applyTo != null) {
+                action.put("applyTo", applyTo);
+            }
             actions.add(action);
         }
         return actions;
+    }
+
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 2A): declares how this action's
+     * {@code invoke()} result folds into the draft, instead of the client's prior unconditional
+     * "replace the whole draft" behavior -- the gap that made a pure-computation action like
+     * {@code SugerirDestino} silently destroy the rest of the draft. Same untyped-metadata
+     * mechanism as the rest of {@code transaction.metadata.actions} (not the schema-typed
+     * {@code panelAction} used by regular, non-Workbench panels -- those actions persist directly
+     * and have no client-held draft to fold into). Malformed input is dropped rather than thrown,
+     * matching this method's own existing defensive style.
+     */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> workbenchActionApplyTo(Object raw) {
+        if (!(raw instanceof Map<?, ?> map)) {
+            return null;
+        }
+        Object collection = map.get("collection");
+        Object mode = map.get("mode");
+        if (collection == null || String.valueOf(collection).isBlank()
+                || mode == null || !"appendRow".equals(String.valueOf(mode).trim())) {
+            return null;
+        }
+        Map<String, String> fieldMap = new LinkedHashMap<>();
+        if (map.get("map") instanceof Map<?, ?> rawFieldMap) {
+            for (Map.Entry<?, ?> fieldEntry : rawFieldMap.entrySet()) {
+                if (fieldEntry.getKey() != null && fieldEntry.getValue() != null) {
+                    fieldMap.put(String.valueOf(fieldEntry.getKey()), String.valueOf(fieldEntry.getValue()));
+                }
+            }
+        }
+        if (fieldMap.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> applyTo = new LinkedHashMap<>();
+        applyTo.put("collection", String.valueOf(collection).trim());
+        applyTo.put("mode", "appendRow");
+        applyTo.put("map", fieldMap);
+        return applyTo;
     }
 
     private static Map<String, Object> sectionDescriptor(
