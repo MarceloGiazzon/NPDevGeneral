@@ -188,6 +188,7 @@ public final class CompiledModelCanonicalJsonReader {
                 text(node, "name"),
                 text(node, "root"),
                 toAggregateCollections(node.get("collections")),
+                optionalText(node, "onCommit"),
                 toObjectMap(node.get("metadata"))
         );
     }
@@ -782,7 +783,8 @@ public final class CompiledModelCanonicalJsonReader {
                     toProcedureSteps(stepNode.get("steps")),
                     optionalBooleanObject(stepNode.get("trace")),
                     optionalBooleanObject(stepNode.get("audit")),
-                    toObjectMap(stepNode.get("metadata"))
+                    toObjectMap(stepNode.get("metadata")),
+                    toObjectMap(stepNode.get("set"))
             ));
         }
         return out;

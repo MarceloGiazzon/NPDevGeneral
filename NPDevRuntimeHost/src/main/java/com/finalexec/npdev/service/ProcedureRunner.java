@@ -167,6 +167,7 @@ public class ProcedureRunner {
             case RUN_QUERY -> ProcedureStep.runQuery(stepName(step), normalized(step.query()), concept, target);
             case SAVE_CONCEPT -> ProcedureStep.saveConcept(stepName(step), concept, refOf(step.id(), "id"), dataRef(step), target);
             case DELETE_CONCEPT -> ProcedureStep.deleteConcept(stepName(step), concept, refOf(step.id(), "id"));
+            case PATCH_CONCEPT -> ProcedureStep.patchConcept(stepName(step), concept, refOf(step.id(), "id"), step.set(), target);
             case CALL_CAPABILITY -> {
                 String capabilityName = normalized(step.capability());
                 String adapterId = capabilityName == null

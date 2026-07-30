@@ -30,6 +30,7 @@ class AggregateRuntimeTest {
                                 new CompiledAggregateCollection("origens", "MovtoOrigem", null, "itemSeq", "owned", null, List.of(), Map.of()),
                                 new CompiledAggregateCollection("destinos", "MovtoDestino", null, "itemSeq", "owned", null, List.of(), Map.of())),
                         Map.of())),
+                null,
                 Map.of());
         return new CompiledModel(
                 "wms.agg", "1.0.0", "1.0", Map.of(),

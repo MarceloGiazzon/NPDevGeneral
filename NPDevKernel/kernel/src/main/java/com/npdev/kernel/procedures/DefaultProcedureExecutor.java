@@ -175,6 +175,7 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
     ) {
         return switch (step.type()) {
             case SAVE_CONCEPT -> saveConcept(step, state, context);
+            case PATCH_CONCEPT -> patchConcept(step, state, context);
             case READ_CONCEPT -> readConcept(step, state, context);
             case LIST_CONCEPTS -> listConcepts(step, state, context);
             case RUN_QUERY -> runQuery(step, state, context);
@@ -195,6 +196,35 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         ConceptRecord saved = conceptGateway.save(new ConceptWriteRequest(step.conceptName(), id, null, data), context);
         putOutput(state, step.outputKey(), saved);
         return ProcedureStepResult.success(step);
+    }
+
+    /**
+     * Move 4 (docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md): read-modify-write a concept record, preserving
+     * every field the step's {@code set} map doesn't name -- the single declarative operation REG-75
+     * found procedures had no way to express (a {@code readConcept} result could not be merged with
+     * caller-supplied overrides and passed onward). {@code set} values are literals by default; a
+     * String starting with "$" resolves against procedure state (mirroring every other *Ref field's
+     * convention), and "$$x" escapes to the literal string "$x".
+     */
+    private ProcedureStepResult patchConcept(ProcedureStep step, Map<String, Object> state, ExecutionContext context) {
+        String id = requireString(state, step.idRef(), step.name(), "idRef");
+        Optional<ConceptRecord> existing = conceptGateway.read(new ConceptReadRequest(step.conceptName(), id, null), context);
+        if (existing.isEmpty()) {
+            return ProcedureStepResult.failure(step, "CONCEPT_NOT_FOUND", "Concept record not found: " + step.conceptName() + ":" + id);
+        }
+        Map<String, Object> merged = new LinkedHashMap<>(existing.orElseThrow().data());
+        step.setValues().forEach((key, raw) -> merged.put(key, resolveSetValue(state, raw)));
+        ConceptRecord saved = conceptGateway.save(new ConceptWriteRequest(step.conceptName(), id, null, merged), context);
+        putOutput(state, step.outputKey(), saved);
+        return ProcedureStepResult.success(step);
+    }
+
+    /** Literal by default; a "$"-prefixed String resolves from state; "$$x" escapes to the literal "$x". */
+    private static Object resolveSetValue(Map<String, Object> state, Object raw) {
+        if (raw instanceof String s && s.startsWith("$")) {
+            return s.startsWith("$$") ? s.substring(1) : resolve(state, s);
+        }
+        return raw;
     }
 
     private ProcedureStepResult readConcept(ProcedureStep step, Map<String, Object> state, ExecutionContext context) {
@@ -243,7 +273,12 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
     private ProcedureStepResult callCapability(ProcedureStep step, Map<String, Object> state, ExecutionContext context) {
         List<Object> args = new ArrayList<>();
         for (String ref : step.argRefs()) {
-            args.add(resolve(state, ref));
+            // Move 4 (docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md, REG-75 wound #2): resolve() only
+            // unwraps a ConceptRecord while traversing a dotted path, not on a bare-ref hit -- the
+            // same asymmetry requireMap already works around for saveConcept's dataRef. Matching it
+            // here means a readConcept result can be passed straight to a capability call.
+            Object v = resolve(state, ref);
+            args.add(v instanceof ConceptRecord r ? r.data() : v);
         }
         CapabilityResult result = capabilityDispatcher.invoke(
                 new CapabilityCall(
@@ -452,7 +487,8 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
                 null,
                 List.of(),
                 List.of(),
-                List.of()
+                List.of(),
+                Map.of()
         ));
     }
 

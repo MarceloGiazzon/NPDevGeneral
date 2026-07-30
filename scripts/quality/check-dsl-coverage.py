@@ -69,8 +69,26 @@ def _all_steps(model: dict):
                 yield from _walk_steps(hook.get("steps"))
 
 
+def _all_procedure_steps(model: dict):
+    for procedure in model.get("procedures", None) or []:
+        if not isinstance(procedure, dict):
+            continue
+        yield from _walk_steps(procedure.get("steps"))
+
+
 def _has_step_type(model: dict, step_type: str) -> bool:
     return any(str(s.get("type", "")).lower() == step_type.lower() for s in _all_steps(model))
+
+
+def _has_procedure_step_type(model: dict, step_type: str) -> bool:
+    return any(str(s.get("type", "")).lower() == step_type.lower() for s in _all_procedure_steps(model))
+
+
+def _has_aggregate_on_commit(model: dict) -> bool:
+    return any(
+        isinstance(a, dict) and a.get("onCommit")
+        for a in (model.get("aggregates", None) or [])
+    )
 
 
 def _has_on_failure(model: dict) -> bool:
@@ -109,6 +127,12 @@ FEATURE_DETECTORS = {
     "flow.hooks": lambda m: any(f.get("hooks") for f in _flows(m)),
     "step.onFailure": _has_on_failure,
     **{f"step.{t}": (lambda m, t=t: _has_step_type(m, t)) for t in FLOW_STEP_TYPES},
+    # Move 4 (docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md): procedure.patchConcept and aggregate.onCommit
+    # are new features, not caught by the flow-only _all_steps() above -- a procedure's steps live
+    # under "procedures", not "flows". Tracked separately so a regression to either has the same
+    # zero-coverage-fails-the-build guarantee as every other feature this gate already tracks.
+    "procedure.patchConcept": lambda m: _has_procedure_step_type(m, "patchConcept"),
+    "aggregate.onCommit": _has_aggregate_on_commit,
 }
 
 

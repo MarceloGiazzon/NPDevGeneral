@@ -126,6 +126,17 @@
       ]
     },
     {
+      "name": "WidgetOrderAudit",
+      "ui": {
+        "label": "Widget order audit"
+      },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "quantity", "type": "integer", "required": true, "ui": { "label": "Quantity" } },
+        { "name": "lastSyncedStatus", "type": "string", "required": false, "ui": { "label": "Last synced status" } }
+      ]
+    },
+    {
       "name": "WidgetCatalogEntry",
       "ui": {
         "label": "Widget catalog entry"
@@ -249,6 +260,7 @@
     {
       "name": "WidgetOrderAggregate",
       "root": "WidgetOrder",
+      "onCommit": "AuditWidgetOrderProcedure",
       "collections": [
         {
           "name": "lines",
@@ -376,6 +388,15 @@
       "steps": [
         { "name": "map-status", "type": "mapValue", "value": "$newStatus", "target": "status" },
         { "name": "return-status", "type": "return", "value": "$status" }
+      ]
+    },
+    {
+      "name": "AuditWidgetOrderProcedure",
+      "description": "Coverage for aggregate.onCommit + the patchConcept procedure step (Move 4, docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md). Runs after WidgetOrderAggregate commits (input is the freshly reloaded tree) and patches a SIBLING record -- WidgetOrderAudit, outside the aggregate's own tree -- with the order's current lineCount/status, preserving every other field on that audit row. set values resolve like every other *Ref field: a literal by default, a leading '$' resolves against procedure state.",
+      "steps": [
+        { "name": "sync-audit", "type": "patchConcept", "concept": "WidgetOrderAudit", "id": "$input.id",
+          "set": { "quantity": "$input.lineCount", "lastSyncedStatus": "$input.status" }, "target": "audited" },
+        { "name": "return-audited", "type": "return", "value": "$audited" }
       ]
     }
   ],

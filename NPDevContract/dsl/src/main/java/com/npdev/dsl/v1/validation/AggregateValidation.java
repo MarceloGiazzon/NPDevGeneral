@@ -83,6 +83,10 @@ final class AggregateValidation {
 
     static void validateAggregates(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         Set<String> aggregateNames = new HashSet<>();
+        Map<String, ProcedureAst> proceduresByLower = new HashMap<>();
+        for (ProcedureAst procedure : modelAst.getProcedures()) {
+            proceduresByLower.put(normalize(procedure.name()), procedure);
+        }
         for (AggregateAst aggregate : modelAst.getAggregates()) {
             if (!aggregateNames.add(normalize(aggregate.name()))) {
                 errors.add("Aggregate " + aggregate.name() + ": duplicate aggregate name");
@@ -99,7 +103,54 @@ final class AggregateValidation {
                     entitiesByLower,
                     new HashSet<>(),
                     errors);
+            validateOnCommit(aggregate, proceduresByLower, errors);
         }
+    }
+
+    /**
+     * Move 4 (docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md): {@code onCommit} must name a declared
+     * procedure (run inside {@code AggregateRuntime.commitInternal}'s own transaction, after the
+     * tree is written -- see the runtime for why a failure there rolls back the whole commit).
+     *
+     * <p>Direct self-recursion (the onCommit procedure calling itself via {@code callProcedure}, at
+     * any nesting depth in its own step tree) is rejected here as an author-time linting check.
+     * Procedures have no step that invokes {@code AggregateRuntime.commit} at all, so "the procedure
+     * re-commits the same aggregate" cannot literally happen -- this instead catches the narrower,
+     * real case: a procedure named as {@code onCommit} that calls itself. Deeper indirect cycles
+     * (P calls Q calls P) are intentionally left to the kernel's existing
+     * {@code maxRecursionDepth} runtime guard (DefaultProcedureExecutor) rather than solved here.
+     */
+    private static void validateOnCommit(
+            AggregateAst aggregate, Map<String, ProcedureAst> proceduresByLower, List<String> errors) {
+        if (!hasText(aggregate.onCommit())) {
+            return;
+        }
+        String normalized = normalize(aggregate.onCommit());
+        ProcedureAst procedure = proceduresByLower.get(normalized);
+        if (procedure == null) {
+            errors.add("Aggregate " + aggregate.name() + ": onCommit names a procedure not found: " + aggregate.onCommit());
+            return;
+        }
+        if (callsProcedure(procedure.steps(), normalized)) {
+            errors.add("Aggregate " + aggregate.name() + ": onCommit procedure " + aggregate.onCommit()
+                    + " directly calls itself (recursive onCommit is not allowed)");
+        }
+    }
+
+    private static boolean callsProcedure(List<ProcedureStepAst> steps, String targetNameNormalized) {
+        for (ProcedureStepAst step : steps) {
+            String type = normalize(step.type());
+            if (("callprocedure".equals(type) || "procedurecall".equals(type))
+                    && normalize(step.procedure()).equals(targetNameNormalized)) {
+                return true;
+            }
+            if (callsProcedure(step.thenSteps(), targetNameNormalized)
+                    || callsProcedure(step.elseSteps(), targetNameNormalized)
+                    || callsProcedure(step.steps(), targetNameNormalized)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void validateAggregateCollections(

@@ -26,7 +26,8 @@ public record CompiledProcedureStep(
         List<CompiledProcedureStep> steps,
         Boolean trace,
         Boolean audit,
-        Map<String, Object> metadata
+        Map<String, Object> metadata,
+        Map<String, Object> set
 ) {
     public CompiledProcedureStep {
         data = data == null ? Map.of() : Map.copyOf(data);
@@ -35,5 +36,6 @@ public record CompiledProcedureStep(
         elseSteps = elseSteps == null ? List.of() : List.copyOf(elseSteps);
         steps = steps == null ? List.of() : List.copyOf(steps);
         metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
+        set = set == null ? Map.of() : Map.copyOf(set);
     }
 }

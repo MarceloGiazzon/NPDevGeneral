@@ -167,6 +167,7 @@ public final class CompiledModelCanonicalJson {
             node.put("name", safe(aggregate.name()));
             node.put("root", safe(aggregate.root()));
             node.set("collections", toAggregateCollections(aggregate.collections()));
+            node.put("onCommit", safe(aggregate.onCommit()));
             node.set("metadata", toObjectMap(aggregate.metadata()));
             aggregates.add(node);
         }
@@ -652,6 +653,7 @@ public final class CompiledModelCanonicalJson {
             putNullableBoolean(node, "trace", step.trace());
             putNullableBoolean(node, "audit", step.audit());
             node.set("metadata", toObjectMap(step.metadata()));
+            node.set("set", toObjectMap(step.set()));
             steps.add(node);
         }
         return steps;

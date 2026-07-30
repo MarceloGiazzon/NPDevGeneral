@@ -356,6 +356,10 @@
             "$ref": "#/$defs/aggregateCollection"
           }
         },
+        "onCommit": {
+          "type": "string",
+          "minLength": 1
+        },
         "metadata": {
           "type": "object"
         }
@@ -2787,6 +2791,7 @@
             "callCapability",
             "eventPublish",
             "publishEvent",
+            "patchConcept",
             "return"
           ]
         },
@@ -2795,6 +2800,9 @@
           "minLength": 1
         },
         "value": {},
+        "set": {
+          "type": "object"
+        },
         "condition": {
           "type": "string",
           "minLength": 1
