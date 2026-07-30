@@ -5,6 +5,7 @@ public enum ProcedureStepType {
     LIST_CONCEPTS,
     RUN_QUERY,
     SAVE_CONCEPT,
+    PATCH_CONCEPT,
     DELETE_CONCEPT,
     CALL_CAPABILITY,
     PUBLISH_EVENT,

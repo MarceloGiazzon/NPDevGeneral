@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**77 item(s) migrated: 1 open/partial, 76 done.**
+**78 item(s) migrated: 1 open/partial, 77 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -83,8 +83,9 @@
 | REG-72 | AggregateRuntime.commit performs N+1 writes and reconcile-deletes with no transaction boundary -- a failure partway leaves a half-written aggregate, and a failure after a reconcile-delete does not restore what was deleted | BUG | HIGH | DONE | 2026-07-29 |
 | REG-73 | ProcedureRunner never resolved a capability adapter from the model's bindings list -- every procedure-side capabilityCall step (panel action procedure bindings, and AggregateRuntime.invoke()) reached the dispatcher with a null adapterId and failed CAPABILITY_BINDING_MISSING even with a real binding declared | BUG | HIGH | DONE | 2026-07-29 |
 | REG-74 | The plugin-mount/requirement-discovery pipeline only scanned FLOW steps for capabilityCall usage -- a custom Java-source capability referenced ONLY by a procedure (never by any flow) was never mounted (no Java source compiled in, no plugin-manifest entry), so the app failed to boot with "Adapter ... is not declared in active plugin manifest" even though ProcedureRunner's own dispatch (REG-73) correctly resolved the adapter id | BUG | HIGH | DONE | 2026-07-29 |
-| REG-75 | Procedures have no way to read an existing concept record, override one field, and pass the merged result onward -- a readConcept result can only be consumed as a whole map by saveConcept (via requireMap's ConceptRecord unwrap), never by capabilityCall's args (which never unwraps ConceptRecord), and no step exists to construct/merge a map literal at all | GAP | MEDIUM | OPEN | 2026-07-29 |
+| REG-75 | Procedures have no way to read an existing concept record, override one field, and pass the merged result onward -- a readConcept result can only be consumed as a whole map by saveConcept (via requireMap's ConceptRecord unwrap), never by capabilityCall's args (which never unwraps ConceptRecord), and no step exists to construct/merge a map literal at all | GAP | MEDIUM | DONE | 2026-07-29 |
 | REG-76 | Workbench action inputFields rendered as a single-line <input type="text">, which silently strips/collapses newlines on assignment -- a 'paste multi-line text' propose action (e.g. paste a CSV) had its payload collapsed to one line client-side, so the server-side parser's own header-row detection consumed the entire pasted text and returned zero data rows | BUG | HIGH | DONE | 2026-07-29 |
+| REG-77 | Neither procedures nor flows can create a brand-new sibling concept record with an auto-generated id from within a read-modify-write side effect -- patchConcept (REG-75/Move 4) only works on records that already exist, and flows have no patch step at all | GAP | LOW | OPEN | 2026-07-30 |
 | REG-8 | LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-9 | LNCH-4: auth secrets management -- JWT key env-var delivery | GAP | HIGH | DONE | 2026-07-21 |
 
@@ -1976,8 +1977,8 @@ reloaded table and by the full server response rendered in its "last action resu
 
 ### REG-75 — Procedures have no way to read an existing concept record, override one field, and pass the merged result onward -- a readConcept result can only be consumed as a whole map by saveConcept (via requireMap's ConceptRecord unwrap), never by capabilityCall's args (which never unwraps ConceptRecord), and no step exists to construct/merge a map literal at all
 
-**Type:** GAP · **Severity:** MEDIUM · **Status:** OPEN
-**Verification:** NOT_VERIFIED
+**Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-07-30)
+**Verification:** VERIFIED_LIVE
 **Source:** docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md G4 -- found live while attempting the FULL C10 fix
 (docs/MOVE1_PANEL_GAPS.md: "an action triggering writes to *other* concepts beyond its own flow's
 output has no declared mechanism") -- the crossdocking console's original Concluir/Cancelar/Ativar
@@ -2031,6 +2032,50 @@ consumable by both `saveConcept` and `capabilityCall` afterward. A narrower fix 
 `ConceptRecord` in `resolve()`'s single-segment branch, mirroring what `requireMap` already does)
 would only solve the pass-through case, not the "override one field" case, so does not fully close
 this on its own.
+
+---
+
+**Resolution (2026-07-30, docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md, "Move 4"):** closed by exactly
+the mechanism scoped above. New procedure step `patchConcept` (kernel `ProcedureStepType
+.PATCH_CONCEPT`): reads the existing record (fails `CONCEPT_NOT_FOUND` if absent), overlays a
+`set` map onto its full data (preserving every field not named), saves. `set` values are literals
+by default, unlike every other `*Ref` field on a procedure step -- a `$`-prefixed string resolves
+against procedure state, `"$$x"` escapes to the literal `"$x"`. Also added `aggregate.onCommit`: a
+named procedure runs inside `AggregateRuntime.commitInternal`'s own transaction after the tree is
+written, so a sibling-record side effect commits or rolls back with the aggregate atomically
+(only correct because REG-72 already made that commit transactional). Both proven RED->GREEN
+against a real H2-backed transactional store
+(`NPDevRuntimeHost/.../service/AggregateRuntimeOnCommitTest.java`), both have real corpus coverage
+in `NPDevSamples/dsl-conformance-max` enforced by `scripts/quality/check-dsl-coverage.py`
+(`procedure.patchConcept`, `aggregate.onCommit`).
+
+Applied live to WmsOffice: `ConcluirCrossDockingProcedure`/`CancelarCrossDockingProcedure` now
+each use ONE `patchConcept` step for the situacao transition (literal `set`, replacing the
+`crossDockingSync` capabilityCall + saveConcept pair) plus two more `patchConcept` steps clearing
+`crossDockingAtivo` on the linked Recebimento/Expedicao -- closing BOTH halves of C10
+(docs/MOVE1_PANEL_GAPS.md) for those two actions. The now-fully-dead `crossDockingSync` capability
+(it only ever existed to inject that one literal) was deleted, backed up to
+`NPDevGenerator__OutsideRepo/move4-backups/crossDockingSync-deleted-2026-07-30` first since
+AppGen/apps is not version-controlled (CLAUDE.md's layer-2 convention).
+
+C10's remaining two manifestations -- Ativar's own `crossDockingAtivo=true` flag-sync, and M8/M9's
+`syncOcupacao` (docs/MOVE3_G2_CHECKLISTS.md) -- turned out to need patchConcept's *create* half
+(a brand-new sibling record with an auto-generated id), which this fix deliberately does not
+provide (patchConcept only ever touches existing records, by design). That is a distinct,
+precisely-scoped gap, filed separately as REG-77 rather than folded in here or half-solved.
+
+**Verified live (2026-07-30)** against the regenerated WmsOffice FinalApp
+(D:\WorkSpace\NPDev\Build\generated-finalapps-h2q\wmsoffice), real H2 DB, via REST:
+activated two fresh CrossDocking records through the unchanged `AtivarCrossDocking` flow, then
+called `concluir`/`cancelar` on each through `POST /api/runtime/metadata/ui/panels/
+CrossDockingConsolePanel/actions/{concluir,cancelar}`. Both procedures' step traces showed all
+four steps `ok:true`; `situacao` landed `Concluido`/`Cancelado` respectively (confirmed via the
+gateway trace's `lifecycleTransition: "Ativo->Concluido"`); the linked Recebimento and Expedicao
+both flipped `crossDockingAtivo` true->false while every other field (estagio, dataRecebimento,
+movimentoId, situacao, transportadoraId, etc.) came back byte-identical to the pre-call baseline --
+the exact "preserve everything not named in set" guarantee patchConcept exists for. No
+crossDockingSync capability involved (confirmed absent from the generated plugin manifests; the
+remaining string matches in generated metadata are prose in procedure descriptions, not bindings).
 
 ### REG-76 — Workbench action inputFields rendered as a single-line <input type="text">, which silently strips/collapses newlines on assignment -- a 'paste multi-line text' propose action (e.g. paste a CSV) had its payload collapsed to one line client-side, so the server-side parser's own header-row detection consumed the entire pasted text and returned zero data rows
 
@@ -2086,6 +2131,80 @@ text (`WidgetOrderReviewPanel.place`, `CrossDockingConsolePanel.ativar` are all 
 Left unchanged (no current caller needs it, and touching already-shipped, already-tested Move 2
 code for a theoretical future need is out of scope here) -- named so a future multi-line panel
 action doesn't rediscover this blind.
+
+### REG-77 — Neither procedures nor flows can create a brand-new sibling concept record with an auto-generated id from within a read-modify-write side effect -- patchConcept (REG-75/Move 4) only works on records that already exist, and flows have no patch step at all
+
+**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Verification:** NOT_VERIFIED
+**Source:** docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md, sections 4.2 (Ativar's own crossDockingAtivo=true flag-sync)
+and 4.3 (SyncOcupacaoProcedure, closing docs/MOVE3_G2_CHECKLISTS.md's M8/M9 residual). Both were
+scoped by that plan as closeable by patchConcept/onCommit alone ("the same one-liner with true").
+Found live while attempting to implement them, immediately after REG-75 itself was closed by the
+same session's patchConcept + aggregate.onCommit work (dc35d54..this commit).
+
+**Surface:** `kernel/procedure-runtime, kernel/flow-engine`
+
+Investigated, not fixed. patchConcept (REG-75) reads an EXISTING record and fails
+`CONCEPT_NOT_FOUND` if it is absent -- by design, it is a patch, not an upsert. Two real Move 4
+candidates need the *create* half of that same shape, and both hit the same wall from different
+sides:
+
+1. **Ativar's flag-sync** (plan 4.2): activating a CrossDocking needs to ALSO set
+   `crossDockingAtivo=true` on the linked Recebimento/Expedicao -- the mirror of what E1 (REG-75)
+   already does for Concluir/Cancelar's `crossDockingAtivo=false`. But `CrossDocking` is a plain
+   concept, not an aggregate (confirmed: no `aggregates` entry named CrossDocking in
+   AppGen/apps/_official/WmsOffice/definition/model.json), so `aggregate.onCommit` does not apply.
+   `Ativar` is bound to a FLOW (`AtivarCrossDocking`), not a procedure, and that flow's
+   `createConcept` step is what supplies the new CrossDocking id: `createConcept`/`updateConcept`
+   both compile to a `capabilityCall` against the `persistence` capability's `save` operation
+   (`ModelCompiler.resolveCapabilityNameForStep`/`resolveOperationNameForStep`,
+   NPDevContract/dsl/.../compiler/ModelCompiler.java:1554-1597), and auto-id-generation lives
+   INSIDE that capability adapter, not in `ConceptGateway`:
+   `PostgresPersistenceCapabilityAdapter.save()` (NPDevKernel/adapters/persistence-postgres/...):
+   `if (id == null || blank) { id = UUID.randomUUID().toString(); }` (lines 79-85).
+   `DefaultConceptGateway.save()` (used by both `AggregateRuntime` root commits and every procedure
+   step) has no such fallback -- it uses `request.id()` as given. Procedures' own `saveConcept`
+   confirms this: `DefaultProcedureExecutor.saveConcept` calls
+   `requireString(state, step.idRef(), ...)`, which throws if `idRef` does not resolve to a
+   non-blank value -- there is no blank-id-generates-a-UUID branch anywhere in the procedure
+   executor (confirmed: zero references to `com.npdev.kernel.ports.IdProvider` anywhere in
+   `DefaultProcedureExecutor.java` or `ProcedureRunner.java`, despite that port already existing
+   and doing exactly this for one caller: `IdProvider.uuid()`).
+2. Flows have no read-modify-write step either: `updateConcept` (flow) compiles to the same
+   `persistence.save`, which requires the FULL replacement record, same as `saveConcept` did
+   before patchConcept existed for procedures -- there is no flow-level `patchConcept` equivalent,
+   and adding one is a second, separate step-vocabulary change (flows and procedures are executed
+   by two different engines with two different step enums).
+3. Custom `plugin:java-source` capabilities (`AllocationCapability`, `FiscalImportCapability`, the
+   now-deleted `CrossDockingSyncCapability`) cannot be the workaround either: confirmed by reading
+   `AllocationCapability.java`, these classes have NO constructor dependencies and import nothing
+   beyond `java.*` -- they are pure functions with no `ConceptGateway`/persistence access at all,
+   so a capability cannot itself read-patch-write a sibling record; it can only transform the
+   `Map` it is handed.
+4. **SyncOcupacaoProcedure** (plan 4.3, M8/M9): the original `syncOcupacao` client logic finds an
+   existing `LocalArmazenagemLote` row for a (localArmazenagemId, loteId) pair and PATCHes its
+   quantidade if found, but CREATES a new row (POST, server auto-generates the id) if not found.
+   The "patch an existing row" half is expressible with today's patchConcept + onCommit (once the
+   Movimento aggregate's `onCommit` is wired) -- but the "create a new occupancy row when none
+   exists yet" half hits the identical wall as point 1. A patch-only implementation would silently
+   drop every position that needs a brand-new occupancy row, which is a correctness regression for
+   a warehouse occupancy tracker (an operator would see a stale/missing occupancy count with no
+   error), not a smaller-but-safe partial win -- so it was not attempted rather than shipped half
+   right.
+
+**What this blocks, precisely**: Move 4 plan sections 4.2 and 4.3 only. Sections 4.1 (patchConcept
++ onCommit mechanism itself), 4.4 (the situacao-literal simplification + crossDockingSync deletion)
+and the Recebimento/Expedicao clear-flag half of 4.2's own sibling gap (Concluir/Cancelar) are
+fully closed by REG-75's patchConcept/onCommit work and do not depend on this gap at all.
+
+**What would close it** (not attempted, scoped for a future session): either (a) a new flow-level
+step mirroring patchConcept for the flow engine specifically, or (b) wire the existing, currently
+unused `com.npdev.kernel.ports.IdProvider` port into `DefaultProcedureExecutor`/`ProcedureRunner`
+so `saveConcept` (and a future create-capable variant of `patchConcept`) falls back to
+`IdProvider.uuid()` when `idRef` resolves to blank, matching what
+`PostgresPersistenceCapabilityAdapter.save()` already does for flows. Either is a real, scoped
+platform change with its own risk surface (schema/compiled-model/canonical-JSON/validation, the
+same shape REG-75 itself required) -- named here rather than half-solved inline.
 
 ### REG-8 — LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback
 

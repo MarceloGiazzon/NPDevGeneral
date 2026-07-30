@@ -536,6 +536,13 @@ public final class NPDevCliMain {
                     target
             );
             case DELETE_CONCEPT -> ProcedureStep.deleteConcept(stepName(step), concept, refOf(step.id(), "id"));
+            case PATCH_CONCEPT -> ProcedureStep.patchConcept(
+                    stepName(step),
+                    concept,
+                    refOf(step.id(), "id"),
+                    step.set(),
+                    target
+            );
             case CALL_CAPABILITY -> ProcedureStep.callCapability(
                     stepName(step),
                     normalized(step.capability()),

@@ -474,6 +474,7 @@ class PanelRuntimeTest {
                 List.of(),
                 null,
                 null,
+                Map.of(),
                 Map.of()
         );
         CompiledProcedure procedure = new CompiledProcedure(

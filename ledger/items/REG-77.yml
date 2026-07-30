@@ -1,0 +1,77 @@
+id: REG-77
+title: "Neither procedures nor flows can create a brand-new sibling concept record with an auto-generated id from within a read-modify-write side effect -- patchConcept (REG-75/Move 4) only works on records that already exist, and flows have no patch step at all"
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-07-30
+verification: NOT_VERIFIED
+source: |
+  docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md, sections 4.2 (Ativar's own crossDockingAtivo=true flag-sync)
+  and 4.3 (SyncOcupacaoProcedure, closing docs/MOVE3_G2_CHECKLISTS.md's M8/M9 residual). Both were
+  scoped by that plan as closeable by patchConcept/onCommit alone ("the same one-liner with true").
+  Found live while attempting to implement them, immediately after REG-75 itself was closed by the
+  same session's patchConcept + aggregate.onCommit work (dc35d54..this commit).
+surface: kernel/procedure-runtime, kernel/flow-engine
+files: []
+detail: |
+  Investigated, not fixed. patchConcept (REG-75) reads an EXISTING record and fails
+  `CONCEPT_NOT_FOUND` if it is absent -- by design, it is a patch, not an upsert. Two real Move 4
+  candidates need the *create* half of that same shape, and both hit the same wall from different
+  sides:
+
+  1. **Ativar's flag-sync** (plan 4.2): activating a CrossDocking needs to ALSO set
+     `crossDockingAtivo=true` on the linked Recebimento/Expedicao -- the mirror of what E1 (REG-75)
+     already does for Concluir/Cancelar's `crossDockingAtivo=false`. But `CrossDocking` is a plain
+     concept, not an aggregate (confirmed: no `aggregates` entry named CrossDocking in
+     AppGen/apps/_official/WmsOffice/definition/model.json), so `aggregate.onCommit` does not apply.
+     `Ativar` is bound to a FLOW (`AtivarCrossDocking`), not a procedure, and that flow's
+     `createConcept` step is what supplies the new CrossDocking id: `createConcept`/`updateConcept`
+     both compile to a `capabilityCall` against the `persistence` capability's `save` operation
+     (`ModelCompiler.resolveCapabilityNameForStep`/`resolveOperationNameForStep`,
+     NPDevContract/dsl/.../compiler/ModelCompiler.java:1554-1597), and auto-id-generation lives
+     INSIDE that capability adapter, not in `ConceptGateway`:
+     `PostgresPersistenceCapabilityAdapter.save()` (NPDevKernel/adapters/persistence-postgres/...):
+     `if (id == null || blank) { id = UUID.randomUUID().toString(); }` (lines 79-85).
+     `DefaultConceptGateway.save()` (used by both `AggregateRuntime` root commits and every procedure
+     step) has no such fallback -- it uses `request.id()` as given. Procedures' own `saveConcept`
+     confirms this: `DefaultProcedureExecutor.saveConcept` calls
+     `requireString(state, step.idRef(), ...)`, which throws if `idRef` does not resolve to a
+     non-blank value -- there is no blank-id-generates-a-UUID branch anywhere in the procedure
+     executor (confirmed: zero references to `com.npdev.kernel.ports.IdProvider` anywhere in
+     `DefaultProcedureExecutor.java` or `ProcedureRunner.java`, despite that port already existing
+     and doing exactly this for one caller: `IdProvider.uuid()`).
+  2. Flows have no read-modify-write step either: `updateConcept` (flow) compiles to the same
+     `persistence.save`, which requires the FULL replacement record, same as `saveConcept` did
+     before patchConcept existed for procedures -- there is no flow-level `patchConcept` equivalent,
+     and adding one is a second, separate step-vocabulary change (flows and procedures are executed
+     by two different engines with two different step enums).
+  3. Custom `plugin:java-source` capabilities (`AllocationCapability`, `FiscalImportCapability`, the
+     now-deleted `CrossDockingSyncCapability`) cannot be the workaround either: confirmed by reading
+     `AllocationCapability.java`, these classes have NO constructor dependencies and import nothing
+     beyond `java.*` -- they are pure functions with no `ConceptGateway`/persistence access at all,
+     so a capability cannot itself read-patch-write a sibling record; it can only transform the
+     `Map` it is handed.
+  4. **SyncOcupacaoProcedure** (plan 4.3, M8/M9): the original `syncOcupacao` client logic finds an
+     existing `LocalArmazenagemLote` row for a (localArmazenagemId, loteId) pair and PATCHes its
+     quantidade if found, but CREATES a new row (POST, server auto-generates the id) if not found.
+     The "patch an existing row" half is expressible with today's patchConcept + onCommit (once the
+     Movimento aggregate's `onCommit` is wired) -- but the "create a new occupancy row when none
+     exists yet" half hits the identical wall as point 1. A patch-only implementation would silently
+     drop every position that needs a brand-new occupancy row, which is a correctness regression for
+     a warehouse occupancy tracker (an operator would see a stale/missing occupancy count with no
+     error), not a smaller-but-safe partial win -- so it was not attempted rather than shipped half
+     right.
+
+  **What this blocks, precisely**: Move 4 plan sections 4.2 and 4.3 only. Sections 4.1 (patchConcept
+  + onCommit mechanism itself), 4.4 (the situacao-literal simplification + crossDockingSync deletion)
+  and the Recebimento/Expedicao clear-flag half of 4.2's own sibling gap (Concluir/Cancelar) are
+  fully closed by REG-75's patchConcept/onCommit work and do not depend on this gap at all.
+
+  **What would close it** (not attempted, scoped for a future session): either (a) a new flow-level
+  step mirroring patchConcept for the flow engine specifically, or (b) wire the existing, currently
+  unused `com.npdev.kernel.ports.IdProvider` port into `DefaultProcedureExecutor`/`ProcedureRunner`
+  so `saveConcept` (and a future create-capable variant of `patchConcept`) falls back to
+  `IdProvider.uuid()` when `idRef` resolves to blank, matching what
+  `PostgresPersistenceCapabilityAdapter.save()` already does for flows. Either is a real, scoped
+  platform change with its own risk surface (schema/compiled-model/canonical-JSON/validation, the
+  same shape REG-75 itself required) -- named here rather than half-solved inline.

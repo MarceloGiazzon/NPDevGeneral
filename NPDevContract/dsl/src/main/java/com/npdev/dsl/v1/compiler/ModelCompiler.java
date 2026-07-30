@@ -634,6 +634,7 @@ public final class ModelCompiler {
                 aggregateAst.name(),
                 aggregateAst.root(),
                 compileAggregateCollections(aggregateAst.collections()),
+                aggregateAst.onCommit(),
                 sortObjectMap(aggregateAst.metadata())
         );
     }
@@ -1327,7 +1328,8 @@ public final class ModelCompiler {
                     compileProcedureSteps(step.steps()),
                     step.trace(),
                     step.audit(),
-                    sortObjectMap(step.metadata())
+                    sortObjectMap(step.metadata()),
+                    sortObjectMap(step.set())
             ));
         }
         return out;

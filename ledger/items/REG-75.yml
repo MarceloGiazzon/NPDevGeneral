@@ -2,9 +2,10 @@ id: REG-75
 title: "Procedures have no way to read an existing concept record, override one field, and pass the merged result onward -- a readConcept result can only be consumed as a whole map by saveConcept (via requireMap's ConceptRecord unwrap), never by capabilityCall's args (which never unwraps ConceptRecord), and no step exists to construct/merge a map literal at all"
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-07-29
-verification: NOT_VERIFIED
+closed: 2026-07-30
+verification: VERIFIED_LIVE
 source: |
   docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md G4 -- found live while attempting the FULL C10 fix
   (docs/MOVE1_PANEL_GAPS.md: "an action triggering writes to *other* concepts beyond its own flow's
@@ -59,3 +60,47 @@ detail: |
   `ConceptRecord` in `resolve()`'s single-segment branch, mirroring what `requireMap` already does)
   would only solve the pass-through case, not the "override one field" case, so does not fully close
   this on its own.
+
+  ---
+
+  **Resolution (2026-07-30, docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md, "Move 4"):** closed by exactly
+  the mechanism scoped above. New procedure step `patchConcept` (kernel `ProcedureStepType
+  .PATCH_CONCEPT`): reads the existing record (fails `CONCEPT_NOT_FOUND` if absent), overlays a
+  `set` map onto its full data (preserving every field not named), saves. `set` values are literals
+  by default, unlike every other `*Ref` field on a procedure step -- a `$`-prefixed string resolves
+  against procedure state, `"$$x"` escapes to the literal `"$x"`. Also added `aggregate.onCommit`: a
+  named procedure runs inside `AggregateRuntime.commitInternal`'s own transaction after the tree is
+  written, so a sibling-record side effect commits or rolls back with the aggregate atomically
+  (only correct because REG-72 already made that commit transactional). Both proven RED->GREEN
+  against a real H2-backed transactional store
+  (`NPDevRuntimeHost/.../service/AggregateRuntimeOnCommitTest.java`), both have real corpus coverage
+  in `NPDevSamples/dsl-conformance-max` enforced by `scripts/quality/check-dsl-coverage.py`
+  (`procedure.patchConcept`, `aggregate.onCommit`).
+
+  Applied live to WmsOffice: `ConcluirCrossDockingProcedure`/`CancelarCrossDockingProcedure` now
+  each use ONE `patchConcept` step for the situacao transition (literal `set`, replacing the
+  `crossDockingSync` capabilityCall + saveConcept pair) plus two more `patchConcept` steps clearing
+  `crossDockingAtivo` on the linked Recebimento/Expedicao -- closing BOTH halves of C10
+  (docs/MOVE1_PANEL_GAPS.md) for those two actions. The now-fully-dead `crossDockingSync` capability
+  (it only ever existed to inject that one literal) was deleted, backed up to
+  `NPDevGenerator__OutsideRepo/move4-backups/crossDockingSync-deleted-2026-07-30` first since
+  AppGen/apps is not version-controlled (CLAUDE.md's layer-2 convention).
+
+  C10's remaining two manifestations -- Ativar's own `crossDockingAtivo=true` flag-sync, and M8/M9's
+  `syncOcupacao` (docs/MOVE3_G2_CHECKLISTS.md) -- turned out to need patchConcept's *create* half
+  (a brand-new sibling record with an auto-generated id), which this fix deliberately does not
+  provide (patchConcept only ever touches existing records, by design). That is a distinct,
+  precisely-scoped gap, filed separately as REG-77 rather than folded in here or half-solved.
+
+  **Verified live (2026-07-30)** against the regenerated WmsOffice FinalApp
+  (D:\WorkSpace\NPDev\Build\generated-finalapps-h2q\wmsoffice), real H2 DB, via REST:
+  activated two fresh CrossDocking records through the unchanged `AtivarCrossDocking` flow, then
+  called `concluir`/`cancelar` on each through `POST /api/runtime/metadata/ui/panels/
+  CrossDockingConsolePanel/actions/{concluir,cancelar}`. Both procedures' step traces showed all
+  four steps `ok:true`; `situacao` landed `Concluido`/`Cancelado` respectively (confirmed via the
+  gateway trace's `lifecycleTransition: "Ativo->Concluido"`); the linked Recebimento and Expedicao
+  both flipped `crossDockingAtivo` true->false while every other field (estagio, dataRecebimento,
+  movimentoId, situacao, transportadoraId, etc.) came back byte-identical to the pre-call baseline --
+  the exact "preserve everything not named in set" guarantee patchConcept exists for. No
+  crossDockingSync capability involved (confirmed absent from the generated plugin manifests; the
+  remaining string matches in generated metadata are prose in procedure descriptions, not bindings).

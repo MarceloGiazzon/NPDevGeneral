@@ -2,6 +2,7 @@ package com.npdev.kernel.procedures;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public record ProcedureStep(
         String name,
@@ -25,7 +26,8 @@ public record ProcedureStep(
         String returnRef,
         List<ProcedureStep> thenSteps,
         List<ProcedureStep> elseSteps,
-        List<ProcedureStep> steps
+        List<ProcedureStep> steps,
+        Map<String, Object> setValues
 ) {
     public ProcedureStep {
         name = normalizeRequired(name, "name");
@@ -52,6 +54,7 @@ public record ProcedureStep(
         thenSteps = thenSteps == null ? List.of() : List.copyOf(thenSteps);
         elseSteps = elseSteps == null ? List.of() : List.copyOf(elseSteps);
         steps = steps == null ? List.of() : List.copyOf(steps);
+        setValues = setValues == null ? Map.of() : Map.copyOf(setValues);
     }
 
     public ProcedureStep(
@@ -91,7 +94,8 @@ public record ProcedureStep(
                 null,
                 List.of(),
                 List.of(),
-                List.of()
+                List.of(),
+                Map.of()
         );
     }
 
@@ -157,7 +161,7 @@ public record ProcedureStep(
     ) {
         return new ProcedureStep(name, ProcedureStepType.CALL_PROCEDURE, null, null, null,
                 null, null, null, null, List.of(), outputKey, null, payloadRef,
-                null, null, null, null, procedureName, null, List.of(), List.of(), List.of());
+                null, null, null, null, procedureName, null, List.of(), List.of(), List.of(), Map.of());
     }
 
     public static ProcedureStep ifThenElse(
@@ -168,7 +172,7 @@ public record ProcedureStep(
     ) {
         return new ProcedureStep(name, ProcedureStepType.IF, null, null, null,
                 null, null, null, null, List.of(), null, null, null,
-                conditionRef, null, null, null, null, null, thenSteps, elseSteps, List.of());
+                conditionRef, null, null, null, null, null, thenSteps, elseSteps, List.of(), Map.of());
     }
 
     public static ProcedureStep forEach(
@@ -179,19 +183,31 @@ public record ProcedureStep(
     ) {
         return new ProcedureStep(name, ProcedureStepType.FOR_EACH, null, null, null,
                 null, null, null, null, List.of(), null, null, null,
-                null, collectionRef, itemKey, null, null, null, List.of(), List.of(), steps);
+                null, collectionRef, itemKey, null, null, null, List.of(), List.of(), steps, Map.of());
     }
 
     public static ProcedureStep mapValue(String name, String valueRef, String outputKey) {
         return new ProcedureStep(name, ProcedureStepType.MAP_VALUE, null, null, null,
                 null, null, null, null, List.of(), outputKey, null, null,
-                null, null, null, valueRef, null, null, List.of(), List.of(), List.of());
+                null, null, null, valueRef, null, null, List.of(), List.of(), List.of(), Map.of());
     }
 
     public static ProcedureStep returnValue(String name, String returnRef) {
         return new ProcedureStep(name, ProcedureStepType.RETURN, null, null, null,
                 null, null, null, null, List.of(), null, null, null,
-                null, null, null, null, null, returnRef, List.of(), List.of(), List.of());
+                null, null, null, null, null, returnRef, List.of(), List.of(), List.of(), Map.of());
+    }
+
+    public static ProcedureStep patchConcept(
+            String name,
+            String conceptName,
+            String idRef,
+            Map<String, Object> setValues,
+            String outputKey
+    ) {
+        return new ProcedureStep(name, ProcedureStepType.PATCH_CONCEPT, conceptName, idRef, null,
+                null, null, null, null, List.of(), outputKey, null, null,
+                null, null, null, null, null, null, List.of(), List.of(), List.of(), setValues);
     }
 
     public static ProcedureStepType parseType(String rawType) {
@@ -201,6 +217,7 @@ public record ProcedureStep(
             case "listconcepts" -> ProcedureStepType.LIST_CONCEPTS;
             case "runquery", "conceptquery" -> ProcedureStepType.RUN_QUERY;
             case "saveconcept", "conceptcreate", "conceptupdate", "conceptmutation" -> ProcedureStepType.SAVE_CONCEPT;
+            case "patchconcept" -> ProcedureStepType.PATCH_CONCEPT;
             case "deleteconcept", "conceptdelete" -> ProcedureStepType.DELETE_CONCEPT;
             case "callcapability", "capabilitycall" -> ProcedureStepType.CALL_CAPABILITY;
             case "publishevent", "eventpublish" -> ProcedureStepType.PUBLISH_EVENT;

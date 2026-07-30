@@ -765,7 +765,8 @@ public final class JsonModelParser {
                     parseProcedureSteps(stepNode.get("steps"), fieldPath + "[" + (name == null ? type : name) + "].steps", false),
                     readOptionalBoolean(stepNode, "trace"),
                     readOptionalBoolean(stepNode, "audit"),
-                    parseObjectMap(stepNode.get("metadata"))
+                    parseObjectMap(stepNode.get("metadata")),
+                    parseObjectMap(stepNode.get("set"))
             ));
         }
         return out;
@@ -835,6 +836,7 @@ public final class JsonModelParser {
                     requiredText(aggregateNode, "root"),
                     parseAggregateCollections(aggregateNode.get("collections"),
                             "aggregates[" + name + "].collections"),
+                    readText(aggregateNode, "onCommit"),
                     parseObjectMap(aggregateNode.get("metadata"))
             ));
         }

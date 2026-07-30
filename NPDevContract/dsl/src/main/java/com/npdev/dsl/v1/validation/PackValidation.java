@@ -96,11 +96,13 @@ final class PackValidation {
                     "runquery", "run_query", "conceptcreate", "conceptupdate", "saveconcept", "save_concept",
                     "conceptdelete", "deleteconcept", "delete_concept", "procedurecall", "callprocedure",
                     "call_procedure", "capabilitycall", "callcapability", "call_capability",
-                    "eventpublish", "publishevent", "publish_event", "return");
+                    "eventpublish", "publishevent", "publish_event", "patchconcept", "return");
     private static final Set<String> PROCEDURE_CONCEPT_STEP_TYPES =
             Set.of("conceptquery", "readconcept", "read_concept", "listconcepts", "list_concepts",
                     "runquery", "run_query", "conceptcreate", "conceptupdate", "saveconcept", "save_concept",
-                    "conceptdelete", "deleteconcept", "delete_concept");
+                    "conceptdelete", "deleteconcept", "delete_concept", "patchconcept");
+    private static final Set<String> PROCEDURE_PATCH_STEP_TYPES =
+            Set.of("patchconcept");
     private static final Set<String> PROCEDURE_QUERY_STEP_TYPES =
             Set.of("conceptquery", "runquery", "run_query");
     private static final Set<String> PROCEDURE_CALL_STEP_TYPES =
@@ -223,6 +225,9 @@ final class PackValidation {
             if (PROCEDURE_CAPABILITY_CALL_STEP_TYPES.contains(type)) {
                 validateProcedureCapabilityCall(procedureName, stepPath, step, capabilitiesByLower, errors);
             }
+            if (PROCEDURE_PATCH_STEP_TYPES.contains(type)) {
+                validateProcedurePatchConcept(procedureName, stepPath, step, entitiesByLower, errors);
+            }
             if (PROCEDURE_BRANCH_STEP_TYPES.contains(type) && !hasText(step.condition())) {
                 errors.add("Procedure " + procedureName + " step " + stepPath + ": condition is required");
             }
@@ -290,6 +295,42 @@ final class PackValidation {
         if (!declaredArity.equals(actualArity)) {
             errors.add("Procedure " + procedureName + " step " + stepPath + ": capability " + step.capability() + "."
                     + step.operation() + " expects " + declaredArity + " arg(s) but this call supplies " + actualArity);
+        }
+    }
+
+    /**
+     * Move 4 (docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md): a {@code patchConcept} step names a real
+     * concept and id (already checked generically by {@code PROCEDURE_CONCEPT_STEP_TYPES}), plus a
+     * non-empty {@code set} whose every key is a declared field of that concept -- catching a typo'd
+     * field name at author time (the REG-71 class of bug) instead of at runtime.
+     */
+    private static void validateProcedurePatchConcept(
+            String procedureName,
+            String stepPath,
+            ProcedureStepAst step,
+            Map<String, ConceptAst> entitiesByLower,
+            List<String> errors
+    ) {
+        if (!hasText(step.id())) {
+            errors.add("Procedure " + procedureName + " step " + stepPath + ": id is required for patchConcept");
+        }
+        if (step.set() == null || step.set().isEmpty()) {
+            errors.add("Procedure " + procedureName + " step " + stepPath + ": set is required for patchConcept and must not be empty");
+            return;
+        }
+        ConceptAst concept = entitiesByLower.get(normalize(step.concept()));
+        if (concept == null) {
+            return; // already reported by the generic PROCEDURE_CONCEPT_STEP_TYPES check
+        }
+        Set<String> declaredFields = concept.getFields().stream()
+                .map(FieldAst::getName)
+                .map(SemanticValidator::normalize)
+                .collect(Collectors.toSet());
+        for (String field : step.set().keySet()) {
+            if (!declaredFields.contains(normalize(field))) {
+                errors.add("Procedure " + procedureName + " step " + stepPath + ": set names a field not declared on "
+                        + step.concept() + ": " + field);
+            }
         }
     }
 

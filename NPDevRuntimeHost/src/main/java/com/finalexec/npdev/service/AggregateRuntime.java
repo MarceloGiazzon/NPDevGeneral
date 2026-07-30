@@ -148,7 +148,25 @@ public class AggregateRuntime {
         gateway.save(new ConceptWriteRequest(aggregate.root(), rootId, ctx.tenantId(), rootFields), ctx);
 
         commitCollections(aggregate.collections(), rootDraft, rootId, gateway, ctx);
-        return load(aggregate.name(), rootId, ctx);
+        Map<String, Object> reloaded = load(aggregate.name(), rootId, ctx);
+
+        // Move 4 (docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md): a declared onCommit procedure runs here,
+        // AFTER the tree is written but still INSIDE this method's caller's transaction (commit()
+        // wraps commitInternal in transactionTemplate when one is available) -- so a side-effect
+        // write this procedure makes to a SIBLING concept (e.g. syncing a stock ledger) either lands
+        // together with the aggregate tree or rolls back together with it. Throwing (not returning a
+        // failure) is deliberate: it propagates out through the transaction boundary and rolls back
+        // every prior write in this commit, root included. This is only safe because G1 (REG-72)
+        // landed first -- on the pre-G1 code this hook would have silently half-committed.
+        if (aggregate.onCommit() != null && procedureRunner != null) {
+            ProcedureExecutionResult onCommitResult = procedureRunner.execute(aggregate.onCommit(), reloaded, ctx);
+            if (!onCommitResult.ok()) {
+                throw new IllegalStateException(
+                        "Aggregate " + aggregate.name() + " onCommit procedure " + aggregate.onCommit()
+                                + " failed: " + onCommitResult.failureCode() + " " + onCommitResult.failureMessage());
+            }
+        }
+        return reloaded;
     }
 
     /**

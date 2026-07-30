@@ -23,6 +23,7 @@ class CompiledAggregateCanonicalJsonTest {
                                         "destinos", "MovtoDestino", null, "itemSeq", "owned", null,
                                         List.of(), Map.of())),
                         Map.of())),
+                null,
                 Map.of());
 
         return new CompiledModel(
