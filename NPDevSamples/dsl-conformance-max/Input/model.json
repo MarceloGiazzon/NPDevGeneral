@@ -366,6 +366,18 @@
           "metadata": {
             "purpose": "Coverage for panelAction.scope=row (G2, docs/MOVE2_PANEL_ACTIONS_PLAN.md): rendered once per row of \"orders\", invoked with that row's id, visible only while status is pending."
           }
+        },
+        {
+          "name": "exportCsv",
+          "label": "Export CSV",
+          "binding": "procedure",
+          "procedure": "GenerateOrderExportProcedure",
+          "resultAs": "download",
+          "filename": "widget-orders.csv",
+          "contentType": "text/csv",
+          "metadata": {
+            "purpose": "Coverage for panelAction.resultAs=download (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md Wave 4 / Gap 7): 'produce a file, stream it, persist nothing' -- PanelRuntime.executeAction returns the procedure's return value as a real file download instead of a JSON result."
+          }
         }
       ]
     }
@@ -420,6 +432,14 @@
       "steps": [
         { "name": "echo-input", "type": "mapValue", "value": "$input", "target": "resultado" },
         { "name": "return-resultado", "type": "return", "value": "$resultado" }
+      ]
+    },
+    {
+      "name": "GenerateOrderExportProcedure",
+      "description": "Coverage for panelAction.resultAs=download (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md Wave 4 / Gap 7) -- a pure-generation procedure standing in for a real one like WmsOffice's GerarTemplateContagemProcedure. The client-facing action's resultAs/filename/contentType turn this return value into a real streamed file instead of a JSON result.",
+      "steps": [
+        { "name": "echo-input", "type": "mapValue", "value": "$input", "target": "exportPayload" },
+        { "name": "return-export", "type": "return", "value": "$exportPayload" }
       ]
     },
     {

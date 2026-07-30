@@ -1140,7 +1140,10 @@ public final class JsonModelParser {
                     parseObjectMap(actionNode.get("metadata")),
                     readText(actionNode, "scope"),
                     readText(actionNode, "dataSource"),
-                    parseTextArray(actionNode.get("inputFields"))
+                    parseTextArray(actionNode.get("inputFields")),
+                    readText(actionNode, "resultAs"),
+                    readText(actionNode, "filename"),
+                    readText(actionNode, "contentType")
             ));
         }
         return out;

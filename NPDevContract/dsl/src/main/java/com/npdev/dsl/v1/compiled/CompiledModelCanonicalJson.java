@@ -844,6 +844,10 @@ public final class CompiledModelCanonicalJson {
             node.put("scope", safe(action.scope()));
             node.put("dataSource", safe(action.dataSource()));
             node.set("inputFields", toStringArray(action.inputFields()));
+            // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 4 / Gap 7): resultAs="download".
+            node.put("resultAs", safe(action.resultAs()));
+            node.put("filename", safe(action.filename()));
+            node.put("contentType", safe(action.contentType()));
             out.add(node);
         }
         return out;

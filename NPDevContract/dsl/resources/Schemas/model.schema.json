@@ -3190,6 +3190,23 @@
             "minLength": 1
           },
           "description": "Field names collected from the user before invoking this action, then passed as the flow/procedure input. Same declaration shape as panelDataSource.addFormFields."
+        },
+        "resultAs": {
+          "type": "string",
+          "enum": [
+            "download"
+          ],
+          "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md): only valid on a procedure-binding action. When 'download', PanelRuntime.executeAction returns the procedure's return value as a real file download (Content-Disposition: attachment) instead of a JSON result -- requires filename and contentType."
+        },
+        "filename": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md): required with resultAs: download -- the filename offered in the Content-Disposition header."
+        },
+        "contentType": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md): required with resultAs: download -- the MIME type served in the Content-Type header, e.g. text/csv."
         }
       },
       "additionalProperties": false

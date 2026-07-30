@@ -6,7 +6,10 @@ import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 @RestController
@@ -94,14 +98,32 @@ public class RuntimeUiMetadataController {
         return run(() -> requirePanelRuntime().loadPanel(panelName, input, currentContext(request)));
     }
 
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 4 / Gap 7): a {@code resultAs: "download"}
+     * action's response carries a download descriptor (see {@link PanelRuntime#executeAction})
+     * instead of the usual JSON envelope -- streamed here as a real file response (Content-
+     * Disposition: attachment) rather than a JSON blob a client would have to save by hand.
+     */
     @PostMapping("/panels/{panelName}/actions/{actionName}")
-    public Map<String, Object> executePanelAction(
+    public ResponseEntity<?> executePanelAction(
             HttpServletRequest request,
             @PathVariable String panelName,
             @PathVariable String actionName,
             @RequestBody(required = false) Map<String, Object> body
     ) {
-        return run(() -> requirePanelRuntime().executeAction(panelName, actionName, body, currentContext(request)));
+        Map<String, Object> response = run(() ->
+                requirePanelRuntime().executeAction(panelName, actionName, body, currentContext(request)));
+        if ("download".equals(response.get("resultAs"))) {
+            String filename = String.valueOf(response.getOrDefault("filename", "download"));
+            String contentType = String.valueOf(response.getOrDefault("contentType", "application/octet-stream"));
+            Object content = response.get("result");
+            byte[] bytes = content == null ? new byte[0] : String.valueOf(content).getBytes(StandardCharsets.UTF_8);
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                    .contentType(MediaType.parseMediaType(contentType))
+                    .body(bytes);
+        }
+        return ResponseEntity.ok(response);
     }
 
     /** LIFT-ROWOPS-P3: creates a row in a declared Panel dataSource with {@code rowOps: [add]}. */

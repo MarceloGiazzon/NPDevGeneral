@@ -70,7 +70,10 @@ class PanelRuntimeInputFieldsTest {
                         Map.of(),
                         null,
                         null,
-                        List.of("recebimentoId", "expedicaoId", "produtoId", "quantidade", "dataAtivacao")
+                        List.of("recebimentoId", "expedicaoId", "produtoId", "quantidade", "dataAtivacao"),
+                        null,
+                        null,
+                        null
                 )),
                 Map.of(),
                 Map.of(),

@@ -1439,7 +1439,10 @@ public final class ModelCompiler {
                     sortObjectMap(action.metadata()),
                     action.scope(),
                     action.dataSource(),
-                    sortedStrings(action.inputFields())
+                    sortedStrings(action.inputFields()),
+                    action.resultAs(),
+                    action.filename(),
+                    action.contentType()
             ));
         }
         out.sort(Comparator.comparing(action -> normalize(action.name())));
