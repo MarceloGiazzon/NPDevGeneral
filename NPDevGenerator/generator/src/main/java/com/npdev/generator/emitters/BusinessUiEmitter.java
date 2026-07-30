@@ -73,6 +73,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         ctx.put("entityPackage", "com.npdev.generated.entities");
         ctx.put("concepts", conceptTemplateModels(persistedConcepts, conceptsByName, resolver));
         ctx.put("superUserRole", superUserRole == null || superUserRole.isBlank() ? "ADMIN" : superUserRole.trim());
+        ctx.put("panelRoutes", panelRouteNodes(model));
 
         writer.writeRelative(
                 "src/main/java/com/npdev/generated/controllers/GeneratedConceptCrudController.java",
@@ -495,6 +496,50 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             return false;
         }
         return BuiltinPackComposer.BUILTIN_PACK_ALIASES.contains(name.substring(0, sep));
+    }
+
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 6): {@code panel.route} was threaded through
+     * parsing/compiling/canonical-JSON/the manifest built below, but nothing ever registered it as
+     * an actual browser-navigable URL -- a panel was reachable only by clicking its left-nav link
+     * (keyed by panel {@code name}, not {@code route}); typing the declared route into a browser
+     * resolved to nothing. This emits one real {@code @GetMapping(route)} redirect per ordinary
+     * declared panel, landing on exactly what that panel's own nav link already goes to: the
+     * Aggregate Workbench's dedicated static page for a workbench panel ({@code dataVia:
+     * "aggregate"}, ADR-0005), or the SPA's hash-addressed section for every other declared panel
+     * (business-ui-app.mustache's own {@code sectionId}/{@code resolveHashTarget} already honor a
+     * hash present at page load as a deep link, so no client-side change is needed). Trusted-source
+     * panels ({@code metadata.trustedSourceEntrypoint}) are excluded --
+     * {@code TrustedSourceControllerTemplate} already emits a real {@code @GetMapping(route)} for
+     * those, and registering both would collide on startup.
+     */
+    private static List<Map<String, Object>> panelRouteNodes(CompiledModel model) {
+        List<Map<String, Object>> nodes = new ArrayList<>();
+        if (model == null) {
+            return nodes;
+        }
+        Set<String> seenRoutes = new LinkedHashSet<>();
+        int index = 0;
+        for (CompiledPanel panel : model.getPanels()) {
+            String route = panel.route();
+            if (route == null || route.isBlank() || !route.startsWith("/") || !seenRoutes.add(route)) {
+                continue;
+            }
+            if (panel.metadata() != null && panel.metadata().get("trustedSourceEntrypoint") != null) {
+                continue;
+            }
+            boolean isWorkbench = panel.metadata() != null && "aggregate".equals(panel.metadata().get("dataVia"));
+            String redirectTarget = isWorkbench
+                    ? "/npdev-workbench/" + panel.name() + ".html"
+                    : "/npdev-business-ui/#concept-" + ("__panel-" + panel.name() + "__").replaceAll("[^a-zA-Z0-9_-]", "-");
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("methodName", "panelRoute" + index);
+            node.put("routeLiteral", TrustedSourceTemplateSupport.quote(route));
+            node.put("redirectLiteral", TrustedSourceTemplateSupport.quote("redirect:" + redirectTarget));
+            nodes.add(node);
+            index++;
+        }
+        return nodes;
     }
 
     /**

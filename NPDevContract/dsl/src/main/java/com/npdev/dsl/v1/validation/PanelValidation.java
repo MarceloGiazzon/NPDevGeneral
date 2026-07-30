@@ -128,6 +128,9 @@ final class PanelValidation {
             if (hasAggregate && !aggregateNames.contains(normalize(autoPanel.aggregate()))) {
                 errors.add(here + ": aggregate not found: " + autoPanel.aggregate());
             }
+            if (hasText(autoPanel.route()) && !autoPanel.route().startsWith("/")) {
+                errors.add(here + ": route must start with '/': " + autoPanel.route());
+            }
 
             for (String surface : autoPanel.surfaces()) {
                 String normalizedSurface = normalize(surface);
@@ -215,6 +218,9 @@ final class PanelValidation {
             }
             if (!panelRoutes.add(normalize(panel.route()))) {
                 errors.add("Panel " + panel.name() + ": duplicate panel route " + panel.route());
+            }
+            if (hasText(panel.route()) && !panel.route().startsWith("/")) {
+                errors.add("Panel " + panel.name() + ": route must start with '/': " + panel.route());
             }
             for (PanelDataSourceAst dataSource : panel.dataSources()) {
                 if (hasText(dataSource.concept()) && !entitiesByLower.containsKey(normalize(dataSource.concept()))) {

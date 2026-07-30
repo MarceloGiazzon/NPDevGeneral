@@ -15,4 +15,10 @@ public class GeneratedBusinessUiRouteController {
     public String businessUiIndex() {
         return "forward:/npdev-business-ui/index.html";
     }
+{{#panelRoutes}}
+    @GetMapping({{{routeLiteral}}})
+    public String {{methodName}}() {
+        return {{{redirectLiteral}}};
+    }
+{{/panelRoutes}}
 }
