@@ -277,10 +277,14 @@
     }
     // Procedure-over-aggregate actions (P6): invoke a declared procedure over the current draft and patch
     // it in place (no persistence — the user reviews and commits explicitly). Only offered while editable.
-    function invokeAction(action) {
+    // extraInput (G3, docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md) merges declared inputFields values on top
+    // of the current draft before posting -- how a "propose" action (e.g. parse pasted text into a
+    // brand-new/empty draft) seeds input the draft itself has no field for.
+    function invokeAction(action, extraInput) {
       msg.className = "msg"; msg.textContent = (action.label || "Running") + "…";
+      var body = Object.assign({}, store.toDraft(), extraInput || {});
       fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate) + "/invoke/" + encodeURIComponent(action.procedure),
-        { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(store.toDraft()) })
+        { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(body) })
         .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, b: b }; }); })
         .then(function (res) {
           if (res.ok) { pendingMsg = { className: "msg ok", text: (action.label || "Done") + " — review and Save." }; store.patch(res.b); render(); }
@@ -292,8 +296,23 @@
       (store.descriptor.actions || [])
         .filter(function (a) { return !si.allowedActions || si.allowedActions.indexOf(a.procedure) !== -1; })
         .forEach(function (a) {
+          var fieldNames = a.inputFields || [];
+          var inputsByField = {};
+          if (fieldNames.length) {
+            var inlineForm = el('<span class="action-inputs" style="margin-left:6px"></span>');
+            fieldNames.forEach(function (field) {
+              var input = el('<input type="text" placeholder="' + field + '" style="margin-right:4px">');
+              inputsByField[field] = input;
+              inlineForm.append(input);
+            });
+            barDiv.append(inlineForm);
+          }
           var b = el('<button class="btn" style="background:var(--np-accent);margin-left:6px">' + (a.label || a.procedure) + '</button>');
-          b.onclick = function () { invokeAction(a); };
+          b.onclick = function () {
+            var extraInput = {};
+            Object.keys(inputsByField).forEach(function (field) { extraInput[field] = inputsByField[field].value; });
+            invokeAction(a, extraInput);
+          };
           barDiv.append(b);
         });
     }
