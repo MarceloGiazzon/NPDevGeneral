@@ -2796,6 +2796,7 @@
             "if",
             "loop",
             "forEach",
+            "mapList",
             "conceptQuery",
             "readConcept",
             "listConcepts",
@@ -2827,6 +2828,10 @@
           "type": "boolean",
           "default": false,
           "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md): opts a patchConcept step into creating a brand-new record (generated id, built from set alone) when id does not resolve to an existing one, instead of failing CONCEPT_NOT_FOUND. Default false preserves patchConcept's original patch-not-upsert semantics (REG-75)."
+        },
+        "select": {
+          "type": "object",
+          "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3A): mapList's per-item field map -- one output object per item in items, built by resolving each declared field against the current loop item (bound as `as`) using the same literal-vs-$ref convention as patchConcept's set."
         },
         "condition": {
           "type": "string",

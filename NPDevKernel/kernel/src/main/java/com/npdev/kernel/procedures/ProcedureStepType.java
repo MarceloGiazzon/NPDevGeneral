@@ -12,6 +12,7 @@ public enum ProcedureStepType {
     CALL_PROCEDURE,
     IF,
     FOR_EACH,
+    MAP_LIST,
     MAP_VALUE,
     RETURN
 }

@@ -422,6 +422,16 @@
       ]
     },
     {
+      "name": "MapImportedLinesProcedure",
+      "description": "Coverage for mapList (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md Wave 3A / Gap 6): the produtosConhecidos/chavesJaImportadas auto-match shape from conferencia-fiscal.html's Romaneio Import -- forEach can iterate but cannot PRODUCE a collection, so parsing an external list into a properly-shaped one had no procedure step until now. select resolves per-item via the SAME literal-vs-$ref convention as patchConcept's set (sku is a $ref into the current loop item bound by 'as'; source is a fixed literal).",
+      "steps": [
+        { "name": "map-lines", "type": "mapList", "items": "$input.itens", "as": "linha",
+          "select": { "sku": "$linha.codigo", "quantity": "$linha.qtd", "source": "import" },
+          "target": "mappedLines" },
+        { "name": "return-mapped", "type": "return", "value": "$mappedLines" }
+      ]
+    },
+    {
       "name": "AuditWidgetOrderProcedure",
       "description": "Coverage for aggregate.onCommit + the patchConcept procedure step (Move 4, docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md). Runs after WidgetOrderAggregate commits (input is the freshly reloaded tree) and patches a SIBLING record -- WidgetOrderAudit, outside the aggregate's own tree -- with the order's current lineCount/status, preserving every other field on that audit row. set values resolve like every other *Ref field: a literal by default, a leading '$' resolves against procedure state.",
       "steps": [

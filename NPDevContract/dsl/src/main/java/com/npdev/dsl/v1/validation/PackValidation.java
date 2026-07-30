@@ -92,11 +92,14 @@ final class PackValidation {
 
     private static final Set<String> PROCEDURE_STEP_TYPES =
             Set.of("assign", "mapvalue", "map_value", "condition", "if", "loop", "foreach",
+                    "maplist", "map_list", "listtransform",
                     "conceptquery", "readconcept", "read_concept", "listconcepts", "list_concepts",
                     "runquery", "run_query", "conceptcreate", "conceptupdate", "saveconcept", "save_concept",
                     "conceptdelete", "deleteconcept", "delete_concept", "procedurecall", "callprocedure",
                     "call_procedure", "capabilitycall", "callcapability", "call_capability",
                     "eventpublish", "publishevent", "publish_event", "patchconcept", "return");
+    private static final Set<String> PROCEDURE_MAP_LIST_STEP_TYPES =
+            Set.of("maplist", "map_list", "listtransform");
     private static final Set<String> PROCEDURE_CONCEPT_STEP_TYPES =
             Set.of("conceptquery", "readconcept", "read_concept", "listconcepts", "list_concepts",
                     "runquery", "run_query", "conceptcreate", "conceptupdate", "saveconcept", "save_concept",
@@ -112,7 +115,7 @@ final class PackValidation {
     private static final Set<String> PROCEDURE_BRANCH_STEP_TYPES =
             Set.of("condition", "if");
     private static final Set<String> PROCEDURE_LOOP_STEP_TYPES =
-            Set.of("foreach", "loop");
+            Set.of("foreach", "loop", "maplist", "map_list", "listtransform");
 
     static void validateQueries(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         Set<String> queryNames = new HashSet<>();
@@ -228,11 +231,14 @@ final class PackValidation {
             if (PROCEDURE_PATCH_STEP_TYPES.contains(type)) {
                 validateProcedurePatchConcept(procedureName, stepPath, step, entitiesByLower, errors);
             }
+            if (PROCEDURE_MAP_LIST_STEP_TYPES.contains(type)) {
+                validateProcedureMapList(procedureName, stepPath, step, errors);
+            }
             if (PROCEDURE_BRANCH_STEP_TYPES.contains(type) && !hasText(step.condition())) {
                 errors.add("Procedure " + procedureName + " step " + stepPath + ": condition is required");
             }
             if (PROCEDURE_LOOP_STEP_TYPES.contains(type) && !hasText(step.items())) {
-                errors.add("Procedure " + procedureName + " step " + stepPath + ": forEach requires items");
+                errors.add("Procedure " + procedureName + " step " + stepPath + ": " + step.type() + " requires items");
             }
             validateProcedureSteps(procedureName, stepPath + ".then", step.thenSteps(), entitiesByLower, queryNames, procedureNames, capabilitiesByLower, errors);
             validateProcedureSteps(procedureName, stepPath + ".else", step.elseSteps(), entitiesByLower, queryNames, procedureNames, capabilitiesByLower, errors);
@@ -331,6 +337,27 @@ final class PackValidation {
                 errors.add("Procedure " + procedureName + " step " + stepPath + ": set names a field not declared on "
                         + step.concept() + ": " + field);
             }
+        }
+    }
+
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3A / Gap 6): a {@code mapList} step needs a
+     * non-empty {@code select} (the per-item field map, resolved via the same convention as
+     * {@code patchConcept}'s {@code set}) and a {@code target} naming the output list -- unlike
+     * {@code patchConcept}, there is no concept to check field names against, since the produced
+     * list is not itself a persisted record.
+     */
+    private static void validateProcedureMapList(
+            String procedureName,
+            String stepPath,
+            ProcedureStepAst step,
+            List<String> errors
+    ) {
+        if (step.select() == null || step.select().isEmpty()) {
+            errors.add("Procedure " + procedureName + " step " + stepPath + ": select is required for mapList and must not be empty");
+        }
+        if (!hasText(step.target())) {
+            errors.add("Procedure " + procedureName + " step " + stepPath + ": target is required for mapList (names the output list)");
         }
     }
 

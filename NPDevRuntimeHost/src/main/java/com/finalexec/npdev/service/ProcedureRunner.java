@@ -208,6 +208,13 @@ public class ProcedureRunner {
                     normalized(step.as()) == null ? "item" : normalized(step.as()),
                     step.steps().stream().map(s -> toProcedureStep(s, adapterIdByCapability)).toList()
             );
+            case MAP_LIST -> ProcedureStep.mapList(
+                    stepName(step),
+                    refOf(step.items(), "items"),
+                    normalized(step.as()) == null ? "item" : normalized(step.as()),
+                    step.select(),
+                    target
+            );
             case MAP_VALUE -> ProcedureStep.mapValue(stepName(step), refOf(step.value(), "input"), target);
             case RETURN -> ProcedureStep.returnValue(stepName(step), refOf(step.value(), target == null ? "input" : target));
         };

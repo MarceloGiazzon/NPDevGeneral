@@ -188,6 +188,26 @@ public record ProcedureStep(
                 null, collectionRef, itemKey, null, null, null, List.of(), List.of(), steps, Map.of(), false);
     }
 
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3A / Gap 6): a list transform/comprehension --
+     * builds a NEW list, one output object per input item, unlike {@link #forEach} which only
+     * iterates for side effects. {@code selectValues} is resolved per-item via the same
+     * literal-vs-{@code $ref} convention {@code patchConcept}'s {@code setValues} already
+     * established (reusing {@code setValues} itself, not a new field, since the resolution rule --
+     * not the field name -- is what {@code select} borrows).
+     */
+    public static ProcedureStep mapList(
+            String name,
+            String collectionRef,
+            String itemKey,
+            Map<String, Object> selectValues,
+            String outputKey
+    ) {
+        return new ProcedureStep(name, ProcedureStepType.MAP_LIST, null, null, null,
+                null, null, null, null, List.of(), outputKey, null, null,
+                null, collectionRef, itemKey, null, null, null, List.of(), List.of(), List.of(), selectValues, false);
+    }
+
     public static ProcedureStep mapValue(String name, String valueRef, String outputKey) {
         return new ProcedureStep(name, ProcedureStepType.MAP_VALUE, null, null, null,
                 null, null, null, null, List.of(), outputKey, null, null,
@@ -244,6 +264,7 @@ public record ProcedureStep(
             case "callprocedure", "procedurecall" -> ProcedureStepType.CALL_PROCEDURE;
             case "if", "condition" -> ProcedureStepType.IF;
             case "foreach", "loop" -> ProcedureStepType.FOR_EACH;
+            case "maplist", "listtransform" -> ProcedureStepType.MAP_LIST;
             case "mapvalue", "assign" -> ProcedureStepType.MAP_VALUE;
             case "return" -> ProcedureStepType.RETURN;
             default -> throw new IllegalArgumentException("Unsupported procedure step type: " + rawType);
