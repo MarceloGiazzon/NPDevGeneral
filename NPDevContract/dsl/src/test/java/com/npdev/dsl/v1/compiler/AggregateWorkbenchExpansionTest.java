@@ -270,4 +270,78 @@ class AggregateWorkbenchExpansionTest {
         assertEquals("destinoTotal", derived.get(1).get("name"));
         assertEquals("Destino Total", derived.get(1).get("label"), "an explicit label must survive as declared");
     }
+
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 2C / Gap 2, docs/MOVE3_G2_CHECKLISTS.md): a
+     * declared visibleWhen predicate must survive the compiler on a top-level section, a nested
+     * band, AND an action -- all keyed off the same {@code transaction.metadata.visibleWhen} map
+     * (collections/bands) or the action's own {@code visibleWhen} key. A blank expression must be
+     * dropped rather than passed through, and an undeclared collection/action must carry none.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void workbenchVisibleWhenSurvivesOnSectionBandAndActionAndBlankIsDropped() throws Exception {
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.visiblewhen", "version": "1.0",
+              "concepts": [
+                { "name": "Expedicao", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "tipo", "type": "string" } ] },
+                { "name": "ExpedicaoItem", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "expedicaoId", "type": "uuid" } ] },
+                { "name": "MovtoOrigem", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "itemSeq", "type": "uuid" } ] }
+              ],
+              "aggregates": [
+                { "name": "Expedicao", "root": "Expedicao",
+                  "collections": [
+                    { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned",
+                      "collections": [
+                        { "name": "origens", "concept": "MovtoOrigem", "childField": "itemSeq", "ownership": "owned" }
+                      ] },
+                    { "name": "avulsos", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned" }
+                  ] }
+              ],
+              "autoPanels": [ { "aggregate": "Expedicao",
+                "transaction": { "metadata": {
+                  "visibleWhen": {
+                    "itens": "$root.tipo == 'RECEBIMENTO'",
+                    "origens": "$root.tipo != 'CANCELADA'",
+                    "avulsos": ""
+                  },
+                  "actions": [
+                    { "label": "Confirmar", "procedure": "ConfirmarProcedure", "visibleWhen": "$root.tipo == 'RECEBIMENTO'" },
+                    { "label": "Sempre", "procedure": "SempreProcedure" }
+                  ]
+                } } } ]
+            }
+            """;
+        CompiledModel model = compile(json);
+
+        CompiledPanel workbench = model.getPanels().stream()
+                .filter(p -> "ExpedicaoWorkbench".equals(p.name())).findFirst()
+                .orElseThrow(() -> new AssertionError("expected ExpedicaoWorkbench"));
+        Map<String, Object> wb = (Map<String, Object>) workbench.metadata().get("workbench");
+
+        List<Map<String, Object>> sections = (List<Map<String, Object>>) wb.get("sections");
+        Map<String, Object> itens = sections.stream().filter(s -> "itens".equals(s.get("collection"))).findFirst().orElseThrow();
+        assertEquals("$root.tipo == 'RECEBIMENTO'", itens.get("visibleWhen"),
+                "a declared collection visibleWhen must survive verbatim");
+
+        Map<String, Object> avulsos = sections.stream().filter(s -> "avulsos".equals(s.get("collection"))).findFirst().orElseThrow();
+        assertNull(avulsos.get("visibleWhen"), "a blank expression must be dropped, not passed through");
+
+        List<Map<String, Object>> bands = (List<Map<String, Object>>) itens.get("bands");
+        Map<String, Object> origens = bands.get(0);
+        assertEquals("$root.tipo != 'CANCELADA'", origens.get("visibleWhen"),
+                "a declared band visibleWhen must survive verbatim");
+
+        List<Map<String, Object>> actions = (List<Map<String, Object>>) wb.get("actions");
+        assertEquals("$root.tipo == 'RECEBIMENTO'", actions.get(0).get("visibleWhen"),
+                "a declared action visibleWhen must survive verbatim");
+        assertNull(actions.get(1).get("visibleWhen"), "an action without visibleWhen has none -- always shown");
+    }
 }

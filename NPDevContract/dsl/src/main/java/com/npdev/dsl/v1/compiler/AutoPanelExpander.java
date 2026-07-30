@@ -113,9 +113,13 @@ final class AutoPanelExpander {
         // Per-band pickers (C6 "Seleciona …"): declared under transaction.metadata.bandPickers keyed by band
         // collection name; each attaches a source Selection panel the client offers as a modal row picker.
         Map<String, Map<String, Object>> bandPickers = bandPickers(autoPanel.transaction());
+        // Conditional surface by toggle (Move 5, Wave 2C / Gap 2, docs/MOVE3_G2_CHECKLISTS.md): declared
+        // under transaction.metadata.visibleWhen keyed by collection/band name, same untyped mechanism as
+        // bandPickers above. PRESENTATION-ONLY -- see visibleWhenByCollection()'s own doc comment.
+        Map<String, String> visibleWhen = visibleWhenByCollection(autoPanel.transaction());
         List<Map<String, Object>> sections = new ArrayList<>();
         for (CompiledAggregateCollection collection : aggregate.collections()) {
-            sections.add(sectionDescriptor(collection, fieldsByConcept, bandPickers));
+            sections.add(sectionDescriptor(collection, fieldsByConcept, bandPickers, visibleWhen));
         }
         workbench.put("sections", sections);
         // Lifecycle gating (ADR-0005 / P5): the root concept's declared state machine drives the
@@ -222,6 +226,10 @@ final class AutoPanelExpander {
             if (applyTo != null) {
                 action.put("applyTo", applyTo);
             }
+            Object visibleWhen = map.get("visibleWhen");
+            if (visibleWhen != null && !String.valueOf(visibleWhen).isBlank()) {
+                action.put("visibleWhen", String.valueOf(visibleWhen).trim());
+            }
             actions.add(action);
         }
         return actions;
@@ -268,12 +276,16 @@ final class AutoPanelExpander {
 
     private static Map<String, Object> sectionDescriptor(
             CompiledAggregateCollection collection, Map<String, List<String>> fieldsByConcept,
-            Map<String, Map<String, Object>> bandPickers) {
+            Map<String, Map<String, Object>> bandPickers, Map<String, String> visibleWhen) {
         Map<String, Object> section = new LinkedHashMap<>();
         section.put("collection", collection.name());
         section.put("concept", collection.concept());
         section.put("childField", collection.childField());
         section.put("columns", columnsFor(fieldsByConcept, collection.concept()));
+        String sectionVisibleWhen = visibleWhen.get(collection.name());
+        if (sectionVisibleWhen != null) {
+            section.put("visibleWhen", sectionVisibleWhen);
+        }
         List<Map<String, Object>> bands = new ArrayList<>();
         for (CompiledAggregateCollection child : collection.collections()) {
             Map<String, Object> band = new LinkedHashMap<>();
@@ -285,10 +297,49 @@ final class AutoPanelExpander {
             if (picker != null) {
                 band.put("picker", picker);
             }
+            String bandVisibleWhen = visibleWhen.get(child.name());
+            if (bandVisibleWhen != null) {
+                band.put("visibleWhen", bandVisibleWhen);
+            }
             bands.add(band);
         }
         section.put("bands", bands);
         return section;
+    }
+
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 2C / Gap 2, docs/MOVE3_G2_CHECKLISTS.md): read
+     * declared conditional-visibility predicates from {@code transaction.metadata.visibleWhen} -- an
+     * object keyed by collection/band name, each value a predicate expression the client evaluates
+     * against the current draft (see workbench-page.html.mustache's {@code evaluateVisibleWhen}):
+     * {@code $root.<field> == '<literal>'} / {@code !=}. Same untyped-metadata mechanism as
+     * {@code bandPickers} above. Entries with a blank key or a non-string value are skipped.
+     *
+     * <p><b>Presentation-only.</b> This must never gate persistence or authorization: a hidden
+     * collection whose rows already exist in the draft still commits them unchanged (the client only
+     * skips rendering the region -- it never touches {@code store.toDraft()}'s contents). Anything
+     * stronger (e.g. clearing hidden rows) would silently delete data via the reconcile path.
+     */
+    private static Map<String, String> visibleWhenByCollection(CompiledAutoPanelSurface transaction) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (transaction == null) {
+            return out;
+        }
+        Object declared = transaction.metadata().get("visibleWhen");
+        if (!(declared instanceof Map<?, ?> map)) {
+            return out;
+        }
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (entry.getKey() == null || String.valueOf(entry.getKey()).isBlank()) {
+                continue;
+            }
+            Object expression = entry.getValue();
+            if (expression == null || String.valueOf(expression).isBlank()) {
+                continue;
+            }
+            out.put(String.valueOf(entry.getKey()).trim(), String.valueOf(expression).trim());
+        }
+        return out;
     }
 
     /**
