@@ -137,6 +137,15 @@ final class AutoPanelExpander {
         if (recompute != null) {
             workbench.put("recompute", recompute);
         }
+        // Derived display fields (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md Wave 2B / M6's "balanced
+        // banner", docs/MOVE3_G2_CHECKLISTS.md): a display-only value the client computes from the
+        // CURRENT draft on every render -- never a real field on any concept, never part of the
+        // commit payload (the client never writes it into the draft it edits, only into a separate
+        // read-only view). No server round trip, unlike recompute above.
+        List<Map<String, Object>> derived = derivedFields(autoPanel.transaction());
+        if (!derived.isEmpty()) {
+            workbench.put("derived", derived);
+        }
 
         Map<String, Object> metadata = surfaceMetadata(base, "transaction", rootConcept);
         metadata.put("dataVia", "aggregate");
@@ -298,6 +307,47 @@ final class AutoPanelExpander {
             return null;
         }
         return String.valueOf(declared).trim();
+    }
+
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 2B): read declared derived display fields from
+     * {@code transaction.metadata.derived} -- a list of {@code {name, expression, label?}} objects.
+     * {@code expression} uses a deliberately narrow syntax the client evaluates itself (see
+     * workbench-page.html.mustache's {@code evaluateDerived}): {@code sum(<path>)}, where
+     * {@code <path>} walks nested collections ({@code itens[].posicoes[].quantidade}) with an
+     * optional {@code .filter(field=='literal')} narrowing one array first -- not general CEL
+     * (reusing the platform's actual expression-cel engine client-side in a browser is not
+     * realistic), but the same expression LANGUAGE FAMILY, not a second one invented from scratch.
+     * Entries missing a name or expression are skipped.
+     */
+    private static List<Map<String, Object>> derivedFields(CompiledAutoPanelSurface transaction) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        if (transaction == null) {
+            return out;
+        }
+        Object declared = transaction.metadata().get("derived");
+        if (!(declared instanceof List<?> list)) {
+            return out;
+        }
+        for (Object entry : list) {
+            if (!(entry instanceof Map<?, ?> map)) {
+                continue;
+            }
+            Object name = map.get("name");
+            Object expression = map.get("expression");
+            if (name == null || String.valueOf(name).isBlank()
+                    || expression == null || String.valueOf(expression).isBlank()) {
+                continue;
+            }
+            Object label = map.get("label");
+            Map<String, Object> field = new LinkedHashMap<>();
+            field.put("name", String.valueOf(name).trim());
+            field.put("label", label == null || String.valueOf(label).isBlank()
+                    ? String.valueOf(name).trim() : String.valueOf(label).trim());
+            field.put("expression", String.valueOf(expression).trim());
+            out.add(field);
+        }
+        return out;
     }
 
     /**

@@ -315,6 +315,13 @@
                 "purpose": "Coverage for the Workbench applyTo action mapping (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md Wave 2A) -- without applyTo, invoking a pure-computation action replaces the WHOLE draft with its raw result (invokeAction's other branch, store.patch); applyTo instead extracts named fields and appends one new row to a declared collection. map values follow patchConcept's own literal-by-default / $-ref convention -- quantity here is a literal, sku is a $ref into the raw invoke() result."
               }
             }
+          ],
+          "derived": [
+            {
+              "name": "totalQuantity",
+              "expression": "sum(lines[].quantity)",
+              "label": "Total quantity"
+            }
           ]
         }
       }

@@ -44,6 +44,10 @@
   .msg.ok{color:var(--np-ok)}.msg.err{color:var(--np-danger)}
   .rev{cursor:pointer;color:#fff;font-size:11px;opacity:.85;text-decoration:underline;background:none;border:0}
   .rev:hover{opacity:1}
+  .derived{display:flex;gap:16px;flex-wrap:wrap;padding:5px 12px;font-size:12px;background:#fff;border:1px solid var(--np-line);border-radius:6px;margin-bottom:10px}
+  .derived .item{display:flex;gap:5px;align-items:baseline}
+  .derived .item .lbl{color:var(--np-muted)}
+  .derived .item .val{font-weight:600}
   .pick{cursor:pointer;color:var(--np-accent);font-size:12px;display:inline-block;margin-top:4px;margin-left:12px}
   .modal{position:fixed;inset:0;background:rgba(20,28,38,.45);display:flex;align-items:center;justify-content:center;z-index:50}
   .modal-card{background:#fff;border-radius:8px;max-width:640px;width:92%;max-height:80vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.3)}
@@ -178,6 +182,49 @@
       .catch(function () { /* recompute is best-effort; keep the user's draft on failure */ });
   }
 
+  // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 2B / M6 "balanced banner",
+  // docs/MOVE3_G2_CHECKLISTS.md): a DELIBERATELY narrow expression subset for display-only derived
+  // fields -- not a client-side clone of the platform's real expression-cel engine (unrealistic to
+  // reimplement CEL in a browser), just enough syntax for "sum across a nested path, optionally
+  // filtering one collection first" that a balanced-totals banner needs. Only ever reads root; it
+  // never writes anything back into the draft, so a derived value can never leak into a commit.
+  //   sum(itens[].posicoes[].quantidade)
+  //   sum(posicoes[].filter(papel=='Origem').quantidade)
+  function evaluateDerived(root, expression) {
+    var m = /^sum\((.+)\)$/.exec(String(expression || "").trim());
+    if (!m) return undefined;
+    var segments = m[1].split(".");
+    var cur = [root];
+    for (var i = 0; i < segments.length; i++) {
+      var seg = segments[i];
+      var isLast = i === segments.length - 1;
+      var filterMatch = /^(\w+)\[\]\.filter\((\w+)==['"]([^'"]*)['"]\)$/.exec(seg);
+      var arrayMatch = /^(\w+)\[\]$/.exec(seg);
+      if (filterMatch) {
+        var arrField = filterMatch[1], filterField = filterMatch[2], filterValue = filterMatch[3];
+        var next = [];
+        cur.forEach(function (item) {
+          ((item && item[arrField]) || []).forEach(function (child) {
+            if (String(child[filterField]) === filterValue) next.push(child);
+          });
+        });
+        cur = next;
+      } else if (arrayMatch) {
+        var field = arrayMatch[1];
+        var next2 = [];
+        cur.forEach(function (item) { ((item && item[field]) || []).forEach(function (child) { next2.push(child); }); });
+        cur = next2;
+      } else if (isLast) {
+        var total = 0;
+        cur.forEach(function (item) { total += Number(item && item[seg]) || 0; });
+        return total;
+      } else {
+        cur = cur.map(function (item) { return item && item[seg]; }).filter(function (x) { return x != null; });
+      }
+    }
+    return undefined;
+  }
+
   var store = null, selected = null, pendingMsg = null;
 
   function render() {
@@ -198,6 +245,22 @@
     var hb = el('<div class="body"></div>'); var f = el('<form class="grid2"></form>');
     v.header.fields.forEach(function (fld) { f.append(el('<label>' + fld + ':</label>')); var d = el("<div></div>"); d.append(cell(v.header.values[fld], function (val) { store.editHeader(fld, val); }, "h:" + fld)); f.append(d); });
     hb.append(f); head.append(hb); app.append(head);
+
+    // Derived display fields (M6 "balanced banner"): evaluated fresh against the CURRENT draft on
+    // every render, shown here, never written back into it.
+    var derivedDefs = store.descriptor.derived || [];
+    if (derivedDefs.length) {
+      var draftNow = store.toDraft();
+      var banner = el('<div class="derived"></div>');
+      derivedDefs.forEach(function (d) {
+        var value = evaluateDerived(draftNow, d.expression);
+        var item = el('<span class="item"></span>');
+        item.append(el('<span class="lbl">' + (d.label || d.name) + ':</span>'));
+        item.append(el('<span class="val">' + (value == null ? "—" : String(value)) + '</span>'));
+        banner.append(item);
+      });
+      app.append(banner);
+    }
 
     v.sections.forEach(function (sec) {
       var items = el('<div class="region r-items"></div>');
