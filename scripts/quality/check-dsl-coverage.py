@@ -92,6 +92,13 @@ def _has_aggregate_on_commit(model: dict) -> bool:
     )
 
 
+def _has_aggregate_on_validate(model: dict) -> bool:
+    return any(
+        isinstance(a, dict) and a.get("onValidate")
+        for a in (model.get("aggregates", None) or [])
+    )
+
+
 def _has_procedure_create_if_missing(model: dict) -> bool:
     return any(
         str(s.get("type", "")).lower() == "patchconcept" and s.get("createIfMissing")
@@ -181,6 +188,10 @@ FEATURE_DETECTORS = {
     # (one output object per input item), unlike forEach which only iterates for side effects.
     "procedure.mapList": lambda m: _has_procedure_step_type(m, "mapList"),
     "aggregate.onCommit": _has_aggregate_on_commit,
+    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3B / Gap 8): onValidate is a sibling of
+    # onCommit, not a flag on it -- tracked separately so a regression to just this field still
+    # fails the build.
+    "aggregate.onValidate": _has_aggregate_on_validate,
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1B): patchConcept's create-if-missing opt-in
     # (the create half of REG-77) is a boolean flag on an existing step type, not a new step type
     # itself -- tracked separately so a regression to just this flag still fails the build.

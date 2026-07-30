@@ -635,7 +635,8 @@ public final class ModelCompiler {
                 aggregateAst.root(),
                 compileAggregateCollections(aggregateAst.collections()),
                 aggregateAst.onCommit(),
-                sortObjectMap(aggregateAst.metadata())
+                sortObjectMap(aggregateAst.metadata()),
+                aggregateAst.onValidate()
         );
     }
 

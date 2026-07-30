@@ -476,7 +476,8 @@ class PanelRuntimeTest {
                 null,
                 Map.of(),
                 Map.of(),
-                false
+                false,
+                Map.of()
         );
         CompiledProcedure procedure = new CompiledProcedure(
                 "SubmitContact",

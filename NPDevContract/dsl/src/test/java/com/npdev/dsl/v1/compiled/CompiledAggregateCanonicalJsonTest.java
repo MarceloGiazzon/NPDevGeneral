@@ -24,7 +24,8 @@ class CompiledAggregateCanonicalJsonTest {
                                         List.of(), Map.of())),
                         Map.of())),
                 null,
-                Map.of());
+                Map.of(),
+                "ValidateExpedicaoProcedure");
 
         return new CompiledModel(
                 "wms.agg", "1.0.0", "1.0",
@@ -43,6 +44,9 @@ class CompiledAggregateCanonicalJsonTest {
         CompiledAggregate agg = back.getAggregates().get(0);
         assertEquals("Expedicao", agg.name());
         assertEquals("Expedicao", agg.root());
+        // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3B): onValidate must survive the round
+        // trip alongside onCommit -- a sibling field, same writer/reader risk LNCH-1 already flagged.
+        assertEquals("ValidateExpedicaoProcedure", agg.onValidate());
 
         assertEquals(1, agg.collections().size());
         CompiledAggregateCollection itens = agg.collections().get(0);

@@ -839,7 +839,8 @@ public final class JsonModelParser {
                     parseAggregateCollections(aggregateNode.get("collections"),
                             "aggregates[" + name + "].collections"),
                     readText(aggregateNode, "onCommit"),
-                    parseObjectMap(aggregateNode.get("metadata"))
+                    parseObjectMap(aggregateNode.get("metadata")),
+                    readText(aggregateNode, "onValidate")
             ));
         }
         return out;

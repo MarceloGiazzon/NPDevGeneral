@@ -261,6 +261,7 @@
       "name": "WidgetOrderAggregate",
       "root": "WidgetOrder",
       "onCommit": "AuditWidgetOrderProcedure",
+      "onValidate": "ValidateWidgetOrderProcedure",
       "collections": [
         {
           "name": "lines",
@@ -429,6 +430,14 @@
           "select": { "sku": "$linha.codigo", "quantity": "$linha.qtd", "source": "import" },
           "target": "mappedLines" },
         { "name": "return-mapped", "type": "return", "value": "$mappedLines" }
+      ]
+    },
+    {
+      "name": "ValidateWidgetOrderProcedure",
+      "description": "Coverage for aggregate.onValidate (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md Wave 3B / Gap 8): a pre-commit guard run BEFORE the root upsert (a sibling of onCommit, not a flag on it -- different timing, different contract: a non-ok result aborts with NO writes at all). This one is a trivial pass-through, standing in for a real guard like WmsOffice's ValidateMovimentoProcedure, which rejects a commit outright via readConcept's own CONCEPT_NOT_FOUND when a foreign reference is dangling.",
+      "steps": [
+        { "name": "echo-linecount", "type": "mapValue", "value": "$lineCount", "target": "validated" },
+        { "name": "return-validated", "type": "return", "value": "$validated" }
       ]
     },
     {
