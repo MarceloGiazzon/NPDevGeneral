@@ -279,6 +279,20 @@
       "route": "/widget-orders",
       "metadata": {
         "purpose": "Coverage for autoPanels[] outside WmsOffice."
+      },
+      "transaction": {
+        "metadata": {
+          "actions": [
+            {
+              "label": "Apply status",
+              "procedure": "RenameOrderStatusProcedure",
+              "inputFields": ["newStatus"],
+              "metadata": {
+                "purpose": "Coverage for workbench transaction.metadata.actions[].inputFields (G3, docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md): a workbench action collects this field via an inline mini-form and merges it into the draft posted to invoke(), so a 'propose' procedure can seed input the current draft has no field for."
+              }
+            }
+          ]
+        }
       }
     }
   ],
@@ -354,6 +368,14 @@
           "type": "return",
           "value": "$widgetOrderId"
         }
+      ]
+    },
+    {
+      "name": "RenameOrderStatusProcedure",
+      "description": "Coverage for a workbench action's inputFields (G3, docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md): reads the client-collected 'newStatus' input and maps it onto the draft's real 'status' field via mapValue's dotted-path/direct-ref resolution -- the same shape ParseNfeProcedure uses in WmsOffice for its bigger propose->review->commit composition.",
+      "steps": [
+        { "name": "map-status", "type": "mapValue", "value": "$newStatus", "target": "status" },
+        { "name": "return-status", "type": "return", "value": "$status" }
       ]
     }
   ],

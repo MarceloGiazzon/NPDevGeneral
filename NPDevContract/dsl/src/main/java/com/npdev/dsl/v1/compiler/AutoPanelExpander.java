@@ -167,8 +167,15 @@ final class AutoPanelExpander {
 
     /**
      * Read the workbench's procedure-invoke actions from {@code transaction.metadata.actions}: a list of
-     * {@code {label, procedure}} objects. Entries lacking a procedure name are skipped; the label defaults
-     * to the procedure name. This is the P6 seam before a first-class {@code actions} authoring slot.
+     * {@code {label, procedure, inputFields}} objects. Entries lacking a procedure name are skipped; the
+     * label defaults to the procedure name. This is the P6 seam before a first-class {@code actions}
+     * authoring slot.
+     *
+     * <p>{@code inputFields} (G3, docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md) mirrors {@code panelAction
+     * .inputFields} (Move 2 G3): a list of scalar field names the client collects via an inline
+     * "collect input, then invoke" mini-form and merges into the draft body posted to
+     * {@code /invoke/{procedure}} -- the mechanism a "propose" step (e.g. parse pasted XML into a
+     * draft) needs to seed input a brand-new/empty draft has no field for otherwise.
      */
     @SuppressWarnings("unchecked")
     private static List<Map<String, Object>> workbenchActions(CompiledAutoPanelSurface transaction) {
@@ -193,6 +200,15 @@ final class AutoPanelExpander {
             action.put("label", label == null || String.valueOf(label).isBlank()
                     ? String.valueOf(procedure) : String.valueOf(label));
             action.put("procedure", String.valueOf(procedure).trim());
+            List<String> inputFields = new ArrayList<>();
+            if (map.get("inputFields") instanceof List<?> fieldList) {
+                for (Object field : fieldList) {
+                    if (field != null && !String.valueOf(field).isBlank()) {
+                        inputFields.add(String.valueOf(field).trim());
+                    }
+                }
+            }
+            action.put("inputFields", inputFields);
             actions.add(action);
         }
         return actions;
