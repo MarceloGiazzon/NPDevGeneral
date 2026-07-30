@@ -47,6 +47,7 @@ ALLOWLIST_PATH = REPO_ROOT / "scripts" / "quality" / "dsl-coverage-allowlist.jso
 FLOW_STEP_TYPES = (
     "invariantCheck", "capabilityCall", "generatedAction", "emitEvent", "scheduleEvent",
     "return", "branch", "awaitEvent", "createConcept", "updateConcept", "map", "forEach",
+    "callProcedure",
 )
 
 
@@ -88,6 +89,13 @@ def _has_aggregate_on_commit(model: dict) -> bool:
     return any(
         isinstance(a, dict) and a.get("onCommit")
         for a in (model.get("aggregates", None) or [])
+    )
+
+
+def _has_procedure_create_if_missing(model: dict) -> bool:
+    return any(
+        str(s.get("type", "")).lower() == "patchconcept" and s.get("createIfMissing")
+        for s in _all_procedure_steps(model)
     )
 
 
@@ -133,6 +141,10 @@ FEATURE_DETECTORS = {
     # zero-coverage-fails-the-build guarantee as every other feature this gate already tracks.
     "procedure.patchConcept": lambda m: _has_procedure_step_type(m, "patchConcept"),
     "aggregate.onCommit": _has_aggregate_on_commit,
+    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1B): patchConcept's create-if-missing opt-in
+    # (the create half of REG-77) is a boolean flag on an existing step type, not a new step type
+    # itself -- tracked separately so a regression to just this flag still fails the build.
+    "procedure.createIfMissing": _has_procedure_create_if_missing,
 }
 
 

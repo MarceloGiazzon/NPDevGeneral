@@ -171,6 +171,12 @@ final class FlowValidation {
                 .collect(Collectors.toSet());
         Set<String> referencedCapabilities = new HashSet<>();
         Map<String, String> ownedConceptToAggregate = AggregateValidation.ownedConceptToAggregate(modelAst);
+        // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): callProcedure needs to know which
+        // procedure names actually exist, same as a capability step already checks operationsByCapability.
+        Set<String> knownProcedureNames = modelAst.getProcedures().stream()
+                .map(ProcedureAst::name)
+                .map(SemanticValidator::normalize)
+                .collect(Collectors.toSet());
 
         for (FlowAst flow : modelAst.getFlows()) {
             String flowKey = normalize(flow.getName());
@@ -205,6 +211,7 @@ final class FlowValidation {
                     eventNames,
                     conceptInvariantRefs,
                     referencedCapabilities,
+                    knownProcedureNames,
                     new HashSet<>(),
                     errors
             );
@@ -255,6 +262,15 @@ final class FlowValidation {
             if (("capability".equals(type) || "capabilitycall".equals(type))
                     && "persistence".equals(capability)
                     && ("save".equals(operation) || "delete".equals(operation))) {
+                return true;
+            }
+            // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): a callProcedure step commonly
+            // invokes a procedure that persists (saveConcept/patchConcept) -- this heuristic can't
+            // see inside the named procedure's own steps, but treating callProcedure itself as
+            // persistence-implying (like the capability/persistence.save case above) avoids a false
+            // "does not imply persistence" warning on the one flow-step type invented specifically
+            // to reach patchConcept.
+            if ("callprocedure".equals(type)) {
                 return true;
             }
             if (hasPersistenceSemantics(step.getThenSteps()) || hasPersistenceSemantics(step.getElseSteps())) {
@@ -336,6 +352,7 @@ final class FlowValidation {
             Set<String> eventNames,
             Set<String> conceptInvariantRefs,
             Set<String> referencedCapabilities,
+            Set<String> knownProcedureNames,
             Set<String> knownStepNames,
             List<String> errors
     ) {
@@ -373,6 +390,7 @@ final class FlowValidation {
                         eventNames,
                         conceptInvariantRefs,
                         referencedCapabilities,
+                        knownProcedureNames,
                         knownStepNames,
                         errors
                 );
@@ -385,9 +403,11 @@ final class FlowValidation {
                         eventNames,
                         conceptInvariantRefs,
                         referencedCapabilities,
+                        knownProcedureNames,
                         knownStepNames,
                         errors
                 );
+                case "callprocedure" -> validateCallProcedureStep(flow, step, knownProcedureNames, errors);
                 default -> errors.add("Flow " + flow.getName() + " step " + step.getName()
                         + ": unsupported step type " + step.getType());
             }
@@ -421,6 +441,7 @@ final class FlowValidation {
             Set<String> eventNames,
             Set<String> conceptInvariantRefs,
             Set<String> referencedCapabilities,
+            Set<String> knownProcedureNames,
             Set<String> knownStepNames,
             List<String> errors
     ) {
@@ -460,6 +481,7 @@ final class FlowValidation {
                 eventNames,
                 conceptInvariantRefs,
                 referencedCapabilities,
+                knownProcedureNames,
                 knownStepNames,
                 errors
         );
@@ -672,6 +694,28 @@ final class FlowValidation {
         }
     }
 
+    /** Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): callProcedure invokes a named
+     * procedure synchronously from a flow -- the referenced name must resolve to a real declared
+     * procedure, same cross-reference discipline as a capability step's operationsByCapability
+     * lookup. {@code procedure} being non-blank is already enforced by the JSON Schema. */
+    private static void validateCallProcedureStep(
+            FlowAst flow,
+            StepAst step,
+            Set<String> knownProcedureNames,
+            List<String> errors
+    ) {
+        String procedure = normalize(step.getProcedure());
+        if (procedure.isBlank()) {
+            errors.add("Flow " + flow.getName() + " step " + step.getName()
+                    + ": callProcedure step must define procedure");
+            return;
+        }
+        if (!knownProcedureNames.contains(procedure)) {
+            errors.add("Flow " + flow.getName() + " step " + step.getName()
+                    + ": references unknown procedure " + step.getProcedure());
+        }
+    }
+
     private static void validateReturnStep(FlowAst flow, StepAst step, List<String> errors) {
         String value = normalize(step.getReturnValue());
         if (value.isBlank()) {
@@ -705,6 +749,7 @@ final class FlowValidation {
             Set<String> eventNames,
             Set<String> conceptInvariantRefs,
             Set<String> referencedCapabilities,
+            Set<String> knownProcedureNames,
             Set<String> knownStepNames,
             List<String> errors
     ) {
@@ -720,11 +765,11 @@ final class FlowValidation {
 
         if (!step.getThenSteps().isEmpty()) {
             validateFlowSteps(flow, step.getThenSteps(), operationsByCapability, eventNames,
-                    conceptInvariantRefs, referencedCapabilities, knownStepNames, errors);
+                    conceptInvariantRefs, referencedCapabilities, knownProcedureNames, knownStepNames, errors);
         }
         if (!step.getElseSteps().isEmpty()) {
             validateFlowSteps(flow, step.getElseSteps(), operationsByCapability, eventNames,
-                    conceptInvariantRefs, referencedCapabilities, knownStepNames, errors);
+                    conceptInvariantRefs, referencedCapabilities, knownProcedureNames, knownStepNames, errors);
         }
     }
 

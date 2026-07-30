@@ -654,6 +654,8 @@ public final class CompiledModelCanonicalJson {
             putNullableBoolean(node, "audit", step.audit());
             node.set("metadata", toObjectMap(step.metadata()));
             node.set("set", toObjectMap(step.set()));
+            // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1B): patchConcept's create-if-missing opt-in.
+            putNullableBoolean(node, "createIfMissing", step.createIfMissing());
             steps.add(node);
         }
         return steps;
@@ -1008,6 +1010,8 @@ public final class CompiledModelCanonicalJson {
                 stepNode.put("maxLoopIterations", flowStep.getMaxLoopIterations());
             }
             stepNode.set("onFailureSteps", toFlowSteps(flowStep.getOnFailureSteps()));
+            // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): callProcedure's procedure name.
+            stepNode.put("procedureName", safe(flowStep.getProcedureName()));
             steps.add(stepNode);
         }
         return steps;

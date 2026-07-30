@@ -37,6 +37,7 @@ public final class StepAst {
     private final List<StepAst> loopSteps;
     private final Integer maxLoopIterations;
     private final List<StepAst> onFailureSteps;
+    private final String procedure;
 
     public StepAst(
             String name,
@@ -210,8 +211,8 @@ public final class StepAst {
                 loopSteps, maxLoopIterations, List.of());
     }
 
-    /** LNCH-17: canonical constructor, adding {@code onFailureSteps} -- declared compensation
-     * steps run in reverse completion order when a later step in the same flow terminally fails. */
+    /** LNCH-17: adds {@code onFailureSteps} -- declared compensation steps run in reverse
+     * completion order when a later step in the same flow terminally fails. */
     public StepAst(
             String name,
             String type,
@@ -244,6 +245,47 @@ public final class StepAst {
             Integer maxLoopIterations,
             List<StepAst> onFailureSteps
     ) {
+        this(name, type, checkpoint, scope, invariants, capability, operation, capabilityPolicy, input, output, args,
+                event, payload, data, condition, thenSteps, elseSteps, awaitEvent, awaitRef, awaitMatchCorrelation,
+                awaitPayloadMatch, delaySeconds, returnValue, action, generatedActionName, collectionRef, itemKey,
+                loopSteps, maxLoopIterations, onFailureSteps, null);
+    }
+
+    /** Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): canonical constructor, adding
+     * {@code procedure} -- the procedure name a {@code callProcedure} flow step invokes. */
+    public StepAst(
+            String name,
+            String type,
+            String checkpoint,
+            String scope,
+            List<String> invariants,
+            String capability,
+            String operation,
+            CapabilityPolicyAst capabilityPolicy,
+            String input,
+            String output,
+            List<String> args,
+            String event,
+            String payload,
+            Map<String, String> data,
+            String condition,
+            List<StepAst> thenSteps,
+            List<StepAst> elseSteps,
+            String awaitEvent,
+            String awaitRef,
+            Boolean awaitMatchCorrelation,
+            Map<String, String> awaitPayloadMatch,
+            Long delaySeconds,
+            String returnValue,
+            ActionMetadataAst action,
+            String generatedActionName,
+            String collectionRef,
+            String itemKey,
+            List<StepAst> loopSteps,
+            Integer maxLoopIterations,
+            List<StepAst> onFailureSteps,
+            String procedure
+    ) {
         this.name = name;
         this.type = type;
         this.checkpoint = checkpoint;
@@ -274,6 +316,7 @@ public final class StepAst {
         this.loopSteps = loopSteps == null ? List.of() : new ArrayList<>(loopSteps);
         this.maxLoopIterations = maxLoopIterations;
         this.onFailureSteps = onFailureSteps == null ? List.of() : new ArrayList<>(onFailureSteps);
+        this.procedure = procedure;
     }
 
     public String getName() { return name; }
@@ -351,4 +394,6 @@ public final class StepAst {
     public List<StepAst> getOnFailureSteps() {
         return Collections.unmodifiableList(onFailureSteps);
     }
+
+    public String getProcedure() { return procedure; }
 }

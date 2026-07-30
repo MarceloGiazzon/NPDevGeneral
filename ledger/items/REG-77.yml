@@ -2,9 +2,10 @@ id: REG-77
 title: "Neither procedures nor flows can create a brand-new sibling concept record with an auto-generated id from within a read-modify-write side effect -- patchConcept (REG-75/Move 4) only works on records that already exist, and flows have no patch step at all"
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-07-30
-verification: NOT_VERIFIED
+closed: 2026-07-30
+verification: VERIFIED_LIVE
 source: |
   docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md, sections 4.2 (Ativar's own crossDockingAtivo=true flag-sync)
   and 4.3 (SyncOcupacaoProcedure, closing docs/MOVE3_G2_CHECKLISTS.md's M8/M9 residual). Both were
@@ -75,3 +76,56 @@ detail: |
   `PostgresPersistenceCapabilityAdapter.save()` already does for flows. Either is a real, scoped
   platform change with its own risk surface (schema/compiled-model/canonical-JSON/validation, the
   same shape REG-75 itself required) -- named here rather than half-solved inline.
+
+  ---
+
+  **Resolution (2026-07-30, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, "Move 5" Wave 1):** option (a) AND
+  (b) both landed, closing this ledger item's literal claim in full:
+
+  - New flow step `callProcedure` (kernel `FlowStepDefinition.Type.CALL_PROCEDURE` +
+    `CallProcedureStep`): a flow can now synchronously invoke a named procedure, reusing the
+    procedure's OWN `ProcedureExecutor` -- giving flows every procedure step at once (patchConcept
+    included), not a bespoke per-step mirror. Wired live in `NpdevCapabilityBindingConfig.
+    kernelRunner()` against the SAME `ProcedureRunner`/registry `PanelRuntime`/`AggregateRuntime`
+    already use.
+  - `com.npdev.kernel.ports.IdProvider` is now wired into `DefaultProcedureExecutor`: `saveConcept`
+    falls back to a generated id on a blank/unresolved `idRef` (matching
+    `PostgresPersistenceCapabilityAdapter.save()`'s existing flow-side behavior), and `patchConcept`
+    gained an opt-in `createIfMissing` flag (default `false`, preserving REG-75's patch-not-upsert
+    semantics exactly) that builds a brand-new record with a generated id from `set` alone on a
+    `CONCEPT_NOT_FOUND` miss.
+  - Both proven RED->GREEN with real, targeted temporary-break checks (`KernelRunnerCallProcedureTest`,
+    `DefaultProcedureExecutorCreateIfMissingTest`), given real corpus coverage in
+    `dsl-conformance-max` (`step.callProcedure`, `procedure.createIfMissing`), and found (while
+    implementing) a real, previously-undiscovered silent-data-loss bug: `ModelResolver.cloneStep()`
+    -- a SECOND `StepAst` construction path used for flow `specializes` inheritance -- dropped the
+    new `procedure` field silently on every clone, with no ratchet test protecting against this
+    class of bug (only the compiled-JSON round trip has one). Fixed alongside.
+  - Applied live to WmsOffice: `AtivarCrossDocking` still creates `CrossDocking` via its existing
+    `createConcept` step (auto-id-generation there was never the missing piece), then calls the new
+    `SetCrossDockingFlagsProcedure` via `callProcedure` to set `crossDockingAtivo=true` on the linked
+    Recebimento/Expedicao -- the mirror of `Concluir`/`CancelarCrossDockingProcedure`'s own
+    clear-flag steps. This closes REG-77-A (Ativar's own flag-sync) in full.
+
+  **The crossdocking.html deletion this closure was supposed to unlock (plan §4.5/§5, "first HTML
+  deletion in five moves") is NOT executed.** Verified live before attempting it: the generated
+  app's `GeneratedBusinessUiRouteController` only maps `/npdev-business-ui` (and trailing slash) --
+  no controller serves an arbitrary declared Panel's own route (`CrossDockingConsolePanel`'s
+  `/crossdocking`) as a real, navigable page, and `menu.json`/`pages.json` both point at
+  `crossdocking.html` directly (`shell.js.mustache`'s `resolveHref` just returns `"/" + target` for
+  `kind: PAGE` -- it would happily navigate to `/crossdocking` too, but nothing serves that path).
+  Deleting the file now would strand the console with no reachable URL, a real regression the
+  situacao/flag-sync fixes above do not touch. This is exactly Wave 6's still-unstarted `panel.route`
+  finding ("threaded through nine files... nothing registers it as a navigable URL") landing early,
+  confirmed live rather than assumed. Left undeleted; revisit once Wave 6 lands.
+
+  **REG-77-B (SyncOcupacaoProcedure, M8/M9) is NOT closed by this** -- investigating it under Wave 1C
+  surfaced that `createIfMissing` alone is not enough: the original `syncOcupacao` client logic finds
+  an existing `LocalArmazenagemLote` by a (localArmazenagemId, loteId) PAIR (not by id at all -- there
+  is no declared query expressing this lookup yet), and when found, INCREMENTS its existing quantity
+  by a delta rather than setting an absolute value -- and no procedure step can read an old value and
+  compute old+delta (`patchConcept`'s `set` is literal-or-ref copy only, never an expression; there is
+  no arithmetic/accumulation primitive anywhere in the procedure step vocabulary). This is a second,
+  independent missing primitive, not a shortfall of `createIfMissing` itself -- named precisely and
+  filed separately as REG-78 rather than folded in here or half-solved with an absolute-overwrite that
+  would silently produce wrong occupancy counts.

@@ -541,7 +541,8 @@ public final class NPDevCliMain {
                     concept,
                     refOf(step.id(), "id"),
                     step.set(),
-                    target
+                    target,
+                    step.createIfMissing()
             );
             case CALL_CAPABILITY -> ProcedureStep.callCapability(
                     stepName(step),

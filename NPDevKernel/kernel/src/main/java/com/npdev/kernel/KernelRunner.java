@@ -30,6 +30,8 @@ import com.npdev.kernel.ports.ExecutionTracer;
 import com.npdev.kernel.ports.SchemaValidator;
 import com.npdev.kernel.ports.EventSchemaProvider;
 import com.npdev.kernel.ports.PermissionEvaluator;
+import com.npdev.kernel.procedures.ProcedureDefinition;
+import com.npdev.kernel.procedures.ProcedureExecutor;
 import com.npdev.kernel.schema.SchemaObject;
 import com.npdev.kernel.trace.FlowTrace;
 import com.npdev.kernel.trace.FlowTraceMeta;
@@ -82,6 +84,12 @@ final EventBus eventBus;
     private PermissionEvaluator permissionEvaluator = PermissionEvaluator.allowAll();
     private final MetricsSink metricsSink;
     private final IdProvider idProvider;
+    // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): optional, set-after-construction like
+    // eventSchemaProvider/permissionEvaluator above -- a callProcedure flow step is a no-op-safe
+    // addition that most existing KernelRunner callers (and all 16 of its constructors) never need
+    // to know about; CallProcedureStep fails cleanly with NO_PROCEDURE_RUNNER when unset.
+    private ProcedureExecutor procedureExecutor;
+    private Map<String, ProcedureDefinition> procedureRegistry = Map.of();
     private final ThreadLocal<String> currentFlowContext = new ThreadLocal<>();
     private static final Object UNRESOLVED = new Object();
     private static final int CIRCUIT_FAILURE_THRESHOLD = 5;
@@ -97,6 +105,28 @@ final EventBus eventBus;
     public KernelRunner withPermissionEvaluator(PermissionEvaluator evaluator) {
         this.permissionEvaluator = evaluator == null ? PermissionEvaluator.allowAll() : evaluator;
         return this;
+    }
+
+    /** Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): wires a {@code callProcedure} flow
+     * step to a real {@link ProcedureExecutor} and its named procedure registry. Follow
+     * {@link com.npdev.kernel.ports.FlowDefinitionProvider}'s own precedent -- the caller already
+     * assembles a {@code Map<String, ProcedureDefinition>} for its own ProcedureExecutor
+     * construction; this just shares that same map. */
+    public KernelRunner withProcedureExecutor(
+            ProcedureExecutor procedureExecutor,
+            Map<String, ProcedureDefinition> procedureRegistry
+    ) {
+        this.procedureExecutor = procedureExecutor;
+        this.procedureRegistry = procedureRegistry == null ? Map.of() : Map.copyOf(procedureRegistry);
+        return this;
+    }
+
+    ProcedureExecutor procedureExecutor() {
+        return procedureExecutor;
+    }
+
+    ProcedureDefinition findProcedureDefinition(String name) {
+        return name == null ? null : procedureRegistry.get(name);
     }
 
 
@@ -1221,6 +1251,12 @@ final EventBus eventBus;
                     }
                     case RETURN -> {
                         return ReturnStep.execute(this, req);
+                    }
+                    case CALL_PROCEDURE -> {
+                        StepExecutionOutcome outcome = CallProcedureStep.execute(this, req);
+                        if (outcome != null) {
+                            return outcome;
+                        }
                     }
                     default -> {
                         stepInfo.put("unsupportedType", String.valueOf(step.getType()));

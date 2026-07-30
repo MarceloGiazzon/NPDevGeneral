@@ -565,7 +565,8 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "itemKey"),
                 loopSteps,
                 optionalIntegerObject(node.get("maxLoopIterations")),
-                onFailureSteps
+                onFailureSteps,
+                optionalText(node, "procedureName")
         );
     }
 
@@ -784,7 +785,8 @@ public final class CompiledModelCanonicalJsonReader {
                     optionalBooleanObject(stepNode.get("trace")),
                     optionalBooleanObject(stepNode.get("audit")),
                     toObjectMap(stepNode.get("metadata")),
-                    toObjectMap(stepNode.get("set"))
+                    toObjectMap(stepNode.get("set")),
+                    optionalBooleanObject(stepNode.get("createIfMissing"))
             ));
         }
         return out;

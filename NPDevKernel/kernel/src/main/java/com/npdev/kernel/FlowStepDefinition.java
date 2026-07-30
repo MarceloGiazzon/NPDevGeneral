@@ -22,7 +22,14 @@ public final class FlowStepDefinition {
         /** LIFT-LOOP-P1: bounded iteration over a collection ref, mirroring Procedures'
          * forEach shape (collectionRef/itemKey/nested steps) -- but, unlike Procedures' plain
          * in-memory loop, durably checkpoints progress per iteration (see KernelRunner). */
-        FOR_EACH
+        FOR_EACH,
+        /** Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): synchronously invokes a named
+         * procedure from a flow -- the asymmetry this closes: procedure-to-procedure calls already
+         * existed (DefaultProcedureExecutor's CALL_PROCEDURE), flow-to-procedure did not. Gives
+         * flows every procedure step at once (patchConcept included) rather than mirroring each one
+         * into the flow engine individually. Synchronous and non-suspending -- procedures have no
+         * awaitEvent, so the call completes or fails within this one step; see CallProcedureStep. */
+        CALL_PROCEDURE
     }
 
     public enum InvariantCheckpoint {
@@ -64,6 +71,7 @@ public final class FlowStepDefinition {
     private final List<FlowStepDefinition> loopSteps;
     private final Integer maxLoopIterations;
     private final List<FlowStepDefinition> onFailureSteps;
+    private final String procedureName;
 
     private FlowStepDefinition(
             String name,
@@ -167,8 +175,8 @@ public final class FlowStepDefinition {
         );
     }
 
-    /** LIFT-LOOP-P1: canonical constructor, adding {@code collectionRef}/{@code itemKey}/
-     * {@code loopSteps}/{@code maxLoopIterations} for {@link Type#FOR_EACH}. */
+    /** LIFT-LOOP-P1: adds {@code collectionRef}/{@code itemKey}/{@code loopSteps}/
+     * {@code maxLoopIterations} for {@link Type#FOR_EACH}. */
     private FlowStepDefinition(
             String name,
             Type type,
@@ -203,6 +211,54 @@ public final class FlowStepDefinition {
             String itemKey,
             List<FlowStepDefinition> loopSteps,
             Integer maxLoopIterations
+    ) {
+        this(
+                name, type, checkpoint, invariantScope, invariants, capability, capabilityType,
+                capabilityAdapterId, capabilityExecutionPolicy, capabilityInputSchema, capabilityOutputSchema,
+                operation, inputRef, argsRefs, outputRef, eventName, payloadRef, eventDataRefs, condition,
+                thenSteps, elseSteps, awaitEventName, awaitRef, awaitMatchCorrelation, awaitPayloadMatchRefs,
+                delaySeconds, mapFromRef, mapToRef, returnRef, collectionRef, itemKey, loopSteps, maxLoopIterations,
+                null
+        );
+    }
+
+    /** Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): canonical constructor, adding
+     * {@code procedureName} for {@link Type#CALL_PROCEDURE}. */
+    private FlowStepDefinition(
+            String name,
+            Type type,
+            InvariantCheckpoint checkpoint,
+            String invariantScope,
+            List<String> invariants,
+            String capability,
+            String capabilityType,
+            String capabilityAdapterId,
+            CapabilityExecutionPolicy capabilityExecutionPolicy,
+            SchemaObject capabilityInputSchema,
+            SchemaObject capabilityOutputSchema,
+            String operation,
+            String inputRef,
+            List<String> argsRefs,
+            String outputRef,
+            String eventName,
+            String payloadRef,
+            Map<String, String> eventDataRefs,
+            String condition,
+            List<FlowStepDefinition> thenSteps,
+            List<FlowStepDefinition> elseSteps,
+            String awaitEventName,
+            String awaitRef,
+            boolean awaitMatchCorrelation,
+            Map<String, String> awaitPayloadMatchRefs,
+            Long delaySeconds,
+            String mapFromRef,
+            String mapToRef,
+            String returnRef,
+            String collectionRef,
+            String itemKey,
+            List<FlowStepDefinition> loopSteps,
+            Integer maxLoopIterations,
+            String procedureName
     ) {
         this.name = requireNonBlank(name, "name");
         this.type = type;
@@ -252,6 +308,7 @@ public final class FlowStepDefinition {
                 : Collections.unmodifiableList(new ArrayList<>(loopSteps));
         this.maxLoopIterations = maxLoopIterations;
         this.onFailureSteps = List.of();
+        this.procedureName = procedureName;
     }
 
     /**
@@ -296,6 +353,7 @@ public final class FlowStepDefinition {
         this.onFailureSteps = onFailureSteps == null
                 ? List.of()
                 : Collections.unmodifiableList(new ArrayList<>(onFailureSteps));
+        this.procedureName = source.procedureName;
     }
 
     /** LNCH-17: attaches declared compensation steps to an already-built step. */
@@ -751,6 +809,53 @@ public final class FlowStepDefinition {
         );
     }
 
+    /** Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): synchronously invokes a named
+     * procedure. {@code inputRef}/{@code outputRef} reuse the same state-ref convention every
+     * other step here uses -- {@code inputRef} may be null (procedure receives an empty map). */
+    public static FlowStepDefinition callProcedure(
+            String name,
+            String procedureName,
+            String inputRef,
+            String outputRef
+    ) {
+        return new FlowStepDefinition(
+                name,
+                Type.CALL_PROCEDURE,
+                null,
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                inputRef,
+                List.of(),
+                outputRef,
+                null,
+                null,
+                Map.of(),
+                null,
+                List.of(),
+                List.of(),
+                null,
+                null,
+                true,
+                Map.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                requireNonBlank(procedureName, "procedureName")
+        );
+    }
+
     public static FlowStepDefinition returnValue(String name, String returnRef) {
         return new FlowStepDefinition(
                 name,
@@ -913,6 +1018,10 @@ public final class FlowStepDefinition {
 
     public Integer getMaxLoopIterations() {
         return maxLoopIterations;
+    }
+
+    public String getProcedureName() {
+        return procedureName;
     }
 
     private static String requireNonBlank(String value, String field) {
