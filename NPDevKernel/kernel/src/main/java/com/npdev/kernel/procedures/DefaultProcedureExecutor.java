@@ -16,11 +16,13 @@ import com.npdev.kernel.ports.EventBus;
 import com.npdev.kernel.ports.IdProvider;
 
 import java.lang.reflect.Array;
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -209,6 +211,7 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
             case FOR_EACH -> forEach(definition, step, stepIndex, state, context, scope, recursionDepth);
             case MAP_LIST -> mapList(step, state);
             case MAP_VALUE -> mapValue(step, state);
+            case COMPUTE_VALUE -> computeValue(step, state);
             case RETURN -> returnValue(step, state);
         };
     }
@@ -216,6 +219,15 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
     private ProcedureStepResult saveConcept(ProcedureStep step, Map<String, Object> state, ExecutionContext context) {
         String id = resolveOrGenerateId(state, step.idRef(), step.conceptName());
         Map<String, Object> data = requireMap(state, step.dataRef(), step.name(), "dataRef");
+        // Found live (Move 5, final item / REG-78 investigation): a real governed ConceptGateway's
+        // semantic policy (ConfiguredConceptGatewaySemanticPolicy) requires every declared required
+        // field to be present IN THE DATA MAP, including "id" -- but resolveOrGenerateId's fallback
+        // id was never folded back into data, only passed as the write request's separate id
+        // parameter. Every dataRef that doesn't already carry an "id" key (the normal case for a
+        // fresh record, e.g. a client payload with no id yet) was silently CONCEPT_FIELD_REQUIRED-
+        // denied against any real policy -- invisible in kernel unit tests, which construct
+        // DefaultConceptGateway with a permissive/noop semantic policy, not a real one.
+        data.putIfAbsent("id", id);
         ConceptRecord saved = conceptGateway.save(new ConceptWriteRequest(step.conceptName(), id, null, data), context);
         putOutput(state, step.outputKey(), saved);
         return ProcedureStepResult.success(step);
@@ -273,6 +285,7 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
 
         String newId = idProvider.nextId(step.conceptName());
         Map<String, Object> created = new LinkedHashMap<>();
+        created.put("id", newId);
         step.setValues().forEach((key, raw) -> created.put(key, resolveSetValue(state, raw)));
         ConceptRecord saved = conceptGateway.save(new ConceptWriteRequest(step.conceptName(), newId, null, created), context);
         putOutput(state, step.outputKey(), saved);
@@ -546,6 +559,79 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         Object value = resolve(state, step.valueRef());
         putOutput(state, step.outputKey(), value);
         return ProcedureStepResult.success(step);
+    }
+
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, final item / REG-78): {@code left}/{@code right}
+     * live in {@code step.setValues()} (keys "left"/"right") and resolve via the SAME {@link
+     * #resolveSetValue} literal-vs-{@code $ref} convention {@code patchConcept}'s {@code set} and
+     * {@code mapList}'s {@code select} already use -- a fixed delta needs no "$", a value read off a
+     * prior step (e.g. {@code $existing.quantidade}) does. {@code step.operation()} carries the
+     * operator ("add"/"subtract", the minimum REG-78 named). Operands are coerced through
+     * {@link BigDecimal} so a "long" concept field (WMS quantities) added to a plain JSON integer
+     * literal doesn't round-trip through binary floating point; the result is normalized back to a
+     * {@code Long} when it has no fractional part, a {@code Double} otherwise.
+     */
+    private ProcedureStepResult computeValue(ProcedureStep step, Map<String, Object> state) {
+        Object leftRaw = resolveSetValue(state, step.setValues().get("left"));
+        Object rightRaw = resolveSetValue(state, step.setValues().get("right"));
+        BigDecimal left;
+        BigDecimal right;
+        try {
+            left = toBigDecimal(leftRaw);
+            right = toBigDecimal(rightRaw);
+        } catch (NumberFormatException | ArithmeticException exception) {
+            return ProcedureStepResult.failure(
+                    step,
+                    "COMPUTE_VALUE_INVALID_OPERAND",
+                    "Procedure computeValue requires numeric operands; got left=" + leftRaw + ", right=" + rightRaw
+            );
+        }
+        String operator = step.operation() == null ? "" : step.operation().trim().toLowerCase(Locale.ROOT);
+        BigDecimal result = switch (operator) {
+            case "add" -> left.add(right);
+            case "subtract" -> left.subtract(right);
+            default -> null;
+        };
+        if (result == null) {
+            return ProcedureStepResult.failure(
+                    step,
+                    "COMPUTE_VALUE_UNKNOWN_OPERATOR",
+                    "Procedure computeValue has an unknown operator (expected add/subtract): " + step.operation()
+            );
+        }
+        putOutput(state, step.outputKey(), normalizeComputedNumber(result));
+        return ProcedureStepResult.success(step);
+    }
+
+    private static BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            throw new NumberFormatException("computeValue operand is null");
+        }
+        if (value instanceof BigDecimal bigDecimal) {
+            return bigDecimal;
+        }
+        if (value instanceof Number number) {
+            return new BigDecimal(number.toString());
+        }
+        return new BigDecimal(String.valueOf(value).trim());
+    }
+
+    /**
+     * Deliberately an if/else, NOT a ternary: {@code cond ? stripped.longValueExact() :
+     * stripped.doubleValue()} would undergo Java's binary numeric promotion for conditional
+     * expressions (JLS 15.25) -- since one branch is {@code long} and the other {@code double}, the
+     * WHOLE expression's static type becomes {@code double}, silently widening the long branch's
+     * result to a double even when it is the one chosen. Found live: every whole-number computeValue
+     * result (e.g. 10+5) came back as a Double (15.0) instead of a Long (15) until this was an
+     * if/else, each branch autoboxing independently with no cross-branch promotion.
+     */
+    private static Object normalizeComputedNumber(BigDecimal value) {
+        BigDecimal stripped = value.stripTrailingZeros();
+        if (stripped.scale() <= 0) {
+            return stripped.longValueExact();
+        }
+        return stripped.doubleValue();
     }
 
     private ProcedureStepResult returnValue(ProcedureStep step, Map<String, Object> state) {

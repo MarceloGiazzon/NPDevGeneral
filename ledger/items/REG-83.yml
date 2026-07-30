@@ -1,0 +1,57 @@
+id: REG-83
+title: "saveConcept's blank-idRef auto-generate fallback and patchConcept's createIfMissing create half both silently denied CONCEPT_FIELD_REQUIRED against a real governed ConceptGateway -- the auto-generated id was never folded into the write's own data map"
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-07-30
+closed: 2026-07-30
+verification: VERIFIED_LIVE
+source: |
+  Found live while proving REG-78's SyncOcupacaoProcedure closure (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md,
+  final item) end to end against a real generated WmsOffice boot -- the very first real invocation
+  of patchConcept's createIfMissing against a real concept (LocalArmazenagemLote, an ordinary
+  required-id concept, not a special case) failed with CONCEPT_FIELD_REQUIRED. Every kernel unit
+  test exercising createIfMissing/saveConcept's auto-id fallback up to this point (including this
+  session's own dsl-conformance-max EnsureWidgetOrderAuditProcedure fixture and Wave 1B/REG-77's own
+  work) wired DefaultConceptGateway with a permissive/noop semantic policy, so none of them could
+  have caught this -- it took a real generated-app boot, with the real
+  ConfiguredConceptGatewaySemanticPolicy every actual app runs, to surface it.
+surface: kernel/procedure-runtime, kernel/concepts
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConfiguredConceptGatewaySemanticPolicy.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/procedures/DefaultProcedureExecutorAutoIdSemanticPolicyTest.java
+detail: |
+  `ConfiguredConceptGatewaySemanticPolicy.normalizeAndValidate` (the real, governed semantic policy
+  every generated app wires up) requires every concept field declared `required: true` to be present
+  in the WRITE REQUEST'S OWN `data` map -- including "id", which is `required: true` on essentially
+  every real concept (it is the primary key). Two procedure-step code paths generate a fresh id when
+  none was supplied, but neither ever added that id back into `data`:
+
+  1. `saveConcept`'s `resolveOrGenerateId` (Move 5 Wave 1B, closing REG-77's asymmetry with flow-
+     bound createConcept) resolves/generates `id`, but the step's own `data` (from `dataRef`, e.g.
+     `$input`) is used completely unmodified -- if the caller's payload has no "id" key yet (the
+     normal shape for a fresh record with an auto-generated id), the write is denied.
+  2. `patchConcept`'s `createIfMissing` (Move 5 Wave 1B, REG-77's create half) builds `created` from
+     `step.setValues()` alone -- also never including the freshly generated `newId`.
+
+  Both bugs share one root cause and one fix shape: the generated id was always passed correctly as
+  the `ConceptWriteRequest`'s OWN separate `id` parameter (so the RECORD got saved under the right
+  id when the write succeeded at all elsewhere, e.g. against a permissive/noop policy), but the
+  SEMANTIC POLICY validates `request.data()`, a different map that the id was never copied into.
+
+  **What this blocked, precisely**: EVERY procedure-level fresh-record write with an auto-generated
+  id (no explicit idRef, or createIfMissing's miss branch) against a real governed app -- not a
+  narrow case. This includes REG-77's own original Ativar/syncOcupacao motivation and this session's
+  EnsureWidgetOrderAuditProcedure corpus fixture, neither of which had been proven against a real
+  policy before now.
+
+  **Fix**: `saveConcept` now does `data.putIfAbsent("id", id)` before saving (putIfAbsent, not put,
+  so an id the caller's own data already carries -- e.g. a client-supplied id -- is never
+  overridden). `patchConcept`'s createIfMissing branch now does `created.put("id", newId)` before
+  applying `set`. RED/GREEN proven: reverted both one-line fixes, confirmed 2 of 3 new kernel tests
+  (`DefaultProcedureExecutorAutoIdSemanticPolicyTest`, using a REAL `ConfiguredConceptGatewaySemanticPolicy`
+  with a required "id" field, not a noop policy) failed exactly as expected, then restored the fix
+  and confirmed all 3 pass. Also confirmed live: WmsOffice's new `SyncOcupacaoProcedure` (REG-78)
+  successfully created a real `LocalArmazenagemLote` row with no client-supplied id, verified via a
+  direct REST GET showing the row persisted with the correct auto-generated id.

@@ -788,7 +788,9 @@ public final class CompiledModelCanonicalJsonReader {
                     toObjectMap(stepNode.get("metadata")),
                     toObjectMap(stepNode.get("set")),
                     optionalBooleanObject(stepNode.get("createIfMissing")),
-                    toObjectMap(stepNode.get("select"))
+                    toObjectMap(stepNode.get("select")),
+                    toObjectValue(stepNode.get("left")),
+                    toObjectValue(stepNode.get("right"))
             ));
         }
         return out;

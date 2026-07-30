@@ -14,5 +14,6 @@ public enum ProcedureStepType {
     FOR_EACH,
     MAP_LIST,
     MAP_VALUE,
+    COMPUTE_VALUE,
     RETURN
 }

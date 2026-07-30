@@ -1333,7 +1333,9 @@ public final class ModelCompiler {
                     sortObjectMap(step.metadata()),
                     sortObjectMap(step.set()),
                     step.createIfMissing(),
-                    sortObjectMap(step.select())
+                    sortObjectMap(step.select()),
+                    step.left(),
+                    step.right()
             ));
         }
         return out;

@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**83 item(s) migrated: 4 open/partial, 79 done.**
+**84 item(s) migrated: 3 open/partial, 81 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -86,12 +86,13 @@
 | REG-75 | Procedures have no way to read an existing concept record, override one field, and pass the merged result onward -- a readConcept result can only be consumed as a whole map by saveConcept (via requireMap's ConceptRecord unwrap), never by capabilityCall's args (which never unwraps ConceptRecord), and no step exists to construct/merge a map literal at all | GAP | MEDIUM | DONE | 2026-07-29 |
 | REG-76 | Workbench action inputFields rendered as a single-line <input type="text">, which silently strips/collapses newlines on assignment -- a 'paste multi-line text' propose action (e.g. paste a CSV) had its payload collapsed to one line client-side, so the server-side parser's own header-row detection consumed the entire pasted text and returned zero data rows | BUG | HIGH | DONE | 2026-07-29 |
 | REG-77 | Neither procedures nor flows can create a brand-new sibling concept record with an auto-generated id from within a read-modify-write side effect -- patchConcept (REG-75/Move 4) only works on records that already exist, and flows have no patch step at all | GAP | LOW | DONE | 2026-07-30 |
-| REG-78 | Procedures have no find-by-non-id-fields lookup usable inline with patchConcept, and no arithmetic/accumulation primitive -- blocking SyncOcupacaoProcedure's real find-or-increment semantics (M8/M9) | GAP | LOW | OPEN | 2026-07-30 |
+| REG-78 | Procedures have no find-by-non-id-fields lookup usable inline with patchConcept, and no arithmetic/accumulation primitive -- blocking SyncOcupacaoProcedure's real find-or-increment semantics (M8/M9) | GAP | LOW | DONE | 2026-07-30 |
 | REG-79 | A callCapability procedure step's args map is compiled with an unspecified, per-JVM-run-random iteration order (Map.copyOf), silently scrambling positional reflective dispatch for any multi-arg capability method | BUG | MEDIUM | DONE | 2026-07-30 |
 | REG-8 | LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-80 | field.sensitive is dead wiring -- parsed, compiled, and canonical-JSON round-tripped, but never consumed by anything, including its own documented external-AI-review-pack redaction purpose | GAP | MEDIUM | OPEN | 2026-07-30 |
 | REG-81 | ReleaseGateValidator.validatePromotion (concept.truthLevel promotion gating) is fully implemented and unit-tested but invoked by no real pipeline -- truth-level promotion is effectively dormant | GAP | LOW | OPEN | 2026-07-30 |
 | REG-82 | NPDevCliMainTest.idempotencyHitReturnsCachedResultMetadata fails deterministically (IOException loading its own temp model file) -- pre-existing, unrelated to Move 5 | BUG | LOW | OPEN | 2026-07-30 |
+| REG-83 | saveConcept's blank-idRef auto-generate fallback and patchConcept's createIfMissing create half both silently denied CONCEPT_FIELD_REQUIRED against a real governed ConceptGateway -- the auto-generated id was never folded into the write's own data map | BUG | HIGH | DONE | 2026-07-30 |
 | REG-9 | LNCH-4: auth secrets management -- JWT key env-var delivery | GAP | HIGH | DONE | 2026-07-21 |
 
 ## Detail
@@ -2266,14 +2267,24 @@ would silently produce wrong occupancy counts.
 
 ### REG-78 — Procedures have no find-by-non-id-fields lookup usable inline with patchConcept, and no arithmetic/accumulation primitive -- blocking SyncOcupacaoProcedure's real find-or-increment semantics (M8/M9)
 
-**Type:** GAP · **Severity:** LOW · **Status:** OPEN
-**Verification:** NOT_VERIFIED
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-07-30)
+**Verification:** VERIFIED_LIVE
 **Source:** docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1C (SyncOcupacaoProcedure, closing
 docs/MOVE3_G2_CHECKLISTS.md's M8/M9 residual, referenced as REG-77-B). Found while attempting to
 implement it immediately after REG-77's callProcedure + createIfMissing work landed and closed
-REG-77-A (Ativar's flag-sync) in the same session.
+REG-77-A (Ativar's flag-sync) in the same session. Closed as the final item of Move 5
+(docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md), picked as the "one remaining open item" per the plan's own
+closing instruction, after Waves 1-6 completed.
 
 **Surface:** `kernel/procedure-runtime`
+**Files:**
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/ProcedureStepType.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/ProcedureStep.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ProcedureStepAst.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledProcedureStep.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PackValidation.java`
+- `NPDevContract/schemas/model.schema.json (+3 mirrors)`
 
 Investigated, not fixed. The original `syncOcupacao` client logic (movimentacao-livre.html /
 centro-trabalho.html, WmsOffice) does, for each (localArmazenagemId, loteId) pair touched by a
@@ -2572,6 +2583,60 @@ handler only surfaces the wrapper's static string, not the cause).
 capture the WRAPPED `IOException`'s real type and message (the current wrapper swallows it into a
 generic string), which would immediately distinguish "malformed JSON" from "file not found" from
 a genuine environment-specific IO fault.
+
+### REG-83 — saveConcept's blank-idRef auto-generate fallback and patchConcept's createIfMissing create half both silently denied CONCEPT_FIELD_REQUIRED against a real governed ConceptGateway -- the auto-generated id was never folded into the write's own data map
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-07-30)
+**Verification:** VERIFIED_LIVE
+**Source:** Found live while proving REG-78's SyncOcupacaoProcedure closure (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md,
+final item) end to end against a real generated WmsOffice boot -- the very first real invocation
+of patchConcept's createIfMissing against a real concept (LocalArmazenagemLote, an ordinary
+required-id concept, not a special case) failed with CONCEPT_FIELD_REQUIRED. Every kernel unit
+test exercising createIfMissing/saveConcept's auto-id fallback up to this point (including this
+session's own dsl-conformance-max EnsureWidgetOrderAuditProcedure fixture and Wave 1B/REG-77's own
+work) wired DefaultConceptGateway with a permissive/noop semantic policy, so none of them could
+have caught this -- it took a real generated-app boot, with the real
+ConfiguredConceptGatewaySemanticPolicy every actual app runs, to surface it.
+
+**Surface:** `kernel/procedure-runtime, kernel/concepts`
+**Files:**
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConfiguredConceptGatewaySemanticPolicy.java`
+- `NPDevKernel/kernel/src/test/java/com/npdev/kernel/procedures/DefaultProcedureExecutorAutoIdSemanticPolicyTest.java`
+
+`ConfiguredConceptGatewaySemanticPolicy.normalizeAndValidate` (the real, governed semantic policy
+every generated app wires up) requires every concept field declared `required: true` to be present
+in the WRITE REQUEST'S OWN `data` map -- including "id", which is `required: true` on essentially
+every real concept (it is the primary key). Two procedure-step code paths generate a fresh id when
+none was supplied, but neither ever added that id back into `data`:
+
+1. `saveConcept`'s `resolveOrGenerateId` (Move 5 Wave 1B, closing REG-77's asymmetry with flow-
+   bound createConcept) resolves/generates `id`, but the step's own `data` (from `dataRef`, e.g.
+   `$input`) is used completely unmodified -- if the caller's payload has no "id" key yet (the
+   normal shape for a fresh record with an auto-generated id), the write is denied.
+2. `patchConcept`'s `createIfMissing` (Move 5 Wave 1B, REG-77's create half) builds `created` from
+   `step.setValues()` alone -- also never including the freshly generated `newId`.
+
+Both bugs share one root cause and one fix shape: the generated id was always passed correctly as
+the `ConceptWriteRequest`'s OWN separate `id` parameter (so the RECORD got saved under the right
+id when the write succeeded at all elsewhere, e.g. against a permissive/noop policy), but the
+SEMANTIC POLICY validates `request.data()`, a different map that the id was never copied into.
+
+**What this blocked, precisely**: EVERY procedure-level fresh-record write with an auto-generated
+id (no explicit idRef, or createIfMissing's miss branch) against a real governed app -- not a
+narrow case. This includes REG-77's own original Ativar/syncOcupacao motivation and this session's
+EnsureWidgetOrderAuditProcedure corpus fixture, neither of which had been proven against a real
+policy before now.
+
+**Fix**: `saveConcept` now does `data.putIfAbsent("id", id)` before saving (putIfAbsent, not put,
+so an id the caller's own data already carries -- e.g. a client-supplied id -- is never
+overridden). `patchConcept`'s createIfMissing branch now does `created.put("id", newId)` before
+applying `set`. RED/GREEN proven: reverted both one-line fixes, confirmed 2 of 3 new kernel tests
+(`DefaultProcedureExecutorAutoIdSemanticPolicyTest`, using a REAL `ConfiguredConceptGatewaySemanticPolicy`
+with a required "id" field, not a noop policy) failed exactly as expected, then restored the fix
+and confirmed all 3 pass. Also confirmed live: WmsOffice's new `SyncOcupacaoProcedure` (REG-78)
+successfully created a real `LocalArmazenagemLote` row with no client-supplied id, verified via a
+direct REST GET showing the row persisted with the correct auto-generated id.
 
 ### REG-9 — LNCH-4: auth secrets management -- JWT key env-var delivery
 

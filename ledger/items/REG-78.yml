@@ -2,16 +2,26 @@ id: REG-78
 title: "Procedures have no find-by-non-id-fields lookup usable inline with patchConcept, and no arithmetic/accumulation primitive -- blocking SyncOcupacaoProcedure's real find-or-increment semantics (M8/M9)"
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-07-30
-verification: NOT_VERIFIED
+closed: 2026-07-30
+verification: VERIFIED_LIVE
 source: |
   docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1C (SyncOcupacaoProcedure, closing
   docs/MOVE3_G2_CHECKLISTS.md's M8/M9 residual, referenced as REG-77-B). Found while attempting to
   implement it immediately after REG-77's callProcedure + createIfMissing work landed and closed
-  REG-77-A (Ativar's flag-sync) in the same session.
+  REG-77-A (Ativar's flag-sync) in the same session. Closed as the final item of Move 5
+  (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md), picked as the "one remaining open item" per the plan's own
+  closing instruction, after Waves 1-6 completed.
 surface: kernel/procedure-runtime
-files: []
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/ProcedureStepType.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/ProcedureStep.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ProcedureStepAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledProcedureStep.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PackValidation.java
+  - NPDevContract/schemas/model.schema.json (+3 mirrors)
 detail: |
   Investigated, not fixed. The original `syncOcupacao` client logic (movimentacao-livre.html /
   centro-trabalho.html, WmsOffice) does, for each (localArmazenagemId, loteId) pair touched by a
@@ -56,3 +66,49 @@ detail: |
   target key the same way `mapValue` already does. Shipping an absolute-overwrite instead (skipping
   the increment) was deliberately rejected: it would silently produce a wrong occupancy count for
   every position that already had stock, which is worse than not shipping `syncOcupacao` at all.
+
+closure: |
+  Both points closed, live-verified against a real generated WmsOffice boot (not just unit tests).
+
+  **Point 2 (arithmetic primitive) -- shipped as a new `computeValue` procedure step**: operator
+  ("add"/"subtract", the minimum this ledger item named) + `left`/`right` operands resolving via
+  the SAME literal-vs-$ref convention `patchConcept`'s `set` and `mapList`'s `select` already use
+  (reusing kernel's existing `operation`/`setValues`/`outputKey` fields -- zero new kernel fields,
+  matching `mapList`'s own precedent). Operands coerced through `BigDecimal` so a "long" concept
+  field added to a JSON integer literal doesn't round-trip through binary floating point; result
+  normalized to a `Long` (whole) or `Double` (fractional). Full DSL threading (AST/compiled/
+  canonical-JSON/validation/4 schema mirrors) + kernel unit tests (7, including operator/operand
+  edge cases) + a DSL validation test (6 cases) + a `dsl-conformance-max` corpus fixture.
+
+  **A real bug found and fixed while proving computeValue live** (see REG-83): `saveConcept`'s
+  blank-idRef auto-generate fallback and `patchConcept`'s `createIfMissing` create half both
+  resolved/generated a fresh id but never folded it into the write's own `data` map -- invisible in
+  every kernel unit test up to this point (all wired with a permissive/noop semantic policy), but a
+  real governed gateway (`ConfiguredConceptGatewaySemanticPolicy`, what every generated app actually
+  runs) requires "id" present IN the data map since it is a required field on essentially every
+  concept. This silently denied CONCEPT_FIELD_REQUIRED on any fresh-record write through either
+  step against a real app -- caught only because this closure insisted on a real generated-app
+  proof instead of stopping at green kernel tests.
+
+  **Point 1 (find-by-non-id-fields lookup) -- composed from EXISTING steps, no new platform code,
+  exactly as this ledger item predicted**: `listConcepts` (unfiltered) + `mapList` (reshapes
+  ConceptRecords into plain maps, the same technique `ParseNfeProcedure` already established) +
+  one small Java capability method (`encontrarOcupacao` on WmsOffice's existing `alocacao`
+  capability) that does the actual (localArmazenagemId, loteId) equality scan. A genuinely deeper
+  finding than this item's own original text assumed: procedures' `if` step has NO comparison-
+  expression grammar at all -- `conditionRef` is a bare resolve+truthy check (confirmed by reading
+  `DefaultProcedureExecutor.ifThenElse` directly), not a `left == right` evaluator -- so "declare a
+  query + forEach/ifThenElse" alone would not have composed; the equality test itself has to happen
+  in Java, same as `FiscalImportCapability`'s own dedup/auto-match logic already does.
+
+  **Live proof (WmsOffice's new `SyncOcupacaoProcedure`, `OcupacaoLocalPanel.SincronizarOcupacao`
+  action)**: built a real Entidade/Armazem/Area/Rua/LocalArmazenagem/Produto/Lote chain via REST,
+  then 4 real calls against the live generated app -- (1) delta=10, no existing row -> CREATE,
+  quantidade=10, confirmed via a direct GET; (2) delta=5, existing row found -> INCREMENT to 15;
+  (3) delta=-3 -> DECREMENT to 12; (4) delta=-100 (would go negative) -> REJECTED by
+  LocalArmazenagemLoteQuantidadeNonNegative (the concept's own invariant), quantidade correctly
+  UNCHANGED at 12 afterward. That last case is a deliberate, documented divergence from the
+  original client-side `syncOcupacao()`'s own `Math.max(0, ...)` silent clamp -- a server-side
+  authoritative write rejecting a would-be-negative result with a real error is more honest than
+  masking what could be a real shipping/allocation bug, and was a design decision made explicitly,
+  not a limitation discovered by accident.

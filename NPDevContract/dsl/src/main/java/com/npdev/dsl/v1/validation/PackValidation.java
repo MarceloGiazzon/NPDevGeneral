@@ -92,7 +92,7 @@ final class PackValidation {
 
     private static final Set<String> PROCEDURE_STEP_TYPES =
             Set.of("assign", "mapvalue", "map_value", "condition", "if", "loop", "foreach",
-                    "maplist", "map_list", "listtransform",
+                    "maplist", "map_list", "listtransform", "computevalue", "compute_value", "compute", "arithmetic",
                     "conceptquery", "readconcept", "read_concept", "listconcepts", "list_concepts",
                     "runquery", "run_query", "conceptcreate", "conceptupdate", "saveconcept", "save_concept",
                     "conceptdelete", "deleteconcept", "delete_concept", "procedurecall", "callprocedure",
@@ -100,6 +100,10 @@ final class PackValidation {
                     "eventpublish", "publishevent", "publish_event", "patchconcept", "return");
     private static final Set<String> PROCEDURE_MAP_LIST_STEP_TYPES =
             Set.of("maplist", "map_list", "listtransform");
+    private static final Set<String> PROCEDURE_COMPUTE_VALUE_STEP_TYPES =
+            Set.of("computevalue", "compute_value", "compute", "arithmetic");
+    private static final Set<String> PROCEDURE_COMPUTE_VALUE_OPERATORS =
+            Set.of("add", "subtract");
     private static final Set<String> PROCEDURE_CONCEPT_STEP_TYPES =
             Set.of("conceptquery", "readconcept", "read_concept", "listconcepts", "list_concepts",
                     "runquery", "run_query", "conceptcreate", "conceptupdate", "saveconcept", "save_concept",
@@ -234,6 +238,9 @@ final class PackValidation {
             if (PROCEDURE_MAP_LIST_STEP_TYPES.contains(type)) {
                 validateProcedureMapList(procedureName, stepPath, step, errors);
             }
+            if (PROCEDURE_COMPUTE_VALUE_STEP_TYPES.contains(type)) {
+                validateProcedureComputeValue(procedureName, stepPath, step, errors);
+            }
             if (PROCEDURE_BRANCH_STEP_TYPES.contains(type) && !hasText(step.condition())) {
                 errors.add("Procedure " + procedureName + " step " + stepPath + ": condition is required");
             }
@@ -358,6 +365,35 @@ final class PackValidation {
         }
         if (!hasText(step.target())) {
             errors.add("Procedure " + procedureName + " step " + stepPath + ": target is required for mapList (names the output list)");
+        }
+    }
+
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, final item / REG-78): {@code computeValue} needs a
+     * known operator ("add"/"subtract" -- the minimum REG-78 named, matching {@code
+     * DefaultProcedureExecutor}'s own switch), both operands present (a literal or a {@code $ref},
+     * either is fine -- {@code null} is not), and a target to write the result to.
+     */
+    private static void validateProcedureComputeValue(
+            String procedureName,
+            String stepPath,
+            ProcedureStepAst step,
+            List<String> errors
+    ) {
+        String operator = step.operation() == null ? "" : step.operation().trim().toLowerCase(java.util.Locale.ROOT);
+        if (!PROCEDURE_COMPUTE_VALUE_OPERATORS.contains(operator)) {
+            errors.add("Procedure " + procedureName + " step " + stepPath
+                    + ": computeValue requires operation to be one of " + PROCEDURE_COMPUTE_VALUE_OPERATORS
+                    + ", got: " + step.operation());
+        }
+        if (step.left() == null) {
+            errors.add("Procedure " + procedureName + " step " + stepPath + ": left is required for computeValue");
+        }
+        if (step.right() == null) {
+            errors.add("Procedure " + procedureName + " step " + stepPath + ": right is required for computeValue");
+        }
+        if (!hasText(step.target())) {
+            errors.add("Procedure " + procedureName + " step " + stepPath + ": target is required for computeValue (names where the result is written)");
         }
     }
 
