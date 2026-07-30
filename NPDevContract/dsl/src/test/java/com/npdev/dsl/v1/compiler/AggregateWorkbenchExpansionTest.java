@@ -218,4 +218,56 @@ class AggregateWorkbenchExpansionTest {
         assertNull(actions.get(3).get("applyTo"), "an undeclared mode must be dropped");
         assertNull(actions.get(4).get("applyTo"), "an empty map has nothing to fold in, so applyTo is dropped");
     }
+
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 2B): a declared derived display field (M6's
+     * "balanced banner", docs/MOVE3_G2_CHECKLISTS.md) must survive the compiler with a label
+     * defaulting to its name, and an entry missing a name or expression must be dropped rather than
+     * passed through malformed.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void workbenchDerivedFieldsSurviveWithDefaultLabelAndMalformedEntriesAreDropped() throws Exception {
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.derived", "version": "1.0",
+              "concepts": [
+                { "name": "Movimento", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                { "name": "MovimentoItem", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "movimentoId", "type": "uuid" } ] }
+              ],
+              "aggregates": [
+                { "name": "Movimento", "root": "Movimento",
+                  "collections": [
+                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" }
+                  ] }
+              ],
+              "autoPanels": [ { "aggregate": "Movimento",
+                "transaction": { "metadata": { "derived": [
+                  { "name": "origemTotal", "expression": "sum(itens[].posicoes[].filter(papel=='Origem').quantidade)" },
+                  { "name": "destinoTotal", "expression": "sum(itens[].posicoes[].filter(papel=='Destino').quantidade)", "label": "Destino Total" },
+                  { "expression": "sum(itens[].quantidade)" },
+                  { "name": "noExpression" }
+                ] } } } ]
+            }
+            """;
+        CompiledModel model = compile(json);
+
+        CompiledPanel workbench = model.getPanels().stream()
+                .filter(p -> "MovimentoWorkbench".equals(p.name())).findFirst()
+                .orElseThrow(() -> new AssertionError("expected MovimentoWorkbench"));
+        Map<String, Object> wb = (Map<String, Object>) workbench.metadata().get("workbench");
+        List<Map<String, Object>> derived = (List<Map<String, Object>>) wb.get("derived");
+        assertNotNull(derived, "workbench descriptor should carry declared derived fields");
+        assertEquals(2, derived.size(), "the two malformed entries (no name, no expression) are dropped");
+
+        assertEquals("origemTotal", derived.get(0).get("name"));
+        assertEquals("origemTotal", derived.get(0).get("label"), "label defaults to name when not declared");
+        assertEquals("sum(itens[].posicoes[].filter(papel=='Origem').quantidade)", derived.get(0).get("expression"));
+
+        assertEquals("destinoTotal", derived.get(1).get("name"));
+        assertEquals("Destino Total", derived.get(1).get("label"), "an explicit label must survive as declared");
+    }
 }

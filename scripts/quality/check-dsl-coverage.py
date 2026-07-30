@@ -99,7 +99,7 @@ def _has_procedure_create_if_missing(model: dict) -> bool:
     )
 
 
-def _has_workbench_apply_to(model: dict) -> bool:
+def _workbench_transaction_metadatas(model: dict):
     for auto_panel in (model.get("autoPanels", None) or []):
         if not isinstance(auto_panel, dict):
             continue
@@ -107,11 +107,22 @@ def _has_workbench_apply_to(model: dict) -> bool:
         if not isinstance(transaction, dict):
             continue
         metadata = transaction.get("metadata")
-        if not isinstance(metadata, dict):
-            continue
+        if isinstance(metadata, dict):
+            yield metadata
+
+
+def _has_workbench_apply_to(model: dict) -> bool:
+    for metadata in _workbench_transaction_metadatas(model):
         for action in (metadata.get("actions", None) or []):
             if isinstance(action, dict) and isinstance(action.get("applyTo"), dict):
                 return True
+    return False
+
+
+def _has_workbench_derived(model: dict) -> bool:
+    for metadata in _workbench_transaction_metadatas(model):
+        if metadata.get("derived", None):
+            return True
     return False
 
 
@@ -166,6 +177,9 @@ FEATURE_DETECTORS = {
     # property -- regular, non-Workbench panels have no client-held draft to fold a result into),
     # so this walks that structure directly rather than reusing a step/field-type detector.
     "workbench.applyTo": _has_workbench_apply_to,
+    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 2B): same untyped-metadata mechanism as
+    # applyTo above -- a declared derived display field (M6's "balanced banner").
+    "workbench.derived": _has_workbench_derived,
 }
 
 
