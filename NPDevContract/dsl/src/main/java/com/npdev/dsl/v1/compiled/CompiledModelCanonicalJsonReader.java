@@ -189,7 +189,8 @@ public final class CompiledModelCanonicalJsonReader {
                 text(node, "root"),
                 toAggregateCollections(node.get("collections")),
                 optionalText(node, "onCommit"),
-                toObjectMap(node.get("metadata"))
+                toObjectMap(node.get("metadata")),
+                optionalText(node, "onValidate")
         );
     }
 

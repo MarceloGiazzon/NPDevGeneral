@@ -104,6 +104,7 @@ final class AggregateValidation {
                     new HashSet<>(),
                     errors);
             validateOnCommit(aggregate, proceduresByLower, errors);
+            validateOnValidate(aggregate, proceduresByLower, errors);
         }
     }
 
@@ -134,6 +135,30 @@ final class AggregateValidation {
         if (callsProcedure(procedure.steps(), normalized)) {
             errors.add("Aggregate " + aggregate.name() + ": onCommit procedure " + aggregate.onCommit()
                     + " directly calls itself (recursive onCommit is not allowed)");
+        }
+    }
+
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3B / Gap 8): {@code onValidate} must name a
+     * declared procedure -- deliberately a SIBLING of {@code onCommit} rather than a flag on it
+     * (different timing: before the root upsert, not after; different contract: a non-ok result
+     * aborts with NO writes at all, rather than rolling back writes already made). Reuses the exact
+     * same direct-self-recursion linting check as {@code onCommit}, for the same reason.
+     */
+    private static void validateOnValidate(
+            AggregateAst aggregate, Map<String, ProcedureAst> proceduresByLower, List<String> errors) {
+        if (!hasText(aggregate.onValidate())) {
+            return;
+        }
+        String normalized = normalize(aggregate.onValidate());
+        ProcedureAst procedure = proceduresByLower.get(normalized);
+        if (procedure == null) {
+            errors.add("Aggregate " + aggregate.name() + ": onValidate names a procedure not found: " + aggregate.onValidate());
+            return;
+        }
+        if (callsProcedure(procedure.steps(), normalized)) {
+            errors.add("Aggregate " + aggregate.name() + ": onValidate procedure " + aggregate.onValidate()
+                    + " directly calls itself (recursive onValidate is not allowed)");
         }
     }
 

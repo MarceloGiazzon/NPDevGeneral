@@ -141,6 +141,22 @@ public class AggregateRuntime {
         ConceptGateway gateway = requireConceptGateway();
         Map<String, Object> rootDraft = draft == null ? Map.of() : draft;
 
+        // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3B / Gap 8): a declared onValidate
+        // procedure runs here, BEFORE the root upsert (and every recursive child upsert) -- a
+        // sibling of onCommit above, not a flag on it: different timing (before any write exists
+        // to roll back, rather than after the whole tree is already written), different contract
+        // (a server-side guard that rejects a proposed draft outright, vs. a post-commit side
+        // effect). Receives the DRAFT as-is (the proposed tree, not yet persisted), unlike
+        // onCommit which receives the freshly reloaded, already-written tree.
+        if (aggregate.onValidate() != null && procedureRunner != null) {
+            ProcedureExecutionResult onValidateResult = procedureRunner.execute(aggregate.onValidate(), rootDraft, ctx);
+            if (!onValidateResult.ok()) {
+                throw new IllegalStateException(
+                        "Aggregate " + aggregate.name() + " onValidate procedure " + aggregate.onValidate()
+                                + " failed: " + onValidateResult.failureCode() + " " + onValidateResult.failureMessage());
+            }
+        }
+
         String rootId = idOrNew(rootDraft.get("id"));
         Set<String> rootCollectionKeys = collectionNames(aggregate.collections());
         Map<String, Object> rootFields = scalarFields(rootDraft, rootCollectionKeys, null, null);

@@ -169,6 +169,10 @@ public final class CompiledModelCanonicalJson {
             node.set("collections", toAggregateCollections(aggregate.collections()));
             node.put("onCommit", safe(aggregate.onCommit()));
             node.set("metadata", toObjectMap(aggregate.metadata()));
+            // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3B / Gap 8): a sibling of onCommit,
+            // not a flag on it -- different timing (before the root upsert vs. after), different
+            // contract (a non-ok result aborts with no writes vs. rolling back writes already made).
+            node.put("onValidate", safe(aggregate.onValidate()));
             aggregates.add(node);
         }
         return aggregates;

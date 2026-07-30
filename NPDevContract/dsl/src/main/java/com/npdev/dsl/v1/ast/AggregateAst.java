@@ -15,11 +15,13 @@ public record AggregateAst(
         String root,
         List<AggregateCollectionAst> collections,
         String onCommit,
-        Map<String, Object> metadata
+        Map<String, Object> metadata,
+        String onValidate
 ) {
     public AggregateAst {
         collections = collections == null ? List.of() : List.copyOf(collections);
         onCommit = onCommit == null || onCommit.isBlank() ? null : onCommit.trim();
         metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
+        onValidate = onValidate == null || onValidate.isBlank() ? null : onValidate.trim();
     }
 }

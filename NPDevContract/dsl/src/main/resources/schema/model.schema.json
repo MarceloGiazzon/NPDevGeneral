@@ -360,6 +360,11 @@
         },
         "metadata": {
           "type": "object"
+        },
+        "onValidate": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md): names a procedure run BEFORE the root upsert, inside the same transaction as commit() -- a non-ok result aborts the whole commit with NO writes at all. A sibling of onCommit (which runs AFTER the tree is written, rolling back on failure), not a flag on it: different timing, different contract."
         }
       },
       "additionalProperties": false
