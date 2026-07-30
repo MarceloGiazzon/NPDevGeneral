@@ -136,8 +136,8 @@
           header: { fields: hf, values: pick(draft, hf) },
           sections: (descriptor.sections || []).map(function (s) {
             return {
-              collection: s.collection, columns: s.columns || [],
-              bandDefs: (s.bands || []).map(function (b) { return { collection: b.collection, columns: b.columns || [], picker: b.picker || null }; }),
+              collection: s.collection, columns: s.columns || [], visibleWhen: s.visibleWhen || null,
+              bandDefs: (s.bands || []).map(function (b) { return { collection: b.collection, columns: b.columns || [], picker: b.picker || null, visibleWhen: b.visibleWhen || null }; }),
               rows: (draft[s.collection] || []).map(function (r) {
                 return {
                   id: r.id, values: pick(r, s.columns || []),
@@ -225,6 +225,30 @@
     return undefined;
   }
 
+  // Conditional surface by toggle (Move 5, Wave 2C / Gap 2, docs/MOVE3_G2_CHECKLISTS.md): a
+  // deliberately narrow boolean-predicate subset -- $root.<path> ==/!= '<literal>' -- for hiding a
+  // collection, band, or action based on a header field (e.g. tipo/record-type). PRESENTATION-ONLY:
+  // this never touches the draft, so a hidden collection's rows still commit unchanged (see
+  // sectionVisible/render() below). A malformed or unrecognized expression fails OPEN (visible),
+  // matching "never gate persistence" -- worst case something stays visible, it never disappears
+  // incorrectly and silently drops data from view that the user still needed to see was committing.
+  //   $root.tipo == 'RECEBIMENTO'
+  function evaluateVisibleWhen(root, expression) {
+    var expr = String(expression || "").trim();
+    if (!expr) return true;
+    var m = /^\$?root\.([\w.]+)\s*(==|!=)\s*'([^']*)'$/.exec(expr);
+    if (!m) return true;
+    var path = m[1], op = m[2], literal = m[3];
+    var parts = path.split(".");
+    var cur = root;
+    for (var i = 0; i < parts.length; i++) {
+      if (cur == null) { cur = undefined; break; }
+      cur = cur[parts[i]];
+    }
+    var actual = cur == null ? "" : String(cur);
+    return op === "==" ? actual === literal : actual !== literal;
+  }
+
   var store = null, selected = null, pendingMsg = null;
 
   function render() {
@@ -246,11 +270,14 @@
     v.header.fields.forEach(function (fld) { f.append(el('<label>' + fld + ':</label>')); var d = el("<div></div>"); d.append(cell(v.header.values[fld], function (val) { store.editHeader(fld, val); }, "h:" + fld)); f.append(d); });
     hb.append(f); head.append(hb); app.append(head);
 
+    // Shared by derived-banner evaluation and visibleWhen gating below -- both read against the
+    // CURRENT draft, never mutate it.
+    var draftNow = store.toDraft();
+
     // Derived display fields (M6 "balanced banner"): evaluated fresh against the CURRENT draft on
     // every render, shown here, never written back into it.
     var derivedDefs = store.descriptor.derived || [];
     if (derivedDefs.length) {
-      var draftNow = store.toDraft();
       var banner = el('<div class="derived"></div>');
       derivedDefs.forEach(function (d) {
         var value = evaluateDerived(draftNow, d.expression);
@@ -263,6 +290,10 @@
     }
 
     v.sections.forEach(function (sec) {
+      // Conditional surface by toggle (Move 5, Wave 2C): a hidden section's rows stay in the draft
+      // untouched -- rendering is skipped, but store.toDraft() (used by commitDraft/invokeAction) is
+      // never filtered, so hidden rows still commit exactly like visible ones.
+      if (!evaluateVisibleWhen(draftNow, sec.visibleWhen)) return;
       var items = el('<div class="region r-items"></div>');
       var itemsBar = el('<div class="bar items"><span>' + sec.collection + '</span><span class="grow"></span><span class="chip">' + sec.rows.length + ' rows</span></div>');
       if (EDITABLE && store.regionDirty("section", sec.collection)) itemsBar.append(regionRevert("section", sec.collection));
@@ -286,6 +317,7 @@
         band.append(el('<div class="bar band"><span>' + sec.collection + ' → bands (row ' + selRow.id + ')</span></div>'));
         var bb = el('<div class="body"></div>'); var grids = el('<div class="grids"></div>');
         sec.bandDefs.forEach(function (bd) {
+          if (!evaluateVisibleWhen(draftNow, bd.visibleWhen)) return;
           var g = el('<div class="gwrap"></div>'); g.append(el("<h4>" + bd.collection + "</h4>"));
           var gt = el("<table></table>"); gt.append(el("<tr>" + bd.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "<th></th></tr>"));
           (selRow.bands[bd.collection] || []).forEach(function (br) {
@@ -418,6 +450,7 @@
     if (EDITABLE) {
       (store.descriptor.actions || [])
         .filter(function (a) { return !si.allowedActions || si.allowedActions.indexOf(a.procedure) !== -1; })
+        .filter(function (a) { return evaluateVisibleWhen(draftNow, a.visibleWhen); })
         .forEach(function (a) {
           var fieldNames = a.inputFields || [];
           var inputsByField = {};

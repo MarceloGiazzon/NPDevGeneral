@@ -126,6 +126,16 @@ def _has_workbench_derived(model: dict) -> bool:
     return False
 
 
+def _has_workbench_visible_when(model: dict) -> bool:
+    for metadata in _workbench_transaction_metadatas(model):
+        if isinstance(metadata.get("visibleWhen"), dict) and metadata["visibleWhen"]:
+            return True
+        for action in (metadata.get("actions", None) or []):
+            if isinstance(action, dict) and action.get("visibleWhen"):
+                return True
+    return False
+
+
 def _has_on_failure(model: dict) -> bool:
     return any("onFailure" in s and s["onFailure"] for s in _all_steps(model))
 
@@ -180,6 +190,9 @@ FEATURE_DETECTORS = {
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 2B): same untyped-metadata mechanism as
     # applyTo above -- a declared derived display field (M6's "balanced banner").
     "workbench.derived": _has_workbench_derived,
+    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 2C / Gap 2): conditional surface by toggle --
+    # transaction.metadata.visibleWhen (collections/bands) or an action's own visibleWhen key.
+    "workbench.visibleWhen": _has_workbench_visible_when,
 }
 
 
