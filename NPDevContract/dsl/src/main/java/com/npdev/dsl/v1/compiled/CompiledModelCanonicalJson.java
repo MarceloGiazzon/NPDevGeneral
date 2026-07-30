@@ -656,6 +656,8 @@ public final class CompiledModelCanonicalJson {
             node.set("set", toObjectMap(step.set()));
             // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1B): patchConcept's create-if-missing opt-in.
             putNullableBoolean(node, "createIfMissing", step.createIfMissing());
+            // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3A): mapList's per-item field map.
+            node.set("select", toObjectMap(step.select()));
             steps.add(node);
         }
         return steps;

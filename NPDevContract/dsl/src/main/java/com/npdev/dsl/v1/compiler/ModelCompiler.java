@@ -1331,7 +1331,8 @@ public final class ModelCompiler {
                     step.audit(),
                     sortObjectMap(step.metadata()),
                     sortObjectMap(step.set()),
-                    step.createIfMissing()
+                    step.createIfMissing(),
+                    sortObjectMap(step.select())
             ));
         }
         return out;

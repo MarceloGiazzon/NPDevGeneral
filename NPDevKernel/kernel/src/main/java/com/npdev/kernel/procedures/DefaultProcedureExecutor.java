@@ -207,6 +207,7 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
             case CALL_PROCEDURE -> callProcedure(step, state, context, scope, recursionDepth);
             case IF -> ifThenElse(definition, step, stepIndex, state, context, scope, recursionDepth);
             case FOR_EACH -> forEach(definition, step, stepIndex, state, context, scope, recursionDepth);
+            case MAP_LIST -> mapList(step, state);
             case MAP_VALUE -> mapValue(step, state);
             case RETURN -> returnValue(step, state);
         };
@@ -493,6 +494,51 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
                 state.remove(itemKey);
             }
         }
+        return ProcedureStepResult.success(step);
+    }
+
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3A / Gap 6): unlike {@link #forEach}, which
+     * only iterates for side effects, {@code mapList} PRODUCES a new collection -- one output object
+     * per input item, built from {@code step.setValues()} ("select" in the DSL) resolved against
+     * that item via the SAME {@link #resolveSetValue} literal-vs-{@code $ref} convention
+     * {@code patchConcept}'s {@code set} already established (one convention, not a second one).
+     * Reuses {@code collectionRef}/{@code itemKey}/{@code outputKey} exactly like {@code forEach} --
+     * no new kernel-level fields needed.
+     */
+    private ProcedureStepResult mapList(ProcedureStep step, Map<String, Object> state) {
+        Iterable<?> items = toIterable(resolve(state, step.collectionRef()));
+        if (items == null) {
+            return ProcedureStepResult.failure(step, "COLLECTION_REQUIRED", "Procedure mapList requires an iterable collection.");
+        }
+        String itemKey = step.itemKey() == null ? "item" : step.itemKey();
+        Object previous = state.get(itemKey);
+        boolean hadPrevious = state.containsKey(itemKey);
+        List<Map<String, Object>> mapped = new ArrayList<>();
+        int iterations = 0;
+        try {
+            for (Object item : items) {
+                iterations++;
+                if (iterations > limits.maxLoopIterations()) {
+                    return ProcedureStepResult.failure(
+                            step,
+                            "PROCEDURE_LOOP_LIMIT_EXCEEDED",
+                            "Procedure loop exceeded maxLoopIterations=" + limits.maxLoopIterations()
+                    );
+                }
+                state.put(itemKey, item);
+                Map<String, Object> selected = new LinkedHashMap<>();
+                step.setValues().forEach((key, raw) -> selected.put(key, resolveSetValue(state, raw)));
+                mapped.add(selected);
+            }
+        } finally {
+            if (hadPrevious) {
+                state.put(itemKey, previous);
+            } else {
+                state.remove(itemKey);
+            }
+        }
+        putOutput(state, step.outputKey(), mapped);
         return ProcedureStepResult.success(step);
     }
 

@@ -38,9 +38,10 @@ public final class ArtifactLocalJavaSourceCapabilityHandler implements DynamicCa
             );
         }
 
+        List<Object> args = call.args();
+        Method method = null;
         try {
-            List<Object> args = call.args();
-            Method method = resolveMethod(methodName, args == null ? 0 : args.size());
+            method = resolveMethod(methodName, args == null ? 0 : args.size());
             method.setAccessible(true);
             Object output = method.getParameterCount() == 0
                     ? method.invoke(target)
@@ -55,11 +56,27 @@ public final class ArtifactLocalJavaSourceCapabilityHandler implements DynamicCa
                     details(call, Map.of("exceptionType", cause.getClass().getName()))
             );
         } catch (ReflectiveOperationException | RuntimeException exception) {
+            // A vague "argument type mismatch" (the JVM's own IllegalArgumentException message,
+            // which never names the offending argument) is diagnostically useless once a capability
+            // grows past one arg -- callCapability's args are compiled in ALPHABETICAL-by-key order
+            // (ModelCompiler.sortObjectMap), not JSON declaration order, so a positional mismatch is
+            // an easy, silent mistake to make. Naming the resolved method's declared parameter types
+            // alongside the actual argument runtime types turns a guessing game into a one-look fix.
+            Map<String, Object> mismatchDetails = new LinkedHashMap<>();
+            mismatchDetails.put("exceptionType", exception.getClass().getName());
+            if (method != null) {
+                mismatchDetails.put("resolvedMethod", method.toGenericString());
+            }
+            if (args != null) {
+                mismatchDetails.put("actualArgTypes", args.stream()
+                        .map(a -> a == null ? "null" : a.getClass().getName())
+                        .toList());
+            }
             return CapabilityResult.failure(
                     "JAVA_SOURCE_CAPABILITY_DISPATCH_ERROR",
                     messageOrDefault(exception, "Artifact-local Java source capability dispatch failed"),
                     CapabilityErrorKind.PERMANENT,
-                    details(call, Map.of("exceptionType", exception.getClass().getName()))
+                    details(call, mismatchDetails)
             );
         }
     }

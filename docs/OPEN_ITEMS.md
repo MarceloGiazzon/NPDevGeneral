@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**79 item(s) migrated: 1 open/partial, 78 done.**
+**80 item(s) migrated: 1 open/partial, 79 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -87,6 +87,7 @@
 | REG-76 | Workbench action inputFields rendered as a single-line <input type="text">, which silently strips/collapses newlines on assignment -- a 'paste multi-line text' propose action (e.g. paste a CSV) had its payload collapsed to one line client-side, so the server-side parser's own header-row detection consumed the entire pasted text and returned zero data rows | BUG | HIGH | DONE | 2026-07-29 |
 | REG-77 | Neither procedures nor flows can create a brand-new sibling concept record with an auto-generated id from within a read-modify-write side effect -- patchConcept (REG-75/Move 4) only works on records that already exist, and flows have no patch step at all | GAP | LOW | DONE | 2026-07-30 |
 | REG-78 | Procedures have no find-by-non-id-fields lookup usable inline with patchConcept, and no arithmetic/accumulation primitive -- blocking SyncOcupacaoProcedure's real find-or-increment semantics (M8/M9) | GAP | LOW | OPEN | 2026-07-30 |
+| REG-79 | A callCapability procedure step's args map is compiled with an unspecified, per-JVM-run-random iteration order (Map.copyOf), silently scrambling positional reflective dispatch for any multi-arg capability method | BUG | MEDIUM | DONE | 2026-07-30 |
 | REG-8 | LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-9 | LNCH-4: auth secrets management -- JWT key env-var delivery | GAP | HIGH | DONE | 2026-07-21 |
 
@@ -2314,6 +2315,78 @@ and an operator (`add`/`subtract`, the minimum `syncOcupacao` needs), writing th
 target key the same way `mapValue` already does. Shipping an absolute-overwrite instead (skipping
 the increment) was deliberately rejected: it would silently produce a wrong occupancy count for
 every position that already had stock, which is worse than not shipping `syncOcupacao` at all.
+
+### REG-79 — A callCapability procedure step's args map is compiled with an unspecified, per-JVM-run-random iteration order (Map.copyOf), silently scrambling positional reflective dispatch for any multi-arg capability method
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-07-30)
+**Verification:** VERIFIED_LIVE
+**Source:** docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3A (Gap 6, mapList). Found live while wiring
+ParseNfeProcedure's produtosConhecidos/chavesJaImportadas auto-match (WmsOffice) through a NEW
+3-argument callCapability step -- the first callCapability in this codebase with more than one
+args entry (every prior usage passed a single {"input": "$input"} arg, where iteration order is
+trivially always correct).
+
+**Surface:** `dsl/compiled-model, kernel/runtimehost-dispatch`
+**Files:**
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledProcedureStep.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/ArtifactLocalJavaSourceCapabilityHandler.java`
+
+A `callCapability` procedure step's `args` (a JSON object, e.g.
+`{"input": "$input", "produtosConhecidos": "$produtosConhecidos", "chavesJaImportadas": "$chavesJaImportadas"}`)
+is compiled by `ModelCompiler.compileProcedureSteps` via `sortObjectMap` into alphabetical-by-key
+order (a determinism convention used for every Map field on this record, originally for stable
+canonical-JSON diffs -- not because argument order is meant to be alphabetical). At runtime,
+`ProcedureRunner`/`NPDevCliMain`'s `toProcedureStep` builds a `callCapability`'s positional
+`argRefs` from `step.args().values()`, and `ArtifactLocalJavaSourceCapabilityHandler.invoke()`
+reflectively calls the bound Java method with those resolved values IN THAT ITERATION ORDER
+(`method.invoke(target, args.toArray())`), matched only by method name + arg count (there is no
+per-parameter name binding at the reflection boundary).
+
+`CompiledProcedureStep`'s compact constructor built `args` via `Map.copyOf(args)`, same as every
+other Map field on the record (`data`/`metadata`/`set`/`select`). For those OTHER fields this is
+harmless -- every consumer reads them by explicit key (`.get("input")`, `.forEach((key, raw) -> ...)`),
+never by position. But `Map.copyOf` (and `Map.of`) return a JDK `ImmutableCollections.MapN` whose
+iteration order is EXPLICITLY UNSPECIFIED by contract and is reshuffled by a fresh random salt
+generated once per JVM process (a deliberate JDK 9+ hardening measure against hash-flooding, the
+same mechanism documented for `HashMap`-adjacent immutable collections) -- so `args.values()`'s
+iteration order for a 3-entry map was consistent WITHIN one running app instance but could differ
+across app restarts of the IDENTICAL jar.
+
+Symptom: `ParseNfeProcedure`'s `call-fiscal-import` step (3-entry args, alphabetically compiled to
+chavesJaImportadas/input/produtosConhecidos, matching a Java method declared
+`importarNfe(List chavesJaImportadas, Map input, List produtosConhecidos)`) worked correctly on
+some app starts and failed on others with `JAVA_SOURCE_CAPABILITY_DISPATCH_ERROR "argument type
+mismatch"` -- confirmed via temporary rich diagnostics logging each resolved arg's actual runtime
+class against the resolved method's declared parameter types: on a failing start, positions 1 and
+2 were swapped (`chavesJaImportadas, produtosConhecidos, input` instead of the compiled
+`chavesJaImportadas, input, produtosConhecidos`), an ArrayList landing where a Map was expected.
+Reproduced deterministically 2/2 broken app starts out of ~7 total starts observed live, and
+reproduced in a unit test asserting insertion-order preservation (which failed deterministically,
+within a single JVM run, when temporarily reverted to `Map.copyOf` -- confirming the test is a
+real regression guard, not a coincidental pass).
+
+**Fix**: `CompiledProcedureStep.args` alone (not its Map-field siblings, which have no positional
+consumer) now preserves insertion order via `Collections.unmodifiableMap(new LinkedHashMap<>(args))`
+instead of `Map.copyOf`. `ArtifactLocalJavaSourceCapabilityHandler`'s dispatch-error path also now
+reports the resolved method's signature and each actual argument's runtime type in its failure
+details, so a future arg-count-matches-but-types-don't mismatch is a one-look diagnosis instead of
+a bare, un-actionable "argument type mismatch".
+
+**Verified live**: WmsOffice's `ParseNfeProcedure` (3-arg callCapability into
+`FiscalImportCapability.importarNfe`) succeeded on 10/10 consecutive fresh app restarts after the
+fix (previously ~2/7 failed); confirmed both the produtosConhecidos auto-match plumbing (correct
+{codigo, produtoId} shape from a real `listConcepts` + `mapList` composition) and the
+chavesJaImportadas dedup rejecting a real duplicate NF-e key end-to-end
+(`"NF-e ja importada anteriormente (chave duplicada): CHAVE-TEST-1"`), which was never reachable
+before this session since nothing had ever populated `chavesJaImportadas` prior to Wave 3A's
+mapList step.
+
+**Scope note**: any Java capability method bound to a `callCapability` with 2+ `args` entries
+must declare its parameters in the ALPHABETICAL order of those args' JSON keys, not the more
+natural declaration order an author would write -- documented on `CompiledProcedureStep.args`'s
+own field comment and on `FiscalImportCapability.importarNfe`'s 3-arg overload, since this is a
+real authoring footgun the platform does not (and, short of a larger args-binding redesign,
+cannot cleanly) prevent at compile time.
 
 ### REG-8 — LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback
 

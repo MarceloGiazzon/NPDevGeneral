@@ -177,6 +177,9 @@ FEATURE_DETECTORS = {
     # under "procedures", not "flows". Tracked separately so a regression to either has the same
     # zero-coverage-fails-the-build guarantee as every other feature this gate already tracks.
     "procedure.patchConcept": lambda m: _has_procedure_step_type(m, "patchConcept"),
+    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3A / Gap 6): mapList produces a NEW list
+    # (one output object per input item), unlike forEach which only iterates for side effects.
+    "procedure.mapList": lambda m: _has_procedure_step_type(m, "mapList"),
     "aggregate.onCommit": _has_aggregate_on_commit,
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1B): patchConcept's create-if-missing opt-in
     # (the create half of REG-77) is a boolean flag on an existing step type, not a new step type
