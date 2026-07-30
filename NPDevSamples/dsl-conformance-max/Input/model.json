@@ -105,6 +105,27 @@
       ]
     },
     {
+      "name": "WidgetOrderLineNote",
+      "ui": {
+        "label": "Widget order line note"
+      },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        {
+          "name": "widgetOrderLineId",
+          "type": "uuid",
+          "required": true,
+          "ui": { "label": "Line" }
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "required": true,
+          "ui": { "label": "Note" }
+        }
+      ]
+    },
+    {
       "name": "WidgetCatalogEntry",
       "ui": {
         "label": "Widget catalog entry"
@@ -234,11 +255,19 @@
           "concept": "WidgetOrderLine",
           "childField": "widgetOrderId",
           "ownership": "owned",
-          "orderBy": "sku"
+          "orderBy": "sku",
+          "collections": [
+            {
+              "name": "notes",
+              "concept": "WidgetOrderLineNote",
+              "childField": "widgetOrderLineId",
+              "ownership": "owned"
+            }
+          ]
         }
       ],
       "metadata": {
-        "purpose": "Second independent aggregate in the corpus; WmsOffice and its clone were the only ones."
+        "purpose": "Second independent aggregate in the corpus; WmsOffice and its clone were the only ones. Depth-2 via lines->notes (REG-72, docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md)."
       }
     }
   ],

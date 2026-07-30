@@ -1,0 +1,70 @@
+id: REG-73
+title: "ProcedureRunner never resolved a capability adapter from the model's bindings list -- every procedure-side capabilityCall step (panel action procedure bindings, and AggregateRuntime.invoke()) reached the dispatcher with a null adapterId and failed CAPABILITY_BINDING_MISSING even with a real binding declared"
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-07-29
+closed: 2026-07-29
+verification: VERIFIED_LIVE
+source: docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md G2 -- found live while assessing the Sugerir* flows
+  against invoke() ("procedure over draft" is the candidate mechanism for a computed-array
+  suggestion input, per the plan's own G2 hypothesis). Twin procedures (SugerirDestinoProcedure /
+  SugerirOrigemProcedure) reproduced a real capability call failing 503 CAPABILITY_BINDING_MISSING
+  ("adapter '<missing>'") even though the identical capability/operation/binding works fine when
+  called via the pre-existing flow (SugerirDestino / SugerirOrigem).
+surface: kernel/procedure-runtime
+files:
+  - NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/ProcedureRunner.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/npdev/service/ProcedureRunnerCapabilityCallTest.java
+detail: |
+  `ProcedureRunner.toProcedureStep`'s `CALL_CAPABILITY` branch hardcoded the compiled step's
+  `adapterId` to `""` (which `ProcedureStep.callCapability` normalizes to `null`), regardless of
+  the model's declared `bindings` list. `RegistryCapabilityDispatcher.invoke` fails fast with
+  `CAPABILITY_BINDING_MISSING` whenever `adapterId` is null/blank -- it never falls back to
+  resolving one itself, by design (dispatch is by capability + explicit adapter, not a default
+  lookup).
+
+  The FLOW compilation path already did this resolution correctly:
+  `CompiledModelFlowDefinitionProvider` builds an `adapterIdByCapability` map from
+  `compiledModel.getBindings()` at flow-compile time and resolves each `capabilityCall` step's
+  adapter from it (`nonBlank(call.getAdapterId(), adapterIdByCapability.get(normalize(capabilityName)))`)
+  -- which is exactly why the pre-existing `SugerirDestino`/`SugerirOrigem` FLOWS worked live the
+  whole time this bug existed. The PROCEDURE path (`ProcedureRunner`, shared by panel-action
+  procedure bindings and `AggregateRuntime.invoke()`) never had the equivalent resolution --
+  confirmed by reading `ProcedureRunner.java` alongside `RegistryCapabilityDispatcher.java` and
+  `CompiledModelFlowDefinitionProvider.java` side by side, not assumed.
+
+  **Blast radius**: every procedure in the corpus (and any future one) that calls a custom
+  capability via `type: "capabilityCall"` was silently broken end-to-end -- not scoped to the two
+  Sugerir procedures this REG was found through. `ProcedureRunner` is shared by both panel-action
+  procedure bindings and `AggregateRuntime.invoke()`, so this affected both call paths identically.
+
+  **Fix**: `ProcedureRunner` now builds the same `adapterIdByCapability` map (from
+  `compiledModel.getBindings()`, normalized capability-name key -> adapter) once per
+  `buildProcedureDefinitions()` call, and threads it through `toProcedureDefinition`/
+  `toProcedureStep` (previously static methods taking no model context) so the `CALL_CAPABILITY`
+  case resolves a real adapterId instead of `""`. `capabilityType` was left as `""`/null,
+  unchanged -- `CompiledProcedureStep` has no such field either, matching the flow path's own
+  behaviour when a step author leaves it unset.
+
+  **RED->GREEN, both directions actually run**: new `ProcedureRunnerCapabilityCallTest` builds a
+  minimal compiled model (one custom capability + one binding + one procedure with a
+  `capabilityCall` step) and a `RecordingDispatcher` stub that captures the `CapabilityCall` it
+  receives. Verified RED by temporarily reverting the `CALL_CAPABILITY` branch to the old
+  hardcoded-`""` form in a real generated FinalApp build (WmsOffice) and re-running: genuine
+  `AssertionFailedError` (`expected: <test-adapter> but was: <null>`) -- an actual JUnit failure,
+  not inferred. Restored the fix, re-ran: GREEN. Full regression pass in the same app build:
+  `ProcedureRunnerCapabilityCallTest` (1), `AggregateRuntimeCommitTransactionalTest` (2),
+  `AggregateRuntimeCommitTest` (2), `AggregateRuntimeTest` (3), `WorkbenchRuntimeTest` (2),
+  `PanelRuntimeTest` (8), `PanelRuntimeRowOpsTest` (6), `PanelRuntimeInputFieldsTest` (1) --
+  25/25 pass, zero regressions.
+
+  **Verified live end-to-end, not just unit-tested**: rebuilt WmsOffice's running FinalApp
+  (bootJar) with the fix, restarted it, and called the two real procedures that had previously
+  reproduced the 503 (`POST /api/runtime/aggregate/Movimento/invoke/SugerirDestinoProcedure` and
+  `.../SugerirOrigemProcedure`), both now returning a real, correct suggestion result
+  (`sucesso: true`, real ranking/FIFO allocation output) matching what the equivalent flow call
+  returns. This closes what would otherwise have been recorded as a named G2 design gap
+  (Move 3, `docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md`) -- the plan's own hypothesis ("invoke is the
+  candidate mechanism ... if it does not fit, say so and name the gap") held once the real bug
+  underneath it was fixed, so no gap needed naming.

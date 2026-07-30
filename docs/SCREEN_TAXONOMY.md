@@ -29,14 +29,14 @@ and the impact gate (F4) enforces it; `n/a` = no hand-written screen to manifest
 | AuxScreen | `aux-screen` | 6,071 | detail-form | AutoPanel Detail | generated-equivalent | confirmed ¹ |
 | Pigmentampa | `pigmentampa-editor` | 14,341 | detail-form | AutoPanel Detail | generated-equivalent | confirmed ¹ |
 | WmsOffice | `analytics` | 11,455 | dashboard | none | hand-written → contract (F2/F3) | confirmed |
-| WmsOffice | `centro-trabalho` | 30,862 | operator-console | none (evaluated ⁴, not authored) | hand-written → contract or Aggregate Workbench (2-level nesting) | confirmed |
+| WmsOffice | `centro-trabalho` | 30,862 | operator-console | none (evaluated ⁶, not authored) | hand-written → contract; Aggregate Workbench answers the 2-level nesting, still 2 named gaps (⁶) | confirmed |
 | WmsOffice | `conferencia-fiscal` | 22,897 | operator-console | `panel` ⁴ (History half) | **partially converted** — History works, Import wizard cannot-express | confirmed |
 | WmsOffice | `crossdocking` | 12,748 | **operator-console** ² | `panel` ³ | **converted** (14/20 checklist items work) | confirmed |
 | WmsOffice | `excluir-estabelecimento` | 9,820 | detail-form | AutoPanel Detail | generated-equivalent | confirmed |
 | WmsOffice | `inventario` | 28,031 | operator-console | `panel` ⁴ (Historico half) | **partially converted** — Historico works, 3 CSV wizards cannot-express | confirmed |
 | WmsOffice | `login` | 6,773 | auth | generated login | generated-equivalent | confirmed |
 | WmsOffice | `mapa-armazem` | 19,650 | spatial-map | none | hand-written → contract (F2/F3) | confirmed |
-| WmsOffice | `movimentacao-livre` | 23,392 | operator-console | `panel` ⁴ (header+item half) | **partially converted** — header/item list works, position-level allocation cannot-express | confirmed |
+| WmsOffice | `movimentacao-livre` | 23,392 | operator-console | `panel` ⁴ (header+item half) + Aggregate Workbench ⁶ (2-level nesting + Sugerir) | **partially converted** — position nesting + Sugerir now work via Workbench; stock-ledger side effect (`syncOcupacao`) still cannot-express | confirmed |
 | WmsOffice | `novo-estabelecimento` | 16,347 | detail-form | AutoPanel Detail | generated-equivalent | confirmed |
 | WmsOffice | `relatorios` | 10,540 | dashboard | none | hand-written → contract (F2/F3) | confirmed |
 | WmsOffice | `seed-data` | 8,674 | admin-tool | ControlPanel (partial) | hand-written | confirmed |
@@ -104,7 +104,7 @@ these are what each app's `model.json` already declares (`autoPanels`/`panels`/`
 |---|---|---|---|---|
 | AuxScreen | 0 | 2 | 0 | 0 |
 | Pigmentampa | 0 | 2 | 0 | 0 |
-| WmsOffice | 2 | 9 ⁵ | 2 | 0 |
+| WmsOffice | 3 ⁶ | 9 ⁵ | 3 ⁶ | 0 |
 | WordLab | *(not scanned — no `web/` dir; declared surfaces alone drive its entire UI)* |
 | Claude Support Desk | *(not scanned — no `web/` dir; declared surfaces alone drive its entire UI)* |
 
@@ -112,6 +112,23 @@ these are what each app's `model.json` already declares (`autoPanels`/`panels`/`
 after Move 2 G1-G3). Move 2 G4 added 4 more: `ConferenciaFiscalNfePanel`, `ConferenciaFiscalRomaneioPanel`,
 `MovimentoLivrePanel`, `InventarioHistoricoPanel` — each a partial conversion of its screen (see ⁴
 above and `docs/MOVE2_G4_CHECKLISTS.md`).
+
+⁶ **2026-07-29, `CAPABILITY_ROADMAP.md` Move 3 G1-G2** (`docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md`,
+results in `docs/MOVE3_G2_CHECKLISTS.md`). G1 fixed a real non-atomicity bug in `AggregateRuntime.commit`
+(REG-72) and proved depth-2 recursion (root -> collection -> nested collection) sound, both RED->GREEN
+and live. G2 added WmsOffice's first depth-2 aggregate, `Movimento` (-> `itens` -> `posicoes`),
+answering Class B's "nesting past 1 level" blocker for `movimentacao-livre`/`centro-trabalho` —
+verified live via REST and a real browser (nested band rendering + real cell values, confirmed by
+screenshot, not just the DOM-text dump, which mis-reads dense tables as blank). Assessing the
+`Sugerir*` suggestion flows against `invoke()` (procedure-over-draft) found and fixed a second real
+platform bug (REG-73: `ProcedureRunner` never resolved a capability adapter from the model's
+`bindings`, so every procedure-side `capabilityCall` failed regardless of aggregates) and closed a
+previously-unused generator seam (`autoPanels[].transaction.metadata.actions`) to wire the suggestions
+as real clickable Workbench buttons, live-verified. Two real, still-open residuals named (not fixed):
+a position edit's stock-ledger side effect (`syncOcupacao`) has no cross-aggregate write mechanism,
+and a `Sugerir` result isn't auto-applied into a new position row by the generic renderer. Neither
+console reaches parity — 0 B deleted, both originals unchanged (see `docs/MOVE3_G2_CHECKLISTS.md`
+§"Deletion eligibility").
 
 ## Promotion-rule verdict
 

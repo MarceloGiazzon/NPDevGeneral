@@ -105,11 +105,35 @@ public class ProcedureRunner {
         if (compiledModel == null) {
             return Map.of();
         }
+        Map<String, String> adapterIdByCapability = buildAdapterIdByCapability();
         Map<String, ProcedureDefinition> definitions = new LinkedHashMap<>();
         for (CompiledProcedure procedure : compiledModel.getProcedures()) {
-            definitions.put(procedure.name(), toProcedureDefinition(procedure));
+            definitions.put(procedure.name(), toProcedureDefinition(procedure, adapterIdByCapability));
         }
         return Map.copyOf(definitions);
+    }
+
+    /**
+     * Mirrors {@code CompiledModelFlowDefinitionProvider}'s resolution: a procedure's
+     * {@code callCapability} step only ever declares a capability name, never an adapter, so the
+     * adapter must come from the model's global {@code bindings} list keyed by capability name.
+     * Without this, every procedure-side capability call reached {@code RegistryCapabilityDispatcher}
+     * with a null adapterId and failed CAPABILITY_BINDING_MISSING regardless of a real binding
+     * existing -- the flow path already did this resolution, the procedure path never did.
+     */
+    private Map<String, String> buildAdapterIdByCapability() {
+        Map<String, String> byCapability = new LinkedHashMap<>();
+        for (var binding : compiledModel.getBindings()) {
+            if (binding == null || binding.getCapability() == null || binding.getAdapter() == null) {
+                continue;
+            }
+            String capability = binding.getCapability().trim().toLowerCase(java.util.Locale.ROOT);
+            String adapter = binding.getAdapter().trim();
+            if (!capability.isEmpty() && !adapter.isEmpty()) {
+                byCapability.put(capability, adapter);
+            }
+        }
+        return byCapability;
     }
 
     /** LIFT-QUERY-P1: lets a {@code runQuery} procedure step resolve its declared query's
@@ -125,14 +149,15 @@ public class ProcedureRunner {
         return Map.copyOf(queries);
     }
 
-    private static ProcedureDefinition toProcedureDefinition(CompiledProcedure procedure) {
+    private static ProcedureDefinition toProcedureDefinition(
+            CompiledProcedure procedure, Map<String, String> adapterIdByCapability) {
         return new ProcedureDefinition(
                 procedure.name(),
-                procedure.steps().stream().map(ProcedureRunner::toProcedureStep).toList()
+                procedure.steps().stream().map(step -> toProcedureStep(step, adapterIdByCapability)).toList()
         );
     }
 
-    private static ProcedureStep toProcedureStep(CompiledProcedureStep step) {
+    private static ProcedureStep toProcedureStep(CompiledProcedureStep step, Map<String, String> adapterIdByCapability) {
         ProcedureStepType type = ProcedureStep.parseType(step.type());
         String target = normalized(step.target());
         String concept = normalized(step.concept());
@@ -142,28 +167,35 @@ public class ProcedureRunner {
             case RUN_QUERY -> ProcedureStep.runQuery(stepName(step), normalized(step.query()), concept, target);
             case SAVE_CONCEPT -> ProcedureStep.saveConcept(stepName(step), concept, refOf(step.id(), "id"), dataRef(step), target);
             case DELETE_CONCEPT -> ProcedureStep.deleteConcept(stepName(step), concept, refOf(step.id(), "id"));
-            case CALL_CAPABILITY -> ProcedureStep.callCapability(
-                    stepName(step),
-                    normalized(step.capability()),
-                    "",
-                    "",
-                    normalized(step.operation()),
-                    step.args().values().stream().map(value -> refOf(value, String.valueOf(value))).toList(),
-                    target
-            );
+            case CALL_CAPABILITY -> {
+                String capabilityName = normalized(step.capability());
+                String adapterId = capabilityName == null
+                        ? ""
+                        : adapterIdByCapability.getOrDefault(
+                                capabilityName.toLowerCase(java.util.Locale.ROOT), "");
+                yield ProcedureStep.callCapability(
+                        stepName(step),
+                        capabilityName,
+                        "",
+                        adapterId,
+                        normalized(step.operation()),
+                        step.args().values().stream().map(value -> refOf(value, String.valueOf(value))).toList(),
+                        target
+                );
+            }
             case PUBLISH_EVENT -> ProcedureStep.publishEvent(stepName(step), normalized(step.event()), dataRef(step));
             case CALL_PROCEDURE -> ProcedureStep.callProcedure(stepName(step), normalized(step.procedure()), dataRef(step), target);
             case IF -> ProcedureStep.ifThenElse(
                     stepName(step),
                     refOf(step.condition(), "condition"),
-                    step.thenSteps().stream().map(ProcedureRunner::toProcedureStep).toList(),
-                    step.elseSteps().stream().map(ProcedureRunner::toProcedureStep).toList()
+                    step.thenSteps().stream().map(s -> toProcedureStep(s, adapterIdByCapability)).toList(),
+                    step.elseSteps().stream().map(s -> toProcedureStep(s, adapterIdByCapability)).toList()
             );
             case FOR_EACH -> ProcedureStep.forEach(
                     stepName(step),
                     refOf(step.items(), "items"),
                     normalized(step.as()) == null ? "item" : normalized(step.as()),
-                    step.steps().stream().map(ProcedureRunner::toProcedureStep).toList()
+                    step.steps().stream().map(s -> toProcedureStep(s, adapterIdByCapability)).toList()
             );
             case MAP_VALUE -> ProcedureStep.mapValue(stepName(step), refOf(step.value(), "input"), target);
             case RETURN -> ProcedureStep.returnValue(stepName(step), refOf(step.value(), target == null ? "input" : target));

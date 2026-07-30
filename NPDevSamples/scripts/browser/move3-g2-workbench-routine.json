@@ -1,0 +1,19 @@
+{
+  "scenarioName": "move3-g2-movimento-workbench-depth2",
+  "targetPath": "/login.html",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl", "label": "Open the real login page" },
+    { "action": "waitForSelector", "selector": "#username", "state": "visible", "label": "Login form rendered" },
+    { "action": "fill", "selector": "#base", "value": "http://127.0.0.1:8100", "label": "Same-origin base" },
+    { "action": "fill", "selector": "#username", "value": "admin" },
+    { "action": "fill", "selector": "#password", "value": "admin123" },
+    { "action": "fill", "selector": "#tenant", "value": "trial" },
+    { "action": "click", "selector": "#loginBtn", "label": "Submit real login" },
+    { "action": "waitForSelector", "selector": "#tokenBox", "state": "visible", "label": "Login succeeded" },
+    { "action": "goto", "url": "http://127.0.0.1:8100/npdev-workbench/MovimentoWorkbench.html", "label": "Open the generated depth-2 workbench directly" },
+    { "action": "waitForTimeout", "timeoutMs": 1500, "label": "Let the workbench boot/load" },
+    { "action": "screenshot", "name": "shot_movimento_workbench_list", "label": "Workbench selection surface" },
+    { "action": "collect", "what": ["domText", "console", "url"] }
+  ]
+}
