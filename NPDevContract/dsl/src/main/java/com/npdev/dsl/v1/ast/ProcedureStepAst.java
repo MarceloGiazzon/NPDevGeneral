@@ -27,7 +27,8 @@ public record ProcedureStepAst(
         Boolean trace,
         Boolean audit,
         Map<String, Object> metadata,
-        Map<String, Object> set
+        Map<String, Object> set,
+        Boolean createIfMissing
 ) {
     public ProcedureStepAst {
         data = data == null ? Map.of() : Map.copyOf(data);
@@ -37,5 +38,6 @@ public record ProcedureStepAst(
         steps = steps == null ? List.of() : List.copyOf(steps);
         metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
         set = set == null ? Map.of() : Map.copyOf(set);
+        createIfMissing = createIfMissing != null && createIfMissing;
     }
 }

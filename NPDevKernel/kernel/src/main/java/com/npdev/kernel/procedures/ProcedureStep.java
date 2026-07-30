@@ -27,7 +27,8 @@ public record ProcedureStep(
         List<ProcedureStep> thenSteps,
         List<ProcedureStep> elseSteps,
         List<ProcedureStep> steps,
-        Map<String, Object> setValues
+        Map<String, Object> setValues,
+        boolean createIfMissing
 ) {
     public ProcedureStep {
         name = normalizeRequired(name, "name");
@@ -95,7 +96,8 @@ public record ProcedureStep(
                 List.of(),
                 List.of(),
                 List.of(),
-                Map.of()
+                Map.of(),
+                false
         );
     }
 
@@ -161,7 +163,7 @@ public record ProcedureStep(
     ) {
         return new ProcedureStep(name, ProcedureStepType.CALL_PROCEDURE, null, null, null,
                 null, null, null, null, List.of(), outputKey, null, payloadRef,
-                null, null, null, null, procedureName, null, List.of(), List.of(), List.of(), Map.of());
+                null, null, null, null, procedureName, null, List.of(), List.of(), List.of(), Map.of(), false);
     }
 
     public static ProcedureStep ifThenElse(
@@ -172,7 +174,7 @@ public record ProcedureStep(
     ) {
         return new ProcedureStep(name, ProcedureStepType.IF, null, null, null,
                 null, null, null, null, List.of(), null, null, null,
-                conditionRef, null, null, null, null, null, thenSteps, elseSteps, List.of(), Map.of());
+                conditionRef, null, null, null, null, null, thenSteps, elseSteps, List.of(), Map.of(), false);
     }
 
     public static ProcedureStep forEach(
@@ -183,19 +185,19 @@ public record ProcedureStep(
     ) {
         return new ProcedureStep(name, ProcedureStepType.FOR_EACH, null, null, null,
                 null, null, null, null, List.of(), null, null, null,
-                null, collectionRef, itemKey, null, null, null, List.of(), List.of(), steps, Map.of());
+                null, collectionRef, itemKey, null, null, null, List.of(), List.of(), steps, Map.of(), false);
     }
 
     public static ProcedureStep mapValue(String name, String valueRef, String outputKey) {
         return new ProcedureStep(name, ProcedureStepType.MAP_VALUE, null, null, null,
                 null, null, null, null, List.of(), outputKey, null, null,
-                null, null, null, valueRef, null, null, List.of(), List.of(), List.of(), Map.of());
+                null, null, null, valueRef, null, null, List.of(), List.of(), List.of(), Map.of(), false);
     }
 
     public static ProcedureStep returnValue(String name, String returnRef) {
         return new ProcedureStep(name, ProcedureStepType.RETURN, null, null, null,
                 null, null, null, null, List.of(), null, null, null,
-                null, null, null, null, null, returnRef, List.of(), List.of(), List.of(), Map.of());
+                null, null, null, null, null, returnRef, List.of(), List.of(), List.of(), Map.of(), false);
     }
 
     public static ProcedureStep patchConcept(
@@ -205,9 +207,27 @@ public record ProcedureStep(
             Map<String, Object> setValues,
             String outputKey
     ) {
+        return patchConcept(name, conceptName, idRef, setValues, outputKey, false);
+    }
+
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1B): {@code createIfMissing} opts into the
+     * create half REG-77 found missing -- on {@code CONCEPT_NOT_FOUND}, build a new record from
+     * {@code setValues} with a generated id instead of failing. Defaults to {@code false},
+     * preserving REG-75's deliberate patch-not-upsert semantics; every existing caller (WmsOffice's
+     * Concluir/Cancelar, dsl-conformance-max) is unaffected.
+     */
+    public static ProcedureStep patchConcept(
+            String name,
+            String conceptName,
+            String idRef,
+            Map<String, Object> setValues,
+            String outputKey,
+            boolean createIfMissing
+    ) {
         return new ProcedureStep(name, ProcedureStepType.PATCH_CONCEPT, conceptName, idRef, null,
                 null, null, null, null, List.of(), outputKey, null, null,
-                null, null, null, null, null, null, List.of(), List.of(), List.of(), setValues);
+                null, null, null, null, null, null, List.of(), List.of(), List.of(), setValues, createIfMissing);
     }
 
     public static ProcedureStepType parseType(String rawType) {

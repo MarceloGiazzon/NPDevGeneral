@@ -1,0 +1,58 @@
+id: REG-78
+title: "Procedures have no find-by-non-id-fields lookup usable inline with patchConcept, and no arithmetic/accumulation primitive -- blocking SyncOcupacaoProcedure's real find-or-increment semantics (M8/M9)"
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-07-30
+verification: NOT_VERIFIED
+source: |
+  docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1C (SyncOcupacaoProcedure, closing
+  docs/MOVE3_G2_CHECKLISTS.md's M8/M9 residual, referenced as REG-77-B). Found while attempting to
+  implement it immediately after REG-77's callProcedure + createIfMissing work landed and closed
+  REG-77-A (Ativar's flag-sync) in the same session.
+surface: kernel/procedure-runtime
+files: []
+detail: |
+  Investigated, not fixed. The original `syncOcupacao` client logic (movimentacao-livre.html /
+  centro-trabalho.html, WmsOffice) does, for each (localArmazenagemId, loteId) pair touched by a
+  Movimento's posicoes: find the existing `LocalArmazenagemLote` row for that pair; if found,
+  INCREMENT its quantidade by a signed delta (positive for Destino, negative for Origem); if not
+  found (and the delta is positive), CREATE a new row. `patchConcept`'s new `createIfMissing`
+  (REG-77) makes the "create if genuinely absent" half expressible -- but two more primitives are
+  missing, confirmed by re-reading the executor directly rather than assumed:
+
+  1. **No find-by-non-id-fields lookup composable with patchConcept.** `patchConcept`'s `id` is a
+     direct primary-key lookup (`ConceptReadRequest(conceptName, id, tenantId)`) -- it has no
+     "find where field=value" mode. Procedures do have `listConcepts`/`runQuery` steps that CAN
+     filter by declared query criteria, but composing "runQuery to find candidate, extract its id
+     via mapValue, THEN patchConcept with that id" requires a NAMED query declaration
+     (`localArmazenagemId == ? && loteId == ?`) that does not exist for `LocalArmazenagemLote` today,
+     plus an `ifThenElse` step to route "found" vs. "not found" -- itself only cleanly expressible
+     if the found-id extraction and the not-found blank-id path can share one patchConcept call,
+     which they can (createIfMissing tolerates a blank id) -- so this half is NOT a hard platform
+     wall, just undeclared corpus/model work (a new query + forEach/ifThenElse composition), unlike
+     point 2.
+  2. **No arithmetic/accumulation primitive anywhere in the procedure step vocabulary.**
+     `patchConcept`'s `set` values are literal-by-default or a direct state-ref copy
+     (`DefaultProcedureExecutor.resolveSetValue`) -- never an expression, and never a function of the
+     CURRENT value being overwritten. Computing `newQuantidade = existing.quantidade + delta` needs:
+     read the existing value (via `readConcept` + a `mapValue` dotted-path extraction, both of which
+     already work), then ADD a delta to it -- and no step type performs arithmetic. `mapValue` is
+     copy-only. This is confirmed a genuine, independent gap: unlike point 1, no composition of
+     EXISTING steps closes it. A `forEach` loop's own per-iteration state cannot accumulate a running
+     total across iterations either (each iteration's `itemKey` binding is independent), so even a
+     naive "sum all posicoes for this pair, then set absolute quantity" workaround does not compose
+     from what exists today.
+
+  **What this blocks, precisely**: SyncOcupacaoProcedure (M8/M9) only. Nothing else in Move 4 or
+  Move 5 Wave 1 depends on this -- REG-75 (patchConcept/onCommit), REG-77-A (Ativar's flag-sync, this
+  session) and the WmsOffice `crossDockingSync` capability deletion are all fully closed and do not
+  need either primitive named here.
+
+  **What would close it** (not attempted, scoped for a future session): point 1 needs only a
+  declared query + procedure composition (no new platform code). Point 2 needs a genuinely new
+  procedure step -- e.g. a `computeValue`/`arithmetic` step taking two refs (or a ref and a literal)
+  and an operator (`add`/`subtract`, the minimum `syncOcupacao` needs), writing the result to a
+  target key the same way `mapValue` already does. Shipping an absolute-overwrite instead (skipping
+  the increment) was deliberately rejected: it would silently produce a wrong occupancy count for
+  every position that already had stock, which is worse than not shipping `syncOcupacao` at all.

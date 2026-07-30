@@ -49,6 +49,7 @@ class FlowStepTypeConformanceTest {
           { "name": "s-map",          "type": "map",             "input": "input", "output": "mapped" },
           { "name": "s-foreach",      "type": "forEach",         "collection": "input.lines", "itemKey": "line",
             "steps": [ { "name": "s-foreach-body", "type": "return", "value": "line" } ] },
+          { "name": "s-callprocedure","type": "callProcedure",  "procedure": "ConformanceProcedure", "output": "called" },
           { "name": "s-return",       "type": "return",          "value": "input" }
         ]
         """;
@@ -99,6 +100,10 @@ class FlowStepTypeConformanceTest {
                 { "name": "OrderScored", "payload": [] },
                 { "name": "OrderReminder", "payload": [] },
                 { "name": "OrderApproved", "payload": [] }
+              ],
+              "procedures": [
+                { "name": "ConformanceProcedure", "steps": [
+                  { "name": "return-input", "type": "return", "value": "$input" } ] }
               ],
               "flows": [
                 { "name": "ConformanceFlow", "concept": "Order", "steps": %s }

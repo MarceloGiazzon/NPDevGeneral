@@ -2086,7 +2086,8 @@
             "createConcept",
             "updateConcept",
             "map",
-            "forEach"
+            "forEach",
+            "callProcedure"
           ]
         },
         "checkpoint": {
@@ -2136,6 +2137,11 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "procedure": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md): the procedure a callProcedure flow step invokes synchronously. Reuses this step's own input/output for the procedure's input map / result binding."
         },
         "policy": {
           "$ref": "#/$defs/capabilityPolicy"
@@ -2450,6 +2456,20 @@
                 "minItems": 1
               }
             }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "callProcedure"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "procedure"
+            ]
           }
         }
       ],
@@ -2800,6 +2820,11 @@
         "value": {},
         "set": {
           "type": "object"
+        },
+        "createIfMissing": {
+          "type": "boolean",
+          "default": false,
+          "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md): opts a patchConcept step into creating a brand-new record (generated id, built from set alone) when id does not resolve to an existing one, instead of failing CONCEPT_NOT_FOUND. Default false preserves patchConcept's original patch-not-upsert semantics (REG-75)."
         },
         "condition": {
           "type": "string",

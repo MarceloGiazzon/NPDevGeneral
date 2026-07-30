@@ -43,8 +43,10 @@ import com.npdev.kernel.ports.MetricsSink;
 import com.npdev.kernel.ports.PermissionEvaluator;
 import com.npdev.kernel.ports.RuntimeInvariantEngineFactory;
 import com.npdev.kernel.ports.SchemaValidator;
+import com.npdev.kernel.procedures.ProcedureExecutor;
 import com.npdev.kernel.security.PermissionGrant;
 import com.npdev.kernel.security.StaticPermissionEvaluator;
+import com.finalexec.npdev.service.ProcedureRunner;
 import com.npdev.runtime.support.GeneratedCrudRuntimeSupport;
 import com.npdev.runtime.support.InMemoryOrchestrationExecutionRegistry;
 import com.npdev.runtime.support.OrchestrationExecutionRegistry;
@@ -266,7 +268,8 @@ public class NpdevCapabilityBindingConfig {
             JsonCodec jsonCodec,
             SchemaValidator schemaValidator,
             MetricsSink metricsSink,
-            PermissionEvaluator permissionEvaluator
+            PermissionEvaluator permissionEvaluator,
+            ObjectProvider<ProcedureRunner> procedureRunnerProvider
     ) {
         KernelRunner kernelRunner = new KernelRunner(
                 eventBus,
@@ -286,6 +289,18 @@ public class NpdevCapabilityBindingConfig {
                 metricsSink
         );
         kernelRunner.withPermissionEvaluator(permissionEvaluator);
+        // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): wires the new callProcedure flow
+        // step to the SAME ProcedureRunner/procedure registry PanelRuntime/AggregateRuntime already
+        // use, rather than a second, separate procedure-execution mechanism -- ProcedureRunner
+        // takes a name and resolves+rebuilds its own DefaultProcedureExecutor per call (see its own
+        // execute()); ProcedureExecutor takes an already-resolved ProcedureDefinition, so this
+        // adapter just supplies the definition's own name back to it.
+        ProcedureRunner procedureRunner = procedureRunnerProvider.getIfAvailable();
+        if (procedureRunner != null) {
+            ProcedureExecutor procedureExecutor = (definition, input, context) ->
+                    procedureRunner.execute(definition.name(), input, context);
+            kernelRunner.withProcedureExecutor(procedureExecutor, procedureRunner.procedureRegistry());
+        }
         if (eventStore instanceof InProcEventStore inProcEventStore) {
             inProcEventStore.registerAppendListener(kernelRunner::onEventPersisted);
         }

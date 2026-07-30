@@ -1235,7 +1235,8 @@ public final class ModelCompiler {
                     stepAst.getItemKey(),
                     loopSteps,
                     stepAst.getMaxLoopIterations(),
-                    onFailureSteps
+                    onFailureSteps,
+                    stepAst.getProcedure()
             ));
         }
         return out;
@@ -1329,7 +1330,8 @@ public final class ModelCompiler {
                     step.trace(),
                     step.audit(),
                     sortObjectMap(step.metadata()),
-                    sortObjectMap(step.set())
+                    sortObjectMap(step.set()),
+                    step.createIfMissing()
             ));
         }
         return out;

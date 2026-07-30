@@ -187,6 +187,18 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
                         toFlowSteps(step.getLoopSteps(), flowConcept, adapterIdByCapability, capabilityOperationsByCapability),
                         step.getMaxLoopIterations()
                 ));
+                // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): step.getMapFromRef()/
+                // getMapToRef() carry this step's own "input"/"output" JSON properties here --
+                // ModelCompiler.compileFlowSteps populates those two slots from stepAst.getInput()/
+                // getOutput() for EVERY flow step type, not just "map" (confirmed by reading that
+                // method directly), so reusing them is consistent with how every other step already
+                // gets its input/output threaded through, not a repurposing specific to this step.
+                case "callprocedure" -> out.add(FlowStepDefinition.callProcedure(
+                        name,
+                        step.getProcedureName(),
+                        step.getMapFromRef(),
+                        step.getMapToRef()
+                ));
                 default -> throw new IllegalArgumentException(
                         "Unsupported flow step type '" + step.getType() + "' in flow concept " + flowConcept
                 );

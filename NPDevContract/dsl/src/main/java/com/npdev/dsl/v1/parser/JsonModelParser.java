@@ -766,7 +766,8 @@ public final class JsonModelParser {
                     readOptionalBoolean(stepNode, "trace"),
                     readOptionalBoolean(stepNode, "audit"),
                     parseObjectMap(stepNode.get("metadata")),
-                    parseObjectMap(stepNode.get("set"))
+                    parseObjectMap(stepNode.get("set")),
+                    readOptionalBoolean(stepNode, "createIfMissing")
             ));
         }
         return out;
@@ -1446,6 +1447,10 @@ public final class JsonModelParser {
         }
         String returnValue = readText(stepNode, "value");
         ActionMetadataAst action = parseActionMetadata(stepNode.get("action"), "flows[" + flowName + "].steps[" + stepName + "].action");
+        // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): callProcedure invokes a named
+        // procedure synchronously from a flow, using the same input/output convention every other
+        // flow step already uses -- no new ref-shaped properties needed beyond the procedure name.
+        String procedure = readText(stepNode, "procedure");
 
         List<StepAst> thenSteps = List.of();
         List<StepAst> elseSteps = List.of();
@@ -1529,7 +1534,8 @@ public final class JsonModelParser {
                 itemKey,
                 loopSteps,
                 maxLoopIterations,
-                onFailureSteps
+                onFailureSteps,
+                procedure
         );
     }
 
@@ -2116,6 +2122,7 @@ public final class JsonModelParser {
             case "awaitevent" -> "await";
             case "return" -> "return";
             case "foreach" -> "forEach";
+            case "callprocedure" -> "callProcedure";
             default -> type;
         };
     }

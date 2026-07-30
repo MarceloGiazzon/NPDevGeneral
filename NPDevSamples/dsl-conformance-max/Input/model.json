@@ -398,10 +398,27 @@
           "set": { "quantity": "$input.lineCount", "lastSyncedStatus": "$input.status" }, "target": "audited" },
         { "name": "return-audited", "type": "return", "value": "$audited" }
       ]
+    },
+    {
+      "name": "EnsureWidgetOrderAuditProcedure",
+      "description": "Coverage for patchConcept's createIfMissing flag (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md Wave 1B) -- the create half of REG-77. Unlike AuditWidgetOrderProcedure (which patches an audit row that always already exists, created alongside its order), this one tolerates the row not existing yet: id references a key nothing populates, so on the resulting CONCEPT_NOT_FOUND miss patchConcept builds a brand-new WidgetOrderAudit from set alone with a freshly generated id, rather than failing.",
+      "steps": [
+        { "name": "ensure-audit", "type": "patchConcept", "concept": "WidgetOrderAudit", "id": "$existingAuditId",
+          "set": { "quantity": 0, "lastSyncedStatus": "Unsynced" }, "target": "ensured", "createIfMissing": true },
+        { "name": "return-ensured", "type": "return", "value": "$ensured" }
+      ]
     }
   ],
 
   "flows": [
+    {
+      "name": "RenameOrderStatusViaFlow",
+      "input": { "concept": "WidgetOrder", "mode": "update" },
+      "steps": [
+        { "name": "call-rename", "type": "callProcedure", "procedure": "RenameOrderStatusProcedure", "input": "$input", "output": "$renamed" },
+        { "name": "return-renamed", "type": "return", "value": "$renamed" }
+      ]
+    },
     {
       "name": "PlaceWidgetOrder",
       "input": {

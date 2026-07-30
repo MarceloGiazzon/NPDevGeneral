@@ -101,6 +101,16 @@ public class ProcedureRunner {
                 context == null ? ExecutionContext.anonymous() : context);
     }
 
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): exposed so KernelRunner's
+     * {@code callProcedure} flow step (wired via {@code withProcedureExecutor}, see
+     * NpdevCapabilityBindingConfig's kernelRunner bean) can look procedures up by name the same
+     * way this class's own {@link #execute} already does -- one registry-building method, not two.
+     */
+    public Map<String, ProcedureDefinition> procedureRegistry() {
+        return buildProcedureDefinitions();
+    }
+
     private Map<String, ProcedureDefinition> buildProcedureDefinitions() {
         if (compiledModel == null) {
             return Map.of();
@@ -167,7 +177,7 @@ public class ProcedureRunner {
             case RUN_QUERY -> ProcedureStep.runQuery(stepName(step), normalized(step.query()), concept, target);
             case SAVE_CONCEPT -> ProcedureStep.saveConcept(stepName(step), concept, refOf(step.id(), "id"), dataRef(step), target);
             case DELETE_CONCEPT -> ProcedureStep.deleteConcept(stepName(step), concept, refOf(step.id(), "id"));
-            case PATCH_CONCEPT -> ProcedureStep.patchConcept(stepName(step), concept, refOf(step.id(), "id"), step.set(), target);
+            case PATCH_CONCEPT -> ProcedureStep.patchConcept(stepName(step), concept, refOf(step.id(), "id"), step.set(), target, step.createIfMissing());
             case CALL_CAPABILITY -> {
                 String capabilityName = normalized(step.capability());
                 String adapterId = capabilityName == null

@@ -13,6 +13,7 @@ import com.npdev.kernel.concepts.ConceptWriteRequest;
 import com.npdev.kernel.events.EventEnvelope;
 import com.npdev.kernel.ports.CapabilityDispatcher;
 import com.npdev.kernel.ports.EventBus;
+import com.npdev.kernel.ports.IdProvider;
 
 import java.lang.reflect.Array;
 import java.util.Collection;
@@ -36,6 +37,7 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
     private final Map<String, ProcedureDefinition> procedureRegistry;
     private final ProcedureExecutionLimits limits;
     private final Map<String, CompiledQuery> queriesByName;
+    private final IdProvider idProvider;
 
     public DefaultProcedureExecutor(
             ConceptGateway conceptGateway,
@@ -77,6 +79,25 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
             ProcedureExecutionLimits limits,
             Map<String, CompiledQuery> queriesByName
     ) {
+        this(conceptGateway, capabilityDispatcher, eventBus, procedureRegistry, limits, queriesByName, null);
+    }
+
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1B): {@code idProvider} backs
+     * {@code saveConcept}'s blank-idRef fallback and {@code patchConcept}'s {@code createIfMissing}
+     * -- the create-with-generated-id half REG-77 found missing, using the same port
+     * {@code KernelRunner} already has ({@link IdProvider#uuid()} by default so no existing caller
+     * needs to change).
+     */
+    public DefaultProcedureExecutor(
+            ConceptGateway conceptGateway,
+            CapabilityDispatcher capabilityDispatcher,
+            EventBus eventBus,
+            Map<String, ProcedureDefinition> procedureRegistry,
+            ProcedureExecutionLimits limits,
+            Map<String, CompiledQuery> queriesByName,
+            IdProvider idProvider
+    ) {
         this.conceptGateway = Objects.requireNonNull(conceptGateway, "conceptGateway");
         this.capabilityDispatcher = Objects.requireNonNull(capabilityDispatcher, "capabilityDispatcher");
         this.eventBus = eventBus == null ? event -> { } : eventBus;
@@ -91,6 +112,7 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
             }
         }
         this.queriesByName = Map.copyOf(normalizedQueries);
+        this.idProvider = idProvider == null ? IdProvider.uuid() : idProvider;
     }
 
     @Override
@@ -191,11 +213,26 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
     }
 
     private ProcedureStepResult saveConcept(ProcedureStep step, Map<String, Object> state, ExecutionContext context) {
-        String id = requireString(state, step.idRef(), step.name(), "idRef");
+        String id = resolveOrGenerateId(state, step.idRef(), step.conceptName());
         Map<String, Object> data = requireMap(state, step.dataRef(), step.name(), "dataRef");
         ConceptRecord saved = conceptGateway.save(new ConceptWriteRequest(step.conceptName(), id, null, data), context);
         putOutput(state, step.outputKey(), saved);
         return ProcedureStepResult.success(step);
+    }
+
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1B): a blank/unresolved idRef no longer
+     * fails saveConcept -- it falls back to a generated id, the same auto-id fallback
+     * {@code PostgresPersistenceCapabilityAdapter.save()} already gives flow-bound
+     * createConcept/updateConcept steps (REG-77's exact asymmetry: flows got this for free via the
+     * persistence capability, procedures never did).
+     */
+    private String resolveOrGenerateId(Map<String, Object> state, String ref, String conceptName) {
+        Object value = ref == null || ref.isBlank() ? null : resolve(state, ref);
+        if (value == null || String.valueOf(value).isBlank()) {
+            return idProvider.nextId(conceptName);
+        }
+        return String.valueOf(value).trim();
     }
 
     /**
@@ -205,14 +242,46 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
      * caller-supplied overrides and passed onward). {@code set} values are literals by default; a
      * String starting with "$" resolves against procedure state (mirroring every other *Ref field's
      * convention), and "$$x" escapes to the literal string "$x".
+     *
+     * <p>Move 5 (Wave 1B): {@code createIfMissing} opts into the create half REG-77 found missing.
+     * Default {@code false} preserves this exactly as it was -- {@code idRef} must resolve
+     * non-blank, and {@code CONCEPT_NOT_FOUND} still fails. Opting in tolerates a blank/unresolved
+     * idRef (nothing to look up yet) and, on a miss, builds a brand-new record from {@code set}
+     * alone with a freshly generated id -- deliberately NOT the (missing) lookup id, so a caller
+     * that queried for a match first (e.g. via a prior {@code listConcepts} step) and found none can
+     * still invoke this with a blank idRef.
      */
     private ProcedureStepResult patchConcept(ProcedureStep step, Map<String, Object> state, ExecutionContext context) {
-        String id = requireString(state, step.idRef(), step.name(), "idRef");
-        Optional<ConceptRecord> existing = conceptGateway.read(new ConceptReadRequest(step.conceptName(), id, null), context);
-        if (existing.isEmpty()) {
-            return ProcedureStepResult.failure(step, "CONCEPT_NOT_FOUND", "Concept record not found: " + step.conceptName() + ":" + id);
+        if (!step.createIfMissing()) {
+            String id = requireString(state, step.idRef(), step.name(), "idRef");
+            Optional<ConceptRecord> existing = conceptGateway.read(new ConceptReadRequest(step.conceptName(), id, null), context);
+            if (existing.isEmpty()) {
+                return ProcedureStepResult.failure(step, "CONCEPT_NOT_FOUND", "Concept record not found: " + step.conceptName() + ":" + id);
+            }
+            return patchExistingConcept(step, state, context, id, existing.orElseThrow());
         }
-        Map<String, Object> merged = new LinkedHashMap<>(existing.orElseThrow().data());
+
+        Object idValue = step.idRef() == null || step.idRef().isBlank() ? null : resolve(state, step.idRef());
+        String id = idValue == null ? null : String.valueOf(idValue).trim();
+        Optional<ConceptRecord> existing = (id == null || id.isBlank())
+                ? Optional.empty()
+                : conceptGateway.read(new ConceptReadRequest(step.conceptName(), id, null), context);
+        if (existing.isPresent()) {
+            return patchExistingConcept(step, state, context, id, existing.orElseThrow());
+        }
+
+        String newId = idProvider.nextId(step.conceptName());
+        Map<String, Object> created = new LinkedHashMap<>();
+        step.setValues().forEach((key, raw) -> created.put(key, resolveSetValue(state, raw)));
+        ConceptRecord saved = conceptGateway.save(new ConceptWriteRequest(step.conceptName(), newId, null, created), context);
+        putOutput(state, step.outputKey(), saved);
+        return ProcedureStepResult.success(step);
+    }
+
+    private ProcedureStepResult patchExistingConcept(
+            ProcedureStep step, Map<String, Object> state, ExecutionContext context, String id, ConceptRecord existing
+    ) {
+        Map<String, Object> merged = new LinkedHashMap<>(existing.data());
         step.setValues().forEach((key, raw) -> merged.put(key, resolveSetValue(state, raw)));
         ConceptRecord saved = conceptGateway.save(new ConceptWriteRequest(step.conceptName(), id, null, merged), context);
         putOutput(state, step.outputKey(), saved);
@@ -488,7 +557,8 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
                 List.of(),
                 List.of(),
                 List.of(),
-                Map.of()
+                Map.of(),
+                false
         ));
     }
 

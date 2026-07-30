@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**78 item(s) migrated: 1 open/partial, 77 done.**
+**79 item(s) migrated: 1 open/partial, 78 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -85,7 +85,8 @@
 | REG-74 | The plugin-mount/requirement-discovery pipeline only scanned FLOW steps for capabilityCall usage -- a custom Java-source capability referenced ONLY by a procedure (never by any flow) was never mounted (no Java source compiled in, no plugin-manifest entry), so the app failed to boot with "Adapter ... is not declared in active plugin manifest" even though ProcedureRunner's own dispatch (REG-73) correctly resolved the adapter id | BUG | HIGH | DONE | 2026-07-29 |
 | REG-75 | Procedures have no way to read an existing concept record, override one field, and pass the merged result onward -- a readConcept result can only be consumed as a whole map by saveConcept (via requireMap's ConceptRecord unwrap), never by capabilityCall's args (which never unwraps ConceptRecord), and no step exists to construct/merge a map literal at all | GAP | MEDIUM | DONE | 2026-07-29 |
 | REG-76 | Workbench action inputFields rendered as a single-line <input type="text">, which silently strips/collapses newlines on assignment -- a 'paste multi-line text' propose action (e.g. paste a CSV) had its payload collapsed to one line client-side, so the server-side parser's own header-row detection consumed the entire pasted text and returned zero data rows | BUG | HIGH | DONE | 2026-07-29 |
-| REG-77 | Neither procedures nor flows can create a brand-new sibling concept record with an auto-generated id from within a read-modify-write side effect -- patchConcept (REG-75/Move 4) only works on records that already exist, and flows have no patch step at all | GAP | LOW | OPEN | 2026-07-30 |
+| REG-77 | Neither procedures nor flows can create a brand-new sibling concept record with an auto-generated id from within a read-modify-write side effect -- patchConcept (REG-75/Move 4) only works on records that already exist, and flows have no patch step at all | GAP | LOW | DONE | 2026-07-30 |
+| REG-78 | Procedures have no find-by-non-id-fields lookup usable inline with patchConcept, and no arithmetic/accumulation primitive -- blocking SyncOcupacaoProcedure's real find-or-increment semantics (M8/M9) | GAP | LOW | OPEN | 2026-07-30 |
 | REG-8 | LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-9 | LNCH-4: auth secrets management -- JWT key env-var delivery | GAP | HIGH | DONE | 2026-07-21 |
 
@@ -2134,8 +2135,8 @@ action doesn't rediscover this blind.
 
 ### REG-77 — Neither procedures nor flows can create a brand-new sibling concept record with an auto-generated id from within a read-modify-write side effect -- patchConcept (REG-75/Move 4) only works on records that already exist, and flows have no patch step at all
 
-**Type:** GAP · **Severity:** LOW · **Status:** OPEN
-**Verification:** NOT_VERIFIED
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-07-30)
+**Verification:** VERIFIED_LIVE
 **Source:** docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md, sections 4.2 (Ativar's own crossDockingAtivo=true flag-sync)
 and 4.3 (SyncOcupacaoProcedure, closing docs/MOVE3_G2_CHECKLISTS.md's M8/M9 residual). Both were
 scoped by that plan as closeable by patchConcept/onCommit alone ("the same one-liner with true").
@@ -2205,6 +2206,114 @@ so `saveConcept` (and a future create-capable variant of `patchConcept`) falls b
 `PostgresPersistenceCapabilityAdapter.save()` already does for flows. Either is a real, scoped
 platform change with its own risk surface (schema/compiled-model/canonical-JSON/validation, the
 same shape REG-75 itself required) -- named here rather than half-solved inline.
+
+---
+
+**Resolution (2026-07-30, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, "Move 5" Wave 1):** option (a) AND
+(b) both landed, closing this ledger item's literal claim in full:
+
+- New flow step `callProcedure` (kernel `FlowStepDefinition.Type.CALL_PROCEDURE` +
+  `CallProcedureStep`): a flow can now synchronously invoke a named procedure, reusing the
+  procedure's OWN `ProcedureExecutor` -- giving flows every procedure step at once (patchConcept
+  included), not a bespoke per-step mirror. Wired live in `NpdevCapabilityBindingConfig.
+  kernelRunner()` against the SAME `ProcedureRunner`/registry `PanelRuntime`/`AggregateRuntime`
+  already use.
+- `com.npdev.kernel.ports.IdProvider` is now wired into `DefaultProcedureExecutor`: `saveConcept`
+  falls back to a generated id on a blank/unresolved `idRef` (matching
+  `PostgresPersistenceCapabilityAdapter.save()`'s existing flow-side behavior), and `patchConcept`
+  gained an opt-in `createIfMissing` flag (default `false`, preserving REG-75's patch-not-upsert
+  semantics exactly) that builds a brand-new record with a generated id from `set` alone on a
+  `CONCEPT_NOT_FOUND` miss.
+- Both proven RED->GREEN with real, targeted temporary-break checks (`KernelRunnerCallProcedureTest`,
+  `DefaultProcedureExecutorCreateIfMissingTest`), given real corpus coverage in
+  `dsl-conformance-max` (`step.callProcedure`, `procedure.createIfMissing`), and found (while
+  implementing) a real, previously-undiscovered silent-data-loss bug: `ModelResolver.cloneStep()`
+  -- a SECOND `StepAst` construction path used for flow `specializes` inheritance -- dropped the
+  new `procedure` field silently on every clone, with no ratchet test protecting against this
+  class of bug (only the compiled-JSON round trip has one). Fixed alongside.
+- Applied live to WmsOffice: `AtivarCrossDocking` still creates `CrossDocking` via its existing
+  `createConcept` step (auto-id-generation there was never the missing piece), then calls the new
+  `SetCrossDockingFlagsProcedure` via `callProcedure` to set `crossDockingAtivo=true` on the linked
+  Recebimento/Expedicao -- the mirror of `Concluir`/`CancelarCrossDockingProcedure`'s own
+  clear-flag steps. This closes REG-77-A (Ativar's own flag-sync) in full.
+
+**The crossdocking.html deletion this closure was supposed to unlock (plan §4.5/§5, "first HTML
+deletion in five moves") is NOT executed.** Verified live before attempting it: the generated
+app's `GeneratedBusinessUiRouteController` only maps `/npdev-business-ui` (and trailing slash) --
+no controller serves an arbitrary declared Panel's own route (`CrossDockingConsolePanel`'s
+`/crossdocking`) as a real, navigable page, and `menu.json`/`pages.json` both point at
+`crossdocking.html` directly (`shell.js.mustache`'s `resolveHref` just returns `"/" + target` for
+`kind: PAGE` -- it would happily navigate to `/crossdocking` too, but nothing serves that path).
+Deleting the file now would strand the console with no reachable URL, a real regression the
+situacao/flag-sync fixes above do not touch. This is exactly Wave 6's still-unstarted `panel.route`
+finding ("threaded through nine files... nothing registers it as a navigable URL") landing early,
+confirmed live rather than assumed. Left undeleted; revisit once Wave 6 lands.
+
+**REG-77-B (SyncOcupacaoProcedure, M8/M9) is NOT closed by this** -- investigating it under Wave 1C
+surfaced that `createIfMissing` alone is not enough: the original `syncOcupacao` client logic finds
+an existing `LocalArmazenagemLote` by a (localArmazenagemId, loteId) PAIR (not by id at all -- there
+is no declared query expressing this lookup yet), and when found, INCREMENTS its existing quantity
+by a delta rather than setting an absolute value -- and no procedure step can read an old value and
+compute old+delta (`patchConcept`'s `set` is literal-or-ref copy only, never an expression; there is
+no arithmetic/accumulation primitive anywhere in the procedure step vocabulary). This is a second,
+independent missing primitive, not a shortfall of `createIfMissing` itself -- named precisely and
+filed separately as REG-78 rather than folded in here or half-solved with an absolute-overwrite that
+would silently produce wrong occupancy counts.
+
+### REG-78 — Procedures have no find-by-non-id-fields lookup usable inline with patchConcept, and no arithmetic/accumulation primitive -- blocking SyncOcupacaoProcedure's real find-or-increment semantics (M8/M9)
+
+**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Verification:** NOT_VERIFIED
+**Source:** docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1C (SyncOcupacaoProcedure, closing
+docs/MOVE3_G2_CHECKLISTS.md's M8/M9 residual, referenced as REG-77-B). Found while attempting to
+implement it immediately after REG-77's callProcedure + createIfMissing work landed and closed
+REG-77-A (Ativar's flag-sync) in the same session.
+
+**Surface:** `kernel/procedure-runtime`
+
+Investigated, not fixed. The original `syncOcupacao` client logic (movimentacao-livre.html /
+centro-trabalho.html, WmsOffice) does, for each (localArmazenagemId, loteId) pair touched by a
+Movimento's posicoes: find the existing `LocalArmazenagemLote` row for that pair; if found,
+INCREMENT its quantidade by a signed delta (positive for Destino, negative for Origem); if not
+found (and the delta is positive), CREATE a new row. `patchConcept`'s new `createIfMissing`
+(REG-77) makes the "create if genuinely absent" half expressible -- but two more primitives are
+missing, confirmed by re-reading the executor directly rather than assumed:
+
+1. **No find-by-non-id-fields lookup composable with patchConcept.** `patchConcept`'s `id` is a
+   direct primary-key lookup (`ConceptReadRequest(conceptName, id, tenantId)`) -- it has no
+   "find where field=value" mode. Procedures do have `listConcepts`/`runQuery` steps that CAN
+   filter by declared query criteria, but composing "runQuery to find candidate, extract its id
+   via mapValue, THEN patchConcept with that id" requires a NAMED query declaration
+   (`localArmazenagemId == ? && loteId == ?`) that does not exist for `LocalArmazenagemLote` today,
+   plus an `ifThenElse` step to route "found" vs. "not found" -- itself only cleanly expressible
+   if the found-id extraction and the not-found blank-id path can share one patchConcept call,
+   which they can (createIfMissing tolerates a blank id) -- so this half is NOT a hard platform
+   wall, just undeclared corpus/model work (a new query + forEach/ifThenElse composition), unlike
+   point 2.
+2. **No arithmetic/accumulation primitive anywhere in the procedure step vocabulary.**
+   `patchConcept`'s `set` values are literal-by-default or a direct state-ref copy
+   (`DefaultProcedureExecutor.resolveSetValue`) -- never an expression, and never a function of the
+   CURRENT value being overwritten. Computing `newQuantidade = existing.quantidade + delta` needs:
+   read the existing value (via `readConcept` + a `mapValue` dotted-path extraction, both of which
+   already work), then ADD a delta to it -- and no step type performs arithmetic. `mapValue` is
+   copy-only. This is confirmed a genuine, independent gap: unlike point 1, no composition of
+   EXISTING steps closes it. A `forEach` loop's own per-iteration state cannot accumulate a running
+   total across iterations either (each iteration's `itemKey` binding is independent), so even a
+   naive "sum all posicoes for this pair, then set absolute quantity" workaround does not compose
+   from what exists today.
+
+**What this blocks, precisely**: SyncOcupacaoProcedure (M8/M9) only. Nothing else in Move 4 or
+Move 5 Wave 1 depends on this -- REG-75 (patchConcept/onCommit), REG-77-A (Ativar's flag-sync, this
+session) and the WmsOffice `crossDockingSync` capability deletion are all fully closed and do not
+need either primitive named here.
+
+**What would close it** (not attempted, scoped for a future session): point 1 needs only a
+declared query + procedure composition (no new platform code). Point 2 needs a genuinely new
+procedure step -- e.g. a `computeValue`/`arithmetic` step taking two refs (or a ref and a literal)
+and an operator (`add`/`subtract`, the minimum `syncOcupacao` needs), writing the result to a
+target key the same way `mapValue` already does. Shipping an absolute-overwrite instead (skipping
+the increment) was deliberately rejected: it would silently produce a wrong occupancy count for
+every position that already had stock, which is worse than not shipping `syncOcupacao` at all.
 
 ### REG-8 — LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback
 
