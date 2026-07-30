@@ -768,7 +768,9 @@ public final class JsonModelParser {
                     parseObjectMap(stepNode.get("metadata")),
                     parseObjectMap(stepNode.get("set")),
                     readOptionalBoolean(stepNode, "createIfMissing"),
-                    parseObjectMap(stepNode.get("select"))
+                    parseObjectMap(stepNode.get("select")),
+                    parseJsonValue(stepNode.get("left")),
+                    parseJsonValue(stepNode.get("right"))
             ));
         }
         return out;

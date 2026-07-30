@@ -2817,6 +2817,7 @@
             "eventPublish",
             "publishEvent",
             "patchConcept",
+            "computeValue",
             "return"
           ]
         },
@@ -2827,6 +2828,12 @@
         "value": {},
         "set": {
           "type": "object"
+        },
+        "left": {
+          "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, final item / REG-78): computeValue's first operand -- a literal by default, or a $ref into procedure state (the same literal-vs-$ref convention patchConcept's set and mapList's select already use)."
+        },
+        "right": {
+          "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, final item / REG-78): computeValue's second operand -- same literal-vs-$ref convention as left."
         },
         "createIfMissing": {
           "type": "boolean",

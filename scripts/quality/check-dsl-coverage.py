@@ -295,6 +295,10 @@ FEATURE_DETECTORS = {
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3A / Gap 6): mapList produces a NEW list
     # (one output object per input item), unlike forEach which only iterates for side effects.
     "procedure.mapList": lambda m: _has_procedure_step_type(m, "mapList"),
+    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, final item / REG-78): computeValue -- the
+    # add/subtract arithmetic primitive procedures previously had none of, blocking
+    # SyncOcupacaoProcedure's find-or-increment semantics.
+    "procedure.computeValue": lambda m: _has_procedure_step_type(m, "computeValue"),
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): capabilityPolicy (retry/timeout/circuit/
     # bulkhead/idempotency) -- previously zero declarations anywhere in the corpus; the circuit/
     # bulkhead halves were also found to be silently dropped by the compiler (fixed alongside).

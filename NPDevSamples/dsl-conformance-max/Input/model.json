@@ -529,6 +529,18 @@
           "set": { "quantity": 0, "lastSyncedStatus": "Unsynced" }, "target": "ensured", "createIfMissing": true },
         { "name": "return-ensured", "type": "return", "value": "$ensured" }
       ]
+    },
+    {
+      "name": "IncrementOrderAuditQuantityProcedure",
+      "description": "Coverage for computeValue (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, final item / REG-78): the arithmetic primitive procedures previously had none of -- patchConcept's set can copy or overwrite a value, never compute one AS A FUNCTION of the current value. This is the exact shape WmsOffice's SyncOcupacaoProcedure needs (find an occupancy row, then increment its quantity by a signed delta) instead of only ever copying or replacing a value outright: readConcept the existing row, computeValue the new total, patchConcept it back.",
+      "steps": [
+        { "name": "read-audit", "type": "readConcept", "concept": "WidgetOrderAudit", "id": "$existingAuditId", "target": "existingAudit" },
+        { "name": "increment-quantity", "type": "computeValue", "operation": "add",
+          "left": "$existingAudit.quantity", "right": "$delta", "target": "newQuantity" },
+        { "name": "apply-increment", "type": "patchConcept", "concept": "WidgetOrderAudit", "id": "$existingAuditId",
+          "set": { "quantity": "$newQuantity" }, "target": "incremented" },
+        { "name": "return-incremented", "type": "return", "value": "$incremented" }
+      ]
     }
   ],
 

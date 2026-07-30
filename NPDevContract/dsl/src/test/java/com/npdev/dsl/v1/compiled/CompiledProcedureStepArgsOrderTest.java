@@ -27,7 +27,7 @@ class CompiledProcedureStepArgsOrderTest {
         return new CompiledProcedureStep(
                 "call-fiscal-import", "capabilityCall", "parseResult", null, "", "", "", "", "",
                 Map.of(), "", "", "", "fiscalImport", "importarNfe", "",
-                args, List.of(), List.of(), List.of(), null, null, Map.of(), Map.of(), false, Map.of()
+                args, List.of(), List.of(), List.of(), null, null, Map.of(), Map.of(), false, Map.of(), null, null
         );
     }
 

@@ -214,6 +214,25 @@ public record ProcedureStep(
                 null, null, null, valueRef, null, null, List.of(), List.of(), List.of(), Map.of(), false);
     }
 
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, final item / REG-78): add/subtract, the minimum
+     * arithmetic primitive procedures had none of -- REG-78 found {@code patchConcept}'s {@code set}
+     * can copy a value or overwrite it with a literal, but never compute one AS A FUNCTION of the
+     * current value (e.g. {@code newQuantidade = existing.quantidade + delta}). Reuses {@code
+     * operation} for the operator name and {@code setValues} for the two operands ({@code left}/
+     * {@code right}) -- no new kernel fields, the same choice {@code mapList} made for {@code
+     * select}. Operands resolve via the SAME {@link DefaultProcedureExecutor#resolveSetValue}
+     * literal-vs-{@code $ref} convention every other {@code setValues}-bearing step already uses.
+     */
+    public static ProcedureStep computeValue(String name, String operator, Object left, Object right, String outputKey) {
+        Map<String, Object> operands = new java.util.LinkedHashMap<>();
+        operands.put("left", left);
+        operands.put("right", right);
+        return new ProcedureStep(name, ProcedureStepType.COMPUTE_VALUE, null, null, null,
+                null, null, null, operator, List.of(), outputKey, null, null,
+                null, null, null, null, null, null, List.of(), List.of(), List.of(), operands, false);
+    }
+
     public static ProcedureStep returnValue(String name, String returnRef) {
         return new ProcedureStep(name, ProcedureStepType.RETURN, null, null, null,
                 null, null, null, null, List.of(), null, null, null,
@@ -266,6 +285,7 @@ public record ProcedureStep(
             case "foreach", "loop" -> ProcedureStepType.FOR_EACH;
             case "maplist", "listtransform" -> ProcedureStepType.MAP_LIST;
             case "mapvalue", "assign" -> ProcedureStepType.MAP_VALUE;
+            case "computevalue", "compute", "arithmetic" -> ProcedureStepType.COMPUTE_VALUE;
             case "return" -> ProcedureStepType.RETURN;
             default -> throw new IllegalArgumentException("Unsupported procedure step type: " + rawType);
         };

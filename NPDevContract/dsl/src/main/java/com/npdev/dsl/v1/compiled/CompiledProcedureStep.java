@@ -31,7 +31,9 @@ public record CompiledProcedureStep(
         Map<String, Object> metadata,
         Map<String, Object> set,
         Boolean createIfMissing,
-        Map<String, Object> select
+        Map<String, Object> select,
+        Object left,
+        Object right
 ) {
     public CompiledProcedureStep {
         data = data == null ? Map.of() : Map.copyOf(data);

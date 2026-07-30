@@ -216,6 +216,8 @@ public class ProcedureRunner {
                     target
             );
             case MAP_VALUE -> ProcedureStep.mapValue(stepName(step), refOf(step.value(), "input"), target);
+            case COMPUTE_VALUE -> ProcedureStep.computeValue(
+                    stepName(step), normalized(step.operation()), step.left(), step.right(), target);
             case RETURN -> ProcedureStep.returnValue(stepName(step), refOf(step.value(), target == null ? "input" : target));
         };
     }

@@ -662,6 +662,9 @@ public final class CompiledModelCanonicalJson {
             putNullableBoolean(node, "createIfMissing", step.createIfMissing());
             // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3A): mapList's per-item field map.
             node.set("select", toObjectMap(step.select()));
+            // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, final item / REG-78): computeValue's operands.
+            node.set("left", toAnyValueNode(step.left()));
+            node.set("right", toAnyValueNode(step.right()));
             steps.add(node);
         }
         return steps;
