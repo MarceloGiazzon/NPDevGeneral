@@ -98,6 +98,71 @@ class CompiledPluginRequirementGraphBuilderTest {
         assertEquals(List.of("customExtension", "persistence"), orderedCapabilityNames);
     }
 
+    /**
+     * REG (Move 3 G4, docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md, C10 investigation): a capability
+     * referenced ONLY by a procedure's capabilityCall step (never by any flow) was never mounted --
+     * no Java source compiled, no plugin-manifest entry -- so ProcedureRunner's own dispatch (REG-73)
+     * correctly resolved an adapter id the runtime had never registered, failing at boot with
+     * "Adapter ... is not declared in active plugin manifest". Every custom capability tried so far
+     * had ALSO been called from a pre-existing flow, which masked this until one wasn't.
+     */
+    @Test
+    void collectsCapabilityRequirementsFromProcedureStepsToo() throws Exception {
+        ModelAst ast = parse("""
+                {
+                  "namespace": "demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    {
+                      "name": "TriggerEntity",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true }
+                      ]
+                    }
+                  ],
+                  "capabilities": [
+                    {
+                      "name": "procedureOnlyExtension",
+                      "type": "ProcedureOnlyCapability",
+                      "operations": ["run"]
+                    }
+                  ],
+                  "bindings": [
+                    { "capability": "procedureOnlyExtension", "adapter": "plugin:java-source" }
+                  ],
+                  "procedures": [
+                    {
+                      "name": "InvokeProcedureOnlyCapability",
+                      "steps": [
+                        {
+                          "name": "invoke-custom",
+                          "type": "capabilityCall",
+                          "capability": "procedureOnlyExtension",
+                          "operation": "run",
+                          "args": { "input": "$input" },
+                          "target": "result"
+                        },
+                        { "name": "return-result", "type": "return", "value": "$result" }
+                      ]
+                    }
+                  ]
+                }
+                """);
+
+        CompiledPluginRequirementGraph graph = new CompiledPluginRequirementGraphBuilder().build(ast);
+
+        assertEquals(1, graph.getRequirements().size());
+        CompiledPluginRequirement requirement = graph.getRequirements().get(0);
+        assertEquals("procedureOnlyExtension", requirement.capabilityName());
+        assertEquals("ProcedureOnlyCapability", requirement.capabilityType());
+        assertEquals("run", requirement.operationName());
+        assertEquals("InvokeProcedureOnlyCapability", requirement.flowName());
+        assertEquals("invoke-custom", requirement.stepName());
+        assertEquals("plugin:java-source", requirement.boundAdapter());
+        assertTrue(requirement.externalCandidate());
+    }
+
     private static ModelAst parse(String json) throws Exception {
         Path modelFile = Files.createTempFile("npdev-plugin-graph-", ".json");
         Files.writeString(modelFile, json, StandardCharsets.UTF_8);

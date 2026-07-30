@@ -1,0 +1,67 @@
+id: REG-74
+title: "The plugin-mount/requirement-discovery pipeline only scanned FLOW steps for capabilityCall usage -- a custom Java-source capability referenced ONLY by a procedure (never by any flow) was never mounted (no Java source compiled in, no plugin-manifest entry), so the app failed to boot with \"Adapter ... is not declared in active plugin manifest\" even though ProcedureRunner's own dispatch (REG-73) correctly resolved the adapter id"
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-07-29
+closed: 2026-07-29
+verification: VERIFIED_LIVE
+source: docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md G4 -- found live while fixing C10 (the crossdocking
+  console's per-action multi-write gap, docs/MOVE1_PANEL_GAPS.md). Building a NEW custom capability
+  (crossDockingSync) referenced ONLY by two new procedures (ConcluirCrossDockingProcedure /
+  CancelarCrossDockingProcedure, no flow calls it) crashed the generated app at Spring boot with a
+  real, reproducible exception.
+surface: dsl-compiler/plugin-mount
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledPluginRequirementGraphBuilder.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/compiled/CompiledPluginRequirementGraphBuilderTest.java
+detail: |
+  `CompiledPluginRequirementGraphBuilder.build()` computed the model's list of "plugin requirements"
+  (which custom capabilities need a Java-source plugin mounted, compiled, and registered in the
+  runtime's plugin manifest) by recursively scanning ONLY `modelAst.getFlows()`'s steps for
+  `type: "capability"`. It never looked at `modelAst.getProcedures()` at all -- despite
+  `ProcedureRunner` being a fully real, independent execution path (used by both panel-action
+  procedure bindings and `AggregateRuntime.invoke()`) that can call `type: "capabilityCall"` steps
+  just as flows can.
+
+  **Why this went unnoticed through Move 3 G1-G3**: every custom capability exercised so far
+  (`alocacao` via `SugerirDestinoProcedure`/`SugerirOrigemProcedure`, `fiscalImport` via
+  `ParseNfeProcedure`) had ALSO been called by a PRE-EXISTING FLOW (`SugerirDestino`/`SugerirOrigem`/
+  `ImportarNfe`) that already caused the capability to be discovered, mounted, and registered. The
+  new procedures were reusing an already-mounted capability, so the gap stayed invisible. It
+  surfaced the first time a capability (`crossDockingSync`) was declared and bound with NO flow
+  caller at all -- procedure-only from the start.
+
+  **Reproduced live, exact failure**: generating + booting WmsOffice with `crossDockingSync` declared
+  in `customCapabilities`/`bindings` and called only from `ConcluirCrossDockingProcedure`/
+  `CancelarCrossDockingProcedure` produced a Spring `BeanCreationException` at the `capabilityRegistry`
+  bean: `Adapter 'plugin:java-source' for capability 'crossDockingSync' operation '<binding>' is not
+  declared in active plugin manifest 'npdev/plugins/default.plugin-manifest.json'` -- the app could
+  not start at all. Confirmed by inspecting the generated output directly: no
+  `wmsoffice-crossdockingsync-java-source-package.package.json` was emitted, no
+  `com/wmsoffice/capabilities/crossdocking/CrossDockingSyncCapability.java` was mounted into
+  `ArtifactNP`, and `default.plugin-manifest.json` had no `crossDockingSync` entry, even though the
+  identical `capability.plugin.json` shape (mirrored byte-for-byte from the working `alocacao`
+  descriptor) was present in the app definition.
+
+  **Fix**: `CompiledPluginRequirementGraphBuilder` now also walks `modelAst.getProcedures()`, via a
+  new `collectFromProcedureSteps` mirroring `collectFromSteps` but over `ProcedureStepAst` (a
+  distinct AST type from a flow's `StepAst`, with its own `capability`/`operation`/`thenSteps`/
+  `elseSteps`/`steps` accessors) -- checking both `type: "capabilityCall"` and its `"callCapability"`
+  alias, and recursing into `then`/`else` (an `if` step) and `steps` (a `forEach` step, which flows
+  have no equivalent of).
+
+  **RED->GREEN, both directions actually run**: `CompiledPluginRequirementGraphBuilderTest` gained
+  `collectsCapabilityRequirementsFromProcedureStepsToo` (a compiled model with a capability bound
+  only from a procedure's `capabilityCall` step). Verified RED by temporarily removing the new
+  procedure-scanning loop: real `AssertionFailedError` (expected 1 requirement, got 0). Restored the
+  fix, re-ran: GREEN. Full `NPDevContract:dsl` test suite re-run clean, zero regressions.
+
+  **Verified live end-to-end**: regenerated + rebuilt + rebooted WmsOffice with the fix; the app
+  started successfully; confirmed `wmsoffice-crossdockingsync-java-source-package.package.json` and
+  the Java source were now mounted, and `default.plugin-manifest.json` carried the `crossDockingSync`
+  entry. Then exercised the real feature this fix unblocked (see the ledger's own separate note on
+  the Move 2 G2 residual it closes, `docs/MOVE1_PANEL_GAPS.md`): clicking "Concluir" on a real
+  `CrossDocking` row in the actual generated business UI (real browser click, not simulated) now
+  correctly transitions `situacao` from `Ativo` to `Concluido`, confirmed both by the panel's
+  reloaded table and by the full server response rendered in its "last action result" debug block.

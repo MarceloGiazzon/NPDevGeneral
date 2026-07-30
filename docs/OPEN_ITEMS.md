@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**74 item(s) migrated: 0 open/partial, 74 done.**
+**76 item(s) migrated: 1 open/partial, 75 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -82,6 +82,8 @@
 | REG-71 | panelAction scope="row" + binding="conceptMutation" blanked every other required field to null (executeConceptMutation stripped "id" from a flat body; ConceptGatewaySemanticPolicy separately requires "id" present in the data map) | BUG | HIGH | DONE | 2026-07-29 |
 | REG-72 | AggregateRuntime.commit performs N+1 writes and reconcile-deletes with no transaction boundary -- a failure partway leaves a half-written aggregate, and a failure after a reconcile-delete does not restore what was deleted | BUG | HIGH | DONE | 2026-07-29 |
 | REG-73 | ProcedureRunner never resolved a capability adapter from the model's bindings list -- every procedure-side capabilityCall step (panel action procedure bindings, and AggregateRuntime.invoke()) reached the dispatcher with a null adapterId and failed CAPABILITY_BINDING_MISSING even with a real binding declared | BUG | HIGH | DONE | 2026-07-29 |
+| REG-74 | The plugin-mount/requirement-discovery pipeline only scanned FLOW steps for capabilityCall usage -- a custom Java-source capability referenced ONLY by a procedure (never by any flow) was never mounted (no Java source compiled in, no plugin-manifest entry), so the app failed to boot with "Adapter ... is not declared in active plugin manifest" even though ProcedureRunner's own dispatch (REG-73) correctly resolved the adapter id | BUG | HIGH | DONE | 2026-07-29 |
+| REG-75 | Procedures have no way to read an existing concept record, override one field, and pass the merged result onward -- a readConcept result can only be consumed as a whole map by saveConcept (via requireMap's ConceptRecord unwrap), never by capabilityCall's args (which never unwraps ConceptRecord), and no step exists to construct/merge a map literal at all | GAP | MEDIUM | OPEN | 2026-07-29 |
 | REG-8 | LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-9 | LNCH-4: auth secrets management -- JWT key env-var delivery | GAP | HIGH | DONE | 2026-07-21 |
 
@@ -1910,6 +1912,124 @@ returns. This closes what would otherwise have been recorded as a named G2 desig
 (Move 3, `docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md`) -- the plan's own hypothesis ("invoke is the
 candidate mechanism ... if it does not fit, say so and name the gap") held once the real bug
 underneath it was fixed, so no gap needed naming.
+
+### REG-74 — The plugin-mount/requirement-discovery pipeline only scanned FLOW steps for capabilityCall usage -- a custom Java-source capability referenced ONLY by a procedure (never by any flow) was never mounted (no Java source compiled in, no plugin-manifest entry), so the app failed to boot with "Adapter ... is not declared in active plugin manifest" even though ProcedureRunner's own dispatch (REG-73) correctly resolved the adapter id
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-07-29)
+**Verification:** VERIFIED_LIVE
+**Source:** docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md G4 -- found live while fixing C10 (the crossdocking console's per-action multi-write gap, docs/MOVE1_PANEL_GAPS.md). Building a NEW custom capability (crossDockingSync) referenced ONLY by two new procedures (ConcluirCrossDockingProcedure / CancelarCrossDockingProcedure, no flow calls it) crashed the generated app at Spring boot with a real, reproducible exception.
+**Surface:** `dsl-compiler/plugin-mount`
+**Files:**
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledPluginRequirementGraphBuilder.java`
+- `NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/compiled/CompiledPluginRequirementGraphBuilderTest.java`
+
+`CompiledPluginRequirementGraphBuilder.build()` computed the model's list of "plugin requirements"
+(which custom capabilities need a Java-source plugin mounted, compiled, and registered in the
+runtime's plugin manifest) by recursively scanning ONLY `modelAst.getFlows()`'s steps for
+`type: "capability"`. It never looked at `modelAst.getProcedures()` at all -- despite
+`ProcedureRunner` being a fully real, independent execution path (used by both panel-action
+procedure bindings and `AggregateRuntime.invoke()`) that can call `type: "capabilityCall"` steps
+just as flows can.
+
+**Why this went unnoticed through Move 3 G1-G3**: every custom capability exercised so far
+(`alocacao` via `SugerirDestinoProcedure`/`SugerirOrigemProcedure`, `fiscalImport` via
+`ParseNfeProcedure`) had ALSO been called by a PRE-EXISTING FLOW (`SugerirDestino`/`SugerirOrigem`/
+`ImportarNfe`) that already caused the capability to be discovered, mounted, and registered. The
+new procedures were reusing an already-mounted capability, so the gap stayed invisible. It
+surfaced the first time a capability (`crossDockingSync`) was declared and bound with NO flow
+caller at all -- procedure-only from the start.
+
+**Reproduced live, exact failure**: generating + booting WmsOffice with `crossDockingSync` declared
+in `customCapabilities`/`bindings` and called only from `ConcluirCrossDockingProcedure`/
+`CancelarCrossDockingProcedure` produced a Spring `BeanCreationException` at the `capabilityRegistry`
+bean: `Adapter 'plugin:java-source' for capability 'crossDockingSync' operation '<binding>' is not
+declared in active plugin manifest 'npdev/plugins/default.plugin-manifest.json'` -- the app could
+not start at all. Confirmed by inspecting the generated output directly: no
+`wmsoffice-crossdockingsync-java-source-package.package.json` was emitted, no
+`com/wmsoffice/capabilities/crossdocking/CrossDockingSyncCapability.java` was mounted into
+`ArtifactNP`, and `default.plugin-manifest.json` had no `crossDockingSync` entry, even though the
+identical `capability.plugin.json` shape (mirrored byte-for-byte from the working `alocacao`
+descriptor) was present in the app definition.
+
+**Fix**: `CompiledPluginRequirementGraphBuilder` now also walks `modelAst.getProcedures()`, via a
+new `collectFromProcedureSteps` mirroring `collectFromSteps` but over `ProcedureStepAst` (a
+distinct AST type from a flow's `StepAst`, with its own `capability`/`operation`/`thenSteps`/
+`elseSteps`/`steps` accessors) -- checking both `type: "capabilityCall"` and its `"callCapability"`
+alias, and recursing into `then`/`else` (an `if` step) and `steps` (a `forEach` step, which flows
+have no equivalent of).
+
+**RED->GREEN, both directions actually run**: `CompiledPluginRequirementGraphBuilderTest` gained
+`collectsCapabilityRequirementsFromProcedureStepsToo` (a compiled model with a capability bound
+only from a procedure's `capabilityCall` step). Verified RED by temporarily removing the new
+procedure-scanning loop: real `AssertionFailedError` (expected 1 requirement, got 0). Restored the
+fix, re-ran: GREEN. Full `NPDevContract:dsl` test suite re-run clean, zero regressions.
+
+**Verified live end-to-end**: regenerated + rebuilt + rebooted WmsOffice with the fix; the app
+started successfully; confirmed `wmsoffice-crossdockingsync-java-source-package.package.json` and
+the Java source were now mounted, and `default.plugin-manifest.json` carried the `crossDockingSync`
+entry. Then exercised the real feature this fix unblocked (see the ledger's own separate note on
+the Move 2 G2 residual it closes, `docs/MOVE1_PANEL_GAPS.md`): clicking "Concluir" on a real
+`CrossDocking` row in the actual generated business UI (real browser click, not simulated) now
+correctly transitions `situacao` from `Ativo` to `Concluido`, confirmed both by the panel's
+reloaded table and by the full server response rendered in its "last action result" debug block.
+
+### REG-75 — Procedures have no way to read an existing concept record, override one field, and pass the merged result onward -- a readConcept result can only be consumed as a whole map by saveConcept (via requireMap's ConceptRecord unwrap), never by capabilityCall's args (which never unwraps ConceptRecord), and no step exists to construct/merge a map literal at all
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** OPEN
+**Verification:** NOT_VERIFIED
+**Source:** docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md G4 -- found live while attempting the FULL C10 fix
+(docs/MOVE1_PANEL_GAPS.md: "an action triggering writes to *other* concepts beyond its own flow's
+output has no declared mechanism") -- the crossdocking console's original Concluir/Cancelar/Ativar
+handlers also PUT Recebimento/Expedicao with crossDockingAtivo flipped, preserving every other
+field. Attempting this via a procedure (readConcept the sibling record, flip one field, saveConcept
+it back) hit a real, precisely-evidenced wall, not a design choice.
+
+**Surface:** `kernel/procedure-runtime`
+
+Investigated, not fixed, in the same session that closed REG-72/73/74 (all found while pursuing
+this same C10 fix). The wall, confirmed by reading the executor directly rather than assumed:
+
+1. `readConcept` stores its result in procedure `state` as a raw `ConceptRecord` (Java type), not a
+   `Map` (`DefaultProcedureExecutor.readConcept`: `putOutput(state, step.outputKey(),
+   record.orElseThrow())`).
+2. `saveConcept`'s `data` ref DOES unwrap a `ConceptRecord` automatically
+   (`DefaultProcedureExecutor.requireMap`: `if (value instanceof ConceptRecord record) return
+   record.data();`) -- so re-saving an UNCHANGED read works fine.
+3. `capabilityCall`'s `args` refs do NOT go through `requireMap` -- they resolve via the plain
+   `resolve()` helper, which never unwraps `ConceptRecord`. Passing a `readConcept` result as a
+   capabilityCall arg hands the raw `ConceptRecord` object to the Java capability method, which
+   expects `Map<String,Object>` -- a reflective `IllegalArgumentException` at
+   `Method.invoke(...)`, uncaught by `RegistryCapabilityDispatcher` (it only catches
+   `ReflectiveOperationException`/`InvocationTargetException`, and a raw argument-type mismatch
+   is neither).
+4. Custom Java-source capability classes (`AllocationCapability`, `FiscalImportCapability`, the
+   new `CrossDockingSyncCapability`) compile in an isolated classpath with no `com.npdev.kernel.*`
+   visibility (confirmed: none of the three existing ones import anything beyond `java.*`) -- so a
+   capability method cannot even accept a `ConceptRecord` parameter type to work around point 3.
+5. `mapValue`'s `target` always writes one flat top-level state key (`DefaultProcedureExecutor
+   .putOutput`); there is no step that constructs a new map by copying an existing one and
+   overriding a subset of keys, and no step accepts a literal object.
+6. Confirmed there is no silent fallback anywhere in the write path either:
+   `ConfiguredConceptGatewaySemanticPolicy.normalizeAndValidate` builds its working `data` map
+   strictly from `new LinkedHashMap<>(request.data())` -- it never consults
+   `request.previousRecord()` to fill in fields the caller omitted, so a deliberately partial
+   `saveConcept` payload fails "Required concept field is missing" exactly as a caller supplying
+   the same partial map anywhere else would.
+
+**What this blocked, precisely**: the crossdocking console's `Ativar`/`Concluir`/`Cancelar`
+actions all additionally PUT the linked `Recebimento`/`Expedicao` with only `crossDockingAtivo`
+flipped, every other field preserved. This remains genuinely `cannot-express` for a procedure
+today -- C10 (docs/MOVE1_PANEL_GAPS.md) is only PARTIALLY closed by this session's work (see
+REG-74's own writeup: the `situacao`-transition half of Concluir/Cancelar IS fixed and live-verified;
+the Recebimento/Expedicao sync half is not attempted, named here instead).
+
+**What would close it** (not attempted, scoped for a future session): the smallest fix is
+probably a new procedure step, e.g. `mergeConcept`/`patchValue` that takes a `readConcept` output
+ref plus a small set of literal-or-ref field overrides and produces a plain `Map` in state,
+consumable by both `saveConcept` and `capabilityCall` afterward. A narrower fix (unwrap
+`ConceptRecord` in `resolve()`'s single-segment branch, mirroring what `requireMap` already does)
+would only solve the pass-through case, not the "override one field" case, so does not fully close
+this on its own.
 
 ### REG-8 — LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback
 
