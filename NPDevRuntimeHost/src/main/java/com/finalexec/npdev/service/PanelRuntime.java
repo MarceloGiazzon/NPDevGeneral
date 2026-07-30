@@ -302,7 +302,20 @@ public class PanelRuntime {
         if ("procedure".equals(binding)) {
             ProcedureExecutionResult result = executeProcedure(action.procedure(), effectiveInput, effectiveContext);
             response.put("status", result.ok() ? "OK" : "FAILED");
-            response.put("result", result);
+            // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 4 / Gap 7): resultAs="download" --
+            // the procedure's own return value IS the file content (e.g. a generated CSV template),
+            // "produce a file, stream it, persist nothing." RuntimeUiMetadataController inspects
+            // resultAs/filename/contentType/result to build a real streamed file response instead of
+            // the usual JSON envelope; a failed procedure still returns the normal JSON error shape
+            // (there is no file to stream), matching every other binding's failure behavior.
+            if (result.ok() && "download".equals(normalize(action.resultAs()))) {
+                response.put("resultAs", "download");
+                response.put("filename", safe(action.filename()));
+                response.put("contentType", safe(action.contentType()));
+                response.put("result", result.state().get("return"));
+            } else {
+                response.put("result", result);
+            }
         } else if ("conceptquery".equals(binding)) {
             String conceptName = firstNonBlank(action.concept(), primaryPanelConcept(panel));
             List<ConceptRecord> records = requireConceptGateway().list(new ConceptListRequest(conceptName, null), effectiveContext);

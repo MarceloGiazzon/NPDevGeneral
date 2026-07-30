@@ -92,6 +92,16 @@ def _has_aggregate_on_commit(model: dict) -> bool:
     )
 
 
+def _has_panel_action_download(model: dict) -> bool:
+    for panel in (model.get("panels", None) or []):
+        if not isinstance(panel, dict):
+            continue
+        for action in (panel.get("actions", None) or []):
+            if isinstance(action, dict) and action.get("resultAs") == "download":
+                return True
+    return False
+
+
 def _has_aggregate_on_validate(model: dict) -> bool:
     return any(
         isinstance(a, dict) and a.get("onValidate")
@@ -192,6 +202,9 @@ FEATURE_DETECTORS = {
     # onCommit, not a flag on it -- tracked separately so a regression to just this field still
     # fails the build.
     "aggregate.onValidate": _has_aggregate_on_validate,
+    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 4 / Gap 7): a panelAction's resultAs
+    # ("download") -- inventario.html's Gerar Template had no declared surface for this before.
+    "panelAction.resultAs.download": _has_panel_action_download,
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1B): patchConcept's create-if-missing opt-in
     # (the create half of REG-77) is a boolean flag on an existing step type, not a new step type
     # itself -- tracked separately so a regression to just this flag still fails the build.

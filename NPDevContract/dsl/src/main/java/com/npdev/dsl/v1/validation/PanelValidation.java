@@ -281,7 +281,34 @@ final class PanelValidation {
                             + ": flow not found: " + action.flow());
                 }
                 validatePanelActionScope(panel, action, errors);
+                validatePanelActionResultAs(panel, action, binding, errors);
             }
+        }
+    }
+
+    /**
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 4 / Gap 7): {@code resultAs: "download"} is
+     * only meaningful on a {@code procedure}-binding action (its own return value IS the file
+     * content) and needs both {@code filename} and {@code contentType} declared alongside it --
+     * PanelRuntime has no default to fall back on for either.
+     */
+    private static void validatePanelActionResultAs(
+            PanelAst panel, PanelActionAst action, String binding, List<String> errors) {
+        if (!hasText(action.resultAs())) {
+            return;
+        }
+        if (!binding.equals("procedure")) {
+            errors.add("Panel " + panel.name() + " action " + action.name()
+                    + ": resultAs is only supported on a procedure-binding action");
+            return;
+        }
+        if (!hasText(action.filename())) {
+            errors.add("Panel " + panel.name() + " action " + action.name()
+                    + ": resultAs \"download\" requires filename");
+        }
+        if (!hasText(action.contentType())) {
+            errors.add("Panel " + panel.name() + " action " + action.name()
+                    + ": resultAs \"download\" requires contentType");
         }
     }
 

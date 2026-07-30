@@ -953,7 +953,10 @@ public final class CompiledModelCanonicalJsonReader {
                     toObjectMap(actionNode.get("metadata")),
                     optionalText(actionNode, "scope"),
                     optionalText(actionNode, "dataSource"),
-                    toStringList(actionNode.get("inputFields"))
+                    toStringList(actionNode.get("inputFields")),
+                    optionalText(actionNode, "resultAs"),
+                    optionalText(actionNode, "filename"),
+                    optionalText(actionNode, "contentType")
             ));
         }
         return out;

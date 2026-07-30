@@ -515,7 +515,10 @@ class PanelRuntimeTest {
                         Map.of(),
                         null,
                         null,
-                        List.of()
+                        List.of(),
+                        null,
+                        null,
+                        null
                 )),
                 Map.of(),
                 Map.of(),
