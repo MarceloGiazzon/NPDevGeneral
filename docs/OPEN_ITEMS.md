@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**76 item(s) migrated: 1 open/partial, 75 done.**
+**77 item(s) migrated: 1 open/partial, 76 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -84,6 +84,7 @@
 | REG-73 | ProcedureRunner never resolved a capability adapter from the model's bindings list -- every procedure-side capabilityCall step (panel action procedure bindings, and AggregateRuntime.invoke()) reached the dispatcher with a null adapterId and failed CAPABILITY_BINDING_MISSING even with a real binding declared | BUG | HIGH | DONE | 2026-07-29 |
 | REG-74 | The plugin-mount/requirement-discovery pipeline only scanned FLOW steps for capabilityCall usage -- a custom Java-source capability referenced ONLY by a procedure (never by any flow) was never mounted (no Java source compiled in, no plugin-manifest entry), so the app failed to boot with "Adapter ... is not declared in active plugin manifest" even though ProcedureRunner's own dispatch (REG-73) correctly resolved the adapter id | BUG | HIGH | DONE | 2026-07-29 |
 | REG-75 | Procedures have no way to read an existing concept record, override one field, and pass the merged result onward -- a readConcept result can only be consumed as a whole map by saveConcept (via requireMap's ConceptRecord unwrap), never by capabilityCall's args (which never unwraps ConceptRecord), and no step exists to construct/merge a map literal at all | GAP | MEDIUM | OPEN | 2026-07-29 |
+| REG-76 | Workbench action inputFields rendered as a single-line <input type="text">, which silently strips/collapses newlines on assignment -- a 'paste multi-line text' propose action (e.g. paste a CSV) had its payload collapsed to one line client-side, so the server-side parser's own header-row detection consumed the entire pasted text and returned zero data rows | BUG | HIGH | DONE | 2026-07-29 |
 | REG-8 | LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-9 | LNCH-4: auth secrets management -- JWT key env-var delivery | GAP | HIGH | DONE | 2026-07-21 |
 
@@ -2030,6 +2031,61 @@ consumable by both `saveConcept` and `capabilityCall` afterward. A narrower fix 
 `ConceptRecord` in `resolve()`'s single-segment branch, mirroring what `requireMap` already does)
 would only solve the pass-through case, not the "override one field" case, so does not fully close
 this on its own.
+
+### REG-76 — Workbench action inputFields rendered as a single-line <input type="text">, which silently strips/collapses newlines on assignment -- a 'paste multi-line text' propose action (e.g. paste a CSV) had its payload collapsed to one line client-side, so the server-side parser's own header-row detection consumed the entire pasted text and returned zero data rows
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-07-29)
+**Verification:** VERIFIED_LIVE
+**Source:** docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md G4 -- found live while building ImportarContagemProcedure (inventario.html's second Class A wizard). G3's ParseNfeProcedure test happened to use single-line XML, which never triggered this; G4's multi-line CSV paste triggered it on the very first live browser attempt.
+**Surface:** `generator/workbench-template`
+**Files:**
+- `NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache`
+
+The `inputFields` mini-form G3 added to workbench actions (`autoPanels[].transaction.metadata
+.actions[].inputFields`, mirroring Move 2 G3's `panelAction.inputFields`) rendered each declared
+field as a plain `<input type="text">`. HTML single-line text inputs cannot hold a newline
+character -- assigning a value containing `\n` to `.value` on such an element silently
+collapses/normalizes it (confirmed live: a Chromium `fill()` with an embedded `\n` produced a
+DOM value with the newline replaced by a space).
+
+**Reproduced live, exact failure**: pasting a real pipe-delimited CSV payload (a header line plus
+one data line, joined by `\n`) into the `texto` input and clicking "Importar Contagem (Parse)"
+posted a single-line string to `ImportarContagemProcedure`. `InventoryFileCapability
+.importarContagem`'s own header-row detection (`if (firstLine && trimmed.toLowerCase()
+.startsWith("localarmazenagemid")) { skip }`) treated the WHOLE flattened string as the header
+line (since it starts with "localarmazenagemid" and there was no `\n` left to split on), consumed
+it, and returned `sucesso:false, motivo:"Nenhuma linha valida encontrada"` -- the draft ended up
+with 0 rows, silently, with no visible error (the generic invoke-and-patch flow treats a
+business-level `sucesso:false` as a normal "review and Save" success, since the procedure itself
+ran without a step error).
+
+**Confirmed root cause precisely**, not guessed: hooked `window.fetch` via a ScrapForAI `evaluate`
+step to log the actual POST body sent by the browser -- it showed the pasted CSV's two lines
+joined by a literal space instead of a newline, even though the same value had been correctly
+typed into the field (visually confirmed by an earlier screenshot). Confirmed the same value posted
+directly via `curl` (a real newline, not through a browser input) parses correctly and returns real
+data rows -- isolating the bug to the browser's `<input type="text">` newline handling specifically,
+not the server-side parser.
+
+**Fix**: swapped `<input type="text">` for `<textarea rows="1" style="resize:vertical">` in the
+workbench action inputFields renderer -- a textarea preserves newlines and degrades fine for a
+short single-line value too (confirmed: G3's ParseNfeProcedure single-line XML input still works
+correctly with a textarea).
+
+**Verified live, both before and after**: RED reproduced live (browser test showed 0 parsed rows
+despite correct visual input, `window.fetch` hook confirmed the flattened payload). Fixed, then
+the identical live browser routine (real textarea fill + real click) now shows a real parsed
+`linhas` row (`divergente:true, localArmazenagemId:..., loteId:..., produtoId:..., quantidadeContada:9,
+quantidadeEsperada:10`), confirmed by screenshot, matching what the same payload returns via direct
+REST.
+
+**Related, not fixed here**: Move 2 G3's `panelAction.inputFields` (`business-ui-app.mustache`)
+renders the identical `<input type="text">` pattern and has the identical latent bug -- not
+triggered because no currently-declared panel action's `inputFields` collects naturally multi-line
+text (`WidgetOrderReviewPanel.place`, `CrossDockingConsolePanel.ativar` are all short scalars).
+Left unchanged (no current caller needs it, and touching already-shipped, already-tested Move 2
+code for a theoretical future need is out of scope here) -- named so a future multi-line panel
+action doesn't rediscover this blind.
 
 ### REG-8 — LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback
 

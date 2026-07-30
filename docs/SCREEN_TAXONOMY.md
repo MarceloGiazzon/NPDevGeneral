@@ -30,10 +30,10 @@ and the impact gate (F4) enforces it; `n/a` = no hand-written screen to manifest
 | Pigmentampa | `pigmentampa-editor` | 14,341 | detail-form | AutoPanel Detail | generated-equivalent | confirmed ¹ |
 | WmsOffice | `analytics` | 11,455 | dashboard | none | hand-written → contract (F2/F3) | confirmed |
 | WmsOffice | `centro-trabalho` | 30,862 | operator-console | none (evaluated ⁶, not authored) | hand-written → contract; Aggregate Workbench answers the 2-level nesting, still 2 named gaps (⁶) | confirmed |
-| WmsOffice | `conferencia-fiscal` | 22,897 | operator-console | `panel` ⁴ (History half) | **partially converted** — History works, Import wizard cannot-express | confirmed |
-| WmsOffice | `crossdocking` | 12,748 | **operator-console** ² | `panel` ³ | **converted** (14/20 checklist items work) | confirmed |
+| WmsOffice | `conferencia-fiscal` | 22,897 | operator-console | `panel` ⁴ (History half) + Aggregate Workbench ⁷ (NF-e Import) | **partially converted** — History works, NF-e Import now composes (propose->review->commit); Romaneio Import not attempted | confirmed |
+| WmsOffice | `crossdocking` | 12,748 | **operator-console** ² | `panel` ³ | **converted** (15/20 checklist items work ⁷ — C10 half-closed: situacao transition fixed, cross-concept flag sync still cannot-express) | confirmed |
 | WmsOffice | `excluir-estabelecimento` | 9,820 | detail-form | AutoPanel Detail | generated-equivalent | confirmed |
-| WmsOffice | `inventario` | 28,031 | operator-console | `panel` ⁴ (Historico half) | **partially converted** — Historico works, 3 CSV wizards cannot-express | confirmed |
+| WmsOffice | `inventario` | 28,031 | operator-console | `panel` ⁴ (Historico half) + Aggregate Workbench ⁷ (Importar Contagem) | **partially converted** — Historico works, Importar Contagem now composes; Gerar Template (shape mismatch) and Recebimento por Arquivo (blocked, REG-75) not attempted | confirmed |
 | WmsOffice | `login` | 6,773 | auth | generated login | generated-equivalent | confirmed |
 | WmsOffice | `mapa-armazem` | 19,650 | spatial-map | none | hand-written → contract (F2/F3) | confirmed |
 | WmsOffice | `movimentacao-livre` | 23,392 | operator-console | `panel` ⁴ (header+item half) + Aggregate Workbench ⁶ (2-level nesting + Sugerir) | **partially converted** — position nesting + Sugerir now work via Workbench; stock-ledger side effect (`syncOcupacao`) still cannot-express | confirmed |
@@ -104,7 +104,7 @@ these are what each app's `model.json` already declares (`autoPanels`/`panels`/`
 |---|---|---|---|---|
 | AuxScreen | 0 | 2 | 0 | 0 |
 | Pigmentampa | 0 | 2 | 0 | 0 |
-| WmsOffice | 3 ⁶ | 9 ⁵ | 3 ⁶ | 0 |
+| WmsOffice | 5 ⁷ | 9 ⁵ | 5 ⁷ | 0 |
 | WordLab | *(not scanned — no `web/` dir; declared surfaces alone drive its entire UI)* |
 | Claude Support Desk | *(not scanned — no `web/` dir; declared surfaces alone drive its entire UI)* |
 
@@ -130,7 +130,27 @@ and a `Sugerir` result isn't auto-applied into a new position row by the generic
 console reaches parity — 0 B deleted, both originals unchanged (see `docs/MOVE3_G2_CHECKLISTS.md`
 §"Deletion eligibility").
 
-## Promotion-rule verdict
+⁷ **2026-07-29, `CAPABILITY_ROADMAP.md` Move 3 G3-G4** (`docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md`,
+results in `docs/MOVE3_G3_FINDINGS.md` / `docs/MOVE3_G4_FINDINGS.md` /
+`docs/MOVE3_G4_INVENTARIO_FINDINGS.md`). G3 composed the propose->review->commit triad for real for
+the first time: a new `DocumentoFiscalAggregate` + `ParseNfeProcedure` express
+`conferencia-fiscal.html`'s NF-e Import wizard, live-verified (REST success/failure paths + real
+browser). The one new mechanism needed — workbench-action `inputFields` (mirroring Move 2 G3's
+`panelAction.inputFields`) — needed no schema change (the metadata blob was already unstructured
+JSON) and is corpus-covered in `dsl-conformance-max`. G4 then: (a) partially closed C10
+(`docs/MOVE1_PANEL_GAPS.md`) — fixed the situacao-transition half of Concluir/Cancelar (crossdocking
+14/20 -> 15/20), found+fixed REG-74 (the plugin-mount pipeline only ever scanned flow steps for
+capability usage, so a capability referenced only by a procedure could never boot), and filed REG-75
+(open gap: no procedure mechanism reads a sibling record, patches one field, and writes it back —
+why the Recebimento/Expedicao flag-sync half of C10 stays unfixed); (b) proved the G3 pattern
+generalizes with a second real Class A console — a new `InventarioArquivoAggregate` +
+`ImportarContagemProcedure` express `inventario.html`'s Importar Contagem wizard, live-verified —
+and found+fixed REG-76 along the way (workbench `inputFields` rendered a single-line `<input>`,
+which silently strips newlines, breaking any multi-line paste; G3's own XML test never triggered it
+by luck of using single-line sample data). `inventario`'s other two wizards were assessed and
+named, not silently skipped: Gerar Template is a genuine shape mismatch (generate+download, not
+persist); Recebimento por Arquivo's commit half is blocked by REG-75. No console reached full
+parity in G3/G4 either — 0 B deleted from either `conferencia-fiscal.html` or `inventario.html`.
 
 **Mechanically: zero candidates.** No hand-written class reaches ≥ 2 apps — every genuinely
 hand-written screen in the measured corpus (`operator-console`, `dashboard`, `spatial-map`,
@@ -200,6 +220,38 @@ an answer: Aggregate Workbench, not Panel) if a second/third console justifies i
 own "≥2 consoles" promotion rule — both classes already clear that bar (Class A: 2 screens; Class B:
 2 screens) — or (b) accepting the remaining hand-written surface as correctly-scoped bespoke UI and
 moving to Move 3's contract-generation path for it instead.
+
+## Move 3 final metric — bytes deleted (2026-07-29, supersedes the ratio above)
+
+Move 3's own §6 (`docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md`) retired the hand-written/model **ratio**
+as the target metric — it rewards the model growing even when nothing is replaced, exactly what
+happened above (1.02x → 0.77x from panels being *added*, zero files shrinking). The replacement:
+**bytes of `web/*.html` deleted after a console reaches full behavioural parity** — a console's
+original is deleted **only** at parity; partial conversion counts zero, by design, so the metric
+cannot be gamed by partial work.
+
+```
+Eligible this session (Move 2 G4 + Move 3 G1-G4), by console:
+  crossdocking.html        12,748 B   15/20 items — not at parity (C10's flag-sync half open, REG-75)
+  conferencia-fiscal.html  22,897 B   History + NF-e Import work; Romaneio Import untried — not at parity
+  movimentacao-livre.html  23,392 B   2-level nesting + Sugerir work; stock-ledger sync open — not at parity
+  centro-trabalho.html     30,862 B   same blockers as movimentacao-livre, plus 2 more, unattempted — not at parity
+  inventario.html          28,031 B   Historico + Importar Contagem work; 2 of 3 wizards untried — not at parity
+  ---------------------------------
+  Total eligible          117,930 B
+  Deleted                       0 B
+```
+
+**Zero bytes deleted, across every gate this move ran (G1 through G4).** This is not a shortfall in
+execution — every console above gained real, live-verified capability across Move 2 and Move 3 — it
+is the metric doing exactly what §6 designed it to do: refuse to reward partial conversion. Four
+real platform bugs were found and fixed in the course of this work (REG-72, REG-73, REG-74, REG-76)
+and one real gap was found, precisely diagnosed, and left open rather than forced (REG-75) — that is
+this move's actual yield, and the bytes-deleted metric correctly reports that as "not yet realized
+in deletable form," which is the honest state of things: every remaining gap is either a genuinely
+new platform mechanism (REG-75's read-patch-write; a declarative cross-aggregate write hook) or
+scope not attempted (Romaneio Import, the Planning-layer list, Gerar Template's download affordance),
+not a small polish pass away from parity.
 
 ## Methodology
 
