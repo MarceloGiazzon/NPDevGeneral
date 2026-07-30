@@ -99,6 +99,22 @@ def _has_procedure_create_if_missing(model: dict) -> bool:
     )
 
 
+def _has_workbench_apply_to(model: dict) -> bool:
+    for auto_panel in (model.get("autoPanels", None) or []):
+        if not isinstance(auto_panel, dict):
+            continue
+        transaction = auto_panel.get("transaction")
+        if not isinstance(transaction, dict):
+            continue
+        metadata = transaction.get("metadata")
+        if not isinstance(metadata, dict):
+            continue
+        for action in (metadata.get("actions", None) or []):
+            if isinstance(action, dict) and isinstance(action.get("applyTo"), dict):
+                return True
+    return False
+
+
 def _has_on_failure(model: dict) -> bool:
     return any("onFailure" in s and s["onFailure"] for s in _all_steps(model))
 
@@ -145,6 +161,11 @@ FEATURE_DETECTORS = {
     # (the create half of REG-77) is a boolean flag on an existing step type, not a new step type
     # itself -- tracked separately so a regression to just this flag still fails the build.
     "procedure.createIfMissing": _has_procedure_create_if_missing,
+    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 2A): a Workbench transaction action's applyTo
+    # mapping lives inside the untyped autoPanel.transaction.metadata.actions[] blob (not a schema
+    # property -- regular, non-Workbench panels have no client-held draft to fold a result into),
+    # so this walks that structure directly rather than reusing a step/field-type detector.
+    "workbench.applyTo": _has_workbench_apply_to,
 }
 
 
