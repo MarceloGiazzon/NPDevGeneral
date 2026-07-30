@@ -13,6 +13,8 @@ import com.npdev.kernel.procedures.ProcedureExecutionResult;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -35,28 +37,49 @@ public class AggregateRuntime {
     private final CompiledModel compiledModel;
     private final ConceptGateway conceptGateway;
     private final ProcedureRunner procedureRunner;
+    private final TransactionTemplate transactionTemplate;
 
     @Autowired
     public AggregateRuntime(
             ObjectProvider<CompiledModel> compiledModel,
             ObjectProvider<ConceptGateway> conceptGateway,
-            ObjectProvider<ProcedureRunner> procedureRunner
+            ObjectProvider<ProcedureRunner> procedureRunner,
+            ObjectProvider<PlatformTransactionManager> transactionManager
     ) {
         this(
                 compiledModel == null ? null : compiledModel.getIfAvailable(),
                 conceptGateway == null ? null : conceptGateway.getIfAvailable(),
-                procedureRunner == null ? null : procedureRunner.getIfAvailable()
+                procedureRunner == null ? null : procedureRunner.getIfAvailable(),
+                transactionManager == null ? null : transactionManager.getIfAvailable()
         );
     }
 
     public AggregateRuntime(CompiledModel compiledModel, ConceptGateway conceptGateway) {
-        this(compiledModel, conceptGateway, null);
+        this(compiledModel, conceptGateway, null, null);
     }
 
     public AggregateRuntime(CompiledModel compiledModel, ConceptGateway conceptGateway, ProcedureRunner procedureRunner) {
+        this(compiledModel, conceptGateway, procedureRunner, null);
+    }
+
+    /**
+     * G1 (docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md, REG-72): {@code transactionManager} wraps
+     * {@link #commit} in a real transaction when one is available, so the root upsert, every
+     * recursive child upsert, and every reconcile-delete either all land or none do. A
+     * {@code TransactionTemplate} (not {@code @Transactional}) on purpose: this class is
+     * routinely constructed directly (every test above, and any future non-Spring caller), which
+     * silently defeats an annotation-driven AOP proxy but not an explicitly-invoked template.
+     */
+    public AggregateRuntime(
+            CompiledModel compiledModel,
+            ConceptGateway conceptGateway,
+            ProcedureRunner procedureRunner,
+            PlatformTransactionManager transactionManager
+    ) {
         this.compiledModel = compiledModel;
         this.conceptGateway = conceptGateway;
         this.procedureRunner = procedureRunner;
+        this.transactionTemplate = transactionManager == null ? null : new TransactionTemplate(transactionManager);
     }
 
     /**
@@ -94,10 +117,25 @@ public class AggregateRuntime {
      * in the draft (reconcile, cascading down the tree). New rows without an {@code id} are assigned one.
      * Returns the freshly re-loaded tree.
      *
+     * <p>G1 (REG-72): the root upsert, every recursive child upsert, and every reconcile-delete run
+     * inside a single transaction when a {@link PlatformTransactionManager} was supplied -- a commit
+     * that fails partway (e.g. the last child write throws) leaves every prior write in this call
+     * rolled back, including any reconcile-delete already issued, instead of a half-written aggregate
+     * with unrecoverably deleted rows. With no transaction manager (e.g. an in-proc store that can't
+     * participate in one), this degrades to the original, non-atomic behavior -- unchanged for every
+     * existing caller.
+     *
      * @throws IllegalArgumentException if the aggregate is unknown
      * @throws IllegalStateException    if no ConceptGateway is available
      */
     public Map<String, Object> commit(String aggregateName, Map<String, Object> draft, ExecutionContext context) {
+        if (transactionTemplate != null) {
+            return transactionTemplate.execute(status -> commitInternal(aggregateName, draft, context));
+        }
+        return commitInternal(aggregateName, draft, context);
+    }
+
+    private Map<String, Object> commitInternal(String aggregateName, Map<String, Object> draft, ExecutionContext context) {
         CompiledAggregate aggregate = findAggregate(aggregateName);
         ExecutionContext ctx = context == null ? ExecutionContext.anonymous() : context;
         ConceptGateway gateway = requireConceptGateway();

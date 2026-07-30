@@ -1,0 +1,75 @@
+id: REG-72
+title: "AggregateRuntime.commit performs N+1 writes and reconcile-deletes with no transaction boundary -- a failure partway leaves a half-written aggregate, and a failure after a reconcile-delete does not restore what was deleted"
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-07-29
+closed: 2026-07-29
+verification: VERIFIED_LIVE
+source: docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md G1 -- proposed before any code was read, confirmed by
+  reading AggregateRuntime.java/AggregateApiController.java, then proven with a real depth-2
+  (Expedicao -> ExpedicaoItem -> MovtoOrigem) scenario against a real H2-backed
+  JdbcBusinessConceptStore + DataSourceTransactionManager, RED before the fix and GREEN after
+  (both directions actually run, not assumed)
+surface: kernel/aggregate-runtime
+files:
+  - NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/AggregateRuntime.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/npdev/service/AggregateRuntimeCommitTransactionalTest.java
+  - NPDevSamples/dsl-conformance-max/Input/model.json
+detail: |
+  `AggregateRuntime.commit` does, in order: upsert root -> recursive child upserts (depth-first,
+  each level's own reconcile-delete firing before the next sibling collection is processed) ->
+  return a fresh `load()`. Every `gateway.save`/`gateway.delete` call was an independent
+  auto-commit -- no `@Transactional`, no `TransactionTemplate`, nothing wrapping the sequence.
+
+  **Failure mode, confirmed live**: a depth-2 draft where an early child (and its own nested
+  grandchild reconcile-delete) commit successfully, and a LATER sibling child's save throws --
+  the root rename and the already-fired reconcile-delete both stayed committed even though the
+  overall `commit()` call threw and the caller sees it as failed. Because reconcile actively
+  *deletes* rows absent from the draft, this is not just inconsistency, it is unrecoverable data
+  loss: a caller retrying the (now-corrected) draft does not get the deleted row back on its own.
+
+  **Two claims this REG's own investigation corrected or sharpened relative to the plan that
+  proposed it, stated plainly:**
+  1. The plan's "(2) nothing has ever exercised [the recursion] past depth 1" is **not accurate**:
+     `AggregateRuntimeCommitTest` (pre-existing) already exercises a real depth-2
+     insert/update/delete round-trip, including grandchild-level reconcile-delete, against a
+     hand-rolled in-memory `ConceptGateway`. The recursion itself was never in doubt once read --
+     this REG did not need to touch `commitCollections`/`loadCollection` at all. What was
+     genuinely missing was transactional coverage and a real corpus example, not recursion
+     correctness.
+  2. **Storage-mode risk resolved, not just flagged**: WmsOffice's generated
+     `application-npdev-db.properties` sets `npdev.storage.mode=jdbc` (confirmed by reading the
+     generated app, not assumed), so `JdbcBusinessConceptStore` -- the store that actually
+     participates in a Spring transaction via `DataSourceUtils.getConnection` (LNCH-17) -- is the
+     one WmsOffice really runs on. The fix applies to the real running app, not just a fixture.
+     The `in-memory` storage mode (dev/test default) genuinely cannot gain atomicity from this fix
+     (`InMemoryConceptStore` has no transactional resource to join) -- recorded here rather than
+     silently assumed fixed everywhere, per the plan's own instruction.
+
+  **Fix**: `AggregateRuntime` gained an optional `PlatformTransactionManager` dependency (same
+  `ObjectProvider`-optional-constructor idiom as every other dependency in this class), used to
+  build a `TransactionTemplate` that wraps the entire `commit()` body when available.
+  `TransactionTemplate` was chosen over `@Transactional` deliberately: `AggregateApiController`
+  calls `aggregateRuntime.commit(...)` on an externally-injected bean (not self-invocation), so
+  `@Transactional` would have worked for that one call path -- but this class is also, routinely,
+  constructed directly (every existing test, and any future non-Spring caller), which silently
+  defeats an annotation-driven AOP proxy. A `TransactionTemplate` invoked explicitly inside the
+  method works identically either way, and is directly unit-testable without a Spring
+  `ApplicationContext`. No transaction manager wired (e.g. in-memory storage mode) degrades to the
+  original, unchanged, non-atomic behavior -- zero existing callers needed to change.
+
+  **RED->GREEN, both directions actually run**: `AggregateRuntimeCommitTransactionalTest` has two
+  tests against a real H2-backed `JdbcBusinessConceptStore`/`DefaultConceptGateway` and a real
+  `DataSourceTransactionManager`. One documents the still-available non-atomic path (no
+  transaction manager wired) as a permanent characterization test. The other
+  (`atomicCommitRollsBackEveryPriorWriteWhenTransactionManagerIsWired`) was verified RED by
+  temporarily short-circuiting the transaction wrapping (confirmed `AssertionFailedError`: the
+  root and the reconciled-away child were NOT rolled back), then GREEN after restoring the real
+  fix -- both runs actually executed, not inferred. Full existing `AggregateRuntimeCommitTest` (2),
+  `AggregateRuntimeTest` (3), and `WorkbenchRuntimeTest` (2) suites re-run clean, zero regressions.
+
+  `NPDevSamples/dsl-conformance-max` gained the corpus's first depth-2 aggregate
+  (`WidgetOrderAggregate.lines.notes`, a new `WidgetOrderLineNote` concept), Gradle-validated (0
+  errors, 0 warnings) -- the standing add-a-feature rule, and closes a named zero-coverage gap in
+  the real corpus (as opposed to a hand-rolled test fixture).

@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**72 item(s) migrated: 0 open/partial, 72 done.**
+**74 item(s) migrated: 0 open/partial, 74 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -80,6 +80,8 @@
 | REG-7 | LNCH-1-B6: no migration advisory lock (multi-instance) -- converted to a feature | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-70 | panel.action.binding: "flow" is schema-valid, compiler-accepted, and unimplemented at runtime -- 2 shipping WmsOffice panels already have a dead primary action | BUG | HIGH | DONE | 2026-07-29 |
 | REG-71 | panelAction scope="row" + binding="conceptMutation" blanked every other required field to null (executeConceptMutation stripped "id" from a flat body; ConceptGatewaySemanticPolicy separately requires "id" present in the data map) | BUG | HIGH | DONE | 2026-07-29 |
+| REG-72 | AggregateRuntime.commit performs N+1 writes and reconcile-deletes with no transaction boundary -- a failure partway leaves a half-written aggregate, and a failure after a reconcile-delete does not restore what was deleted | BUG | HIGH | DONE | 2026-07-29 |
+| REG-73 | ProcedureRunner never resolved a capability adapter from the model's bindings list -- every procedure-side capabilityCall step (panel action procedure bindings, and AggregateRuntime.invoke()) reached the dispatcher with a null adapterId and failed CAPABILITY_BINDING_MISSING even with a real binding declared | BUG | HIGH | DONE | 2026-07-29 |
 | REG-8 | LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback | BOUNDARY | — | DONE | 2026-07-21 |
 | REG-9 | LNCH-4: auth secrets management -- JWT key env-var delivery | GAP | HIGH | DONE | 2026-07-21 |
 
@@ -1778,6 +1780,136 @@ bindings (Bug 1); `executeConceptMutation`'s fallback branch no longer strips `"
 constructed data map (Bug 2). Verified live: `InventarioHistoricoPanel.confirmar` and
 `ConferenciaFiscalNfePanel.cancelar` both return `status: "OK"` with a real gateway trace showing
 the correct lifecycle transition and every other field preserved from the fresh row read.
+
+### REG-72 — AggregateRuntime.commit performs N+1 writes and reconcile-deletes with no transaction boundary -- a failure partway leaves a half-written aggregate, and a failure after a reconcile-delete does not restore what was deleted
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-07-29)
+**Verification:** VERIFIED_LIVE
+**Source:** docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md G1 -- proposed before any code was read, confirmed by reading AggregateRuntime.java/AggregateApiController.java, then proven with a real depth-2 (Expedicao -> ExpedicaoItem -> MovtoOrigem) scenario against a real H2-backed JdbcBusinessConceptStore + DataSourceTransactionManager, RED before the fix and GREEN after (both directions actually run, not assumed)
+**Surface:** `kernel/aggregate-runtime`
+**Files:**
+- `NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/AggregateRuntime.java`
+- `NPDevRuntimeHost/src/test/java/com/finalexec/npdev/service/AggregateRuntimeCommitTransactionalTest.java`
+- `NPDevSamples/dsl-conformance-max/Input/model.json`
+
+`AggregateRuntime.commit` does, in order: upsert root -> recursive child upserts (depth-first,
+each level's own reconcile-delete firing before the next sibling collection is processed) ->
+return a fresh `load()`. Every `gateway.save`/`gateway.delete` call was an independent
+auto-commit -- no `@Transactional`, no `TransactionTemplate`, nothing wrapping the sequence.
+
+**Failure mode, confirmed live**: a depth-2 draft where an early child (and its own nested
+grandchild reconcile-delete) commit successfully, and a LATER sibling child's save throws --
+the root rename and the already-fired reconcile-delete both stayed committed even though the
+overall `commit()` call threw and the caller sees it as failed. Because reconcile actively
+*deletes* rows absent from the draft, this is not just inconsistency, it is unrecoverable data
+loss: a caller retrying the (now-corrected) draft does not get the deleted row back on its own.
+
+**Two claims this REG's own investigation corrected or sharpened relative to the plan that
+proposed it, stated plainly:**
+1. The plan's "(2) nothing has ever exercised [the recursion] past depth 1" is **not accurate**:
+   `AggregateRuntimeCommitTest` (pre-existing) already exercises a real depth-2
+   insert/update/delete round-trip, including grandchild-level reconcile-delete, against a
+   hand-rolled in-memory `ConceptGateway`. The recursion itself was never in doubt once read --
+   this REG did not need to touch `commitCollections`/`loadCollection` at all. What was
+   genuinely missing was transactional coverage and a real corpus example, not recursion
+   correctness.
+2. **Storage-mode risk resolved, not just flagged**: WmsOffice's generated
+   `application-npdev-db.properties` sets `npdev.storage.mode=jdbc` (confirmed by reading the
+   generated app, not assumed), so `JdbcBusinessConceptStore` -- the store that actually
+   participates in a Spring transaction via `DataSourceUtils.getConnection` (LNCH-17) -- is the
+   one WmsOffice really runs on. The fix applies to the real running app, not just a fixture.
+   The `in-memory` storage mode (dev/test default) genuinely cannot gain atomicity from this fix
+   (`InMemoryConceptStore` has no transactional resource to join) -- recorded here rather than
+   silently assumed fixed everywhere, per the plan's own instruction.
+
+**Fix**: `AggregateRuntime` gained an optional `PlatformTransactionManager` dependency (same
+`ObjectProvider`-optional-constructor idiom as every other dependency in this class), used to
+build a `TransactionTemplate` that wraps the entire `commit()` body when available.
+`TransactionTemplate` was chosen over `@Transactional` deliberately: `AggregateApiController`
+calls `aggregateRuntime.commit(...)` on an externally-injected bean (not self-invocation), so
+`@Transactional` would have worked for that one call path -- but this class is also, routinely,
+constructed directly (every existing test, and any future non-Spring caller), which silently
+defeats an annotation-driven AOP proxy. A `TransactionTemplate` invoked explicitly inside the
+method works identically either way, and is directly unit-testable without a Spring
+`ApplicationContext`. No transaction manager wired (e.g. in-memory storage mode) degrades to the
+original, unchanged, non-atomic behavior -- zero existing callers needed to change.
+
+**RED->GREEN, both directions actually run**: `AggregateRuntimeCommitTransactionalTest` has two
+tests against a real H2-backed `JdbcBusinessConceptStore`/`DefaultConceptGateway` and a real
+`DataSourceTransactionManager`. One documents the still-available non-atomic path (no
+transaction manager wired) as a permanent characterization test. The other
+(`atomicCommitRollsBackEveryPriorWriteWhenTransactionManagerIsWired`) was verified RED by
+temporarily short-circuiting the transaction wrapping (confirmed `AssertionFailedError`: the
+root and the reconciled-away child were NOT rolled back), then GREEN after restoring the real
+fix -- both runs actually executed, not inferred. Full existing `AggregateRuntimeCommitTest` (2),
+`AggregateRuntimeTest` (3), and `WorkbenchRuntimeTest` (2) suites re-run clean, zero regressions.
+
+`NPDevSamples/dsl-conformance-max` gained the corpus's first depth-2 aggregate
+(`WidgetOrderAggregate.lines.notes`, a new `WidgetOrderLineNote` concept), Gradle-validated (0
+errors, 0 warnings) -- the standing add-a-feature rule, and closes a named zero-coverage gap in
+the real corpus (as opposed to a hand-rolled test fixture).
+
+### REG-73 — ProcedureRunner never resolved a capability adapter from the model's bindings list -- every procedure-side capabilityCall step (panel action procedure bindings, and AggregateRuntime.invoke()) reached the dispatcher with a null adapterId and failed CAPABILITY_BINDING_MISSING even with a real binding declared
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-07-29)
+**Verification:** VERIFIED_LIVE
+**Source:** docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md G2 -- found live while assessing the Sugerir* flows against invoke() ("procedure over draft" is the candidate mechanism for a computed-array suggestion input, per the plan's own G2 hypothesis). Twin procedures (SugerirDestinoProcedure / SugerirOrigemProcedure) reproduced a real capability call failing 503 CAPABILITY_BINDING_MISSING ("adapter '<missing>'") even though the identical capability/operation/binding works fine when called via the pre-existing flow (SugerirDestino / SugerirOrigem).
+**Surface:** `kernel/procedure-runtime`
+**Files:**
+- `NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/ProcedureRunner.java`
+- `NPDevRuntimeHost/src/test/java/com/finalexec/npdev/service/ProcedureRunnerCapabilityCallTest.java`
+
+`ProcedureRunner.toProcedureStep`'s `CALL_CAPABILITY` branch hardcoded the compiled step's
+`adapterId` to `""` (which `ProcedureStep.callCapability` normalizes to `null`), regardless of
+the model's declared `bindings` list. `RegistryCapabilityDispatcher.invoke` fails fast with
+`CAPABILITY_BINDING_MISSING` whenever `adapterId` is null/blank -- it never falls back to
+resolving one itself, by design (dispatch is by capability + explicit adapter, not a default
+lookup).
+
+The FLOW compilation path already did this resolution correctly:
+`CompiledModelFlowDefinitionProvider` builds an `adapterIdByCapability` map from
+`compiledModel.getBindings()` at flow-compile time and resolves each `capabilityCall` step's
+adapter from it (`nonBlank(call.getAdapterId(), adapterIdByCapability.get(normalize(capabilityName)))`)
+-- which is exactly why the pre-existing `SugerirDestino`/`SugerirOrigem` FLOWS worked live the
+whole time this bug existed. The PROCEDURE path (`ProcedureRunner`, shared by panel-action
+procedure bindings and `AggregateRuntime.invoke()`) never had the equivalent resolution --
+confirmed by reading `ProcedureRunner.java` alongside `RegistryCapabilityDispatcher.java` and
+`CompiledModelFlowDefinitionProvider.java` side by side, not assumed.
+
+**Blast radius**: every procedure in the corpus (and any future one) that calls a custom
+capability via `type: "capabilityCall"` was silently broken end-to-end -- not scoped to the two
+Sugerir procedures this REG was found through. `ProcedureRunner` is shared by both panel-action
+procedure bindings and `AggregateRuntime.invoke()`, so this affected both call paths identically.
+
+**Fix**: `ProcedureRunner` now builds the same `adapterIdByCapability` map (from
+`compiledModel.getBindings()`, normalized capability-name key -> adapter) once per
+`buildProcedureDefinitions()` call, and threads it through `toProcedureDefinition`/
+`toProcedureStep` (previously static methods taking no model context) so the `CALL_CAPABILITY`
+case resolves a real adapterId instead of `""`. `capabilityType` was left as `""`/null,
+unchanged -- `CompiledProcedureStep` has no such field either, matching the flow path's own
+behaviour when a step author leaves it unset.
+
+**RED->GREEN, both directions actually run**: new `ProcedureRunnerCapabilityCallTest` builds a
+minimal compiled model (one custom capability + one binding + one procedure with a
+`capabilityCall` step) and a `RecordingDispatcher` stub that captures the `CapabilityCall` it
+receives. Verified RED by temporarily reverting the `CALL_CAPABILITY` branch to the old
+hardcoded-`""` form in a real generated FinalApp build (WmsOffice) and re-running: genuine
+`AssertionFailedError` (`expected: <test-adapter> but was: <null>`) -- an actual JUnit failure,
+not inferred. Restored the fix, re-ran: GREEN. Full regression pass in the same app build:
+`ProcedureRunnerCapabilityCallTest` (1), `AggregateRuntimeCommitTransactionalTest` (2),
+`AggregateRuntimeCommitTest` (2), `AggregateRuntimeTest` (3), `WorkbenchRuntimeTest` (2),
+`PanelRuntimeTest` (8), `PanelRuntimeRowOpsTest` (6), `PanelRuntimeInputFieldsTest` (1) --
+25/25 pass, zero regressions.
+
+**Verified live end-to-end, not just unit-tested**: rebuilt WmsOffice's running FinalApp
+(bootJar) with the fix, restarted it, and called the two real procedures that had previously
+reproduced the 503 (`POST /api/runtime/aggregate/Movimento/invoke/SugerirDestinoProcedure` and
+`.../SugerirOrigemProcedure`), both now returning a real, correct suggestion result
+(`sucesso: true`, real ranking/FIFO allocation output) matching what the equivalent flow call
+returns. This closes what would otherwise have been recorded as a named G2 design gap
+(Move 3, `docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md`) -- the plan's own hypothesis ("invoke is the
+candidate mechanism ... if it does not fit, say so and name the gap") held once the real bug
+underneath it was fixed, so no gap needed naming.
 
 ### REG-8 — LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback
 
