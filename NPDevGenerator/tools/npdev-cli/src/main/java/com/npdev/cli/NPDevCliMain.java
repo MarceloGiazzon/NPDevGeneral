@@ -574,10 +574,11 @@ public final class NPDevCliMain {
                     step.select(),
                     target
             );
-            case MAP_VALUE -> ProcedureStep.mapValue(stepName(step), refOf(step.value(), "input"), target);
+            case MAP_VALUE -> ProcedureStep.mapValue(stepName(step), literalOrRef(step.value(), "$input"), target);
             case COMPUTE_VALUE -> ProcedureStep.computeValue(
                     stepName(step), normalized(step.operation()), step.left(), step.right(), target);
-            case RETURN -> ProcedureStep.returnValue(stepName(step), refOf(step.value(), target == null ? "input" : target));
+            case RETURN -> ProcedureStep.returnValue(
+                    stepName(step), literalOrRef(step.value(), target == null ? "$input" : "$" + target));
         };
     }
 
@@ -604,6 +605,17 @@ public final class NPDevCliMain {
             return fallback;
         }
         return text.startsWith("$") ? text.substring(1) : text;
+    }
+
+    /** REG-86: see ProcedureRunner's identical helper -- literal-vs-$ref passthrough for mapValue/return. */
+    private static Object literalOrRef(Object value, String fallbackRef) {
+        if (value == null) {
+            return fallbackRef;
+        }
+        if (value instanceof String s && s.isBlank()) {
+            return fallbackRef;
+        }
+        return value;
     }
 
     private static String stepName(CompiledProcedureStep step) {

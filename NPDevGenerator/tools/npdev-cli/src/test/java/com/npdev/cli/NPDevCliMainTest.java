@@ -611,10 +611,10 @@ class NPDevCliMainTest {
                         {
                           "name":"save",
                           "type":"capabilityCall",
-                          "cap":"persistence",
-                          "op":"save",
+                          "capability":"persistence",
+                          "operation":"save",
                           "args":["$input"],
-                          "out":"$saved",
+                          "output":"$saved",
                           "policy":{
                             "retryCount":1,
                             "retryDelayMs":0,

@@ -635,6 +635,30 @@
     return (entry.dataSources || []).find(function (ds) { return ds.name === dataSourceName; }) || null;
   }
 
+  // REG-92 (Move 11 W3): one free-text control for every declared Panel mini-form, mirroring the
+  // Aggregate Workbench's own rule exactly -- see workbench-page.html.mustache, which has rendered a
+  // <textarea rows="1"> here since REG-76 (Move 3 G4).
+  //
+  // A plain <input type="text"> silently strips/collapses newlines on assignment. Proven live in a
+  // real browser against a declared Panel action input: a genuinely 3-line paste read back as
+  // {"tagName":"INPUT","type":"text","value":"LINHA-1 LINHA-2 LINHA-3","newlines":0} -- three lines
+  // in, one line out. The value is accepted, visibly "typed", and posted mangled: silent corruption,
+  // never an error. For a pasted CSV the capability's own header-row skip then consumes the entire
+  // payload and returns zero data rows, which is exactly how REG-76 was found on the Workbench side.
+  //
+  // Unconditional, NOT gated on a "multi-line widget" -- that is the Workbench's rule and mirroring
+  // it is the whole point of this fix. A second, differently-conditioned rule on the Panel side is
+  // how these two surfaces (which share one `inputFields` declaration, so one model text must mean
+  // one behaviour) drifted apart in the first place. A rows="1" textarea reads and measures like a
+  // single-line box for short values, and .value round-trips identically.
+  function createDeclaredPanelTextInput(field) {
+    const input = document.createElement("textarea");
+    input.rows = 1;
+    input.placeholder = field;
+    input.className = "declared-panel-edit-input";
+    return input;
+  }
+
   // Header "+ add row" form for a dataSource with rowOps:[add]. Fields come from the declared
   // addFormFields (falling back to the declared table columns, if any) so authors get a usable
   // form even without hand-listing addFormFields for every add-able dataSource.
@@ -649,10 +673,10 @@
     form.className = "declared-panel-add-row";
     const inputsByField = {};
     fieldNames.forEach(function (field) {
-      const input = document.createElement("input");
-      input.type = "text";
-      input.placeholder = field;
-      input.className = "declared-panel-edit-input";
+      // REG-92: same control, same reason, as the action mini-form below -- an add-row column whose
+      // value is inherently multi-line was corrupted identically, and fixing only the twin REG-92
+      // happens to name is precisely how REG-76's workbench fix failed to reach this side.
+      const input = createDeclaredPanelTextInput(field);
       inputsByField[field] = input;
       form.appendChild(input);
     });
@@ -717,17 +741,15 @@
       // G3 (docs/MOVE2_PANEL_ACTIONS_PLAN.md): a panel-scoped action with declared inputFields gets
       // an inline "collect input, then invoke" mini-form -- the same shape
       // renderDeclaredPanelAddRowForm already uses for a dataSource's add-row form, just wired to
-      // executeDeclaredPanelAction instead of createDeclaredPanelRow. Plain text inputs only (no
-      // widget/reference-picker resolution yet -- a real but smaller gap than having no form at all).
+      // executeDeclaredPanelAction instead of createDeclaredPanelRow. Free-text inputs only (no
+      // widget/reference-picker resolution yet -- a real but smaller gap than having no form at all);
+      // REG-92 made that free-text control newline-preserving, see createDeclaredPanelTextInput.
       const inputsByField = {};
       if (fieldNames.length) {
         const inlineForm = document.createElement("span");
         inlineForm.className = "declared-panel-action-inputs";
         fieldNames.forEach(function (field) {
-          const input = document.createElement("input");
-          input.type = "text";
-          input.placeholder = field;
-          input.className = "declared-panel-edit-input";
+          const input = createDeclaredPanelTextInput(field);
           inputsByField[field] = input;
           inlineForm.appendChild(input);
         });

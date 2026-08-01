@@ -1,0 +1,119 @@
+package {{controllerPackage}};
+
+import com.npdev.dsl.v1.compiled.CompiledAggregateFunction;
+import com.npdev.dsl.v1.compiled.CompiledGroupByField;
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledQuery;
+import com.npdev.generated.runtime.service.RuntimeContextService;
+import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.concepts.ConceptAggregateQuery;
+import com.npdev.kernel.concepts.ConceptAggregateRequest;
+import com.npdev.kernel.concepts.ConceptAggregateResult;
+import com.npdev.kernel.concepts.ConceptGateway;
+import com.npdev.kernel.concepts.ConceptGatewayAccessDeniedException;
+import com.npdev.kernel.concepts.ConceptPage;
+import com.npdev.kernel.concepts.ConceptQuery;
+import com.npdev.kernel.concepts.ConceptQueryPredicateCompiler;
+import com.npdev.kernel.concepts.ConceptQueryRequest;
+import com.npdev.kernel.concepts.ConceptRecord;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Move 10 B1 (LC-B1, MOVE10_AI_LOWCODE_PLAN Part B): executes a NAMED query declared in the
+ * model -- plain (rows of concept records) or aggregate ({@link CompiledQuery#isAggregate()},
+ * rows of grouped/aggregated output) -- exposed at REST alongside the generic
+ * {@code /api/concepts/{conceptName}} surface, so a hand-written screen (and Move 10 B2's
+ * chart/KPI gadgets) can use a declared query directly instead of re-deriving its filter/grouping
+ * client-side. Routes through {@link ConceptGateway#query}/{@link ConceptGateway#aggregate}, which
+ * enforce tenant isolation and permissions exactly as every other concept read does -- this
+ * controller adds no authorization logic of its own.
+ */
+@RestController
+public class GeneratedQueryController {
+
+    private final CompiledModel compiledModel;
+    private final ConceptGateway conceptGateway;
+    private final RuntimeContextService runtimeContextService;
+
+    public GeneratedQueryController(
+            CompiledModel compiledModel, ConceptGateway conceptGateway, RuntimeContextService runtimeContextService) {
+        this.compiledModel = compiledModel;
+        this.conceptGateway = conceptGateway;
+        this.runtimeContextService = runtimeContextService;
+    }
+
+    @GetMapping("/api/queries/{queryName}")
+    public Map<String, Object> run(@PathVariable String queryName, HttpServletRequest request) {
+        ExecutionContext context = runtimeContextService.currentContext(request);
+        CompiledQuery query = findQuery(queryName);
+        try {
+            return query.isAggregate() ? runAggregate(query, context) : runPlain(query, context);
+        } catch (ConceptGatewayAccessDeniedException denied) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, denied.getMessage());
+        }
+    }
+
+    private CompiledQuery findQuery(String queryName) {
+        for (CompiledQuery candidate : compiledModel.getQueries()) {
+            if (candidate.name().equalsIgnoreCase(queryName)) {
+                return candidate;
+            }
+        }
+        throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown query: " + queryName);
+    }
+
+    private Map<String, Object> runAggregate(CompiledQuery query, ExecutionContext context) {
+        List<ConceptQuery.Filter> filters = ConceptQueryPredicateCompiler.compile(query.where());
+        List<ConceptAggregateQuery.GroupByField> groupBy = new ArrayList<>();
+        for (CompiledGroupByField field : query.groupBy()) {
+            groupBy.add(new ConceptAggregateQuery.GroupByField(field.field(), field.bucket()));
+        }
+        List<ConceptAggregateQuery.AggregateFunction> aggregates = new ArrayList<>();
+        for (CompiledAggregateFunction aggregate : query.aggregates()) {
+            aggregates.add(new ConceptAggregateQuery.AggregateFunction(
+                    aggregate.name(), aggregate.fn(), aggregate.field()));
+        }
+        List<ConceptQuery.Filter> having = ConceptQueryPredicateCompiler.compile(query.having());
+        List<ConceptQuery.Sort> sorts = ConceptQueryPredicateCompiler.compileOrderBy(query.orderBy());
+
+        ConceptAggregateQuery aggregateQuery = new ConceptAggregateQuery(
+                filters, groupBy, aggregates, having, sorts, query.limit());
+        ConceptAggregateResult result = conceptGateway.aggregate(
+                new ConceptAggregateRequest(query.concept(), aggregateQuery), context);
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("query", query.name());
+        body.put("aggregate", true);
+        body.put("rows", result.rows());
+        return body;
+    }
+
+    private Map<String, Object> runPlain(CompiledQuery query, ExecutionContext context) {
+        List<ConceptQuery.Filter> filters = ConceptQueryPredicateCompiler.compile(query.where());
+        List<ConceptQuery.Sort> sorts = ConceptQueryPredicateCompiler.compileOrderBy(query.orderBy());
+        int limit = query.limit() != null && query.limit() > 0 ? query.limit() : ConceptQuery.DEFAULT_LIMIT;
+        ConceptQuery conceptQuery = new ConceptQuery(filters, sorts, 0, limit);
+        ConceptPage page = conceptGateway.query(new ConceptQueryRequest(query.concept(), conceptQuery), context);
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (ConceptRecord record : page.items()) {
+            rows.add(record.data());
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("query", query.name());
+        body.put("aggregate", false);
+        body.put("rows", rows);
+        body.put("total", page.total());
+        return body;
+    }
+}

@@ -507,6 +507,207 @@
   gadgetRenderers["context-info"] = function (container) { renderContextInfoGadget(container); };
   gadgetRenderers["page-fragment"] = function (container, config) { renderPageFragmentGadget(container, config); };
 
+  // Move 10 B2 (LC-B2, MOVE10_AI_LOWCODE_PLAN Part B): kpi/bar/line/table gadgets bind to a named
+  // B1 aggregate query and render SERVER-FED numbers -- no client-side arithmetic (the numbers
+  // come from GET /api/queries/{name} already grouped/aggregated) and no charting library from a
+  // CDN (bar/line are hand-rolled inline SVG, self-contained like the rest of this generated file).
+
+  function fetchGadgetQuery(gadget) {
+    if (!gadget || !gadget.query) return Promise.reject(new Error("gadget has no query binding"));
+    return fetchJson("/api/queries/" + encodeURIComponent(gadget.query), state.token);
+  }
+
+  function gadgetMessage(container, message) {
+    var empty = document.createElement("div");
+    empty.className = "npdev-shell-gadget-empty";
+    empty.textContent = message;
+    container.appendChild(empty);
+  }
+
+  function numberOrZero(value) {
+    var n = Number(value);
+    return isFinite(n) ? n : 0;
+  }
+
+  function formatNumber(value) {
+    return value.toLocaleString ? value.toLocaleString() : String(value);
+  }
+
+  function renderKpiGadget(container, gadget) {
+    fetchGadgetQuery(gadget).then(function (result) {
+      var rows = (result && result.rows) || [];
+      if (!rows.length) { gadgetMessage(container, "Sem dados."); return; }
+      var total = 0;
+      rows.forEach(function (row) { total += numberOrZero(row[gadget.y]); });
+      var big = document.createElement("div");
+      big.className = "npdev-shell-gadget-kpi";
+      big.textContent = formatNumber(total);
+      container.appendChild(big);
+    }).catch(function (err) { gadgetMessage(container, "Erro: " + err.message); });
+  }
+
+  function renderTableGadget(container, gadget) {
+    fetchGadgetQuery(gadget).then(function (result) {
+      var rows = (result && result.rows) || [];
+      if (!rows.length) { gadgetMessage(container, "Sem dados."); return; }
+      var columns = Object.keys(rows[0]);
+      var table = document.createElement("table");
+      table.className = "npdev-shell-gadget-table";
+      var thead = document.createElement("thead");
+      var htr = document.createElement("tr");
+      columns.forEach(function (c) {
+        var th = document.createElement("th");
+        th.textContent = c;
+        htr.appendChild(th);
+      });
+      thead.appendChild(htr);
+      table.appendChild(thead);
+      var tbody = document.createElement("tbody");
+      rows.forEach(function (row) {
+        var tr = document.createElement("tr");
+        columns.forEach(function (c) {
+          var td = document.createElement("td");
+          var v = row[c];
+          td.textContent = typeof v === "number" ? formatNumber(v) : String(v == null ? "" : v);
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      container.appendChild(table);
+    }).catch(function (err) { gadgetMessage(container, "Erro: " + err.message); });
+  }
+
+  var CHART_COLORS = ["#295572", "#4d8fe8", "#e05d5d", "#f0a868", "#4caf7d", "#9b6bd1", "#c2185b", "#607d8b"];
+
+  function svgEl(tag, attrs) {
+    var node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for (var k in attrs) {
+      if (Object.prototype.hasOwnProperty.call(attrs, k)) node.setAttribute(k, attrs[k]);
+    }
+    return node;
+  }
+
+  // Grouped-bar / multi-line chart over the (already-aggregated) query rows: x names a groupBy
+  // field (the category axis), y names an aggregates output (the value axis), series (optional)
+  // names a second groupBy field that splits each category into multiple bars/lines.
+  function renderXyChart(container, rows, gadget, chartType) {
+    var xField = gadget.x, yField = gadget.y, seriesField = gadget.series;
+    var categories = [], categorySeen = {};
+    rows.forEach(function (row) {
+      var key = String(row[xField]);
+      if (!categorySeen[key]) { categorySeen[key] = true; categories.push(key); }
+    });
+    var seriesValues = [], seriesSeen = {};
+    rows.forEach(function (row) {
+      var key = seriesField ? String(row[seriesField]) : "_";
+      if (!seriesSeen[key]) { seriesSeen[key] = true; seriesValues.push(key); }
+    });
+    var valueByKey = {};
+    rows.forEach(function (row) {
+      var cKey = String(row[xField]);
+      var sKey = seriesField ? String(row[seriesField]) : "_";
+      valueByKey[cKey + "" + sKey] = numberOrZero(row[yField]);
+    });
+
+    var width = 480, height = 220, padTop = 16, padRight = 12, padBottom = 30, padLeft = 46;
+    var innerW = width - padLeft - padRight, innerH = height - padTop - padBottom;
+    var maxValue = 0;
+    categories.forEach(function (c) {
+      seriesValues.forEach(function (s) { maxValue = Math.max(maxValue, valueByKey[c + "" + s] || 0); });
+    });
+    if (maxValue <= 0) maxValue = 1;
+
+    var svg = svgEl("svg", {
+      viewBox: "0 0 " + width + " " + height, width: "100%", height: String(height),
+      "class": "npdev-shell-gadget-chart"
+    });
+    svg.appendChild(svgEl("line", { x1: padLeft, y1: padTop, x2: padLeft, y2: padTop + innerH, stroke: "#c8d0da" }));
+    svg.appendChild(svgEl("line", {
+      x1: padLeft, y1: padTop + innerH, x2: padLeft + innerW, y2: padTop + innerH, stroke: "#c8d0da"
+    }));
+    [0, 0.5, 1].forEach(function (t) {
+      var y = padTop + innerH - t * innerH;
+      var tick = svgEl("text", { x: padLeft - 6, y: y + 3, "text-anchor": "end", "font-size": "9", fill: "#6b7280" });
+      tick.textContent = String(Math.round(maxValue * t));
+      svg.appendChild(tick);
+    });
+
+    var catCount = Math.max(1, categories.length);
+    var catBand = innerW / catCount;
+
+    if (chartType === "line") {
+      seriesValues.forEach(function (s, si) {
+        var color = CHART_COLORS[si % CHART_COLORS.length];
+        var pts = categories.map(function (c, ci) {
+          var v = valueByKey[c + "" + s] || 0;
+          var x = padLeft + catBand * (ci + 0.5);
+          var y = padTop + innerH - (v / maxValue) * innerH;
+          return x + "," + y;
+        });
+        svg.appendChild(svgEl("polyline", { points: pts.join(" "), fill: "none", stroke: color, "stroke-width": "2" }));
+        categories.forEach(function (c, ci) {
+          var v = valueByKey[c + "" + s] || 0;
+          var x = padLeft + catBand * (ci + 0.5);
+          var y = padTop + innerH - (v / maxValue) * innerH;
+          svg.appendChild(svgEl("circle", { cx: x, cy: y, r: "2.5", fill: color }));
+        });
+      });
+    } else {
+      var groupWidth = catBand * 0.7;
+      var barWidth = groupWidth / Math.max(1, seriesValues.length);
+      categories.forEach(function (c, ci) {
+        seriesValues.forEach(function (s, si) {
+          var v = valueByKey[c + "" + s] || 0;
+          var barH = (v / maxValue) * innerH;
+          var x = padLeft + catBand * ci + (catBand - groupWidth) / 2 + si * barWidth;
+          var y = padTop + innerH - barH;
+          svg.appendChild(svgEl("rect", {
+            x: x, y: y, width: Math.max(1, barWidth - 2), height: Math.max(0, barH),
+            fill: CHART_COLORS[si % CHART_COLORS.length]
+          }));
+        });
+      });
+    }
+
+    categories.forEach(function (c, ci) {
+      var x = padLeft + catBand * (ci + 0.5);
+      var label = svgEl("text", { x: x, y: padTop + innerH + 13, "text-anchor": "middle", "font-size": "9", fill: "#1c2333" });
+      label.textContent = c.length > 10 ? c.slice(0, 9) + "…" : c;
+      svg.appendChild(label);
+    });
+
+    container.appendChild(svg);
+
+    if (seriesField && seriesValues.length > 1) {
+      var legend = document.createElement("div");
+      legend.className = "npdev-shell-gadget-legend";
+      seriesValues.forEach(function (s, si) {
+        var item = document.createElement("span");
+        item.className = "npdev-shell-gadget-legend-item";
+        var swatch = document.createElement("i");
+        swatch.style.background = CHART_COLORS[si % CHART_COLORS.length];
+        item.appendChild(swatch);
+        item.appendChild(document.createTextNode(s));
+        legend.appendChild(item);
+      });
+      container.appendChild(legend);
+    }
+  }
+
+  function renderXyChartGadget(container, gadget, chartType) {
+    fetchGadgetQuery(gadget).then(function (result) {
+      var rows = (result && result.rows) || [];
+      if (!rows.length) { gadgetMessage(container, "Sem dados."); return; }
+      renderXyChart(container, rows, gadget, chartType);
+    }).catch(function (err) { gadgetMessage(container, "Erro: " + err.message); });
+  }
+
+  gadgetRenderers["kpi"] = function (container, gadget) { renderKpiGadget(container, gadget); };
+  gadgetRenderers["table"] = function (container, gadget) { renderTableGadget(container, gadget); };
+  gadgetRenderers["bar"] = function (container, gadget) { renderXyChartGadget(container, gadget, "bar"); };
+  gadgetRenderers["line"] = function (container, gadget) { renderXyChartGadget(container, gadget, "line"); };
+
   function renderGadgets(gadgets) {
     el.rightbar.innerHTML = "";
     (gadgets || []).forEach(function (gadget) {
