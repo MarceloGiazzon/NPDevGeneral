@@ -61,6 +61,9 @@
     "scripts/appgen/Rebuild-And-Restage.ps1": {
       "invocation": "manual-runbook"
     },
+    "scripts/appgen/Update-AppMetadata.ps1": {
+      "invocation": "manual-runbook"
+    },
     "scripts/ci/gh-api.sh": {
       "invocation": "manual-runbook"
     },
@@ -140,9 +143,12 @@
       "invocation": "ci-gate"
     },
     "scripts/quality/check-panel-provenance-impact.py": {
-      "invocation": "manual-runbook"
+      "invocation": "ci-gate"
     },
     "scripts/quality/check-panel-provenance-schema.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-query-predicate-compilable.py": {
       "invocation": "ci-gate"
     },
     "scripts/quality/check-record-surfaces.py": {
@@ -152,6 +158,9 @@
       "invocation": "ci-gate"
     },
     "scripts/quality/check-schema-mirror-consistency.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-step-type-test-coverage.py": {
       "invocation": "ci-gate"
     },
     "scripts/quality/check-test-task-coverage.py": {
@@ -188,6 +197,9 @@
       "invocation": "manual-runbook"
     },
     "scripts/quality/run-ai-schema-validation.ps1": {
+      "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-all-gates.ps1": {
       "invocation": "manual-runbook"
     },
     "scripts/quality/run-app-upgrade-contract-gate.ps1": {

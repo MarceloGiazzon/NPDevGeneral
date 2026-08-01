@@ -2,7 +2,7 @@ param(
     [string]$WorkspaceRoot = "",
     [string]$ReportPath = "",
     [string]$RunId = "",
-    [int]$MaxFileCount = 3000,
+    [int]$MaxFileCount = 3400,
     [decimal]$MaxSizeMB = 75,
     [int]$MaxScriptsFileCount = 500,
     [decimal]$MaxScriptsSizeMB = 10,

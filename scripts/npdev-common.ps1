@@ -340,14 +340,37 @@ function Get-NPDevGradleUserHome([string]$WorkingDirectory) {
     return $gradleUserHome
 }
 
+# LC-C4 (MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 1.4): ONE staged-jar directory, and the two
+# scripts that use it now agree on it by DEFAULT.
+#
+# This used to return "<repo>__OutsideRepo/runtimehost-libs" while Build-NpdevApp.ps1's own
+# -RuntimeHostLibsDir defaulted to "D:\WorkSpace\NPDev\Build\runtimehost-libs". Running the two
+# steps by hand and letting each default meant the sync wrote jars where the build never looked, so
+# the app silently kept a stale jar -- the failure CLAUDE.md warns about in bold ("the sync default
+# dir does NOT match Build-NpdevApp.ps1's default, so pass -RuntimeHostLibsDir to both"), and the
+# programme's own risk R7. A convention that only works if you remember it is not a convention.
+#
+# Build\runtimehost-libs wins over the OutsideRepo location because staged jars ARE build output,
+# and the standing policy is that build output lives under the Build root (never in the repo, and
+# OutsideRepo is for evidence/scratch). NPDEV_RUNTIMEHOST_LIBS_DIR still overrides, and every
+# caller's explicit -RuntimeHostLibsDir still wins over both.
 function Get-NPDevRuntimeHostLibsDir([string]$WorkspaceRoot) {
     if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_RUNTIMEHOST_LIBS_DIR)) {
         return Normalize-NPDevPath $env:NPDEV_RUNTIMEHOST_LIBS_DIR
     }
 
+    return Normalize-NPDevPath (Join-Path (Get-NPDevBuildRoot $WorkspaceRoot) "runtimehost-libs")
+}
+
+# The Build root every generated artifact lives under. Kept beside the libs dir above so the two
+# cannot drift apart again: they are now one definition, not two conventions.
+function Get-NPDevBuildRoot([string]$WorkspaceRoot) {
+    if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_BUILD_ROOT)) {
+        return Normalize-NPDevPath $env:NPDEV_BUILD_ROOT
+    }
+
     $workspace = Get-Item -LiteralPath (Normalize-NPDevPath $WorkspaceRoot)
-    $outsideRepoRoot = Join-Path $workspace.Parent.FullName ($workspace.Name + "__OutsideRepo")
-    return Normalize-NPDevPath (Join-Path $outsideRepoRoot "runtimehost-libs")
+    return Normalize-NPDevPath (Join-Path $workspace.Parent.FullName "Build")
 }
 
 function Invoke-NPDevCommandStreaming {

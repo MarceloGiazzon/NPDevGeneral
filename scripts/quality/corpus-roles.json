@@ -21,6 +21,7 @@
     "AppGen/apps/_official/Pigmentampa": "showcase",
     "AppGen/apps/_official/WmsOffice": "showcase",
     "AppGen/apps/_official/WordLab": "showcase",
+    "AppGen/apps/aggregate-query-verify-h2local": "repro-case",
     "AppGen/apps/await-resume-rehearsal": "repro-case",
     "AppGen/apps/invoice-bonds-demo": "showcase",
     "AppGen/apps/ledger1-red-repro": "repro-case",

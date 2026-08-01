@@ -7,6 +7,76 @@
     "Never clear a hit here without recording why in that document."
   ],
   "cleared": {
+    "005d6a4b2834": {
+      "rule": "A3",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/CrossEngineDataPromotion.java:147",
+      "why": "Tenant-independent BY DESIGN, and tenant-scoping it would be the bug. This is the H2->Postgres whole-database promotion (Move 9 A4): it copies every row of every business table from source to target. A tenant predicate here would silently drop every other tenant's data during a migration. REG-94 triage, Move 11 Wave 0.1. (Re-added 2026-08-01 after an accidental git checkout -- lost the fingerprint though the code and reasoning are unchanged.)"
+    },
+    "8d49ce1be2fb": {
+      "rule": "A3/F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/CrossEngineDataPromotion.java:147",
+      "why": "Same whole-database promotion as 005d6a4b2834 (tenant-independent by design). The identifier splice (columnList, safeTable) is rule F1's class: 100+ SQL identifier splicings elsewhere in the repo are safe by construction (safeIdentifier throws, toSnake whitelists, the persistence adapter resolves names against the live catalog) -- this is the same discipline, not raw model-author input. Re-added 2026-08-01 after an accidental git checkout."
+    },
+    "74d7b81d523e": {
+      "rule": "A3/F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/CrossEngineDataPromotion.java:148 and SchemaDropSnapshotRestorer.java:281 (same fingerprint -- same statement shape)",
+      "why": "INSERT INTO safeTable (columnList) VALUES (placeholders) -- same F1 identifier-splicing discipline as 8d49ce1be2fb (whole-database promotion) and the schema-snapshot-restore path (rule G5: schema/snapshot stores are deliberately not tenant-scoped, the schema belongs to the database). Re-added 2026-08-01 after an accidental git checkout."
+    },
+    "ca8748207309": {
+      "rule": "G5",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaDropSnapshotRestorer.java:204",
+      "why": "Schema-snapshot restore -- rule G5's class: schema/claim/mark/publication stores are deliberately not tenant-scoped, the schema belongs to the database, not a tenant. Re-added 2026-08-01 after an accidental git checkout."
+    },
+    "4ba014f1b679": {
+      "rule": "G5/F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaDropSnapshotRestorer.java:204",
+      "why": "Same schema-snapshot restore as ca8748207309 (G5: not tenant-scoped, the schema belongs to the database). The identifier splice goes through SchemaLifecycleExecutor.safeIdentifier(\"id\"), the named safe-identifier helper (F1's class). Re-added 2026-08-01 after an accidental git checkout."
+    },
+    "cdfa3c2b14b8": {
+      "rule": "G5",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/MigrationClaimStore.java:267",
+      "why": "The migration-claim store -- rule G5's class, same as this file's other two already-cleared hits (lines 204/366): deliberately not tenant-scoped, the migration claim belongs to the database as a whole, not a tenant. Re-added 2026-08-01 after an accidental git checkout."
+    },
+    "16e1394277ee": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:101",
+      "why": "findByIdForUpdate's SELECT ... FOR UPDATE. shape.tableName()/shape.idColumn() come from ConceptShape, built once per concept from the compiled model's own field list (the same safe-identifier discipline query()/aggregate() in this same file already use and document) -- rule F1's class, safe by construction. Re-added 2026-08-01 after an accidental git checkout."
+    },
+    "7ad9d469c120": {
+      "rule": "false-positive",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:113",
+      "why": "Not SQL at all: the matched text is the exception log message \"Failed reading (for update) concept conceptName from JDBC store\" -- the sweep's regex matched on \"(for update)\" appearing incidentally in prose. Re-added 2026-08-01 after an accidental git checkout."
+    },
+    "35c470d77272": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/BackfillPass.java:433",
+      "why": "UPDATE with safeTable/safeColumn/safeIdColumn spliced in -- rule F1's class, safe by construction (safeIdentifier throws, toSnake whitelists). Re-added 2026-08-01 after an accidental git checkout."
+    },
+    "afc90dd112b3": {
+      "rule": "F1",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/ExpressionBackfillPreview.java:88",
+      "why": "SELECT * FROM safeTable -- rule F1's class, safe by construction. Re-added 2026-08-01 after an accidental git checkout."
+    },
+    "608ee00abb10": {
+      "rule": "false-positive",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/PlatformStrings.java:28; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java:643,678",
+      "why": "Not SQL: the matched text \"action.select\" is a DSL procedureStep.type constant (the mapList/select step kind), compared/expanded by the DSL compiler -- same class as rule J1's already-documented false positive (SQL-shaped English words inside non-SQL text, there a PowerShell runbook, here a step-type literal). Re-added 2026-08-01 after an accidental git checkout."
+    },
+    "f1deaeca3d08": {
+      "rule": "false-positive",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/PlatformStrings.java:28",
+      "why": "Not SQL: the matched text \"Select\" is the same DSL step-type constant as 608ee00abb10, differently-cased. Re-added 2026-08-01 after an accidental git checkout."
+    },
+    "686c826307c2": {
+      "rule": "false-positive",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PackValidation.java:463",
+      "why": "Not SQL: the matched text \"select is required for mapList and must not be empty\" is a validation error message, not a query. Same false-positive class as rule J1. Re-added 2026-08-01 after an accidental git checkout."
+    },
+    "7eafcdd1222c": {
+      "rule": "H2",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptAggregateEngine.java:224",
+      "why": "Move 10 B1 (2026-08-01): data-coercion helper (toLocalDate) turning a raw groupBy field value into a LocalDate for date bucketing -- an unparseable value legitimately becomes 'no bucket' (a null group key) rather than crashing the whole aggregate query over one bad row, matching ConceptQueryEngine.asNumber's own fail-soft posture for a non-numeric comparison value. No permission/tenant/auth decision passes through this method. See docs/SECURITY_PATTERN_SWEEP_2026-07.md 4.5."
+    },
     "b8e1b1a379d4": {
       "rule": "A1",
       "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4626",

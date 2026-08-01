@@ -102,6 +102,28 @@ function Test-NameIn {
 
 $EXCLUDED_MD_DIR_PARTS = @(".git", ".gradle", "build", "node_modules", "npdev-generated", "dist", "target", "out")
 
+# Move 11 W2: the SAME exclusions must apply to the script enumeration itself, and did not. The
+# markdown scan above skipped node_modules from the start; the script scan walked straight into
+# scripts/quality/json-schema-validator/node_modules and demanded an invocation declaration for
+# every vendored third-party .js file (fast-uri's test suite, json-schema-traverse, ...). That made
+# this gate -- and therefore run-ai-knowledge-gate.ps1's last step -- RED on any machine where
+# `npm ci` had been run, while staying green on a CI checkout where node_modules does not exist.
+# A gate whose result depends on whether someone installed dependencies is not a gate.
+$EXCLUDED_SCRIPT_DIR_PARTS = $EXCLUDED_MD_DIR_PARTS
+
+# Move 11 W2 (O4): scripts/quality/check-*.py IS the repo's gate-checker class. Two of them
+# (check-panel-provenance-impact.py, check-dsl-conformance-generates.py) were referenced by no
+# run-*.ps1 gate at all, which is why REG-93 stayed red for two moves while three move reports said
+# "all gates green". The invocation axis could not see it: `manual-runbook` -- "the basename appears
+# in some .md" -- is a legal declaration, so "a check exists and nothing runs it" was a DECLARABLE,
+# PASSING state for exactly the class of script where it must not be.
+#
+# So this rule is about the class, not those two files: every check-*.py must be named by at least
+# one scripts/quality/run-*.ps1, whatever it declares. Deliberately requires a run-*.ps1 and not
+# merely a workflow: a checker reachable only from a workflow cannot be exercised by anyone running
+# the gates locally, which is how both orphans were missed.
+$GATE_CHECKER_PATTERN = "^scripts/quality/check-[A-Za-z0-9._-]+\.py$"
+
 function Get-InvocationEvidence {
     param(
         [string]$WorkspaceRootPath,
@@ -210,7 +232,8 @@ function Invoke-InventoryScan {
         [string]$WorkspaceRootPath,
         [object]$Policy,
         [object]$InvocationDeclarations,
-        [switch]$IncludeSyntheticUnknown
+        [switch]$IncludeSyntheticUnknown,
+        [switch]$IncludeSyntheticOrphanChecker
     )
     $inventoryRoot = Resolve-WorkspacePath -Root $WorkspaceRootPath -PathValue ([string]$Policy.inventoryRoot)
     $extensions = @($Policy.scriptExtensions | ForEach-Object { ([string]$_).ToLowerInvariant() })
@@ -220,9 +243,24 @@ function Invoke-InventoryScan {
 
     $scriptFiles = @(Get-ChildItem -LiteralPath $inventoryRoot -Recurse -Force -File -ErrorAction SilentlyContinue |
         Where-Object { $extensions -contains $_.Extension.ToLowerInvariant() } |
+        Where-Object {
+            $relative = Convert-ToRepoPath -Root $WorkspaceRootPath -PathValue $_.FullName
+            $segments = @($relative -split "/")
+            @($segments | Where-Object { $EXCLUDED_SCRIPT_DIR_PARTS -contains $_ }).Count -eq 0
+        } |
         Sort-Object FullName)
 
     $evidence = Get-InvocationEvidence -WorkspaceRootPath $WorkspaceRootPath -AllScriptFiles $scriptFiles
+
+    # Move 11 W2 (O4): text of every scripts/quality/run-*.ps1, whether or not that runner is itself
+    # workflow-reachable. Unlike the ci-gate one-hop rule above, this half deliberately does NOT
+    # require the runner to be in a workflow: the question here is "can a human running the gates
+    # exercise this checker at all", and both orphans this rule exists for answered no.
+    $gateRunnerText = ""
+    $qualityDirPath = Join-Path $WorkspaceRootPath "scripts\quality"
+    foreach ($runner in @(Get-ChildItem -LiteralPath $qualityDirPath -Filter "run-*.ps1" -File -ErrorAction SilentlyContinue)) {
+        $gateRunnerText += (Get-Content -Raw -LiteralPath $runner.FullName) + "`n"
+    }
 
     $declByPath = @{}
     foreach ($prop in $InvocationDeclarations.declarations.PSObject.Properties) {
@@ -243,6 +281,9 @@ function Invoke-InventoryScan {
         $validInvocationValue = $allowedInvocations -contains $invocation
         $invocationCheck = Test-InvocationDeclaration -RelativePath $relative -Basename $file.Name -FullName $file.FullName -Declaration $declaration -Evidence $evidence
 
+        $isGateChecker = $relative -match $GATE_CHECKER_PATTERN
+        $hostedByGateRunner = (-not $isGateChecker) -or $gateRunnerText.Contains($file.Name)
+
         $scripts += [pscustomobject]@{
             path = $relative
             classification = $classification
@@ -254,6 +295,8 @@ function Invoke-InventoryScan {
             validInvocationValue = $validInvocationValue
             invocationMatchesReality = $invocationCheck.valid
             invocationEvidence = $invocationCheck.reason
+            isGateChecker = $isGateChecker
+            hostedByGateRunner = $hostedByGateRunner
             sizeBytes = [int64]$file.Length
             sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash.ToLowerInvariant()
         }
@@ -270,6 +313,28 @@ function Invoke-InventoryScan {
             validInvocationValue = $false
             invocationMatchesReality = $false
             invocationEvidence = "no invocation declaration in $($InvocationDeclarationsPath)"
+            isGateChecker = $false
+            hostedByGateRunner = $true
+            sizeBytes = 0
+            sha256 = ""
+        }
+    }
+
+    if ($IncludeSyntheticOrphanChecker) {
+        # Move 11 W2's own control: a deliberately orphaned gate checker must be caught.
+        $scripts += [pscustomobject]@{
+            path = "scripts/quality/check-synthetic-orphaned-checker.py"
+            classification = "canonical"
+            classificationRule = ""
+            releaseCritical = $false
+            validClassification = $true
+            releaseCriticalAllowedClassification = $true
+            invocation = "manual-runbook"
+            validInvocationValue = $true
+            invocationMatchesReality = $true
+            invocationEvidence = "synthetic"
+            isGateChecker = $true
+            hostedByGateRunner = $false
             sizeBytes = 0
             sha256 = ""
         }
@@ -288,6 +353,7 @@ function Build-Report {
     $releaseCriticalViolations = @($Scripts | Where-Object { $_.releaseCritical -and -not $_.releaseCriticalAllowedClassification })
     $unknownInvocationScripts = @($Scripts | Where-Object { -not $_.validInvocationValue })
     $invocationMismatchScripts = @($Scripts | Where-Object { $_.validInvocationValue -and -not $_.invocationMatchesReality })
+    $orphanedGateCheckers = @($Scripts | Where-Object { $_.isGateChecker -and -not $_.hostedByGateRunner })
 
     $classificationCounts = [ordered]@{}
     foreach ($classification in @($allowedClassifications + "unknown")) {
@@ -303,6 +369,7 @@ function Build-Report {
         @($releaseCriticalViolations | ForEach-Object { "Release-critical script has invalid classification: " + $_.path + " (" + $_.classification + ")" })
         @($unknownInvocationScripts | ForEach-Object { "Script with no valid invocation declaration: " + $_.path + " (" + $_.invocationEvidence + ")" })
         @($invocationMismatchScripts | ForEach-Object { "Invocation declaration does not match reality: " + $_.path + " declared '" + $_.invocation + "' but " + $_.invocationEvidence })
+        @($orphanedGateCheckers | ForEach-Object { "Gate checker invoked by NO gate: " + $_.path + " is not named by any scripts/quality/run-*.ps1, so running the gates never exercises it (Move 11 W2/O4)" })
     )
     $overallStatus = if ($blockers.Count -eq 0) { "passed" } else { "failed" }
 
@@ -322,6 +389,7 @@ function Build-Report {
         releaseCriticalViolations = @($releaseCriticalViolations | ForEach-Object { $_.path })
         unknownInvocationScripts = @($unknownInvocationScripts | ForEach-Object { $_.path })
         invocationMismatchScripts = @($invocationMismatchScripts | ForEach-Object { $_.path })
+        orphanedGateCheckers = @($orphanedGateCheckers | ForEach-Object { $_.path })
         releaseCriticalAllowedClassifications = @($releaseCriticalAllowed)
         scripts = @($Scripts)
         blockers = @($blockers)
@@ -346,6 +414,17 @@ function Invoke-Calibration {
     $pass1 = $syntheticFired -eq $true
     $ok = $ok -and $pass1
     Write-Host "  [$(if ($pass1) { 'PASS' } else { 'FAIL' })] synthetic undeclared script vs. the checker (fired: $syntheticFired, expected: fired)"
+
+    # Move 11 W2 (O4): a deliberately orphaned gate checker must be caught. Its declaration here is
+    # deliberately a VALID one (`manual-runbook`, which really does pass the invocation-reality
+    # check) -- that is the whole point: before this rule, orphanhood was a legally declarable state
+    # for a check-*.py, and the two real orphans were sitting in exactly it.
+    $orphanScripts = Invoke-InventoryScan -WorkspaceRootPath $WorkspaceRootPath -Policy $Policy -InvocationDeclarations $InvocationDeclarations -IncludeSyntheticOrphanChecker
+    $orphanReport = Build-Report -Scripts $orphanScripts -Policy $Policy -RunId "calibrate-orphan-checker" -WorkspaceRootPath $WorkspaceRootPath
+    $orphanFired = $orphanReport.orphanedGateCheckers -contains "scripts/quality/check-synthetic-orphaned-checker.py"
+    $pass1b = $orphanFired -eq $true
+    $ok = $ok -and $pass1b
+    Write-Host "  [$(if ($pass1b) { 'PASS' } else { 'FAIL' })] synthetic gate checker hosted by no run-*.ps1 (fired: $orphanFired, expected: fired)"
 
     $realScripts = Invoke-InventoryScan -WorkspaceRootPath $WorkspaceRootPath -Policy $Policy -InvocationDeclarations $InvocationDeclarations
     $realReport = Build-Report -Scripts $realScripts -Policy $Policy -RunId "calibrate-real" -WorkspaceRootPath $WorkspaceRootPath

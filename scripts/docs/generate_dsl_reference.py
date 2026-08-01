@@ -147,6 +147,11 @@ def render(schema: dict) -> str:
         "- Validation error codes carry a `suggestedFix`/`helpKey` "
         "(`ValidationDiagnostic`) — every `ModelValidatorMain`/`npdev validate model` JSON "
         "report includes them per-diagnostic.\n"
+        "- Truth-level release gating (`ReleaseGateValidator.validatePromotion`, "
+        "`--releaseGate --targetTruthLevel=<T0..T6>`): see "
+        "`NPDevContract/docs/MODEL-CONTRACT.md`'s `truthLevel` section for the full contract, "
+        "including where it now runs automatically (`scripts/quality/run-generator-gate.ps1`'s "
+        "`releaseGateT2` step, Move 8 item G3) and its current known-red state (REG-85).\n"
     )
     return "\n".join(out)
 
