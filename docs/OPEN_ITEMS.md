@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**110 item(s) migrated: 1 open/partial, 109 done.**
+**111 item(s) migrated: 1 open/partial, 110 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -23,6 +23,7 @@
 | REG-108 | roles/propertyScopes/properties were absent from ModelSourceResolver's MODEL_ARRAY_KEYS (and from pack.schema.json's allowlist) -- a pack or local fragment declaring any of the three had its declaration silently dropped during composition, with no error | BUG | MEDIUM | DONE | 2026-08-01 |
 | REG-109 | generated-ui-manifest.json (and the rest of static/npdev-business-ui/*) is baked into the packaged jar at generation time with no external-path override, the same class of gap REG-103 fixed for RuntimeMetadataService's JSON catalogs -- named but explicitly not sized by REG-103, sized (not fixed) here | GAP | LOW | OPEN | 2026-08-01 |
 | REG-11 | LNCH-20: cross-platform build scripts (gradlew.bat literals, portable cache dir) | GAP | LOW | DONE | 2026-07-21 |
+| REG-110 | LC-D2 (the acceptance-scenario runner) and LC-D3 (the closed authoring loop) were already fully implemented in NPDevCli/npdev_cli.py -- apparently from an earlier Move 10 session -- but had never been run, tested, or documented anywhere; a closure spec (Move 13) re-described them as needing to be built | GAP | LOW | DONE | 2026-08-01 |
 | REG-12 | LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped | GAP | HIGH | DONE | 2026-07-21 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
@@ -915,6 +916,61 @@ machine but the original dev box. Removed from the template so generated apps us
 default cache.
 
 *Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-11`
+
+### REG-110 — LC-D2 (the acceptance-scenario runner) and LC-D3 (the closed authoring loop) were already fully implemented in NPDevCli/npdev_cli.py -- apparently from an earlier Move 10 session -- but had never been run, tested, or documented anywhere; a closure spec (Move 13) re-described them as needing to be built
+
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-08-01)
+**Verification:** VERIFIED_LIVE
+**Source:** MOVE13_CLOSE_EVERYTHING_SPEC.md's Phase P2 described LC-D2 as "the format and fixtures already
+exist; nothing runs them" and LC-D3 as "every piece exists. This is integration" -- both phrased as
+if the runner/loop logic itself needed to be authored. Reading NPDevCli/npdev_cli.py before writing
+any new code found `run_acceptance` (~line 1337) and `run_closed_loop` (~line 1391), both complete,
+both wired into real `npdev acceptance run` / `npdev loop run` CLI subcommands with full argument
+parsing already in place. Grepping the whole repo for "run_acceptance", "run_closed_loop", "LC-D2",
+"LC-D3" outside npdev_cli.py itself found zero hits -- no test, no doc, no ledger item. This is the
+"claimed/assumed done, never verified live" pattern this project's culture repeatedly names (see
+e.g. REG-93's three move-reports claiming "gates green" while a checker sat red) -- here the failure
+mode is milder (nobody claimed it worked; a later spec just assumed it needed building because
+nothing recorded that it already existed and worked).
+
+**Surface:** `cli`
+**Files:**
+- `NPDevCli/npdev_cli.py`
+- `NPDevSamples/user-minimal/Input/config.json`
+
+Verified live rather than assumed, closing Move 13 P2.1/P2.2 as verification (not construction):
+
+LC-D2: `npdev acceptance run` against NPDevSamples/user-minimal (a real generate+build+boot, port
+8181) ran all 4 existing *.scenario.json fixtures over real HTTP. Real results: 01 passed (status
+200, totalElements=2, allEqual name), 02 failed for its designed reason (expected 999, actual 1 --
+the report names the exact assertion and actual value), 03 proved a WHERE-clause pushdown filter
+really filters (2 rows returned out of 3 seeded, allEqual on the filtered set), 04 (unapproved) ran
+but was excluded from the pass count (`summary.excludedUnapproved: 1`). NPDevSamples/user-minimal
+had a model.json and acceptance/ fixtures but NO Input/config.json, so it could not previously be
+generated/run at all -- added one (modeled on simple-user-registry's), the one real gap this item's
+investigation found and fixed.
+
+LC-D3: `npdev loop run` tested three ways, proving the diffGate -> validate -> classify ->
+run+acceptance ordering is real, not decorative:
+  (A) no --manifest -> stops at diffGate (AUTHORING_MANIFEST_MISSING), nothing downstream runs
+  (B) a manifest but a submitted model with a flow step referencing a nonexistent invariant name
+      -> diffGate passes (correctly -- the diff itself was properly authorized), stops at validate
+      with the exact semantic error named, nothing downstream (classify/run/acceptance) runs
+  (C) a real additive change (User gains an optional phone field, v1->v2, correct manifest) -> the
+      FULL pipeline actually executes: diffGate passed, validate passed (0 errors), classification
+      correctly computed SAFE_ADDITIVE (Move 10 C1's real classifier), a second real generate+
+      build+boot succeeded (port 8183), all 4 acceptance fixtures ran again with the same real
+      result as LC-D2's own run -- overall ok:false/stoppedAt:acceptance, which is the CORRECT
+      honest answer (fixture 02 is deliberately wrong by its own design), not a defect in the loop.
+
+Full evidence, commands, and complete JSON output for all four runs:
+D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\move13\p2-lc-d2-d3-verification.md
+
+Not done here, named as residual: no automated regression test exists for run_acceptance/
+run_closed_loop/the JSONPath-lite evaluator -- this closure is a live-verified proof, not a
+checked-in test suite. A future session should add one (e.g. against a lightweight HTTP stub for
+the JSONPath/assertion logic specifically) so this does not silently regress the way it silently
+went unverified for however long it has existed.
 
 ### REG-12 — LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped
 
