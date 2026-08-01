@@ -38,6 +38,8 @@ Schema version: `1.0.0`. DSL version: `1.0.0`.
 | `externalAi` | `externalAi` |  |  |
 | `settings` | `settings` |  |  |
 | `roles` | `array<role>` |  |  |
+| `propertyScopes` | `array<propertyScope>` |  | Wave 6 (RC-A1): the scoped-property cascade's declared levels, ORDER = resolution order, most specific first. The least-specific level is not declared here -- it is each property's own 'default'. |
+| `properties` | `array<property>` |  | Wave 6 (RC-A1): declared runtime properties resolved through the scoped-property cascade (see propertyScopes). |
 
 ## Concept (`#/$defs/concept`)
 
