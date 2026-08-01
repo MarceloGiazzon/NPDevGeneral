@@ -65,7 +65,44 @@ public final class CompiledModelCanonicalJson {
         root.set("externalAi", toExternalAi(model));
         root.set("settings", toSettings(model));
         root.set("roles", toRoles(model));
+        root.set("propertyScopes", toPropertyScopes(model));
+        root.set("properties", toProperties(model));
         return root;
+    }
+
+    /** Wave 6 (RC-A1): writes the declared scope levels of the property cascade, ORDER PRESERVED
+     *  (not sorted) -- list order IS resolution order, per {@code CompiledPropertyScope}'s contract. */
+    private static ArrayNode toPropertyScopes(CompiledModel model) {
+        ArrayNode scopes = JsonNodeFactory.instance.arrayNode();
+        for (CompiledPropertyScope scope : model.getPropertyScopes()) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(scope.name()));
+            if (scope.from() != null) {
+                node.put("from", scope.from());
+            }
+            scopes.add(node);
+        }
+        return scopes;
+    }
+
+    /** Wave 6 (RC-A1): writes the declared runtime properties. */
+    private static ArrayNode toProperties(CompiledModel model) {
+        ArrayNode properties = JsonNodeFactory.instance.arrayNode();
+        List<CompiledProperty> sorted = new ArrayList<>(model.getProperties());
+        sorted.sort(Comparator.comparing(property -> normalize(property.name())));
+        for (CompiledProperty property : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(property.name()));
+            node.put("type", safe(property.type()));
+            node.set("default", MAPPER.valueToTree(property.defaultValue()));
+            node.set("settableAt", toStringArray(property.settableAt()));
+            if (property.label() != null) {
+                node.put("label", property.label());
+            }
+            node.put("securityRelevant", property.securityRelevant());
+            properties.add(node);
+        }
+        return properties;
     }
 
     /** Wave 3 (RC-B1): writes the app-defined role -> permission-ceiling declarations. */

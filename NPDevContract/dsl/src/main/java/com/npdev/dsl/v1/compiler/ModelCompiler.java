@@ -590,7 +590,9 @@ public final class ModelCompiler {
                 documents,
                 toCompiledExternalAi(modelAst.getExternalAi()),
                 settings,
-                toCompiledRoles(modelAst.getRoles())
+                toCompiledRoles(modelAst.getRoles()),
+                toCompiledPropertyScopes(modelAst.getPropertyScopes()),
+                toCompiledProperties(modelAst.getProperties())
         );
     }
 
@@ -618,6 +620,28 @@ public final class ModelCompiler {
         List<com.npdev.dsl.v1.compiled.CompiledRole> compiled = new ArrayList<>();
         for (com.npdev.dsl.v1.ast.RoleAst roleAst : roleAsts) {
             compiled.add(new com.npdev.dsl.v1.compiled.CompiledRole(roleAst.name(), roleAst.grants()));
+        }
+        return compiled;
+    }
+
+    /** Wave 6 (RC-A1): compiles the declared scope levels of the property cascade. */
+    private static List<com.npdev.dsl.v1.compiled.CompiledPropertyScope> toCompiledPropertyScopes(
+            List<com.npdev.dsl.v1.ast.PropertyScopeAst> scopeAsts) {
+        List<com.npdev.dsl.v1.compiled.CompiledPropertyScope> compiled = new ArrayList<>();
+        for (com.npdev.dsl.v1.ast.PropertyScopeAst scopeAst : scopeAsts) {
+            compiled.add(new com.npdev.dsl.v1.compiled.CompiledPropertyScope(scopeAst.name(), scopeAst.from()));
+        }
+        return compiled;
+    }
+
+    /** Wave 6 (RC-A1): compiles the declared runtime properties. */
+    private static List<com.npdev.dsl.v1.compiled.CompiledProperty> toCompiledProperties(
+            List<com.npdev.dsl.v1.ast.PropertyAst> propertyAsts) {
+        List<com.npdev.dsl.v1.compiled.CompiledProperty> compiled = new ArrayList<>();
+        for (com.npdev.dsl.v1.ast.PropertyAst propertyAst : propertyAsts) {
+            compiled.add(new com.npdev.dsl.v1.compiled.CompiledProperty(
+                    propertyAst.name(), propertyAst.type(), propertyAst.defaultValue(),
+                    propertyAst.settableAt(), propertyAst.label(), propertyAst.securityRelevant()));
         }
         return compiled;
     }

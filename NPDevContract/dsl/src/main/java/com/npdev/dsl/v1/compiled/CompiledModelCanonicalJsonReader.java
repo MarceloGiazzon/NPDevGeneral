@@ -112,6 +112,16 @@ public final class CompiledModelCanonicalJsonReader {
             roles.add(toRole(node));
         }
 
+        List<CompiledPropertyScope> propertyScopes = new ArrayList<>();
+        for (JsonNode node : array(root, "propertyScopes")) {
+            propertyScopes.add(toPropertyScope(node));
+        }
+
+        List<CompiledProperty> properties = new ArrayList<>();
+        for (JsonNode node : array(root, "properties")) {
+            properties.add(toProperty(node));
+        }
+
         return new CompiledModel(
                 namespace,
                 dslVersion,
@@ -133,13 +143,32 @@ public final class CompiledModelCanonicalJsonReader {
                 documents,
                 externalAi,
                 settings,
-                roles
+                roles,
+                propertyScopes,
+                properties
         );
     }
 
     /** Wave 3 (RC-B1): reads a single app-defined role -> permission-ceiling declaration. */
     private static CompiledRole toRole(JsonNode node) {
         return new CompiledRole(text(node, "name"), toStringList(node.get("grants")));
+    }
+
+    /** Wave 6 (RC-A1): reads a single declared property-cascade scope level. */
+    private static CompiledPropertyScope toPropertyScope(JsonNode node) {
+        return new CompiledPropertyScope(text(node, "name"), optionalText(node, "from"));
+    }
+
+    /** Wave 6 (RC-A1): reads a single declared runtime property. */
+    private static CompiledProperty toProperty(JsonNode node) {
+        return new CompiledProperty(
+                text(node, "name"),
+                text(node, "type"),
+                toDefaultValue(node.get("default")),
+                toStringList(node.get("settableAt")),
+                optionalText(node, "label"),
+                node.has("securityRelevant") && node.get("securityRelevant").asBoolean(false)
+        );
     }
 
     /** ADR-0009: reads the optional app-level externalAi block; null if absent. */

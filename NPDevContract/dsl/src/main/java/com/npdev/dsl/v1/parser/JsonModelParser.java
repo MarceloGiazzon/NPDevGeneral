@@ -161,6 +161,8 @@ public final class JsonModelParser {
         List<SelectorAst> selectors = new ArrayList<>();
         List<DocumentAst> documents = new ArrayList<>();
         List<com.npdev.dsl.v1.ast.RoleAst> roles = new ArrayList<>();
+        List<com.npdev.dsl.v1.ast.PropertyScopeAst> propertyScopes = new ArrayList<>();
+        List<com.npdev.dsl.v1.ast.PropertyAst> properties = new ArrayList<>();
         List<String> parserWarnings = new ArrayList<>(sourceWarnings == null ? List.of() : sourceWarnings);
         Map<String, ConceptAst> conceptsByLowerName = new LinkedHashMap<>();
 
@@ -551,6 +553,8 @@ public final class JsonModelParser {
         ExternalAiAst externalAi = parseExternalAi(root.get("externalAi"));
         SettingsAst settings = parseSettings(root.get("settings"));
         roles.addAll(parseRoles(root.get("roles")));
+        propertyScopes.addAll(parsePropertyScopes(root.get("propertyScopes")));
+        properties.addAll(parseProperties(root.get("properties")));
 
         return new ModelAst(
                 namespace,
@@ -575,7 +579,9 @@ public final class JsonModelParser {
                 parserWarnings,
                 externalAi,
                 settings,
-                roles
+                roles,
+                propertyScopes,
+                properties
         );
     }
 
@@ -595,6 +601,48 @@ public final class JsonModelParser {
             out.add(new com.npdev.dsl.v1.ast.RoleAst(
                     requiredText(roleNode, "name"),
                     parseTextArray(roleNode.get("grants"))
+            ));
+        }
+        return out;
+    }
+
+    /** Wave 6 (RC-A1): parses the optional top-level {@code propertyScopes} array -- {@code name} +
+     *  an optional {@code from} (blank/absent for the implicit root/tenant scope). */
+    private static List<com.npdev.dsl.v1.ast.PropertyScopeAst> parsePropertyScopes(JsonNode node) throws IOException {
+        List<com.npdev.dsl.v1.ast.PropertyScopeAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("propertyScopes must be an array");
+        }
+        for (JsonNode scopeNode : node) {
+            out.add(new com.npdev.dsl.v1.ast.PropertyScopeAst(
+                    requiredText(scopeNode, "name"),
+                    readText(scopeNode, "from")
+            ));
+        }
+        return out;
+    }
+
+    /** Wave 6 (RC-A1): parses the optional top-level {@code properties} array -- {@code name}/
+     *  {@code type}/{@code default}/{@code settableAt}/{@code label}/{@code securityRelevant}. */
+    private static List<com.npdev.dsl.v1.ast.PropertyAst> parseProperties(JsonNode node) throws IOException {
+        List<com.npdev.dsl.v1.ast.PropertyAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("properties must be an array");
+        }
+        for (JsonNode propertyNode : node) {
+            out.add(new com.npdev.dsl.v1.ast.PropertyAst(
+                    requiredText(propertyNode, "name"),
+                    requiredText(propertyNode, "type"),
+                    parseJsonValue(propertyNode.get("default")),
+                    parseTextArray(propertyNode.get("settableAt")),
+                    readText(propertyNode, "label"),
+                    readBooleanFlag(propertyNode, "securityRelevant")
             ));
         }
         return out;

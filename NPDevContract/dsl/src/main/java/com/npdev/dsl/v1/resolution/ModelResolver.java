@@ -108,7 +108,9 @@ public final class ModelResolver {
                 source.getParserWarnings(),
                 source.getExternalAi(),
                 source.getSettings(),
-                source.getRoles()
+                source.getRoles(),
+                source.getPropertyScopes(),
+                source.getProperties()
         );
         return ResolvedModel.from(resolvedAst);
     }

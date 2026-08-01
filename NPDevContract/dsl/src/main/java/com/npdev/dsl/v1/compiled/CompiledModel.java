@@ -25,6 +25,8 @@ public final class CompiledModel {
     private final CompiledExternalAi externalAi;
     private final CompiledSettings settings;
     private final List<CompiledRole> roles;
+    private final List<CompiledPropertyScope> propertyScopes;
+    private final List<CompiledProperty> properties;
 
     public CompiledModel(String namespace, String version, Map<String, ? extends CompiledEntity> entitiesByName) {
         this(namespace, "1.0.0", version, entitiesByName, List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
@@ -261,8 +263,7 @@ public final class CompiledModel {
                 documents, externalAi, settings, List.of());
     }
 
-    /** Wave 3 (RC-B1): canonical constructor, adds {@code roles} (app-defined role -> permission
-     *  ceiling declarations). */
+    /** Wave 3 (RC-B1): adds {@code roles} (app-defined role -> permission ceiling declarations). */
     public CompiledModel(
             String namespace,
             String dslVersion,
@@ -285,6 +286,38 @@ public final class CompiledModel {
             CompiledExternalAi externalAi,
             CompiledSettings settings,
             List<CompiledRole> roles
+    ) {
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                documents, externalAi, settings, roles, List.of(), List.of());
+    }
+
+    /** Wave 6 (RC-A1): canonical constructor, adds {@code propertyScopes} + {@code properties} (the
+     *  scoped-property cascade's declaration layer). */
+    public CompiledModel(
+            String namespace,
+            String dslVersion,
+            String version,
+            Map<String, ? extends CompiledEntity> entitiesByName,
+            List<CompiledDomainType> domainTypes,
+            List<CompiledCapability> capabilities,
+            List<CompiledCapabilityBinding> bindings,
+            List<CompiledEvent> events,
+            List<CompiledFlow> flows,
+            List<CompiledOrchestration> orchestrationRules,
+            List<CompiledQuery> queries,
+            List<CompiledRuleProfile> ruleProfiles,
+            List<CompiledProcedure> procedures,
+            List<CompiledPanel> panels,
+            List<CompiledGuidePage> guidePages,
+            List<CompiledAggregate> aggregates,
+            List<CompiledAutoPanel> autoPanels,
+            List<CompiledDocument> documents,
+            CompiledExternalAi externalAi,
+            CompiledSettings settings,
+            List<CompiledRole> roles,
+            List<CompiledPropertyScope> propertyScopes,
+            List<CompiledProperty> properties
     ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
@@ -311,6 +344,8 @@ public final class CompiledModel {
         this.externalAi = externalAi;
         this.settings = settings == null ? CompiledSettings.defaults() : settings;
         this.roles = roles == null ? List.of() : List.copyOf(roles);
+        this.propertyScopes = propertyScopes == null ? List.of() : List.copyOf(propertyScopes);
+        this.properties = properties == null ? List.of() : List.copyOf(properties);
     }
 
     public String getNamespace() { return namespace; }
@@ -423,6 +458,17 @@ public final class CompiledModel {
      *  USER/OPERATOR/ADMIN trio then behaves exactly as before this feature existed). */
     public List<CompiledRole> getRoles() {
         return Collections.unmodifiableList(roles);
+    }
+
+    /** Wave 6 (RC-A1): declared scope levels of the property cascade, most specific first, empty
+     *  when the model declares none. */
+    public List<CompiledPropertyScope> getPropertyScopes() {
+        return Collections.unmodifiableList(propertyScopes);
+    }
+
+    /** Wave 6 (RC-A1): declared runtime properties, empty when the model declares none. */
+    public List<CompiledProperty> getProperties() {
+        return Collections.unmodifiableList(properties);
     }
 
     public Optional<CompiledFlow> findFlow(String flowName) {

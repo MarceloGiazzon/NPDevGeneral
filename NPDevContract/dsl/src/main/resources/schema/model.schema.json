@@ -314,6 +314,20 @@
       "items": {
         "$ref": "#/$defs/role"
       }
+    },
+    "propertyScopes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/propertyScope"
+      },
+      "description": "Wave 6 (RC-A1): the scoped-property cascade's declared levels, ORDER = resolution order, most specific first. The least-specific level is not declared here -- it is each property's own 'default'."
+    },
+    "properties": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/property"
+      },
+      "description": "Wave 6 (RC-A1): declared runtime properties resolved through the scoped-property cascade (see propertyScopes)."
     }
   },
   "$defs": {
@@ -335,6 +349,70 @@
             "minLength": 1
           },
           "description": "Platform permission names (e.g. EXECUTE_FLOW, READ_EXECUTIONS) this role MAY hold -- a declared ceiling, not an assignment. Validated against the real Permission enum at runtime boot, not by this schema (the schema layer has no dependency on the kernel module)."
+        }
+      },
+      "additionalProperties": false
+    },
+    "propertyScope": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "from": {
+          "type": "string",
+          "minLength": 1,
+          "description": "How this scope's id resolves from ExecutionContext at authentication time -- '$ctx.tenantId', '$user.id', or '$user.<tagName>'. Absent/blank for the implicit root scope (always $ctx.tenantId -- every request already carries a tenant, so the least-specific declared scope needs no expression)."
+        }
+      },
+      "additionalProperties": false
+    },
+    "property": {
+      "type": "object",
+      "required": [
+        "name",
+        "type",
+        "default"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "int",
+            "boolean",
+            "enum",
+            "date"
+          ],
+          "description": "A closed set -- no objects, no arrays. The property cascade resolves one typed value per key, never a blob."
+        },
+        "default": {
+          "description": "The least-specific level of the cascade -- there is no 'system' scope; a property with no row set at any declared scope resolves to this value. Must match 'type' (checked by PropertyValidation, not by this schema alone, since JSON Schema cannot express 'shape of one field depends on another field's value' compactly here)."
+        },
+        "settableAt": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Which declared propertyScopes[].name values may hold a row for this property. Every name here must be declared in propertyScopes -- checked at compile time, not by this schema."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "securityRelevant": {
+          "type": "boolean",
+          "default": false,
+          "description": "A real flag with teeth: a securityRelevant property is FORBIDDEN inside $prop.* references in access.read/access.write (A4's hard rule) and is visually marked + requires an elevated role in the generated admin surface (A5)."
         }
       },
       "additionalProperties": false

@@ -142,6 +142,7 @@ public final class SemanticValidator {
         PanelValidation.validateAutoPanels(effectiveModel, entitiesByLower, errors, warnings);
         PanelValidation.validateSelectors(effectiveModel, entitiesByLower, errors);
         RoleValidation.validateRoles(effectiveModel, errors);
+        PropertyValidation.validatePropertyScopesAndProperties(effectiveModel, errors);
         errors = canonicalizeConceptTerminology(errors);
         semanticWarnings = canonicalizeConceptTerminology(semanticWarnings);
         for (String semanticWarning : semanticWarnings) {
