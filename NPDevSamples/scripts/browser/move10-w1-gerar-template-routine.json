@@ -1,0 +1,25 @@
+{
+  "scenarioName": "move10-w1-inventario-gerar-template-download",
+  "targetPath": "/login.html",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl", "label": "Open the real login page" },
+    { "action": "waitForSelector", "selector": "#username", "state": "visible", "label": "Login form rendered" },
+    { "action": "fill", "selector": "#base", "value": "http://127.0.0.1:8100", "label": "Same-origin base" },
+    { "action": "fill", "selector": "#username", "value": "admin" },
+    { "action": "fill", "selector": "#password", "value": "admin123" },
+    { "action": "fill", "selector": "#tenant", "value": "trial" },
+    { "action": "click", "selector": "#loginBtn", "label": "Submit real login" },
+    { "action": "waitForSelector", "selector": "#tokenBox", "state": "visible", "label": "Login succeeded" },
+    { "action": "goto", "url": "http://127.0.0.1:8100/npdev-business-ui/", "label": "Open the generated business UI where declared Panels render" },
+    { "action": "waitForTimeout", "timeoutMs": 2500, "label": "Let the shell + panel manifest load" },
+    { "action": "click", "selector": "#sideNav >> text=Inventario - Historico", "label": "Open InventarioHistoricoPanel from the shell nav (scoped: the panel's own h2 carries the same text)" },
+    { "action": "waitForTimeout", "timeoutMs": 2000, "label": "Let the panel load its dataSources" },
+    { "action": "screenshot", "name": "shot_w12_panel", "label": "InventarioHistoricoPanel with the Gerar Template de Contagem action + its entidadeId inline input" },
+    { "action": "fill", "selector": "#concept-__panel-InventarioHistoricoPanel__ input[placeholder='entidadeId']", "value": "2b77172e-6f8f-4ea7-8541-4ee09b930862", "label": "Supply the Entidade (literal: routine variables are NOT substituted inside fill values)" },
+    { "action": "click", "selector": "#concept-__panel-InventarioHistoricoPanel__ >> text=Gerar Template de Contagem", "label": "Click the resultAs=download action" },
+    { "action": "waitForTimeout", "timeoutMs": 2500, "label": "Let the download stream and the sibling InventarioArquivo write land" },
+    { "action": "screenshot", "name": "shot_w12_after_gerar", "label": "After Gerar Template -- the action's own result block reports the procedure run" },
+    { "action": "collect", "what": ["domText", "console", "url"] }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "npdev-acceptance-scenario.v1",
+  "name": "Listing users by name returns exactly the seeded users with that name",
+  "approved": true,
+  "given": [
+    {
+      "path": "/api/concepts/users",
+      "rows": [
+        { "name": "ScenarioOneUser", "email": "one-a@example.test" },
+        { "name": "ScenarioOneUser", "email": "one-b@example.test" }
+      ]
+    }
+  ],
+  "when": { "method": "GET", "path": "/api/concepts/users?where=name:eq:ScenarioOneUser" },
+  "then": [
+    { "path": "$status", "equals": 200 },
+    { "path": "$.totalElements", "equals": 2 },
+    { "path": "$.content[*].name", "allEqual": "ScenarioOneUser" }
+  ]
+}

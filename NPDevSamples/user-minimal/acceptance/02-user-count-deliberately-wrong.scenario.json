@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "npdev-acceptance-scenario.v1",
+  "name": "DELIBERATELY WRONG expectation -- proves the runner reports a real failure, not just green",
+  "approved": true,
+  "given": [
+    {
+      "path": "/api/concepts/users",
+      "rows": [
+        { "name": "ScenarioTwoUser", "email": "two-a@example.test" }
+      ]
+    }
+  ],
+  "when": { "method": "GET", "path": "/api/concepts/users?where=name:eq:ScenarioTwoUser" },
+  "then": [
+    { "path": "$.totalElements", "equals": 999 }
+  ]
+}

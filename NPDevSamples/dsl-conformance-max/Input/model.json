@@ -8,6 +8,24 @@
     "egress": "denied"
   },
 
+  "settings": {
+    "locale": "en-US",
+    "strings": {
+      "workbench.saved": "Order saved"
+    },
+    "ui": {
+      "pageRows": 25,
+      "dateFormat": "yyyy-MM-dd"
+    }
+  },
+
+  "roles": [
+    {
+      "name": "WarehouseManager",
+      "grants": ["EXECUTE_FLOW", "READ_EXECUTIONS", "READ_FLOW_DEFINITIONS"]
+    }
+  ],
+
   "packs": [
     { "$ref": "packs/labeling/pack.json", "as": "labeling" }
   ],
@@ -35,6 +53,7 @@
   "concepts": [
     {
       "name": "WidgetOrder",
+      "truthLevel": "T2",
       "ui": {
         "label": "Widget order"
       },
@@ -93,6 +112,7 @@
     },
     {
       "name": "WidgetOrderLine",
+      "truthLevel": "T2",
       "ui": {
         "label": "Widget order line"
       },
@@ -102,7 +122,11 @@
           "name": "widgetOrderId",
           "type": "uuid",
           "required": true,
-          "ui": { "label": "Order" }
+          "ui": { "label": "Order" },
+          "picker": {
+            "filter": "$row.status == 'Open'",
+            "multiSelect": false
+          }
         },
         {
           "name": "sku",
@@ -134,6 +158,7 @@
     },
     {
       "name": "WidgetOrderLineNote",
+      "truthLevel": "T2",
       "ui": {
         "label": "Widget order line note"
       },
@@ -155,6 +180,7 @@
     },
     {
       "name": "WidgetOrderAudit",
+      "truthLevel": "T2",
       "ui": {
         "label": "Widget order audit"
       },
@@ -166,6 +192,7 @@
     },
     {
       "name": "WidgetCatalogEntry",
+      "truthLevel": "T2",
       "ui": {
         "label": "Widget catalog entry"
       },
@@ -201,6 +228,7 @@
     {
       "name": "PromotedWidgetCatalogEntry",
       "extends": "WidgetCatalogEntry",
+      "truthLevel": "T2",
       "ui": {
         "label": "Promoted widget catalog entry"
       },
@@ -210,6 +238,39 @@
           "type": "string",
           "required": true,
           "ui": { "label": "Promotion label" }
+        }
+      ]
+    },
+    {
+      "name": "WidgetShipmentEvent",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Widget shipment event"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "warehouseId",
+          "type": "string",
+          "required": true,
+          "ui": { "label": "Warehouse" }
+        },
+        {
+          "name": "shippedAt",
+          "type": "date",
+          "required": true,
+          "ui": { "label": "Shipped at" }
+        },
+        {
+          "name": "unitsShipped",
+          "type": "integer",
+          "required": true,
+          "ui": { "label": "Units shipped" }
         }
       ]
     }
@@ -280,6 +341,28 @@
       "concept": "WidgetCatalogEntry",
       "where": "discontinued == false",
       "orderBy": [ "sku" ]
+    },
+    {
+      "name": "ShippedUnitsByWarehouseMonth",
+      "concept": "WidgetShipmentEvent",
+      "where": "unitsShipped > 0",
+      "groupBy": [
+        "warehouseId",
+        { "field": "shippedAt", "bucket": "month" }
+      ],
+      "aggregates": [
+        { "name": "totalUnits", "fn": "sum", "field": "unitsShipped" },
+        { "name": "avgUnits", "fn": "avg", "field": "unitsShipped" },
+        { "name": "minUnits", "fn": "min", "field": "unitsShipped" },
+        { "name": "maxUnits", "fn": "max", "field": "unitsShipped" },
+        { "name": "eventCount", "fn": "count" }
+      ],
+      "having": "totalUnits > 0",
+      "orderBy": [ "totalUnits desc" ],
+      "limit": 500,
+      "metadata": {
+        "purpose": "Coverage for query.groupBy/aggregates/having (Move 10 B1, LC-B1): plain-field groupBy + one bucketed date field (month), all five aggregate fn values, a having clause, orderBy and limit in one declaration."
+      }
     }
   ],
 
@@ -337,6 +420,28 @@
         "purpose": "Coverage for autoPanels[] outside WmsOffice."
       },
       "transaction": {
+        "hooks": {
+          "onLoad": "SeedWidgetOrderContextProcedure",
+          "onFieldChange": "RecalculateWidgetOrderTotalsProcedure",
+          "beforeAction": "ValidateWidgetOrderProcedure"
+        },
+        "derivedFields": {
+          "totalQuantity": {
+            "expression": "sum(lines[].quantity)",
+            "label": "Total quantity"
+          },
+          "auditedQuantity": {
+            "tier": "server",
+            "procedure": "SummarizeWidgetOrderProcedure",
+            "label": "Audited quantity"
+          }
+        },
+        "regions": {
+          "lines.notes": {
+            "render": "component",
+            "component": "widget-order-notes"
+          }
+        },
         "metadata": {
           "visibleWhen": {
             "lines": "$root.status != 'CANCELLED'"
@@ -362,15 +467,81 @@
               "metadata": {
                 "purpose": "Coverage for the Workbench applyTo action mapping (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md Wave 2A) -- without applyTo, invoking a pure-computation action replaces the WHOLE draft with its raw result (invokeAction's other branch, store.patch); applyTo instead extracts named fields and appends one new row to a declared collection. map values follow patchConcept's own literal-by-default / $-ref convention -- quantity here is a literal, sku is a $ref into the raw invoke() result. Also covers action-level visibleWhen (Wave 2C / Gap 2) -- only offered while the order is still a DRAFT."
               }
-            }
-          ],
-          "derived": [
+            },
             {
-              "name": "totalQuantity",
-              "expression": "sum(lines[].quantity)",
-              "label": "Total quantity"
+              "label": "Suggest and fold line",
+              "procedure": "SuggestLineProcedure",
+              "afterAction": "ApplySuggestedLineProcedure",
+              "metadata": {
+                "purpose": "Coverage for Move 6 Move B's per-action afterAction (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4), which subsumes applyTo: instead of a static client-side field mapping, a procedure receiving {draft, result} and returning a patched draft -- declared per-action (like applyTo always has been) because different actions fold their results differently."
+              }
             }
           ]
+        }
+      }
+    },
+    {
+      "name": "WidgetOrderTypedActionsWorkbench",
+      "aggregate": "WidgetOrderAggregate",
+      "route": "/widget-orders-typed",
+      "metadata": {
+        "purpose": "Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): dsl-conformance-max witness for the TYPED transaction.actions/.visibleWhen/.bandPickers, alongside WidgetOrderWorkbench's existing coverage of the untyped, deprecated transaction.metadata equivalents just above -- both spellings still work this release, but a typo in this typed form now fails at schema time instead of silently doing nothing."
+      },
+      "transaction": {
+        "actions": [
+          {
+            "procedure": "RenameOrderStatusProcedure",
+            "label": "Apply status (typed)",
+            "inputFields": ["newStatus"]
+          },
+          {
+            "procedure": "SuggestLineProcedure",
+            "label": "Suggest line (typed)",
+            "applyTo": {
+              "collection": "lines",
+              "mode": "appendRow",
+              "map": { "sku": "$resultado.id", "quantity": "1" }
+            },
+            "visibleWhen": "$root.status == 'DRAFT'"
+          },
+          {
+            "procedure": "SuggestLineProcedure",
+            "label": "Suggest and fold line (typed)",
+            "afterAction": "ApplySuggestedLineProcedure"
+          }
+        ],
+        "uiState": {
+          "recordKind": {
+            "label": "Record kind",
+            "values": ["INBOUND", "OUTBOUND"],
+            "default": "INBOUND"
+          }
+        },
+        "visibleWhen": {
+          "lines": "$root.status != 'CANCELLED'",
+          "lines.notes": "$ui.recordKind == 'INBOUND'"
+        },
+        "bandPickers": {
+          "notes": {
+            "panel": "WidgetOrderReviewPanel",
+            "label": "Pick a note",
+            "columns": ["id"],
+            "filter": "$row.text != ''",
+            "multiSelect": true
+          }
+        }
+      }
+    },
+    {
+      "name": "WidgetCatalogEntryBrowser",
+      "concept": "WidgetCatalogEntry",
+      "route": "/widget-catalog-entries",
+      "metadata": {
+        "purpose": "Move 8 D3 (item G6, docs/MOVE8_CLOSE_TABLE_SPEC.md / Move 6 §B.7): coverage for a concept-bound AutoPanel's Selection surface having its generated row source REPLACED by a procedure (the produce disposition PanelRuntime already executes for hand-authored panels), instead of the bound concept's own table."
+      },
+      "selection": {
+        "dataSource": {
+          "procedure": "ListActiveWidgetCatalogEntriesProcedure"
         }
       }
     }
@@ -384,7 +555,8 @@
       "dataSources": [
         {
           "name": "orders",
-          "concept": "WidgetOrder"
+          "concept": "WidgetOrder",
+          "onRowLoad": "EnrichWidgetOrderRowsProcedure"
         }
       ],
       "actions": [
@@ -513,6 +685,46 @@
       ]
     },
     {
+      "name": "SeedWidgetOrderContextProcedure",
+      "description": "Coverage for Move 6 Move B's transaction.hooks.onLoad (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.2): invoked once against the freshly loaded draft, before the first render. A trivial pass-through here, standing in for a real onLoad that seeds computed defaults a brand-new draft has no field for yet.",
+      "steps": [
+        { "name": "echo-input", "type": "mapValue", "value": "$input", "target": "seeded" },
+        { "name": "return-seeded", "type": "return", "value": "$seeded" }
+      ]
+    },
+    {
+      "name": "RecalculateWidgetOrderTotalsProcedure",
+      "description": "Coverage for Move 6 Move B's transaction.hooks.onFieldChange (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4), the typed spelling of the retired transaction.metadata.recompute -- invoked (debounced) on every cell edit. A trivial pass-through here, standing in for a real recompute that patches derived totals as the user types.",
+      "steps": [
+        { "name": "echo-input", "type": "mapValue", "value": "$input", "target": "recalculated" },
+        { "name": "return-recalculated", "type": "return", "value": "$recalculated" }
+      ]
+    },
+    {
+      "name": "SummarizeWidgetOrderProcedure",
+      "description": "Coverage for Move 6 Move B's server-tier derivedFields (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4): unlike a client-tier expression, a server-tier derived field invokes this procedure over the current draft and reads its result state under the SAME key as the field's own name ('auditedQuantity' here) -- the same state-object convention every other invoke() consumer (recompute, actions) already relies on.",
+      "steps": [
+        { "name": "echo-linecount", "type": "mapValue", "value": "$lineCount", "target": "auditedQuantity" },
+        { "name": "return-summary", "type": "return", "value": "$auditedQuantity" }
+      ]
+    },
+    {
+      "name": "ApplySuggestedLineProcedure",
+      "description": "Coverage for Move 6 Move B's per-action afterAction (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4), which subsumes applyTo -- receives {draft, result} and returns the patched draft. A trivial pass-through here (echoes the draft back unchanged), standing in for a real fold like SuggestLineProcedure's applyTo sibling above.",
+      "steps": [
+        { "name": "echo-draft", "type": "mapValue", "value": "$input.draft", "target": "folded" },
+        { "name": "return-folded", "type": "return", "value": "$folded" }
+      ]
+    },
+    {
+      "name": "EnrichWidgetOrderRowsProcedure",
+      "description": "Coverage for Move 6 Move C's panelDataSource.onRowLoad (docs/MOVE6_TYPED_SURFACE_PLAN.md §4): enriches the rows a data source produced -- adds fields, never reorders/adds/drops rows (PanelRuntime enforces this batch guarantee in code, not just here). A trivial pass-through here (echoes rows back unchanged), standing in for a real enrichment that adds a computed field per row.",
+      "steps": [
+        { "name": "echo-rows", "type": "mapValue", "value": "$input.rows", "target": "rows" },
+        { "name": "return-rows", "type": "return", "value": "$rows" }
+      ]
+    },
+    {
       "name": "AuditWidgetOrderProcedure",
       "description": "Coverage for aggregate.onCommit + the patchConcept procedure step (Move 4, docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md). Runs after WidgetOrderAggregate commits (input is the freshly reloaded tree) and patches a SIBLING record -- WidgetOrderAudit, outside the aggregate's own tree -- with the order's current lineCount/status, preserving every other field on that audit row. set values resolve like every other *Ref field: a literal by default, a leading '$' resolves against procedure state.",
       "steps": [
@@ -540,6 +752,24 @@
         { "name": "apply-increment", "type": "patchConcept", "concept": "WidgetOrderAudit", "id": "$existingAuditId",
           "set": { "quantity": "$newQuantity" }, "target": "incremented" },
         { "name": "return-incremented", "type": "return", "value": "$incremented" }
+      ]
+    },
+    {
+      "name": "ListActiveWidgetCatalogEntriesProcedure",
+      "description": "Move 8 D3 (item G6, docs/MOVE8_CLOSE_TABLE_SPEC.md / Move 6 §B.7): the produce-disposition witness -- returns a bare list, which PanelRuntime's loadDataSource takes directly as the Selection surface's rows (result.state().get(\"return\")), replacing the row source the bound concept's table would otherwise supply.",
+      "steps": [
+        { "name": "list-entries", "type": "listConcepts", "concept": "WidgetCatalogEntry", "target": "entries" },
+        { "name": "return-entries", "type": "return", "value": "$entries" }
+      ]
+    },
+    {
+      "name": "ReturnLiteralCatalogSummaryProcedure",
+      "description": "Coverage for REG-86 (Move 9 C3, found during Move 8 D3): before this fix, mapValue/return forced their value through a String ref-only path, so a literal array/object was impossible -- only a $ref into procedure state survived. This procedure returns a literal array of objects directly, no capabilityCall round-trip needed to construct it (the same literal-vs-$ref convention patchConcept's set already established, reused here).",
+      "steps": [
+        { "name": "map-summary", "type": "mapValue",
+          "value": [ { "sku": "WIDGET-1", "status": "active" }, { "sku": "WIDGET-2", "status": "active" } ],
+          "target": "summary" },
+        { "name": "return-summary", "type": "return", "value": "$summary" }
       ]
     }
   ],
