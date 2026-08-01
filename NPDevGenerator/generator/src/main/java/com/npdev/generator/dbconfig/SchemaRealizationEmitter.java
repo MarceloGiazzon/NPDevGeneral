@@ -863,6 +863,32 @@ public final class SchemaRealizationEmitter {
     }
 
     /**
+     * Move 9 B1 (docs/ACCEPTED_BOUNDARIES.md B2): the expression TEXT for every column
+     * {@link #expressionDefaultColumnNames} names, so the runtime's dry-run preview/backfill
+     * (BackfillPass, RuntimeHost) has something to evaluate -- the SAME {@code ValueExpressionEvaluator}
+     * a new row's {@code defaultExpression} already uses (kernel), evaluated here instead against
+     * every EXISTING row in a dry run.
+     */
+    private static Map<String, String> columnDefaultExpressions(CompiledConcept concept, Map<String, CompiledConcept> conceptsByName) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (CompiledField field : concept.getFields()) {
+            Optional<Bond> bond = BondModelSupport.resolveBond(concept, field, conceptsByName);
+            if (bond.isPresent()) {
+                continue;
+            }
+            CompiledSchema schema = field.getSchema();
+            if (schema == null || schema.getDefaultValue() != null) {
+                continue;
+            }
+            String expression = schema.getDefaultExpression();
+            if (expression != null && !expression.isBlank()) {
+                out.put(SqlIdentifierSupport.columnName(field), expression.trim());
+            }
+        }
+        return out;
+    }
+
+    /**
      * LNCH-1 P5 (5.1): a single declared unique constraint (single-field, compound-invariant, or
      * explicit-index), independent of whether it targets an existing or brand-new table.
      * {@code tenantScoped} mirrors {@link #appendBusinessTable}'s rule: a connectable natural-key
@@ -1140,6 +1166,7 @@ public final class SchemaRealizationEmitter {
         Map<String, List<String>> businessTableRequiredColumns = new LinkedHashMap<>();
         Map<String, Map<String, String>> businessTableColumnDefaultLiterals = new LinkedHashMap<>();
         Map<String, List<String>> businessTableExpressionDefaultColumns = new LinkedHashMap<>();
+        Map<String, Map<String, String>> businessTableColumnDefaultExpressions = new LinkedHashMap<>();
         Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints = new LinkedHashMap<>();
         Map<String, List<ForeignKeyDecl>> businessTableForeignKeys = new LinkedHashMap<>();
         Map<String, List<IndexDecl>> businessTableIndexes = new LinkedHashMap<>();
@@ -1170,6 +1197,13 @@ public final class SchemaRealizationEmitter {
             if (!expressionDefaults.isEmpty()) {
                 businessTableExpressionDefaultColumns.put(table, expressionDefaults);
             }
+            // Move 9 B1 (docs/ACCEPTED_BOUNDARIES.md B2): the expression TEXT itself, not just which
+            // columns declare one -- expressionDefaultColumnNames only ever carried the column name,
+            // leaving the runtime's dry-run preview/backfill with nothing to actually evaluate.
+            Map<String, String> defaultExpressions = columnDefaultExpressions(concept, conceptsByName);
+            if (!defaultExpressions.isEmpty()) {
+                businessTableColumnDefaultExpressions.put(table, defaultExpressions);
+            }
             List<UniqueConstraintDecl> uniqueConstraints = collectUniqueConstraints(concept, table);
             if (!uniqueConstraints.isEmpty()) {
                 businessTableUniqueConstraints.put(table, uniqueConstraints);
@@ -1199,7 +1233,8 @@ public final class SchemaRealizationEmitter {
                 businessTableExpressionDefaultColumns,
                 businessTableUniqueConstraints,
                 businessTableForeignKeys,
-                businessTableIndexes
+                businessTableIndexes,
+                businessTableColumnDefaultExpressions
         );
     }
 
@@ -1226,11 +1261,15 @@ public final class SchemaRealizationEmitter {
             Map<String, List<String>> businessTableExpressionDefaultColumns,
             Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints,
             Map<String, List<ForeignKeyDecl>> businessTableForeignKeys,
-            Map<String, List<IndexDecl>> businessTableIndexes
+            Map<String, List<IndexDecl>> businessTableIndexes,
+            // Move 9 B1 (docs/ACCEPTED_BOUNDARIES.md B2): added LAST, same SER-G8 convention as the FK/
+            // index maps above -- absent from an older generated manifest simply means "no expression
+            // defaults to preview," not a behavior change for any app built before this.
+            Map<String, Map<String, String>> businessTableColumnDefaultExpressions
     ) {
         static BusinessTableMetadata empty() {
             return new BusinessTableMetadata(List.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
-                    Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+                    Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
         }
     }
 
@@ -1295,6 +1334,7 @@ public final class SchemaRealizationEmitter {
         Map<String, List<String>> businessTableRequiredColumns = businessMetadata.businessTableRequiredColumns();
         Map<String, Map<String, String>> businessTableColumnDefaultLiterals = businessMetadata.businessTableColumnDefaultLiterals();
         Map<String, List<String>> businessTableExpressionDefaultColumns = businessMetadata.businessTableExpressionDefaultColumns();
+        Map<String, Map<String, String>> businessTableColumnDefaultExpressions = businessMetadata.businessTableColumnDefaultExpressions();
         Map<String, List<Map<String, Object>>> businessTableUniqueConstraints = new LinkedHashMap<>();
         for (Map.Entry<String, List<UniqueConstraintDecl>> entry : businessMetadata.businessTableUniqueConstraints().entrySet()) {
             List<Map<String, Object>> encoded = new ArrayList<>();
@@ -1346,6 +1386,10 @@ public final class SchemaRealizationEmitter {
         manifest.put("businessTableRequiredColumns", businessTableRequiredColumns);
         manifest.put("businessTableColumnDefaultLiterals", businessTableColumnDefaultLiterals);
         manifest.put("businessTableExpressionDefaultColumns", businessTableExpressionDefaultColumns);
+        // Move 9 B1 (docs/ACCEPTED_BOUNDARIES.md B2): the expression TEXT itself (see
+        // columnDefaultExpressions's javadoc) -- absent from every manifest emitted before this,
+        // which SchemaManifestLoader defaults to an empty map, so a pre-existing app is unaffected.
+        manifest.put("businessTableColumnDefaultExpressions", businessTableColumnDefaultExpressions);
         manifest.put("businessTableUniqueConstraints", businessTableUniqueConstraints);
         // SER-G8: the model's declared FKs/indexes, encoded name-lessly (the runtime matches by column
         // set, since constraint/index names are engine-generated and differ across H2/Postgres).

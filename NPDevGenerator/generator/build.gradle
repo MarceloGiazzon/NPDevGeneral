@@ -6,6 +6,69 @@ application {
     mainClass = 'com.npdev.generator.GeneratorMain'
 }
 
+// REG-102 fix (MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 1.2): a real, working "diff two model.json
+// snapshots and classify the change" entry point, deliberately its OWN JavaExec task rather than a
+// new GeneratorMain flag -- GeneratorMain.Args.parse unconditionally rejects any --migration-prefixed
+// argument (a guard against a different, retired thing), which is exactly why the OLD CLI wiring
+// (`npdev migration diff`) never worked. Mirrors :NPDevContract:dsl:validateModel's JavaExec pattern.
+tasks.register('classifyModelChange', JavaExec) {
+    group = 'verification'
+    description = 'Diff two model.json snapshots (current, optional baseline) and classify the change as METADATA_ONLY / SAFE_ADDITIVE / BACKFILL_REQUIRED / MANUAL_REVIEW.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.npdev.generator.schemaevolution.ModelChangeClassifierMain'
+    // A --emitCompiledModelTo refusal (exit 2) must reach the caller's exit code (a fast-path script
+    // branches on it), not fail this Gradle invocation itself -- same reasoning as :validateModel's
+    // own ignoreExitValue.
+    ignoreExitValue = true
+    def cliArgs = []
+    if (project.hasProperty('currentPath')) {
+        cliArgs << '--current' << project.getProperty('currentPath')
+    }
+    if (project.hasProperty('baselinePath')) {
+        cliArgs << '--baseline' << project.getProperty('baselinePath')
+    }
+    if (project.hasProperty('reportOut')) {
+        cliArgs << '--out' << project.getProperty('reportOut')
+    }
+    // Wave 1.3 (LC-C2): when set, the current model's compiled JSON is written to this path IFF the
+    // classification is METADATA_ONLY -- refuses (non-zero exit) otherwise. See
+    // ModelChangeClassifierMain's own javadoc for exactly which running-app behavior this does (and
+    // does not) refresh.
+    if (project.hasProperty('emitCompiledModelTo')) {
+        cliArgs << '--emitCompiledModelTo' << project.getProperty('emitCompiledModelTo')
+    }
+    args = cliArgs
+}
+
+// Wave 2, E2 (AI_AUTHORING_CONTRACT-2026-07-31.md Part 9, "the load-bearing piece"): the
+// Custodian's diff gate as a real, callable command. Own JavaExec task for the same reason as
+// classifyModelChange above -- GeneratorMain's arg parser is not where this belongs.
+tasks.register('authorDiffGate', JavaExec) {
+    group = 'verification'
+    description = 'AI Authoring Contract Custodian diff gate: checks a submitted model.json against its previous version and a submission manifest (A2/A3/A4/A5/A7/A9/A10, C1/C2).'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.npdev.generator.authoring.AuthoringDiffGateMain'
+    ignoreExitValue = true
+    def cliArgs = []
+    if (project.hasProperty('previousPath')) {
+        cliArgs << '--previous' << project.getProperty('previousPath')
+    }
+    if (project.hasProperty('submittedPath')) {
+        cliArgs << '--submitted' << project.getProperty('submittedPath')
+    }
+    if (project.hasProperty('manifestPath')) {
+        cliArgs << '--manifest' << project.getProperty('manifestPath')
+    }
+    if (project.hasProperty('reportOut')) {
+        cliArgs << '--out' << project.getProperty('reportOut')
+    }
+    // E5: on a PASS only, archives the previous model verbatim to <dir>/<version>-<sha256>.json.
+    if (project.hasProperty('archiveDir')) {
+        cliArgs << '--archiveDir' << project.getProperty('archiveDir')
+    }
+    args = cliArgs
+}
+
 // REG-49 residual (docs/REMAINDER_CLOSURE_PLAN.md 3.3): ServiceBaseDeleteFlowRowLevelAuthzBehaviorTest
 // compiles+runs a real generated *ServiceBase.java through the REAL GeneratedCrudRuntimeSupport, whose
 // resolveCurrentExecutionContext() internally calls spring-web's RequestContextHolder/

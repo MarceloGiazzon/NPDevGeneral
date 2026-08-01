@@ -224,3 +224,15 @@ body.npdev-shell-rightbar-collapsed .npdev-shell-rightbar { width: 0; padding: 0
 .npdev-shell-gadget li a { color: var(--np-text); text-decoration: none; transition: color .15s ease; }
 .npdev-shell-gadget li a:hover { color: var(--np-accent); }
 .npdev-shell-gadget .npdev-shell-gadget-empty { color: var(--np-text-muted); font-size: 12px; font-style: italic; }
+
+/* Move 10 B2 (LC-B2): kpi/bar/line/table gadgets -- server-fed chart/KPI cards. */
+.npdev-shell-gadget-kpi { font-size: 28px; font-weight: 700; color: var(--np-accent); line-height: 1.1; }
+.npdev-shell-gadget-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.npdev-shell-gadget-table th, .npdev-shell-gadget-table td {
+  text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--np-border);
+}
+.npdev-shell-gadget-table th { color: var(--np-text-muted); font-weight: 600; font-size: 10.5px; text-transform: uppercase; }
+.npdev-shell-gadget-chart { display: block; overflow: visible; }
+.npdev-shell-gadget-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; font-size: 10.5px; color: var(--np-text-muted); }
+.npdev-shell-gadget-legend-item { display: inline-flex; align-items: center; gap: 4px; }
+.npdev-shell-gadget-legend-item i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; }

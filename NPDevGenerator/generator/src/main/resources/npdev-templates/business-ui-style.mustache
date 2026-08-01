@@ -837,6 +837,20 @@ textarea {
   padding: 3px 6px;
 }
 
+/* REG-92: the declared-Panel mini-form free-text control is a <textarea rows="1">, not an
+   <input type="text"> -- an input silently collapses pasted newlines. Same inline styling the
+   Aggregate Workbench has carried since REG-76, hoisted into the stylesheet: inherit the form
+   font (a textarea otherwise defaults to monospace and looks like a different control), sit on
+   the text baseline next to its button, and let the user drag it taller for a long paste. */
+textarea.declared-panel-edit-input {
+  font-family: inherit;
+  font-size: inherit;
+  vertical-align: middle;
+  resize: vertical;
+  white-space: pre;
+  overflow-x: auto;
+}
+
 .file-control {
   display: flex;
   align-items: center;

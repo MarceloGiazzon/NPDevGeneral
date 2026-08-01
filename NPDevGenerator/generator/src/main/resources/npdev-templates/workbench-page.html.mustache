@@ -69,6 +69,9 @@
   var PANEL = "{{panelName}}";
   var SELECTION_PANEL = "{{selectionPanel}}";
   var FILTERS = {{{filtersJson}}};
+  // Move 6 Move A: the app's full resolved string catalogue (platform English defaults merged with
+  // any settings.strings overrides at generation time) -- see CompiledSettings/PlatformStrings.
+  var STRINGS = {{{stringsJson}}};
   var TOKEN_KEYS = ["npdev.shell.token", "npdev.businessUi.apiKey"];
 
   function token() { for (var i = 0; i < TOKEN_KEYS.length; i++) { var t = localStorage.getItem(TOKEN_KEYS[i]); if (t) return t; } return null; }
@@ -80,6 +83,10 @@
 
   function createStore(resp) {
     var descriptor = resp.workbench || {};
+    // Move 11 W6: seed declared UI state BEFORE the first render, so a $ui.* predicate never
+    // evaluates against an unset value on the way in. Seeded into a module-level variable, never
+    // into `draft` -- see uiStateValues' own comment: it must not be reachable from toDraft().
+    seedUiState(descriptor);
     var draft = clone(resp.data || {});
     (descriptor.sections || []).forEach(function (s) { if (!Array.isArray(draft[s.collection])) draft[s.collection] = []; });
     // baseline = the last persisted (or freshly loaded) tree; per-region revert (C8) restores from it.
@@ -133,11 +140,24 @@
         var hf = (descriptor.header && descriptor.header.fields) || [];
         return {
           aggregate: this.aggregate, title: this.title, dirty: this.isDirty(),
-          header: { fields: hf, values: pick(draft, hf) },
+          // Move 6 Move D: address/render/component pass through from the descriptor unchanged --
+          // "generated" (no render/component keys) for a region with no declared mount.
+          header: {
+            fields: hf, values: pick(draft, hf),
+            address: descriptor.header && descriptor.header.address,
+            render: (descriptor.header && descriptor.header.render) || null,
+            component: (descriptor.header && descriptor.header.component) || null
+          },
           sections: (descriptor.sections || []).map(function (s) {
             return {
               collection: s.collection, columns: s.columns || [], visibleWhen: s.visibleWhen || null,
-              bandDefs: (s.bands || []).map(function (b) { return { collection: b.collection, columns: b.columns || [], picker: b.picker || null, visibleWhen: b.visibleWhen || null }; }),
+              address: s.address, render: s.render || null, component: s.component || null,
+              bandDefs: (s.bands || []).map(function (b) {
+                return {
+                  collection: b.collection, columns: b.columns || [], picker: b.picker || null, visibleWhen: b.visibleWhen || null,
+                  address: b.address, render: b.render || null, component: b.component || null
+                };
+              }),
               rows: (draft[s.collection] || []).map(function (r) {
                 return {
                   id: r.id, values: pick(r, s.columns || []),
@@ -178,7 +198,7 @@
     fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate) + "/invoke/" + encodeURIComponent(proc),
       { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(store.toDraft()) })
       .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (patched) { if (patched) { store.patch(patched); restoreFocus = true; render(); } })
+      .then(function (patched) { if (patched) { store.patch(patched); restoreFocus = true; render(); refreshServerDerivedFields(); } })
       .catch(function () { /* recompute is best-effort; keep the user's draft on failure */ });
   }
 
@@ -190,10 +210,38 @@
   // never writes anything back into the draft, so a derived value can never leak into a commit.
   //   sum(itens[].posicoes[].quantidade)
   //   sum(posicoes[].filter(papel=='Origem').quantidade)
+  //   sum(itens[].posicoes[].filter(papel=='Origem').quantidade)
+  //
+  // REG-95 (Move 11 W5.1): the filter form -- including the second example above, this function's
+  // OWN documented syntax -- silently evaluated to 0 from the day it shipped. `m[1].split(".")` cut
+  // `posicoes[].filter(papel=='Origem')` in half at the dot BEFORE the filterMatch regex (which
+  // requires the whole `<name>[].filter(...)` in one segment) ever saw it, so `filter(...)` fell
+  // through to the plain-path branch, resolved to undefined, and the sum came out 0. A banner
+  // reading 0 instead of the filtered total, with no error anywhere -- which is why M6 looked like
+  // an authoring gap for two moves. Tokenizing instead of splitting is the whole fix; every branch
+  // below is unchanged.
+  var DERIVED_SEGMENT = /\w+\[\]\.filter\(\s*\w+\s*==\s*['"][^'"]*['"]\s*\)|\w+\[\]|\w+/g;
+
+  function derivedSegments(path) {
+    DERIVED_SEGMENT.lastIndex = 0;
+    var segments = [];
+    var consumed = 0;
+    var match;
+    while ((match = DERIVED_SEGMENT.exec(path)) !== null) {
+      // Only a "." may separate segments; anything else means this is not an expression we
+      // understand, and guessing at it is how a wrong number reaches a banner unannounced.
+      if (match.index !== consumed && path.slice(consumed, match.index) !== ".") { return null; }
+      segments.push(match[0]);
+      consumed = match.index + match[0].length;
+    }
+    return consumed === path.length ? segments : null;
+  }
+
   function evaluateDerived(root, expression) {
     var m = /^sum\((.+)\)$/.exec(String(expression || "").trim());
     if (!m) return undefined;
-    var segments = m[1].split(".");
+    var segments = derivedSegments(m[1].trim());
+    if (!segments || !segments.length) return undefined;
     var cur = [root];
     for (var i = 0; i < segments.length; i++) {
       var seg = segments[i];
@@ -233,9 +281,28 @@
   // matching "never gate persistence" -- worst case something stays visible, it never disappears
   // incorrectly and silently drops data from view that the user still needed to see was committing.
   //   $root.tipo == 'RECEBIMENTO'
+  //
+  // Move 11 W6 (C1, docs/MOVE3_G2_CHECKLISTS.md): the SAME grammar now resolves a second root --
+  //   $ui.registro == 'Recebimento'
+  // -- reading a declared transaction.uiState control instead of a persisted root field. A
+  // record-type toggle is transient screen state, not a field of anything, so before this there was
+  // literally nothing for the predicate to read (C1's cause, confirmed against AutoPanelExpander's
+  // own comment). Deliberately ONE grammar with two resolvable roots, never a second dialect.
+  //
+  // uiStateValues lives OUTSIDE the store, so it cannot reach store.toDraft() and therefore cannot
+  // reach a commit payload -- the presentation-only rule visibleWhen already carries, kept true by
+  // construction rather than by remembering.
+  var uiStateValues = {};
+
   function evaluateVisibleWhen(root, expression) {
     var expr = String(expression || "").trim();
     if (!expr) return true;
+    var u = /^\$?ui\.(\w+)\s*(==|!=)\s*'([^']*)'$/.exec(expr);
+    if (u) {
+      var current = uiStateValues[u[1]];
+      var value = current == null ? "" : String(current);
+      return u[2] === "==" ? value === u[3] : value !== u[3];
+    }
     var m = /^\$?root\.([\w.]+)\s*(==|!=)\s*'([^']*)'$/.exec(expr);
     if (!m) return true;
     var path = m[1], op = m[2], literal = m[3];
@@ -249,7 +316,163 @@
     return op === "==" ? actual === literal : actual !== literal;
   }
 
+  /** Move 11 W6: seed each declared control from its `default` once, before the first render. */
+  function seedUiState(descriptor) {
+    ((descriptor && descriptor.uiState) || []).forEach(function (control) {
+      if (!Object.prototype.hasOwnProperty.call(uiStateValues, control.name)) {
+        uiStateValues[control.name] = control["default"]
+          || ((control.values || [])[0] == null ? "" : control.values[0]);
+      }
+    });
+  }
+
+  /** Move 11 W6: one <select> per declared control; changing it re-renders, nothing else. */
+  function renderUiStateControls(descriptor) {
+    var controls = (descriptor && descriptor.uiState) || [];
+    if (!controls.length) return null;
+    var bar = el('<div class="derived"></div>');
+    controls.forEach(function (control) {
+      var item = el('<span class="item"></span>');
+      item.append(el('<span class="lbl">' + (control.label || control.name) + ':</span>'));
+      var select = document.createElement("select");
+      (control.values || []).forEach(function (value) {
+        var option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        if (String(uiStateValues[control.name]) === String(value)) { option.selected = true; }
+        select.appendChild(option);
+      });
+      select.onchange = function () { uiStateValues[control.name] = select.value; render(); };
+      item.append(select);
+      bar.append(item);
+    });
+    return bar;
+  }
+
   var store = null, selected = null, pendingMsg = null;
+  // Move 6 Move B: server-tier derivedFields' last-fetched values, keyed by field name -- refreshed
+  // (fire-and-forget, best-effort) after any draft-changing event; client-tier fields need none of
+  // this, they're evaluated fresh from the draft on every render by evaluateDerived below.
+  var serverDerivedValues = {};
+
+  // Move 6 Move D (docs/MOVE6_TYPED_SURFACE_PLAN.md §5): the global mount registry an app-owned
+  // web/regions/<name>.js populates via window.npdev.regions.register(name, {mount, update, unmount}).
+  window.npdev = window.npdev || {};
+  window.npdev.regions = window.npdev.regions || (function () {
+    var registry = {};
+    return {
+      register: function (name, impl) { registry[name] = impl; },
+      get: function (name) { return registry[name]; }
+    };
+  })();
+
+  // address -> { el: <persistent container>, name: <currently mounted component name> }. render()
+  // rebuilds the WHOLE DOM tree from scratch on every call; reusing the SAME container element and
+  // re-inserting it (appending an already-in-document node MOVES it, it does not clone/destroy it)
+  // is what lets a mounted component's own internal DOM survive across renders instead of being
+  // torn down and remounted on every keystroke.
+  var mountedRegionEls = {};
+
+  /**
+   * The NARROWED api a mounted component receives (Move 6 Move D §D.4): a frozen slice of the
+   * region's own rows -- never the whole draft, never a sibling region (hard rule 1) -- and no
+   * direct persistence path (hard rule 2: Workbench Save is the only commit path, so REG-72's
+   * atomicity extends to custom regions for free).
+   */
+  function regionApi(rows, columns, ops) {
+    return {
+      rows: JSON.parse(JSON.stringify(rows || [])),
+      columns: columns || [],
+      editRow: ops.editRow || function () {},
+      addRow: ops.addRow || function () {},
+      deleteRow: ops.deleteRow || function () {},
+      isDirty: ops.isDirty || function () { return false; },
+      revert: ops.revert || function () {},
+      readOnly: !EDITABLE,
+      invoke: function (procedureName, extraInput) {
+        return fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate) + "/invoke/" + encodeURIComponent(procedureName),
+          { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+            body: JSON.stringify(Object.assign({}, store.toDraft(), extraInput || {})) })
+          .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); });
+      }
+    };
+  }
+
+  /**
+   * Renders a region whose descriptor says render==="component": mounts once (the first time this
+   * address is encountered), calls update() on every subsequent render. Falls back to a visible
+   * placeholder (never a silent blank) when the named component was never registered -- e.g. the
+   * app's own web/regions/<name>.js failed to load or doesn't exist yet.
+   */
+  function mountRegion(region, api) {
+    var address = region.address;
+    var entry = mountedRegionEls[address];
+    if (!entry) {
+      var container = document.createElement("div");
+      container.className = "region-mount";
+      entry = { el: container, name: null };
+      mountedRegionEls[address] = entry;
+    }
+    var impl = window.npdev.regions.get(region.component);
+    if (!impl) {
+      entry.el.innerHTML = '<p class="sub">Component "' + region.component + '" is not registered — '
+        + 'check that web/regions/' + region.component + '.js is loaded and calls window.npdev.regions.register.</p>';
+      entry.name = null;
+      return entry.el;
+    }
+    if (entry.name !== region.component) {
+      entry.el.innerHTML = "";
+      if (impl.mount) impl.mount(entry.el, api);
+      entry.name = region.component;
+    } else if (impl.update) {
+      impl.update(api);
+    }
+    return entry.el;
+  }
+
+  /** Distinct component names referenced anywhere in the workbench descriptor, so boot() can
+   * inject exactly the app-owned web/regions/<name>.js files this page actually needs. */
+  function componentNamesIn(descriptor) {
+    var names = [];
+    function add(region) { if (region && region.render === "component" && region.component && names.indexOf(region.component) === -1) names.push(region.component); }
+    add(descriptor.header);
+    (descriptor.sections || []).forEach(function (s) { add(s); (s.bands || []).forEach(add); });
+    return names;
+  }
+
+  /** Injects <script src="/regions/<name>.js"> for each declared component (app-owned, served the
+   * same way shell.js auto-injects an app-owned web/theme.css -- never inside npdev-generated/,
+   * which is hash-guarded). A 404/load failure resolves rather than rejects: mountRegion's own
+   * "not registered" placeholder covers that case visibly instead of blocking the whole page. */
+  function loadRegionScripts(names) {
+    return Promise.all(names.map(function (name) {
+      return new Promise(function (resolve) {
+        var script = document.createElement("script");
+        script.src = "/regions/" + encodeURIComponent(name) + ".js";
+        script.onload = function () { resolve(); };
+        script.onerror = function () { resolve(); };
+        document.head.appendChild(script);
+      });
+    }));
+  }
+
+  function refreshServerDerivedFields() {
+    var defs = (store.descriptor.derived || []).filter(function (d) { return d.tier === "server" && d.procedure; });
+    if (!defs.length) return;
+    var draft = store.toDraft();
+    defs.forEach(function (d) {
+      fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate) + "/invoke/" + encodeURIComponent(d.procedure),
+        { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(draft) })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (result) {
+          if (result && Object.prototype.hasOwnProperty.call(result, d.name)) {
+            serverDerivedValues[d.name] = result[d.name];
+            render();
+          }
+        })
+        .catch(function () { /* server-tier derived values are best-effort, like recompute */ });
+    });
+  }
 
   function render() {
     var v = store.view();
@@ -263,16 +486,33 @@
     app.append(el('<p class="sub">Aggregate: <b>' + v.aggregate + '</b></p>'));
 
     var head = el('<div class="region r-head"></div>');
-    var headBar = el('<div class="bar head"><span>Header</span><span class="grow"></span></div>');
+    var headBar = el('<div class="bar head"><span>' + STRINGS['workbench.header'] + '</span><span class="grow"></span></div>');
     if (EDITABLE && store.regionDirty("header")) headBar.append(regionRevert("header", null));
     head.append(headBar);
-    var hb = el('<div class="body"></div>'); var f = el('<form class="grid2"></form>');
-    v.header.fields.forEach(function (fld) { f.append(el('<label>' + fld + ':</label>')); var d = el("<div></div>"); d.append(cell(v.header.values[fld], function (val) { store.editHeader(fld, val); }, "h:" + fld)); f.append(d); });
-    hb.append(f); head.append(hb); app.append(head);
+    var hb = el('<div class="body"></div>');
+    if (v.header.render === "component") {
+      hb.append(mountRegion(v.header, regionApi(
+        [{ id: "header", values: v.header.values }], v.header.fields,
+        {
+          editRow: function (id, field, value) { store.editHeader(field, value); scheduleRecompute(); },
+          isDirty: function () { return store.regionDirty("header"); },
+          revert: function () { store.revertRegion("header", null); render(); }
+        })));
+    } else {
+      var f = el('<form class="grid2"></form>');
+      v.header.fields.forEach(function (fld) { f.append(el('<label>' + fld + ':</label>')); var d = el("<div></div>"); d.append(cell(v.header.values[fld], function (val) { store.editHeader(fld, val); }, "h:" + fld)); f.append(d); });
+      hb.append(f);
+    }
+    head.append(hb); app.append(head);
 
     // Shared by derived-banner evaluation and visibleWhen gating below -- both read against the
     // CURRENT draft, never mutate it.
     var draftNow = store.toDraft();
+
+    // Move 11 W6: the declared UI-state controls, above the derived banner -- a toggle that decides
+    // which surfaces are visible belongs before the things whose visibility it decides.
+    var uiStateBar = renderUiStateControls(store.descriptor);
+    if (uiStateBar) { app.append(uiStateBar); }
 
     // Derived display fields (M6 "balanced banner"): evaluated fresh against the CURRENT draft on
     // every render, shown here, never written back into it.
@@ -280,7 +520,7 @@
     if (derivedDefs.length) {
       var banner = el('<div class="derived"></div>');
       derivedDefs.forEach(function (d) {
-        var value = evaluateDerived(draftNow, d.expression);
+        var value = d.tier === "server" ? serverDerivedValues[d.name] : evaluateDerived(draftNow, d.expression);
         var item = el('<span class="item"></span>');
         item.append(el('<span class="lbl">' + (d.label || d.name) + ':</span>'));
         item.append(el('<span class="val">' + (value == null ? "—" : String(value)) + '</span>'));
@@ -298,17 +538,28 @@
       var itemsBar = el('<div class="bar items"><span>' + sec.collection + '</span><span class="grow"></span><span class="chip">' + sec.rows.length + ' rows</span></div>');
       if (EDITABLE && store.regionDirty("section", sec.collection)) itemsBar.append(regionRevert("section", sec.collection));
       items.append(itemsBar);
-      var ib = el('<div class="body"></div>'); var tbl = el("<table></table>");
-      tbl.append(el("<tr>" + sec.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "<th></th></tr>"));
-      sec.rows.forEach(function (r) {
-        var tr = el('<tr class="master ' + (r.id === selected ? "sel" : "") + '"></tr>');
-        sec.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(r.values[c], function (val) { store.editRow(sec.collection, r.id, c, val); }, "s:" + sec.collection + ":" + r.id + ":" + c)); tr.append(td); });
-        var del = el('<td></td>');
-        if (EDITABLE) { var x = el('<span class="rowbtn">✕</span>'); x.onclick = function (e) { e.stopPropagation(); store.deleteRow(sec.collection, r.id); if (selected === r.id) selected = null; render(); }; del.append(x); }
-        tr.append(del); tr.onclick = function () { selected = r.id; render(); }; tbl.append(tr);
-      });
-      ib.append(tbl);
-      if (EDITABLE) { var add = el('<span class="addrow">+ add row</span>'); add.onclick = function () { selected = store.addRow(sec.collection); render(); }; ib.append(add); }
+      var ib = el('<div class="body"></div>');
+      if (sec.render === "component") {
+        ib.append(mountRegion(sec, regionApi(sec.rows, sec.columns, {
+          editRow: function (id, field, value) { store.editRow(sec.collection, id, field, value); scheduleRecompute(); },
+          addRow: function () { var id = store.addRow(sec.collection); selected = id; render(); return id; },
+          deleteRow: function (id) { store.deleteRow(sec.collection, id); if (selected === id) selected = null; render(); },
+          isDirty: function () { return store.regionDirty("section", sec.collection); },
+          revert: function () { store.revertRegion("section", sec.collection); render(); }
+        })));
+      } else {
+        var tbl = el("<table></table>");
+        tbl.append(el("<tr>" + sec.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "<th></th></tr>"));
+        sec.rows.forEach(function (r) {
+          var tr = el('<tr class="master ' + (r.id === selected ? "sel" : "") + '"></tr>');
+          sec.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(r.values[c], function (val) { store.editRow(sec.collection, r.id, c, val); }, "s:" + sec.collection + ":" + r.id + ":" + c)); tr.append(td); });
+          var del = el('<td></td>');
+          if (EDITABLE) { var x = el('<span class="rowbtn">✕</span>'); x.onclick = function (e) { e.stopPropagation(); store.deleteRow(sec.collection, r.id); if (selected === r.id) selected = null; render(); }; del.append(x); }
+          tr.append(del); tr.onclick = function () { selected = r.id; render(); }; tbl.append(tr);
+        });
+        ib.append(tbl);
+        if (EDITABLE) { var add = el('<span class="addrow">+ add row</span>'); add.onclick = function () { selected = store.addRow(sec.collection); render(); }; ib.append(add); }
+      }
       items.append(ib); app.append(items);
 
       var selRow = sec.rows.filter(function (r) { return r.id === selected; })[0];
@@ -319,19 +570,30 @@
         sec.bandDefs.forEach(function (bd) {
           if (!evaluateVisibleWhen(draftNow, bd.visibleWhen)) return;
           var g = el('<div class="gwrap"></div>'); g.append(el("<h4>" + bd.collection + "</h4>"));
-          var gt = el("<table></table>"); gt.append(el("<tr>" + bd.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "<th></th></tr>"));
-          (selRow.bands[bd.collection] || []).forEach(function (br) {
-            var tr = el("<tr></tr>");
-            bd.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(br.values[c], function (val) { store.editBandRow(sec.collection, selRow.id, bd.collection, br.id, c, val); }, "b:" + sec.collection + ":" + selRow.id + ":" + bd.collection + ":" + br.id + ":" + c)); tr.append(td); });
-            var del = el('<td></td>');
-            if (EDITABLE) { var bx = el('<span class="rowbtn">✕</span>'); bx.onclick = function () { store.deleteBandRow(sec.collection, selRow.id, bd.collection, br.id); render(); }; del.append(bx); }
-            tr.append(del); gt.append(tr);
-          });
-          g.append(gt);
-          if (EDITABLE) {
-            var add2 = el('<span class="addrow">+ add row</span>'); add2.onclick = function () { store.addBandRow(sec.collection, selRow.id, bd.collection); render(); }; g.append(add2);
-            // C6 "Seleciona …": pick band rows from a source Selection panel via a modal, instead of blank add.
-            if (bd.picker) { var pk = el('<span class="pick">＋ ' + (bd.picker.label || "Selecionar") + '</span>'); pk.onclick = (function (secC, rowId, band) { return function () { openBandPicker(secC, rowId, band); }; })(sec.collection, selRow.id, bd); g.append(pk); }
+          if (bd.render === "component") {
+            var bandRows = selRow.bands[bd.collection] || [];
+            g.append(mountRegion(bd, regionApi(bandRows, bd.columns, {
+              editRow: function (id, field, value) { store.editBandRow(sec.collection, selRow.id, bd.collection, id, field, value); scheduleRecompute(); },
+              addRow: function () { var id = store.addBandRow(sec.collection, selRow.id, bd.collection); render(); return id; },
+              deleteRow: function (id) { store.deleteBandRow(sec.collection, selRow.id, bd.collection, id); render(); },
+              isDirty: function () { return store.regionDirty("section", sec.collection); },
+              revert: function () { store.revertRegion("section", sec.collection); render(); }
+            })));
+          } else {
+            var gt = el("<table></table>"); gt.append(el("<tr>" + bd.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "<th></th></tr>"));
+            (selRow.bands[bd.collection] || []).forEach(function (br) {
+              var tr = el("<tr></tr>");
+              bd.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(br.values[c], function (val) { store.editBandRow(sec.collection, selRow.id, bd.collection, br.id, c, val); }, "b:" + sec.collection + ":" + selRow.id + ":" + bd.collection + ":" + br.id + ":" + c)); tr.append(td); });
+              var del = el('<td></td>');
+              if (EDITABLE) { var bx = el('<span class="rowbtn">✕</span>'); bx.onclick = function () { store.deleteBandRow(sec.collection, selRow.id, bd.collection, br.id); render(); }; del.append(bx); }
+              tr.append(del); gt.append(tr);
+            });
+            g.append(gt);
+            if (EDITABLE) {
+              var add2 = el('<span class="addrow">+ add row</span>'); add2.onclick = function () { store.addBandRow(sec.collection, selRow.id, bd.collection); render(); }; g.append(add2);
+              // C6 "Seleciona …": pick band rows from a source Selection panel via a modal, instead of blank add.
+              if (bd.picker) { var pk = el('<span class="pick">＋ ' + (bd.picker.label || STRINGS['action.select']) + '</span>'); pk.onclick = (function (secC, rowId, band) { return function () { openBandPicker(secC, rowId, band); }; })(sec.collection, selRow.id, bd); g.append(pk); }
+            }
           }
           grids.append(g);
         });
@@ -341,7 +603,7 @@
 
     var barDiv = el('<div style="margin:8px 0"></div>');
     if (!EDITABLE) {
-      barDiv.append(el('<span class="sub">Read-only' + (si.label ? ' — Fase: ' + si.label : '') + '. Editing is disabled in this state.</span>'));
+      barDiv.append(el('<span class="sub">' + STRINGS['workbench.readOnly'] + (si.label ? ' — ' + STRINGS['state.phase'] + ': ' + si.label : '') + '. ' + STRINGS['workbench.editingDisabled'] + '</span>'));
       app.append(barDiv);
       return;
     }
@@ -353,12 +615,12 @@
         { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(store.toDraft()) })
         .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, b: b }; }); })
         .then(function (res) {
-          if (res.ok) { pendingMsg = { className: "msg ok", text: (label || "Saved") + "." }; store = createStore({ workbench: store.descriptor, title: store.title, aggregate: store.aggregate, data: res.b }); render(); }
+          if (res.ok) { pendingMsg = { className: "msg ok", text: (label || STRINGS['workbench.saved']) + "." }; store = createStore({ workbench: store.descriptor, title: store.title, aggregate: store.aggregate, data: res.b }); render(); refreshServerDerivedFields(); }
           else { msg.className = "msg err"; msg.textContent = "Failed: " + (res.b && res.b.message || r.status); }
         })
         .catch(function (e) { msg.className = "msg err"; msg.textContent = "Error: " + e; });
     }
-    var save = el('<button class="btn">Save</button>'); save.onclick = function () { commitDraft("Saved"); };
+    var save = el('<button class="btn">' + STRINGS['action.save'] + '</button>'); save.onclick = function () { commitDraft(STRINGS['workbench.saved']); };
     barDiv.append(save);
     // Lifecycle transition actions available from the current state (e.g. "Confirmar Saída"): set the
     // status field to the target state and commit; the persistence adapter enforces the legal transition.
@@ -431,7 +693,26 @@
         else { store.editBandRow(target.parent, selected, target.band, newRowId, field, value); }
       });
     }
+    // Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.2): transaction.hooks.beforeAction is a
+    // guard invoked over the current draft before ANY declared action's own procedure runs; a
+    // non-ok result aborts with no invoke of the real action at all (same disposition as
+    // aggregate.onValidate: reject outright, no partial effect).
+    function runBeforeActionGuard(onPass) {
+      var proc = store.descriptor.beforeAction;
+      if (!proc) { onPass(); return; }
+      fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate) + "/invoke/" + encodeURIComponent(proc),
+        { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(store.toDraft()) })
+        .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, b: b }; }); })
+        .then(function (res) {
+          if (res.ok) { onPass(); }
+          else { msg.className = "msg err"; msg.textContent = "Failed: " + (res.b && res.b.message || "beforeAction rejected this action"); }
+        })
+        .catch(function (e) { msg.className = "msg err"; msg.textContent = "Error: " + e; });
+    }
     function invokeAction(action, extraInput) {
+      runBeforeActionGuard(function () { invokeActionAfterGuard(action, extraInput); });
+    }
+    function invokeActionAfterGuard(action, extraInput) {
       msg.className = "msg"; msg.textContent = (action.label || "Running") + "…";
       var body = Object.assign({}, store.toDraft(), extraInput || {});
       fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate) + "/invoke/" + encodeURIComponent(action.procedure),
@@ -440,8 +721,23 @@
         .then(function (res) {
           if (res.ok) {
             pendingMsg = { className: "msg ok", text: (action.label || "Done") + " — review and Save." };
-            if (action.applyTo) { applyResultTo(action.applyTo, res.b); } else { store.patch(res.b); }
-            render();
+            // Move 6 Move B §B.4: afterAction subsumes applyTo -- a procedure receiving {draft,
+            // result} and returning a patched draft is strictly more general than a static field
+            // mapping, and needs no mode enum ever. Falls back to the retired applyTo/full-patch
+            // behavior when the action declares no afterAction.
+            if (action.afterAction) {
+              var draftBeforeFold = store.toDraft();
+              fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate) + "/invoke/" + encodeURIComponent(action.afterAction),
+                { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+                  body: JSON.stringify({ draft: draftBeforeFold, result: res.b }) })
+                .then(function (r2) { return r2.ok ? r2.json() : null; })
+                .then(function (folded) { if (folded) store.patch(folded); render(); refreshServerDerivedFields(); })
+                .catch(function () { render(); refreshServerDerivedFields(); });
+            } else {
+              if (action.applyTo) { applyResultTo(action.applyTo, res.b); } else { store.patch(res.b); }
+              render();
+              refreshServerDerivedFields();
+            }
           }
           else { msg.className = "msg err"; msg.textContent = "Failed: " + (res.b && res.b.message || "error"); }
         })
@@ -489,7 +785,7 @@
 
   // A per-region revert control (C8): discards that region's staged edits back to the baseline.
   function regionRevert(scope, c) {
-    var b = el('<button class="rev" title="Discard changes in this region">⟲ revert</button>');
+    var b = el('<button class="rev" title="' + STRINGS['workbench.revertTitle'] + '">⟲ ' + STRINGS['workbench.revert'] + '</button>');
     b.onclick = function (e) { e.stopPropagation(); store.revertRegion(scope, c); render(); };
     return b;
   }
@@ -506,12 +802,12 @@
     var returnMapping = null;
     var overlay = el('<div class="modal"></div>');
     var card = el('<div class="modal-card"></div>');
-    card.append(el('<div class="modal-hd"><span>' + (picker.label || "Selecionar") + '</span></div>'));
+    card.append(el('<div class="modal-hd"><span>' + (picker.label || STRINGS['action.select']) + '</span></div>'));
     var body = el('<div class="modal-bd"><p class="sub">Loading…</p></div>');
     card.append(body);
     var ft = el('<div class="modal-ft"></div>');
-    var cancel = el('<button class="btn ghost">Cancelar</button>'); cancel.onclick = function () { overlay.remove(); };
-    var add = el('<button class="btn">Adicionar</button>');
+    var cancel = el('<button class="btn ghost">' + STRINGS['action.cancel'] + '</button>'); cancel.onclick = function () { overlay.remove(); };
+    var add = el('<button class="btn">' + STRINGS['action.add'] + '</button>');
     add.onclick = function () {
       Object.keys(chosen).forEach(function (k) {
         var src = chosen[k]; var values = {};
@@ -591,7 +887,7 @@
     app.append(el('<div id="listtable"></div>'));
     renderTableOnly();
     var barDiv = el('<div style="margin:8px 0"></div>');
-    var neu = el('<button class="btn">New</button>'); neu.onclick = function () { openRow("new"); };
+    var neu = el('<button class="btn">' + STRINGS['action.new'] + '</button>'); neu.onclick = function () { openRow("new"); };
     barDiv.append(neu); app.append(barDiv);
   }
   function renderTableOnly() {
@@ -629,7 +925,27 @@
     var url = "/api/runtime/metadata/ui/panels/" + encodeURIComponent(PANEL) + (wbId ? "?id=" + encodeURIComponent(wbId) : "");
     fetch(url, { headers: authHeaders() })
       .then(function (r) { return r.json(); })
-      .then(function (resp) { store = createStore(resp); render(); })
+      .then(function (resp) {
+        store = createStore(resp);
+        // Move 6 Move D: load every app-owned web/regions/<name>.js this descriptor declares
+        // BEFORE the first render, so mountRegion() never races a component's own script tag.
+        return loadRegionScripts(componentNamesIn(store.descriptor)).then(function () { return resp; });
+      })
+      .then(function () {
+        // Move 6 Move B: transaction.hooks.onLoad -- runs once against the freshly loaded draft,
+        // before the first render; its returned state becomes the initial draft (docs/MOVE6_TYPED_SURFACE_PLAN.md).
+        var onLoad = store.descriptor.onLoad;
+        if (onLoad) {
+          fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate) + "/invoke/" + encodeURIComponent(onLoad),
+            { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(store.toDraft()) })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (patched) { if (patched) store.patch(patched); render(); refreshServerDerivedFields(); })
+            .catch(function () { render(); refreshServerDerivedFields(); });
+        } else {
+          render();
+          refreshServerDerivedFields();
+        }
+      })
       .catch(function (e) { document.getElementById("app").innerHTML = '<p class="sub">Failed to load workbench: ' + e + '</p>'; });
   }
   document.addEventListener("DOMContentLoaded", boot);

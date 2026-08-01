@@ -71,11 +71,54 @@ public class BusinessUiEmitterWorkbenchTest {
         assertTrue(html.contains("/api/runtime/aggregate/"), "page commits via the aggregate POST");
         assertFalse(html.contains("{{"), "no unrendered mustache placeholders");
 
+        // Move 6 Move D: every generated workbench page ships the mounted-component machinery
+        // unconditionally (an app using none of it never even calls these), so a model that later
+        // adds transaction.regions gets it without a generator change.
+        assertTrue(html.contains("window.npdev.regions"), "page carries the global region-mount registry");
+        assertTrue(html.contains("function mountRegion("), "page can mount a region's declared component");
+        assertTrue(html.contains("function regionApi("), "page builds the narrowed mount api");
+        assertTrue(html.contains("function loadRegionScripts("), "page auto-injects app-owned web/regions/<name>.js");
+
         // The nav manifest links the workbench panel straight to its served page.
         String manifest = Files.readString(out.resolve("src/main/resources/static/npdev-business-ui/generated-ui-manifest.json"));
         assertTrue(manifest.contains("\"workbenchUrl\":\"/npdev-workbench/ExpedicaoWorkbench.html\"")
                         || manifest.contains("\"workbenchUrl\" : \"/npdev-workbench/ExpedicaoWorkbench.html\""),
                 "manifest should link the workbench panel to its page; got: " + manifest);
+    }
+
+    /** Move 6 Move A: the workbench page's STRINGS catalogue merges the platform's English defaults
+     * with any app-declared {@code settings.strings} override -- proving the fault line named in
+     * docs/MOVE6_TYPED_SURFACE_PLAN.md §2 (a generated app rendering "Save" beside a hardcoded
+     * "Adicionar") is closed: nothing is hardcoded in the template anymore. */
+    @Test
+    void settingsStringsOverridesRenderIntoWorkbenchPage() throws Exception {
+        CompiledModel model = compile("""
+            {
+              "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
+              "concepts": [
+                { "name": "Expedicao", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "cliente", "type": "string" } ] },
+                { "name": "ExpedicaoItem", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "expedicaoId", "type": "uuid" } ] }
+              ],
+              "aggregates": [
+                { "name": "Expedicao", "root": "Expedicao",
+                  "collections": [ { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned" } ] }
+              ],
+              "autoPanels": [ { "aggregate": "Expedicao" } ],
+              "settings": { "locale": "pt-BR", "strings": { "action.save": "Salvar" } }
+            }
+            """);
+
+        Path out = emit(model);
+        String html = Files.readString(out.resolve("src/main/resources/static/npdev-workbench/ExpedicaoWorkbench.html"));
+        assertTrue(html.contains("var STRINGS ="), "page carries the resolved string catalogue");
+        assertTrue(html.contains("Salvar"), "app override for action.save renders into the page");
+        assertTrue(html.contains("Select"), "an id the app didn't override keeps the platform English default");
+        assertFalse(html.contains("Selecionar"),
+                "no hardcoded Portuguese fallback should be baked into the template anymore");
     }
 
     @Test

@@ -97,6 +97,12 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 "src/main/java/com/npdev/generated/controllers/GeneratedBoxViewController.java",
                 templates.render("business-ui-box-view-controller.mustache", ctx)
         );
+        // Move 10 B1 (LC-B1): executes a named declared query (plain or groupBy/aggregate) at
+        // REST, alongside the generic /api/concepts/{conceptName} surface above.
+        writer.writeRelative(
+                "src/main/java/com/npdev/generated/controllers/GeneratedQueryController.java",
+                templates.render("business-ui-query-controller.mustache", ctx)
+        );
         writer.writeRelative(
                 "src/main/resources/static/npdev-business-ui/index.html",
                 templates.render("business-ui-index.mustache", Map.of())
@@ -156,12 +162,21 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             } catch (com.fasterxml.jackson.core.JsonProcessingException ignored) {
                 // fall back to empty filter list
             }
+            String stringsJson;
+            try {
+                stringsJson = OBJECT_MAPPER.writeValueAsString(model.getSettings().getStrings());
+            } catch (com.fasterxml.jackson.core.JsonProcessingException ignored) {
+                stringsJson = "{}";
+            }
             Map<String, Object> ctx = new LinkedHashMap<>();
             ctx.put("panelName", panel.name());
             ctx.put("aggregateName", aggregateName);
             ctx.put("title", panel.title() == null || panel.title().isBlank() ? panel.name() : panel.title());
             ctx.put("selectionPanel", selectionPanel);
             ctx.put("filtersJson", filtersJson);
+            // Move 6 Move A: the app's full resolved string catalogue (platform English defaults
+            // merged with any settings.strings overrides) -- see CompiledSettings/PlatformStrings.
+            ctx.put("stringsJson", stringsJson);
             writer.writeRelative(
                     "src/main/resources/static/npdev-workbench/" + panel.name() + ".html",
                     templates.render("workbench-page.html.mustache", ctx));
@@ -620,12 +635,22 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 gadgetNode.put("name", gadget.name());
                 gadgetNode.put("type", gadget.type());
                 gadgetNode.put("title", gadget.title() == null || gadget.title().isBlank() ? gadget.name() : gadget.title());
+                // Move 10 B2 (LC-B2): null (not "") for an unset chart binding field, so shell.js's
+                // gadget renderers can cheaply check `gadget.query` etc. without a blank-string trap.
+                gadgetNode.put("query", blankToNull(gadget.query()));
+                gadgetNode.put("x", blankToNull(gadget.x()));
+                gadgetNode.put("y", blankToNull(gadget.y()));
+                gadgetNode.put("series", blankToNull(gadget.series()));
                 gadgetNodes.add(gadgetNode);
             }
             node.put("gadgets", gadgetNodes);
             nodes.add(node);
         }
         return nodes;
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 
     private static Map<String, Object> guidePageRegionsNode(CompiledGuidePageRegions regions) {
@@ -916,9 +941,16 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         reference.put("displayTemplate", firstNonBlank(referenceDisplayTemplate(field), ""));
         reference.put("previewFields", effectiveReferencePreviewFields(field, target, displayFields));
         reference.put("defaultFilter", firstNonBlank(defaultFilter, ""));
-        parseDefaultFilterExpression(defaultFilter, target).ifPresent(expression -> reference.put("defaultFilterExpression", expression));
+        // B16/B19 (Move 9 A3): referenceSemantics.defaultFilter's older colon/bare-equals grammar
+        // wins if declared (unchanged, existing corpus behavior); picker.filter's visibleWhen-style
+        // "field == 'literal'" / "field != 'literal'" grammar is the fallback -- one target shape
+        // (defaultFilterExpression), two accepted authoring syntaxes.
+        parseDefaultFilterExpression(defaultFilter, target)
+                .or(() -> parsePickerFilterExpression(field.getPicker() == null ? null : field.getPicker().filter(), target))
+                .ifPresent(expression -> reference.put("defaultFilterExpression", expression));
         reference.put("filterMode", "bounded-lookup-v1.1");
-        boolean multiple = field.getReferenceSemantics() != null && field.getReferenceSemantics().isMultiple();
+        boolean multiple = (field.getReferenceSemantics() != null && field.getReferenceSemantics().isMultiple())
+                || (field.getPicker() != null && field.getPicker().multiSelect());
         reference.put("multiple", multiple);
         if (multiple && sourceConcept != null) {
             // The many-to-many bond's own member list/add/remove/replace routes
@@ -1080,6 +1112,51 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 : field.getReferenceSemantics().getPreviewFields();
         List<String> previewFields = existingFields(target, explicit);
         return previewFields.isEmpty() ? displayFields : previewFields;
+    }
+
+    /**
+     * B16/B19 (Move 9 A3): translates {@code picker.filter}'s {@code visibleWhen}-style grammar
+     * ({@code "field == 'literal'"} / {@code "field != 'literal'"}, an optional {@code $row.} prefix
+     * on the field, per the boundary's own example) into the SAME {@code {field, operator, value}}
+     * shape {@link #parseDefaultFilterExpression} already produces from {@code
+     * referenceSemantics.defaultFilter}'s older colon/bare-equals grammar -- one target shape the
+     * client/server filtering pipeline already consumes, two accepted authoring syntaxes.
+     */
+    private static Optional<Map<String, Object>> parsePickerFilterExpression(String expression, CompiledConcept target) {
+        if (expression == null || expression.isBlank()) {
+            return Optional.empty();
+        }
+        String trimmed = expression.trim();
+        int notEqualsIndex = trimmed.indexOf("!=");
+        int equalsIndex = trimmed.indexOf("==");
+        String field;
+        String operator;
+        String value;
+        if (notEqualsIndex >= 0 && (equalsIndex < 0 || notEqualsIndex < equalsIndex)) {
+            field = trimmed.substring(0, notEqualsIndex).trim();
+            operator = "ne";
+            value = trimmed.substring(notEqualsIndex + 2).trim();
+        } else if (equalsIndex >= 0) {
+            field = trimmed.substring(0, equalsIndex).trim();
+            operator = "eq";
+            value = trimmed.substring(equalsIndex + 2).trim();
+        } else {
+            return Optional.empty();
+        }
+        if (field.startsWith("$row.")) {
+            field = field.substring("$row.".length());
+        }
+        if (value.length() >= 2 && value.startsWith("'") && value.endsWith("'")) {
+            value = value.substring(1, value.length() - 1);
+        }
+        if (field.isEmpty() || firstExistingField(target, field) == null) {
+            return Optional.empty();
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("field", field);
+        out.put("operator", operator);
+        out.put("value", value);
+        return Optional.of(out);
     }
 
     private static Optional<Map<String, Object>> parseDefaultFilterExpression(String expression, CompiledConcept target) {
