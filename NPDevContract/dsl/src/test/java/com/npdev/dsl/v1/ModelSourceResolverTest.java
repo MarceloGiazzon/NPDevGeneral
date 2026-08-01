@@ -226,6 +226,54 @@ class ModelSourceResolverTest {
     }
 
     @Test
+    void packContributedRolesPropertyScopesAndPropertiesAreMergedNotDropped() throws Exception {
+        // Move 13 / REG-108: roles, propertyScopes and properties are top-level arrays exactly like
+        // domainTypes/capabilities/etc, but were missing from MODEL_ARRAY_KEYS -- a pack declaring
+        // any of the three had it silently dropped by mergePackNonConceptArrays, which only loops
+        // that set. Root-level declarations of these three were never affected (a separate,
+        // unrecognized-key passthrough in resolveRoot covers the root only) -- this test is about
+        // pack-contributed declarations specifically.
+        write("pack/tenancy.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "tenancy",
+                  "version": "1.0.0",
+                  "roles": [{ "name": "PackRole", "grants": ["EXECUTE_FLOW"] }],
+                  "propertyScopes": [{ "name": "tenant" }],
+                  "properties": [
+                    { "name": "pack.pageRows", "type": "int", "default": 25, "settableAt": ["tenant"] }
+                  ]
+                }
+                """);
+        Path model = write("model.json", """
+                {
+                  "namespace": "demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [{ "$ref": "pack/tenancy.json" }],
+                  "concepts": [
+                    { "name": "RootOnly", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
+                  ],
+                  "roles": [{ "name": "RootRole", "grants": ["READ_EXECUTIONS"] }],
+                  "propertyScopes": [{ "name": "user", "from": "$user.id" }],
+                  "properties": [
+                    { "name": "root.pageRows", "type": "int", "default": 10, "settableAt": ["user"] }
+                  ]
+                }
+                """);
+
+        JsonNode resolved = new ModelSourceResolver().resolve(model).resolvedRoot();
+
+        assertEquals(2, resolved.get("roles").size());
+        assertEquals("RootRole", resolved.get("roles").get(0).get("name").asText());
+        assertEquals("PackRole", resolved.get("roles").get(1).get("name").asText());
+        assertEquals(2, resolved.get("propertyScopes").size());
+        assertEquals("tenant", resolved.get("propertyScopes").get(1).get("name").asText());
+        assertEquals(2, resolved.get("properties").size());
+        assertEquals("pack.pageRows", resolved.get("properties").get(1).get("name").asText());
+    }
+
+    @Test
     void packAliasOverridesPackIdentifier() throws Exception {
         write("pack/catalog.json", """
                 {

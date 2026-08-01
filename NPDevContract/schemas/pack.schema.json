@@ -154,6 +154,33 @@
         ]
       }
     },
+    "roles": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "model.schema.json#/$defs/role" },
+          { "$ref": "model.schema.json#/$defs/localModelRef" }
+        ]
+      }
+    },
+    "propertyScopes": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "model.schema.json#/$defs/propertyScope" },
+          { "$ref": "model.schema.json#/$defs/localModelRef" }
+        ]
+      }
+    },
+    "properties": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "model.schema.json#/$defs/property" },
+          { "$ref": "model.schema.json#/$defs/localModelRef" }
+        ]
+      }
+    },
     "metadata": {
       "type": "object"
     },

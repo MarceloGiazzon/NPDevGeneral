@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**108 item(s) migrated: 0 open/partial, 108 done.**
+**109 item(s) migrated: 0 open/partial, 109 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -20,6 +20,7 @@
 | REG-105 | Move 10 B1's groupBy/aggregates query primitive is single-concept only -- no cross-concept join, so a dashboard rollup that needs one (e.g. WmsOffice's retired analytics.html 'Estoque por Produto' widget: sum LocalArmazenagemLote.quantidade grouped via a join through Lote to Produto) cannot be expressed | GAP | LOW | DONE | 2026-08-01 |
 | REG-106 | SchemaLifecycleExecutor.migrate() skipped flyway.repair() whenever the schema fingerprint was unchanged, but V1's generated migration SQL text can drift (comments/emission order) independently of the structural fingerprint -- a plain model.json edit with zero concept/table changes crashed the boot with a Flyway 'Migration checksum mismatch' on the next regeneration | BUG | MEDIUM | DONE | 2026-08-01 |
 | REG-107 | PanelRuntime.executeAction's conceptquery binding fetches an entire concept unbounded via ConceptGateway.list -- the same memory/scale defect LC-P0 fixed for the declared-Panel dataSource path, out of that fix's stated scope | BUG | LOW | DONE | 2026-08-01 |
+| REG-108 | roles/propertyScopes/properties were absent from ModelSourceResolver's MODEL_ARRAY_KEYS (and from pack.schema.json's allowlist) -- a pack or local fragment declaring any of the three had its declaration silently dropped during composition, with no error | BUG | MEDIUM | DONE | 2026-08-01 |
 | REG-11 | LNCH-20: cross-platform build scripts (gradlew.bat literals, portable cache dir) | GAP | LOW | DONE | 2026-07-21 |
 | REG-12 | LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped | GAP | HIGH | DONE | 2026-07-21 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
@@ -787,6 +788,70 @@ fix to the original `ConceptGateway.list(...)` call in a generated app
 fail with all 1005 rows returned; restoring the fix made it pass again. Full generated-app build
 + all 9 `PanelRuntimeTest` cases green throughout (`:test` via the app's own Gradle wrapper, libs
 synced via `scripts/runtimehost/sync-runtimehost-libs.ps1`).
+
+### REG-108 — roles/propertyScopes/properties were absent from ModelSourceResolver's MODEL_ARRAY_KEYS (and from pack.schema.json's allowlist) -- a pack or local fragment declaring any of the three had its declaration silently dropped during composition, with no error
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-01)
+**Verification:** UNIT_TESTED
+**Source:** Found while executing Move 13 (MOVE13_CLOSE_EVERYTHING_SPEC.md) Phase P3's own R4 rule ("pack
+composition drops fields silently"), which cited REG-104/ModelResolver as precedent. Reading
+REG-104.yml showed that ledger item is actually about RolePermissions.toRole() returning null for
+an undeclared role name (X0-5) -- a kernel-layer authorization bug, not a parser/pack-composition
+one. No ledger item existed yet for a pack-composition bug against propertyScopes/properties, so
+this item files the real one, with the real root cause, found by reading
+NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java directly rather
+than trusting the spec's citation.
+
+ModelResolver.resolve() (the AST-level specialization resolver) already threads propertyScopes/
+properties through correctly (it just passes source.getPropertyScopes()/getProperties() straight
+into the resolved ModelAst) -- that class was never the problem. The real gap is one layer
+earlier, in ModelSourceResolver (the JSON-level pack/fragment composer): its private
+MODEL_ARRAY_KEYS set is the fixed list of top-level array keys mergePackNonConceptArrays and
+appendFragment loop to concatenate pack/fragment content into the resolved model. roles (RC-B1),
+propertyScopes and properties (RC-A1) are all schema-declared top-level arrays exactly like
+domainTypes/capabilities/events/etc, which are all already in that set -- but none of the three
+were ever added to it when they shipped. A pack or local $ref fragment declaring any of them had
+the declaration silently discarded (mergePackNonConceptArrays only iterates MODEL_ARRAY_KEYS, no
+fallback), with no error at any layer -- an X0-shaped defect (this register's very question:
+"what does it do with input it cannot handle?" -- here, "silently drop it").
+
+Root-level declarations (an app's own model.json declaring roles/propertyScopes/properties
+directly, not through a pack) were NOT affected -- resolveRoot's own generic
+"pass through any unrecognized top-level key verbatim" fallback (for keys outside
+MODEL_ARRAY_KEYS/ROOT_SCALAR_KEYS) already covered the root case by accident, which is exactly why
+this had not yet been noticed: every app that uses these three fields today (WmsOffice's roles,
+Move 12 P4's propertyScopes/properties) declares them at the app's own root, never inside a pack.
+The gap was live but dormant -- it would have fired the moment Move 13 P3.1 (RC-A2, "changes the
+built-in workspace pack") or P3.4 (RC-A6, folding `settings` into property declarations at the
+pack level) tried to have the workspace PACK declare its own properties.
+
+**Surface:** `dsl`
+**Files:**
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java`
+- `NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/ModelSourceResolverTest.java`
+- `NPDevContract/schemas/pack.schema.json`
+- `NPDevContract/dsl/src/main/resources/schema/pack.schema.json`
+
+Fix: added "roles", "propertyScopes", "properties" to MODEL_ARRAY_KEYS (a one-line change --
+every consumer of that set, resolveRoot/appendFragment/mergePackNonConceptArrays/
+isRecognizedRootKey, is generic over its contents, so no other code change was needed) and to
+both copies of pack.schema.json's property allowlist (additionalProperties:false was rejecting a
+pack file that tried to declare any of the three before the composer even got a chance to drop
+them -- a second, independent place the same class of gap could bite).
+
+Verified: a new test, packContributedRolesPropertyScopesAndPropertiesAreMergedNotDropped
+(ModelSourceResolverTest), declares all three from a pack alongside root-level declarations of the
+same three keys and asserts the resolved model carries both (root entries first, pack entries
+appended -- the same order convention every other MODEL_ARRAY_KEYS member already follows).
+Confirmed root-level-only usage (the shape every existing app, including WmsOffice, uses today)
+is behaviourally unchanged: a plain inline array item with no $ref is still deepCopy()'d verbatim
+by resolveArray, the same as the generic passthrough it replaces for these three keys. Full DSL
+test suite green after the fix (`gradlew :NPDevContract:dsl:test`, 0 failures).
+
+Not done here, left to Move 13 P3.1/P3.4 itself: no dsl-conformance-max corpus model yet exercises
+a PACK contributing roles/propertyScopes/properties (only root-level declarations are corpus-
+covered today) -- P3.1/P3.4 is exactly the work that will need this shape for real, and should add
+the corpus fixture alongside it (R6).
 
 ### REG-11 — LNCH-20: cross-platform build scripts (gradlew.bat literals, portable cache dir)
 

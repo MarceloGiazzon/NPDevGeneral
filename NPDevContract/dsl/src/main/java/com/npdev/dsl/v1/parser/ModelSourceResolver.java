@@ -57,7 +57,17 @@ public final class ModelSourceResolver {
             "ruleProfiles",
             "procedures",
             "panels",
-            "guidePages"
+            "guidePages",
+            // Move 13 (REG-108): roles/propertyScopes/properties are top-level arrays exactly like
+            // the ones above, but were never added here when they shipped (RC-A1/RC-B1) -- a pack
+            // or fragment declaring any of the three had its declaration silently dropped by
+            // mergePackNonConceptArrays/appendFragment, which only ever loop this set. Root-level
+            // declarations were unaffected (resolveRoot's own unrecognized-key passthrough, below,
+            // covers the root only). X0-shaped: an author authoring a pack-level property gets no
+            // error, just a property that silently never resolves.
+            "roles",
+            "propertyScopes",
+            "properties"
     );
     private static final Set<String> ROOT_SCALAR_KEYS = orderedSet(
             "$schema",
