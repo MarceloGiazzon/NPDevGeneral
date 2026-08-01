@@ -2,9 +2,10 @@ id: REG-81
 title: "ReleaseGateValidator.validatePromotion (concept.truthLevel promotion gating) is fully implemented and unit-tested but invoked by no real pipeline -- truth-level promotion is effectively dormant"
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-07-30
-verification: NOT_VERIFIED
+closed: 2026-07-30
+verification: VERIFIED_LIVE
 source: |
   docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 6 ("re-verify concept.truthLevel, actionMetadata.
   inputFormHint, field.connectable -- do not implement before establishing which is metadata-only
@@ -37,9 +38,28 @@ detail: |
   gate exists in source but never fires. Distinct from, and narrower than, REG-80 (field.sensitive):
   this is a complete, tested capability sitting unplugged, not missing logic.
 
-  **What would close it** (not attempted, scoped for a future session): wire
-  `ReleaseGateValidator.validatePromotion` into either `GeneratorMain`/`ModelValidatorMain` behind an
-  explicit flag (e.g. `--releaseGate`/`--targetTruthLevel`), or a dedicated CI step analogous to the
-  existing (differently-scoped) `npdev-release-gate.yml`. Left open rather than wired blind: doing so
-  needs a decision on what target truth level/evidence source a real CI run should check against,
-  which is a product decision outside this wave's scope, not a coding gap.
+  **Closed (Move 7 R81, docs/MOVE7_IMPLEMENTATION_SPEC.md)**: wired into `ModelValidatorMain` only
+  (not `GeneratorMain`, not any CI step, not `.github/workflows/npdev-release-gate.yml` -- all
+  explicitly out of scope, since the target truth level/evidence source for an automatic CI check
+  is a product decision this session did not make) behind three opt-in flags: `--releaseGate`
+  (boolean), `--targetTruthLevel=<T0..T6>` (required together with `--releaseGate`, else a single
+  usage diagnostic explaining the requirement), and optional repeatable `--evidencePath=<path>`
+  wired to `ReleaseGateValidator.evidencePaths(...)` (falls back to `EvidenceProvider.none()` when
+  omitted, matching the class's own tested default). `runReleaseGate` iterates every concept in the
+  parsed model and calls `validatePromotion` per concept, mirroring
+  `ReleaseGateValidatorTest.java:56`'s argument shape. `NPDevContract/dsl/build.gradle`'s
+  `validateModel` task gained matching `-PreleaseGate -PtargetTruthLevel=... -PevidencePath=...`
+  pass-through for manual/CI-adjacent invocation.
+
+  Verified live: `:validateModel` with no new flags is byte-identical to before (0 diagnostics on
+  `dsl-conformance-max`, confirming zero behavior change for every existing caller); with
+  `-PreleaseGate -PtargetTruthLevel=T3` against the same model, every T1 concept in its bond
+  closure now reports a real `truth_closure_below_target` diagnostic; `-PreleaseGate` alone (no
+  target level) reports the usage diagnostic instead of silently doing nothing. 6 new unit tests in
+  `ModelValidatorMainReleaseGateTest` (the CLI's first-ever test coverage) cover: all-concepts-pass,
+  a real closure violation, T4+ missing-evidence, T4+ with matching evidence paths suppressing it,
+  and both malformed-flag-usage cases. `docs/MOVE7_IMPLEMENTATION_SPEC.md`'s cited
+  `docs/DSL_REFERENCE.md:60-63` overclaim was actually located at
+  `NPDevContract/docs/MODEL-CONTRACT.md` (the ledger's own file citation was stale/wrong -- verified
+  by grepping the exact quoted prose repo-wide) and has been corrected there to name the real,
+  opt-in invocation surface instead of implying automatic enforcement.

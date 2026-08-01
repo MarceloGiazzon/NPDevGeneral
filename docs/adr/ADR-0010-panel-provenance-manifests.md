@@ -10,6 +10,11 @@ WmsOffice measures **model JSON 259,503 B vs hand-written HTML/JS/Java 257,659 B
 31 KB, …). Those files are opaque text to the platform: nothing records that `inventario.html` reads
 `Inventario.quantidade`, or that it invokes `flow:GerarTemplateInventario`.
 
+(The ratio itself was later superseded by bytes-deleted-at-parity as the tracked metric, since it is
+gameable — it improves as the model grows even when nothing hand-written is actually replaced; see
+`docs/SCREEN_TAXONOMY.md`. The two figures above stand as a 2026-07-28 snapshot; this ADR's decision
+does not depend on the ratio.)
+
 Today, a rename silently breaks a hand-written screen at runtime, found by an operator, not a build:
 
 ```

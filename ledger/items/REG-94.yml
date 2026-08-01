@@ -1,0 +1,123 @@
+id: REG-94
+title: "run-ai-knowledge-gate.ps1 has been RED on two independent steps and nobody noticed -- 11 untriaged security-pattern hits from the Moves 9-10 schema-engine work, and a script-inventory scan that walked into node_modules and failed on vendored third-party .js files"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-31
+closed: 2026-07-31
+verification: VERIFIED_LIVE
+source: |
+  Found in Move 11 W2 (docs/MOVE11_CLOSE_REMAINING_SPEC.md O4) while hosting the two orphaned
+  checkers -- i.e. found by running the gate that O4 exists to make runnable, on the first run after
+  wiring it up. Neither failure is caused by Move 11's own changes; both were measured against the
+  pre-Move-11 tree.
+
+  Step [6/21], untriaged security-pattern hits:
+
+      -- 410 hit(s), 399 already cleared, 11 needing triage
+         conditional-guard-no-else:        14 total, 0 new
+         read-without-tenant-predicate:    83 total, 3 new
+         sql-string-building:             139 total, 8 new
+         swallowed-security-exception:     80 total, 0 new
+         unbounded-caller-input:           94 total, 0 new
+
+  Step [19/19] (now [21/21]), script inventory:
+
+      - Script with no valid invocation declaration:
+        scripts/quality/json-schema-validator/node_modules/fast-uri/test/rfc-3986.test.js
+        (no invocation declaration in scripts/policy/script-invocation-declarations.json)
+      ... and ~40 more, all under node_modules/
+surface: scripts/quality, schema-engine
+files:
+  - scripts/quality/security-pattern-sweep-allowlist.json
+  - scripts/quality/run-script-inventory-check.ps1
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/CrossEngineDataPromotion.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/BackfillPass.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/DestructiveRecreationPass.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/ExpressionBackfillPreview.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaDropSnapshotRestorer.java
+detail: |
+  Two unrelated causes, filed together because they share one consequence and one lesson.
+
+  **HALF A -- 11 untriaged security-pattern hits. Deliberately NOT triaged in Move 11 W2 (as filed); triaged in Wave 0.1, see the closure section below.**
+
+  The sweep's blocking step demands that every new hit be triaged as (i) a genuine finding, (ii)
+  safe-with-a-reason plus an allowlist fingerprint, or (iii) handed to the session that owns that
+  surface. The 11 are in the schema-engine surface built across Moves 9-10:
+
+    CrossEngineDataPromotion.java:147,148,235   (Move 9 A4, H2->Postgres data promotion)
+    BackfillPass.java:350,433
+    DestructiveRecreationPass.java:225
+    ExpressionBackfillPreview.java:88
+    JdbcBusinessConceptStore.java:98,110
+    SchemaDropSnapshotRestorer.java:204,281
+
+  Almost all are the `safeTable`/`columnList`/`placeholders` identifier-splicing shape that is
+  already cleared 399 times elsewhere on the reasoning that identifiers go through
+  `SchemaLifecycleExecutor.safeIdentifier()`. That similarity is exactly why they must NOT be
+  batch-cleared from a plan that did not build them: the sweep's own rule is that a false "safe" is
+  worse than a noisy hit, and the only value in this instrument is that each fingerprint means
+  somebody actually traced that identifier to its source. Move 11 did not build this surface and has
+  not traced them, so clearing them here would be the exact failure the instrument exists to prevent.
+  This is option (iii): handed to whoever owns the schema-engine surface.
+
+  Measured, not assumed: reverting only Move 11's own `MigrationClaimStore.java` change takes the
+  count 12 -> 11, so Move 11 contributed exactly one hit, and that one was a false positive (a
+  diagnostic string literal beginning with the word SELECT). It was fixed by rewording the message
+  rather than by adding an allowlist entry -- the count is back to the pre-Move-11 baseline of 11.
+
+  **HALF B -- the script-inventory scan walked into node_modules. FIXED in Move 11 W2.**
+
+  `run-script-inventory-check.ps1` excluded `.git/.gradle/build/node_modules/...` when scanning
+  *.md files for `manual-runbook` evidence, but applied NO directory exclusion at all when
+  enumerating the scripts themselves. So after anyone ran `npm ci` in
+  `scripts/quality/json-schema-validator/`, every vendored third-party `.js` file -- fast-uri's test
+  suite, json-schema-traverse, require-from-string -- became "a script under scripts/ with no
+  invocation declaration", and the gate failed. `node_modules` is gitignored and untracked, so a
+  fresh CI checkout has none and passes.
+
+  **That is the sharper half of this finding: a gate whose verdict depends on whether someone
+  installed dependencies.** Green in CI, red locally, for a reason having nothing to do with the
+  code under test -- which trains everyone to disregard its output, and is how the OTHER half
+  (11 real untriaged hits) went unnoticed. Fixed by applying the same exclusion list to both scans.
+
+  **Why one item.** Both were found by the same act -- running the whole gate once, honestly, end to
+  end -- and both had been red for some time with nothing reporting it, which is O4's thesis
+  (docs/MOVE11_CLOSE_REMAINING_SPEC.md) restated in a different artifact: a check that runs but whose
+  RED nobody reads is worth about as much as a check nothing runs. Half B was closed on filing; Half A
+  is closed below.
+
+  ---
+
+  ## CLOSED, Wave 0.1 (2026-07-31, MASTER_AI_PLATFORM_PROGRAMME_v2.md)
+
+  **Half A -- the 11 untriaged hits: TRIAGED, not batch-cleared.** Every verdict was traced to the
+  identifier's source rather than inferred from an already-cleared sibling. Seven `sql-string-building`
+  hits route every spliced identifier through `SchemaLifecycleExecutor.safeIdentifier()`, which
+  REFUSES (throws on) anything outside `[A-Za-z_][A-Za-z0-9_]*`; `CrossEngineDataPromotion` carries a
+  second guard (its column list is intersected with the live columns of both databases first). One of
+  the seven is a plain false positive -- `JdbcBusinessConceptStore.java:110` is a catch block's
+  English message, and the UPDATE pattern matched the words "(for update)". The three
+  `read-without-tenant-predicate` hits are genuinely tenant-independent, and for two of them a tenant
+  predicate would BE the bug: whole-database promotion and drop-snapshot restore would each silently
+  discard every other tenant's data. Rationale recorded in
+  docs/SECURITY_PATTERN_SWEEP_2026-07.md §2.4, per the allowlist's own rule.
+
+      $ python scripts\quality\security-pattern-sweep.py --fail-on-new
+      -- 410 hit(s), 410 already cleared, 0 needing triage
+         conditional-guard-no-else: 14 total, 0 new
+         read-without-tenant-predicate: 83 total, 0 new
+         sql-string-building: 139 total, 0 new
+         swallowed-security-exception: 80 total, 0 new
+         unbounded-caller-input: 94 total, 0 new
+      EXIT=0
+
+  **Half B** was already fixed when this item was filed (the inventory scan's missing directory
+  exclusions).
+
+  **The triage paid for itself with a finding the sweep could not see.** Tracing why
+  `JdbcBusinessConceptStore`'s spliced `shape.tableName()` is safe showed that
+  `SqlIdentifierSupport.toSnake()` sanitizes by REPLACEMENT rather than refusal -- which means two
+  differently-named concepts can compile to the same physical table. Confirmed live: `OrderLine` and
+  `Order Line` both become `order_lines`, with 0 validation errors. Filed as **REG-98** (HIGH).

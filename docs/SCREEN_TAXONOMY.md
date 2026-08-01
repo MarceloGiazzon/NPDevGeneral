@@ -28,15 +28,15 @@ and the impact gate (F4) enforces it; `n/a` = no hand-written screen to manifest
 |---|---|---|---|---|---|---|
 | AuxScreen | `aux-screen` | 6,071 | detail-form | AutoPanel Detail | generated-equivalent | confirmed ¹ |
 | Pigmentampa | `pigmentampa-editor` | 14,341 | detail-form | AutoPanel Detail | generated-equivalent | confirmed ¹ |
-| WmsOffice | `analytics` | 11,455 | dashboard | none | hand-written → contract (F2/F3) | confirmed |
-| WmsOffice | `centro-trabalho` | 30,862 | operator-console | none (evaluated ⁶, not authored) | hand-written → contract; Aggregate Workbench answers the 2-level nesting, still 2 named gaps (⁶) | confirmed |
-| WmsOffice | `conferencia-fiscal` | 22,897 | operator-console | `panel` ⁴ (History half) + Aggregate Workbench ⁷ (NF-e Import) | **partially converted** — History works, NF-e Import now composes (propose->review->commit); Romaneio Import not attempted | confirmed |
-| WmsOffice | `crossdocking` | 12,748 | **operator-console** ² | `panel` ³ | **converted** (15/20 checklist items work ⁷ — C10 half-closed: situacao transition fixed, cross-concept flag sync still cannot-express) | confirmed |
+| WmsOffice | ~~`analytics`~~ | ~~11,455~~ | **dashboard** | `guidePageGadget` ¹⁰ (kpi/bar/table) | **REPLACED 2026-08-01** (Move 10 B2, LC-B2) — now a ~1.1 KB thin host page (`<meta name="npdev-guide-page">` + shell.css/shell.js, zero page-specific JS). Behavioural parity: 2 of 3 original widgets replaced faithfully (Ocupacao por Rua → table gadget; Movimentos por Tipo e Situacao → bar gadget) + 1 new (Locais Ocupados kpi) · 1 named cannot-express (Estoque por Produto needs a cross-concept join B1's single-concept aggregate query does not support — **REG-105**, accepted boundary). Frozen reference kept as `analytics.original.html`. See `move10-b2-charts.txt` | confirmed |
+| WmsOffice | `centro-trabalho` | 30,862 | operator-console | none (evaluated ⁶, not authored) | hand-written → contract; Aggregate Workbench answers the 2-level nesting and the stock-ledger side effect (closed by Move 8 `onCommit`, see ⁶); Sugerir auto-apply, the record-type toggle (C1, cannot-express), and the Planning layer (C2, not attempted) remain | confirmed |
+| WmsOffice | ~~`conferencia-fiscal`~~ | ~~22,897~~ | **operator-console** | `panel` ⁴ (History halves) + Aggregate Workbench ⁷ ⁸ (both Import wizards) | **REPLACED — hand-written page DELETED 2026-07-31** (Move 10 W1.1). Behavioural parity: 10 works · 3 differs (cosmetic) · 1 n/a · **0 cannot-express**. Romaneio Import authored this move as a direct mirror of NF-e Import. Frozen reference kept as `conferencia-fiscal.original.html`. See `docs/MOVE10_W1_CHECKLISTS.md` | confirmed |
+| WmsOffice | ~~`crossdocking`~~ | ~~12,748~~ | **operator-console** ² | `panel` ³ | **REPLACED — hand-written page DELETED 2026-07-30** (Move 8 Part A). Behavioural parity: 15 works · 4 cosmetic differs · 1 n/a · **0 cannot-express**. C10 fully closed (Move 4 `patchConcept` + Move 5 `callProcedure`). Frozen reference kept as `crossdocking.original.html`. See "Checklist re-run after Moves 4–7" below | confirmed |
 | WmsOffice | `excluir-estabelecimento` | 9,820 | detail-form | AutoPanel Detail | generated-equivalent | confirmed |
-| WmsOffice | `inventario` | 28,031 | operator-console | `panel` ⁴ (Historico half) + Aggregate Workbench ⁷ (Importar Contagem) | **partially converted** — Historico works, Importar Contagem now composes; Gerar Template (shape mismatch) and Recebimento por Arquivo (blocked, REG-75) not attempted | confirmed |
+| WmsOffice | `inventario` | 28,031 | operator-console | `panel` ⁴ (Historico half) + Aggregate Workbench ⁷ (Importar Contagem) | **partially converted** — Historico + Importar Contagem work; Gerar Template completed and live-verified Move 10 W1.2 ⁸ (it was declared but behaviourally incomplete: empty `produtoId` column, no zero-qty filter, and it never created the `Gerado` header row wizard 2 selects). Recebimento por Arquivo remains **cannot-express** — 3 named blockers, see ⁸. Not at parity | confirmed |
 | WmsOffice | `login` | 6,773 | auth | generated login | generated-equivalent | confirmed |
 | WmsOffice | `mapa-armazem` | 19,650 | spatial-map | none | hand-written → contract (F2/F3) | confirmed |
-| WmsOffice | `movimentacao-livre` | 23,392 | operator-console | `panel` ⁴ (header+item half) + Aggregate Workbench ⁶ (2-level nesting + Sugerir) | **partially converted** — position nesting + Sugerir now work via Workbench; stock-ledger side effect (`syncOcupacao`) still cannot-express | confirmed |
+| WmsOffice | `movimentacao-livre` | 23,392 | operator-console | `panel` ⁴ (header+item half) + Aggregate Workbench ⁶ (2-level nesting + Sugerir + M6 banner) | **CONVERTED and DELETED 2026-07-31 (Move 11 W5 / Wave −1.3)** ⁹ — 0 `cannot-express`. M6's balanced-quantity banner was never an authoring gap: it was already declared and silently rendering 0 (REG-95). M11 is `differs`, not `cannot-express` — the flow IS reachable from `MovimentoLivrePanel.confirmarMovimentacao` | confirmed |
 | WmsOffice | `novo-estabelecimento` | 16,347 | detail-form | AutoPanel Detail | generated-equivalent | confirmed |
 | WmsOffice | `relatorios` | 10,540 | dashboard | none | hand-written → contract (F2/F3) | confirmed |
 | WmsOffice | `seed-data` | 8,674 | admin-tool | ControlPanel (partial) | hand-written | confirmed |
@@ -104,14 +104,16 @@ these are what each app's `model.json` already declares (`autoPanels`/`panels`/`
 |---|---|---|---|---|
 | AuxScreen | 0 | 2 | 0 | 0 |
 | Pigmentampa | 0 | 2 | 0 | 0 |
-| WmsOffice | 5 ⁷ | 9 ⁵ | 5 ⁷ | 0 |
+| WmsOffice | 6 ⁷ ⁸ | 9 ⁵ | 6 ⁷ ⁸ | 0 |
 | WordLab | *(not scanned — no `web/` dir; declared surfaces alone drive its entire UI)* |
 | Claude Support Desk | *(not scanned — no `web/` dir; declared surfaces alone drive its entire UI)* |
 
 ⁵ Was 4 before 2026-07-29. Move 1 added `CrossDockingConsolePanel` (see ³ above, now fully working
 after Move 2 G1-G3). Move 2 G4 added 4 more: `ConferenciaFiscalNfePanel`, `ConferenciaFiscalRomaneioPanel`,
 `MovimentoLivrePanel`, `InventarioHistoricoPanel` — each a partial conversion of its screen (see ⁴
-above and `docs/MOVE2_G4_CHECKLISTS.md`).
+above and `docs/MOVE2_G4_CHECKLISTS.md`). Still 9 at Move 10 W1: that move added an *aggregate* and
+its `autoPanel` (`RomaneioAggregate`), not a `panels[]` entry — which is why the autoPanel/aggregate
+columns moved 5 → 6 and this one did not.
 
 ⁶ **2026-07-29, `CAPABILITY_ROADMAP.md` Move 3 G1-G2** (`docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md`,
 results in `docs/MOVE3_G2_CHECKLISTS.md`). G1 fixed a real non-atomicity bug in `AggregateRuntime.commit`
@@ -129,6 +131,22 @@ a position edit's stock-ledger side effect (`syncOcupacao`) has no cross-aggrega
 and a `Sugerir` result isn't auto-applied into a new position row by the generic renderer. Neither
 console reaches parity — 0 B deleted, both originals unchanged (see `docs/MOVE3_G2_CHECKLISTS.md`
 §"Deletion eligibility").
+
+**Updated 2026-07-31 (Move 8, then re-checked Move 9 D1):** the stock-ledger residual is now
+**closed** — `Movimento` declares `aggregate.onCommit: RecomputarOcupacaoOnCommitProcedure` (Move 8),
+live-verified including a rollback proof. See `docs/MOVE3_G2_CHECKLISTS.md` M8/M9. The `Sugerir`
+auto-apply residual remains open. Neither console reaches full parity yet: `movimentacao-livre` is
+still blocked by M6 (balanced-quantity banner, no display-only-recompute mechanism) and M11
+(`ConfirmarMovimentacao`'s generic-transition-vs-real-flow gap); `centro-trabalho` by those same two
+plus its own C1 (record-type toggle, cannot-express) and C2 (Planning layer, not attempted). 0 B
+newly eligible for deletion from this re-check.
+
+**Superseded 2026-07-31 (Move 11), see ⁹ for the current state.** Two of the three blockers named in
+the paragraph above turned out to be misdiagnosed, and one was closed by new platform work:
+M6's stated cause ("no display-only-recompute mechanism") was wrong — the mechanism existed and the
+declared banner was silently rendering 0 (REG-95); M11 is `differs`, not a parity blocker;
+C1 is closed by `transaction.uiState` + `$ui.<name>` (Move 11 W6). `movimentacao-livre` is DELETED;
+`centro-trabalho` remains, blocked only by C2.
 
 ⁷ **2026-07-29, `CAPABILITY_ROADMAP.md` Move 3 G3-G4** (`docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md`,
 results in `docs/MOVE3_G3_FINDINGS.md` / `docs/MOVE3_G4_FINDINGS.md` /
@@ -151,6 +169,46 @@ by luck of using single-line sample data). `inventario`'s other two wizards were
 named, not silently skipped: Gerar Template is a genuine shape mismatch (generate+download, not
 persist); Recebimento por Arquivo's commit half is blocked by REG-75. No console reached full
 parity in G3/G4 either — 0 B deleted from either `conferencia-fiscal.html` or `inventario.html`.
+
+**Updated 2026-07-31 (re-checked Move 9 D1):** both blockers named above are now closed at the
+platform level — REG-75 (`patchConcept`) closed Move 4, and the generate-and-download shape
+(`panelAction.resultAs: "download"`) shipped Move 5 Wave 4 — but neither wizard has actually been
+authored yet against `inventario`, so this remains an **authoring gap, not a platform blocker**.
+Same status for `conferencia-fiscal`'s Romaneio Import: the NF-e Import pattern (G3, above) now
+applies directly, unauthored. No new deletions from this re-check.
+
+⁸ **2026-07-31, Move 10 Wave 1** (`docs/MOVE10_W1_CHECKLISTS.md`). The Move 9 D1 re-check
+immediately above claimed all three remaining items were "authoring gap only". Doing the authoring
+found that **true for two of them and wrong for the third**:
+
+- **`conferencia-fiscal`'s Romaneio Import — correct, and it converted.** A new `RomaneioAggregate`
+  + `ParseRomaneioProcedure` mirror `DocumentoFiscalAggregate`/`ParseNfeProcedure` exactly; no new
+  mechanism was needed. Live-verified at REST, at the database, and in a real browser (parse →
+  auto-match by product name → duplicate-number rejection → atomic header+items commit → the row
+  appearing in the existing History panel). That took the console to **0 `cannot-express`**, so
+  `conferencia-fiscal.html` was deleted — the second console to reach the metric's bar.
+- **`inventario`'s Gerar Template — correct, but the item was mis-stated.** It was not "not
+  attempted": Move 5 Wave 4 had already declared it, and it was *behaviourally incomplete* in three
+  ways nobody had checked against the original (`produtoId` column hard-coded to `""`, no
+  zero-quantity filter, and it never created the `Gerado` `InventarioArquivo` header row that wizard
+  2 selects — leaving the two wizards disconnected). All three closed and live-verified.
+- **`inventario`'s Recebimento por Arquivo — the premise was WRONG.** Three independent mechanism
+  gaps, none of them authoring: (1) **REG-92**, panel-action `inputFields` still render
+  `<input type="text">` and silently collapse newlines — REG-76's fix was never mirrored from the
+  Workbench to the Panel — proven live (a 3-line paste arrives with `newlines: 0`), so the wizard
+  fails at "give the server a CSV"; (2) the preview table's columns (`ruaCodigo`, `alerta`, `ok`, …)
+  are declared on no concept, so no band can render them; (3) nothing carries parsed state from a
+  preview action to a confirm action, so "Confirmar commits exactly what you previewed" is not
+  expressible. `inventario.html` is **not** deleted.
+
+Four platform bugs were found in the course of this: **REG-89** (fixed — `patchConcept`'s
+author-time "id is required" rule was never relaxed for `createIfMissing`, making REG-77's shipped
+create-only path unreachable from any model), **REG-93** (fixed — the panel-provenance impact gate
+failed on manifests whose screen had been *deleted*, and had therefore been RED since Move 8's own
+crossdocking deletion, structurally punishing the bytes-deleted metric for succeeding), **REG-90**
+(fixed — `Rebuild-And-Restage.ps1` accepted `-BuildRoot` but never passed it to the build step),
+and **REG-91** (open — a claim table with NOT NULL columns makes an app permanently unbootable
+behind the opaque message "No data is available").
 
 **Mechanically: zero candidates.** No hand-written class reaches ≥ 2 apps — every genuinely
 hand-written screen in the measured corpus (`operator-console`, `dashboard`, `spatial-map`,
@@ -231,16 +289,56 @@ original is deleted **only** at parity; partial conversion counts zero, by desig
 cannot be gamed by partial work.
 
 ```
-Eligible this session (Move 2 G4 + Move 3 G1-G4), by console:
-  crossdocking.html        12,748 B   15/20 items — not at parity (C10's flag-sync half open, REG-75)
-  conferencia-fiscal.html  22,897 B   History + NF-e Import work; Romaneio Import untried — not at parity
-  movimentacao-livre.html  23,392 B   2-level nesting + Sugerir work; stock-ledger sync open — not at parity
-  centro-trabalho.html     30,862 B   same blockers as movimentacao-livre, plus 2 more, unattempted — not at parity
-  inventario.html          28,031 B   Historico + Importar Contagem work; 2 of 3 wizards untried — not at parity
+Eligible, by console (current as of Move 11 Wave −1, 2026-07-31):
+  crossdocking.html        12,748 B   DELETED 2026-07-30 (Move 8 Part A)  — see "Deletion verdict" below
+  conferencia-fiscal.html  22,897 B   DELETED 2026-07-31 (Move 10 W1.1)   — see ⁸ and docs/MOVE10_W1_CHECKLISTS.md
+  movimentacao-livre.html  23,392 B   DELETED 2026-07-31 (Move 11 W5 / Wave −1.3) — see ⁹
+  centro-trabalho.html     30,862 B   C1 (record-type toggle) CLOSED by Move 11 W6's transaction.uiState +
+                                      $ui.<name>; C2 (Planning layer) unattempted — not at parity
+  inventario.html          28,031 B   Historico + Importar Contagem + Gerar Template work; Recebimento por Arquivo
+                                      cannot-express — 2 blockers left (was 3; REG-92 closed one) — not at parity
   ---------------------------------
   Total eligible          117,930 B
-  Deleted                       0 B
+  Deleted                  12,748 B      crossdocking       (Move 8,  2026-07-30)
+                         + 22,897 B      conferencia-fiscal (Move 10, 2026-07-31)
+                         + 23,392 B      movimentacao-livre (Move 11, 2026-07-31)
+                          ---------
+                           59,037 B
+  Remaining eligible       58,893 B      centro-trabalho + inventario (both blocked on Part 2's decision)
 ```
+
+**3 of 5 operator consoles are now fully converted and deleted** (was 2 of 5).
+
+Live hand-written total across all of `AppGen/apps/_official/WmsOffice/web/*.html`, excluding frozen
+`*.original.html` references: **151,652 B** (was 175,044 B).
+
+⁹ **2026-07-31, Move 11 W5 + Wave −1.3** (`MOVE11_CLOSE_REMAINING_SPEC.md`,
+`MASTER_AI_PLATFORM_PROGRAMME_v2.md`). The last blocker was not what three moves of notes said it
+was. M6's balanced-quantity banner had been recorded `cannot-express` since Move 3 for "no
+computed/derived-display mechanism in the generic Workbench" — but the mechanism shipped in Move 5
+Wave 2B, the banner was **already declared** in this app's own model, and it had been rendering `0`
+from the day it shipped: `evaluateDerived` split its path on `.` before matching, so every
+`filter(...)` form — including the function's own documented example — silently evaluated to zero
+(**REG-95**). Fixed by tokenizing instead of splitting, and proven in a real browser with two
+distinct non-zero totals (`Total Itens: 25 | Total Origem: 7 | Total Destino: 25`), deliberately
+seeded so a green could not be confused with the bug's own answer of 0.
+
+M11 (`ConfirmarMovimentacao` flow vs. the Workbench's generic lifecycle transition) stays **differs**,
+as Move 3 recorded it — the original console's Confirmar is reproduced by
+`MovimentoLivrePanel.confirmarMovimentacao`, which is flow-bound and does emit `MovimentoConfirmado`
+(verified live in Move 2 G4). The Workbench's generic transition is a second path that writes the
+status field without the event; making an `onCommit` hook emit it conditionally is blocked by
+**REG-96** (a procedure's branch predicate is truthiness-only), filed rather than half-built.
+
+What the deletion changed: `menu.json`'s flat `{"kind":"PAGE","target":"movimentacao-livre.html"}`
+became a submenu of two `{"kind":"BUSINESS","target":"__panel-<Name>__"}` children
+(`MovimentoLivrePanel`, `MovimentoWorkbench`) — the same convention conferencia-fiscal's deletion
+used, no new one invented; `pages.json`'s companion-page registration was removed;
+`movimentacao-livre.original.html` is kept frozen as the reference, and
+`movimentacao-livre.panel.json` is kept as the provenance record. **No flows were deleted**, unlike
+crossdocking: every flow this console called (`ConfirmarMovimentacao`, `SugerirDestino`,
+`SugerirOrigem`, `SyncOcupacao`) is also called by `centro-trabalho.html`, which remains — checked
+before deleting, precisely because the crossdocking rule says to remove now-callerless flows.
 
 **Zero bytes deleted, across every gate this move ran (G1 through G4).** This is not a shortfall in
 execution — every console above gained real, live-verified capability across Move 2 and Move 3 — it
@@ -252,6 +350,106 @@ in deletable form," which is the honest state of things: every remaining gap is 
 new platform mechanism (REG-75's read-patch-write; a declarative cross-aggregate write hook) or
 scope not attempted (Romaneio Import, the Planning-layer list, Gerar Template's download affordance),
 not a small polish pass away from parity.
+
+¹⁰ **2026-08-01, Move 10 B2 (LC-B2, `MOVE10_AI_LOWCODE_PLAN.md` Part B.2).** The class `dashboard`'s
+`none` primitive closes: `guidePageGadget.type` gained a closed catalog (`kpi`/`bar`/`line`/`table`,
+alongside the pre-existing rail types `recent-items`/`context-info`/`page-fragment`), each
+query-bound chart type binding to a named `groupBy`/`aggregates` query (Move 10 B1) via
+`{query, x, y, series}`, validated at compile time (query must exist, must resolve to an aggregate
+query, `x`/`y`/`series` must each name a real `groupBy` field or `aggregates` output — 12 unit tests,
+including the RED "bound to a nonexistent query/field" cases), rendered server-fed (no client-side
+arithmetic, no charting library from a CDN — bar/line are hand-rolled inline SVG in `shell.js`).
+Live-verified via ScrapForAI against a real JWT-authenticated session: the kpi/bar/table gadgets on
+WmsOffice's new `AnalyticsDashboard` GuidePage rendered real numbers that matched a tenant-scoped
+SQL cross-check exactly (screenshot + full transcript in `move10-b2-charts.txt`). `relatorios`
+(the other `dashboard`-class screen) was left untouched — the DoD required replacing one, not both,
+and its 3 client-side reports need `where`-filter support this move did not touch.
+
+## Checklist re-run after Moves 4–7 (2026-07-30) — supersedes the table above for `crossdocking`
+
+The block above was written at `ed94669` (Move 3) and was **four moves stale**: it still cites
+REG-75 and C10's flag-sync half as open, both of which closed in Moves 4–5. Re-running the same
+20-item `crossdocking` checklist from `docs/MOVE1_PANEL_GAPS.md` against the model at HEAD +
+Moves 6–7's working tree:
+
+```
+crossdocking.html   12,748 B    15 works · 4 differs (cosmetic) · 1 n/a · 0 cannot-express
+```
+
+**Changed since the Move 3 record — two items:**
+
+| Item | Was | Now | Closed by |
+|---|---|---|---|
+| **C10** — one action also writing two sibling records | `cannot-express` | **works** | Move 4 `patchConcept` + Move 5 Wave 1 `callProcedure` |
+| **C14–C16** residual — "doesn't yet override `situacao` on click" | works, with residual | **works**, residual closed | Move 5 Wave 6 (`b5abd2d`) |
+
+All three console write paths now carry the full three-record write, verified at the declaration:
+
+```
+ativar    → flow AtivarCrossDocking → createConcept + callProcedure(SetCrossDockingFlagsProcedure)
+                                      → patch Recebimento.crossDockingAtivo = true
+                                      → patch Expedicao.crossDockingAtivo   = true
+concluir  → procedure ConcluirCrossDockingProcedure  (scope: row, visibleWhen situacao == 'Ativo')
+                                      → patch CrossDocking.situacao = "Concluido"
+                                      → patch Recebimento/Expedicao.crossDockingAtivo = false
+cancelar  → procedure CancelarCrossDockingProcedure  (same shape, situacao = "Cancelado")
+```
+
+**Method, stated honestly:** this is a *declaration-level* re-run — it confirms the mechanisms are
+declared and bound. The corresponding *live* evidence already exists and is not re-derived here:
+Move 5 Wave 1 live-verified Ativar's flag-set, and Move 5 Wave 6 live-verified the
+Concluir/Cancelar `situacao` transitions and flag-clears via REST + a real browser click. What was
+missing was never the verification — it was this record being updated.
+
+**Arithmetic note:** the Move 3 block reports "14 works, 5 differs, 1 cannot-express, 1 n/a" = 21
+against a 20-item list. C13 was double-counted (it reads "**works**, differs in styling"). Counted
+once each, the Move 3 state was 14 works · 4 differs · 1 cannot-express · 1 n/a = 20.
+
+**The 4 cosmetic differences remain, and no shipped mechanism closes them:** C2 (generic `Loading…`
+instead of a live "N cross-docking(s)" count), C8 (no client-side pre-submit validation — relies on
+the flow's server-side check), C11 (failures surface in the status banner but invalid fields are
+not preserved/highlighted inline), C18 (one banner line replaces the original's timestamped,
+coloured log). C13's styling difference (`situacao` as plain text, not a coloured badge) also
+stands. None is behavioural.
+
+### Deletion verdict
+
+**DONE — `crossdocking.html` was deleted 2026-07-30 (Move 8 Part A).** `crossdocking` had reached
+behavioural parity — 0 `cannot-express` items — making it the first console eligible for deletion
+under the metric's own rule. `crossdocking.original.html` (12,748 B) stays frozen alongside the
+deletion, as the reference copy for closing the 4 remaining cosmetic items (C2, C8, C11, C18).
+
+**What the deletion changed, concretely:**
+- `definition/menu.json` — the `"Cross-Docking"` entry now points at the declared panel itself
+  (`{ "kind": "BUSINESS", "target": "__panel-CrossDockingConsolePanel__" }`, the same section-hash
+  convention `business-ui-app.mustache`'s `panelSectionRef`/`sectionId` already use for every
+  declared Panel), not the deleted `.html` file.
+- `definition/pages.json` — the `crossdocking.html` companion-page registration was removed outright.
+- `ConcluirCrossDocking`/`CancelarCrossDocking` (the two incomplete-duplicate **flows** — see below)
+  were deleted in the same change, since deleting the HTML left them with no caller.
+- Live-verified end to end (menu → panel → Ativar → Concluir/Cancelar, both sibling flags checked at
+  the database, not by eye): `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\move8-a5-crossdocking-live.txt`.
+
+Both re-points landed on the declared panel's own route, `CrossDockingConsolePanel.route =
+"/crossdocking"`. That route only became a genuinely navigable URL in **Move 5 Wave 6** (`52d27c4`) —
+so the Tier-3 `panel.route` fix, filed as cleanup, is the specific earlier change that made this
+first deletion of the engagement possible.
+
+### Finding surfaced by the re-run: two paths, one incomplete — DELETED with the HTML (item N1)
+
+`ConcluirCrossDocking` and `CancelarCrossDocking` existed as **flows** whose only step was
+`updateConcept` — they set `situacao` and did **not** touch the sibling `crossDockingAtivo` flags.
+They were not orphaned at the time: `crossdocking.html` called all three flow endpoints directly
+(`flows/{Ativar,Concluir,Cancelar}CrossDocking/execute`) and performed the flag writes itself as
+separate PUTs. So both paths were complete at the time — the original by hand, the panel by
+procedure.
+
+**Deleting `crossdocking.html` would have left those two flows with no caller**, becoming an
+incomplete duplicate of the procedures: a future author binding a panel action to
+`flow: "ConcluirCrossDocking"` would have silently lost the flag-sync, with no validation error.
+Per this exact warning, both flows were deleted in the SAME change as the HTML (Move 8 Part A3) —
+the deletion did not trade a dead file for a live trap. `AtivarCrossDocking` (a real, complete flow
+using `createConcept` + `callProcedure`) and all three `*Procedure` procedures were left untouched.
 
 ## Methodology
 

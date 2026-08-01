@@ -1,0 +1,48 @@
+id: REG-90
+title: "Rebuild-And-Restage.ps1 accepted -BuildRoot but never passed it to Build-NpdevApp.ps1 -- the wrapper generated one app and then gated a different one"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-31
+closed: 2026-07-31
+verification: VERIFIED_LIVE
+source: |
+  Found while rebuilding WmsOffice for Move 10 W1 (docs/MOVE10_CONSOLE_PARITY_SPEC.md) into the
+  build root the running instance already occupied
+  (D:\WorkSpace\NPDev\Build\generated-finalapps-alt) rather than the script default, to reuse a warm
+  Gradle cache instead of paying for a cold full build.
+surface: scripts/appgen, build-tooling
+files:
+  - scripts/appgen/Rebuild-And-Restage.ps1
+detail: |
+  `Rebuild-And-Restage.ps1` declares `-BuildRoot` (default
+  `D:\WorkSpace\NPDev\Build\generated-finalapps`) and uses it in step 4 to locate the app's `_ops`
+  directory for `Build-App.ps1` / `Start-App.ps1` / `Check-Provenance.ps1`. But step 3's splat --
+  `@{ AppFolder; RuntimeHostLibsDir; SkipRuntimeHostLibs }` -- omitted it, so `Build-NpdevApp.ps1`
+  silently fell back to its OWN identically-named default.
+
+  With the default value the two halves coincide and nothing looks wrong. Pass any other value and
+  they diverge: step 3 generates and assembles the app under `generated-finalapps\<app>`, then step
+  4 builds, starts, and runs the provenance gate against `<BuildRoot>\<app>` -- a different,
+  possibly stale, possibly nonexistent app. The failure is silent in the worst direction: if the
+  target root happens to hold an older build, the wrapper reports success having verified the wrong
+  jar.
+
+  This is precisely the stale-build-root class of failure the wrapper exists to prevent -- its own
+  header promises it "threads ONE shared -RuntimeHostLibsDir through steps 1 and 3 so the sync
+  writes to, and the build reads from, the same directory -- the single most common cause of 'my
+  change had no effect'." The same discipline was simply never applied to `-BuildRoot`, the other
+  path parameter it accepts. `knowledge/cards/runtimehost-libs-dir-mismatch.json` names the libs-dir
+  instance of this trap; this is the build-root twin of it, inside the fix itself.
+
+  **Fix**: add `BuildRoot = $BuildRoot` to step 3's argument splat, and echo it in the step banner
+  alongside the libs dir so a divergence would be visible in the log next time.
+
+  **Evidence, stated precisely.** The fixed behaviour is verified live: with the fix,
+  `-BuildRoot D:\WorkSpace\NPDev\Build\generated-finalapps-alt` logged
+  `Out root : D:\WorkSpace\NPDev\Build\generated-finalapps-alt\wmsoffice` from step 3 and step 4
+  then built/started/gated that same tree, end to end. The BROKEN behaviour is established by
+  reading the pre-fix splat, not by a captured failing run -- the fix was applied before the first
+  invocation, so no unfixed run with a non-default `-BuildRoot` was ever recorded. The pre-fix code
+  is unambiguous (`-BuildRoot` appears in the `param()` block and at step 4 only, never in step 3's
+  `$buildArgs`), but this is a read-derived diagnosis on the failing side, not a live RED.

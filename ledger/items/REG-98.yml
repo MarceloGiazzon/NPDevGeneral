@@ -1,0 +1,95 @@
+id: REG-98
+title: "Two differently-named concepts can compile to the SAME physical table and the model validates with zero errors -- SqlIdentifierSupport.toSnake() sanitizes by REPLACEMENT (every non-alphanumeric becomes '_'), and nothing checks the derived table names for collisions"
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-07-31
+closed: 2026-07-31
+verification: VERIFIED_LIVE
+source: |
+  Found during Wave 0.1's REG-94 triage (MASTER_AI_PLATFORM_PROGRAMME_v2.md), while tracing whether
+  `JdbcBusinessConceptStore`'s spliced `shape.tableName()` could carry SQL syntax. It cannot -- but
+  the reason it cannot is what produces this bug.
+
+  Reproduced with a two-concept model and the real validator:
+
+      concepts: [ { "name": "OrderLine",  fields: [id] },
+                  { "name": "Order Line", fields: [id] } ]
+
+      $ .\gradlew.bat :NPDevContract:dsl:validateModel -PmodelPath=...\collide.json
+      "errors" : 0
+      BUILD SUCCESSFUL
+
+  Both names pass through `SqlIdentifierSupport.toSnakePlural()` to the SAME table, `order_lines`.
+surface: dsl/compiled, schema-lifecycle
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/SqlIdentifierSupport.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ConceptValidation.java
+  - NPDevContract/schemas/model.schema.json
+detail: |
+  `toSnake()` walks the name and appends `Character.toLowerCase(c)` for a letter or digit and `'_'`
+  for **everything else**, then collapses runs of `_` and trims. So punctuation, spaces, quotes and
+  semicolons are all mapped to the same character and then squeezed away. Every one of these
+  compiles to `order_lines`:
+
+      OrderLine     Order Line     Order-Line     Order.Line     Order__Line     "Order Line "
+
+  Two independent gaps compose:
+
+  1. **The schema does not constrain a concept name.** `$defs.concept.properties.name` is
+     `{"type": "string", "minLength": 1}` -- no pattern. There is no `tableName` property at all.
+     (Confirmed live: a concept named `Ord"; DROP TABLE users; --` validates with 0 errors.)
+  2. **Nothing checks derived table names for uniqueness.** Concept NAMES are checked for duplicates;
+     the physical names they compile to are not.
+
+  **Consequence.** Two concepts silently share one table. Both write to it, both read from it, and
+  each sees the other's rows as its own -- with column sets that may only partially overlap, so the
+  second concept's required columns may not even exist. On a fresh database the schema engine
+  realizes one table for two concepts; on an existing one the second concept's realization is an
+  additive change against a table it does not own. Nothing anywhere reports a problem.
+
+  **Why this is not an injection bug, and why that matters for the fix.** `toSnake()`'s replacement
+  behaviour is exactly what makes `JdbcBusinessConceptStore`'s spliced identifiers safe (see
+  docs/SECURITY_PATTERN_SWEEP_2026-07.md §2.4). So the fix must NOT be "make toSnake refuse" without
+  care -- that would be a behavioural break for every existing model whose concept names contain a
+  space or a hyphen. The two safe moves are additive:
+    (a) a validation rule that refuses a model in which two concepts derive the same physical table
+        name, naming both concepts and the collided name; and
+    (b) a schema `pattern` on concept `name` so the hostile-input case is refused at authoring time
+        rather than silently rewritten.
+
+  (a) is the one that closes the data-integrity hole and can ship on its own; (b) is defence in
+  depth and is the more likely to need a migration note, since a corpus model may already use a
+  character the pattern would reject.
+
+  **Rated HIGH, unlike its REG-94 siblings.** It needs no attacker: a plausible authoring slip
+  (`Order Line` beside `OrderLine`) silently merges two concepts' data, and the failure is invisible
+  at every layer that could have reported it -- schema, validator, compiler, schema engine.
+
+  **Not fixed in Wave 0.1**, which the programme scopes as a reading task ("triage first"). Filed
+  with the reproduction, the cause and the fix shape so it is not re-derived.
+
+  ---
+
+  ## CLOSED (2026-07-31, MASTER_AI_PLATFORM_PROGRAMME_v2.md §2.1, fix shape (a) only)
+
+  `ConceptValidation.validateTableNameCollisions` (wired into `SemanticValidator.validate`,
+  immediately after `indexEntities`) derives each concept's physical table name the SAME way
+  `ModelCompiler` does -- `SqlIdentifierSupport.toSnakePlural(concept.getName())`, called directly
+  rather than reimplemented, so the check can never drift from what actually compiles -- and refuses
+  the model when two DIFFERENTLY-named concepts collide, naming both concepts and the collided table.
+  A same-name duplicate (already caught by `indexEntities`) is not double-reported.
+
+  Reproduced RED first (the ledger's own `OrderLine`/`Order Line` case, plus hyphen/dot variants),
+  then GREEN: `TableNameCollisionValidationTest` (4 cases -- two colliding-name shapes, one genuinely
+  distinct pair that must NOT trip it, one same-name duplicate that must still route through the
+  existing duplicate-concept-name error only).
+
+  **Verified against the real corpus, not asserted**: `python scripts/quality/validate-corpus.py`
+  re-run after the change -- 29/29 models still parse. No existing corpus model collides, so this
+  ships with no `npdev migrate` codemod and no `BREAKING.md` entry: nothing that validated before
+  stops validating now.
+
+  **Fix shape (b) (a schema `pattern` on concept `name`) deliberately NOT done** -- named in the
+  item as defence-in-depth, not required to close the data-integrity hole, and more likely to need
+  a corpus migration of its own. Left open as a follow-on if wanted, not re-filed as a new item.

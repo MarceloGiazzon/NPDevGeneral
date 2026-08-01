@@ -36,6 +36,8 @@ Schema version: `1.0.0`. DSL version: `1.0.0`.
 | `fragments` | `array<localModelRef>` |  |  |
 | `packs` | `array<packRef>` |  |  |
 | `externalAi` | `externalAi` |  |  |
+| `settings` | `settings` |  |  |
+| `roles` | `array<role>` |  |  |
 
 ## Concept (`#/$defs/concept`)
 
@@ -64,9 +66,10 @@ Schema version: `1.0.0`. DSL version: `1.0.0`.
 | `id` | `boolean` |  |  |
 | `required` | `boolean | array<string>` |  |  |
 | `unique` | `boolean` |  |  |
-| `sensitive` | `boolean` |  | ADR-0009: marks this field for redaction before it may appear in any external-AI review pack (docs/adr/ADR-0009-external-ai-delegation.md). Authoring-time, and specific to pack building -- independent of the platform's runtime EventRedactionPolicy family. |
+| `sensitive` | `boolean` |  | ADR-0009: marks this field for redaction before it may appear in any external-AI review pack (docs/adr/ADR-0009-external-ai-delegation.md). Authoring-time, and specific to pack building -- independent of the platform's runtime EventRedactionPolicy family. Redaction is by FIELD NAME and applies globally: marking any concept's field sensitive redacts that key name in traces and event payloads across all concepts. Deliberately over-redacts rather than risk missing an occurrence. |
 | `connectable` | `"anchor"` |  |  |
 | `renamedFrom` | `string` |  | Declares this field is a rename of a previously-existing column with this name, so a regeneration's schema-lifecycle classifies it as a rename instead of an unrelated remove+add. |
+| `picker` | `object` |  | B16/B19 (Move 9 A3): declares a filter/multiSelect for this field's auto-picker (a reference field's browse/pick dialog). Same two properties a band's bandPickers entry accepts -- one picker shape for both surfaces. |
 | `file` | `object` |  | Metadata for a file-typed field (LIFT-UPLOAD). The persisted value is a FileHandle (or list, if multiple), never raw bytes. |
 | `enumValues` | `array<string | enumOption>` |  |  |
 | `values` | `array<string | enumOption>` |  |  |
@@ -126,7 +129,7 @@ LNCH-13: declarative row-level (data-scoped) authorization. Each expression is e
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `name` | `string` |  |  |
-| `type` | `"invariantCheck" | "capabilityCall" | "generatedAction" | "emitEvent" | "scheduleEvent" | "return" | "branch" | "awaitEvent" | "createConcept" | "updateConcept" | "map" | "forEach"` | yes |  |
+| `type` | `"invariantCheck" | "capabilityCall" | "generatedAction" | "emitEvent" | "scheduleEvent" | "return" | "branch" | "awaitEvent" | "createConcept" | "updateConcept" | "map" | "forEach" | "callProcedure"` | yes |  |
 | `checkpoint` | `"pre" | "post"` |  |  |
 | `phase` | `"pre" | "post"` |  |  |
 | `scope` | `string` |  |  |
@@ -136,6 +139,7 @@ LNCH-13: declarative row-level (data-scoped) authorization. Each expression is e
 | `input` | `string` |  |  |
 | `output` | `string` |  |  |
 | `args` | `array<string>` |  |  |
+| `procedure` | `string` |  | Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md): the procedure a callProcedure flow step invokes synchronously. Reuses this step's own input/output for the procedure's input map / result binding. |
 | `policy` | `capabilityPolicy` |  |  |
 | `event` | `string` |  |  |
 | `payload` | `string` |  |  |
@@ -268,3 +272,4 @@ Every widget a `field.widget` may declare (`FieldWidgetDefaults.SUPPORTED_WIDGET
 - `docs/NPDEV_CONCEPTS_DEEP_DIVE.md` — the conceptual model behind concepts/flows/capabilities/panels.
 - `knowledge/cards/*.json` — durable platform findings; `npdev_search_examples`/`npdev_search_fix` (MCP) query this corpus directly.
 - Validation error codes carry a `suggestedFix`/`helpKey` (`ValidationDiagnostic`) — every `ModelValidatorMain`/`npdev validate model` JSON report includes them per-diagnostic.
+- Truth-level release gating (`ReleaseGateValidator.validatePromotion`, `--releaseGate --targetTruthLevel=<T0..T6>`): see `NPDevContract/docs/MODEL-CONTRACT.md`'s `truthLevel` section for the full contract, including where it now runs automatically (`scripts/quality/run-generator-gate.ps1`'s `releaseGateT2` step, Move 8 item G3) and its current known-red state (REG-85).

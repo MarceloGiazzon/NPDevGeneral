@@ -2,8 +2,9 @@ id: REG-82
 title: "NPDevCliMainTest.idempotencyHitReturnsCachedResultMetadata fails deterministically (IOException loading its own temp model file) -- pre-existing, unrelated to Move 5"
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-07-30
+closed: 2026-07-30
 verification: VERIFIED_LIVE
 source: |
   Surfaced incidentally while running scripts/quality/run-generator-gate.ps1 as a final regression
@@ -36,14 +37,26 @@ detail: |
   `executeAndTraceCommandsWorkWithSharedStoreDir`, which also calls `execute` against its own
   temp-file model. This rules out a broken/missing schema jar resource affecting every model load.
 
-  **Not root-caused further** (deliberately, out of Wave 6's scope): whether this is specific to
-  this test's exact model content (a `flows[].steps[].policy` with `retryCount`/`retryDelayMs`/
-  `timeoutMs`/`idempotencyKeyField` but no circuit/bulkhead fields), a genuine Windows temp-file
-  timing/lock race unique to this one test's file lifecycle, or something else, is not established
-  here -- the underlying `IOException`'s own message/type was not captured (the CLI's top-level
-  handler only surfaces the wrapper's static string, not the cause).
+  **Root cause, found (Move 7 R82)**: neither a temp-file race nor an environment fault. The
+  wrapper's message was fixed FIRST to fold the wrapped exception's own class name + message into
+  the thrown `IllegalArgumentException` (`ModelBackedKernelRuntimeFactory.compileModel`, permanent
+  diagnostic improvement, kept regardless), which immediately revealed the real cause:
+  `com.npdev.dsl.v1.validation.ModelSchemaValidationException` -- `idempotencyModelJson()`'s own
+  embedded fixture used the DSL 1.0 `capabilityCall` step field aliases `cap`/`op`/`out`, retired by
+  the 2026-07-27 DSL 2.0 flowStep-vocabulary narrowing (`model.schema.json`'s `flowStep` definition
+  now only accepts `capability`/`operation`/`output`) -- this ONE fixture was simply never migrated
+  when that breaking change landed, unlike every git-tracked corpus model (which the DSL 2.0 commit
+  did migrate; a hand-authored test fixture string isn't part of that corpus and the codemod has no
+  way to reach it).
 
-  **What would close it** (not attempted): re-run with a debugger/stack-trace-preserving harness to
-  capture the WRAPPED `IOException`'s real type and message (the current wrapper swallows it into a
-  generic string), which would immediately distinguish "malformed JSON" from "file not found" from
-  a genuine environment-specific IO fault.
+  **Fix**: `idempotencyModelJson()`'s step now uses `"capability"`/`"operation"`/`"output"` in place
+  of `"cap"`/`"op"`/`"out"`. `ModelBackedKernelRuntimeFactory.compileModel`'s catch block permanently
+  folds the wrapped `IOException`'s (here, `ModelSchemaValidationException`, which is NOT an
+  `IOException` subtype but was being caught by the same generic `catch (IOException)` -- worth
+  re-checking if `JsonModelParser.parse` should really declare schema-validation failures as
+  `IOException` at all, not attempted here, out of scope) class name + message into the thrown
+  message, so the next similar failure is diagnosable without a debugger.
+
+  Verified: `idempotencyHitReturnsCachedResultMetadata` passes in isolation; all 6 tests in
+  `NPDevCliMainTest` pass together; `scripts/quality/run-generator-gate.ps1` (the gate that
+  originally surfaced this) passes end to end.

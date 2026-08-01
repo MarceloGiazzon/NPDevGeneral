@@ -1,0 +1,59 @@
+id: REG-99
+title: "A band's transaction.visibleWhen was unreachable in EVERY spelling -- the validator accepts only the derived address 'collection.band', the expander read only the bare band name, so the predicate validated and was silently dropped"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-31
+closed: 2026-07-31
+verification: VERIFIED_LIVE
+source: |
+  Found by the Wave -1.1 live browser proof of Move 11 W6 -- i.e. by driving the feature in a real
+  browser rather than by asserting on the descriptor. The `$ui` toggle rendered and switched
+  correctly, and the `posicoes` band did not move:
+
+      w6_uistate_toggle_before = {"toggle":"Completo","options":["Completo","Resumo"],
+                                  "bandTitles":["posicoes"],"bandRegions":1}
+      w6_uistate_toggle_switch = switched to:Resumo
+      w6_uistate_toggle_after  = {"toggle":"Resumo","bandTitles":["posicoes"],"bandRegions":1}
+
+  The declared predicate was `{"itens.posicoes": "$ui.detalhe == 'Completo'"}`, and the model
+  validated with 0 errors. Confirmed at the artifact: the generated `compiled-model.json` band
+  descriptor carries `"address": "itens.posicoes"` and **no `visibleWhen` at all**.
+surface: dsl/compiler, aggregate-workbench
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java
+detail: |
+  Two halves of the same feature disagreed about the key, and each half was individually reasonable.
+
+  `PanelValidation.derivedAddresses()` accepts exactly: `"header"`, a declared top-level collection
+  name, or a declared `"<collection>.<band>"` pair. `AutoPanelExpander.sectionDescriptor()` looked a
+  band's predicate up as `visibleWhen.get(child.name())` -- the BARE band name.
+
+  So:
+
+    "itens.posicoes"  -> passes validation, and the expander never looks under that key. Dropped.
+    "posicoes"        -> the expander would read it, and validation rejects it as an unrecognized
+                         address before it ever gets there.
+
+  **There is no spelling that works.** Band-level `visibleWhen` has been dead since Move 7 W1 typed
+  `transaction.visibleWhen`, with no error on any path. Section-level (`"itens"`) always worked --
+  the bare name and the derived address are the same string for a top-level collection, which is
+  exactly why this survived: the feature demonstrably worked, on the half anyone tested.
+
+  `attachRegion` one line below already used the dotted address for the same band, so the two
+  sibling lookups in the same method disagreed with each other.
+
+  **Fix**: look the band's predicate up by its derived address first, falling back to the bare name.
+  The fallback is deliberate and secondary -- the retired untyped `transaction.metadata.visibleWhen`
+  map predates derived addresses, so a model still on that spelling keeps working until it migrates.
+
+  **This is a fourth instance of the X0 silent-answer class** (MASTER_AI_PLATFORM_PROGRAMME_v2.md
+  §2.1), and a slightly different shape from the other three: not "an evaluator returns a default
+  answer for input it cannot handle", but "a declaration the validator accepts never reaches the
+  evaluator at all". Same consequence, same silence. Added to X0's register.
+
+  **Why the descriptor-level test did not catch it and the browser did.** W6's own DSL test asserted
+  the `uiState` control compiles into the workbench descriptor, which it did. Nothing asserted that
+  the PREDICATE reached the band. The live run is what failed, and the assertion it produced
+  (`AutoPanelUiStateValidationTest.bandVisibleWhenReachesTheBandDescriptor`) now pins both the
+  address and the predicate on the band descriptor.

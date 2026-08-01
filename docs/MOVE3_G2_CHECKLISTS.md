@@ -39,8 +39,8 @@ hand-written screen's behaviours (`web/movimentacao-livre.html`), not against `M
 | M5 | Add item (produto/lote + quantidade) | `renderAddItemForm` | **works** — Workbench's native `+ add row` under the `itens` section covers this generically (any field, not just produto/lote/quantidade) |
 | M6 | Balanced banner (Origem total == Destino total == item quantidade) | `renderItemBlock` | **cannot-express** — no computed/derived-display mechanism in the generic Workbench; would need a `recompute` procedure (the P3/C7 seam exists for cell-edit-triggered recompute, but wiring a *display-only* computed banner is a different shape, unattempted) |
 | M7 | Origem/Destino as two side-by-side panels, each its own add-position form | `renderSide`, `renderAddPosicaoRow` | **differs** — Workbench renders ONE merged `posicoes` band per selected item row; Origem vs. Destino is the `papel` column's value, editable like any other cell, not a UI-level split |
-| M8 | Edit position quantidade inline, save syncs the `LocalArmazenagemLote` stock ledger (`syncOcupacao`) | `renderPosicaoRow`, `syncOcupacao` | **cannot-express** — `AggregateRuntime.commit()` persists only the aggregate's own tree (root + itens + posicoes); it has no mechanism to also write a sibling concept as a side effect. This is a real, named gap: the stock-ledger sync is a cross-aggregate business rule with no declarative home today. |
-| M9 | Add position (local + quantidade), syncs the ledger the same way | `renderAddPosicaoRow`, `syncOcupacao` | **cannot-express** — same gap as M8 (the row itself adds fine via `+ add row`; only the ledger side effect is unreachable) |
+| M8 | Edit position quantidade inline, save syncs the `LocalArmazenagemLote` stock ledger (`syncOcupacao`) | `renderPosicaoRow`, `syncOcupacao` | **works** — closed by Move 8 (2026-07-31), item G1: `Movimento` now declares `"onCommit": "RecomputarOcupacaoOnCommitProcedure"`, which runs inside the same commit transaction (REG-72) and does an **absolute recompute** (sum of all persisted `MovimentoItemPosicao` rows for the touched `(localArmazenagemId, loteId)` pair, not a delta) before writing `LocalArmazenagemLote.quantidade`. Editing a position in the Workbench and saving now updates the ledger with **no button press** — verified live via direct `POST /api/runtime/aggregate/Movimento` commits (idempotence proven: re-committing the identical tree twice left `quantidade` unchanged, not doubled) and a rollback proof (a deliberately-thrown capability error rolled back the ENTIRE commit — root, items, positions, and the ledger write all stayed unchanged; see `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\move8-b4-oncommit-rollback.txt`). The gap named below (was: "no declarative mechanism for cross-aggregate side effects on write") is closed; `onCommit` is that mechanism. |
+| M9 | Add position (local + quantidade), syncs the ledger the same way | `renderAddPosicaoRow`, `syncOcupacao` | **works** — same fix as M8 (the row itself already added fine via `+ add row`; the ledger side effect now also fires automatically on commit, same `onCommit` hook, same live proof) |
 | M10 | Sugerir Destino / Sugerir Origem — call the `alocacao` capability with a computed candidate array, autofill the add-position form | `sugerir` | **works, with a real bug found and fixed along the way (REG-73)**: `ProcedureRunner` never resolved a capability adapter from the model's `bindings` list, so EVERY procedure-side `capabilityCall` (not just these two) failed `CAPABILITY_BINDING_MISSING` even with a correct binding declared — a genuine, previously-undetected platform bug, unrelated to anything Move 2/3 added. Fixed, RED->GREEN proven in a real generated app build (temporarily reverted the fix, got a real `AssertionFailedError`, restored it, GREEN; 25/25 regression tests pass), and verified live twice: (1) direct REST calls to `POST .../invoke/SugerirDestinoProcedure` and `.../SugerirOrigemProcedure` both return correct results (`sucesso:true`, real ranking/FIFO output); (2) wired as real clickable Workbench buttons via the pre-existing but previously-unused `autoPanels[].transaction.metadata.actions` seam (`workbenchActions` in `AutoPanelExpander`, "the P6 seam before a first-class actions authoring slot") and confirmed live in a real browser — the buttons render, and clicking one runs the real suggestion end-to-end. **Residual, honestly named, not fixed here**: the suggestion result (`resultado.localArmazenagemId`, etc.) is folded into the draft as inert extra keys — `AggregateRuntime.invoke()` returns the procedure's full accumulated state (confirmed by reading `DefaultProcedureExecutor.execute` + `AggregateRuntime.invoke`), so the draft's real fields are NOT lost or corrupted (verified live: header/itens intact after clicking, confirmed by screenshot after the domTextSnapshot text-walker again produced a misleadingly blank read of the same dense table — caught before being reported as a false "draft destroyed" bug) — but nothing in the generic Workbench renderer knows to apply `resultado.localArmazenagemId` into a new `posicoes` row the way the original screen's inline autofill did. The mechanism works; the last-mile UX wiring does not exist yet. |
 | M11 | Confirmar Movimentacao: client-side balance guard, then invoke the `ConfirmarMovimentacao` FLOW (which does `updateConcept` + `emitEvent(MovimentoConfirmado)`) | `confirmarMovimentacao` | **differs** — the Workbench's generic lifecycle-transition button (`-> Concluido`) does `store.editHeader(statusField, target); commitDraft(...)`, i.e. a raw field write via `AggregateRuntime.commit()`. It does NOT invoke the `ConfirmarMovimentacao` flow, so it (a) never emits `MovimentoConfirmado`, and (b) — same as the original screen — has no server-side balance check either way, since that flow never enforced the balance rule server-side to begin with (confirmed by reading `ConfirmarMovimentacao`'s 3 steps: `updateConcept`, `emitEvent`, `return` — no validation step). The generic transition mechanism is not wrong, but it is a materially different code path from what the original screen calls, and the event-emission difference is real. |
 
@@ -62,9 +62,12 @@ Sugerir, syncOcupacao) has the identical verdict as M6-M11 above, verified once 
 ## Deletion eligibility (§6 metric)
 
 Per the plan's own rule ("If and only if a console reaches parity, its `.original.html` is
-deleted"): **neither console reaches parity.** Both have real, named `cannot-express` gaps (M6, M8,
-M9 for movimentacao-livre; the same plus C1 for centro-trabalho) that are not cosmetic — the
-stock-ledger side effect (M8/M9) is a correctness-relevant business rule, not a UI nicety. **0 of the
+deleted"): **neither console reaches parity.** Both still have a real, named `cannot-express` gap
+(M6 for movimentacao-livre; the same plus C1 for centro-trabalho) — M6's computed balance banner
+has no display-only-recompute mechanism in the generic Workbench, and C1's UI-toggle-selected
+record type has no declarative home either, same shape Move 2 G4 already named for
+`conferencia-fiscal.html`. (M8/M9's stock-ledger side effect, formerly listed here too, was closed
+by Move 8 — see M8/M9 above — and no longer blocks parity for either screen.) **0 of the
 54,254 B eligible (`movimentacao-livre.html` 23,392 B + `centro-trabalho.html` 30,862 B) is deleted.**
 Both originals remain, unmodified, exactly as Move 1 and Move 2 G4 left every other unconverted
 screen.
@@ -78,11 +81,12 @@ screen.
   had nothing to do with aggregates specifically — it broke every procedure-side capability call in
   the platform. Finding and fixing it was more valuable than the plan's own hypothesis test asked
   for.
-- Two real, honestly-named residual gaps that were NOT fixed here, because they are each their own
-  design problem, not a small extension of what G2 already built:
-  1. **Cross-aggregate side effects on write** (M8/M9's `syncOcupacao`) — no declarative mechanism
-     exists for "committing this aggregate must also touch a sibling concept."
-  2. **Invoke-result-to-draft field mapping** (M10's residual) — `invoke()`'s current contract
+- One real, honestly-named residual gap that was NOT fixed here, because it is its own design
+  problem, not a small extension of what G2 already built:
+  1. **Invoke-result-to-draft field mapping** (M10's residual) — `invoke()`'s current contract
      (return the full patched state) is right for the P6 "recompute over the SAME shape" use case
      it was designed for, but wrong for "run an unrelated capability and apply ONE field of its
      result somewhere in the draft" — a materially different, unaddressed use case.
+  (A second gap used to be listed here — **cross-aggregate side effects on write**, M8/M9's
+  `syncOcupacao` — but it was closed by Move 8, 2026-07-31, item G1: `aggregate.onCommit` is now a
+  real, declarative, transactional mechanism for exactly this. See M8/M9 above.)

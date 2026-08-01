@@ -1,7 +1,8 @@
 # ADR-0005 Auto-Panel Patterns
 
 ## Status
-Proposed - 2026-07-11
+Accepted - 2026-07-25 (same plan/execution record as ADR-0004:
+`docs/architecture/AGGREGATE_WORKBENCH_PLAN.md`, "All phases delivered 2026-07-11…2026-07-25")
 
 ## Context
 
@@ -43,6 +44,11 @@ An AutoPanel expands into these generated surfaces (a subset is selectable via `
 - **Detail** — read-only view of one record.
 - **Transaction** — create/update form. Single-level for a concept; **for an aggregate-bound
   AutoPanel the Transaction *is* the Aggregate Workbench** (Header + Grid + Band sections).
+  **Naming note:** the generator emits this surface as a panel named `<Base>Form` at route
+  `/<concept>/edit` (`AutoPanelExpander.java`, `base + "Form"`), not `<Base>Transaction` — the
+  panel-name/route vocabulary predates this ADR's surface name. The mismatch is intentional and
+  retained for compatibility: `Form` is baked into every already-generated app's routes and
+  possibly saved links, and renaming it is a breaking change for zero functional gain.
 - **Sections** — tabs/subordinate grids for owned child collections.
 
 ### Relationship to ADR-0004

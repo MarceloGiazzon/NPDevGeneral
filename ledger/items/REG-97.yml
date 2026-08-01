@@ -1,0 +1,101 @@
+id: REG-97
+title: "CompiledModelCanonicalJson is not idempotent under write -> read -> write: the READER back-filled a concept invariant's empty fields[] from its field, so the CANONICAL form of a model depended on how many times it had been round-tripped"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-31
+closed: 2026-07-31
+verification: VERIFIED_LIVE
+source: |
+  Found in Move 11 W6 while writing the R0.3 round-trip assertion for the new
+  `transaction.uiState` field ("Canonical JSON = writer AND reader"). The uiState half passes; the
+  WHOLE-document equality assertion fails, on two lines that have nothing to do with it.
+
+  Measured with a throwaway probe that diffs write1 vs write2 of the same compiled model:
+
+      line 98
+        write1:       "fields" : [ ]
+        write2:       "fields" : [ "id" ]
+      line 235
+        write1:       "fields" : [ ]
+        write2:       "fields" : [ "id" ]
+      total lines: 440 vs 440
+
+  Nothing else differs across 440 lines, so this is one narrow defaulting asymmetry, not general
+  drift.
+surface: dsl/compiled
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java
+detail: |
+  The compiler emits a panel with `fields: []`; the reader fills an empty `fields` with the root
+  concept's id; a second write then emits `["id"]`. Whichever side is "right", they disagree, so
+  `toJson(model) != toJson(fromJson(toJson(model)))`.
+
+  **Why this is filed rather than shrugged at.** "Canonical" is load-bearing in this repo in two
+  places that both assume a byte-stable form:
+
+    1. `npdev-generated/` is HASH-VERIFIED at app startup (see the workspace-menu/shell notes) --
+       anything that re-canonicalizes a compiled model on a path that later re-hashes it would
+       produce a spurious mismatch;
+    2. `npdev.schema.fingerprint` and the compiled-model comparison the schema engine performs are
+       both equality-over-canonical-form arguments.
+
+  Neither is known to be broken today: the reader is used for reading models INTO tools, not on the
+  generate-then-hash path, so the asymmetry has had nowhere to bite. That is why this is LOW and
+  filed rather than fixed mid-move -- but a canonical form whose value depends on round-trip count
+  is a latent trap, and the next feature that reads a compiled model back and re-emits it will hit
+  it.
+
+  **Fix shape when taken up**: decide which side owns the default (almost certainly the COMPILER --
+  the reader should be a faithful parser and never invent content), then assert idempotence
+  (`toJson(fromJson(toJson(m))) == toJson(m)`) as a real test over a rich fixture model, so this
+  class cannot recur silently for the next field either.
+
+  **Not hidden meanwhile**: `AutoPanelUiStateValidationTest` says in its own comment why its
+  round-trip assertion is scoped to uiState instead of the whole document, and cites this id.
+
+  ---
+
+  ## CLOSED, Wave 1.1 (2026-07-31, MASTER_AI_PLATFORM_PROGRAMME_v2.md §3.4)
+
+  **Re-rated LOW -> MEDIUM before fixing**, per the programme's F5: `LC-C2`'s central DoD is "the
+  resulting metadata is byte-identical to what a full regeneration produces -- one test that runs
+  both and compares". A canonical form whose value depends on how many round-trips a path has
+  performed makes that test fail INTERMITTENTLY, which is worse than failing.
+
+  **The divergence, located rather than guessed.** A probe that diffed write1 vs write2 with
+  surrounding context named the owner: it is not a panel's `fields` (as the original report assumed)
+  but a CONCEPT INVARIANT's:
+
+      "invariants" : [ { "ref" : "required(id)", "type" : "required", "field" : "id",
+                         "expression" : "",
+                         "fields" : [ ]        <- write1
+                         "fields" : [ "id" ]   <- write2
+
+  `CompiledModelCanonicalJsonReader` back-filled it:
+
+      invariantFields.isEmpty() && field != null ? List.of(field) : invariantFields
+
+  i.e. the reader invented content the document did not contain.
+
+  **Which side was changed, and why it is the opposite of this item's own first guess.** The fix
+  shape above said "almost certainly the COMPILER". That was written before the owner was known.
+  Emitting `["id"]` from the compiler would have been equally idempotent -- and would have changed
+  the canonical content of EVERY model, hence every `npdev.schema.fingerprint`, producing exactly
+  the spurious schema-impact prompt (a migration that appears necessary and is not) that this item
+  names as one of its two consequences. So the READER was made faithful instead: zero content
+  change, zero fingerprint churn, and it is the side that was actually misbehaving -- a parser must
+  never invent. Callers already receive an empty list from a freshly compiled model, so nothing that
+  works today starts failing.
+
+  **The assertion this item asked for exists**: `CanonicalJsonIdempotenceTest` --
+  `toJson(fromJson(toJson(m))) == toJson(m)` over a fixture exercising concepts, invariants,
+  aggregates, an aggregate-bound AutoPanel with uiState, and a hand-authored panel. It reports the
+  first differing lines with line numbers on failure, because a whole-document diff in an assertion
+  message is unreadable and the line number is what locates the field.
+
+  **A workaround it forced is now removed**: `AutoPanelUiStateValidationTest`'s round-trip assertion
+  was scoped to `uiState` alone while this was open, with a comment citing this id. It is back to
+  the whole document -- which is the version that would catch a NEW field the writer knows about and
+  the reader does not.

@@ -1,0 +1,71 @@
+id: REG-95
+title: "The Aggregate Workbench's derived-field expression subset split its path on '.' before matching, so every filter(...) form -- including the subset's OWN documented example -- silently evaluated to 0; M6's balanced-quantity banner had been declared and shipping a wrong number since Move 6"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-31
+closed: 2026-07-31
+verification: VERIFIED_LIVE
+source: |
+  Found in Move 11 W5.1 (MOVE11_CLOSE_REMAINING_SPEC.md), which said to "try to express M6 with
+  transactionDerivedField first" before building anything. Trying it turned up something better than
+  an authoring gap: M6 was ALREADY AUTHORED. WmsOffice's Movimento autoPanel has declared
+
+      "derivedFields": {
+        "origemTotal":  { "tier": "client", "expression": "sum(itens[].posicoes[].filter(papel=='Origem').quantidade)" },
+        "destinoTotal": { "tier": "client", "expression": "sum(itens[].posicoes[].filter(papel=='Destino').quantidade)" }
+      }
+
+  since the derivedFields mechanism shipped -- and the banner has been rendering 0 for both, with no
+  error, for as long as it has existed.
+surface: generator/workbench, aggregate-workbench
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache
+detail: |
+  `evaluateDerived` (Move 5 Wave 2B, written for M6 by name) does:
+
+      var segments = m[1].split(".");
+      ...
+      var filterMatch = /<the whole "<name>[].filter(<field>=='<literal>')" in ONE segment>/.exec(seg);
+
+  The filter regex requires the WHOLE `<name>[].filter(<field>=='<literal>')` in one segment. But
+  `split(".")` has already cut it in half at the dot between `posicoes[]` and `filter(...)`. So
+  `filter(papel=='Origem')` arrives alone, matches neither the filter branch nor the array branch,
+  falls through to the plain-path branch, resolves to `undefined` for every candidate, and the sum
+  comes out **0**. Silently -- a display-only banner has no error channel.
+
+  This is not an exotic input: it is the function's own second documented example,
+  `sum(posicoes[].filter(papel=='Origem').quantidade)`, three lines above the bug.
+
+  **RED, measured** -- the shipped `evaluateDerived` copied verbatim and run under node against an
+  M6-shaped draft (2 items; 15 Origem, 13 Destino, 15 item total):
+
+      15  <- sum(itens[].quantidade)                                 (expected 15)  OK
+      28  <- sum(itens[].posicoes[].quantidade)                      (expected 28)  OK
+       0  <- sum(itens[].posicoes[].filter(papel=='Origem').quantidade)   (expected 15)
+       0  <- sum(itens[].posicoes[].filter(papel=='Destino').quantidade)  (expected 13)
+       0  <- sum(posicoes[].filter(papel=='Origem').quantidade), item as root (expected 10)
+
+  Note which lines pass: the non-filter forms are fine, and summing across TWO nesting levels is
+  fine. The subset was never short of the grammar M6 needs -- Move 3's "cannot-express" verdict for
+  M6 named the wrong cause. Only the filter half was broken, and only in tokenization.
+
+  **Fix**: tokenize instead of splitting. A `DERIVED_SEGMENT` regex matches whole segments
+  (`<name>[].filter(<field>=='<literal>')` | `<name>[]` | `<name>`), and `derivedSegments()` walks
+  the matches, requiring that only a `.` separate them and that the whole path be consumed --
+  returning `null` (renders "—") for anything else, rather than guessing, since guessing is how a
+  wrong number reaches a banner unannounced. Every evaluation branch is unchanged.
+
+  **GREEN, same probe, same draft**:
+
+      15  <- sum(itens[].posicoes[].filter(papel=='Origem').quantidade)
+      13  <- sum(itens[].posicoes[].filter(papel=='Destino').quantidade)
+      10  <- sum(posicoes[].filter(papel=='Origem').quantidade), item as root
+
+  **Consequence for the conversion metric.** M6 was `movimentacao-livre.html`'s ONLY
+  `cannot-express` item (docs/MOVE3_G2_CHECKLISTS.md: M1/M2/M7/M11 are `differs`, M3/M4/M5/M8/M9/M10
+  are `works`). With it closed, that console reaches 0 `cannot-express`.
+
+  A third derived field, `itensTotal` (`sum(itens[].quantidade)`), was added to the model in the same
+  change: M6's actual behaviour is a THREE-way comparison (Origem total == Destino total == item
+  quantidade) and only two of the three were declared.

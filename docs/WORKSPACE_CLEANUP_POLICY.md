@@ -35,7 +35,10 @@ pwsh -File scripts\hygiene\Test-WorkspaceSlimness.ps1
 Default limits:
 
 - maximum workspace size, excluding `.git`: `75 MB`
-- maximum workspace file count, excluding `.git`: `3000`
+- maximum workspace file count, excluding `.git`: `3400` (raised from 3000 in Move 12 —
+  Moves 6-11 landed ~180 legitimate new tracked files (typed-surface AST/compiled classes,
+  validation tests, ledger items); the residue causing the original overage was rebuildable
+  trees, not source, and those are cleaned by the commands below, not by raising this number)
 - maximum `scripts` size: `10 MB`
 - maximum `scripts` file count: `500`
 - maximum `scripts\reports\out` size: `15 MB`

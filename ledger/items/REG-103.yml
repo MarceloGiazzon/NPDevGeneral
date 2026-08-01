@@ -1,0 +1,54 @@
+id: REG-103
+title: "RuntimeMetadataService's compiled-metadata.json/npdev/metadata/* catalogs (concept/panel UI labels among them) are classpath-only with no external-path override, unlike NPDevModelProvider's compiled-model.json -- a metadata-only model change cannot be hot-swapped into a running app without also touching these, or a static frontend asset"
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-08-01
+verification: VERIFIED_LIVE
+source: |
+  Found while building MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 1.3 (LC-C2)'s metadata-only fast
+  path (scripts/appgen/Update-AppMetadata.ps1). The fast path correctly hot-swaps the app's
+  CompiledModel bean (NPDevModelProvider checks an external file path before its classpath
+  fallback) and re-signs npdev-generated/ so StrictExecutionValidator accepts the change -- proven
+  live: the app rebooted cleanly with the new compiled-model.json in place.
+
+  But the plan's own chosen example for this feature -- "a panel-title change is live in the
+  running app" -- is NOT satisfied. Live-verified in a real browser: changed the Recebimento
+  concept's ui.label, ran the fast path successfully, confirmed the app rebooted with the new
+  compiled-model.json and no StrictExecutionValidator failure, then checked two PanelRuntime/
+  business-ui-rendered surfaces (the generic CRUD panel heading and the RecebimentoWorkbench.html
+  page's <title>) -- both still showed the OLD label. Screenshots + full routine result:
+  D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\move11\browser-lc-c2\.
+surface: runtimehost, generator
+files:
+  - NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/RuntimeMetadataService.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-runtime-model-provider.mustache
+detail: |
+  `RuntimeMetadataService` loads `npdev/compiled-metadata.json` and `npdev/metadata/index.json`
+  (plus the per-catalog manifest files) via `ClassPathResource` ONLY -- no `@Value`-injected external
+  path, unlike `NPDevModelProvider` (the app's compiled-model loader), whose constructor explicitly
+  checks a configurable external file (`npdev.compiled-model.path`/`npdev.model.path`) BEFORE its own
+  classpath fallback. Grepped `RuntimeMetadataService` clean for any such override.
+
+  Concept/panel UI label text (and everything else `RuntimeMetadataService`'s catalogs carry) is
+  therefore baked into the packaged jar at generation time and cannot be refreshed by overwriting a
+  file on disk -- only a full rebuild (or `jar --update` surgery on the packaged fat jar) updates it.
+  The generated frontend's own static assets under `static/npdev-business-ui/`
+  (`generated-ui-manifest.json`, `app.js`, `shell.js`) are a SEPARATE, likely also-static, likely
+  also-affected surface -- not confirmed by this finding's own live check, which only exercised the
+  two PanelRuntime-rendered pages named above, but named here as the same class of gap since both
+  are pre-rendered at generation time rather than read from the CompiledModel bean per request.
+
+  **Fix shape when taken up**: mirror `NPDevModelProvider`'s own pattern -- add a
+  `@Value("${npdev.compiled-metadata.path:${npdev.metadata.path:<classpath-default>}}")`
+  constructor parameter to `RuntimeMetadataService`, checking that external path before the existing
+  `ClassPathResource` fallback, exactly the precedent already proven safe for the model itself. The
+  static frontend assets are a materially different problem (client-side JS/JSON, not a Spring bean)
+  and were not sized here.
+
+  **Not a regression, not urgent** -- the fast path this finding was found while building is real,
+  additive infrastructure (procedure/query/permission/validation-rule changes DO flow through the
+  hot-swapped CompiledModel bean correctly); this item only narrows which subset of "metadata-only"
+  changes the fast path currently makes visibly live. Rated LOW: the mechanism is safe (refuses
+  correctly, never silently applies a schema-shaped change, never leaves the app unable to boot) --
+  it is a completeness gap, not a correctness or safety one.

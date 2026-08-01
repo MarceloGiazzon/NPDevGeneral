@@ -55,6 +55,9 @@ gate fails, so it should stay accurate without needing a manual re-audit:
 `NPDevContract/schemas/model.schema.json`, `NPDevContract/schemas/authoring/model.schema.json`,
 `NPDevContract/dsl/src/main/resources/schema/model.schema.json`,
 `NPDevContract/dsl/resources/Schemas/model.schema.json` (NOT `schemas/archive/`).
+Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the four copies are
+**semantically** identical, not byte-identical; the `dsl/resources/Schemas/` copy carries
+`canonicalSchema` and `deprecated` registry keys the checker excuses. Never compare by file hash.
 
 ## Build / run / test
 
@@ -63,8 +66,15 @@ gate fails, so it should stay accurate without needing a manual re-audit:
   `Build-ClaudeApp.ps1` (Claude Support Desk), `Build-AppGenApp.ps1`. Per-app `_ops` toolbox emits
   `Start-App.ps1` / `Stop-App.ps1` / `Start-Environment.ps1` (starts H2Server TCP).
 - **Validate a model:** `:NPDevContract:dsl:validateModel -PmodelPath=<p> -PreportOut=<p>`.
-- **Quality gates:** `scripts/quality/run-generator-gate.ps1`, `run-runtimehost-gate.ps1`,
-  `run-frontend-gate.ps1`, `run-beta-release-gate.ps1`, `run-ai-knowledge-gate.ps1`.
+- **Quality gates — "all gates green" means ONE command:**
+  `pwsh -NoProfile -File scripts/quality/run-all-gates.ps1`. It runs the five, in this order, and
+  keeps going past a failure so you see every red in one run:
+  `run-ai-knowledge-gate.ps1` (static, seconds; hosts all 13 `check-*.py`) → `run-generator-gate.ps1`
+  → `run-runtimehost-gate.ps1` → `run-frontend-gate.ps1` → `run-beta-release-gate.ps1`.
+  Run one with `-Only aiKnowledge`. **Never report "gates green" from a single gate** — that claim
+  was made in three consecutive move reports while a checker sat red, which is what
+  `run-all-gates.ps1` exists to prevent. A new `scripts/quality/check-*.py` MUST be invoked by some
+  `run-*.ps1`; `run-script-inventory-check.ps1` fails otherwise (Move 11 W2/O4).
 - **AI knowledge substrate:** durable platform findings live as `knowledge/cards/*.json`
   (schema `schemas/ai/knowledge-card.schema.json`); `knowledge/platform-status.json` is a **derived**
   projection of the gaps ledger (regen via `scripts/ai/extract_platform_status.py`, never hand-edit).
@@ -75,9 +85,12 @@ gate fails, so it should stay accurate without needing a manual re-audit:
 - **Maintainer skills** (tracked, un-ignored under `.claude/skills/`): `rebuild-app` (three-cache
   refresh via `scripts/appgen/Rebuild-And-Restage.ps1`) and `verify-in-browser` (ScrapForAI).
 - **After changing kernel/adapter Java, restage jars before regenerating an app:**
-  `scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars -RuntimeHostLibsDir D:\WorkSpace\NPDev\Build\runtimehost-libs`
-  — the sync default dir does NOT match `Build-NpdevApp.ps1`'s default, so pass `-RuntimeHostLibsDir`
-  to both or the running app keeps a stale jar.
+  `scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars`. **The defaults now agree**
+  (both resolve to `D:\WorkSpace\NPDev\Build\runtimehost-libs` via `Get-NPDevRuntimeHostLibsDir`,
+  LC-C4 / Wave 1.4) — previously the sync defaulted to `__OutsideRepo\runtimehost-libs` while
+  `Build-NpdevApp.ps1` defaulted to the Build root, so letting each default meant the app silently
+  kept a stale jar. Passing `-RuntimeHostLibsDir` explicitly still works and still wins; prefer
+  `scripts/appgen/Rebuild-And-Restage.ps1`, which threads one value through every step.
 - **`AppGen\generator-runtime\current`** (the jar cache the AppGen builders read) is not auto-synced;
   refresh via `AppGen\generator-runtime\prepare-npdev-generator-runtime.ps1 -RuntimeRoot D:\WorkSpace\NPDev\AppGen\generator-runtime` (pass `-RuntimeRoot` explicitly).
 
@@ -120,6 +133,4 @@ layout, or internal APIs ships its `npdev migrate` codemod in the same commit**,
 
 `docs/GETTING_STARTED.md`, `docs/NPDEV_CONCEPTS_DEEP_DIVE.md`,
 `docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md`,
-`docs/architecture/INTERNAL_DB_SCHEMA_SOURCE_OF_TRUTH.md`, `docs/MATURITY_CLOSURE_LEDGER.md`,
-`docs/adr/ADR-0002-box-object-truth-model.md`,
-`docs/adr/ADR-0003-code-bearing-panel-procedure-objects.md`.
+`docs/architecture/INTERNAL_DB_SCHEMA_SOURCE_OF_TRUTH.md`, `docs/MATURITY_CLOSURE_LEDGER.md`.

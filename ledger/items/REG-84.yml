@@ -1,0 +1,32 @@
+id: REG-84
+title: "Java DataMigrationHook / code-bearing conversion hooks deferred by ADR-0008 to a never-written ADR-0003"
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-07-30
+closed: 2026-07-31
+verification: NOT_VERIFIED
+source: |
+  docs/adr/ADR-0008-sanctioned-destruction-conversion-hooks.md:84 defers this to
+  "the ADR-0003 code-bearing objects" ADR, which has never existed (docs/adr/ holds
+  ADR-0001 and ADR-0004..ADR-0010). Surfaced by the Move 8 record-drift sweep.
+surface: dsl/conversion-hooks
+files:
+  - docs/adr/ADR-0008-sanctioned-destruction-conversion-hooks.md
+detail: |
+  Records the deferred scope so it has a real home. See also docs/ACCEPTED_BOUNDARIES.md B13
+  ("Conversion hooks are SQL-only in v1"), which is the accepted boundary this deferral sits behind.
+  Not scheduled; filed so the deferral is traceable rather than pointing at a missing document.
+
+closure: |
+  Decided 2026-07-31 (Move 9 C2): disposition is NOT_APPLICABLE (closed DONE per the ledger's
+  status vocabulary -- OPEN/PARTIAL/DONE only, see scripts/quality/generate_open_items.py -- with
+  the NOT_APPLICABLE disposition recorded here, same convention REG-80 piece (a) used), rather
+  than writing ADR-0003. B13 is an
+  accepted boundary with a stated reason, a working SQL-only workaround, and a named revisit
+  trigger ("ADR-0003 code-bearing-objects lands") — nothing is currently blocked on the Java
+  DataMigrationHook track, so an ADR for work nobody has scheduled would be documentation for its
+  own sake. `docs/ACCEPTED_BOUNDARIES.md` B13 remains the durable, correct home for this scope;
+  no boundary text changed since B13's own behaviour did not change. If real demand for a
+  code-bearing conversion hook appears, re-open a fresh ledger item at that point (this one stays
+  closed as the record of the deferred-track decision, not reused).

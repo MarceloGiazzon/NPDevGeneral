@@ -5,6 +5,119 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-07-31 — a declared `queries[].where` the engine cannot compile is now an ERROR, not silently unenforced (LC-P0)
+
+`ConceptQueryFilterSupport` used to hand-parse a `where` with `indexOf("==")` and, per its own
+javadoc, leave "a clause outside this shape … unenforced (rows pass through unfiltered)". It now
+compiles the predicate with `ConceptQueryPredicateCompiler` and throws
+`QUERY_PREDICATE_UNSUPPORTED` (a named `UnsupportedPredicateException`) for anything outside:
+
+```
+where   := clause ( "&&" clause )*
+clause  := field op literal        op := == | != | >= | <= | > | <
+literal := 'text' | number | true | false
+```
+
+**What now works that never did:** multi-clause `&&`, the ordered comparisons (`> >= < <=`), a
+literal containing `&&`, and `>=` not being mis-read as `>`.
+
+**What now fails loudly that used to return a wrong answer silently:** `||`, `in (...)`, functions
+(`upper(x) == …`), nested paths (`a.b == …`), unquoted non-numeric literals, and unsubstituted
+`$`/`:` references.
+
+**There is no `npdev migrate` codemod, deliberately, and this is the one entry here without one.**
+A codemod rewrites a declaration whose meaning is known; these declarations never had a working
+meaning — the engine was ignoring them, over-filtering them to zero rows, or inverting them. There
+is no correct automatic rewrite for "your filter never worked"; the author has to say what they
+meant. What ships instead is a **detector**:
+`scripts/quality/check-query-predicate-compilable.py` (AI-knowledge gate step 22) fails on any
+corpus `where` that will now be refused, so this is found by a gate rather than by a running app.
+
+Its first run found one: `pack-sample`'s `SalesByStore` declares `where: "storeId == :storeId"`
+with a matching `parameters[]` entry that **nothing substitutes** — so that query has returned zero
+rows for its whole life. Filed as **REG-101** and recorded in
+`scripts/quality/query-predicate-allowlist.json` (printed on every run, never silent).
+
+Three prior behaviours are pinned as a before/after table in
+`ConceptQueryFilterSupportRedTest`, including the one the finding itself got wrong: a 2-clause
+`AND` returned **zero** rows, not "every row".
+
+## Removal trigger (not yet a breaking change): the six retired `transaction.metadata` keys
+
+`recompute`, `derived`, `computed`, `actions`, `visibleWhen`, and `bandPickers` under
+`autoPanel.transaction.metadata` (retired below in favor of their typed replacements) now all emit
+a deprecation WARNING when present (`PanelValidation`, Move 8 item G4) but still work as a
+fallback — no removal date is set, since dates rot. **Trigger:** these six untyped keys are removed
+entirely in the next breaking DSL change, whichever that turns out to be; when that change lands,
+add the actual removal as its own dated entry here and extend `npdev migrate dsl-2` to reject
+(not just rewrite) them. The corpus (`AppGen/apps` + `NPDevSamples`) is confirmed clean of all six
+today.
+
+## 2026-07-30 — Aggregate Workbench: `transaction.metadata.actions`/`.visibleWhen`/`.bandPickers` retired in favor of typed `transaction.actions`/`.visibleWhen`/`.bandPickers`
+
+`autoPanel.transaction.metadata.actions` (a list of `{label?, procedure, inputFields?, applyTo?,
+afterAction?, visibleWhen?}`), `.metadata.visibleWhen` (an object keyed by collection/band name, a
+predicate string), and `.metadata.bandPickers` (an object keyed by band name, `{panel, label?,
+columns?}`) are retired in favor of the typed, schema-validated `transaction.actions`/
+`.visibleWhen`/`.bandPickers` — same shapes, now with `additionalProperties: false` so a typo'd key
+(e.g. `actons`) fails at schema time instead of silently doing nothing. Both old keys still work
+for this release (every read site in `AutoPanelExpander` accepts them as a fallback when the typed
+slot is absent) — but new authoring should use the typed spelling; the fallback is expected to be
+removed in a future release. When both a typed and untyped spelling are declared on the same
+surface, the typed one wins entirely (it is not merged with the untyped list/map), matching the
+precedent Move 6 set for `hooks`/`derivedFields`.
+
+**Why:** docs/MOVE7_IMPLEMENTATION_SPEC.md W1 — the last three untyped `transaction.metadata` keys
+left over after Move 6 typed `hooks`/`derivedFields`/`regions`. `transaction.actions[].procedure`
+and `.afterAction` now also get real semantic validation (must name a declared procedure); a
+`visibleWhen`/`bandPickers` key must name a real address/band derived from the aggregate's own
+composition tree — the same class of check Move 6 already added for `transaction.regions`.
+
+**Codemod:** `npdev migrate dsl-2 --input <path...> [--write]` (dry-run by default) now also
+rewrites `transaction.metadata.actions` → `transaction.actions`, `.metadata.visibleWhen` →
+`.visibleWhen`, and `.metadata.bandPickers` → `.bandPickers`, idempotently, dropping only the
+malformed sub-fields (an unusable `applyTo`, a missing `procedure`/`panel`, a blank predicate) the
+compiler always silently tolerated anyway, and reporting (not guessing) when both an old and new
+spelling are present. See `NPDevCli/dsl_v2_migration.py`'s `_migrate_transaction_actions` /
+`_migrate_transaction_visible_when` / `_migrate_transaction_band_pickers`.
+
+**Migrated in this change:** no git-tracked corpus model declared `metadata.actions`,
+`.visibleWhen`, or `.bandPickers` before this (all three were zero-witness in the tracked corpus;
+`dsl-conformance-max` gains the first typed witness alongside this change).
+
+## 2026-07-30 — Aggregate Workbench: `transaction.metadata.recompute`/`.derived` retired in favor of typed `transaction.hooks`/`.derivedFields`
+
+`autoPanel.transaction.metadata.recompute` (a bare procedure name, or `{procedure}`) and
+`.metadata.derived` (a list of `{name, expression, label?}`) are retired in favor of the typed,
+closed-enum `transaction.hooks.onFieldChange` and the object-keyed `transaction.derivedFields`
+(which also gains a `tier: "server"` option `.derived` never had). Both old keys still work for
+this release — every read site accepts them as a fallback and `SemanticValidator` emits a
+deprecation warning, not an error, when it sees either — but new authoring should use the typed
+spelling; the fallback is expected to be removed in a future release.
+
+Also new, additive (no retirement): `transaction.hooks.onLoad`/`.beforeAction` (no prior
+untyped equivalent existed), `transaction.hooks.onValidate`/`.onCommit` (an alternate spelling of
+the pre-existing `aggregate.onValidate`/`.onCommit` fields — a direct aggregate-level declaration
+always wins if both are present), and a per-action `afterAction` (declared alongside, not instead
+of, the pre-existing per-action `applyTo`, which it subsumes going forward but does not retire).
+
+**Why:** docs/MOVE6_TYPED_SURFACE_PLAN.md §B — the same feature was typed when it attached to
+`panelAction`/`procedure`/`flow`/`aggregate`, and untyped when it attached to
+`autoPanel.transaction.metadata`, purely because of which object it happened to land on. A closed
+`hooks` enum means an author's typo (e.g. `onRowLoad` for `onLoad`) fails at schema time instead of
+silently doing nothing.
+
+**Codemod:** `npdev migrate dsl-2 --input <path...> [--write]` (dry-run by default) now also
+rewrites `transaction.metadata.recompute` → `transaction.hooks.onFieldChange` and
+`transaction.metadata.derived` → `transaction.derivedFields`, idempotently, reporting (not
+guessing) when both an old and new spelling are present with different values. `applyTo` →
+`afterAction` is NOT migrated automatically — `afterAction` needs a real procedure written to
+receive `{draft, result}`, which is an authoring decision, not a mechanical rewrite. See
+`NPDevCli/dsl_v2_migration.py`'s `_migrate_autopanel`.
+
+**Migrated in this change:** `NPDevSamples/dsl-conformance-max` (its only `transaction.metadata
+.derived` witness); no other corpus model declared `recompute` or `derived` before this.
+
 ## 2026-07-28 — Aggregate transactional boundary enforced: a flow may not write two aggregates
 
 A flow whose `createConcept`/`updateConcept`/`createEntity`/`updateEntity` steps write to concepts
