@@ -15,11 +15,16 @@ is empty again; the governance gap this script closes is real regardless of that
 
 SCOPE -- three files enforced, two reported only
 --------------------------------------------------
-`corpus-parse-allowlist.json`, `test-task-coverage-allowlist.json`, `dsl-coverage-allowlist.json` and`n`query-predicate-allowlist.json` (LC-P0)
+`corpus-parse-allowlist.json`, `test-task-coverage-allowlist.json` and `dsl-coverage-allowlist.json`
 each already state in their own `_comment` header: "Add an entry here only for a genuine, reviewed
 exception with a REG id." That promise was never machine-checked. This script enforces it: every
 entry's `why` must contain a `REG-nn` or `B-nn` citation, or the check fails. All three are empty
 today, so this is a zero-grandfathering, zero-risk rule to turn on now, before the next entry lands.
+
+(`query-predicate-allowlist.json` (LC-P0) briefly joined this set, then was deleted in Move 12 P1.4
+(REG-101) once its one entry's underlying defect was fixed and the checker it exempted entries for --
+`check-query-predicate-compilable.py` -- was retired in favor of the same grammar running at DSL
+authoring-time validation.)
 
 `plan-deferral-citation-allowlist.json` (8 entries) and `security-pattern-sweep-allowlist.json`
 (281 entries) use a DIFFERENT, already-established convention -- doc-paragraph narrative and a
@@ -58,9 +63,6 @@ CITATION_RE = re.compile(r"\b(?:REG|B)-\d+\b")
 # Files whose own _comment header already promises a REG id -- enforced.
 ENFORCED = (
     "corpus-parse-allowlist.json",
-    # LC-P0 (Wave 0.4): its own _comment header states "An entry REQUIRES a REG-nn/B-nn citation",
-    # so it joins the enforced set the moment it exists rather than after its first entry drifts.
-    "scripts/quality/query-predicate-allowlist.json",
     "scripts/quality/test-task-coverage-allowlist.json",
     "scripts/quality/dsl-coverage-allowlist.json",
 )

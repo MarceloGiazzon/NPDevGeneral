@@ -69,7 +69,7 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
 - **Quality gates — "all gates green" means ONE command:**
   `pwsh -NoProfile -File scripts/quality/run-all-gates.ps1`. It runs the five, in this order, and
   keeps going past a failure so you see every red in one run:
-  `run-ai-knowledge-gate.ps1` (static, seconds; hosts all 13 `check-*.py`) → `run-generator-gate.ps1`
+  `run-ai-knowledge-gate.ps1` (static, seconds; hosts all 14 `check-*.py`) → `run-generator-gate.ps1`
   → `run-runtimehost-gate.ps1` → `run-frontend-gate.ps1` → `run-beta-release-gate.ps1`.
   Run one with `-Only aiKnowledge`. **Never report "gates green" from a single gate** — that claim
   was made in three consecutive move reports while a checker sat red, which is what

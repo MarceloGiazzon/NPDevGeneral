@@ -1,9 +1,10 @@
 id: REG-100
-title: "Three more silent-answer sites found by the X0 audit: an unresolvable $ref writes null (while the SAME class throws for id refs), an unresolved runQuery name returns an UNFILTERED list, and a typo'd $root.<field> visibleWhen predicate is never validated"
+title: "CLOSED -- three silent-answer sites found by the X0 audit, now fixed: a $ref that could not resolve wrote null (while the SAME class threw for id refs), a runQuery step naming an undeclared query returned an UNFILTERED list, and a typo'd $root.<field> visibleWhen predicate went unvalidated"
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-07-31
+closed: 2026-08-01
 verification: VERIFIED_LIVE
 source: |
   Wave 0.2's X0 silent-expression sweep (MASTER_AI_PLATFORM_PROGRAMME_v2.md §2.1), which asked every
@@ -75,3 +76,39 @@ detail: |
   /`access.write`, `defaultExpression`, `derivedExpression`) -- the only real expression engine in the
   platform, and the one where a silent default matters most, since `access.*` is an authorization
   answer. It deserves its own pass, not a paragraph.
+
+  ---
+
+  **Move 12 P1.1-P1.3 closure (2026-08-01):**
+
+  - **X0-6** -- added `DefaultProcedureExecutor.resolveStrict`, a strict counterpart to `resolve()`
+    used by `resolveSetValue` (so it covers every consumer in one choke point: `patchConcept.set`
+    x2, `mapList.select`, `mapValue`, `computeValue`'s left/right, `return`'s valueRef -- not just the
+    three named in the original finding). Throws a new `UnresolvableReferenceException`, caught in
+    `executeStepWithBudget` and surfaced as a named `REF_UNRESOLVABLE` step failure carrying the ref
+    and step name -- the same exception-based propagation shape `requireString` already uses, just
+    with a specific code instead of the generic `PROCEDURE_STEP_FAILED` fallback. Distinguishes "key
+    never bound" (refused) from "key bound to an explicit null" (still a legitimately resolved value)
+    via `containsKey`, not a null check -- otherwise the fix would trade one silent defect for a
+    spurious failure on real nulls. `patchConcept`'s own `idRef` resolution stays on the LENIENT
+    `resolve()` by design (Move 5 Wave 1B's `createIfMissing`: an unresolved/blank idRef means
+    "nothing to look up yet, create new", not a typo) -- the one legitimate-absence site point 3
+    asked to name. RED/GREEN proof:
+    `NPDevKernel/kernel/src/test/java/com/npdev/kernel/procedures/DefaultProcedureExecutorRefUnresolvableTest.java`
+    (6 tests, governed gateway per R4), full kernel suite re-run green after the change.
+  - **X0-7** -- found already implemented in the uncommitted Move 12 P0 tree (runtime `QUERY_NOT_FOUND`
+    in `DefaultProcedureExecutor.runQuery`, author-time `PackValidation.validateProcedureSteps`'s
+    `PROCEDURE_QUERY_STEP_TYPES` check), just never marked DONE here nor covered by a model-level
+    test. Added the missing DoD piece: `ProcedureRunQueryUndeclaredNameValidationTest` in
+    `NPDevContract/dsl`, going through the real `JsonModelParser` + `SemanticValidator` front door
+    per the REG-89 lesson (kernel-only tests build a `ProcedureStep` directly and cannot see a
+    validator gap).
+  - **X0-8** -- added `PanelValidation.validateRootFieldReference` (near-copy of
+    `validateUiStateReference`, as the finding specified), wired into `validateVisibleWhen` alongside
+    the existing `$ui.` check. A `$root.<field>` predicate must now name a field declared on the
+    aggregate's root concept; unlike `$ui.` there is no fixed value set (root fields are typed, open
+    domains), so only the field name is checked, not the literal. Full DSL suite re-run green
+    (472 tests, 106 classes, 0 failures) -- existing `visibleWhen` fixtures already used real field
+    names (`tipo`), so nothing broke.
+
+  Left open for a future pass, not attempted here: the `expression-cel` audit named above.
