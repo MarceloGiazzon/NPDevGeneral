@@ -50,8 +50,34 @@ export function updateField(
 ): AuthoringModelDocument {
   return updateEntity(document, entityName, (entity) => ({
     ...entity,
-    fields: entity.fields.map((field) => (field.name === fieldName ? updater(field) : field))
+    fields: entity.fields.map((field) => (field.name === fieldName ? applyFieldUpdate(field, updater) : field))
   }));
+}
+
+/**
+ * Move 9 B2 (docs/ACCEPTED_BOUNDARIES.md B1): stamps `renamedFrom` automatically whenever the
+ * updater changes a field's `name`. The "Field name" input in `FieldDetailsEditor.tsx` is the only
+ * caller that ever changes `name` (adding a new field goes through a separate path that never calls
+ * `updateField`), so this is the single choke point every rename passes through -- the DSL/migration
+ * engine only sees a real rename when the author actually renamed something in the editor, never a
+ * guess.
+ *
+ * Preserves the ORIGINAL pre-rename name across multiple renames within one session (does not
+ * overwrite an existing `renamedFrom` with an intermediate name), and clears it if the field is
+ * renamed back to that original name -- a name that nets out unchanged should not be recorded as a
+ * rename.
+ */
+function applyFieldUpdate(field: AuthoringField, updater: (field: AuthoringField) => AuthoringField): AuthoringField {
+  const updated = updater(field);
+  if (updated.name === field.name) {
+    return updated;
+  }
+  const originalName = field.renamedFrom ?? field.name;
+  if (updated.name === originalName) {
+    const { renamedFrom: _renamedFrom, ...withoutRenamedFrom } = updated;
+    return withoutRenamedFrom;
+  }
+  return { ...updated, renamedFrom: originalName };
 }
 
 export function ensureObjectProperties(field: AuthoringField): Record<string, AuthoringSchemaProperty> {

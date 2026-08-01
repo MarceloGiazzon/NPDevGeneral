@@ -76,6 +76,10 @@ export type AuthoringFileMetadata = {
 
 export type AuthoringField = {
   name: string;
+  /** Move 9 B2: the field's name before its most recent in-editor rename. Set automatically by
+   * `updateField` (editorUtils.ts) when a rename is detected -- never hand-set by any UI control.
+   * Tells the migration engine "this is a rename" instead of "drop the old column, add a new one". */
+  renamedFrom?: string;
   type?: string;
   id?: boolean;
   required?: boolean;
