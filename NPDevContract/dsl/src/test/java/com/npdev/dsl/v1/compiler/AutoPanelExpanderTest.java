@@ -79,6 +79,55 @@ class AutoPanelExpanderTest {
     }
 
     @Test
+    void selectionDataSourceProcedureReplacesTheGeneratedRowSource() throws Exception {
+        // Move 8 D3 (item G6): selection.dataSource.procedure threads through into the generated
+        // Selection panel's "rows" data source as the produce-disposition procedure -- the seam
+        // PanelRuntime already executes for hand-authored panels, now reachable from AutoPanel too.
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.ap.d3", "version": "1.0",
+              "concepts": [
+                { "name": "Cliente", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "nome", "type": "string" } ] }
+              ],
+              "procedures": [
+                { "name": "ListarClientesAtivos", "steps": [
+                  { "name": "ret", "type": "return", "value": "$input" } ] }
+              ],
+              "autoPanels": [ { "concept": "Cliente",
+                "selection": { "dataSource": { "procedure": "ListarClientesAtivos" } } } ]
+            }
+            """;
+        CompiledModel model = compile(json);
+        CompiledPanel selection = panel(model, "ClienteSelection");
+
+        assertEquals("ListarClientesAtivos", selection.dataSources().get(0).procedure());
+        // concept is still carried unconditionally -- same precedent as hand-authored panels, where
+        // concept and procedure may coexist.
+        assertEquals("Cliente", selection.dataSources().get(0).concept());
+    }
+
+    @Test
+    void selectionWithNoDataSourceDeclaredStaysConceptBoundUnchanged() throws Exception {
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.ap.d3", "version": "1.0",
+              "concepts": [
+                { "name": "Cliente", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ] }
+              ],
+              "autoPanels": [ { "concept": "Cliente" } ]
+            }
+            """;
+        CompiledModel model = compile(json);
+        CompiledPanel selection = panel(model, "ClienteSelection");
+
+        assertNull(selection.dataSources().get(0).procedure());
+        assertEquals("Cliente", selection.dataSources().get(0).concept());
+    }
+
+    @Test
     void promptSurfaceIsEmittedAsAPicker() throws Exception {
         String json = """
             {

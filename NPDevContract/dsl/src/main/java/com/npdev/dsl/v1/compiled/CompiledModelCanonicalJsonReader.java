@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -104,6 +105,12 @@ public final class CompiledModelCanonicalJsonReader {
         }
 
         CompiledExternalAi externalAi = toExternalAi(root.get("externalAi"));
+        CompiledSettings settings = toSettings(root.get("settings"));
+
+        List<CompiledRole> roles = new ArrayList<>();
+        for (JsonNode node : array(root, "roles")) {
+            roles.add(toRole(node));
+        }
 
         return new CompiledModel(
                 namespace,
@@ -124,8 +131,15 @@ public final class CompiledModelCanonicalJsonReader {
                 aggregates,
                 autoPanels,
                 documents,
-                externalAi
+                externalAi,
+                settings,
+                roles
         );
+    }
+
+    /** Wave 3 (RC-B1): reads a single app-defined role -> permission-ceiling declaration. */
+    private static CompiledRole toRole(JsonNode node) {
+        return new CompiledRole(text(node, "name"), toStringList(node.get("grants")));
     }
 
     /** ADR-0009: reads the optional app-level externalAi block; null if absent. */
@@ -134,6 +148,20 @@ public final class CompiledModelCanonicalJsonReader {
             return null;
         }
         return new CompiledExternalAi(optionalText(node, "egress"), toStringList(node.get("vendors")));
+    }
+
+    /** Move 6 Move A: reads the app-level settings block; platform defaults if absent (the writer
+     * always emits the FULL merged catalogue, so a round-tripped read needs no re-merge here -- the
+     * ids happen to already equal the platform defaults for an app that overrode nothing). */
+    private static CompiledSettings toSettings(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return CompiledSettings.defaults();
+        }
+        JsonNode uiNode = node.get("ui");
+        Integer pageRows = uiNode == null ? null : optionalIntegerObject(uiNode.get("pageRows"));
+        String dateFormat = uiNode == null ? null : optionalText(uiNode, "dateFormat");
+        return new CompiledSettings(
+                optionalText(node, "locale"), toStringMap(node.get("strings")), pageRows, dateFormat);
     }
 
     private static CompiledDocument toDocument(JsonNode node) {
@@ -179,8 +207,136 @@ public final class CompiledModelCanonicalJsonReader {
                 toStringList(node.get("fields")),
                 computed,
                 optionalText(node, "labelField"),
-                toObjectMap(node.get("metadata"))
+                toObjectMap(node.get("metadata")),
+                toTransactionHooks(node.get("hooks")),
+                toDerivedFields(node.get("derivedFields")),
+                toRegions(node.get("regions")),
+                toWorkbenchActions(node.get("actions")),
+                toStringMap(node.get("visibleWhen")),
+                toBandPickers(node.get("bandPickers")),
+                toAutoPanelDataSource(node.get("dataSource")),
+                toUiState(node.get("uiState"))
         );
+    }
+
+    /** Move 11 W6: reads transaction.uiState -- the reader half of R0.3 (writer AND reader). */
+    private static Map<String, CompiledUiStateControl> toUiState(JsonNode node) {
+        Map<String, CompiledUiStateControl> out = new LinkedHashMap<>();
+        if (node == null || !node.isObject()) {
+            return out;
+        }
+        Iterator<String> names = node.fieldNames();
+        while (names.hasNext()) {
+            String name = names.next();
+            JsonNode controlNode = node.get(name);
+            out.put(name, new CompiledUiStateControl(
+                    optionalText(controlNode, "name"),
+                    optionalText(controlNode, "label"),
+                    toStringList(controlNode.get("values")),
+                    optionalText(controlNode, "default")
+            ));
+        }
+        return out;
+    }
+
+    /** Move 8 D3 (item G6): reads a surface's dataSource.procedure declaration, or null if absent. */
+    private static CompiledAutoPanelDataSource toAutoPanelDataSource(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        return new CompiledAutoPanelDataSource(optionalText(node, "procedure"));
+    }
+
+    /** Move 7 W1: reads transaction.actions, typed replacement for metadata.actions. */
+    private static List<CompiledWorkbenchAction> toWorkbenchActions(JsonNode node) {
+        List<CompiledWorkbenchAction> out = new ArrayList<>();
+        if (node == null || !node.isArray()) {
+            return out;
+        }
+        for (JsonNode actionNode : node) {
+            out.add(new CompiledWorkbenchAction(
+                    optionalText(actionNode, "procedure"),
+                    optionalText(actionNode, "label"),
+                    toStringList(actionNode.get("inputFields")),
+                    toWorkbenchActionApplyTo(actionNode.get("applyTo")),
+                    optionalText(actionNode, "afterAction"),
+                    optionalText(actionNode, "visibleWhen")));
+        }
+        return out;
+    }
+
+    private static CompiledWorkbenchActionApplyTo toWorkbenchActionApplyTo(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        return new CompiledWorkbenchActionApplyTo(
+                optionalText(node, "collection"),
+                optionalText(node, "mode"),
+                toStringMap(node.get("map")));
+    }
+
+    /** Move 7 W1: reads transaction.bandPickers, typed replacement for metadata.bandPickers. */
+    private static Map<String, CompiledWorkbenchBandPicker> toBandPickers(JsonNode node) {
+        Map<String, CompiledWorkbenchBandPicker> out = new LinkedHashMap<>();
+        if (node == null || !node.isObject()) {
+            return out;
+        }
+        node.fields().forEachRemaining(entry -> {
+            JsonNode pickerNode = entry.getValue();
+            out.put(entry.getKey(), new CompiledWorkbenchBandPicker(
+                    optionalText(pickerNode, "panel"),
+                    optionalText(pickerNode, "label"),
+                    toStringList(pickerNode.get("columns")),
+                    optionalText(pickerNode, "filter"),
+                    booleanValue(pickerNode, "multiSelect")));
+        });
+        return out;
+    }
+
+    /** Move 6 Move D: reads transaction.regions, an object keyed by derived region address. */
+    private static Map<String, CompiledRegionMount> toRegions(JsonNode node) {
+        Map<String, CompiledRegionMount> out = new LinkedHashMap<>();
+        if (node == null || !node.isObject()) {
+            return out;
+        }
+        node.fields().forEachRemaining(entry -> {
+            JsonNode regionNode = entry.getValue();
+            out.put(entry.getKey(), new CompiledRegionMount(
+                    defaulted(optionalText(regionNode, "render"), "generated"),
+                    optionalText(regionNode, "component")));
+        });
+        return out;
+    }
+
+    /** Move 6 Move B: reads the closed-enum transaction.hooks block; null if absent. */
+    private static CompiledTransactionHooks toTransactionHooks(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        return new CompiledTransactionHooks(
+                optionalText(node, "onLoad"),
+                optionalText(node, "onFieldChange"),
+                optionalText(node, "beforeAction"),
+                optionalText(node, "onValidate"),
+                optionalText(node, "onCommit"));
+    }
+
+    /** Move 6 Move B: reads transaction.derivedFields, an object keyed by field name. */
+    private static List<CompiledDerivedField> toDerivedFields(JsonNode node) {
+        List<CompiledDerivedField> out = new ArrayList<>();
+        if (node == null || !node.isObject()) {
+            return out;
+        }
+        node.fields().forEachRemaining(entry -> {
+            JsonNode fieldNode = entry.getValue();
+            out.add(new CompiledDerivedField(
+                    entry.getKey(),
+                    optionalText(fieldNode, "label"),
+                    defaulted(optionalText(fieldNode, "tier"), "client"),
+                    optionalText(fieldNode, "expression"),
+                    optionalText(fieldNode, "procedure")));
+        });
+        return out;
     }
 
     private static CompiledAggregate toAggregate(JsonNode node) {
@@ -243,9 +399,25 @@ public final class CompiledModelCanonicalJsonReader {
                     optionalText(invariantNode, "type"),
                     optionalText(invariantNode, "field"),
                     optionalText(invariantNode, "expression"),
-                    invariantFields.isEmpty() && optionalText(invariantNode, "field") != null
-                            ? List.of(optionalText(invariantNode, "field"))
-                            : invariantFields
+                    // REG-97: NO back-fill. This used to read
+                    //     invariantFields.isEmpty() && field != null ? List.of(field) : invariantFields
+                    // which invented content the document did not contain: the compiler emits
+                    // `"fields": []` for a single-field `required` invariant, and reading it back
+                    // produced `["id"]`, so toJson(fromJson(toJson(m))) != toJson(m).
+                    //
+                    // "Canonical" is load-bearing in two places that assume a byte-stable form --
+                    // npdev-generated/ is hash-verified at startup, and npdev.schema.fingerprint is
+                    // an equality-over-canonical-form argument -- so a form whose value depends on
+                    // round-trip count can produce a spurious hash mismatch or a spurious
+                    // schema-impact prompt (a migration that appears necessary and is not).
+                    //
+                    // The READER is the side that changed, deliberately: a parser must be faithful
+                    // and never invent. Fixing the COMPILER instead (emitting ["id"]) would have
+                    // been equally idempotent but would change the canonical content of EVERY
+                    // model, i.e. change every fingerprint -- causing exactly the spurious
+                    // migration prompt this item is about. Callers already receive an empty list
+                    // from a freshly compiled model, so nothing that works today starts failing.
+                    invariantFields
             ));
         }
 
@@ -313,8 +485,17 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "connectable"),
                 optionalText(node, "renamedFrom"),
                 toFileMetadata(node.get("file")),
-                booleanValue(node, "sensitive")
+                booleanValue(node, "sensitive"),
+                toFieldPicker(node.get("picker"))
         );
+    }
+
+    /** B16/B19 (Move 9 A3): reads a field's declared picker filter/multiSelect. */
+    private static CompiledFieldPicker toFieldPicker(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return null;
+        }
+        return new CompiledFieldPicker(optionalText(node, "filter"), booleanValue(node, "multiSelect"));
     }
 
     /**
@@ -675,8 +856,30 @@ public final class CompiledModelCanonicalJsonReader {
                 toStringList(node.get("permissionRequirements")),
                 optionalText(node, "tracePolicy"),
                 optionalText(node, "auditPolicy"),
-                toObjectMap(node.get("metadata"))
+                toObjectMap(node.get("metadata")),
+                toGroupByFields(node),
+                toAggregateFunctions(node),
+                optionalText(node, "having")
         );
+    }
+
+    /** Move 10 B1: reads query.groupBy[] -- the canonical form is always the object shape. */
+    private static List<CompiledGroupByField> toGroupByFields(JsonNode queryNode) {
+        List<CompiledGroupByField> out = new ArrayList<>();
+        for (JsonNode entry : array(queryNode, "groupBy")) {
+            out.add(new CompiledGroupByField(text(entry, "field"), optionalText(entry, "bucket")));
+        }
+        return out;
+    }
+
+    /** Move 10 B1: reads query.aggregates[]. */
+    private static List<CompiledAggregateFunction> toAggregateFunctions(JsonNode queryNode) {
+        List<CompiledAggregateFunction> out = new ArrayList<>();
+        for (JsonNode entry : array(queryNode, "aggregates")) {
+            out.add(new CompiledAggregateFunction(
+                    text(entry, "name"), text(entry, "fn"), optionalText(entry, "field")));
+        }
+        return out;
     }
 
     private static CompiledRuleProfile toRuleProfile(JsonNode node) {
@@ -868,7 +1071,11 @@ public final class CompiledModelCanonicalJsonReader {
             out.add(new CompiledGuidePageGadget(
                     text(gadgetNode, "name"),
                     text(gadgetNode, "type"),
-                    optionalText(gadgetNode, "title")
+                    optionalText(gadgetNode, "title"),
+                    optionalText(gadgetNode, "query"),
+                    optionalText(gadgetNode, "x"),
+                    optionalText(gadgetNode, "y"),
+                    optionalText(gadgetNode, "series")
             ));
         }
         return out;
@@ -890,7 +1097,8 @@ public final class CompiledModelCanonicalJsonReader {
                     optionalText(dataSourceNode, "parentField"),
                     optionalText(dataSourceNode, "childField"),
                     toStringList(dataSourceNode.get("rowOps")),
-                    toStringList(dataSourceNode.get("addFormFields"))
+                    toStringList(dataSourceNode.get("addFormFields")),
+                    optionalText(dataSourceNode, "onRowLoad")
             ));
         }
         return out;

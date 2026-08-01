@@ -26,6 +26,8 @@ import com.npdev.dsl.v1.ast.AutoPanelAst;
 import com.npdev.dsl.v1.ast.AutoPanelComputedAst;
 import com.npdev.dsl.v1.ast.AutoPanelSurfaceAst;
 import com.npdev.dsl.v1.ast.SelectorAst;
+import com.npdev.dsl.v1.ast.GroupByFieldAst;
+import com.npdev.dsl.v1.ast.AggregateFunctionAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
@@ -127,10 +129,95 @@ final class PackValidation {
             if (!queryNames.add(normalize(query.name()))) {
                 errors.add("Query " + query.name() + ": duplicate query name");
             }
-            if (!entitiesByLower.containsKey(normalize(query.concept()))) {
+            ConceptAst concept = entitiesByLower.get(normalize(query.concept()));
+            if (concept == null) {
                 errors.add("Query " + query.name() + ": concept not found: " + query.concept());
             }
             validateParameterNames("Query " + query.name(), query.parameters(), errors);
+            if (query.isAggregate() && concept != null) {
+                validateAggregateQuery(query, concept, errors);
+            }
+        }
+    }
+
+    private static final Set<String> AGGREGATE_NUMERIC_TYPES = Set.of("int", "integer", "long");
+    private static final Set<String> AGGREGATE_DATE_TYPES = Set.of("date", "datetime");
+    private static final Set<String> AGGREGATE_FUNCTIONS = Set.of("count", "sum", "avg", "min", "max");
+
+    /**
+     * Move 10 B1 (LC-B1, MOVE10_AI_LOWCODE_PLAN Part B): compile-time checks for a {@code groupBy}/
+     * {@code aggregates} query. The HARD STOP here (refusing a concept that declares {@code
+     * access.read}) is a security boundary, not a convenience check -- {@code DefaultConceptGateway}
+     * enforces row-level {@code access.read} in the JVM, AFTER {@code store.query(...)} returns
+     * (see its own {@code isRowReadable} filter, applied post-fetch). A {@code GROUP BY} pushed to
+     * SQL computes its totals BEFORE that filter could ever run, so a group total would leak
+     * aggregated information about rows the caller is not authorized to read individually -- exactly
+     * the information-disclosure shape {@code access.read} exists to prevent. The correct fix
+     * (translating {@code access.read} expressions to SQL) is a second expression compiler and is
+     * explicitly out of scope for v1; refusing loudly at compile time is the accepted boundary
+     * instead (matches the platform's own X0 "an input the evaluator cannot handle is an error"
+     * rule) -- lift this the day {@code access.read} gains a SQL translation, not before.
+     */
+    private static void validateAggregateQuery(QueryAst query, ConceptAst concept, List<String> errors) {
+        String here = "Query " + query.name();
+        if (concept.getAccess() != null && hasText(concept.getAccess().getRead())) {
+            errors.add(here + ": groupBy/aggregates are not supported on concept " + concept.getName()
+                    + ", which declares access.read -- a pushed-down GROUP BY would compute totals over "
+                    + "rows the row-level access.read scope exists to hide (accepted boundary; lift when "
+                    + "access.read gains a SQL translation)");
+            return;
+        }
+
+        Map<String, FieldAst> fieldsByLower = new HashMap<>();
+        for (FieldAst field : concept.getFields()) {
+            fieldsByLower.put(normalize(field.getName()), field);
+        }
+
+        for (GroupByFieldAst groupByField : query.groupBy()) {
+            FieldAst field = fieldsByLower.get(normalize(groupByField.field()));
+            if (field == null) {
+                errors.add(here + ": groupBy field not found on concept " + concept.getName() + ": "
+                        + groupByField.field());
+                continue;
+            }
+            if (hasText(groupByField.bucket()) && !AGGREGATE_DATE_TYPES.contains(normalize(field.getType()))) {
+                errors.add(here + ": groupBy field " + groupByField.field() + " has bucket \""
+                        + groupByField.bucket() + "\" but its type (" + field.getType()
+                        + ") is not date/datetime");
+            }
+        }
+
+        Set<String> aggregateNames = new HashSet<>();
+        for (AggregateFunctionAst aggregate : query.aggregates()) {
+            if (!hasText(aggregate.name())) {
+                errors.add(here + ": an aggregate is missing its own output name");
+            } else if (!aggregateNames.add(normalize(aggregate.name()))) {
+                errors.add(here + ": duplicate aggregate output name: " + aggregate.name());
+            }
+            String fn = normalize(aggregate.fn());
+            if (!AGGREGATE_FUNCTIONS.contains(fn)) {
+                errors.add(here + ": aggregate " + aggregate.name() + " has an unsupported fn: "
+                        + aggregate.fn() + " (supported: " + AGGREGATE_FUNCTIONS + ")");
+                continue;
+            }
+            if ("count".equals(fn)) {
+                continue;
+            }
+            if (!hasText(aggregate.field())) {
+                errors.add(here + ": aggregate " + aggregate.name() + " (fn=" + fn + ") requires a field");
+                continue;
+            }
+            FieldAst field = fieldsByLower.get(normalize(aggregate.field()));
+            if (field == null) {
+                errors.add(here + ": aggregate " + aggregate.name() + " field not found on concept "
+                        + concept.getName() + ": " + aggregate.field());
+                continue;
+            }
+            if (("sum".equals(fn) || "avg".equals(fn))
+                    && !AGGREGATE_NUMERIC_TYPES.contains(normalize(field.getType()))) {
+                errors.add(here + ": aggregate " + aggregate.name() + " (fn=" + fn + ") requires a numeric "
+                        + "field, but " + aggregate.field() + " has type " + field.getType());
+            }
         }
     }
 
@@ -316,6 +403,18 @@ final class PackValidation {
      * concept and id (already checked generically by {@code PROCEDURE_CONCEPT_STEP_TYPES}), plus a
      * non-empty {@code set} whose every key is a declared field of that concept -- catching a typo'd
      * field name at author time (the REG-71 class of bug) instead of at runtime.
+     *
+     * <p>REG-89: {@code id} is required only for a genuine PATCH. {@code createIfMissing} (Move 5
+     * Wave 1B, REG-77's create half) explicitly supports a create-only call with no id to look up
+     * -- {@code DefaultProcedureExecutor.patchConcept}'s own doc comment: "tolerates a
+     * blank/unresolved idRef (nothing to look up yet) and, on a miss, builds a brand-new record
+     * from {@code set} alone with a freshly generated id ... so a caller that queried for a match
+     * first and found none can still invoke this with a blank idRef." This rule was written before
+     * that flag existed and never relaxed for it, making the runtime feature unreachable from any
+     * model: the only way past it was to declare a deliberately dangling ref and rely on it
+     * resolving to null (what {@code dsl-conformance-max}'s own fixture comment describes as "id
+     * references a key nothing populates"). Everything else below is unchanged -- a create still
+     * needs a non-empty {@code set}, and its field names are still checked.
      */
     private static void validateProcedurePatchConcept(
             String procedureName,
@@ -324,7 +423,7 @@ final class PackValidation {
             Map<String, ConceptAst> entitiesByLower,
             List<String> errors
     ) {
-        if (!hasText(step.id())) {
+        if (!hasText(step.id()) && !step.createIfMissing()) {
             errors.add("Procedure " + procedureName + " step " + stepPath + ": id is required for patchConcept");
         }
         if (step.set() == null || step.set().isEmpty()) {

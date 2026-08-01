@@ -63,7 +63,23 @@ public final class CompiledModelCanonicalJson {
         root.set("autoPanels", toAutoPanels(model));
         root.set("documents", toDocuments(model));
         root.set("externalAi", toExternalAi(model));
+        root.set("settings", toSettings(model));
+        root.set("roles", toRoles(model));
         return root;
+    }
+
+    /** Wave 3 (RC-B1): writes the app-defined role -> permission-ceiling declarations. */
+    private static ArrayNode toRoles(CompiledModel model) {
+        ArrayNode roles = JsonNodeFactory.instance.arrayNode();
+        List<CompiledRole> sorted = new ArrayList<>(model.getRoles());
+        sorted.sort(Comparator.comparing(role -> normalize(role.name())));
+        for (CompiledRole role : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(role.name()));
+            node.set("grants", toStringArray(role.grants()));
+            roles.add(node);
+        }
+        return roles;
     }
 
     private static ObjectNode toExternalAi(CompiledModel model) {
@@ -74,6 +90,27 @@ public final class CompiledModelCanonicalJson {
         ObjectNode node = JsonNodeFactory.instance.objectNode();
         node.put("egress", safe(externalAi.getEgress()));
         node.set("vendors", toStringArray(externalAi.getVendors()));
+        return node;
+    }
+
+    /** Move 6 Move A: writes the FULL merged catalogue (platform defaults + app overrides), not just
+     * the app's own overrides -- the reader round-trips it back unchanged (§7.3), and a consumer that
+     * reads canonical JSON directly (rather than recompiling model.json) still sees every id resolved. */
+    private static ObjectNode toSettings(CompiledModel model) {
+        CompiledSettings settings = model.getSettings();
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        if (settings.getLocale() != null) {
+            node.put("locale", safe(settings.getLocale()));
+        }
+        node.set("strings", toStringMap(settings.getStrings()));
+        ObjectNode ui = JsonNodeFactory.instance.objectNode();
+        if (settings.getPageRows() != null) {
+            ui.put("pageRows", settings.getPageRows());
+        }
+        if (settings.getDateFormat() != null) {
+            ui.put("dateFormat", safe(settings.getDateFormat()));
+        }
+        node.set("ui", ui);
         return node;
     }
 
@@ -155,6 +192,183 @@ public final class CompiledModelCanonicalJson {
         node.set("computed", computed);
         node.put("labelField", safe(surface.labelField()));
         node.set("metadata", toObjectMap(surface.metadata()));
+        node.set("hooks", toTransactionHooks(surface.hooks()));
+        node.set("derivedFields", toDerivedFields(surface.derivedFields()));
+        node.set("regions", toRegions(surface.regions()));
+        node.set("actions", toWorkbenchActions(surface.actions()));
+        node.set("visibleWhen", toVisibleWhen(surface.visibleWhen()));
+        node.set("bandPickers", toBandPickers(surface.bandPickers()));
+        node.set("dataSource", toAutoPanelDataSource(surface.dataSource()));
+        node.set("uiState", toUiState(surface.uiState()));
+        return node;
+    }
+
+    /** Move 11 W6: writes transaction.uiState, keyed by UI-state name. */
+    private static ObjectNode toUiState(Map<String, CompiledUiStateControl> uiState) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        if (uiState == null) {
+            return node;
+        }
+        for (Map.Entry<String, CompiledUiStateControl> entry : uiState.entrySet()) {
+            CompiledUiStateControl control = entry.getValue();
+            ObjectNode controlNode = JsonNodeFactory.instance.objectNode();
+            controlNode.put("name", safe(control.name()));
+            controlNode.put("label", safe(control.label()));
+            controlNode.set("values", toStringArray(control.values()));
+            controlNode.put("default", safe(control.defaultValue()));
+            node.set(safe(entry.getKey()), controlNode);
+        }
+        return node;
+    }
+
+    /** Move 8 D3 (item G6): writes a surface's dataSource.procedure block, or null if absent. */
+    private static ObjectNode toAutoPanelDataSource(CompiledAutoPanelDataSource dataSource) {
+        if (dataSource == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        if (dataSource.procedure() != null) {
+            node.put("procedure", safe(dataSource.procedure()));
+        }
+        return node;
+    }
+
+    /** Move 7 W1: writes transaction.actions, typed replacement for metadata.actions. */
+    private static ArrayNode toWorkbenchActions(List<CompiledWorkbenchAction> actions) {
+        ArrayNode array = JsonNodeFactory.instance.arrayNode();
+        if (actions == null) {
+            return array;
+        }
+        for (CompiledWorkbenchAction action : actions) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("procedure", safe(action.procedure()));
+            if (action.label() != null) {
+                node.put("label", safe(action.label()));
+            }
+            node.set("inputFields", toStringArray(action.inputFields()));
+            if (action.applyTo() != null) {
+                node.set("applyTo", toWorkbenchActionApplyTo(action.applyTo()));
+            }
+            if (action.afterAction() != null) {
+                node.put("afterAction", safe(action.afterAction()));
+            }
+            if (action.visibleWhen() != null) {
+                node.put("visibleWhen", safe(action.visibleWhen()));
+            }
+            array.add(node);
+        }
+        return array;
+    }
+
+    private static ObjectNode toWorkbenchActionApplyTo(CompiledWorkbenchActionApplyTo applyTo) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("collection", safe(applyTo.collection()));
+        node.put("mode", safe(applyTo.mode()));
+        ObjectNode mapNode = JsonNodeFactory.instance.objectNode();
+        if (applyTo.map() != null) {
+            for (Map.Entry<String, String> entry : applyTo.map().entrySet()) {
+                mapNode.put(safe(entry.getKey()), safe(entry.getValue()));
+            }
+        }
+        node.set("map", mapNode);
+        return node;
+    }
+
+    /** Move 7 W1: writes transaction.visibleWhen, typed replacement for metadata.visibleWhen. */
+    private static ObjectNode toVisibleWhen(Map<String, String> visibleWhen) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        if (visibleWhen == null) {
+            return node;
+        }
+        for (Map.Entry<String, String> entry : visibleWhen.entrySet()) {
+            node.put(safe(entry.getKey()), safe(entry.getValue()));
+        }
+        return node;
+    }
+
+    /** Move 7 W1: writes transaction.bandPickers, typed replacement for metadata.bandPickers. */
+    private static ObjectNode toBandPickers(Map<String, CompiledWorkbenchBandPicker> bandPickers) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        if (bandPickers == null) {
+            return node;
+        }
+        for (Map.Entry<String, CompiledWorkbenchBandPicker> entry : bandPickers.entrySet()) {
+            CompiledWorkbenchBandPicker picker = entry.getValue();
+            ObjectNode pickerNode = JsonNodeFactory.instance.objectNode();
+            pickerNode.put("panel", safe(picker.panel()));
+            if (picker.label() != null) {
+                pickerNode.put("label", safe(picker.label()));
+            }
+            pickerNode.set("columns", toStringArray(picker.columns()));
+            pickerNode.put("filter", safe(picker.filter()));
+            pickerNode.put("multiSelect", picker.multiSelect());
+            node.set(safe(entry.getKey()), pickerNode);
+        }
+        return node;
+    }
+
+    /** Move 6 Move D: writes transaction.regions, keyed by derived region address. */
+    private static ObjectNode toRegions(Map<String, CompiledRegionMount> regions) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        if (regions == null) {
+            return node;
+        }
+        for (Map.Entry<String, CompiledRegionMount> entry : regions.entrySet()) {
+            CompiledRegionMount region = entry.getValue();
+            ObjectNode regionNode = JsonNodeFactory.instance.objectNode();
+            regionNode.put("render", safe(region.render()));
+            if (region.component() != null) {
+                regionNode.put("component", safe(region.component()));
+            }
+            node.set(safe(entry.getKey()), regionNode);
+        }
+        return node;
+    }
+
+    /** Move 6 Move B: writes the closed-enum transaction.hooks block, or null if absent. */
+    private static ObjectNode toTransactionHooks(CompiledTransactionHooks hooks) {
+        if (hooks == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        if (hooks.onLoad() != null) {
+            node.put("onLoad", safe(hooks.onLoad()));
+        }
+        if (hooks.onFieldChange() != null) {
+            node.put("onFieldChange", safe(hooks.onFieldChange()));
+        }
+        if (hooks.beforeAction() != null) {
+            node.put("beforeAction", safe(hooks.beforeAction()));
+        }
+        if (hooks.onValidate() != null) {
+            node.put("onValidate", safe(hooks.onValidate()));
+        }
+        if (hooks.onCommit() != null) {
+            node.put("onCommit", safe(hooks.onCommit()));
+        }
+        return node;
+    }
+
+    /** Move 6 Move B: writes transaction.derivedFields, keyed by field name. */
+    private static ObjectNode toDerivedFields(List<CompiledDerivedField> derivedFields) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        if (derivedFields == null) {
+            return node;
+        }
+        for (CompiledDerivedField field : derivedFields) {
+            ObjectNode entry = JsonNodeFactory.instance.objectNode();
+            if (field.label() != null) {
+                entry.put("label", safe(field.label()));
+            }
+            entry.put("tier", safe(field.tier()));
+            if (field.expression() != null) {
+                entry.put("expression", safe(field.expression()));
+            }
+            if (field.procedure() != null) {
+                entry.put("procedure", safe(field.procedure()));
+            }
+            node.set(safe(field.name()), entry);
+        }
         return node;
     }
 
@@ -231,6 +445,7 @@ public final class CompiledModelCanonicalJson {
                 fieldNode.set("schema", toSchema(field.getSchema()));
                 fieldNode.set("ui", toPresentationMetadata(field.getUi()));
                 fieldNode.set("file", toFileMetadata(field.getFile()));
+                fieldNode.set("picker", toFieldPicker(field.getPicker()));
                 fieldsNode.add(fieldNode);
             }
             node.set("fields", fieldsNode);
@@ -525,9 +740,39 @@ public final class CompiledModelCanonicalJson {
             node.put("tracePolicy", safe(query.tracePolicy()));
             node.put("auditPolicy", safe(query.auditPolicy()));
             node.set("metadata", toObjectMap(query.metadata()));
+            node.set("groupBy", toGroupByFields(query.groupBy()));
+            node.set("aggregates", toAggregateFunctions(query.aggregates()));
+            node.put("having", safe(query.having()));
             queries.add(node);
         }
         return queries;
+    }
+
+    /** Move 10 B1: writes query.groupBy[] -- always the object shape ({field, bucket}, bucket null
+     *  for a plain grouping) even though the authoring shape also accepts a bare string; the
+     *  canonical form is unambiguous so the reader never has to re-detect which shape was used. */
+    private static ArrayNode toGroupByFields(List<CompiledGroupByField> groupBy) {
+        ArrayNode array = JsonNodeFactory.instance.arrayNode();
+        for (CompiledGroupByField field : groupBy) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("field", safe(field.field()));
+            node.put("bucket", safe(field.bucket()));
+            array.add(node);
+        }
+        return array;
+    }
+
+    /** Move 10 B1: writes query.aggregates[]. */
+    private static ArrayNode toAggregateFunctions(List<CompiledAggregateFunction> aggregates) {
+        ArrayNode array = JsonNodeFactory.instance.arrayNode();
+        for (CompiledAggregateFunction aggregate : aggregates) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(aggregate.name()));
+            node.put("fn", safe(aggregate.fn()));
+            node.put("field", safe(aggregate.field()));
+            array.add(node);
+        }
+        return array;
     }
 
     private static ArrayNode toRuleProfiles(CompiledModel model) {
@@ -757,6 +1002,10 @@ public final class CompiledModelCanonicalJson {
             node.put("name", safe(gadget.name()));
             node.put("type", safe(gadget.type()));
             node.put("title", safe(gadget.title()));
+            node.put("query", safe(gadget.query()));
+            node.put("x", safe(gadget.x()));
+            node.put("y", safe(gadget.y()));
+            node.put("series", safe(gadget.series()));
             out.add(node);
         }
         return out;
@@ -781,6 +1030,7 @@ public final class CompiledModelCanonicalJson {
             node.put("childField", safe(dataSource.childField()));
             node.set("rowOps", toStringArray(dataSource.rowOps()));
             node.set("addFormFields", toStringArray(dataSource.addFormFields()));
+            node.put("onRowLoad", safe(dataSource.onRowLoad()));
             out.add(node);
         }
         return out;
@@ -1255,6 +1505,17 @@ public final class CompiledModelCanonicalJson {
             node.put("maxSizeBytes", file.maxSizeBytes());
         }
         node.put("multiple", file.multiple());
+        return node;
+    }
+
+    /** B16/B19 (Move 9 A3): serializes a field's declared picker filter/multiSelect. */
+    private static JsonNode toFieldPicker(CompiledFieldPicker picker) {
+        if (picker == null) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("filter", safe(picker.filter()));
+        node.put("multiSelect", picker.multiSelect());
         return node;
     }
 

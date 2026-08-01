@@ -46,6 +46,7 @@ import com.npdev.dsl.v1.ast.SchemaAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
 import com.npdev.dsl.v1.ast.StateTransitionAst;
 import com.npdev.dsl.v1.ast.StepAst;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.dsl.v1.resolution.ModelResolutionException;
 import com.npdev.dsl.v1.resolution.ModelResolver;
 import com.npdev.dsl.v1.resolution.ResolvedModel;
@@ -329,6 +330,33 @@ final class ConceptValidation {
 
             validateAccessRules(e.getName(), e.getAccess(), fieldNames, errors);
             validateLifecycle(e, effective, effectiveModel.getAutoPanels(), effectiveModel.getAggregates(), errors);
+        }
+    }
+
+    /**
+     * REG-98 (MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 0.1, fix shape (a)): two differently-named
+     * concepts can derive the SAME physical table, because {@link SqlIdentifierSupport#toSnake}
+     * sanitizes by REPLACEMENT -- every non-alphanumeric character becomes {@code '_'}, then runs
+     * of {@code '_'} collapse -- so {@code OrderLine}, {@code Order Line} and {@code Order-Line} all
+     * derive {@code order_lines}. Concept NAMES are already checked for duplicates
+     * ({@link #indexEntities}); the physical names they compile to were not, so two concepts could
+     * silently share one table -- each seeing the other's rows as its own, with no error anywhere.
+     *
+     * <p>Deliberately mirrors {@link SqlIdentifierSupport#toSnakePlural} exactly -- the same call
+     * {@code ModelCompiler} makes to derive a concept's real table name -- rather than reimplementing
+     * the sanitization, so this check can never drift from what actually gets compiled (one grammar,
+     * not two dialects).
+     */
+    static void validateTableNameCollisions(ModelAst effectiveModel, List<String> errors) {
+        Map<String, String> conceptNameByTableName = new LinkedHashMap<>();
+        for (ConceptAst concept : effectiveModel.getConcepts()) {
+            String tableName = SqlIdentifierSupport.toSnakePlural(concept.getName());
+            String firstConceptName = conceptNameByTableName.putIfAbsent(tableName, concept.getName());
+            if (firstConceptName != null && !normalize(firstConceptName).equals(normalize(concept.getName()))) {
+                errors.add("Concepts " + firstConceptName + " and " + concept.getName()
+                        + ": both derive the same physical table name \"" + tableName
+                        + "\" -- rename one of them so their data is not silently merged (REG-98)");
+            }
         }
     }
 

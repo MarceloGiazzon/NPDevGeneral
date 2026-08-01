@@ -21,6 +21,7 @@ public final class FieldAst {
     private final String renamedFrom;
     private final FileMetadataAst file;
     private final boolean sensitive;
+    private final FieldPickerAst picker;
 
     public FieldAst(String name, String type, boolean id, boolean required, boolean unique) {
         this(name, type, id, required, unique, List.of(), null, null, null, null, List.of(), null);
@@ -164,6 +165,30 @@ public final class FieldAst {
             FileMetadataAst file,
             boolean sensitive
     ) {
+        this(name, type, id, required, unique, enumValues, referenceTarget, referenceSemantics,
+                domainType, schema, enumOptions, ui, connectable, renamedFrom, file, sensitive, null);
+    }
+
+    /** B16/B19 (Move 9 A3): {@code picker} declares a filter/multiSelect for this field's auto-picker. */
+    public FieldAst(
+            String name,
+            String type,
+            boolean id,
+            boolean required,
+            boolean unique,
+            List<String> enumValues,
+            String referenceTarget,
+            ReferenceSemanticsAst referenceSemantics,
+            String domainType,
+            SchemaAst schema,
+            List<EnumOptionAst> enumOptions,
+            PresentationMetadataAst ui,
+            String connectable,
+            String renamedFrom,
+            FileMetadataAst file,
+            boolean sensitive,
+            FieldPickerAst picker
+    ) {
         this.name = name;
         this.type = type;
         this.id = id;
@@ -180,6 +205,7 @@ public final class FieldAst {
         this.renamedFrom = renamedFrom;
         this.file = file;
         this.sensitive = sensitive;
+        this.picker = picker;
     }
 
     public String getName() { return name; }
@@ -202,4 +228,6 @@ public final class FieldAst {
     public FileMetadataAst getFile() { return file; }
     /** ADR-0009: true when this field is marked sensitive for external-AI pack redaction. */
     public boolean isSensitive() { return sensitive; }
+    /** B16/B19 (Move 9 A3): this field's declared picker filter/multiSelect, or null if undeclared. */
+    public FieldPickerAst getPicker() { return picker; }
 }

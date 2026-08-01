@@ -4,10 +4,19 @@ import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.DocumentAst;
 import com.npdev.dsl.v1.ast.ExternalAiAst;
 import com.npdev.dsl.v1.ast.FieldAst;
+import com.npdev.dsl.v1.ast.FieldPickerAst;
 import com.npdev.dsl.v1.ast.FileMetadataAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.ast.OrchestrationAst;
+import com.npdev.dsl.v1.ast.SettingsAst;
+import com.npdev.dsl.v1.ast.TransactionHooksAst;
+import com.npdev.dsl.v1.ast.DerivedFieldAst;
+import com.npdev.dsl.v1.ast.RegionMountAst;
+import com.npdev.dsl.v1.ast.UiStateControlAst;
+import com.npdev.dsl.v1.ast.WorkbenchActionAst;
+import com.npdev.dsl.v1.ast.WorkbenchActionApplyToAst;
+import com.npdev.dsl.v1.ast.WorkbenchBandPickerAst;
 import com.npdev.dsl.v1.ast.DomainTypeAst;
 import com.npdev.dsl.v1.ast.CapabilityAst;
 import com.npdev.dsl.v1.ast.CapabilityBindingAst;
@@ -25,6 +34,7 @@ import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
 import com.npdev.dsl.v1.ast.AutoPanelAst;
 import com.npdev.dsl.v1.ast.AutoPanelComputedAst;
+import com.npdev.dsl.v1.ast.AutoPanelDataSourceAst;
 import com.npdev.dsl.v1.ast.AutoPanelSurfaceAst;
 import com.npdev.dsl.v1.ast.SelectorAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
@@ -69,6 +79,7 @@ import com.npdev.dsl.v1.compiled.CompiledEnumOption;
 import com.npdev.dsl.v1.compiled.CompiledEvent;
 import com.npdev.dsl.v1.compiled.CompiledEventField;
 import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.dsl.v1.compiled.CompiledFieldPicker;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowSchedule;
 import com.npdev.dsl.v1.compiled.CompiledFlowStep;
@@ -88,9 +99,18 @@ import com.npdev.dsl.v1.compiled.CompiledAggregate;
 import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanel;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelComputed;
+import com.npdev.dsl.v1.compiled.CompiledAutoPanelDataSource;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelSurface;
 import com.npdev.dsl.v1.compiled.CompiledDocument;
 import com.npdev.dsl.v1.compiled.CompiledExternalAi;
+import com.npdev.dsl.v1.compiled.CompiledSettings;
+import com.npdev.dsl.v1.compiled.CompiledTransactionHooks;
+import com.npdev.dsl.v1.compiled.CompiledDerivedField;
+import com.npdev.dsl.v1.compiled.CompiledRegionMount;
+import com.npdev.dsl.v1.compiled.CompiledUiStateControl;
+import com.npdev.dsl.v1.compiled.CompiledWorkbenchAction;
+import com.npdev.dsl.v1.compiled.CompiledWorkbenchActionApplyTo;
+import com.npdev.dsl.v1.compiled.CompiledWorkbenchBandPicker;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPanelDataSource;
@@ -137,6 +157,7 @@ public final class ModelCompiler {
         List<CompiledProcedure> procedures = new ArrayList<>();
         List<CompiledPanel> panels = new ArrayList<>();
         List<CompiledDocument> documents = new ArrayList<>();
+        CompiledSettings settings = toCompiledSettings(modelAst.getSettings());
         Map<String, String> capabilityTypesByName = new HashMap<>();
         Map<String, Map<String, CompiledCapabilityOperation>> operationsByCapability = new HashMap<>();
         Map<String, List<String>> invariantRefsByConcept = new HashMap<>();
@@ -245,7 +266,8 @@ public final class ModelCompiler {
                         f.getConnectable(),
                         f.getRenamedFrom(),
                         toCompiledFileMetadata(f.getFile()),
-                        f.isSensitive()
+                        f.isSensitive(),
+                        toCompiledFieldPicker(f.getPicker())
                 ));
 
                 if (f.isRequired()) {
@@ -414,7 +436,10 @@ public final class ModelCompiler {
                     sortedStrings(queryAst.permissionRequirements()),
                     queryAst.tracePolicy(),
                     queryAst.auditPolicy(),
-                    sortObjectMap(queryAst.metadata())
+                    sortObjectMap(queryAst.metadata()),
+                    toCompiledGroupByFields(queryAst.groupBy()),
+                    toCompiledAggregateFunctions(queryAst.aggregates()),
+                    queryAst.having()
             ));
         }
 
@@ -475,7 +500,7 @@ public final class ModelCompiler {
         orderedAggregates.sort(Comparator.comparing(aggregate -> normalize(aggregate.name())));
         List<CompiledAggregate> aggregates = new ArrayList<>();
         for (AggregateAst aggregateAst : orderedAggregates) {
-            aggregates.add(compileAggregate(aggregateAst));
+            aggregates.add(compileAggregate(aggregateAst, modelAst.getAutoPanels()));
         }
 
         List<AutoPanelAst> orderedAutoPanels = new ArrayList<>(modelAst.getAutoPanels());
@@ -520,14 +545,14 @@ public final class ModelCompiler {
             if (autoPanel.concept() != null && !autoPanel.concept().isBlank()) {
                 ConceptAst concept = conceptsByNormalizedName.get(normalize(autoPanel.concept()));
                 if (concept != null) {
-                    panels.addAll(AutoPanelExpander.expand(autoPanel, concept.getFields(), promptsByConcept));
+                    panels.addAll(AutoPanelExpander.expand(autoPanel, concept.getFields(), promptsByConcept, settings));
                 }
             } else if (autoPanel.aggregate() != null && !autoPanel.aggregate().isBlank()) {
                 // Aggregate-bound: the Transaction surface becomes the multi-level Aggregate Workbench.
                 CompiledAggregate aggregate = aggregatesByNormalizedName.get(normalize(autoPanel.aggregate()));
                 if (aggregate != null) {
                     panels.addAll(AutoPanelExpander.expandAggregateWorkbench(
-                            autoPanel, aggregate, fieldNamesByConcept, conceptsByNormalizedName));
+                            autoPanel, aggregate, fieldNamesByConcept, conceptsByNormalizedName, settings));
                 }
             }
         }
@@ -563,7 +588,9 @@ public final class ModelCompiler {
                 aggregates,
                 autoPanels,
                 documents,
-                toCompiledExternalAi(modelAst.getExternalAi())
+                toCompiledExternalAi(modelAst.getExternalAi()),
+                settings,
+                toCompiledRoles(modelAst.getRoles())
         );
     }
 
@@ -573,6 +600,48 @@ public final class ModelCompiler {
             return null;
         }
         return new CompiledExternalAi(externalAiAst.getEgress(), externalAiAst.getVendors());
+    }
+
+    /** Move 6 Move A: compiles the app-level settings block, merging platform string defaults. */
+    private static CompiledSettings toCompiledSettings(SettingsAst settingsAst) {
+        if (settingsAst == null) {
+            return CompiledSettings.defaults();
+        }
+        return new CompiledSettings(
+                settingsAst.getLocale(), settingsAst.getStrings(), settingsAst.getPageRows(),
+                settingsAst.getDateFormat());
+    }
+
+    /** Wave 3 (RC-B1): compiles the app-defined role -> permission-ceiling declarations. */
+    private static List<com.npdev.dsl.v1.compiled.CompiledRole> toCompiledRoles(
+            List<com.npdev.dsl.v1.ast.RoleAst> roleAsts) {
+        List<com.npdev.dsl.v1.compiled.CompiledRole> compiled = new ArrayList<>();
+        for (com.npdev.dsl.v1.ast.RoleAst roleAst : roleAsts) {
+            compiled.add(new com.npdev.dsl.v1.compiled.CompiledRole(roleAst.name(), roleAst.grants()));
+        }
+        return compiled;
+    }
+
+    /** Move 10 B1: compiles query.groupBy[]. */
+    private static List<com.npdev.dsl.v1.compiled.CompiledGroupByField> toCompiledGroupByFields(
+            List<com.npdev.dsl.v1.ast.GroupByFieldAst> groupByAsts) {
+        List<com.npdev.dsl.v1.compiled.CompiledGroupByField> compiled = new ArrayList<>();
+        for (com.npdev.dsl.v1.ast.GroupByFieldAst groupByAst : groupByAsts) {
+            compiled.add(new com.npdev.dsl.v1.compiled.CompiledGroupByField(
+                    groupByAst.field(), groupByAst.bucket()));
+        }
+        return compiled;
+    }
+
+    /** Move 10 B1: compiles query.aggregates[]. */
+    private static List<com.npdev.dsl.v1.compiled.CompiledAggregateFunction> toCompiledAggregateFunctions(
+            List<com.npdev.dsl.v1.ast.AggregateFunctionAst> aggregateAsts) {
+        List<com.npdev.dsl.v1.compiled.CompiledAggregateFunction> compiled = new ArrayList<>();
+        for (com.npdev.dsl.v1.ast.AggregateFunctionAst aggregateAst : aggregateAsts) {
+            compiled.add(new com.npdev.dsl.v1.compiled.CompiledAggregateFunction(
+                    aggregateAst.name(), aggregateAst.fn(), aggregateAst.field()));
+        }
+        return compiled;
     }
 
     private static CompiledDocument compileDocument(DocumentAst documentAst) {
@@ -619,25 +688,118 @@ public final class ModelCompiler {
         for (AutoPanelComputedAst c : surface.computed()) {
             computed.add(new CompiledAutoPanelComputed(c.col(), c.expr()));
         }
+        List<CompiledDerivedField> derivedFields = new ArrayList<>();
+        for (DerivedFieldAst d : surface.derivedFields()) {
+            derivedFields.add(new CompiledDerivedField(d.name(), d.label(), d.tier(), d.expression(), d.procedure()));
+        }
+        Map<String, CompiledRegionMount> regions = new LinkedHashMap<>();
+        for (Map.Entry<String, RegionMountAst> entry : surface.regions().entrySet()) {
+            RegionMountAst region = entry.getValue();
+            regions.put(entry.getKey(), new CompiledRegionMount(region.render(), region.component()));
+        }
+        List<CompiledWorkbenchAction> actions = new ArrayList<>();
+        for (WorkbenchActionAst action : surface.actions()) {
+            actions.add(new CompiledWorkbenchAction(
+                    action.procedure(),
+                    action.label(),
+                    new ArrayList<>(action.inputFields()),
+                    toCompiledWorkbenchActionApplyTo(action.applyTo()),
+                    action.afterAction(),
+                    action.visibleWhen()
+            ));
+        }
+        Map<String, CompiledWorkbenchBandPicker> bandPickers = new LinkedHashMap<>();
+        for (Map.Entry<String, WorkbenchBandPickerAst> entry : surface.bandPickers().entrySet()) {
+            WorkbenchBandPickerAst picker = entry.getValue();
+            bandPickers.put(entry.getKey(),
+                    new CompiledWorkbenchBandPicker(
+                            picker.panel(), picker.label(), new ArrayList<>(picker.columns()),
+                            picker.filter(), picker.multiSelect()));
+        }
+        // Move 11 W6: declared transient UI state a `$ui.<name>` visibleWhen predicate can read.
+        Map<String, CompiledUiStateControl> uiState = new LinkedHashMap<>();
+        for (Map.Entry<String, UiStateControlAst> entry : surface.uiState().entrySet()) {
+            UiStateControlAst control = entry.getValue();
+            uiState.put(entry.getKey(), new CompiledUiStateControl(
+                    control.name(), control.label(), new ArrayList<>(control.values()), control.defaultValue()));
+        }
         return new CompiledAutoPanelSurface(
                 new ArrayList<>(surface.filters()),
                 new ArrayList<>(surface.columns()),
                 new ArrayList<>(surface.fields()),
                 computed,
                 surface.labelField(),
-                sortObjectMap(surface.metadata())
+                sortObjectMap(surface.metadata()),
+                toCompiledTransactionHooks(surface.hooks()),
+                derivedFields,
+                regions,
+                actions,
+                new LinkedHashMap<>(surface.visibleWhen()),
+                bandPickers,
+                toCompiledAutoPanelDataSource(surface.dataSource()),
+                uiState
         );
     }
 
-    private static CompiledAggregate compileAggregate(AggregateAst aggregateAst) {
+    /** Move 8 D3 (item G6): compiles a surface's dataSource.procedure declaration, or null if absent. */
+    private static CompiledAutoPanelDataSource toCompiledAutoPanelDataSource(AutoPanelDataSourceAst dataSource) {
+        if (dataSource == null) {
+            return null;
+        }
+        return new CompiledAutoPanelDataSource(dataSource.procedure());
+    }
+
+    /** Move 7 W1: compiles the optional transaction.actions[].applyTo shorthand, or null if absent. */
+    private static CompiledWorkbenchActionApplyTo toCompiledWorkbenchActionApplyTo(WorkbenchActionApplyToAst applyTo) {
+        if (applyTo == null) {
+            return null;
+        }
+        return new CompiledWorkbenchActionApplyTo(applyTo.collection(), applyTo.mode(), new LinkedHashMap<>(applyTo.map()));
+    }
+
+    /** Move 6 Move B: compiles the optional closed-enum transaction.hooks block, or null if absent. */
+    private static CompiledTransactionHooks toCompiledTransactionHooks(TransactionHooksAst hooks) {
+        if (hooks == null) {
+            return null;
+        }
+        return new CompiledTransactionHooks(
+                hooks.onLoad(), hooks.onFieldChange(), hooks.beforeAction(), hooks.onValidate(), hooks.onCommit());
+    }
+
+    private static CompiledAggregate compileAggregate(AggregateAst aggregateAst, List<AutoPanelAst> autoPanels) {
+        TransactionHooksAst hooks = transactionHooksFor(aggregateAst.name(), autoPanels);
+        String onValidate = hasText(aggregateAst.onValidate())
+                ? aggregateAst.onValidate() : (hooks == null ? null : hooks.onValidate());
+        String onCommit = hasText(aggregateAst.onCommit())
+                ? aggregateAst.onCommit() : (hooks == null ? null : hooks.onCommit());
         return new CompiledAggregate(
                 aggregateAst.name(),
                 aggregateAst.root(),
                 compileAggregateCollections(aggregateAst.collections()),
-                aggregateAst.onCommit(),
+                onCommit,
                 sortObjectMap(aggregateAst.metadata()),
-                aggregateAst.onValidate()
+                onValidate
         );
+    }
+
+    /** Move 6 Move B: an aggregate-bound AutoPanel's transaction.hooks.onValidate/onCommit is an
+     * alternate spelling for the aggregate's own onValidate/onCommit fields (unifying the two
+     * dialects, docs/MOVE6_TYPED_SURFACE_PLAN.md §B.2) -- a direct aggregate.onValidate/onCommit
+     * always wins when both are declared. */
+    private static TransactionHooksAst transactionHooksFor(String aggregateName, List<AutoPanelAst> autoPanels) {
+        if (aggregateName == null) {
+            return null;
+        }
+        for (AutoPanelAst autoPanel : autoPanels) {
+            if (aggregateName.equalsIgnoreCase(autoPanel.aggregate()) && autoPanel.transaction() != null) {
+                return autoPanel.transaction().hooks();
+            }
+        }
+        return null;
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private static List<CompiledAggregateCollection> compileAggregateCollections(
@@ -707,7 +869,9 @@ public final class ModelCompiler {
     private static List<CompiledGuidePageGadget> compileGuidePageGadgets(List<GuidePageGadgetAst> gadgetAsts) {
         List<CompiledGuidePageGadget> out = new ArrayList<>();
         for (GuidePageGadgetAst gadgetAst : gadgetAsts) {
-            out.add(new CompiledGuidePageGadget(gadgetAst.name(), gadgetAst.type(), gadgetAst.title()));
+            out.add(new CompiledGuidePageGadget(
+                    gadgetAst.name(), gadgetAst.type(), gadgetAst.title(),
+                    gadgetAst.query(), gadgetAst.x(), gadgetAst.y(), gadgetAst.series()));
         }
         return out;
     }
@@ -1377,7 +1541,8 @@ public final class ModelCompiler {
                     dataSource.parentField(),
                     dataSource.childField(),
                     List.copyOf(rowOps),
-                    List.copyOf(dataSource.addFormFields())
+                    List.copyOf(dataSource.addFormFields()),
+                    dataSource.onRowLoad()
             ));
         }
         out.sort(Comparator.comparing(dataSource -> normalize(dataSource.name())));
@@ -1504,6 +1669,14 @@ public final class ModelCompiler {
             return null;
         }
         return new CompiledFileMetadata(file.contentTypes(), file.maxSizeBytes(), file.multiple());
+    }
+
+    /** B16/B19 (Move 9 A3): compiles a field's declared picker filter/multiSelect. */
+    private static CompiledFieldPicker toCompiledFieldPicker(FieldPickerAst picker) {
+        if (picker == null) {
+            return null;
+        }
+        return new CompiledFieldPicker(picker.filter(), picker.multiSelect());
     }
 
     private static CompiledPresentationMetadata toCompiledPresentationMetadata(PresentationMetadataAst metadata) {

@@ -22,6 +22,7 @@ public final class CompiledField {
     private final String renamedFrom;
     private final CompiledFileMetadata file;
     private final boolean sensitive;
+    private final CompiledFieldPicker picker;
 
     public CompiledField(String name, String dslType, String javaType, boolean id, boolean required, boolean unique) {
         this(name, dslType, javaType, id, required, unique, List.of(), null, null, null, null, List.of(), null);
@@ -173,6 +174,31 @@ public final class CompiledField {
             CompiledFileMetadata file,
             boolean sensitive
     ) {
+        this(name, dslType, javaType, id, required, unique, enumValues, referenceTarget, referenceSemantics,
+                domainType, schema, enumOptions, ui, connectable, renamedFrom, file, sensitive, null);
+    }
+
+    /** B16/B19 (Move 9 A3): {@code picker} carries this field's declared picker filter/multiSelect. */
+    public CompiledField(
+            String name,
+            String dslType,
+            String javaType,
+            boolean id,
+            boolean required,
+            boolean unique,
+            List<String> enumValues,
+            String referenceTarget,
+            CompiledReferenceSemantics referenceSemantics,
+            String domainType,
+            CompiledSchema schema,
+            List<CompiledEnumOption> enumOptions,
+            CompiledPresentationMetadata ui,
+            String connectable,
+            String renamedFrom,
+            CompiledFileMetadata file,
+            boolean sensitive,
+            CompiledFieldPicker picker
+    ) {
         this.name = name;
         this.dslType = dslType;
         this.javaType = javaType;
@@ -190,6 +216,7 @@ public final class CompiledField {
         this.renamedFrom = renamedFrom;
         this.file = file;
         this.sensitive = sensitive;
+        this.picker = picker;
     }
 
     public CompiledField(
@@ -243,4 +270,6 @@ public final class CompiledField {
     public CompiledFileMetadata getFile() { return file; }
     /** ADR-0009: true when this field is marked sensitive for external-AI pack redaction. */
     public boolean isSensitive() { return sensitive; }
+    /** B16/B19 (Move 9 A3): this field's declared picker filter/multiSelect, or null if undeclared. */
+    public CompiledFieldPicker getPicker() { return picker; }
 }

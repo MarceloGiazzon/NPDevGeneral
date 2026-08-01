@@ -1,0 +1,119 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://npdev.local/contracts/authoring-submission.schema.json",
+    "title": "NPDev AI Authoring Submission Manifest",
+    "description": "The manifest an Author (a non-human agent) MUST submit alongside a model.json change against an existing app. See AI_AUTHORING_CONTRACT-2026-07-31.md Part 6 for the full rationale; empty arrays are meaningful and MUST be present -- a missing key means the Author never looked.",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "recordKind": {
+            "description": "Contract tag for this document shape.",
+            "const": "npdev-authoring-submission.v1"
+        },
+        "previousModelSha256": {
+            "description": "SHA-256 of the previous model.json the Author was handed (I1), verbatim, hex-encoded, optionally prefixed 'sha256:'. The Custodian recomputes this from the actual previous model file and refuses on any mismatch (F6 -- the compare-and-swap that prevents two authoring sessions from silently clobbering each other).",
+            "type": "string",
+            "pattern": "^(sha256:)?[0-9a-fA-F]{64}$"
+        },
+        "previousModelVersion": {
+            "description": "The 'version' field of the previous model.json, as the Author read it.",
+            "type": "string",
+            "minLength": 1
+        },
+        "submittedModelVersion": {
+            "description": "The 'version' field of the submitted model.json. MUST be strictly greater than previousModelVersion (A7).",
+            "type": "string",
+            "minLength": 1
+        },
+        "request": {
+            "description": "One sentence: what the Owner actually asked for.",
+            "type": "string",
+            "minLength": 1
+        },
+        "renames": {
+            "description": "Every concept/field the Author believes was renamed rather than removed. Each entry's 'to' must carry a matching renamedFrom in the submitted model -- the manifest states intent, the model itself carries the mechanism the engine trusts.",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "kind": {"enum": ["concept", "field"]},
+                    "concept": {"type": "string", "description": "Required when kind=field; the concept the field belongs to (its CURRENT/submitted name)."},
+                    "from": {"type": "string", "minLength": 1},
+                    "to": {"type": "string", "minLength": 1}
+                },
+                "required": ["kind", "from", "to"]
+            }
+        },
+        "deliberateRemovals": {
+            "description": "Every concept/field the Author intentionally deleted, with its data. Each name MUST NOT reappear anywhere in the submitted model (A3).",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "kind": {"enum": ["concept", "field"]},
+                    "concept": {"type": "string", "description": "Required when kind=field; the concept the field belonged to (its previous name)."},
+                    "name": {"type": "string", "minLength": 1},
+                    "reason": {"type": "string", "minLength": 1}
+                },
+                "required": ["kind", "name", "reason"]
+            }
+        },
+        "securityChanges": {
+            "description": "Every access.read / access.write / permissionRequirements / invariant / sensitive delta between the previous and submitted models (A9, A10). The Custodian independently detects every such delta and refuses any not listed here.",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "kind": {"enum": ["access.read", "access.write", "permissionRequirements", "invariant", "sensitive"]},
+                    "concept": {"type": "string", "description": "The concept name (or, for a procedure/query permissionRequirements delta, the procedure/query name)."},
+                    "from": {"type": "string"},
+                    "to": {"type": "string"},
+                    "rationale": {"type": "string", "minLength": 1}
+                },
+                "required": ["kind", "concept", "rationale"]
+            }
+        },
+        "couldNotExpress": {
+            "description": "Every requirement the Author could not express inside the DSL (A12) -- an honest refusal, not an approximation.",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "requirement": {"type": "string", "minLength": 1},
+                    "why": {"type": "string", "minLength": 1},
+                    "workaroundOffered": {"type": "string"}
+                },
+                "required": ["requirement", "why"]
+            }
+        },
+        "unchangedButSuspect": {
+            "description": "Anything the Author noticed looked wrong but did not touch (A6 -- minimal diff discipline; flag it here instead of fixing it unasked).",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "path": {"type": "string", "minLength": 1},
+                    "observation": {"type": "string", "minLength": 1}
+                },
+                "required": ["path", "observation"]
+            }
+        }
+    },
+    "required": [
+        "recordKind",
+        "previousModelSha256",
+        "previousModelVersion",
+        "submittedModelVersion",
+        "request",
+        "renames",
+        "deliberateRemovals",
+        "securityChanges",
+        "couldNotExpress",
+        "unchangedButSuspect"
+    ]
+}

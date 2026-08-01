@@ -19,10 +19,14 @@ class CompiledAutoPanelCanonicalJsonTest {
                 "ExpedicaoWorkWith", null, "Expedicao", "/expedicao",
                 List.of("selection", "detail", "transaction"),
                 new CompiledAutoPanelSurface(List.of("cliente", "situacao"), List.of("id", "cliente"),
-                        List.of(), List.of(new CompiledAutoPanelComputed("total", "pos*cxPad + cxAvulsas")), null, Map.of()),
+                        List.of(), List.of(new CompiledAutoPanelComputed("total", "pos*cxPad + cxAvulsas")), null,
+                        Map.of(), null, List.of(), Map.of(), List.of(), Map.of(), Map.of(),
+                        new CompiledAutoPanelDataSource("ListarExpedicoesAtivas"), Map.of()),
                 null,
-                new CompiledAutoPanelSurface(List.of(), List.of(), List.of("cliente", "veiculo", "observacao"), List.of(), null, Map.of()),
-                new CompiledAutoPanelSurface(List.of(), List.of(), List.of(), List.of(), "cliente", Map.of()),
+                new CompiledAutoPanelSurface(List.of(), List.of(), List.of("cliente", "veiculo", "observacao"),
+                        List.of(), null, Map.of(), null, List.of(), Map.of(), List.of(), Map.of(), Map.of(), null, Map.of()),
+                new CompiledAutoPanelSurface(List.of(), List.of(), List.of(), List.of(), "cliente", Map.of(), null,
+                        List.of(), Map.of(), List.of(), Map.of(), Map.of(), null, Map.of()),
                 Map.of());
 
         return new CompiledModel(
@@ -55,6 +59,8 @@ class CompiledAutoPanelCanonicalJsonTest {
         assertEquals(1, rich.selection().computed().size());
         assertEquals("total", rich.selection().computed().get(0).col());
         assertEquals("pos*cxPad + cxAvulsas", rich.selection().computed().get(0).expr());
+        assertNotNull(rich.selection().dataSource(), "Move 8 D3: dataSource.procedure survives the round trip");
+        assertEquals("ListarExpedicoesAtivas", rich.selection().dataSource().procedure());
         assertNull(rich.detail(), "unset detail stays null");
         assertEquals(List.of("cliente", "veiculo", "observacao"), rich.transaction().fields());
         assertEquals("cliente", rich.prompt().labelField());

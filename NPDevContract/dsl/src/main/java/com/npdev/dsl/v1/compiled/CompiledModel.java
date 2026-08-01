@@ -23,6 +23,8 @@ public final class CompiledModel {
     private final List<CompiledAutoPanel> autoPanels;
     private final List<CompiledDocument> documents;
     private final CompiledExternalAi externalAi;
+    private final CompiledSettings settings;
+    private final List<CompiledRole> roles;
 
     public CompiledModel(String namespace, String version, Map<String, ? extends CompiledEntity> entitiesByName) {
         this(namespace, "1.0.0", version, entitiesByName, List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
@@ -204,7 +206,7 @@ public final class CompiledModel {
                 documents, null);
     }
 
-    /** ADR-0009: canonical constructor, adds {@code externalAi} (app-level egress settings). */
+    /** ADR-0009: adds {@code externalAi} (app-level egress settings). */
     public CompiledModel(
             String namespace,
             String dslVersion,
@@ -225,6 +227,64 @@ public final class CompiledModel {
             List<CompiledAutoPanel> autoPanels,
             List<CompiledDocument> documents,
             CompiledExternalAi externalAi
+    ) {
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                documents, externalAi, null);
+    }
+
+    /** Move 6 Move A: canonical constructor, adds {@code settings} (app-level locale/strings/ui). */
+    public CompiledModel(
+            String namespace,
+            String dslVersion,
+            String version,
+            Map<String, ? extends CompiledEntity> entitiesByName,
+            List<CompiledDomainType> domainTypes,
+            List<CompiledCapability> capabilities,
+            List<CompiledCapabilityBinding> bindings,
+            List<CompiledEvent> events,
+            List<CompiledFlow> flows,
+            List<CompiledOrchestration> orchestrationRules,
+            List<CompiledQuery> queries,
+            List<CompiledRuleProfile> ruleProfiles,
+            List<CompiledProcedure> procedures,
+            List<CompiledPanel> panels,
+            List<CompiledGuidePage> guidePages,
+            List<CompiledAggregate> aggregates,
+            List<CompiledAutoPanel> autoPanels,
+            List<CompiledDocument> documents,
+            CompiledExternalAi externalAi,
+            CompiledSettings settings
+    ) {
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                documents, externalAi, settings, List.of());
+    }
+
+    /** Wave 3 (RC-B1): canonical constructor, adds {@code roles} (app-defined role -> permission
+     *  ceiling declarations). */
+    public CompiledModel(
+            String namespace,
+            String dslVersion,
+            String version,
+            Map<String, ? extends CompiledEntity> entitiesByName,
+            List<CompiledDomainType> domainTypes,
+            List<CompiledCapability> capabilities,
+            List<CompiledCapabilityBinding> bindings,
+            List<CompiledEvent> events,
+            List<CompiledFlow> flows,
+            List<CompiledOrchestration> orchestrationRules,
+            List<CompiledQuery> queries,
+            List<CompiledRuleProfile> ruleProfiles,
+            List<CompiledProcedure> procedures,
+            List<CompiledPanel> panels,
+            List<CompiledGuidePage> guidePages,
+            List<CompiledAggregate> aggregates,
+            List<CompiledAutoPanel> autoPanels,
+            List<CompiledDocument> documents,
+            CompiledExternalAi externalAi,
+            CompiledSettings settings,
+            List<CompiledRole> roles
     ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
@@ -249,6 +309,8 @@ public final class CompiledModel {
         this.autoPanels = new ArrayList<>(autoPanels);
         this.documents = new ArrayList<>(documents);
         this.externalAi = externalAi;
+        this.settings = settings == null ? CompiledSettings.defaults() : settings;
+        this.roles = roles == null ? List.of() : List.copyOf(roles);
     }
 
     public String getNamespace() { return namespace; }
@@ -350,6 +412,17 @@ public final class CompiledModel {
     /** ADR-0009: app-level external-AI delegation settings, or null if the model declares none (denied by default). */
     public CompiledExternalAi getExternalAi() {
         return externalAi;
+    }
+
+    /** Move 6 Move A: app-level settings. Never null -- platform defaults when the model declares none. */
+    public CompiledSettings getSettings() {
+        return settings;
+    }
+
+    /** Wave 3 (RC-B1): app-defined roles, empty when the model declares none (the built-in
+     *  USER/OPERATOR/ADMIN trio then behaves exactly as before this feature existed). */
+    public List<CompiledRole> getRoles() {
+        return Collections.unmodifiableList(roles);
     }
 
     public Optional<CompiledFlow> findFlow(String flowName) {

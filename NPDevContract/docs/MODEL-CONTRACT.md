@@ -58,9 +58,19 @@ auto-synthesized junction table and explicit set operations; authors do not crea
 concepts and link-carried data is not supported.
 
 Concepts may declare `truthLevel` from `T0` through `T6`. Authoring validation only warns
-when a higher-truth concept points to a lower-truth concept. Release validation is separate:
-promotion blocks when the reachable bond closure is below the requested truth level, and
-T4+ promotion requires evidence from existing NPDev proof artifacts.
+when a higher-truth concept points to a lower-truth concept. A separate, opt-in release gate
+(`ReleaseGateValidator.validatePromotion`) can additionally block promotion when the reachable
+bond closure is below a requested truth level, and require evidence for T4+. It is reachable via
+`ModelValidatorMain`'s `--releaseGate --targetTruthLevel=<T0..T6> [--evidencePath=<path>]...`
+flags (R81, ledger/items/REG-81.yml); an author who never passes those flags sees no release-gate
+diagnostics from a direct `ModelValidatorMain`/`npdev validate model` call. As of Move 8 (item G3,
+docs/MOVE8_CLOSE_TABLE_SPEC.md), `scripts\quality\run-generator-gate.ps1` DOES run it automatically
+-- one fixed check, `--targetTruthLevel=T2` against `NPDevSamples\dsl-conformance-max\Input\
+model.json` (the `releaseGateT2` step/report section) -- so that one corpus model's T2 promotion
+is checked on every generator-gate run. `GeneratorMain` itself still never invokes it, and no other
+model in the corpus is checked this way yet (REG-85, ledger/items/REG-85.yml: dsl-conformance-max
+itself currently fails this exact check -- 7 concepts stuck at T1 -- left open deliberately rather
+than lowering the bar to force a pass).
 
 Before enabling generated FK constraints against existing data, run a bond inspection or
 equivalent precheck and clean dangling source values. The CLI command is:
