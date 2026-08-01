@@ -99,11 +99,26 @@ final class BackfillPass {
         // the SAME boot. Collected separately from `refusals` (which means "no default at all") and
         // given its own named diagnostic, matching the bond-column refusal precedent below.
         List<String> uniqueBackfillRefusals = new ArrayList<>();
+        // Move 9 B1 (docs/ACCEPTED_BOUNDARIES.md B2): expression-default refusal candidates, checked
+        // against a pending ControlPanel acknowledgment AFTER this scan (one token for the whole set,
+        // matching the destructive-item acknowledgment convention) instead of refusing immediately.
+        List<ExpressionBackfillPreview.Item> expressionCandidates = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
             for (BackfillItem item : backfillItemsFromDiff(dataSource, manifest)) {
                 String table = item.table();   // model-case
                 String column = item.column(); // model-case
                 if (item.refusal()) {
+                    String expression = manifest.businessTableColumnDefaultExpressions()
+                            .getOrDefault(table, Map.of()).get(column);
+                    if (expression != null && !expression.isBlank()) {
+                        expressionCandidates.add(ExpressionBackfillPreview.evaluate(connection, table, column, expression));
+                        continue;
+                    }
+                    // Move 9 B1: a manifest generated BEFORE this feature only ever carries the boolean
+                    // "has an expression default" flag (businessTableExpressionDefaultColumns), never
+                    // the expression TEXT (businessTableColumnDefaultExpressions) -- with no text there
+                    // is nothing to preview/evaluate/acknowledge, so this refuses with the SAME message
+                    // as before this feature existed, unchanged.
                     boolean hasExpressionDefault = manifest.businessTableExpressionDefaultColumns()
                             .getOrDefault(table, List.of()).contains(column);
                     refusals.add(table + "." + column + (hasExpressionDefault
@@ -141,6 +156,61 @@ final class BackfillPass {
                     + "'<prefix>-' || CAST(id AS VARCHAR(36)) WHERE <column> IS NULL, then ALTER TABLE <table> "
                     + "ALTER COLUMN <column> SET NOT NULL -- or make the field optional. See "
                     + "docs/SCHEMA_EVOLUTION.md#new-required-fields.");
+        }
+        // Move 9 B1 (docs/ACCEPTED_BOUNDARIES.md B2): an expression default only ever backfills with an
+        // explicit ControlPanel acknowledgment (the SAME PendingSchemaAcknowledgmentStore/ackToken
+        // mechanism the destructive-item path uses, via SchemaAcknowledgmentController's existing
+        // /acknowledge endpoint -- no new acknowledgment channel). Unacknowledged, this refuses the
+        // boot exactly as it did before this feature existed.
+        if (!expressionCandidates.isEmpty()) {
+            String expectedToken = ExpressionBackfillPreview.expectedToken(manifest.schemaFingerprint(), expressionCandidates);
+            boolean acknowledged = PendingSchemaAcknowledgmentStore
+                    .findMatching(dataSource, manifest.schemaFingerprint(), expectedToken).isPresent();
+            if (!acknowledged) {
+                for (ExpressionBackfillPreview.Item candidate : expressionCandidates) {
+                    refusals.add(candidate.table() + "." + candidate.column()
+                            + " (an expression default is declared, but only literal defaults are backfilled "
+                            + "automatically in v1 unless explicitly acknowledged -- preview it via GET "
+                            + "/api/admin/schema-migration/expression-backfill-preview, then acknowledge via POST "
+                            + "/api/admin/schema-migration/acknowledge with ackToken=" + expectedToken + ", "
+                            + "declare a literal default instead, or make the field optional)");
+                }
+            } else {
+                List<String> failing = expressionCandidates.stream()
+                        .filter(ExpressionBackfillPreview.Item::hasFailures)
+                        .map(candidate -> candidate.table() + "." + candidate.column()
+                                + " (failed for row id(s): " + candidate.failedRowIds() + ")")
+                        .toList();
+                if (!failing.isEmpty()) {
+                    SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification, null, null, "REFUSED");
+                    throw new IllegalStateException("Schema change adds new required field(s) with an ACKNOWLEDGED "
+                            + "expression-default backfill, but the expression produces no value for at least one "
+                            + "existing row (Move 9 B1): " + failing + ". Fix the expression or the offending "
+                            + "row(s), then re-preview and re-acknowledge -- see docs/SCHEMA_EVOLUTION.md#new-required-fields.");
+                }
+                List<String> expressionBackfilled = new ArrayList<>();
+                try {
+                    SchemaHistoryStore.recordStepPass(dataSource, manifest, "EXPRESSION_BACKFILL",
+                            expressionCandidates.stream()
+                                    .map(candidate -> "BACKFILL " + candidate.table() + "." + candidate.column()
+                                            + " EXPRESSION " + candidate.expression())
+                                    .toList(),
+                            () -> {
+                                try (Connection connection = dataSource.getConnection()) {
+                                    for (ExpressionBackfillPreview.Item candidate : expressionCandidates) {
+                                        applyExpressionBackfill(connection, manifest, candidate);
+                                        expressionBackfilled.add(candidate.table() + "." + candidate.column());
+                                    }
+                                }
+                            });
+                } catch (SQLException exception) {
+                    throw new IllegalStateException("Failed applying acknowledged expression-default backfill(s) ("
+                            + expressionBackfilled.size() + "/" + expressionCandidates.size()
+                            + " applied before failure: " + expressionBackfilled + ")", exception);
+                }
+                System.out.println("NPDev schema lifecycle: added and backfilled new required column(s) using their "
+                        + "ACKNOWLEDGED expression default (Move 9 B1): " + expressionBackfilled);
+            }
         }
         if (!refusals.isEmpty()) {
             SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification, null, null, "REFUSED");
@@ -181,11 +251,15 @@ final class BackfillPass {
      * from a NEEDS_BACKFILL item) or has no literal default and so refuses the boot ({@code refusal=true},
      * from a NEEDS_HOOK item). Covers the MISSING case (ADD_REQUIRED_COLUMN) and the crash-recovery
      * half-applied case (TIGHTEN_NOT_NULL: present-but-nullable); platform repair (TIGHTEN_PLATFORM) and
-     * required bonds (non-additive) are OTHER passes and excluded. */
-    private record BackfillItem(String table, String column, boolean refusal) {
+     * required bonds (non-additive) are OTHER passes and excluded.
+     *
+     * <p>Package-private (Move 9 B1, docs/ACCEPTED_BOUNDARIES.md B2): {@link ExpressionBackfillPreview},
+     * a flat sibling in this same package, reuses this exact derivation for its dry-run preview --
+     * one source of truth for "which columns are pending a required-field backfill." */
+    record BackfillItem(String table, String column, boolean refusal) {
     }
 
-    private static List<BackfillItem> backfillItemsFromDiff(DataSource dataSource, SchemaLifecycleExecutor.SchemaManifest manifest) {
+    static List<BackfillItem> backfillItemsFromDiff(DataSource dataSource, SchemaLifecycleExecutor.SchemaManifest manifest) {
         com.finalexec.db.schemastate.CurrentSchema current =
                 new com.finalexec.db.schemastate.CurrentSchemaReader().read(dataSource);
         com.finalexec.db.schemastate.SchemaDiff diff = new com.finalexec.db.schemastate.SchemaDiffEngine()
@@ -314,6 +388,53 @@ final class BackfillPass {
                 "UPDATE " + safeTable + " SET " + safeColumn + " = ? WHERE " + safeColumn + " IS NULL")) {
             update.setObject(1, literalValue);
             update.executeUpdate();
+        }
+        if (!SchemaLifecycleExecutor.isColumnNotNull(connection, table, column)) {
+            try (PreparedStatement notNull = connection.prepareStatement(
+                    "ALTER TABLE " + safeTable + " ALTER COLUMN " + safeColumn + " SET NOT NULL")) {
+                notNull.executeUpdate();
+            }
+        }
+    }
+
+    /**
+     * Move 9 B1 (docs/ACCEPTED_BOUNDARIES.md B2): the ACKNOWLEDGED-expression-default twin of
+     * {@link #addBackfillAndTightenColumn} -- {@code ADD COLUMN IF NOT EXISTS} (nullable), then a
+     * PER-ROW {@code UPDATE ... WHERE id = ?} (a per-row COMPUTED value, unlike the literal path's
+     * one bound parameter for every row), then {@code SET NOT NULL}. Re-evaluates the expression
+     * FRESH against the live database right before writing -- never trusts the acknowledgment-matched
+     * preview's own snapshot, which may be stale by the time this actually runs (a row could have
+     * changed between preview and apply within the same boot).
+     */
+    private static void applyExpressionBackfill(
+            Connection connection, SchemaLifecycleExecutor.SchemaManifest manifest, ExpressionBackfillPreview.Item item
+    ) throws SQLException {
+        String table = item.table();
+        String column = item.column();
+        String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
+        String safeColumn = SchemaLifecycleExecutor.safeIdentifier(column);
+        String safeIdColumn = SchemaLifecycleExecutor.safeIdentifier("id");
+        String sqlType = manifest.businessTableColumnTypes().getOrDefault(table, Map.of()).get(column);
+        String safeType = TypeWideningPass.safeSqlType(sqlType);
+        try (PreparedStatement add = connection.prepareStatement(
+                "ALTER TABLE " + safeTable + " ADD COLUMN IF NOT EXISTS " + safeColumn + " " + safeType)) {
+            add.executeUpdate();
+        }
+        List<ExpressionBackfillPreview.RowValue> rows =
+                ExpressionBackfillPreview.evaluateRows(connection, table, column, item.expression());
+        for (ExpressionBackfillPreview.RowValue row : rows) {
+            if (row.value() == null) {
+                throw new IllegalStateException("Expression default re-evaluation for " + table + "." + column
+                        + " row id " + row.displayId() + " produced no value at apply time (it did not during the "
+                        + "acknowledged preview) -- refusing to backfill with a partial result. Re-preview and "
+                        + "re-acknowledge before retrying.");
+            }
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE " + safeTable + " SET " + safeColumn + " = ? WHERE " + safeIdColumn + " = ?")) {
+                update.setObject(1, row.value());
+                update.setObject(2, row.rawId());
+                update.executeUpdate();
+            }
         }
         if (!SchemaLifecycleExecutor.isColumnNotNull(connection, table, column)) {
             try (PreparedStatement notNull = connection.prepareStatement(

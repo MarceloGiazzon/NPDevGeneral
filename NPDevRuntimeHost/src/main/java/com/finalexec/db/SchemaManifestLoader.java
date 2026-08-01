@@ -82,7 +82,12 @@ final class SchemaManifestLoader {
                     // before G8 -- both helpers default to an empty map, so a pre-G8 app behaves exactly
                     // as it did (nothing to verify, nothing to diff).
                     foreignKeyListMap(root.path("businessTableForeignKeys")),
-                    indexListMap(root.path("businessTableIndexes"))
+                    indexListMap(root.path("businessTableIndexes")),
+                    // Move 9 B1 (docs/ACCEPTED_BOUNDARIES.md B2): the expression TEXT for every column
+                    // businessTableExpressionDefaultColumns names. Absent from every manifest emitted
+                    // before this field existed -- stringMapMap defaults to an empty map, so a
+                    // pre-existing app is unaffected (nothing to preview/backfill).
+                    stringMapMap(root.path("businessTableColumnDefaultExpressions"))
             );
         } catch (Exception exception) {
             throw new IllegalStateException("Failed loading schema realization manifest", exception);

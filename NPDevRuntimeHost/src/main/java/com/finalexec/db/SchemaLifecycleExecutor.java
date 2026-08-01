@@ -299,31 +299,46 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // fingerprint (only afterMigrate does, at its very end) and no path drops npdev_schema_metadata,
         // so this read is the true pre-boot value even after a destructive beforeMigrate.
         String storedAtBootStart = readFingerprint(dataSource);
-        // REG-7.3 (D3): claim the single migration slot for this boot BEFORE any schema work, so a
-        // second instance racing against the same database refuses loudly instead of interleaving
-        // renames/widenings/drops. ONLY attempted when a fingerprint is already stored -- i.e. this is
-        // an upgrade/repeat boot against an already-initialized database, never a genuinely virgin
-        // one. VERIFIED LIVE (the identical mechanism REG-7.2's fix needed): claiming unconditionally
-        // would self-bootstrap npdev_schema_migration_claim before flyway.migrate() ever runs on a
-        // fresh schema, which makes Flyway see a non-empty "public" schema with no history table and
-        // refuse outright. See MigrationClaimStore's class javadoc for the honest scope of what this
-        // does and does not protect.
-        MigrationClaimStore.Claim claim = (storedAtBootStart != null && !storedAtBootStart.isBlank())
-                ? MigrationClaimStore.claim(dataSource)
-                : null;
+        // B4 (Move 9 A1, docs/ACCEPTED_BOUNDARIES.md): claim the single migration slot for this boot
+        // BEFORE any schema work, so a second instance racing against the same database refuses
+        // loudly instead of interleaving renames/widenings/drops. freshDatabase=true (no fingerprint
+        // stored yet -- a genuinely virgin database) is passed through, not used to skip the call
+        // outright: on Postgres, MigrationClaimStore.claim now protects this case too (a
+        // pg_advisory_lock needs no table to exist), closing the one race the old row-only claim could
+        // never cover. On H2 the fresh-database case is still skipped internally, exactly as before
+        // REG-7.2's fix required (claiming unconditionally would self-bootstrap
+        // npdev_schema_migration_claim before flyway.migrate() ever runs on a fresh schema, which
+        // makes Flyway see a non-empty "public" schema with no history table and refuse outright).
+        // See MigrationClaimStore's class javadoc for the full engine-by-engine scope.
+        boolean freshDatabase = storedAtBootStart == null || storedAtBootStart.isBlank();
+        MigrationClaimStore.Claim claim = MigrationClaimStore.claim(dataSource, freshDatabase);
         try {
             boolean fingerprintChanged = storedAtBootStart != null && !storedAtBootStart.isBlank()
                     && !storedAtBootStart.equals(manifest.schemaFingerprint());
             DestructiveRecreation recreation = beforeMigrate(dataSource, manifest);
             if (recreation.performed()) {
                 clearSchemaRealizationHistory(dataSource);
-            } else if (recreation.safeAdditive()) {
+            } else {
                 // V1's bootstrap SQL is regenerated from the full current model on every generation pass,
                 // so its content (and checksum) legitimately changes whenever a column is added even though
                 // it must not be re-executed here. repair() reconciles Flyway's recorded checksums with the
                 // newly resolved migration content instead of failing validation or re-running V1's CREATE TABLE.
+                //
+                // REG-106 (live-caught 2026-08-01, Move 10 B2): this used to run ONLY when
+                // recreation.safeAdditive() -- i.e. only when the schema FINGERPRINT changed in a
+                // known-additive way. But V1's literal SQL text (comments, table/column emission order)
+                // can drift across generator runs even when the structural fingerprint does not change
+                // at all, so a plain model.json edit with zero concept/table changes still crashed the
+                // boot with "Migration checksum mismatch for migration version 1" on the very next
+                // regeneration -- flyway.repair() was never called because
+                // recreation == DestructiveRecreation.none(). V1 is entirely generated, never
+                // hand-authored, so trusting the freshly generated file here (not the historical
+                // checksum recorded from whenever this database was last migrated) is correct in the
+                // fingerprint-unchanged case for the exact same reason it was already correct in the
+                // safeAdditive case -- only widened to cover both.
                 flyway.repair();
-                System.out.println("NPDev schema lifecycle: flyway.repair() reconciled schema-realization checksums for the additive change.");
+                System.out.println("NPDev schema lifecycle: flyway.repair() reconciled schema-realization checksums"
+                        + (recreation.safeAdditive() ? " for the additive change." : " (no structural change detected)."));
             }
             flyway.migrate();
             afterMigrate(dataSource, manifest, storedAtBootStart, fingerprintChanged);
@@ -1960,8 +1975,54 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             // as it did. Matched against the live schema by COLUMN SET, never by name (constraint/index
             // names are engine-generated and differ between H2 and Postgres).
             Map<String, List<ForeignKeyDecl>> businessTableForeignKeys,
-            Map<String, List<IndexDecl>> businessTableIndexes
+            Map<String, List<IndexDecl>> businessTableIndexes,
+            // Move 9 B1 (docs/ACCEPTED_BOUNDARIES.md B2): the expression TEXT for every column
+            // businessTableExpressionDefaultColumns names -- added LAST, same SER-G8 convention as the
+            // FK/index maps above. Absent from every manifest emitted before this field existed --
+            // SchemaManifestLoader defaults it to an empty map, so a pre-existing app behaves exactly
+            // as it did (no expression-default preview/backfill data means BackfillPass's refusal path
+            // is unchanged).
+            Map<String, Map<String, String>> businessTableColumnDefaultExpressions
     ) {
+        /** Move 9 B1 backward-compatible convenience constructor matching the PRE-B1 24-arg shape
+         * (every field through the SER-G8 FK/index maps) -- defaults the new expression-text map to
+         * empty. Keeps every existing hand-built manifest from that era (tests, and any caller that
+         * does not care about expression-default preview/backfill) compiling and behaving identically. */
+        public SchemaManifest(
+                String engine,
+                String storageMode,
+                boolean physicalDatabase,
+                String schemaFingerprint,
+                List<String> internalTables,
+                List<String> businessTables,
+                Map<String, List<String>> businessTableColumns,
+                Map<String, List<String>> businessTableAdditiveColumns,
+                Map<String, Map<String, String>> businessTableColumnTypes,
+                Map<String, Map<String, String>> businessTableRenamedColumns,
+                Map<String, String> businessTableRenames,
+                boolean allowDestructiveRecreate,
+                String strategy,
+                String scope,
+                String destructiveRecreateConfirmation,
+                String destructiveAcknowledgment,
+                Map<String, List<String>> businessTableRequiredColumns,
+                Map<String, Map<String, String>> businessTableColumnDefaultLiterals,
+                Map<String, List<String>> businessTableExpressionDefaultColumns,
+                Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints,
+                List<String> planItemStableStrings,
+                String ownership,
+                Map<String, List<ForeignKeyDecl>> businessTableForeignKeys,
+                Map<String, List<IndexDecl>> businessTableIndexes
+        ) {
+            this(engine, storageMode, physicalDatabase, schemaFingerprint, internalTables, businessTables,
+                    businessTableColumns, businessTableAdditiveColumns, businessTableColumnTypes,
+                    businessTableRenamedColumns, businessTableRenames, allowDestructiveRecreate, strategy,
+                    scope, destructiveRecreateConfirmation, destructiveAcknowledgment,
+                    businessTableRequiredColumns, businessTableColumnDefaultLiterals,
+                    businessTableExpressionDefaultColumns, businessTableUniqueConstraints,
+                    planItemStableStrings, ownership, businessTableForeignKeys, businessTableIndexes, Map.of());
+        }
+
         /** SER-G8 backward-compatible convenience constructor matching the PRE-G8 22-arg shape --
          * defaults the two new FK/index maps to empty. Keeps every existing hand-built manifest (tests,
          * and any caller that does not care about FK/index) compiling and behaving identically. */
@@ -1995,7 +2056,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     scope, destructiveRecreateConfirmation, destructiveAcknowledgment,
                     businessTableRequiredColumns, businessTableColumnDefaultLiterals,
                     businessTableExpressionDefaultColumns, businessTableUniqueConstraints,
-                    planItemStableStrings, ownership, Map.of(), Map.of());
+                    planItemStableStrings, ownership, Map.of(), Map.of(), Map.of());
         }
 
         /** Backward-compatible convenience constructor matching this record's PRE-Phase-6 20-arg

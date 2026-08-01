@@ -75,7 +75,7 @@ class SchemaLifecycleExecutorMigrationClaimTest {
             statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY)");
         }
         seedStoredFingerprint(dataSource, "sha256:same");
-        MigrationClaimStore.Claim otherInstance = MigrationClaimStore.claim(dataSource);
+        MigrationClaimStore.Claim otherInstance = MigrationClaimStore.claim(dataSource, false);
 
         SchemaLifecycleExecutor.SchemaManifest manifest = manifestIdOnly("sha256:same");
         Flyway flyway = Flyway.configure().dataSource(dataSource).locations(new String[0]).load();
@@ -116,7 +116,7 @@ class SchemaLifecycleExecutorMigrationClaimTest {
             statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY)");
         }
         seedStoredFingerprint(dataSource, "sha256:same");
-        MigrationClaimStore.claim(dataSource); // simulate a crashed holder that never released
+        MigrationClaimStore.claim(dataSource, false); // simulate a crashed holder that never released
 
         MigrationClaimStore.clear(dataSource);
 
@@ -134,7 +134,7 @@ class SchemaLifecycleExecutorMigrationClaimTest {
             statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50))");
         }
         seedStoredFingerprint(dataSource, "sha256:old"); // an existing fingerprint, so the claim WOULD normally fire
-        MigrationClaimStore.Claim otherInstance = MigrationClaimStore.claim(dataSource); // simulate a genuine other holder
+        MigrationClaimStore.Claim otherInstance = MigrationClaimStore.claim(dataSource, false); // simulate a genuine other holder
 
         SchemaLifecycleExecutor.SchemaManifest manifest = new SchemaLifecycleExecutor.SchemaManifest(
                 "Postgres", "jdbc", true, "sha256:new",

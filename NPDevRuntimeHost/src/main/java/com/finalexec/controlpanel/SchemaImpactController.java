@@ -1,7 +1,9 @@
 package com.finalexec.controlpanel;
 
+import com.finalexec.db.ExpressionBackfillPreview;
 import com.finalexec.db.ImpactReportJson;
 import com.finalexec.db.SchemaImpactFacade;
+import com.finalexec.db.SchemaLifecycleExecutor;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
@@ -16,6 +18,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 import javax.sql.DataSource;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * SER-P6.5 (Surface 3). ControlPanel surface for the Impact Report: an on-demand, read-only view of
@@ -56,6 +61,42 @@ public class SchemaImpactController {
         String json = ImpactReportJson.render(r.report(), Instant.now().toString(),
                 r.fromFingerprint(), r.toFingerprint(), r.ackToken());
         return ResponseEntity.ok().header("Content-Type", "application/json").body(json);
+    }
+
+    /**
+     * Move 9 B1 (docs/ACCEPTED_BOUNDARIES.md B2): a dry-run preview of every pending
+     * expression-default backfill against the CURRENTLY LIVE database -- rows affected, distinct
+     * resulting values, and rows where evaluation produces no value (blocking application). Writes
+     * nothing. {@code ackToken}, when items are present, is the SAME token an operator submits via
+     * the EXISTING {@code POST /acknowledge} endpoint (no new acknowledgment channel) to authorize
+     * {@code BackfillPass} applying them on this app's next boot.
+     */
+    @GetMapping(value = "/expression-backfill-preview", produces = "application/json")
+    public Map<String, Object> expressionBackfillPreview(HttpServletRequest httpRequest) {
+        requireSuperUser(httpRequest);
+        DataSource dataSource = requireDataSource();
+        SchemaLifecycleExecutor.SchemaManifest manifest = SchemaLifecycleExecutor.loadManifest();
+        Map<String, Object> body = new LinkedHashMap<>();
+        if (manifest == null || !manifest.physicalDatabase()) {
+            body.put("items", List.of());
+            body.put("ackToken", null);
+            return body;
+        }
+        List<ExpressionBackfillPreview.Item> items = ExpressionBackfillPreview.preview(dataSource, manifest);
+        List<Map<String, Object>> encoded = items.stream().map(item -> {
+            Map<String, Object> encodedItem = new LinkedHashMap<>();
+            encodedItem.put("table", item.table());
+            encodedItem.put("column", item.column());
+            encodedItem.put("expression", item.expression());
+            encodedItem.put("rowsAffected", item.rowsAffected());
+            encodedItem.put("distinctValues", item.distinctValues());
+            encodedItem.put("failedRowIds", item.failedRowIds());
+            return encodedItem;
+        }).toList();
+        body.put("items", encoded);
+        body.put("ackToken", items.isEmpty() ? null : ExpressionBackfillPreview.expectedToken(manifest.schemaFingerprint(), items));
+        body.put("toFingerprint", manifest.schemaFingerprint());
+        return body;
     }
 
     /**

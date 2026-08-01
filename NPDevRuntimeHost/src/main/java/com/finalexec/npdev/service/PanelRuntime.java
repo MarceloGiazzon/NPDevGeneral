@@ -13,7 +13,10 @@ import com.npdev.kernel.ExecutionResult;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptGatewayTraceRecord;
 import com.npdev.kernel.concepts.ConceptListRequest;
-import com.npdev.kernel.concepts.ConceptQueryFilterSupport;
+import com.npdev.kernel.concepts.ConceptPage;
+import com.npdev.kernel.concepts.ConceptQuery;
+import com.npdev.kernel.concepts.ConceptQueryPredicateCompiler;
+import com.npdev.kernel.concepts.ConceptQueryRequest;
 import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptWriteRequest;
@@ -37,6 +40,11 @@ import java.util.UUID;
 @Service
 public class PanelRuntime {
     private static final String ENDPOINT_VERSION = "1.0.0";
+    /** LC-P0 scale half (MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 0): soft cap applied to a
+     * declared-Panel dataSource's rows when its bound query declares no explicit {@code limit}, so a
+     * Panel is never handed an unbounded list. Equal to {@link ConceptQuery#MAX_LIMIT}, the same
+     * ceiling {@code DefaultProcedureExecutor}'s {@code runQuery} step applies. */
+    private static final int PANEL_ROW_CAP = ConceptQuery.MAX_LIMIT;
 
     private final RuntimeMetadataService runtimeMetadataService;
     private final PermissionAwareUiMetadataService permissionAwareUiMetadataService;
@@ -96,6 +104,31 @@ public class PanelRuntime {
     ) {
         this(runtimeMetadataService, permissionAwareUiMetadataService, compiledModel, conceptGateway,
                 capabilityDispatcher, eventBus, null, null);
+    }
+
+    /**
+     * Move 6 Move C: accepts an already-built {@link ProcedureRunner} directly instead of having
+     * this class build its own from {@code capabilityDispatcher}/{@code eventBus} -- mirrors
+     * {@link AggregateRuntime}'s equivalent constructor. Lets a test inject a stubbed {@code
+     * ProcedureRunner} to exercise {@code onRowLoad}'s enforcement logic (the batch guarantee)
+     * directly, independent of the real DSL step engine.
+     */
+    public PanelRuntime(
+            RuntimeMetadataService runtimeMetadataService,
+            PermissionAwareUiMetadataService permissionAwareUiMetadataService,
+            CompiledModel compiledModel,
+            ConceptGateway conceptGateway,
+            ProcedureRunner procedureRunner
+    ) {
+        this.runtimeMetadataService = runtimeMetadataService;
+        this.permissionAwareUiMetadataService = permissionAwareUiMetadataService;
+        this.compiledModel = compiledModel;
+        this.conceptGateway = conceptGateway;
+        this.capabilityDispatcher = null;
+        this.eventBus = null;
+        this.aggregateRuntime = null;
+        this.procedureRunner = procedureRunner;
+        this.kernelFacade = null;
     }
 
     public PanelRuntime(
@@ -394,22 +427,90 @@ public class PanelRuntime {
                         "ConceptGateway is required for executable panel data."
                 );
             }
-            List<ConceptRecord> records = requireConceptGateway()
-                    .list(new ConceptListRequest(conceptName, null, filterField, filterValue), context);
             Optional<CompiledQuery> query = resolveDataSourceQuery(dataSource);
-            // LIFT-QUERY-P1: where/orderBy now come from the shared kernel predicate also used by
-            // DefaultProcedureExecutor's runQuery step, instead of a second copy of this logic.
-            records = ConceptQueryFilterSupport.applyWhere(records, query.map(CompiledQuery::where).orElse(null));
-            records = ConceptQueryFilterSupport.applyOrderBy(records, query.map(CompiledQuery::orderBy).orElse(List.of()));
-            return records.stream()
+            // LC-P0 scale half (MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 0): where/orderBy/limit are
+            // pushed down through ConceptGateway.query -- the same pushdown DefaultProcedureExecutor's
+            // runQuery step uses -- instead of fetching every row via list() and filtering in the JVM.
+            // A declared Panel over a very large concept is no longer a memory event.
+            List<ConceptQuery.Filter> filters = new ArrayList<>();
+            if (hasText(filterField)) {
+                filters.add(new ConceptQuery.Filter(filterField, ConceptQuery.Operator.EQ, filterValue));
+            }
+            filters.addAll(ConceptQueryPredicateCompiler.compile(query.map(CompiledQuery::where).orElse(null)));
+            List<ConceptQuery.Sort> sorts = ConceptQueryPredicateCompiler.compileOrderBy(
+                    query.map(CompiledQuery::orderBy).orElse(List.of()));
+            Integer declaredLimit = query.map(CompiledQuery::limit).orElse(null);
+            int limit = declaredLimit != null && declaredLimit > 0 ? declaredLimit : PANEL_ROW_CAP;
+            ConceptPage page = requireConceptGateway().query(
+                    new ConceptQueryRequest(conceptName, new ConceptQuery(filters, sorts, 0, limit)), context);
+            List<ConceptRecord> records = page.items();
+            List<Map<String, Object>> rows = records.stream()
                     .map(PanelRuntime::toRecordMap)
                     .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+            return applyRowLoad(dataSource, rows, context);
         }
         return fallbackDataSource(
                 "PANEL_DATASOURCE_UNBOUND",
                 "Panel data source has no supported concept, query, or procedure binding.",
                 ""
         );
+    }
+
+    /**
+     * Move 6 Move C (docs/MOVE6_TYPED_SURFACE_PLAN.md §4): enriches rows via the data source's
+     * declared {@code onRowLoad} procedure, if any -- distinct from {@code dataSource.procedure()}
+     * above, which REPLACES the row source entirely; this ENRICHES rows the gateway already
+     * produced. Enforces the batch guarantee in code, not review comments: the procedure's
+     * returned {@code rows} must be the SAME length, in the SAME order, with the SAME id at every
+     * index. A violation is a hard failure, never a silent truncation or reorder -- an onRowLoad
+     * that quietly became N+1 or dropped a row would discredit the whole mechanism.
+     */
+    private List<Map<String, Object>> applyRowLoad(
+            CompiledPanelDataSource dataSource, List<Map<String, Object>> rows, ExecutionContext context) {
+        if (!hasText(dataSource.onRowLoad())) {
+            return rows;
+        }
+        ProcedureExecutionResult result = executeProcedure(dataSource.onRowLoad(), Map.of("rows", rows), context);
+        if (!result.ok()) {
+            throw new IllegalStateException(
+                    "Panel dataSource " + dataSource.name() + " onRowLoad procedure " + dataSource.onRowLoad()
+                            + " failed: " + result.failureCode() + " " + result.failureMessage());
+        }
+        Object rawEnriched = result.state().get("rows");
+        if (!(rawEnriched instanceof List<?> enrichedList)) {
+            throw new IllegalStateException(
+                    "Panel dataSource " + dataSource.name() + " onRowLoad procedure " + dataSource.onRowLoad()
+                            + " must return a \"rows\" list; got: "
+                            + (rawEnriched == null ? "nothing" : rawEnriched.getClass().getSimpleName()));
+        }
+        if (enrichedList.size() != rows.size()) {
+            throw new IllegalStateException(
+                    "Panel dataSource " + dataSource.name() + " onRowLoad procedure " + dataSource.onRowLoad()
+                            + " violated the row-identity guarantee: expected " + rows.size() + " row(s), got "
+                            + enrichedList.size() + " -- enrichment must add fields, never reorder/add/drop rows");
+        }
+        List<Map<String, Object>> enrichedRows = new ArrayList<>(enrichedList.size());
+        for (int i = 0; i < rows.size(); i++) {
+            Object originalId = rows.get(i).get("id");
+            Object enrichedItem = enrichedList.get(i);
+            if (!(enrichedItem instanceof Map<?, ?> enrichedMap)) {
+                throw new IllegalStateException(
+                        "Panel dataSource " + dataSource.name() + " onRowLoad procedure " + dataSource.onRowLoad()
+                                + " row[" + i + "] is not an object");
+            }
+            Object enrichedId = enrichedMap.get("id");
+            if (!java.util.Objects.equals(originalId, enrichedId)) {
+                throw new IllegalStateException(
+                        "Panel dataSource " + dataSource.name() + " onRowLoad procedure " + dataSource.onRowLoad()
+                                + " violated the row-identity guarantee at row[" + i + "]: expected id "
+                                + originalId + ", got " + enrichedId
+                                + " -- enrichment must preserve row order and identity");
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> enrichedRow = (Map<String, Object>) enrichedMap;
+            enrichedRows.add(enrichedRow);
+        }
+        return enrichedRows;
     }
 
     private Map<String, Object> dataSourceSummary(CompiledPanelDataSource dataSource, Object value) {

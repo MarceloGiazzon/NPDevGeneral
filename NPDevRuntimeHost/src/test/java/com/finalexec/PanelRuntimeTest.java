@@ -312,7 +312,10 @@ class PanelRuntimeTest {
                 List.of(),
                 null,
                 null,
-                Map.of()
+                Map.of(),
+                List.of(),
+                List.of(),
+                null
         );
         CompiledPanel panel = new CompiledPanel(
                 "TicketPanel",
