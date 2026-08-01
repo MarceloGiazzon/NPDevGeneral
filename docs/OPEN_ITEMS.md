@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**109 item(s) migrated: 0 open/partial, 109 done.**
+**110 item(s) migrated: 1 open/partial, 109 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -21,6 +21,7 @@
 | REG-106 | SchemaLifecycleExecutor.migrate() skipped flyway.repair() whenever the schema fingerprint was unchanged, but V1's generated migration SQL text can drift (comments/emission order) independently of the structural fingerprint -- a plain model.json edit with zero concept/table changes crashed the boot with a Flyway 'Migration checksum mismatch' on the next regeneration | BUG | MEDIUM | DONE | 2026-08-01 |
 | REG-107 | PanelRuntime.executeAction's conceptquery binding fetches an entire concept unbounded via ConceptGateway.list -- the same memory/scale defect LC-P0 fixed for the declared-Panel dataSource path, out of that fix's stated scope | BUG | LOW | DONE | 2026-08-01 |
 | REG-108 | roles/propertyScopes/properties were absent from ModelSourceResolver's MODEL_ARRAY_KEYS (and from pack.schema.json's allowlist) -- a pack or local fragment declaring any of the three had its declaration silently dropped during composition, with no error | BUG | MEDIUM | DONE | 2026-08-01 |
+| REG-109 | generated-ui-manifest.json (and the rest of static/npdev-business-ui/*) is baked into the packaged jar at generation time with no external-path override, the same class of gap REG-103 fixed for RuntimeMetadataService's JSON catalogs -- named but explicitly not sized by REG-103, sized (not fixed) here | GAP | LOW | OPEN | 2026-08-01 |
 | REG-11 | LNCH-20: cross-platform build scripts (gradlew.bat literals, portable cache dir) | GAP | LOW | DONE | 2026-07-21 |
 | REG-12 | LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped | GAP | HIGH | DONE | 2026-07-21 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
@@ -852,6 +853,47 @@ Not done here, left to Move 13 P3.1/P3.4 itself: no dsl-conformance-max corpus m
 a PACK contributing roles/propertyScopes/properties (only root-level declarations are corpus-
 covered today) -- P3.1/P3.4 is exactly the work that will need this shape for real, and should add
 the corpus fixture alongside it (R6).
+
+### REG-109 — generated-ui-manifest.json (and the rest of static/npdev-business-ui/*) is baked into the packaged jar at generation time with no external-path override, the same class of gap REG-103 fixed for RuntimeMetadataService's JSON catalogs -- named but explicitly not sized by REG-103, sized (not fixed) here
+
+**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Source:** Filed while executing Move 13 P5.1 (MOVE13_CLOSE_EVERYTHING_SPEC.md), which named this residual
+explicitly and said: "Static frontend assets: client-side JS/JSON, not a Spring bean -- a
+materially different problem. Do not size it here. If it is not bounded after 30 minutes of
+reading, file it as its own ledger item and stop." Per that instruction, this item files it
+rather than attempting a fix.
+
+What this pass DID confirm, that REG-103 itself had not (its own text: "not confirmed by this
+finding's own live check"): `generated-ui-manifest.json` is not inlined into the JS bundle at
+generation time -- it is fetched at RUNTIME over HTTP from a static path
+(`business-ui-app.mustache`: `state.manifest = await fetchJson("./generated-ui-manifest.json")`,
+confirmed by direct read of the template). This narrows the problem usefully: it is a static-file-
+serving question (does Spring serve `static/npdev-business-ui/*` from an external, override-able
+location, or only from the packaged jar's classpath?), not a "JS bundle has data baked into its
+source text" question -- structurally closer to RuntimeMetadataService's own classpath-only
+catalogs than the word "bundle" suggests.
+
+A quick, bounded check (the 30-minute box this item's own filing instruction sets) found no
+existing `spring.web.resources.static-locations` (or equivalent `WebMvcConfigurer.
+addResourceLocations`) override anywhere in NPDevRuntimeHost's Java sources or any checked-in
+`application.yml`/`.properties` -- so, unlike `compiled-model.json`/`compiled-metadata.json`,
+there is currently no evidence this file can be served from anywhere but the packaged jar's
+classpath. Not exhaustively confirmed (would need tracing Spring Boot's default static-resource
+handler chain and how/whether `Build-NpdevApp.ps1` packages `static/npdev-business-ui/*`), which is
+exactly why this is filed rather than fixed.
+
+**Surface:** `generator, runtimehost`
+**Files:**
+- `NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/RuntimeMetadataService.java`
+
+Sizing, not fixing: if the fix shape mirrors REG-103's own precedent (an external directory Spring
+checks before its classpath-packaged static resources, e.g. via
+`WebMvcConfigurer.addResourceLocations("file:${npdev.static-ui.path}/", "classpath:/static/")`),
+this is a bounded, same-shape fix -- but confirming that shape actually applies to Spring Boot's
+static-resource pipeline (as opposed to `app.js`/`shell.js` needing something structurally
+different, e.g. because they are also referenced by a content hash somewhere) needs its own pass,
+not assumed here. Left OPEN, not attempted, per this item's own filing instruction.
 
 ### REG-11 — LNCH-20: cross-platform build scripts (gradlew.bat literals, portable cache dir)
 

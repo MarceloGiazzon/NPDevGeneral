@@ -70,25 +70,48 @@ public class RuntimeMetadataService {
             "npdev-generated/src/main/resources/npdev/compiled-metadata.json";
     private static final String METADATA_INDEX_PATH_DEFAULT =
             "npdev-generated/src/main/resources/npdev/metadata/index.json";
+    // REG-103 (Move 13 P5.1): the same "npdev-generated/src/main/resources/" prefix
+    // COMPILED_METADATA_PATH_DEFAULT/METADATA_INDEX_PATH_DEFAULT already hard-code, factored out so
+    // any OTHER classpath location under npdev/... (a per-catalog manifest, the schema-realization
+    // manifest) can derive its own external override the same way, without a named @Value property
+    // per catalog -- there is no fixed set of those, unlike the two named catalogs above.
+    private static final String GENERATED_RESOURCES_ROOT_DEFAULT = "npdev-generated/src/main/resources";
 
     private final ObjectMapper objectMapper;
     private final Path externalCompiledMetadataPath;
     private final Path externalMetadataIndexPath;
+    private final Path externalGeneratedResourcesRoot;
 
     /** Byte-identical to the pre-REG-103 behaviour: no external path configured, classpath only. */
     public RuntimeMetadataService(ObjectMapper objectMapper) {
         this(objectMapper, COMPILED_METADATA_PATH_DEFAULT, METADATA_INDEX_PATH_DEFAULT);
     }
 
+    /** Kept for the two-catalog-only override shape (REG-103's original test/call sites); delegates
+     * to the four-arg constructor with the generated-resources root defaulted. */
+    public RuntimeMetadataService(ObjectMapper objectMapper, String compiledMetadataPath, String metadataIndexPath) {
+        this(objectMapper, compiledMetadataPath, metadataIndexPath, GENERATED_RESOURCES_ROOT_DEFAULT);
+    }
+
     @Autowired
     public RuntimeMetadataService(
             ObjectMapper objectMapper,
             @Value("${npdev.compiled-metadata.path:" + COMPILED_METADATA_PATH_DEFAULT + "}") String compiledMetadataPath,
-            @Value("${npdev.metadata-index.path:" + METADATA_INDEX_PATH_DEFAULT + "}") String metadataIndexPath
+            @Value("${npdev.metadata-index.path:" + METADATA_INDEX_PATH_DEFAULT + "}") String metadataIndexPath,
+            @Value("${npdev.generated-resources.path:" + GENERATED_RESOURCES_ROOT_DEFAULT + "}") String generatedResourcesRootPath
     ) {
         this.objectMapper = objectMapper;
         this.externalCompiledMetadataPath = Paths.get(compiledMetadataPath).toAbsolutePath().normalize();
         this.externalMetadataIndexPath = Paths.get(metadataIndexPath).toAbsolutePath().normalize();
+        this.externalGeneratedResourcesRoot = Paths.get(generatedResourcesRootPath).toAbsolutePath().normalize();
+    }
+
+    /** Derives a per-catalog/manifest external path from its classpath location, mirroring
+     * COMPILED_METADATA_PATH_DEFAULT/METADATA_INDEX_PATH_DEFAULT's own prefix convention -- there is
+     * no fixed list of these (a catalog's manifest path comes from the index at runtime), so this is
+     * a generic transform rather than a named @Value per file. */
+    private Path externalPathFor(String classpathLocation) {
+        return externalGeneratedResourcesRoot.resolve(classpathLocation).normalize();
     }
 
     public Map<String, Object> overview() {
@@ -188,7 +211,9 @@ public class RuntimeMetadataService {
      * every other catalog read here) if the app has no schema-realization manifest on its classpath --
      * the controller's existing {@code run()} wrapper maps that to 503, same as a missing catalog. */
     public String schemaFingerprint() {
-        return stringValue(loadJsonMap(SCHEMA_REALIZATION_MANIFEST_CLASSPATH).get("schemaFingerprint"));
+        Map<String, Object> manifest = loadJsonMap(
+                SCHEMA_REALIZATION_MANIFEST_CLASSPATH, externalPathFor(SCHEMA_REALIZATION_MANIFEST_CLASSPATH));
+        return stringValue(manifest.get("schemaFingerprint"));
     }
 
     public Map<String, Object> previewSupport(String conceptName) {
@@ -327,7 +352,7 @@ public class RuntimeMetadataService {
     }
 
     private Map<String, Object> loadManifest(String catalogName) {
-        Map<String, Object> index = loadJsonMap(METADATA_INDEX_CLASSPATH);
+        Map<String, Object> index = loadJsonMap(METADATA_INDEX_CLASSPATH, externalMetadataIndexPath);
         List<Map<String, Object>> catalogs = extractCatalogEntries(index);
         for (Map<String, Object> catalog : catalogs) {
             if (normalize(catalog.get("name")).equalsIgnoreCase(catalogName)) {
@@ -335,7 +360,7 @@ public class RuntimeMetadataService {
                 if (path.isBlank()) {
                     throw new IllegalStateException("Runtime metadata catalog path is blank for catalog: " + catalogName);
                 }
-                return loadJsonMap(path);
+                return loadJsonMap(path, externalPathFor(path));
             }
         }
         throw new IllegalStateException("Runtime metadata index does not expose catalog: " + catalogName);
@@ -493,9 +518,12 @@ public class RuntimeMetadataService {
     /**
      * REG-103: the same {@code classpathLocation} fallback as {@link #loadJsonMap(String)}, but an
      * {@code externalPath} that exists on disk wins -- same precedence order as
-     * {@code NPDevModelProvider}. Only {@code compiled-metadata.json} and {@code metadata/index.json}
-     * (the two catalogs the ledger item names) get an external override; {@link #loadManifest} and
-     * {@code schema-realization-manifest.json} stay classpath-only, out of this item's scope.
+     * {@code NPDevModelProvider}. Move 12 P2.1 covered only {@code compiled-metadata.json} and
+     * {@code metadata/index.json}; Move 13 P5.1 widened this to every caller, including
+     * {@link #loadManifest}'s per-catalog manifest files and {@code schema-realization-manifest.json},
+     * via {@link #externalPathFor(String)}'s generic prefix derivation -- there being no fixed list of
+     * per-catalog manifest files (unlike the two named catalogs) is exactly why that helper exists
+     * instead of another named {@code @Value}.
      */
     private Map<String, Object> loadJsonMap(String classpathLocation, Path externalPath) {
         if (externalPath != null && Files.exists(externalPath)) {

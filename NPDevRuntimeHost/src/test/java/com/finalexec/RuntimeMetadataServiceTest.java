@@ -143,4 +143,40 @@ class RuntimeMetadataServiceTest {
         // asserts namespace "canonical.clinicdemo" from the classpath fixture, still passing unchanged
         // -- proving "no property set" behaviour is byte-identical to before this fix.
     }
+
+    /**
+     * Move 13 P5.1 (REG-103's own named residual): the two-catalog override above left
+     * {@code loadManifest}'s per-catalog manifest files (e.g. {@code panels.manifest.json}) and
+     * {@code schema-realization-manifest.json} classpath-only -- there is no fixed set of per-catalog
+     * manifest files to name individually (the catalog list comes from the index at runtime), so the
+     * fix is a generic external-root derivation ({@code externalPathFor}) rather than another named
+     * {@code @Value}. Proves an external {@code panels.manifest.json}, placed at the SAME relative
+     * path the classpath copy uses, wins -- with compiledMetadataPath/metadataIndexPath left at their
+     * defaults (so metadata/index.json itself still comes from the classpath, exactly as a real app
+     * would have it before this specific file is ever touched).
+     */
+    @Test
+    void externalPerCatalogManifestAndSchemaRealizationManifestOverrideTheClasspathCopy(@TempDir Path tempDir) throws Exception {
+        Path panelsManifest = tempDir.resolve("npdev/metadata/panels.manifest.json");
+        Files.createDirectories(panelsManifest.getParent());
+        Files.writeString(panelsManifest, "{\"items\":[],\"marker\":\"external-panels-manifest\"}");
+
+        Path schemaRealizationManifest = tempDir.resolve("npdev/db/schema-realization-manifest.json");
+        Files.createDirectories(schemaRealizationManifest.getParent());
+        Files.writeString(schemaRealizationManifest, "{\"schemaFingerprint\":\"external-fingerprint-123\"}");
+
+        RuntimeMetadataService externallyConfigured = new RuntimeMetadataService(
+                new ObjectMapper(),
+                "compiled-metadata-path-not-present-so-classpath-wins.json",
+                "metadata-index-path-not-present-so-classpath-wins.json",
+                tempDir.toString());
+
+        Map<String, Object> panelsCatalog = externallyConfigured.catalog("panels", null, null, null);
+        assertEquals("external-panels-manifest", panelsCatalog.get("marker"),
+                "an external panels.manifest.json at the derived path (generatedResourcesRoot + the "
+                        + "classpath-relative path the index declares) must win over the classpath copy");
+
+        assertEquals("external-fingerprint-123", externallyConfigured.schemaFingerprint(),
+                "an external schema-realization-manifest.json at the derived path must win over the classpath copy");
+    }
 }
